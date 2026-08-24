@@ -1,35 +1,36 @@
 import { detectFormat } from "../services/provider.js";
 import { FORMATS } from "../translator/formats.js";
 import { createSyntheticResponse } from "./bypassResponse.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_PONYTAIL_HELP =
-  "Ponytail — lazy-senior persona for minimal code.\n" +
-  "\n" +
-  "3 intensity levels:\n" +
-  "  lite   — name the lazier alternative in one line; user picks\n" +
-  "  full   — ladder enforced; stdlib and native first\n" +
-  "  ultra  — YAGNI extremist; ship the one-liner, challenge the rest\n" +
-  "\n" +
-  "7-rung ladder (stop at the first rung that holds):\n" +
-  "  1. Does this need to exist at all? (YAGNI)\n" +
-  "  2. Does the codebase already solve it? Reuse patterns.\n" +
-  "  3. Stdlib does it? Use it.\n" +
-  "  4. Native platform feature covers it? Use it (CSS over JS, DB over app).\n" +
-  "  5. Already-installed dependency solves it? Use it.\n" +
-  "  6. Can it be one line? One line.\n" +
-  "  7. Only then: the minimum code that works.\n" +
-  "\n" +
-  "Rules: no unrequested abstractions. No boilerplate \"for later\". " +
-  "Deletion over addition. Boring over clever. Shortest working diff wins.\n" +
-  "\n" +
-  "Output: code first. Then at most three short lines: what was skipped, " +
-  "when to add it. Pattern: `[code] -> skipped: [X], add when [Y].`\n" +
-  "\n" +
-  "How to enable: toggle Ponytail in Token Saver settings.\n" +
-  "\n" +
-  "Commands:\n" +
-  "  /ponytail-gain  — show this API key's lifetime usage\n" +
-  "  /ponytail-help  — show this help text";
+"Ponytail — lazy-senior persona for minimal code.\n" +
+"\n" +
+"3 intensity levels:\n" +
+"  lite   — name the lazier alternative in one line; user picks\n" +
+"  full   — ladder enforced; stdlib and native first\n" +
+"  ultra  — YAGNI extremist; ship the one-liner, challenge the rest\n" +
+"\n" +
+"7-rung ladder (stop at the first rung that holds):\n" +
+"  1. Does this need to exist at all? (YAGNI)\n" +
+"  2. Does the codebase already solve it? Reuse patterns.\n" +
+"  3. Stdlib does it? Use it.\n" +
+"  4. Native platform feature covers it? Use it (CSS over JS, DB over app).\n" +
+"  5. Already-installed dependency solves it? Use it.\n" +
+"  6. Can it be one line? One line.\n" +
+"  7. Only then: the minimum code that works.\n" +
+"\n" +
+"Rules: no unrequested abstractions. No boilerplate \"for later\". " +
+"Deletion over addition. Boring over clever. Shortest working diff wins.\n" +
+"\n" +
+"Output: code first. Then at most three short lines: what was skipped, " +
+"when to add it. Pattern: `[code] -> skipped: [X], add when [Y].`\n" +
+"\n" +
+"How to enable: toggle Ponytail in Token Saver settings.\n" +
+"\n" +
+"Commands:\n" +
+"  /ponytail-gain  — show this API key's lifetime usage\n" +
+"  /ponytail-help  — show this help text";
 
 function formatGainStats(stats) {
   if (!stats) {
@@ -37,7 +38,7 @@ function formatGainStats(stats) {
   }
 
   const nf = new Intl.NumberFormat("en-US");
-  const scope = typeof stats.scope === "string" && stats.scope ? ` (${stats.scope})` : "";
+  const scope = isString(stats.scope) && stats.scope ? ` (${stats.scope})` : "";
   const lines = [`Ponytail gain — lifetime${scope}`];
   lines.push("  requests: " + nf.format(stats.totalRequests || 0));
   if (Number.isFinite(Number(stats.totalTokens))) {
@@ -49,7 +50,7 @@ function formatGainStats(stats) {
   }
   lines.push("  est. cost: $" + (Number(stats.totalCost) || 0).toFixed(2));
 
-  if (stats.byProvider && typeof stats.byProvider === "object") {
+  if (stats.byProvider && isObject(stats.byProvider)) {
     const entries = Object.entries(stats.byProvider);
     if (entries.length > 0) {
       let topProvider = entries[0][0];
@@ -63,7 +64,7 @@ function formatGainStats(stats) {
           topCount = count;
         }
       }
-      const pct = totalCount > 0 ? ((topCount / totalCount) * 100).toFixed(0) : "0";
+      const pct = totalCount > 0 ? (topCount / totalCount * 100).toFixed(0) : "0";
       lines.push("  top provider: " + topProvider + " (" + pct + "% of requests)");
     }
   }
@@ -72,13 +73,13 @@ function formatGainStats(stats) {
 }
 
 function textFromBlocks(content, allowedTypes) {
-  if (typeof content === "string") return content.trim();
+  if (isString(content)) return content.trim();
   if (!Array.isArray(content) || content.length === 0) return null;
 
   const parts = [];
   for (const block of content) {
-    if (!block || typeof block !== "object" || !allowedTypes.has(block.type)) return null;
-    if (typeof block.text !== "string") return null;
+    if (!block || !isObject(block) || !allowedTypes.has(block.type)) return null;
+    if (!isString(block.text)) return null;
     parts.push(block.text);
   }
   return parts.join(" ").trim();
@@ -92,12 +93,12 @@ function textFromChatMessages(messages) {
 }
 
 function textFromResponsesInput(input) {
-  if (typeof input === "string") return input.trim();
+  if (isString(input)) return input.trim();
   const items = Array.isArray(input) ? input : [input];
   if (items.length === 0) return null;
   const last = items[items.length - 1];
-  if (typeof last === "string") return last.trim();
-  if (!last || typeof last !== "object") return null;
+  if (isString(last)) return last.trim();
+  if (!last || !isObject(last)) return null;
   if (last.type !== undefined && last.type !== "message") return null;
   if (last.role !== "user") return null;
   return textFromBlocks(last.content, new Set(["input_text", "text"]));
@@ -112,7 +113,7 @@ function textFromGeminiContents(contents) {
 
   const parts = [];
   for (const part of last.parts) {
-    if (!part || typeof part !== "object" || typeof part.text !== "string") return null;
+    if (!part || !isObject(part) || !isString(part.text)) return null;
     if (Object.keys(part).some((key) => key !== "text")) return null;
     parts.push(part.text);
   }
@@ -126,11 +127,11 @@ function textFromGeminiContents(contents) {
  * to the upstream request path.
  */
 export function extractPonytailCommand(body = {}) {
-  const text = Array.isArray(body.messages)
-    ? textFromChatMessages(body.messages)
-    : body.input !== undefined
-      ? textFromResponsesInput(body.input)
-      : textFromGeminiContents(body.contents || body.request?.contents);
+  const text = Array.isArray(body.messages) ?
+  textFromChatMessages(body.messages) :
+  body.input !== undefined ?
+  textFromResponsesInput(body.input) :
+  textFromGeminiContents(body.contents || body.request?.contents);
 
   if (!text) return null;
   const match = text.match(/^\/ponytail(?:-|[\t ]+)(gain|help)$/i);
@@ -145,9 +146,9 @@ export function resolvePonytailStream(body = {}, sourceFormat, acceptHeader = ""
   const clientPrefersSSE = acceptHeader.includes("text/event-stream");
   if (clientPrefersSSE && !clientPrefersJson) return true;
   if (clientPrefersJson && !clientPrefersSSE) return false;
-  return !(sourceFormat === FORMATS.OPENAI_RESPONSES
-    || sourceFormat === FORMATS.OPENAI_RESPONSE
-    || sourceFormat === FORMATS.CODEX);
+  return !(sourceFormat === FORMATS.OPENAI_RESPONSES ||
+  sourceFormat === FORMATS.OPENAI_RESPONSE ||
+  sourceFormat === FORMATS.CODEX);
 }
 
 /**
@@ -163,8 +164,8 @@ export async function handlePonytailCommands(body, model, { fetchStats, helpText
   let text;
   if (command === "gain") {
     let stats = null;
-    if (typeof fetchStats === "function") {
-      try { stats = await fetchStats(); } catch { /* stats are best-effort */ }
+    if (isFunction(fetchStats)) {
+      try {stats = await fetchStats();} catch {/* stats are best-effort */}
     }
     text = formatGainStats(stats);
   } else {

@@ -1,9 +1,10 @@
+import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && isObject(value) && !Array.isArray(value);
 }
 
 function toJsonValue(v) {
-  if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+  if (v === null || isString(v) || isNumber(v) || isBoolean(v)) {
     return v;
   }
   if (Array.isArray(v)) {
@@ -37,45 +38,45 @@ function mapRuntimeTransport(rt) {
   const out = {};
   let hasData = false;
 
-  if (typeof rt.baseUrl === "string") { out.baseUrl = rt.baseUrl; hasData = true; }
-  if (typeof rt.urlSuffix === "string") { out.urlSuffix = rt.urlSuffix; hasData = true; }
+  if (isString(rt.baseUrl)) {out.baseUrl = rt.baseUrl;hasData = true;}
+  if (isString(rt.urlSuffix)) {out.urlSuffix = rt.urlSuffix;hasData = true;}
 
   if (isRecord(rt.headers)) {
     const headers = Object.fromEntries(
-      Object.entries(rt.headers).filter(([, v]) => typeof v === "string"),
+      Object.entries(rt.headers).filter(([, v]) => isString(v))
     );
-    if (Object.keys(headers).length > 0) { out.headers = headers; hasData = true; }
+    if (Object.keys(headers).length > 0) {out.headers = headers;hasData = true;}
   }
 
   if (isRecord(rt.auth)) {
     const auth = rt.auth;
     const mappedAuth = {
       combined: auth.combined === true,
-      anthropicVersion: auth.anthropicVersion === true,
+      anthropicVersion: auth.anthropicVersion === true
     };
-    if (typeof auth.header === "string") mappedAuth.header = auth.header;
-    if (typeof auth.scheme === "string") mappedAuth.scheme = auth.scheme;
+    if (isString(auth.header)) mappedAuth.header = auth.header;
+    if (isString(auth.scheme)) mappedAuth.scheme = auth.scheme;
     if (isRecord(auth.apiKey)) {
       mappedAuth.apiKey = {
-        header: typeof auth.apiKey.header === "string" ? auth.apiKey.header : "",
-        scheme: typeof auth.apiKey.scheme === "string" ? auth.apiKey.scheme : "",
+        header: isString(auth.apiKey.header) ? auth.apiKey.header : "",
+        scheme: isString(auth.apiKey.scheme) ? auth.apiKey.scheme : ""
       };
     }
     if (isRecord(auth.oauth)) {
       mappedAuth.oauth = {
-        header: typeof auth.oauth.header === "string" ? auth.oauth.header : "",
-        scheme: typeof auth.oauth.scheme === "string" ? auth.oauth.scheme : "",
+        header: isString(auth.oauth.header) ? auth.oauth.header : "",
+        scheme: isString(auth.oauth.scheme) ? auth.oauth.scheme : ""
       };
     }
     if (Array.isArray(auth.hooks)) {
-      const hooks = auth.hooks.filter((h) => typeof h === "string");
+      const hooks = auth.hooks.filter((h) => isString(h));
       if (hooks.length > 0) mappedAuth.hooks = hooks;
     }
     out.auth = mappedAuth;
     hasData = true;
   }
 
-  if (typeof rt.format === "string") { out.format = rt.format; hasData = true; }
+  if (isString(rt.format)) {out.format = rt.format;hasData = true;}
   return hasData ? out : undefined;
 }
 
@@ -90,19 +91,19 @@ function mapRuntimeTransport(rt) {
 export function toExecutorCredentials(creds) {
   const out = {};
 
-  if (typeof creds.apiKey === "string") out.apiKey = creds.apiKey;
-  if (typeof creds.accessToken === "string") out.accessToken = creds.accessToken;
-  if (typeof creds.refreshToken === "string") out.refreshToken = creds.refreshToken;
-  if (typeof creds.copilotToken === "string") out.copilotToken = creds.copilotToken;
-  if (typeof creds.expiresAt === "string" || typeof creds.expiresAt === "number") out.expiresAt = creds.expiresAt;
-  if (typeof creds.connectionName === "string") out.connectionName = creds.connectionName;
-  if (typeof creds.connectionId === "string") out.connectionId = creds.connectionId;
+  if (isString(creds.apiKey)) out.apiKey = creds.apiKey;
+  if (isString(creds.accessToken)) out.accessToken = creds.accessToken;
+  if (isString(creds.refreshToken)) out.refreshToken = creds.refreshToken;
+  if (isString(creds.copilotToken)) out.copilotToken = creds.copilotToken;
+  if (isString(creds.expiresAt) || isNumber(creds.expiresAt)) out.expiresAt = creds.expiresAt;
+  if (isString(creds.connectionName)) out.connectionName = creds.connectionName;
+  if (isString(creds.connectionId)) out.connectionId = creds.connectionId;
 
-  const rawHeaders = isRecord(creds.rawHeaders)
-    ? Object.fromEntries(
-        Object.entries(creds.rawHeaders).filter(([, v]) => typeof v === "string"),
-      )
-    : undefined;
+  const rawHeaders = isRecord(creds.rawHeaders) ?
+  Object.fromEntries(
+    Object.entries(creds.rawHeaders).filter(([, v]) => isString(v))
+  ) :
+  undefined;
   if (rawHeaders && Object.keys(rawHeaders).length > 0) out.rawHeaders = rawHeaders;
 
   if (isRecord(creds.providerSpecificData)) {
@@ -133,7 +134,7 @@ export function toCoreResult(result, fallbackError) {
       response: result.response,
       status: result.status,
       error: fallbackError,
-      resetsAtMs: null,
+      resetsAtMs: null
     };
   }
   return {
@@ -141,6 +142,6 @@ export function toCoreResult(result, fallbackError) {
     response: result.response,
     status: result.status,
     error: result.error,
-    resetsAtMs: result.resetsAtMs ?? null,
+    resetsAtMs: result.resetsAtMs ?? null
   };
 }

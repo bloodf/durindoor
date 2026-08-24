@@ -10,6 +10,7 @@ import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.j
 // defensively so tool names from such turns resolve back (e.g. proxy_Read → Read
 // for arg sanitization). Current request translator emits no prefix ("") — strip
 // is then a no-op. Kept intentionally; do NOT couple to request's empty prefix.
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "proxy_";
 
 // Detect and deduplicate doubled JSON (e.g. {"query":"x"}{"query":"x"})
@@ -28,9 +29,9 @@ function deduplicateDoubledJson(str) {
 function sanitizeToolArgs(toolName, argsJson) {
   try {
     const args = JSON.parse(argsJson);
-    const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX)
-      ? toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length)
-      : toolName;
+    const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ?
+    toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length) :
+    toolName;
     if (name === "Read") sanitizeReadArgs(args);
     return JSON.stringify(args);
   } catch {
@@ -39,26 +40,26 @@ function sanitizeToolArgs(toolName, argsJson) {
     if (deduplicated !== argsJson) {
       try {
         const args = JSON.parse(deduplicated);
-        const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX)
-          ? toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length)
-          : toolName;
+        const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ?
+        toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length) :
+        toolName;
         if (name === "Read") sanitizeReadArgs(args);
         return JSON.stringify(args);
-      } catch { /* fall through to raw return */ }
+      } catch {/* fall through to raw return */}
     }
     return argsJson;
   }
 }
 
 function sanitizeReadArgs(args) {
-  if (typeof args.limit === "string" && /^\d+$/.test(args.limit)) args.limit = Number(args.limit);
-  if (typeof args.offset === "string" && /^-?\d+$/.test(args.offset)) args.offset = Number(args.offset);
+  if (isString(args.limit) && /^\d+$/.test(args.limit)) args.limit = Number(args.limit);
+  if (isString(args.offset) && /^-?\d+$/.test(args.offset)) args.offset = Number(args.offset);
 
-  if (typeof args.limit === "number") {
+  if (isNumber(args.limit)) {
     if (args.limit > 2000) args.limit = 2000;
     if (args.limit < 1) delete args.limit;
   }
-  if (typeof args.offset === "number" && args.offset < 0) args.offset = 0;
+  if (isNumber(args.offset) && args.offset < 0) args.offset = 0;
 
   if ("pages" in args && !isValidPdfPagesArg(args.file_path, args.pages)) {
     delete args.pages;
@@ -66,10 +67,10 @@ function sanitizeReadArgs(args) {
 }
 
 function isValidPdfPagesArg(filePath, pages) {
-  return typeof filePath === "string" &&
-    filePath.toLowerCase().endsWith(".pdf") &&
-    typeof pages === "string" &&
-    /^\d+(?:-\d+)?$/.test(pages);
+  return isString(filePath) &&
+  filePath.toLowerCase().endsWith(".pdf") && isString(
+    pages) &&
+  /^\d+(?:-\d+)?$/.test(pages);
 }
 
 // Helper: stop thinking block if started
@@ -127,14 +128,14 @@ function flushToolBlocks(state, results) {
 // Convert OpenAI-shaped usage ({prompt_tokens, completion_tokens, ...}) to the
 // Claude shape ({input_tokens, output_tokens, cache_*}).
 function toClaudeUsage(usage) {
-  const promptTokens = typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : 0;
-  const outputTokens = typeof usage.completion_tokens === "number" ? usage.completion_tokens : 0;
+  const promptTokens = isNumber(usage.prompt_tokens) ? usage.prompt_tokens : 0;
+  const outputTokens = isNumber(usage.completion_tokens) ? usage.completion_tokens : 0;
 
   // Extract cache tokens from prompt_tokens_details
   const cachedTokens = usage.prompt_tokens_details?.cached_tokens;
   const cacheCreationTokens = usage.prompt_tokens_details?.cache_creation_tokens;
-  const cacheReadTokens = typeof cachedTokens === "number" ? cachedTokens : 0;
-  const cacheCreateTokens = typeof cacheCreationTokens === "number" ? cacheCreationTokens : 0;
+  const cacheReadTokens = isNumber(cachedTokens) ? cachedTokens : 0;
+  const cacheCreateTokens = isNumber(cacheCreationTokens) ? cacheCreationTokens : 0;
 
   // input_tokens = prompt_tokens - cached_tokens - cache_creation_tokens
   // Because OpenAI's prompt_tokens includes all prompt-side tokens
@@ -166,11 +167,11 @@ function finalizeOnFlush(state) {
   // state.usage may still be OpenAI-shaped here: the gemini stage writes
   // prompt/completion counts into the shared pivot state, and only a real
   // finish chunk converts them — which a truncated stream never delivers.
-  const usage = state.usage?.input_tokens != null
-    ? state.usage
-    : state.usage?.prompt_tokens != null
-      ? toClaudeUsage(state.usage)
-      : { input_tokens: 0, output_tokens: 0 };
+  const usage = state.usage?.input_tokens != null ?
+  state.usage :
+  state.usage?.prompt_tokens != null ?
+  toClaudeUsage(state.usage) :
+  { input_tokens: 0, output_tokens: 0 };
 
   const stopReason = state.toolCalls.size > 0 ? "tool_use" : "end_turn";
   results.push({
@@ -192,7 +193,7 @@ export function openaiToClaudeResponse(chunk, state) {
   const delta = choice.delta;
 
   // Track usage from OpenAI chunk if available
-  if (chunk.usage && typeof chunk.usage === "object") {
+  if (chunk.usage && isObject(chunk.usage)) {
     state.usage = toClaudeUsage(chunk.usage);
   }
 
@@ -202,8 +203,8 @@ export function openaiToClaudeResponse(chunk, state) {
     state.messageId = chunk.id?.replace("chatcmpl-", "") || `msg_${Date.now()}`;
     if (!state.messageId || state.messageId === "chat" || state.messageId.length < 8) {
       state.messageId = chunk.extend_fields?.requestId ||
-        chunk.extend_fields?.traceId ||
-        `msg_${Date.now()}`;
+      chunk.extend_fields?.traceId ||
+      `msg_${Date.now()}`;
     }
     state.model = chunk.model || MODEL_FALLBACK;
     state.nextBlockIndex = 0;
@@ -353,7 +354,7 @@ export function openaiToClaudeResponse(chunk, state) {
       // treat a broken turn as a finished answer; a mid-stream error event is
       // retryable by Anthropic clients.
       const message = state.upstreamError?.message ||
-        "Upstream aborted the response (malformed function call or empty candidate)";
+      "Upstream aborted the response (malformed function call or empty candidate)";
       results.push({
         type: "error",
         error: { type: "api_error", message }

@@ -1,5 +1,6 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { isBoolean, isObject } from "../../../shared/utils/typeChecks.js";
 
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;
@@ -14,20 +15,20 @@ let cachedConfig = null;
 let cachedConfigTs = 0;
 
 async function getObservabilityConfig() {
-  if (cachedConfig && (Date.now() - cachedConfigTs) < CONFIG_CACHE_TTL_MS) return cachedConfig;
+  if (cachedConfig && Date.now() - cachedConfigTs < CONFIG_CACHE_TTL_MS) return cachedConfig;
   try {
     const { getSettings } = await import("./settingsRepo.js");
     const settings = await getSettings();
     const envEnabled = process.env.OBSERVABILITY_ENABLED !== "false";
-    const enabled = typeof settings.enableObservability2 === "boolean"
-      ? settings.enableObservability2
-      : envEnabled;
+    const enabled = isBoolean(settings.enableObservability2) ?
+    settings.enableObservability2 :
+    envEnabled;
     cachedConfig = {
       enabled,
       maxRecords: settings.observabilityMaxRecords || parseInt(process.env.OBSERVABILITY_MAX_RECORDS || String(DEFAULT_MAX_RECORDS), 10),
       batchSize: settings.observabilityBatchSize || parseInt(process.env.OBSERVABILITY_BATCH_SIZE || String(DEFAULT_BATCH_SIZE), 10),
       flushIntervalMs: settings.observabilityFlushIntervalMs || parseInt(process.env.OBSERVABILITY_FLUSH_INTERVAL_MS || String(DEFAULT_FLUSH_INTERVAL_MS), 10),
-      maxJsonSize: (settings.observabilityMaxJsonSize || parseInt(process.env.OBSERVABILITY_MAX_JSON_SIZE || "5", 10)) * 1024,
+      maxJsonSize: (settings.observabilityMaxJsonSize || parseInt(process.env.OBSERVABILITY_MAX_JSON_SIZE || "5", 10)) * 1024
     };
   } catch {
     cachedConfig = {
@@ -35,7 +36,7 @@ async function getObservabilityConfig() {
       maxRecords: DEFAULT_MAX_RECORDS,
       batchSize: DEFAULT_BATCH_SIZE,
       flushIntervalMs: DEFAULT_FLUSH_INTERVAL_MS,
-      maxJsonSize: DEFAULT_MAX_JSON_SIZE,
+      maxJsonSize: DEFAULT_MAX_JSON_SIZE
     };
   }
   cachedConfigTs = Date.now();
@@ -47,7 +48,7 @@ let flushTimer = null;
 let isFlushing = false;
 
 function sanitizeHeaders(headers) {
-  if (!headers || typeof headers !== "object") return {};
+  if (!headers || !isObject(headers)) return {};
   const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token", "api-key"];
   const sanitized = { ...headers };
   for (const key of Object.keys(sanitized)) {
@@ -76,7 +77,7 @@ function truncateField(obj, maxSize) {
 // budget) so the UI can always show them regardless of message-history size.
 function truncateRequestField(obj, maxSize) {
   const truncated = truncateField(obj, maxSize);
-  if (truncated?._truncated && obj && typeof obj === "object" && obj.tools !== undefined) {
+  if (truncated?._truncated && obj && isObject(obj) && obj.tools !== undefined) {
     return { ...truncated, tools: truncateField(obj.tools, TOOLS_MAX_JSON_SIZE) };
   }
   return truncated;
@@ -112,7 +113,7 @@ async function flushToDatabase() {
             request: truncateRequestField(item.request, config.maxJsonSize),
             providerRequest: truncateRequestField(item.providerRequest, config.maxJsonSize),
             providerResponse: truncateField(item.providerResponse, config.maxJsonSize),
-            response: truncateField(item.response, config.maxJsonSize),
+            response: truncateField(item.response, config.maxJsonSize)
           };
 
           db.run(
@@ -146,7 +147,7 @@ export async function saveRequestDetail(detail) {
   // Trigger immediate flush if batch threshold reached.
   // flushToDatabase() drains entire buffer in a loop, so all pushes during await are persisted.
   if (writeBuffer.length >= config.batchSize) {
-    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    if (flushTimer) {clearTimeout(flushTimer);flushTimer = null;}
     flushToDatabase().catch((e) => console.error("[requestDetailsRepo] flush err:", e));
   } else if (!flushTimer) {
     flushTimer = setTimeout(() => {
@@ -161,12 +162,12 @@ export async function getRequestDetails(filter = {}) {
   const conds = [];
   const params = [];
 
-  if (filter.provider) { conds.push("provider = ?"); params.push(filter.provider); }
-  if (filter.model) { conds.push("model = ?"); params.push(filter.model); }
-  if (filter.connectionId) { conds.push("connectionId = ?"); params.push(filter.connectionId); }
-  if (filter.status) { conds.push("status = ?"); params.push(filter.status); }
-  if (filter.startDate) { conds.push("timestamp >= ?"); params.push(new Date(filter.startDate).toISOString()); }
-  if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
+  if (filter.provider) {conds.push("provider = ?");params.push(filter.provider);}
+  if (filter.model) {conds.push("model = ?");params.push(filter.model);}
+  if (filter.connectionId) {conds.push("connectionId = ?");params.push(filter.connectionId);}
+  if (filter.status) {conds.push("status = ?");params.push(filter.status);}
+  if (filter.startDate) {conds.push("timestamp >= ?");params.push(new Date(filter.startDate).toISOString());}
+  if (filter.endDate) {conds.push("timestamp <= ?");params.push(new Date(filter.endDate).toISOString());}
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const cntRow = db.get(`SELECT COUNT(*) as c FROM requestDetails ${where}`, params);
@@ -185,7 +186,7 @@ export async function getRequestDetails(filter = {}) {
 
   return {
     details,
-    pagination: { page, pageSize, totalItems, totalPages, hasNext: page < totalPages, hasPrev: page > 1 },
+    pagination: { page, pageSize, totalItems, totalPages, hasNext: page < totalPages, hasPrev: page > 1 }
   };
 }
 
@@ -209,7 +210,7 @@ export async function getDistinctProviders() {
 }
 
 const _shutdownHandler = async () => {
-  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  if (flushTimer) {clearTimeout(flushTimer);flushTimer = null;}
   if (writeBuffer.length > 0) await flushToDatabase();
 };
 

@@ -3,14 +3,15 @@ import {
   deleteProxyPool,
   getProviderConnections,
   getProxyPoolById,
-  updateProxyPool,
-} from "@/models";
+  updateProxyPool } from
+"@/models";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};
 
   if (Object.prototype.hasOwnProperty.call(body, "name")) {
-    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    const name = isString(body?.name) ? body.name.trim() : "";
     if (!name) {
       return { error: "Name is required" };
     }
@@ -18,7 +19,7 @@ function normalizeProxyPoolUpdate(body = {}) {
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "proxyUrl")) {
-    const proxyUrl = typeof body?.proxyUrl === "string" ? body.proxyUrl.trim() : "";
+    const proxyUrl = isString(body?.proxyUrl) ? body.proxyUrl.trim() : "";
     if (!proxyUrl) {
       return { error: "Proxy URL is required" };
     }
@@ -26,7 +27,7 @@ function normalizeProxyPoolUpdate(body = {}) {
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "noProxy")) {
-    updates.noProxy = typeof body?.noProxy === "string" ? body.noProxy.trim() : "";
+    updates.noProxy = isString(body?.noProxy) ? body.noProxy.trim() : "";
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "isActive")) {
@@ -108,7 +109,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json(
         {
           error: "Proxy pool is currently in use",
-          boundConnectionCount,
+          boundConnectionCount
         },
         { status: 409 }
       );

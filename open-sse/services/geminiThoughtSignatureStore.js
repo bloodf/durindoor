@@ -1,5 +1,6 @@
 import { getAdapter, getAdapterSync } from "../../src/lib/db/driver.js";
 import { parseJson, stringifyJson } from "../../src/lib/db/helpers/jsonCol.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const NAMESPACE = "gemini_thought_signatures";
 const MAX_SIGNATURES = 1000;
@@ -10,7 +11,7 @@ let signatureCacheMode = "enabled";
 let writesSincePrune = 0;
 
 function dbOrNull() {
-  try { return getAdapterSync(); } catch { return null; }
+  try {return getAdapterSync();} catch {return null;}
 }
 
 function pruneMemory(now = Date.now()) {
@@ -22,7 +23,7 @@ function pruneMemory(now = Date.now()) {
 
 function persistedEntry(value, now = Date.now()) {
   const parsed = parseJson(value, null);
-  return parsed && typeof parsed.signature === "string" && parsed.signature && Number.isFinite(parsed.expiresAt) && parsed.expiresAt > now ? parsed : null;
+  return parsed && isString(parsed.signature) && parsed.signature && Number.isFinite(parsed.expiresAt) && parsed.expiresAt > now ? parsed : null;
 }
 
 function remember(key, value, now = Date.now()) {
@@ -37,26 +38,26 @@ export function prunePersistedNow(db, now = Date.now(), cap = MAX_SIGNATURES) {
     const live = [];
     for (const row of rows) {
       const value = persistedEntry(row.value, now);
-      if (!value) db.run("DELETE FROM kv WHERE scope = ? AND key = ?", [NAMESPACE, row.key]);
-      else live.push({ key: row.key, expiresAt: value.expiresAt });
+      if (!value) db.run("DELETE FROM kv WHERE scope = ? AND key = ?", [NAMESPACE, row.key]);else
+      live.push({ key: row.key, expiresAt: value.expiresAt });
     }
     live.sort((a, b) => a.expiresAt - b.expiresAt);
     if (live.length > cap) for (const row of live.slice(0, live.length - cap)) db.run("DELETE FROM kv WHERE scope = ? AND key = ?", [NAMESPACE, row.key]);
-  } catch { /* persistence is best-effort */ }
+  } catch {/* persistence is best-effort */}
 }
 export function prunePersisted(db, now = Date.now(), cap = MAX_SIGNATURES) {
   if (++writesSincePrune < 100) return;
   writesSincePrune = 0;
   prunePersistedNow(db, now, cap);
 }
-export function _pruneForTests(cap) { const db = dbOrNull(); if (db) prunePersistedNow(db, Date.now(), cap); }
+export function _pruneForTests(cap) {const db = dbOrNull();if (db) prunePersistedNow(db, Date.now(), cap);}
 
 export function buildGeminiThoughtSignatureKey(namespace, toolCallId) {
-  return typeof namespace === "string" && namespace && typeof toolCallId === "string" && toolCallId ? `${namespace}:${toolCallId}` : null;
+  return isString(namespace) && namespace && isString(toolCallId) && toolCallId ? `${namespace}:${toolCallId}` : null;
 }
 
 export function storeGeminiThoughtSignature(key, signature, expiresAt = Date.now() + PERSISTED_TTL_MS) {
-  if (typeof key !== "string" || !key || typeof signature !== "string" || !signature || !Number.isFinite(expiresAt)) return;
+  if (!isString(key) || !key || !isString(signature) || !signature || !Number.isFinite(expiresAt)) return;
   const now = Date.now();
   const value = { signature, expiresAt };
   remember(key, value, now);
@@ -65,11 +66,11 @@ export function storeGeminiThoughtSignature(key, signature, expiresAt = Date.now
   try {
     db.run("INSERT INTO kv(scope, key, value) VALUES(?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value", [NAMESPACE, key, stringifyJson(value)]);
     prunePersisted(db, now);
-  } catch { /* response translation must not fail when persistence does */ }
+  } catch {/* response translation must not fail when persistence does */}
 }
 
 export function getGeminiThoughtSignature(key) {
-  if (typeof key !== "string" || !key) return null;
+  if (!isString(key) || !key) return null;
   const now = Date.now();
   pruneMemory(now);
   const cached = signatures.get(key);
@@ -90,26 +91,26 @@ export function getGeminiThoughtSignature(key) {
     }
     remember(key, value, now);
     return value.signature;
-  } catch { return null; }
+  } catch {return null;}
 }
 
 export function resolveGeminiThoughtSignature(key, clientSignature) {
-  return typeof clientSignature === "string" && clientSignature ? clientSignature : getGeminiThoughtSignature(key);
+  return isString(clientSignature) && clientSignature ? clientSignature : getGeminiThoughtSignature(key);
 }
 
 export function normalizeSignatureCacheMode(value) {
   return value === "bypass" || value === "bypass-strict" ? value : "enabled";
 }
-export function setGeminiThoughtSignatureMode(mode) { signatureCacheMode = normalizeSignatureCacheMode(mode); }
-export function getGeminiThoughtSignatureMode() { return signatureCacheMode; }
-export function isValidBasicGeminiThoughtSignature(signature) { return typeof signature === "string" && /^[RE][A-Za-z0-9+/]+={0,2}$/.test(signature); }
-export function isValidFullGeminiThoughtSignature(signature) { return isValidBasicGeminiThoughtSignature(signature); }
+export function setGeminiThoughtSignatureMode(mode) {signatureCacheMode = normalizeSignatureCacheMode(mode);}
+export function getGeminiThoughtSignatureMode() {return signatureCacheMode;}
+export function isValidBasicGeminiThoughtSignature(signature) {return isString(signature) && /^[RE][A-Za-z0-9+/]+={0,2}$/.test(signature);}
+export function isValidFullGeminiThoughtSignature(signature) {return isValidBasicGeminiThoughtSignature(signature);}
 
 export async function clearGeminiThoughtSignatures() {
   signatures.clear();
   signatureCacheMode = "enabled";
   writesSincePrune = 0;
-  try { await (await getAdapter()).run("DELETE FROM kv WHERE scope = ?", [NAMESPACE]); } catch { /* test cleanup without DB remains valid */ }
+  try {await (await getAdapter()).run("DELETE FROM kv WHERE scope = ?", [NAMESPACE]);} catch {/* test cleanup without DB remains valid */}
 }
-export function clearGeminiThoughtSignatureMemoryForTests() { signatures.clear(); }
-export function getGeminiThoughtSignatureMemorySizeForTests() { pruneMemory(); return signatures.size; }
+export function clearGeminiThoughtSignatureMemoryForTests() {signatures.clear();}
+export function getGeminiThoughtSignatureMemorySizeForTests() {pruneMemory();return signatures.size;}

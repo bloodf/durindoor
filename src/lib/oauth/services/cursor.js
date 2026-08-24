@@ -13,13 +13,14 @@ import { CURSOR_CONFIG } from "../constants/oauth.js";
  * - cursorAuth/accessToken: The access token
  * - storage.serviceMachineId: Machine ID for checksum
  */
+import { isString, isUndefined } from "../../../shared/utils/typeChecks.js";
 
 export function isCursorEmail(value) {
-  return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  return isString(value) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 export function isAuth0Subject(value) {
-  return typeof value === "string" && /^auth0\|user_/i.test(value);
+  return isString(value) && /^auth0\|user_/i.test(value);
 }
 
 export class CursorService {
@@ -40,7 +41,7 @@ export class CursorService {
     for (let i = 0; i < timestamp.length; i++) {
       const charCode = timestamp.charCodeAt(i);
       encoded.push(charCode ^ key);
-      key = (key + charCode) & 0xff; // Rolling key update
+      key = key + charCode & 0xff; // Rolling key update
     }
 
     const base64Encoded = Buffer.from(encoded).toString("base64");
@@ -63,7 +64,7 @@ export class CursorService {
       "x-cursor-client-arch": this.detectArch(),
       "x-cursor-client-device-type": "desktop",
       "x-cursor-checksum": checksum,
-      "x-ghost-mode": ghostMode ? "true" : "false",
+      "x-ghost-mode": ghostMode ? "true" : "false"
     };
   }
 
@@ -71,7 +72,7 @@ export class CursorService {
    * Detect OS for headers
    */
   detectOS() {
-    if (typeof process !== "undefined") {
+    if (!isUndefined(globalThis.process)) {
       const platform = process.platform;
       if (platform === "win32") return "windows";
       if (platform === "darwin") return "macos";
@@ -84,7 +85,7 @@ export class CursorService {
    * Detect architecture for headers
    */
   detectArch() {
-    if (typeof process !== "undefined") {
+    if (!isUndefined(globalThis.process)) {
       const arch = process.arch;
       if (arch === "x64") return "x86_64";
       if (arch === "arm64") return "aarch64";
@@ -102,11 +103,11 @@ export class CursorService {
    */
   async validateImportToken(accessToken, machineId) {
     // Basic validation
-    if (!accessToken || typeof accessToken !== "string") {
+    if (!accessToken || !isString(accessToken)) {
       throw new Error("Access token is required");
     }
 
-    if (!machineId || typeof machineId !== "string") {
+    if (!machineId || !isString(machineId)) {
       throw new Error("Machine ID is required");
     }
 
@@ -128,7 +129,7 @@ export class CursorService {
       accessToken,
       machineId,
       expiresIn: 86400, // Cursor tokens typically last 24 hours
-      authMethod: "imported",
+      authMethod: "imported"
     };
   }
 
@@ -153,9 +154,9 @@ export class CursorService {
         return { email, userId };
       }
     } catch {
+
       // Token is not a JWT, that's okay
     }
-
     return null;
   }
 
@@ -165,14 +166,14 @@ export class CursorService {
   resolveIdentity({ accessToken, cachedEmail, userId } = {}) {
     const tokenInfo = accessToken ? this.extractUserInfo(accessToken) : null;
     const resolvedUserId = userId || tokenInfo?.userId || null;
-    const email = isCursorEmail(cachedEmail)
-      ? cachedEmail
-      : tokenInfo?.email || null;
+    const email = isCursorEmail(cachedEmail) ?
+    cachedEmail :
+    tokenInfo?.email || null;
 
     return {
       email,
       userId: resolvedUserId,
-      name: email,
+      name: email
     };
   }
 
@@ -183,21 +184,21 @@ export class CursorService {
     return {
       title: "How to get your Cursor token",
       steps: [
-        "1. Open Cursor IDE and make sure you're logged in",
-        "2. Find the state.vscdb file:",
-        `   - Linux: ${this.config.tokenStoragePaths.linux}`,
-        `   - macOS: ${this.config.tokenStoragePaths.macos}`,
-        `   - Windows: ${this.config.tokenStoragePaths.windows}`,
-        "3. Open the database with SQLite browser or CLI:",
-        "   sqlite3 state.vscdb \"SELECT value FROM itemTable WHERE key='cursorAuth/accessToken'\"",
-        "4. Also get the machine ID:",
-        "   sqlite3 state.vscdb \"SELECT value FROM itemTable WHERE key='storage.serviceMachineId'\"",
-        "5. Paste both values in the form below",
-      ],
+      "1. Open Cursor IDE and make sure you're logged in",
+      "2. Find the state.vscdb file:",
+      `   - Linux: ${this.config.tokenStoragePaths.linux}`,
+      `   - macOS: ${this.config.tokenStoragePaths.macos}`,
+      `   - Windows: ${this.config.tokenStoragePaths.windows}`,
+      "3. Open the database with SQLite browser or CLI:",
+      "   sqlite3 state.vscdb \"SELECT value FROM itemTable WHERE key='cursorAuth/accessToken'\"",
+      "4. Also get the machine ID:",
+      "   sqlite3 state.vscdb \"SELECT value FROM itemTable WHERE key='storage.serviceMachineId'\"",
+      "5. Paste both values in the form below"],
+
       alternativeMethod: [
-        "Or use this one-liner to get both values:",
-        "sqlite3 state.vscdb \"SELECT key, value FROM itemTable WHERE key IN ('cursorAuth/accessToken', 'storage.serviceMachineId')\"",
-      ],
+      "Or use this one-liner to get both values:",
+      "sqlite3 state.vscdb \"SELECT key, value FROM itemTable WHERE key IN ('cursorAuth/accessToken', 'storage.serviceMachineId')\""]
+
     };
   }
 }

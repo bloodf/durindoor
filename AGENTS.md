@@ -239,8 +239,9 @@ npm run dev            # Dev server on port 20127
 # test
 cd tests && npm install && npm run test:ci
 
-# lint
+# lint (eslint src + required anti-slop/oxlint clean-tree gate)
 npm run lint
+npm run lint:anti-slop
 
 # commit / PR helpers
 npx commitlint --from=origin/main --to=HEAD    # validate commit subjects locally

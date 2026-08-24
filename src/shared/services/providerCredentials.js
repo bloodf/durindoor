@@ -4,21 +4,22 @@ import { serializeRefresh } from "open-sse/services/refreshSerializer.js";
 import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
 import {
   providerRefreshContext,
-  providerRefreshContextMatches,
-} from "@/shared/utils/providerCredentialContext";
+  providerRefreshContextMatches } from
+"@/shared/utils/providerCredentialContext";
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../utils/typeChecks.js";
 
 const REFRESH_METADATA_FIELDS = new Set([
-  "baseUrl",
-  "clientId",
-  "authKind",
-  "resourceUrl",
-  "profileArn",
-  "region",
-  "authMethod",
-  "provider",
-  "tokenEndpoint",
-  "scope",
-]);
+"baseUrl",
+"clientId",
+"authKind",
+"resourceUrl",
+"profileArn",
+"region",
+"authMethod",
+"provider",
+"tokenEndpoint",
+"scope"]
+);
 const REFRESH_LOG_CATEGORIES = new Set(["AUTH", "KIRO", "TOKEN", "TOKEN_REFRESH", "VERTEX"]);
 const MAX_REFRESH_SECRET_LENGTH = 64 * 1024;
 const MAX_REFRESH_METADATA_LENGTH = 2048;
@@ -30,7 +31,7 @@ const credentialRefreshInflight = new Map();
 
 function assertRefreshActive(signal, shouldCommit) {
   if (signal?.aborted) throw new DOMException("Provider credential refresh aborted", "AbortError");
-  if (typeof shouldCommit === "function" && !shouldCommit()) {
+  if (isFunction(shouldCommit) && !shouldCommit()) {
     const error = new Error("Provider credential refresh superseded");
     error.code = "PROVIDER_CREDENTIAL_REFRESH_SUPERSEDED";
     throw error;
@@ -38,16 +39,16 @@ function assertRefreshActive(signal, shouldCommit) {
 }
 
 function sanitizeRefreshLogValue(value, depth = 0) {
-  if (value === null || value === undefined || typeof value === "number" || typeof value === "boolean") return value;
-  if (typeof value === "string" || value instanceof Error) return "[redacted]";
+  if (value === null || value === undefined || isNumber(value) || isBoolean(value)) return value;
+  if (isString(value) || value instanceof Error) return "[redacted]";
   if (depth >= 3) return "[redacted]";
   if (Array.isArray(value)) return value.slice(0, 20).map((entry) => sanitizeRefreshLogValue(entry, depth + 1));
-  if (typeof value === "object") {
+  if (isObject(value)) {
     const output = {};
     for (const [key, entry] of Object.entries(value).slice(0, 30)) {
-      output[key] = /(?:authorization|cookie|credential|password|secret|token|api[_-]?key)/i.test(key)
-        ? "[redacted]"
-        : sanitizeRefreshLogValue(entry, depth + 1);
+      output[key] = /(?:authorization|cookie|credential|password|secret|token|api[_-]?key)/i.test(key) ?
+      "[redacted]" :
+      sanitizeRefreshLogValue(entry, depth + 1);
     }
     return output;
   }
@@ -57,11 +58,11 @@ function sanitizeRefreshLogValue(value, depth = 0) {
 function createRefreshLogger(log) {
   const output = {};
   for (const level of ["debug", "info", "warn", "error"]) {
-    output[level] = (...args) => log?.[level]?.(...args.map((value, index) => (
-      index === 0 && typeof value === "string" && REFRESH_LOG_CATEGORIES.has(value)
-        ? value
-        : sanitizeRefreshLogValue(value)
-    )));
+    output[level] = (...args) => log?.[level]?.(...args.map((value, index) =>
+    index === 0 && isString(value) && REFRESH_LOG_CATEGORIES.has(value) ?
+    value :
+    sanitizeRefreshLogValue(value)
+    ));
   }
   return output;
 }
@@ -103,7 +104,7 @@ function callerWait(operation, signal, shouldCommit, timeoutMs) {
           finish(reject, error);
         }
       },
-      (error) => finish(reject, error),
+      (error) => finish(reject, error)
     );
   });
 }
@@ -124,21 +125,21 @@ function optionalSecret(result, field) {
   if (!Object.hasOwn(result, field) || result[field] === null || result[field] === undefined || result[field] === "") return null;
   const value = result[field];
   if (
-    typeof value !== "string"
-    || value.length > MAX_REFRESH_SECRET_LENGTH
-    || !value.trim()
-    || /[\u0000-\u001f\u007f]/.test(value)
-  ) throw malformedRefreshResult();
+  !isString(value) ||
+  value.length > MAX_REFRESH_SECRET_LENGTH ||
+  !value.trim() ||
+  /[\u0000-\u001f\u007f]/.test(value))
+  throw malformedRefreshResult();
   return value;
 }
 
 function positiveExpirySeconds(value) {
   let seconds = value;
-  if (typeof value === "string") {
+  if (isString(value)) {
     if (!/^[1-9]\d{0,9}$/.test(value)) throw malformedRefreshResult();
     seconds = Number(value);
   }
-  if (typeof seconds !== "number" || !Number.isSafeInteger(seconds) || seconds <= 0) {
+  if (!isNumber(seconds) || !Number.isSafeInteger(seconds) || seconds <= 0) {
     throw malformedRefreshResult();
   }
   return seconds;
@@ -146,10 +147,10 @@ function positiveExpirySeconds(value) {
 
 function canonicalTimestamp(value) {
   let milliseconds;
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+  if (isNumber(value) && Number.isFinite(value) && value > 0) {
     milliseconds = value < 1e12 ? value * 1000 : value;
   } else {
-    if (typeof value !== "string" || !value.trim() || value.length > 128) return null;
+    if (!isString(value) || !value.trim() || value.length > 128) return null;
     milliseconds = new Date(value).getTime();
   }
   if (!Number.isFinite(milliseconds) || milliseconds <= 0 || milliseconds > 8.64e15) return null;
@@ -162,12 +163,12 @@ function canonicalTimestamp(value) {
 
 function safeMetadataString(value, { maxLength = MAX_REFRESH_METADATA_LENGTH, pattern = null } = {}) {
   if (
-    typeof value !== "string"
-    || !value.trim()
-    || value.length > maxLength
-    || /[\u0000-\u001f\u007f]/.test(value)
-    || (pattern && !pattern.test(value))
-  ) throw malformedRefreshResult();
+  !isString(value) ||
+  !value.trim() ||
+  value.length > maxLength ||
+  /[\u0000-\u001f\u007f]/.test(value) ||
+  pattern && !pattern.test(value))
+  throw malformedRefreshResult();
   return value;
 }
 
@@ -191,7 +192,7 @@ function validatedMetadataValue(field, value) {
   if (field === "region") return safeMetadataString(value, { pattern: /^[a-z]{2}(?:-[a-z0-9]+)+-\d{1,2}$/ });
   if (field === "profileArn") {
     return safeMetadataString(value, {
-      pattern: /^arn:aws(?:-[a-z]+)?:codewhisperer:[a-z0-9-]+:[0-9]*:profile\/[A-Za-z0-9._+=,@/-]+$/,
+      pattern: /^arn:aws(?:-[a-z]+)?:codewhisperer:[a-z0-9-]+:[0-9]*:profile\/[A-Za-z0-9._+=,@/-]+$/
     });
   }
   return safeMetadataString(value);
@@ -212,23 +213,23 @@ async function persistReauthRequired(connection, expectedRefreshContext, updateP
         testStatus: "reauth_required",
         lastError: "OAuth session expired. Reconnect this account.",
         errorCode: "REAUTH",
-        lastErrorAt: new Date(safeRefreshClock(now)).toISOString(),
+        lastErrorAt: new Date(safeRefreshClock(now)).toISOString()
       },
-      { expectedRefreshContext },
+      { expectedRefreshContext }
     );
   } catch {
+
     // Best-effort: a persistence failure must not mask the reauth signal.
-  }
-}
+  }}
 
 async function reconcileConcurrentRotation(
-  connection,
-  expectedRefreshContext,
-  getConnection,
-  delays,
-  wait,
-  { updateProviderConnectionImpl = null, now = Date.now } = {},
-) {
+connection,
+expectedRefreshContext,
+getConnection,
+delays,
+wait,
+{ updateProviderConnectionImpl = null, now = Date.now } = {})
+{
   for (const delay of delays) {
     if (delay > 0) await wait(delay);
     const current = await getConnection(connection.id);
@@ -238,10 +239,10 @@ async function reconcileConcurrentRotation(
       throw error;
     }
     if (
-      current
-      && current.provider === connection.provider
-      && !providerRefreshContextMatches(current, expectedRefreshContext)
-    ) return { connection: current, refreshed: false };
+    current &&
+    current.provider === connection.provider &&
+    !providerRefreshContextMatches(current, expectedRefreshContext))
+    return { connection: current, refreshed: false };
   }
   // No newer credential won the rotation race: the refresh token is genuinely
   // dead. Pin a durable reauth_required state before surfacing the error.
@@ -257,22 +258,22 @@ async function reconcileConcurrentRotation(
  * replacement value; existing secret bytes are otherwise preserved.
  */
 export async function refreshAndUpdateCredentials(
-  connection,
-  force = false,
-  proxyOptions = null,
-  {
-    getExecutorImpl = getExecutor,
-    getProviderConnectionByIdImpl = getProviderConnectionById,
-    updateProviderConnectionImpl = updateProviderConnection,
-    now = Date.now,
-    log = console,
-    signal = null,
-    shouldCommit = null,
-    reconcileDelays = [0, 10, 25, 50, 100],
-    wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-    callerTimeoutMs = DEFAULT_REFRESH_CALLER_TIMEOUT_MS,
-  } = {},
-) {
+connection,
+force = false,
+proxyOptions = null,
+{
+  getExecutorImpl = getExecutor,
+  getProviderConnectionByIdImpl = getProviderConnectionById,
+  updateProviderConnectionImpl = updateProviderConnection,
+  now = Date.now,
+  log = console,
+  signal = null,
+  shouldCommit = null,
+  reconcileDelays = [0, 10, 25, 50, 100],
+  wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  callerTimeoutMs = DEFAULT_REFRESH_CALLER_TIMEOUT_MS
+} = {})
+{
   assertRefreshActive(signal, shouldCommit);
   // Capture the exact issuer and credential context before invoking provider
   // code. Executors receive an isolated clone and cannot rewrite the CAS input.
@@ -283,9 +284,9 @@ export async function refreshAndUpdateCredentials(
 
 
   const executor = getExecutorImpl(connection.provider);
-  const providerSpecificData = connection.providerSpecificData && typeof connection.providerSpecificData === "object"
-    ? structuredClone(connection.providerSpecificData)
-    : connection.providerSpecificData;
+  const providerSpecificData = connection.providerSpecificData && isObject(connection.providerSpecificData) ?
+  structuredClone(connection.providerSpecificData) :
+  connection.providerSpecificData;
   const credentials = {
     accessToken: connection.accessToken,
     refreshToken: connection.refreshToken,
@@ -295,7 +296,7 @@ export async function refreshAndUpdateCredentials(
     connectionId: connection.id,
     providerSpecificData,
     copilotToken: providerSpecificData?.copilotToken,
-    copilotTokenExpiresAt: providerSpecificData?.copilotTokenExpiresAt,
+    copilotTokenExpiresAt: providerSpecificData?.copilotTokenExpiresAt
   };
 
   if (!(force || executor.needsRefresh(credentials))) {
@@ -314,7 +315,7 @@ export async function refreshAndUpdateCredentials(
     // cross-connection collisions. Non-rotating providers pass through with no
     // locking.
     const refreshResult = await serializeRefresh(connection.provider, () =>
-      executor.refreshCredentials(credentials, createRefreshLogger(log), proxyOptions)
+    executor.refreshCredentials(credentials, createRefreshLogger(log), proxyOptions)
     );
     if (isUnrecoverableRefreshError(refreshResult)) {
       return reconcileConcurrentRotation(
@@ -323,7 +324,7 @@ export async function refreshAndUpdateCredentials(
         getProviderConnectionByIdImpl,
         reconcileDelays,
         wait,
-        { updateProviderConnectionImpl, now },
+        { updateProviderConnectionImpl, now }
       );
     }
     if (!refreshResult) {
@@ -331,7 +332,7 @@ export async function refreshAndUpdateCredentials(
       throw reauthorizationError();
     }
 
-    if (typeof refreshResult !== "object" || Array.isArray(refreshResult)) throw malformedRefreshResult();
+    if (!isObject(refreshResult) || Array.isArray(refreshResult)) throw malformedRefreshResult();
     if (Object.hasOwn(refreshResult, "error")) {
       if (connection.accessToken) return { connection, refreshed: false };
       throw reauthorizationError();
@@ -356,19 +357,19 @@ export async function refreshAndUpdateCredentials(
     const expiresAt = hasExpiresAt ? canonicalTimestamp(refreshResult.expiresAt) : null;
     const expiresInMs = expiresIn === null ? null : expiresIn * 1000;
     if (
-      hasExpiresIn
-      && (
-        !Number.isFinite(expiresInMs)
-        || expiresInMs > MAX_REFRESH_LIFETIME_MS
-        || !canonicalTimestamp(nowMs + expiresInMs)
-      )
-    ) {
+    hasExpiresIn && (
+
+    !Number.isFinite(expiresInMs) ||
+    expiresInMs > MAX_REFRESH_LIFETIME_MS ||
+    !canonicalTimestamp(nowMs + expiresInMs)))
+
+    {
       throw malformedRefreshResult();
     }
     if (
-      hasExpiresAt
-      && (!expiresAt || new Date(expiresAt).getTime() > nowMs + MAX_REFRESH_LIFETIME_MS)
-    ) throw malformedRefreshResult();
+    hasExpiresAt && (
+    !expiresAt || new Date(expiresAt).getTime() > nowMs + MAX_REFRESH_LIFETIME_MS))
+    throw malformedRefreshResult();
     if (hasExpiresIn) {
       updateData.expiresAt = canonicalTimestamp(nowMs + expiresInMs);
       updateData.expiresIn = expiresIn;
@@ -387,14 +388,14 @@ export async function refreshAndUpdateCredentials(
       providerSpecificUpdates.copilotTokenExpiresAt = expiresAt;
     }
     if (Object.hasOwn(refreshResult, "providerSpecificData") && refreshResult.providerSpecificData !== null && refreshResult.providerSpecificData !== undefined) {
-      if (typeof refreshResult.providerSpecificData !== "object" || Array.isArray(refreshResult.providerSpecificData)) {
+      if (!isObject(refreshResult.providerSpecificData) || Array.isArray(refreshResult.providerSpecificData)) {
         throw malformedRefreshResult();
       }
-      const originalProviderData = connection.providerSpecificData
-        && typeof connection.providerSpecificData === "object"
-        && !Array.isArray(connection.providerSpecificData)
-        ? connection.providerSpecificData
-        : {};
+      const originalProviderData = connection.providerSpecificData && isObject(
+        connection.providerSpecificData) &&
+      !Array.isArray(connection.providerSpecificData) ?
+      connection.providerSpecificData :
+      {};
       for (const [field, value] of Object.entries(refreshResult.providerSpecificData)) {
         if (!REFRESH_METADATA_FIELDS.has(field) || value === null || value === undefined || value === "") continue;
         // Some legacy refreshers echo their entire input metadata object. Do
@@ -413,26 +414,26 @@ export async function refreshAndUpdateCredentials(
 
     const commit = await updateProviderConnectionImpl(connection.id, updateData, {
       expectedRefreshContext,
-      returnCommitResult: true,
+      returnCommitResult: true
     });
     if (commit === null) {
       const error = new Error("Provider connection no longer exists");
       error.code = "PROVIDER_CONNECTION_NOT_FOUND";
       throw error;
     }
-    const structured = commit && typeof commit === "object" && Object.hasOwn(commit, "connection")
-      ? commit
-      : { applied: true, connection: commit };
+    const structured = commit && isObject(commit) && Object.hasOwn(commit, "connection") ?
+    commit :
+    { applied: true, connection: commit };
     const fallback = {
       ...connection,
       ...updateData,
-      providerSpecificData: updateData.providerSpecificData
-        ? { ...(connection.providerSpecificData || {}), ...updateData.providerSpecificData }
-        : connection.providerSpecificData,
+      providerSpecificData: updateData.providerSpecificData ?
+      { ...(connection.providerSpecificData || {}), ...updateData.providerSpecificData } :
+      connection.providerSpecificData
     };
     return {
       connection: structured.connection || fallback,
-      refreshed: structured.applied !== false,
+      refreshed: structured.applied !== false
     };
   })();
   credentialRefreshInflight.set(key, operation);

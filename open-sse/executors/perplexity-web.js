@@ -5,6 +5,7 @@ import { sseChunk } from "../utils/sse.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
 const PPLX_API_VERSION = "2.18";
@@ -17,13 +18,13 @@ const MODEL_MAP = {
   "pplx-gemini": ["copilot", "gemini31pro_high"],
   "pplx-sonnet": ["copilot", "claude46sonnet"],
   "pplx-opus": ["copilot", "claude46opus"],
-  "pplx-nemotron": ["copilot", "nv_nemotron_3_super"],
+  "pplx-nemotron": ["copilot", "nv_nemotron_3_super"]
 };
 
 const THINKING_MAP = {
   "pplx-gpt": "gpt54_thinking",
   "pplx-sonnet": "claude46sonnetthinking",
-  "pplx-opus": "claude46opusthinking",
+  "pplx-opus": "claude46opusthinking"
 };
 
 const CITATION_RE = /\[\d+\]/g;
@@ -45,7 +46,7 @@ function sessionKey(history) {
   let hash = 0x811c9dc5;
   for (let i = 0; i < parts.length; i++) {
     hash ^= parts.charCodeAt(i);
-    hash = (hash * 0x01000193) >>> 0;
+    hash = hash * 0x01000193 >>> 0;
   }
   return hash.toString(16).padStart(8, "0");
 }
@@ -71,7 +72,7 @@ function sessionStore(history, currentMsg, responseText, backendUuid) {
     let oldestKey = null;
     let oldestTs = Infinity;
     for (const [k, v] of sessionCache) {
-      if (v.ts < oldestTs) { oldestTs = v.ts; oldestKey = k; }
+      if (v.ts < oldestTs) {oldestTs = v.ts;oldestKey = k;}
     }
     if (oldestKey) sessionCache.delete(oldestKey);
   }
@@ -97,13 +98,13 @@ async function cancelAndReleaseReader(reader) {
   try {
     const cancellation = Promise.resolve(reader.cancel()).catch(() => {});
     await Promise.race([
-      cancellation,
-      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
-    ]);
-  } catch { /* cancellation is best-effort */ }
-  finally {
+    cancellation,
+    new Promise((resolve) => {timer = setTimeout(resolve, 250);})]
+    );
+  } catch {/* cancellation is best-effort */} finally
+  {
     clearTimeout(timer);
-    try { reader.releaseLock(); } catch { /* already released */ }
+    try {reader.releaseLock();} catch {/* already released */}
   }
 }
 
@@ -119,7 +120,7 @@ async function* readPplxSseEvents(body, signal) {
     dataLines = [];
     const trimmed = payload.trim();
     if (!trimmed || trimmed === "[DONE]") return "done";
-    try { return JSON.parse(trimmed); } catch { return null; }
+    try {return JSON.parse(trimmed);} catch {return null;}
   }
 
   try {
@@ -160,13 +161,13 @@ function parseOpenAIMessages(messages) {
     let role = String(msg.role || "user");
     if (role === "developer") role = "system";
     let content = "";
-    if (typeof msg.content === "string") content = msg.content;
-    else if (Array.isArray(msg.content)) {
+    if (isString(msg.content)) content = msg.content;else
+    if (Array.isArray(msg.content)) {
       content = msg.content.filter((c) => c.type === "text").map((c) => String(c.text || "")).join(" ");
     }
     if (!content.trim()) continue;
-    if (role === "system") systemMsg += content + "\n";
-    else if (role === "user" || role === "assistant") history.push({ role, content });
+    if (role === "system") systemMsg += content + "\n";else
+    if (role === "user" || role === "assistant") history.push({ role, content });
   }
   let currentMsg = "";
   if (history.length > 0 && history[history.length - 1].role === "user") {
@@ -176,7 +177,7 @@ function parseOpenAIMessages(messages) {
 }
 
 function buildPplxRequestBody(query, mode, modelPref, followUpUuid) {
-  const tz = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+  const tz = !isUndefined(Intl) ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
   return {
     query_str: query,
     params: {
@@ -194,8 +195,8 @@ function buildPplxRequestBody(query, mode, modelPref, followUpUuid) {
       search_recency_filter: null,
       is_incognito: true,
       use_schematized_api: true,
-      last_backend_uuid: followUpUuid,
-    },
+      last_backend_uuid: followUpUuid
+    }
   };
 }
 
@@ -220,8 +221,8 @@ function buildQuery(parsed, followUpUuid, tools) {
   instr.push("You have built-in web search. Answer questions directly using search results.");
   obj.instructions = instr;
   if (parsed.history.length > 0) obj.history = parsed.history;
-  if (parsed.currentMsg) obj.query = parsed.currentMsg;
-  else if (parsed.history.length === 0) obj.query = "";
+  if (parsed.currentMsg) obj.query = parsed.currentMsg;else
+  if (parsed.history.length === 0) obj.query = "";
   const json = JSON.stringify(obj);
   return json.length > 96000 ? json.slice(-96000) : json;
 }
@@ -245,7 +246,7 @@ function seedWorkflowAnswer(answers, key, item) {
     answers.set(key, textPayload.chunks.map((chunk) => String(chunk)));
     return true;
   }
-  if (typeof textPayload?.text === "string") {
+  if (isString(textPayload?.text)) {
     answers.set(key, [textPayload.text]);
     return true;
   }
@@ -255,7 +256,7 @@ function seedWorkflowAnswer(answers, key, item) {
 
 function denseChunks(chunks) {
   let end = 0;
-  while (end < chunks.length && typeof chunks[end] === "string") end++;
+  while (end < chunks.length && isString(chunks[end])) end++;
   return chunks.slice(0, end).join("");
 }
 
@@ -305,11 +306,11 @@ function applyWorkflowDiff(answers, patches) {
     if (chunk) {
       const chunkIndex = Number(chunk[3]);
       if (
-        !Number.isSafeInteger(chunkIndex) ||
-        chunkIndex < 0 ||
-        chunkIndex > MAX_WORKFLOW_CHUNK_INDEX ||
-        typeof patch.value !== "string"
-      ) {
+      !Number.isSafeInteger(chunkIndex) ||
+      chunkIndex < 0 ||
+      chunkIndex > MAX_WORKFLOW_CHUNK_INDEX || !isString(
+        patch.value))
+      {
         continue;
       }
       const key = workflowAnswerKey(Number(chunk[1]), Number(chunk[2]));
@@ -321,7 +322,7 @@ function applyWorkflowDiff(answers, patches) {
       continue;
     }
     const text = /^\/steps\/(\d+)\/items\/(\d+)\/payload\/text_payload\/text$/.exec(patch.path ?? "");
-    if (text && typeof patch.value === "string") {
+    if (text && isString(patch.value)) {
       const key = workflowAnswerKey(Number(text[1]), Number(text[2]));
       const track = answers.get(key);
       if (track && track.length === 0) {
@@ -451,7 +452,7 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
       try {
         controller.enqueue(encoder.encode(sseChunk({
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-          choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null, logprobs: null }],
+          choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null, logprobs: null }]
         })));
 
         let fullAnswer = "";
@@ -462,25 +463,25 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
           if (chunk.error) {
             controller.enqueue(encoder.encode(sseChunk({
               id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-              choices: [{ index: 0, delta: { content: `[Error: ${chunk.error}]` }, finish_reason: null, logprobs: null }],
+              choices: [{ index: 0, delta: { content: `[Error: ${chunk.error}]` }, finish_reason: null, logprobs: null }]
             })));
             break;
           }
           if (chunk.thinking) {
             controller.enqueue(encoder.encode(sseChunk({
               id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-              choices: [{ index: 0, delta: { reasoning_content: chunk.thinking + "\n" }, finish_reason: null, logprobs: null }],
+              choices: [{ index: 0, delta: { reasoning_content: chunk.thinking + "\n" }, finish_reason: null, logprobs: null }]
             })));
             continue;
           }
-          if (chunk.done) { fullAnswer = chunk.answer || fullAnswer; break; }
+          if (chunk.done) {fullAnswer = chunk.answer || fullAnswer;break;}
           let dt = chunk.delta || "";
           if (dt) {
             dt = cleanResponse(dt, false);
             if (dt) {
               controller.enqueue(encoder.encode(sseChunk({
                 id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-                choices: [{ index: 0, delta: { content: dt }, finish_reason: null, logprobs: null }],
+                choices: [{ index: 0, delta: { content: dt }, finish_reason: null, logprobs: null }]
               })));
             }
           }
@@ -489,7 +490,7 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
 
         controller.enqueue(encoder.encode(sseChunk({
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-          choices: [{ index: 0, delta: {}, finish_reason: "stop", logprobs: null }],
+          choices: [{ index: 0, delta: {}, finish_reason: "stop", logprobs: null }]
         })));
         controller.enqueue(encoder.encode(SSE_DONE));
 
@@ -497,13 +498,13 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
       } catch (err) {
         controller.enqueue(encoder.encode(sseChunk({
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
-          choices: [{ index: 0, delta: { content: `[Stream error: ${err.message || String(err)}]` }, finish_reason: "stop", logprobs: null }],
+          choices: [{ index: 0, delta: { content: `[Stream error: ${err.message || String(err)}]` }, finish_reason: "stop", logprobs: null }]
         })));
         controller.enqueue(encoder.encode(SSE_DONE));
       } finally {
         controller.close();
       }
-    },
+    }
   });
 }
 
@@ -516,11 +517,11 @@ async function buildNonStreamingResponse(eventStream, model, cid, created, histo
     if (chunk.backendUuid) respBackendUuid = chunk.backendUuid;
     if (chunk.error) {
       return new Response(JSON.stringify({
-        error: { message: chunk.error, type: "upstream_error", code: "PPLX_ERROR" },
+        error: { message: chunk.error, type: "upstream_error", code: "PPLX_ERROR" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
     }
-    if (chunk.thinking) { thinkingParts.push(chunk.thinking); continue; }
-    if (chunk.done) { fullAnswer = chunk.answer || fullAnswer; break; }
+    if (chunk.thinking) {thinkingParts.push(chunk.thinking);continue;}
+    if (chunk.done) {fullAnswer = chunk.answer || fullAnswer;break;}
     if (chunk.answer) fullAnswer = chunk.answer;
   }
 
@@ -537,7 +538,7 @@ async function buildNonStreamingResponse(eventStream, model, cid, created, histo
   return new Response(JSON.stringify({
     id: cid, object: "chat.completion", created, model, system_fingerprint: null,
     choices: [{ index: 0, message: msg, finish_reason: "stop", logprobs: null }],
-    usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens },
+    usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens }
   }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
@@ -550,12 +551,12 @@ export class PerplexityWebExecutor extends BaseExecutor {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
-        error: { message: "Missing or empty messages array", type: "invalid_request" },
+        error: { message: "Missing or empty messages array", type: "invalid_request" }
       }), { status: 400, headers: { "Content-Type": "application/json" } });
       return { response: errResp, url: PPLX_SSE_ENDPOINT, headers: {}, transformedBody: body };
     }
 
-    const thinking = body?.thinking === true || (body?.reasoning_effort != null && body.reasoning_effort !== "none");
+    const thinking = body?.thinking === true || body?.reasoning_effort != null && body.reasoning_effort !== "none";
 
     let pplxMode;
     let modelPref;
@@ -578,7 +579,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     const query = buildQuery(parsed, followUpUuid, body?.tools);
     if (!query.trim()) {
       const errResp = new Response(JSON.stringify({
-        error: { message: "Empty query after processing", type: "invalid_request" },
+        error: { message: "Empty query after processing", type: "invalid_request" }
       }), { status: 400, headers: { "Content-Type": "application/json" } });
       return { response: errResp, url: PPLX_SSE_ENDPOINT, headers: {}, transformedBody: body };
     }
@@ -592,7 +593,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
       Referer: "https://www.perplexity.ai/",
       "User-Agent": PPLX_USER_AGENT,
       "X-App-ApiClient": "default",
-      "X-App-ApiVersion": PPLX_API_VERSION,
+      "X-App-ApiVersion": PPLX_API_VERSION
     };
 
     if (credentials.accessToken) {
@@ -609,13 +610,13 @@ export class PerplexityWebExecutor extends BaseExecutor {
     let response;
     try {
       response = await runQuotaBearingProviderRequest(
-        () => proxyAwareFetch(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions),
+        () => proxyAwareFetch(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions)
       );
     } catch (err) {
       if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
-        error: { message: `Perplexity connection failed: ${err.message || String(err)}`, type: "upstream_error" },
+        error: { message: `Perplexity connection failed: ${err.message || String(err)}`, type: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
       return { response: errResp, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody };
     }
@@ -623,18 +624,18 @@ export class PerplexityWebExecutor extends BaseExecutor {
     if (!response.ok) {
       const status = response.status;
       let errMsg = `Perplexity returned HTTP ${status}`;
-      if (status === 401 || status === 403) errMsg = "Perplexity auth failed — session cookie may be expired. Re-paste your __Secure-next-auth.session-token.";
-      else if (status === 429) errMsg = "Perplexity rate limited. Wait a moment and retry.";
+      if (status === 401 || status === 403) errMsg = "Perplexity auth failed — session cookie may be expired. Re-paste your __Secure-next-auth.session-token.";else
+      if (status === 429) errMsg = "Perplexity rate limited. Wait a moment and retry.";
       log?.warn?.("PPLX-WEB", errMsg);
       const errResp = new Response(JSON.stringify({
-        error: { message: errMsg, type: "upstream_error", code: `HTTP_${status}` },
+        error: { message: errMsg, type: "upstream_error", code: `HTTP_${status}` }
       }), { status, headers: { "Content-Type": "application/json" } });
       return { response: errResp, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody };
     }
 
     if (!response.body) {
       const errResp = new Response(JSON.stringify({
-        error: { message: "Perplexity returned empty response body", type: "upstream_error" },
+        error: { message: "Perplexity returned empty response body", type: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
       return { response: errResp, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody };
     }
@@ -647,7 +648,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
       const sseStream = buildStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal);
       finalResponse = new Response(sseStream, {
         status: 200,
-        headers: { ...SSE_HEADERS_NO_BUFFER },
+        headers: { ...SSE_HEADERS_NO_BUFFER }
       });
     } else {
       finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal);

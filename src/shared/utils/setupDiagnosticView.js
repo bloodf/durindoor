@@ -4,6 +4,7 @@
  * All user-facing string choices and branch decisions live here so the
  * presentational card can stay declarative.
  */
+import { isString } from "./typeChecks.js";
 
 const CODE_HEADINGS = {
   NO_SUPPORTED_PYTHON: "No supported Python interpreter was found",
@@ -18,7 +19,7 @@ const CODE_HEADINGS = {
   EARLY_EXIT: "Headroom proxy exited during startup",
   EXTERNAL_PROXY: "Headroom URL points outside loopback",
   STOP_FAILED: "Failed to stop the Headroom proxy",
-  INTERNAL_ERROR: "Unexpected Headroom setup error",
+  INTERNAL_ERROR: "Unexpected Headroom setup error"
 };
 
 const FALLBACK_HEADING = "Headroom setup needs attention";
@@ -28,11 +29,11 @@ export function headingForCode(code) {
 }
 
 export function hasCopyableCommand(fix) {
-  return typeof fix?.command === "string" && fix.command.trim().length > 0;
+  return isString(fix?.command) && fix.command.trim().length > 0;
 }
 
 export function hasLogTail(diagnostic) {
-  return typeof diagnostic?.logTail === "string" && diagnostic.logTail.trim().length > 0;
+  return isString(diagnostic?.logTail) && diagnostic.logTail.trim().length > 0;
 }
 
 export function shouldShowExternalInstallNote(payload) {
@@ -71,7 +72,7 @@ export function diagnosticView(diagnostic) {
     heading: headingForCode(diagnostic.code),
     summary: diagnostic.summary,
     detail: diagnostic.detail,
-    fixes: Array.isArray(diagnostic.fixes) ? diagnostic.fixes : [],
+    fixes: Array.isArray(diagnostic.fixes) ? diagnostic.fixes : []
   };
 }
 

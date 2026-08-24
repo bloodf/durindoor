@@ -3,14 +3,15 @@ import { claudeToOpenAIRequest } from "../translator/request/claude-to-openai.js
 import { openaiToClaudeRequest } from "../translator/request/openai-to-claude.js";
 import {
   openaiResponsesToOpenAIRequest,
-  openaiToOpenAIResponsesRequest,
-} from "../translator/request/openai-responses.js";
+  openaiToOpenAIResponsesRequest } from
+"../translator/request/openai-responses.js";
 import {
   getHeadroomCircuitState,
   getHeadroomStatusStats,
   incrementHeadroomFailures,
-  resetHeadroomCircuit,
-} from "./headroomCircuit.js";
+  resetHeadroomCircuit } from
+"./headroomCircuit.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const RETRY_BACKOFF_MS = 100;
@@ -18,8 +19,8 @@ const RETRY_BACKOFF_MS = 100;
 export {
   getHeadroomCircuitState,
   getHeadroomStatusStats,
-  resetHeadroomCircuit,
-} from "./headroomCircuit.js";
+  resetHeadroomCircuit } from
+"./headroomCircuit.js";
 
 function jsonBytes(value) {
   try {
@@ -41,7 +42,7 @@ function captureSizeSnapshot(body) {
   const messages = messagePayload(body);
   return {
     bodyBytes: jsonBytes(body),
-    messageBytes: messages ? jsonBytes(messages) : 0,
+    messageBytes: messages ? jsonBytes(messages) : 0
   };
 }
 
@@ -52,9 +53,9 @@ function setDiagnostic(diagnostics, reason, code) {
 }
 
 function scrubSensitiveUrlText(text) {
-  return String(text)
-    .replace(/\/\/[^/@\s]+@/g, "//")
-    .replace(/(https?:\/\/[^\s?#]+)[?#][^\s)]*/g, "$1");
+  return String(text).
+  replace(/\/\/[^/@\s]+@/g, "//").
+  replace(/(https?:\/\/[^\s?#]+)[?#][^\s)]*/g, "$1");
 }
 
 function describeFetchError(error) {
@@ -94,8 +95,8 @@ function maskEndpoint(endpoint) {
 function hasUnsafeResponsesInputForCompression(body) {
   if (!Array.isArray(body?.input)) return false;
   return body.input.some((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
-    return typeof item.type === "string" && item.type !== "message";
+    if (!item || !isObject(item) || Array.isArray(item)) return false;
+    return isString(item.type) && item.type !== "message";
   });
 }
 
@@ -111,13 +112,13 @@ function hasUnsafeResponsesInputForCompression(body) {
  */
 function collectKiroHeadroomMessages(body) {
   const state = body?.conversationState;
-  if (!state || typeof state !== "object") return null;
+  if (!state || !isObject(state)) return null;
 
   const messages = [];
   const targets = [];
 
   const addTextTarget = (role, text, target, extra = {}) => {
-    if (typeof text !== "string") return;
+    if (!isString(text)) return;
     messages.push({ role, content: text, ...extra });
     targets.push(target);
   };
@@ -129,8 +130,8 @@ function collectKiroHeadroomMessages(body) {
       type: "function",
       function: {
         name: toolUse?.name || "",
-        arguments: JSON.stringify(toolUse?.input || {}),
-      },
+        arguments: JSON.stringify(toolUse?.input || {})
+      }
     })).filter((call) => call.id || call.function.name);
     return calls.length > 0 ? calls : undefined;
   };
@@ -188,14 +189,14 @@ function collectKiroHeadroomMessages(body) {
  */
 function textFromHeadroomMessage(message) {
   const content = message?.content;
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (!Array.isArray(content)) return null;
 
   const parts = [];
   for (const part of content) {
-    if (typeof part === "string") {
+    if (isString(part)) {
       parts.push(part);
-    } else if (typeof part?.text === "string") {
+    } else if (isString(part?.text)) {
       parts.push(part.text);
     }
   }
@@ -212,12 +213,12 @@ function textFromHeadroomMessage(message) {
  * @returns {string | null} Identity key, or null when none is available.
  */
 function kiroMessageIdentity(message) {
-  if (!message || typeof message !== "object") return null;
-  if (message.role === "tool" && typeof message.tool_call_id === "string") {
+  if (!message || !isObject(message)) return null;
+  if (message.role === "tool" && isString(message.tool_call_id)) {
     return `tool:${message.tool_call_id}`;
   }
   if (message.role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-    const ids = message.tool_calls.map((call) => call?.id).filter((id) => typeof id === "string").sort();
+    const ids = message.tool_calls.map((call) => call?.id).filter((id) => isString(id)).sort();
     if (ids.length > 0) return `assistant:${ids.join(",")}`;
   }
   return null;
@@ -302,7 +303,7 @@ async function callCompress(url, messages, model, timeoutMs, compressUserMessage
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs)
       });
       if (!res.ok) {
         if (attempt === 0 && (res.status === 429 || res.status >= 500)) {
@@ -419,9 +420,9 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
     }
 
     // OpenAI shape: messages/input go straight to the proxy.
-    const key = Array.isArray(body.messages) ? "messages"
-      : Array.isArray(body.input) ? "input"
-      : null;
+    const key = Array.isArray(body.messages) ? "messages" :
+    Array.isArray(body.input) ? "input" :
+    null;
     if (!key) {
       setDiagnostic(diagnostics, `unsupported ${format || "unknown"} request shape`);
       return null;
@@ -442,7 +443,7 @@ export function formatHeadroomLog(stats) {
   const before = stats.tokens_before || 0;
   const after = stats.tokens_after || 0;
   const delta = stats.tokens_saved || 0;
-  const pct = before > 0 ? ((delta / before) * 100).toFixed(1) : "0";
+  const pct = before > 0 ? (delta / before * 100).toFixed(1) : "0";
   return `reported token delta=${delta} before=${before}${after ? ` after=${after}` : ""} (${pct}%)`.trim();
 }
 

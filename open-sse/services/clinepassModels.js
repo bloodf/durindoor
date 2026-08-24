@@ -1,4 +1,5 @@
 import { buildClineHeaders } from "../shared/clineAuth.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const CLINEPASS_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";
 const FETCH_TIMEOUT_MS = 5000;
@@ -12,7 +13,7 @@ function buildModelListHeaders(token, isApiKey) {
   if (isApiKey) {
     return {
       Accept: "application/json",
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${token}`
     };
   }
   return buildClineHeaders(token, { Accept: "application/json" });
@@ -38,7 +39,7 @@ export async function resolveClinepassModels(credentials) {
     const response = await fetch(CLINEPASS_MODELS_ENDPOINT, {
       method: "GET",
       headers,
-      signal: controller.signal,
+      signal: controller.signal
     });
 
     if (!response.ok) return null;
@@ -47,13 +48,13 @@ export async function resolveClinepassModels(credentials) {
     const rawList = Array.isArray(json) ? json : json?.data;
     if (!Array.isArray(rawList)) return null;
 
-    const models = rawList
-      .filter((m) => typeof m?.id === "string" && m.id.startsWith("cline-pass/"))
-      .map((m) => ({
-        id: m.id.slice("cline-pass/".length),
-        name: m.name || m.id.slice("cline-pass/".length),
-        upstreamModelId: m.id,
-      }));
+    const models = rawList.
+    filter((m) => isString(m?.id) && m.id.startsWith("cline-pass/")).
+    map((m) => ({
+      id: m.id.slice("cline-pass/".length),
+      name: m.name || m.id.slice("cline-pass/".length),
+      upstreamModelId: m.id
+    }));
 
     return models.length ? { models } : null;
   } catch {

@@ -22,11 +22,12 @@ import { FORMATS } from "../translator/formats.js";
 // frames to the Ollama wire shape {error: string}. Never returns null for an
 // actual error; falls back to a safe string so the client sees a frame instead
 // of an empty truncated stream.
+import { isBoolean, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 function normalizeError(error) {
   if (error == null) return { error: "Upstream error" };
-  if (typeof error === "string") return { error: error };
-  if (typeof error === "object") {
-    if (typeof error.message === "string") return { error: error.message };
+  if (isString(error)) return { error: error };
+  if (isObject(error)) {
+    if (isString(error.message)) return { error: error.message };
     try {
       return { error: JSON.stringify(error) };
     } catch {
@@ -38,7 +39,7 @@ function normalizeError(error) {
 
 // True for both Ollama-native {error: string} and internal {error: {message, ...}}.
 function isErrorFrame(parsed) {
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed) && Object.hasOwn(parsed, "error");
+  return parsed && isObject(parsed) && !Array.isArray(parsed) && Object.hasOwn(parsed, "error");
 }
 
 export function transformToOllama(response, model) {
@@ -103,7 +104,7 @@ export function transformToOllama(response, model) {
           const ollama = JSON.stringify({
             model,
             message: { role: "assistant", content: "", thinking },
-            done: false,
+            done: false
           }) + "\n";
           controller.enqueue(encoder.encode(ollama));
         }
@@ -117,10 +118,10 @@ export function transformToOllama(response, model) {
         if (finishReason === "tool_calls" || finishReason === "stop") {
           const toolCallsArr = Object.values(pendingToolCalls);
           if (toolCallsArr.length > 0) {
-            const formattedCalls = toolCallsArr.map(tc => ({
+            const formattedCalls = toolCallsArr.map((tc) => ({
               function: {
                 name: tc.function.name,
-                arguments: (() => { try { return JSON.parse(tc.function.arguments || "{}"); } catch { return {}; } })()
+                arguments: (() => {try {return JSON.parse(tc.function.arguments || "{}");} catch {return {};}})()
               }
             }));
             const ollama = JSON.stringify({
@@ -136,6 +137,7 @@ export function transformToOllama(response, model) {
           }
         }
       } catch (e) {
+
         // Silently ignore SSE data parse errors
       }
       return;
@@ -147,7 +149,7 @@ export function transformToOllama(response, model) {
     if (trimmed.startsWith("{")) {
       try {
         const parsed = JSON.parse(trimmed);
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+        if (!parsed || !isObject(parsed) || Array.isArray(parsed)) return;
         // A buffered OpenAI chat completion (the route's stream:false path
         // returns one JSON object, not a stream): convert to a native Ollama
         // non-stream response instead of dropping it, or the client gets an
@@ -163,7 +165,7 @@ export function transformToOllama(response, model) {
         // Ollama stream object and is dropped rather than passed through to
         // clients as a mixed-format line.
         const hasError = isErrorFrame(parsed);
-        if ("message" in parsed || typeof parsed.done === "boolean" || hasError) {
+        if ("message" in parsed || isBoolean(parsed.done) || hasError) {
           if (parsed.done === true || hasError) ended = true;
           if (hasError) {
             const normalized = normalizeError(parsed.error);
@@ -173,9 +175,9 @@ export function transformToOllama(response, model) {
           }
         }
       } catch (e) {
+
         // Incomplete/invalid JSON line — drop it, never emit garbage.
-      }
-    }
+      }}
   };
 
   const transform = new TransformStream({

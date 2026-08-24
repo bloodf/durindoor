@@ -3,6 +3,7 @@
 import { RAW_CAP, MIN_COMPRESS_SIZE } from "./constants.js";
 import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
 export function compressMessages(body, enabled) {
@@ -15,9 +16,9 @@ export function compressMessages(body, enabled) {
   }
 
   // Support both OpenAI/Claude "messages" and OpenAI Responses "input"
-  const items = Array.isArray(body.messages) ? body.messages
-    : Array.isArray(body.input) ? body.input
-    : null;
+  const items = Array.isArray(body.messages) ? body.messages :
+  Array.isArray(body.input) ? body.input :
+  null;
   if (!items) return null;
 
   const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
@@ -28,12 +29,12 @@ export function compressMessages(body, enabled) {
 
       // Shape 4: OpenAI Responses — top-level { type:"function_call_output", output: string | [{type:"input_text", text}] }
       if (msg.type === "function_call_output") {
-        if (typeof msg.output === "string") {
+        if (isString(msg.output)) {
           msg.output = compressText(msg.output, stats, "openai-responses-string");
         } else if (Array.isArray(msg.output)) {
           for (let k = 0; k < msg.output.length; k++) {
             const part = msg.output[k];
-            if (part && part.type === "input_text" && typeof part.text === "string") {
+            if (part && part.type === "input_text" && isString(part.text)) {
               part.text = compressText(part.text, stats, "openai-responses-array");
             }
           }
@@ -42,7 +43,7 @@ export function compressMessages(body, enabled) {
       }
 
       // Shape 1: OpenAI tool message — { role:"tool", content: "string" }
-      if (msg.role === "tool" && typeof msg.content === "string") {
+      if (msg.role === "tool" && isString(msg.content)) {
         msg.content = compressText(msg.content, stats, "openai-tool");
         continue;
       }
@@ -53,7 +54,7 @@ export function compressMessages(body, enabled) {
       if (msg.role === "tool") {
         for (let k = 0; k < msg.content.length; k++) {
           const part = msg.content[k];
-          if (part && part.type === "text" && typeof part.text === "string") {
+          if (part && part.type === "text" && isString(part.text)) {
             part.text = compressText(part.text, stats, "openai-tool-array");
           }
         }
@@ -66,14 +67,14 @@ export function compressMessages(body, enabled) {
         if (!block || block.type !== "tool_result") continue;
         if (block.is_error === true) continue; // preserve error traces
 
-        if (typeof block.content === "string") {
+        if (isString(block.content)) {
           // Shape 2: claude string form
           block.content = compressText(block.content, stats, "claude-string");
         } else if (Array.isArray(block.content)) {
           // Shape 3: claude array form — compress each text part
           for (let k = 0; k < block.content.length; k++) {
             const part = block.content[k];
-            if (part && part.type === "text" && typeof part.text === "string") {
+            if (part && part.type === "text" && isString(part.text)) {
               part.text = compressText(part.text, stats, "claude-array");
             }
           }
@@ -104,7 +105,7 @@ function compressKiroFormat(body, enabled) {
         if (!Array.isArray(tr.content)) continue;
 
         for (const part of tr.content) {
-          if (part && typeof part.text === "string") {
+          if (part && isString(part.text)) {
             part.text = compressText(part.text, stats, "kiro-tool-result");
           }
         }
@@ -122,7 +123,14 @@ function compressKiroFormat(body, enabled) {
 const utf8Encoder = new TextEncoder();
 const utf8ByteLength = (s) => utf8Encoder.encode(s).length;
 
-function compressText(text, stats, shape) {
+/**
+ * Compress one tool_result text blob and record a hit labeled by request layout
+ * (e.g. "openai-tool", "claude-string", "kiro-tool-result").
+ * @param {string} text
+ * @param {{ bytesBefore: number, bytesAfter: number, hits: object[] }} stats
+ * @param {string} layout request-layout id for stats.hits[].layout
+ */
+function compressText(text, stats, layout) {
   // Measure UTF-8 content bytes, not UTF-16 code units, so non-ASCII tool
   // output is counted accurately. This is the content size, not provider
   // billing (providers bill tokens) nor full wire size (JSON escaping and HTTP
@@ -151,7 +159,7 @@ function compressText(text, stats, shape) {
   }
 
   stats.bytesAfter += bytesOut;
-  stats.hits.push({ shape, filter: fn.filterName || fn.name, saved: bytesIn - bytesOut });
+  stats.hits.push({ layout, filter: fn.filterName || fn.name, saved: bytesIn - bytesOut });
   return out;
 }
 
@@ -168,11 +176,11 @@ export const TOKEN_SAVER_LEGACY_HEADER = "x-9router-token-saver";
 function readHeaderValue(headers, name) {
   if (!headers) return undefined;
   // Fetch API Headers instance (case-insensitive by contract).
-  if (typeof headers.get === "function") {
+  if (isFunction(headers.get)) {
     const v = headers.get(name);
     return v === null || v === undefined ? undefined : String(v);
   }
-  if (typeof headers === "object") {
+  if (isObject(headers)) {
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === name) {
         const v = headers[key];
@@ -193,8 +201,8 @@ export function resolveTokenSaverEnabled(headers) {
 export function formatRtkLog(stats) {
   if (!stats || !stats.hits || stats.hits.length === 0) return null;
   const saved = stats.bytesBefore - stats.bytesAfter;
-  const pct = stats.bytesBefore > 0 ? ((saved / stats.bytesBefore) * 100).toFixed(1) : "0";
-  const filters = Array.from(new Set(stats.hits.map(h => h.filter))).join(",");
+  const pct = stats.bytesBefore > 0 ? (saved / stats.bytesBefore * 100).toFixed(1) : "0";
+  const filters = Array.from(new Set(stats.hits.map((h) => h.filter))).join(",");
   return `[RTK] saved ${saved}B / ${stats.bytesBefore}B (${pct}%) via [${filters}] hits=${stats.hits.length}`;
 }
 
@@ -209,26 +217,26 @@ export function formatRtkLog(stats) {
 // or upstream error text; persisting them as aggregate keys would leak that
 // into the dashboard. Unknown values map to "other-skip" (matches upstream).
 const SAFE_HEADROOM_DIAGNOSTICS = new Set([
-  "disabled",
-  "missing-proxy-url",
-  "timeout",
-  "http-error",
-  "unsafe-responses-input",
-  "translation-failed",
-  "unsupported-shape",
-  "invalid-proxy-response",
-  "unexpected-error",
-  "other-skip",
-]);
+"disabled",
+"missing-proxy-url",
+"timeout",
+"http-error",
+"unsafe-responses-input",
+"translation-failed",
+"unsupported-shape",
+"invalid-proxy-response",
+"unexpected-error",
+"other-skip"]
+);
 
 function safeHeadroomDiagnostic(value) {
-  if (typeof value !== "string" || !value) return null;
+  if (!isString(value) || !value) return null;
   return SAFE_HEADROOM_DIAGNOSTICS.has(value) ? value : "other-skip";
 }
 
 function toNonNeg(v) {
-  const n = typeof v === "string" ? Number(v) : v;
-  return (typeof n === "number" && Number.isFinite(n) && n > 0) ? n : 0;
+  const n = isString(v) ? Number(v) : v;
+  return isNumber(n) && Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 /**
@@ -246,10 +254,10 @@ function toNonNeg(v) {
  * shrink) only; pxpipe/compression stay separate estimates (not bytes).
  */
 export function normalizeTokenSaverEvent(event) {
-  const e = event && typeof event === "object" ? event : {};
-  const rtk = e.rtk && typeof e.rtk === "object" ? e.rtk : {};
-  const headroom = e.headroom && typeof e.headroom === "object" ? e.headroom : {};
-  const pxpipe = e.pxpipe && typeof e.pxpipe === "object" ? e.pxpipe : {};
+  const e = event && isObject(event) ? event : {};
+  const rtk = e.rtk && isObject(e.rtk) ? e.rtk : {};
+  const headroom = e.headroom && isObject(e.headroom) ? e.headroom : {};
+  const pxpipe = e.pxpipe && isObject(e.pxpipe) ? e.pxpipe : {};
 
   const rtkBytesSaved = toNonNeg(rtk.bytesSaved);
   const hrState = ["compressed", "skipped", "disabled"].includes(headroom.state) ? headroom.state : "disabled";
@@ -270,7 +278,7 @@ export function normalizeTokenSaverEvent(event) {
       hits: toNonNeg(rtk.hits),
       bytesBefore: toNonNeg(rtk.bytesBefore),
       bytesAfter: toNonNeg(rtk.bytesAfter),
-      bytesSaved: rtkBytesSaved,
+      bytesSaved: rtkBytesSaved
     },
     headroom: {
       // "compressed" | "skipped" | "disabled"
@@ -281,18 +289,18 @@ export function normalizeTokenSaverEvent(event) {
       bodyBytesBefore: hrBodyBefore,
       bodyBytesAfter: hrBodyAfter,
       phantomSavings: hrCompressed && headroom.phantomSavings ? 1 : 0,
-      diagnostic: safeHeadroomDiagnostic(headroom.diagnostic),
+      diagnostic: safeHeadroomDiagnostic(headroom.diagnostic)
     },
     pxpipe: {
       applied: pxpipe.applied ? 1 : 0,
       tokensBeforeEst: toNonNeg(pxpipe.tokensBeforeEst),
       tokensAfterEst: toNonNeg(pxpipe.tokensAfterEst),
       tokensSavedEst: toNonNeg(pxpipe.tokensSavedEst),
-      imageCount: toNonNeg(pxpipe.imageCount),
+      imageCount: toNonNeg(pxpipe.imageCount)
     },
     totals: {
-      actualBytesSaved: rtkBytesSaved + hrBodyShrink,
-    },
+      actualBytesSaved: rtkBytesSaved + hrBodyShrink
+    }
   };
 }
 
@@ -304,10 +312,10 @@ function emptyTokenSaverAggregate() {
       compressed: 0, skipped: 0, disabled: 0,
       tokensBefore: 0, tokensAfter: 0, tokensSaved: 0,
       bodyBytesBefore: 0, bodyBytesAfter: 0,
-      phantomSavings: 0, skipReasons: {},
+      phantomSavings: 0, skipReasons: {}
     },
     pxpipe: { applied: 0, tokensBeforeEst: 0, tokensAfterEst: 0, tokensSavedEst: 0, imageCount: 0 },
-    totals: { actualBytesSaved: 0 },
+    totals: { actualBytesSaved: 0 }
   };
 }
 
@@ -323,7 +331,7 @@ export function aggregateTokenSaverEvents(events) {
   if (!Array.isArray(events) || events.length === 0) return agg;
 
   for (const raw of events) {
-    if (!raw || typeof raw !== "object") continue;
+    if (!raw || !isObject(raw)) continue;
     // Always normalize: never trust caller-supplied totals/keys. A malformed
     // event coerces to safe zeros instead of skewing the period sum. One row =
     // one logical request, so requestsObserved is always 1 — ignore any caller
@@ -338,9 +346,9 @@ export function aggregateTokenSaverEvents(events) {
     agg.rtk.bytesSaved += toNonNeg(e.rtk?.bytesSaved);
 
     const state = e.headroom?.state;
-    if (state === "compressed") agg.headroom.compressed += 1;
-    else if (state === "skipped") agg.headroom.skipped += 1;
-    else agg.headroom.disabled += 1;
+    if (state === "compressed") agg.headroom.compressed += 1;else
+    if (state === "skipped") agg.headroom.skipped += 1;else
+    agg.headroom.disabled += 1;
     agg.headroom.tokensBefore += toNonNeg(e.headroom?.tokensBefore);
     agg.headroom.tokensAfter += toNonNeg(e.headroom?.tokensAfter);
     agg.headroom.tokensSaved += toNonNeg(e.headroom?.tokensSaved);
@@ -348,7 +356,7 @@ export function aggregateTokenSaverEvents(events) {
     agg.headroom.bodyBytesAfter += toNonNeg(e.headroom?.bodyBytesAfter);
     agg.headroom.phantomSavings += toNonNeg(e.headroom?.phantomSavings);
     if (state === "skipped") {
-      const reason = typeof e.headroom?.diagnostic === "string" && e.headroom.diagnostic ? e.headroom.diagnostic : "other-skip";
+      const reason = isString(e.headroom?.diagnostic) && e.headroom.diagnostic ? e.headroom.diagnostic : "other-skip";
       agg.headroom.skipReasons[reason] = (agg.headroom.skipReasons[reason] || 0) + 1;
     }
 

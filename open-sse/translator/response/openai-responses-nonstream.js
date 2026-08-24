@@ -1,11 +1,12 @@
 import { ROLE, CLAUDE_BLOCK, RESPONSES_ITEM, MODEL_FALLBACK } from "../schema/index.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function n(value) {
-  return typeof value === "number" ? value : 0;
+  return isNumber(value) ? value : 0;
 }
 
 function usageFromResponses(responseUsage) {
-  const raw = responseUsage && typeof responseUsage === "object" ? responseUsage : {};
+  const raw = responseUsage && isObject(responseUsage) ? responseUsage : {};
   const inputTotal = n(raw.input_tokens) || n(raw.prompt_tokens);
   const outputTokens = n(raw.output_tokens) || n(raw.completion_tokens);
   const cacheRead = n(raw.input_tokens_details?.cached_tokens) || n(raw.cache_read_input_tokens);
@@ -16,22 +17,22 @@ function usageFromResponses(responseUsage) {
     claude: {
       input_tokens: freshInput,
       output_tokens: outputTokens,
-      ...(cacheRead > 0 ? { cache_read_input_tokens: cacheRead } : {}),
-      ...(cacheCreate > 0 ? { cache_creation_input_tokens: cacheCreate } : {}),
+      ...(cacheRead > 0 ? { cache_read_input_tokens: cacheRead } : null),
+      ...(cacheCreate > 0 ? { cache_creation_input_tokens: cacheCreate } : null)
     },
     openai: {
       prompt_tokens: inputTotal,
       completion_tokens: outputTokens,
       total_tokens: inputTotal + outputTokens,
-      ...(cacheRead > 0 ? { prompt_tokens_details: { cached_tokens: cacheRead } } : {}),
-    },
+      ...(cacheRead > 0 ? { prompt_tokens_details: { cached_tokens: cacheRead } } : null)
+    }
   };
 }
 
 function responseObject(responseBody) {
-  return responseBody?.response && typeof responseBody.response === "object"
-    ? responseBody.response
-    : responseBody;
+  return responseBody?.response && isObject(responseBody.response) ?
+  responseBody.response :
+  responseBody;
 }
 
 function extractOutputItems(responseBody) {
@@ -41,23 +42,23 @@ function extractOutputItems(responseBody) {
 }
 
 function extractTextFromContent(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (!Array.isArray(content)) return "";
-  return content
-    .map((part) => {
-      if (typeof part === "string") return part;
-      if (part?.type === RESPONSES_ITEM.OUTPUT_TEXT || part?.type === RESPONSES_ITEM.SUMMARY_TEXT || part?.type === "text") return part.text || "";
-      if (typeof part?.text === "string") return part.text;
-      return "";
-    })
-    .join("");
+  return content.
+  map((part) => {
+    if (isString(part)) return part;
+    if (part?.type === RESPONSES_ITEM.OUTPUT_TEXT || part?.type === RESPONSES_ITEM.SUMMARY_TEXT || part?.type === "text") return part.text || "";
+    if (isString(part?.text)) return part.text;
+    return "";
+  }).
+  join("");
 }
 
 function extractReasoningText(item) {
   if (!item || item.type !== RESPONSES_ITEM.REASONING) return "";
-  if (typeof item.text === "string") return item.text;
-  if (typeof item.reasoning === "string") return item.reasoning;
-  if (typeof item.content === "string") return item.content;
+  if (isString(item.text)) return item.text;
+  if (isString(item.reasoning)) return item.reasoning;
+  if (isString(item.content)) return item.content;
   if (Array.isArray(item.summary)) return extractTextFromContent(item.summary);
   if (Array.isArray(item.content)) return extractTextFromContent(item.content);
   return "";
@@ -76,9 +77,9 @@ function terminalError(responseBody) {
 function terminalMessage(terminal) {
   const detail = terminal?.detail;
   if (!terminal) return "";
-  if (typeof detail === "string") return detail;
-  if (typeof detail?.message === "string") return detail.message;
-  if (typeof detail?.reason === "string") return detail.reason;
+  if (isString(detail)) return detail;
+  if (isString(detail?.message)) return detail.message;
+  if (isString(detail?.reason)) return detail.reason;
   if (detail) return JSON.stringify(detail);
   return `Response ended with status ${terminal.status}`;
 }
@@ -102,18 +103,18 @@ function collectResponsesOutput(responseBody) {
       // A native custom_tool_call carries its raw payload in `input` (a string),
       // not `arguments`. Wrap it as { input: <raw> } so downstream JSON parsing
       // does not collapse it to {} (OmniRoute #7905).
-      const args = item?.type === "custom_tool_call"
-        ? (typeof item.input === "string" ? JSON.stringify({ input: item.input }) : JSON.stringify(item.input || {}))
-        : (typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments || {}));
+      const args = item?.type === "custom_tool_call" ?
+      isString(item.input) ? JSON.stringify({ input: item.input }) : JSON.stringify(item.input || {}) :
+      isString(item.arguments) ? item.arguments : JSON.stringify(item.arguments || {});
       toolCalls.push({
         id: item.call_id || item.id || `call_${toolCalls.length}`,
         name: item.name || "",
-        arguments: args,
+        arguments: args
       });
     }
   }
 
-  if (!text && typeof responseObject(responseBody)?.output_text === "string") text = responseObject(responseBody).output_text;
+  if (!text && isString(responseObject(responseBody)?.output_text)) text = responseObject(responseBody).output_text;
   return { text, reasoning, toolCalls, terminal: terminalError(responseBody) };
 }
 
@@ -131,7 +132,7 @@ export function openAIResponsesBodyToClaude(responseBody) {
       type: CLAUDE_BLOCK.TOOL_USE,
       id: call.id,
       name: call.name,
-      input: safeJsonParse(call.arguments),
+      input: safeJsonParse(call.arguments)
     });
   }
 
@@ -141,9 +142,9 @@ export function openAIResponsesBodyToClaude(responseBody) {
     role: ROLE.ASSISTANT,
     model: response?.model || MODEL_FALLBACK,
     content,
-    stop_reason: terminal?.status === "incomplete" ? "max_tokens" : (toolCalls.length > 0 ? "tool_use" : "end_turn"),
+    stop_reason: terminal?.status === "incomplete" ? "max_tokens" : toolCalls.length > 0 ? "tool_use" : "end_turn",
     stop_sequence: null,
-    usage,
+    usage
   };
 }
 
@@ -159,7 +160,7 @@ export function openAIResponsesBodyToOpenAI(responseBody) {
     message.tool_calls = toolCalls.map((call) => ({
       id: call.id,
       type: "function",
-      function: { name: call.name, arguments: call.arguments },
+      function: { name: call.name, arguments: call.arguments }
     }));
     if (!text && !terminalText) message.content = null;
   }
@@ -172,9 +173,9 @@ export function openAIResponsesBodyToOpenAI(responseBody) {
     choices: [{
       index: 0,
       message,
-      finish_reason: terminal?.status === "incomplete" ? "length" : (toolCalls.length > 0 ? "tool_calls" : "stop"),
+      finish_reason: terminal?.status === "incomplete" ? "length" : toolCalls.length > 0 ? "tool_calls" : "stop"
     }],
-    usage: usageFromResponses(response?.usage || responseBody?.usage).openai,
+    usage: usageFromResponses(response?.usage || responseBody?.usage).openai
   };
 }
 

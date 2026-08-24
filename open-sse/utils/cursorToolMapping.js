@@ -4,6 +4,7 @@
  * Cursor expects native tool names (shell, ls, read, write, grep).
  * OpenCode sends OpenAI-style names (bash, list, glob, read, write, grep).
  */
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const OPENAI_TO_CURSOR = {
   bash: "shell",
@@ -16,7 +17,7 @@ const OPENAI_TO_CURSOR = {
   write: "write",
   grep: "grep",
   edit: "write",
-  search: "grep",
+  search: "grep"
 };
 
 const CURSOR_TO_OPENAI = {
@@ -37,11 +38,11 @@ const CURSOR_TO_OPENAI = {
   grep: "grep",
   ripgrep_search: "grep",
   ripgrep_raw_search: "grep",
-  glob_file_search: "glob",
+  glob_file_search: "glob"
 };
 
 function normalizeName(name) {
-  return typeof name === "string" ? name.trim() : "";
+  return isString(name) ? name.trim() : "";
 }
 
 export function toCursorToolName(name) {
@@ -59,17 +60,17 @@ export function fromCursorToolName(name) {
 }
 
 export function toCursorToolArgs(toolName, rawArgs) {
-  const args = typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs || {});
+  const args = isString(rawArgs) ? rawArgs : JSON.stringify(rawArgs || {});
   const cursorName = toCursorToolName(toolName).toLowerCase();
 
   if (cursorName !== "shell") return args;
 
   try {
     const parsed = JSON.parse(args);
-    if (parsed && typeof parsed === "object" && !parsed.command) {
-      if (typeof parsed.cmd === "string") {
+    if (parsed && isObject(parsed) && !parsed.command) {
+      if (isString(parsed.cmd)) {
         parsed.command = parsed.cmd;
-      } else if (typeof parsed.script === "string") {
+      } else if (isString(parsed.script)) {
         parsed.command = parsed.script;
       }
     }
@@ -81,14 +82,14 @@ export function toCursorToolArgs(toolName, rawArgs) {
 
 export function fromCursorToolArgs(toolName, rawArgs) {
   const openAiName = fromCursorToolName(toolName).toLowerCase();
-  const args = typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs || {});
+  const args = isString(rawArgs) ? rawArgs : JSON.stringify(rawArgs || {});
 
   if (openAiName !== "bash") return args;
 
   try {
     const parsed = JSON.parse(args);
-    if (parsed && typeof parsed === "object" && !parsed.command) {
-      if (typeof parsed.cmd === "string") {
+    if (parsed && isObject(parsed) && !parsed.command) {
+      if (isString(parsed.cmd)) {
         parsed.command = parsed.cmd;
       }
     }
@@ -108,8 +109,8 @@ export function shouldForceAgentMode(userAgent) {
     ua.includes("claude-cli") ||
     ua.includes("claude-code") ||
     ua.includes("Claude Code") ||
-    isOpenCodeUserAgent(ua)
-  );
+    isOpenCodeUserAgent(ua));
+
 }
 
 /**
@@ -123,12 +124,12 @@ export function shouldForceAgentMode(userAgent) {
  */
 export function getSupportedToolEnumsFromOpenAiTools(tools = []) {
   const defaultSet = [
-    15, // RUN_TERMINAL_COMMAND_V2
-    40, // READ_FILE_V2
-    38, // EDIT_FILE_V2
-    39, // LIST_DIR_V2
-    41, // RIPGREP_RAW_SEARCH
-    42, // GLOB_FILE_SEARCH
+  15, // RUN_TERMINAL_COMMAND_V2
+  40, // READ_FILE_V2
+  38, // EDIT_FILE_V2
+  39, // LIST_DIR_V2
+  41, // RIPGREP_RAW_SEARCH
+  42 // GLOB_FILE_SEARCH
   ];
 
   if (!Array.isArray(tools) || tools.length === 0) {
@@ -146,7 +147,7 @@ export function getSupportedToolEnumsFromOpenAiTools(tools = []) {
     list: 39,
     ls: 39,
     grep: 41,
-    glob: 42,
+    glob: 42
   };
 
   const enums = new Set();
@@ -164,16 +165,15 @@ export function getSupportedToolEnumsFromOpenAiTools(tools = []) {
  * Example: <|tool_calls_begin|>...run_terminal_cmd...{"command":"ls"}
  */
 export function parseNativeToolCallsFromText(text) {
-  if (typeof text !== "string") return [];
+  if (!isString(text)) return [];
 
   // Only match Cursor's explicit native tool-call text delimiters.
   // A broad `"name"/"arguments"` JSON regex was deliberately removed because it
   // false-positives on ordinary assistant prose that happens to contain JSON.
   const results = [];
   const patterns = [
-    /(?:<\|[^|]*tool_call_begin[^|]*\|>\s*)?(run_terminal_cmd|execute_command|shell)\s*(\{[\s\S]*?\})/gi,
-    /(?:<\|tool_call_begin\|>\s*)([a-zA-Z0-9_\-]+)\s*([\s\S]*?)(?:<\|tool_call_end\|>)/g,
-  ];
+  /(?:<\|[^|]*tool_call_begin[^|]*\|>\s*)?(run_terminal_cmd|execute_command|shell)\s*(\{[\s\S]*?\})/gi,
+  /(?:<\|tool_call_begin\|>\s*)([a-zA-Z0-9_\-]+)\s*([\s\S]*?)(?:<\|tool_call_end\|>)/g];
 
   for (const pattern of patterns) {
     let match;
@@ -194,8 +194,8 @@ export function parseNativeToolCallsFromText(text) {
         type: "function",
         function: {
           name: openAiName,
-          arguments: fromCursorToolArgs(cursorName, rawArgs || "{}"),
-        },
+          arguments: fromCursorToolArgs(cursorName, rawArgs || "{}")
+        }
       });
     }
   }

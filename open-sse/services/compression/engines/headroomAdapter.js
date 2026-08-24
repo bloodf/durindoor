@@ -15,17 +15,18 @@
 // compression registry) stay synchronous and alias-free at module load.
 
 import { createCompressionStats } from "../stats.js";
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../../src/shared/utils/typeChecks.js";
 
 const ENGINE_ID = "headroom";
 
 function cloneBody(body) {
-  if (body === null || typeof body !== "object") return { ok: true, value: body };
-  if (typeof structuredClone === "function") {
+  if (body === null || !isObject(body)) return { ok: true, value: body };
+  if (isFunction(structuredClone)) {
     try {
       return { ok: true, value: structuredClone(body) };
     } catch {
-      /* fall through to JSON clone */
-    }
+
+      /* fall through to JSON clone */}
   }
   try {
     return { ok: true, value: JSON.parse(JSON.stringify(body)) };
@@ -49,7 +50,7 @@ export const headroomEngine = {
     inputScope: "messages",
     targetLatencyMs: 50,
     supportsPreview: false,
-    stable: true,
+    stable: true
   },
   async apply(body, options) {
     const cfg = options?.config ?? {};
@@ -87,7 +88,7 @@ export const headroomEngine = {
         format,
         compressUserMessages,
         timeoutMs,
-        diagnostics,
+        diagnostics
       });
     } catch {
       // Genuine compression/runtime failure -> fail-open: keep original body.
@@ -97,13 +98,13 @@ export const headroomEngine = {
 
     const stats = createCompressionStats(body, working, ENGINE_ID, [ENGINE_ID]);
     const tokensSaved =
-      typeof data.tokens_saved === "number"
-        ? data.tokens_saved
-        : typeof data.tokensSaved === "number"
-          ? data.tokensSaved
-          : null;
+    isNumber(data.tokens_saved) ?
+    data.tokens_saved :
+    isNumber(data.tokensSaved) ?
+    data.tokensSaved :
+    null;
     const saved =
-      tokensSaved !== null ? tokensSaved > 0 : (stats?.savingsPercent ?? 0) > 0;
+    tokensSaved !== null ? tokensSaved > 0 : (stats?.savingsPercent ?? 0) > 0;
     if (!saved) return { body, compressed: false, stats: null };
     return { body: working, compressed: true, stats };
   },
@@ -112,18 +113,18 @@ export const headroomEngine = {
   },
   getConfigSchema() {
     return [
-      { key: "enabled", type: "boolean", label: "Enabled", defaultValue: false },
-      { key: "url", type: "string", label: "Proxy URL", defaultValue: "" },
-    ];
+    { key: "enabled", type: "boolean", label: "Enabled", defaultValue: false },
+    { key: "url", type: "string", label: "Proxy URL", defaultValue: "" }];
+
   },
   validateConfig(config) {
     const errors = [];
-    if (config.enabled !== undefined && typeof config.enabled !== "boolean") {
+    if (config.enabled !== undefined && !isBoolean(config.enabled)) {
       errors.push("enabled must be a boolean");
     }
-    if (config.url !== undefined && typeof config.url !== "string") {
+    if (config.url !== undefined && !isString(config.url)) {
       errors.push("url must be a string");
     }
     return { valid: errors.length === 0, errors };
-  },
+  }
 };

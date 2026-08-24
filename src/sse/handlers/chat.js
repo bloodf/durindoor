@@ -7,13 +7,13 @@ import {
   clearAccountError,
   resolveClientApiKey,
   isProviderConnectionModelLocked,
-  providerAllowsPublicNoAuthFallback,
-} from "../services/auth.js";
+  providerAllowsPublicNoAuthFallback } from
+"../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import {
   getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus,
-  getProviderConnections, getQuotaReservationPressure,
-} from "@/lib/localDb";
+  getProviderConnections, getQuotaReservationPressure } from
+"@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
@@ -29,8 +29,8 @@ import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
 import {
   getComboModelQuotaHealth,
   handleComboChat,
-  handleFusionChat,
-} from "open-sse/services/combo.js";
+  handleFusionChat } from
+"open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
 import { resolveTokenSaverEnabled } from "open-sse/rtk/index.js";
@@ -46,8 +46,8 @@ import { allocateProviderAttemptTimestamp } from "@/shared/services/providerRate
 import {
   getModelQuotaFamily,
   getModelUpstreamId,
-  PROVIDER_ID_TO_ALIAS,
-} from "open-sse/config/providerModels.js";
+  PROVIDER_ID_TO_ALIAS } from
+"open-sse/config/providerModels.js";
 import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
@@ -56,13 +56,14 @@ import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { validateChatRequestBody } from "open-sse/translator/validate.js";
 import {
   createQuotaReservationLifecycle,
-  rankQuotaConnections,
-} from "@/shared/services/quotaSelection";
+  rankQuotaConnections } from
+"@/shared/services/quotaSelection";
 import { buildQuotaResourceKeys, inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
 import {
   quotaDecisionDiagnostic,
-  rankQuotaCandidates,
-} from "open-sse/services/quota/scoring.js";
+  rankQuotaCandidates } from
+"open-sse/services/quota/scoring.js";
+import { isObject } from "../../shared/utils/typeChecks.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
@@ -82,9 +83,9 @@ function aggregateRateLimitBlockers(blockers, extra = null) {
   if (extra) entries.push(extra);
   if (entries.length === 0 || entries.some((entry) => Number(entry.status) !== 429)) return null;
   const complete = entries.every((entry) => entry.retryAtKnown !== false && Boolean(entry.retryAt));
-  const retryAt = complete
-    ? entries.map((entry) => entry.retryAt).sort((left, right) => Date.parse(left) - Date.parse(right))[0]
-    : null;
+  const retryAt = complete ?
+  entries.map((entry) => entry.retryAt).sort((left, right) => Date.parse(left) - Date.parse(right))[0] :
+  null;
   return { status: 429, retryAt };
 }
 
@@ -96,7 +97,7 @@ function proxyOptionsFromCredentials(credentials) {
     connectionNoProxy: config.connectionNoProxy || "",
     vercelRelayUrl: config.vercelRelayUrl || "",
     strictProxy: config.strictProxy === true,
-    disableEnvProxy: config.disableEnvProxy === true,
+    disableEnvProxy: config.disableEnvProxy === true
   };
 }
 const LIVE_MODEL_FETCHER_TYPES = new Set(["openai", "openai-compatible"]);
@@ -120,12 +121,12 @@ export function warmRequestModelLimits(provider, credentials) {
       proxyOptions: proxyOptionsFromCredentials(credentials),
       endpoint: genericFetcher?.url || (kimi ? "https://api.kimi.com/coding/v1/models" : undefined),
       anthropic,
-      modelAliases: kimi ? { k3: "kimi-k3" } : undefined,
+      modelAliases: kimi ? { k3: "kimi-k3" } : undefined
     });
   } catch {
+
     // Catalog metadata is optional; request dispatch must remain fail-soft.
-  }
-}
+  }}
 
 
 /**
@@ -156,21 +157,21 @@ function leastHealthy(...states) {
 }
 
 export async function rankComboModelsByQuota(
-  models,
-  settings,
-  now = Date.now(),
-  comboName = null,
-  comboStrategy = "fallback",
-  dependencies = {},
-) {
+models,
+settings,
+now = Date.now(),
+comboName = null,
+comboStrategy = "fallback",
+dependencies = {})
+{
   try {
     const resolveModelInfo = dependencies.getModelInfo || resolveQuotaModelInfo;
     const loadConnections = dependencies.getProviderConnections || getProviderConnections;
     const inspectQuota = dependencies.inspectProviderQuota || inspectProviderQuota;
     const loadPressure = dependencies.getQuotaReservationPressure || getQuotaReservationPressure;
     const isLocked = dependencies.isProviderConnectionModelLocked || isProviderConnectionModelLocked;
-    const allowsPublicNoAuth = dependencies.providerAllowsPublicNoAuthFallback
-      || providerAllowsPublicNoAuthFallback;
+    const allowsPublicNoAuth = dependencies.providerAllowsPublicNoAuthFallback ||
+    providerAllowsPublicNoAuthFallback;
     const comboHealth = dependencies.getComboModelQuotaHealth || getComboModelQuotaHealth;
     const candidates = [];
     for (const [index, modelStr] of models.entries()) {
@@ -186,28 +187,28 @@ export async function rankComboModelsByQuota(
       const resourceKeys = buildQuotaResourceKeys({
         provider,
         modelCandidates: [...new Set([model, upstreamModel].filter(Boolean))],
-        quotaFamily,
+        quotaFamily
       });
       const decisions = await inspectQuota(connections, { provider, resourceKeys, now });
-      const pressure = connections.length > 0
-        ? await loadPressure({ provider, connectionIds: connections.map((connection) => connection.id), now })
-        : new Map();
-      const lockedConnectionIds = new Set(connections
-        .filter((connection) => isLocked(connection, provider, model, now))
-        .map((connection) => connection.id));
+      const pressure = connections.length > 0 ?
+      await loadPressure({ provider, connectionIds: connections.map((connection) => connection.id), now }) :
+      new Map();
+      const lockedConnectionIds = new Set(connections.
+      filter((connection) => isLocked(connection, provider, model, now)).
+      map((connection) => connection.id));
       const allLocked = connections.length > 0 && lockedConnectionIds.size === connections.length;
       const allLockedWithoutPublicFallback = allLocked && !allowsPublicNoAuth(provider);
-      const selectableConnections = connections.filter((connection) => (
-        !decisions.get(connection.id)?.skip
-        && !lockedConnectionIds.has(connection.id)
-      ));
-      const publicFallbackWillApply = allowsPublicNoAuth(provider)
-        && connections.length > 0
-        && selectableConnections.length === 0;
+      const selectableConnections = connections.filter((connection) =>
+      !decisions.get(connection.id)?.skip &&
+      !lockedConnectionIds.has(connection.id)
+      );
+      const publicFallbackWillApply = allowsPublicNoAuth(provider) &&
+      connections.length > 0 &&
+      selectableConnections.length === 0;
       const rankedConnections = rankQuotaConnections(selectableConnections, decisions, pressure, {
         provider,
         now,
-        config: settings.quotaSelection || {},
+        config: settings.quotaSelection || {}
       });
       // Mirror credential selection's fixed-slot behavior: after filtering
       // blocked/floor candidates, the actual first eligible ranked connection
@@ -237,7 +238,7 @@ export async function rankComboModelsByQuota(
             reservationAlternatives: [],
             routingWindows: [],
             ...(decision.quotaProfile || {}),
-            reason: decision.reason || "exhausted",
+            reason: decision.reason || "exhausted"
           };
         }
       }
@@ -252,13 +253,13 @@ export async function rankComboModelsByQuota(
         lastSelectedAt: best?.quotaDecision?.tieKey?.lastSelectedAt || null,
         health: leastHealthy(
           best?.health,
-          comboStrategy === "smart-scoring"
-            ? comboHealth(comboName, modelStr)
-            : "healthy",
+          comboStrategy === "smart-scoring" ?
+          comboHealth(comboName, modelStr) :
+          "healthy"
         ),
         routingFloorBlocked,
         priority: index,
-        priorityRank: index,
+        priorityRank: index
       });
     }
     const ranked = rankQuotaCandidates(candidates, { now });
@@ -266,9 +267,9 @@ export async function rankComboModelsByQuota(
       log.debug("QUOTA", "combo candidate", quotaDecisionDiagnostic(candidate.quotaDecision));
     }
     return [
-      ...ranked.filter((candidate) => candidate.quotaDecision?.eligible !== false),
-      ...ranked.filter((candidate) => candidate.quotaDecision?.eligible === false),
-    ].map((candidate) => candidate.value);
+    ...ranked.filter((candidate) => candidate.quotaDecision?.eligible !== false),
+    ...ranked.filter((candidate) => candidate.quotaDecision?.eligible === false)].
+    map((candidate) => candidate.value);
   } catch {
     // Quota lookup/scoring errors preserve the caller's established combo order.
     return models;
@@ -350,7 +351,7 @@ export async function handleChat(request, clientRawRequest = null) {
 
   const settings = await getSettings();
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+    required: settings.requireApiKey === true
   });
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
@@ -425,23 +426,23 @@ export async function handleChat(request, clientRawRequest = null) {
   // Ponytail slash commands are local-only: respond before any account/credential lookup.
   const sourceFormat = detectFormatByEndpoint(
     clientRawRequest?.endpoint || new URL(request.url).pathname,
-    body,
+    body
   ) || detectFormat(body);
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   if (tokenSaverEnabled) {
     const ponytailResponse = await handlePonytailCommands(body, modelStr, {
-      fetchStats: authenticatedKeyRecord
-        ? async () => {
-            const { getApiKeyUsageTotals } = await import("@/lib/localDb");
-            return {
-              ...(await getApiKeyUsageTotals(authenticatedKeyRecord.id)),
-              scope: "this API key",
-            };
-          }
-        : null,
+      fetchStats: authenticatedKeyRecord ?
+      async () => {
+        const { getApiKeyUsageTotals } = await import("@/lib/localDb");
+        return {
+          ...(await getApiKeyUsageTotals(authenticatedKeyRecord.id)),
+          scope: "this API key"
+        };
+      } :
+      null,
       helpText: DEFAULT_PONYTAIL_HELP,
       sourceFormatOverride: sourceFormat,
-      streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader),
+      streamOverride: resolvePonytailStream(body, sourceFormat, acceptHeader)
     });
     if (ponytailResponse?.success && ponytailResponse.response) {
       return ponytailResponse.response;
@@ -472,9 +473,9 @@ export async function handleChat(request, clientRawRequest = null) {
     const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[comboName] || {};
-    const comboSpecificStrategy = isAutoComboId(modelStr)
-      ? (perCombo.strategy ?? perCombo.fallbackStrategy)
-      : perCombo.fallbackStrategy;
+    const comboSpecificStrategy = isAutoComboId(modelStr) ?
+    perCombo.strategy ?? perCombo.fallbackStrategy :
+    perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
 
     // Combo names are intentionally excluded from the model allowlist; the allowlist
@@ -500,7 +501,7 @@ export async function handleChat(request, clientRawRequest = null) {
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false },
+            { settings, allowVisionBridge: false }
           );
         },
         log,
@@ -508,7 +509,7 @@ export async function handleChat(request, clientRawRequest = null) {
         judgeModel: perCombo.judgeModel,
         tuning: perCombo.fusionTuning,
         contextRequirements: perCombo.contextRequirements,
-        capabilitiesMap,
+        capabilitiesMap
       });
     }
 
@@ -536,7 +537,7 @@ export async function handleChat(request, clientRawRequest = null) {
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false },
+          { settings, allowVisionBridge: false }
         );
       },
       log,
@@ -551,14 +552,14 @@ export async function handleChat(request, clientRawRequest = null) {
         settings,
         Date.now(),
         comboName,
-        comboStrategy,
+        comboStrategy
       ),
-      signal: request?.signal || null,
+      signal: request?.signal || null
     });
     // One row per logical combo request (collector holds only the latest
     // attempt's event) — never one per fallback attempt (Codex P2 on #306).
     if (tokenSaverCollector.latest) {
-      try { await recordTokenSaverEvent(tokenSaverCollector.latest); } catch { /* telemetry must not break requests */ }
+      try {await recordTokenSaverEvent(tokenSaverCollector.latest);} catch {/* telemetry must not break requests */}
     }
     return comboResult;
   }
@@ -631,9 +632,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // ids honor the F-2 `.strategy` shape; named combos keep `.fallbackStrategy`.
       const comboStrategies = chatSettings.comboStrategies || {};
       const perCombo = comboStrategies[comboName] || {};
-      const comboSpecificStrategy = isAutoComboId(modelStr)
-        ? (perCombo.strategy ?? perCombo.fallbackStrategy)
-        : perCombo.fallbackStrategy;
+      const comboSpecificStrategy = isAutoComboId(modelStr) ?
+      perCombo.strategy ?? perCombo.fallbackStrategy :
+      perCombo.fallbackStrategy;
       const comboStrategy = comboSpecificStrategy || chatSettings.comboStrategy || "fallback";
 
       if (comboStrategy === "fusion") {
@@ -655,7 +656,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false },
+              { settings: chatSettings, allowVisionBridge: false }
             );
           },
           log,
@@ -663,7 +664,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           judgeModel: perCombo.judgeModel,
           tuning: perCombo.fusionTuning,
           contextRequirements: perCombo.contextRequirements,
-          capabilitiesMap: await resolveComboCapabilitiesMap(comboModels),
+          capabilitiesMap: await resolveComboCapabilitiesMap(comboModels)
         });
       }
 
@@ -690,7 +691,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false },
+            { settings: chatSettings, allowVisionBridge: false }
           );
         },
         log,
@@ -705,12 +706,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           chatSettings,
           Date.now(),
           comboName,
-          comboStrategy,
+          comboStrategy
         ),
-        signal: requestSignal,
+        signal: requestSignal
       });
       if (ownsCollector && nestedCollector.latest) {
-        try { await recordTokenSaverEvent(nestedCollector.latest); } catch { /* telemetry must not break requests */ }
+        try {await recordTokenSaverEvent(nestedCollector.latest);} catch {/* telemetry must not break requests */}
       }
       return nestedResult;
     }
@@ -744,9 +745,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let modelCapabilities = preResolvedCapabilities;
   if (allowVisionBridge && settings?.visionBridgeEnabled === true && modelCapabilities === undefined) {
     const singleModelCaps = await buildSingleModelCapabilitiesMap(modelStr);
-    const visionTargetCaps = settings?.visionBridgeModel
-      ? await buildSingleModelCapabilitiesMap(String(settings.visionBridgeModel))
-      : null;
+    const visionTargetCaps = settings?.visionBridgeModel ?
+    await buildSingleModelCapabilitiesMap(String(settings.visionBridgeModel)) :
+    null;
     const vb = applyVisionBridgeReroute({ body, modelStr, settings, capabilities: singleModelCaps, targetCapabilities: visionTargetCaps });
     if (vb.rerouted) {
       const policyError = await enforceApiKeyModelPolicy(request, vb.modelStr, apiKey);
@@ -767,7 +768,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             attemptSignal,
             tokenSaverCollector,
-            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps },
+            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps }
           );
         }
         // Invalid reroute target: fall through to original model.
@@ -779,10 +780,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Pin the request to a specific connection when the client asks for one.
   // The header is preferred; body fields are accepted for backwards-compatible
   // clients but stripped before the core sees them.
-  const rawConnectionPin = request.headers.get("x-connection-id")
-    || body.connectionId
-    || body.connection_id
-    || null;
+  const rawConnectionPin = request.headers.get("x-connection-id") ||
+  body.connectionId ||
+  body.connection_id ||
+  null;
   let preferredConnectionId = null;
   if (rawConnectionPin) {
     const requestedId = String(rawConnectionPin);
@@ -822,7 +823,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const routingSessionId = resolveClientSessionId({
     headers: clientRawRequest?.headers,
     body,
-    scope: provider,
+    scope: provider
   });
 
   // Resolve request-scoped custom capabilities once, just before the retry loop.
@@ -833,9 +834,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // The direct single-model path already resolved caps for the vision bridge;
   // reuse that result (undefined = not resolved yet). Combo attempts pass
   // undefined so each member resolves its own caps.
-  const resolvedModelCapabilities = modelCapabilities !== undefined
-    ? modelCapabilities
-    : await loadCustomCapabilities(provider, model, requestPrefix);
+  const resolvedModelCapabilities = modelCapabilities !== undefined ?
+  modelCapabilities :
+  await loadCustomCapabilities(provider, model, requestPrefix);
 
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
@@ -860,304 +861,304 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // = one row and retries never double-count.
   let lastTokenSaverEvent = null;
   try {
-  while (true) {
-    if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
-    let credentials;
-    try {
-      credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
-        signal: requestSignal,
-        modelCandidates,
-        quotaFamily,
-        sessionId: routingSessionId,
-        preferredConnectionId: preferredConnectionId || requestReplayConnectionId,
-      });
-    } catch (error) {
-      if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
-      throw error;
-    }
-
-    // If the caller pinned a connection, the selected credential must match it
-    // exactly. Otherwise the account has been excluded/quota-blocked/rotated and
-    // the pin is no longer honored.
-    if (preferredConnectionId && credentials?.connectionId && credentials.connectionId !== preferredConnectionId) {
-      log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} not selected; refusing rotation`);
-      return errorResponse(HTTP_STATUS.BAD_REQUEST, `Connection ${preferredConnectionId.slice(0, 8)}... is not available for provider '${provider}'.`);
-    }
-
-    // All accounts unavailable or provider disabled
-    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
-      if (credentials?.providerDisabled) {
-        log.warn("CHAT", `[${provider}/${model}] free no-auth provider disabled by settings`);
-        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
-      }
-      if (credentials?.allRateLimited) {
-        const storedStatus = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
-        const combinedRateLimit = aggregateRateLimitBlockers(attemptedBlockers, {
-          status: storedStatus,
-          retryAt: credentials.retryAfter || null,
-          retryAtKnown: Boolean(credentials.retryAfter),
+    while (true) {
+      if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
+      let credentials;
+      try {
+        credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
+          signal: requestSignal,
+          modelCandidates,
+          quotaFamily,
+          sessionId: routingSessionId,
+          preferredConnectionId: preferredConnectionId || requestReplayConnectionId
         });
-        const status = combinedRateLimit?.status
-          || (storedStatus !== 429 ? storedStatus : (lastStatus || storedStatus));
-        const errorMsg = status === storedStatus
-          ? (credentials.lastError || "Unavailable")
-          : (lastError || credentials.lastError || "Unavailable");
-        const retryAfter = combinedRateLimit ? combinedRateLimit.retryAt : credentials.retryAfter;
-        log.warn("CHAT", `[${provider}/${model}] all accounts unavailable`);
-        return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, retryAfter, retryAfter ? credentials.retryAfterHuman : "");
+      } catch (error) {
+        if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
+        throw error;
       }
-      if (excludeConnectionIds.size === 0) {
-        log.warn("AUTH", `No active credentials for provider: ${provider}`);
-        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
+
+      // If the caller pinned a connection, the selected credential must match it
+      // exactly. Otherwise the account has been excluded/quota-blocked/rotated and
+      // the pin is no longer honored.
+      if (preferredConnectionId && credentials?.connectionId && credentials.connectionId !== preferredConnectionId) {
+        log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} not selected; refusing rotation`);
+        return errorResponse(HTTP_STATUS.BAD_REQUEST, `Connection ${preferredConnectionId.slice(0, 8)}... is not available for provider '${provider}'.`);
       }
-      if (
+
+      // All accounts unavailable or provider disabled
+      if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+        if (credentials?.providerDisabled) {
+          log.warn("CHAT", `[${provider}/${model}] free no-auth provider disabled by settings`);
+          return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+        }
+        if (credentials?.allRateLimited) {
+          const storedStatus = Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
+          const combinedRateLimit = aggregateRateLimitBlockers(attemptedBlockers, {
+            status: storedStatus,
+            retryAt: credentials.retryAfter || null,
+            retryAtKnown: Boolean(credentials.retryAfter)
+          });
+          const status = combinedRateLimit?.status || (
+          storedStatus !== 429 ? storedStatus : lastStatus || storedStatus);
+          const errorMsg = status === storedStatus ?
+          credentials.lastError || "Unavailable" :
+          lastError || credentials.lastError || "Unavailable";
+          const retryAfter = combinedRateLimit ? combinedRateLimit.retryAt : credentials.retryAfter;
+          log.warn("CHAT", `[${provider}/${model}] all accounts unavailable`);
+          return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, retryAfter, retryAfter ? credentials.retryAfterHuman : "");
+        }
+        if (excludeConnectionIds.size === 0) {
+          log.warn("AUTH", `No active credentials for provider: ${provider}`);
+          return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
+        }
+        if (
         (provider === "antigravity" || provider === "agy") &&
         isAntigravityCapacityError(lastStatus, lastError) &&
-        antigravityCapacitySweeps < ANTIGRAVITY_CAPACITY_SWEEP_RETRIES
-      ) {
-        antigravityCapacitySweeps += 1;
-        log.warn("CHAT", `[${provider}/${model}] all accounts reported capacity; restarting account sweep ${antigravityCapacitySweeps}/${ANTIGRAVITY_CAPACITY_SWEEP_RETRIES}`);
-        excludeConnectionIds.clear();
-        continue;
-      }
-      log.warn("CHAT", "No more accounts available", { provider });
-      const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
-      if (attemptedRateLimit) {
-        return unavailableResponse(429, `[${provider}/${model}] ${lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
-      }
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
-    }
-
-    const allowedAttempts = (provider === "antigravity" || provider === "agy")
-      ? ANTIGRAVITY_CAPACITY_SWEEP_RETRIES + 1
-      : 1;
-    const priorAttempts = attemptCounts.get(credentials.connectionId) || 0;
-    if (priorAttempts >= allowedAttempts || totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
-      excludeConnectionIds.add(credentials.connectionId);
-      if (totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
-        log.warn("FALLBACK", "Provider fallback attempt bound reached");
+        antigravityCapacitySweeps < ANTIGRAVITY_CAPACITY_SWEEP_RETRIES)
+        {
+          antigravityCapacitySweeps += 1;
+          log.warn("CHAT", `[${provider}/${model}] all accounts reported capacity; restarting account sweep ${antigravityCapacitySweeps}/${ANTIGRAVITY_CAPACITY_SWEEP_RETRIES}`);
+          excludeConnectionIds.clear();
+          continue;
+        }
+        log.warn("CHAT", "No more accounts available", { provider });
         const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
         if (attemptedRateLimit) {
           return unavailableResponse(429, `[${provider}/${model}] ${lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
         }
-        return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "All accounts unavailable");
+        return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
       }
-      continue;
-    }
-    attemptCounts.set(credentials.connectionId, priorAttempts + 1);
-    totalAttempts += 1;
 
-    if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
-
-    // Account selection shown in the unified "▶" line (acc:...). OAuth
-    // rotation goes through the shared CAS coordinator used by quota refresh.
-    let activeConnection = credentials._connection || null;
-    let refreshedCredentials = credentials;
-    if (activeConnection?.authType === "oauth") {
-      try {
-        const refreshed = await refreshAndUpdateCredentials(
-          activeConnection,
-          false,
-          proxyOptionsFromCredentials(credentials),
-          { signal: requestSignal, log },
-        );
-        activeConnection = refreshed.connection;
-        refreshedCredentials = await projectProviderCredentials(activeConnection, credentials._quotaPreflight);
-      } catch (error) {
-        if (error?.name === "AbortError") return errorResponse(499, "Request aborted");
-        log.warn("TOKEN", "Proactive credential refresh failed; attempting existing credential");
+      const allowedAttempts = provider === "antigravity" || provider === "agy" ?
+      ANTIGRAVITY_CAPACITY_SWEEP_RETRIES + 1 :
+      1;
+      const priorAttempts = attemptCounts.get(credentials.connectionId) || 0;
+      if (priorAttempts >= allowedAttempts || totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
+        excludeConnectionIds.add(credentials.connectionId);
+        if (totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
+          log.warn("FALLBACK", "Provider fallback attempt bound reached");
+          const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
+          if (attemptedRateLimit) {
+            return unavailableResponse(429, `[${provider}/${model}] ${lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
+          }
+          return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "All accounts unavailable");
+        }
+        continue;
       }
-    }
+      attemptCounts.set(credentials.connectionId, priorAttempts + 1);
+      totalAttempts += 1;
 
-    if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
+      if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
 
-    // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
-    if ((provider === "antigravity" || provider === "agy" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
-      try {
-        const pid = await getProjectIdForConnection(
-          credentials.connectionId,
-          refreshedCredentials.accessToken,
-          refreshedCredentials.providerSpecificData,
-          requestSignal,
-          provider,
-        );
-        if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
-        if (pid) {
-          refreshedCredentials.projectId = pid;
-          // Persist only after the subscriber is still live; a disconnected
-          // request must not schedule a late credential write.
-          updateProviderCredentials(credentials.connectionId, { projectId: pid }).catch(() => { });
-        }
-      } catch (error) {
-        if (error?.name === "AbortError" || requestAborted(request, requestSignal)) {
-          return errorResponse(499, "Request aborted");
-        }
-      }
-    }
-    if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
-    warmRequestModelLimits(provider, refreshedCredentials);
-
-    // Use shared chatCore
-    const chatSettings = await getSettings();
-    if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
-    const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
-    const pxpipeTransform = chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null;
-    if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
-    let latestAttemptStartedAt = null;
-    const quotaReservation = createQuotaReservationLifecycle({
-      quotaProfile: credentials._quotaPreflight?.quotaProfile || null,
-      connectionId: credentials.connectionId,
-      provider,
-      routeKey: `${provider}/${model}`,
-      config: chatSettings.quotaSelection || {},
-    });
-    const result = await handleChatCore({
-      body: { ...structuredClone(body), model: `${provider}/${model}` },
-      modelInfo: { provider, model },
-      modelCapabilities: resolvedModelCapabilities,
-      credentials: refreshedCredentials,
-      log,
-      clientRawRequest,
-      connectionId: credentials.connectionId,
-      userAgent,
-      apiKey,
-      abortSignal: requestSignal,
-      quotaReservation,
-      onProviderAttempt: () => {
-        latestAttemptStartedAt = allocateProviderAttemptTimestamp();
-        return latestAttemptStartedAt;
-      },
-      ccFilterNaming: !!chatSettings.ccFilterNaming,
-      rtkEnabled: !!chatSettings.rtkEnabled,
-      headroomEnabled: !!chatSettings.headroomEnabled,
-      headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
-      headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
-      pxpipeEnabled: !!chatSettings.pxpipeEnabled,
-      cavemanEnabled: !!chatSettings.cavemanEnabled,
-      cavemanLevel: chatSettings.cavemanLevel || "full",
-      ponytailEnabled: !!chatSettings.ponytailEnabled,
-      ponytailLevel: chatSettings.ponytailLevel || "full",
-      pxpipeMinChars: chatSettings.pxpipeMinChars,
-      pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
-      pxpipeTransform,
-      pxpipeAllowedModels: chatSettings.pxpipeAllowedModels,
-      onPxpipeEvent: appendPxpipeEvent,
-      onHeadroomEvent: appendHeadroomEvent,
-      onTokenSaverEvent: (event) => {
-        if (tokenSaverCollector) {
-          tokenSaverCollector.latest = event;
-        } else {
-          lastTokenSaverEvent = event;
-        }
-      },
-      providerThinking,
-      providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
-      claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat)
-        ? chatSettings.claudeClassifierCompat
-        : "off",
-      compressionEnabled: !!chatSettings.compressionEnabled,
-      compressionEngines: chatSettings.compressionEngines || {},
-      // Detect source format by endpoint + body
-      sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
-      ...(activeConnection?.authType === "oauth" ? {
-        refreshCredentials: async ({ signal, force = true } = {}) => {
+      // Account selection shown in the unified "▶" line (acc:...). OAuth
+      // rotation goes through the shared CAS coordinator used by quota refresh.
+      let activeConnection = credentials._connection || null;
+      let refreshedCredentials = credentials;
+      if (activeConnection?.authType === "oauth") {
+        try {
           const refreshed = await refreshAndUpdateCredentials(
             activeConnection,
-            force,
-            proxyOptionsFromCredentials(refreshedCredentials),
-            { signal, log },
+            false,
+            proxyOptionsFromCredentials(credentials),
+            { signal: requestSignal, log }
           );
           activeConnection = refreshed.connection;
           refreshedCredentials = await projectProviderCredentials(activeConnection, credentials._quotaPreflight);
-          return refreshedCredentials;
-        },
-      } : {}),
-      onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {
-        if (!Number.isSafeInteger(attemptStartedAt) || attemptStartedAt <= 0) return;
-        await clearAccountError(credentials.connectionId, refreshedCredentials, model, {
-          provider,
-          attemptStartedAt,
-          signal: requestSignal,
-        });
-      },
-      // Empty-stream retries exhausted mid-stream (headers already sent, so no
-      // pre-stream fallback is possible): bench the account so the client's
-      // automatic retry of the in-stream error lands on the next one. Quota
-      // exhaustion passes a precise resetsAtMs instead of the generic cooldown.
-      onUpstreamEmptyExhausted: async (reason, resetsAtMs) => {
-        if (!Number.isSafeInteger(latestAttemptStartedAt) || latestAttemptStartedAt <= 0) return;
-        await markAccountUnavailable(credentials.connectionId, HTTP_STATUS.BAD_GATEWAY, reason, provider, model, resetsAtMs, {
-          attemptStartedAt: latestAttemptStartedAt,
-          signal: requestSignal,
-        });
+        } catch (error) {
+          if (error?.name === "AbortError") return errorResponse(499, "Request aborted");
+          log.warn("TOKEN", "Proactive credential refresh failed; attempting existing credential");
+        }
       }
-    });
 
-    if (result.success) return result.response;
-    // A client-side abort (named AbortError, or a bare request_signal_aborted /
-    // "Client disconnected" / "operation was aborted" that defaulted to 502) is a
-    // local stream lifecycle event, NOT a provider failure. Return without cooling
-    // down the account or accruing fallback state (OmniRoute #7907/#7908).
-    if (requestAborted(request, requestSignal) || result.status === 499 || isLocalStreamLifecycleError(result.error)) return result.response;
-    if (!requestReplayAttempted && isRequestReplayBufferError(result.status, result.error)) {
-      requestReplayAttempted = true;
-      requestReplayConnectionId = credentials.connectionId;
-      attemptCounts.delete(credentials.connectionId);
-      log.warn("RETRY", `ACC:${credentials.connectionName} replaying once after upstream request-buffer overflow`);
-      continue;
-    }
-    if (preferredConnectionId) {
-      // A pinned connection must not rotate. Return the failure response immediately.
-      log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal`);
+      if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
+
+      // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
+      if ((provider === "antigravity" || provider === "agy" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
+        try {
+          const pid = await getProjectIdForConnection(
+            credentials.connectionId,
+            refreshedCredentials.accessToken,
+            refreshedCredentials.providerSpecificData,
+            requestSignal,
+            provider
+          );
+          if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
+          if (pid) {
+            refreshedCredentials.projectId = pid;
+            // Persist only after the subscriber is still live; a disconnected
+            // request must not schedule a late credential write.
+            updateProviderCredentials(credentials.connectionId, { projectId: pid }).catch(() => {});
+          }
+        } catch (error) {
+          if (error?.name === "AbortError" || requestAborted(request, requestSignal)) {
+            return errorResponse(499, "Request aborted");
+          }
+        }
+      }
+      if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
+      warmRequestModelLimits(provider, refreshedCredentials);
+
+      // Use shared chatCore
+      const chatSettings = await getSettings();
+      if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
+      const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
+      const pxpipeTransform = chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null;
+      if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
+      let latestAttemptStartedAt = null;
+      const quotaReservation = createQuotaReservationLifecycle({
+        quotaProfile: credentials._quotaPreflight?.quotaProfile || null,
+        connectionId: credentials.connectionId,
+        provider,
+        routeKey: `${provider}/${model}`,
+        config: chatSettings.quotaSelection || {}
+      });
+      const result = await handleChatCore({
+        body: { ...structuredClone(body), model: `${provider}/${model}` },
+        modelInfo: { provider, model },
+        modelCapabilities: resolvedModelCapabilities,
+        credentials: refreshedCredentials,
+        log,
+        clientRawRequest,
+        connectionId: credentials.connectionId,
+        userAgent,
+        apiKey,
+        abortSignal: requestSignal,
+        quotaReservation,
+        onProviderAttempt: () => {
+          latestAttemptStartedAt = allocateProviderAttemptTimestamp();
+          return latestAttemptStartedAt;
+        },
+        ccFilterNaming: !!chatSettings.ccFilterNaming,
+        rtkEnabled: !!chatSettings.rtkEnabled,
+        headroomEnabled: !!chatSettings.headroomEnabled,
+        headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
+        headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
+        pxpipeEnabled: !!chatSettings.pxpipeEnabled,
+        cavemanEnabled: !!chatSettings.cavemanEnabled,
+        cavemanLevel: chatSettings.cavemanLevel || "full",
+        ponytailEnabled: !!chatSettings.ponytailEnabled,
+        ponytailLevel: chatSettings.ponytailLevel || "full",
+        pxpipeMinChars: chatSettings.pxpipeMinChars,
+        pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
+        pxpipeTransform,
+        pxpipeAllowedModels: chatSettings.pxpipeAllowedModels,
+        onPxpipeEvent: appendPxpipeEvent,
+        onHeadroomEvent: appendHeadroomEvent,
+        onTokenSaverEvent: (event) => {
+          if (tokenSaverCollector) {
+            tokenSaverCollector.latest = event;
+          } else {
+            lastTokenSaverEvent = event;
+          }
+        },
+        providerThinking,
+        providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
+        claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat) ?
+        chatSettings.claudeClassifierCompat :
+        "off",
+        compressionEnabled: !!chatSettings.compressionEnabled,
+        compressionEngines: chatSettings.compressionEngines || {},
+        // Detect source format by endpoint + body
+        sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
+        ...(activeConnection?.authType === "oauth" ? {
+          refreshCredentials: async ({ signal, force = true } = {}) => {
+            const refreshed = await refreshAndUpdateCredentials(
+              activeConnection,
+              force,
+              proxyOptionsFromCredentials(refreshedCredentials),
+              { signal, log }
+            );
+            activeConnection = refreshed.connection;
+            refreshedCredentials = await projectProviderCredentials(activeConnection, credentials._quotaPreflight);
+            return refreshedCredentials;
+          }
+        } : null),
+        onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {
+          if (!Number.isSafeInteger(attemptStartedAt) || attemptStartedAt <= 0) return;
+          await clearAccountError(credentials.connectionId, refreshedCredentials, model, {
+            provider,
+            attemptStartedAt,
+            signal: requestSignal
+          });
+        },
+        // Empty-stream retries exhausted mid-stream (headers already sent, so no
+        // pre-stream fallback is possible): bench the account so the client's
+        // automatic retry of the in-stream error lands on the next one. Quota
+        // exhaustion passes a precise resetsAtMs instead of the generic cooldown.
+        onUpstreamEmptyExhausted: async (reason, resetsAtMs) => {
+          if (!Number.isSafeInteger(latestAttemptStartedAt) || latestAttemptStartedAt <= 0) return;
+          await markAccountUnavailable(credentials.connectionId, HTTP_STATUS.BAD_GATEWAY, reason, provider, model, resetsAtMs, {
+            attemptStartedAt: latestAttemptStartedAt,
+            signal: requestSignal
+          });
+        }
+      });
+
+      if (result.success) return result.response;
+      // A client-side abort (named AbortError, or a bare request_signal_aborted /
+      // "Client disconnected" / "operation was aborted" that defaulted to 502) is a
+      // local stream lifecycle event, NOT a provider failure. Return without cooling
+      // down the account or accruing fallback state (OmniRoute #7907/#7908).
+      if (requestAborted(request, requestSignal) || result.status === 499 || isLocalStreamLifecycleError(result.error)) return result.response;
+      if (!requestReplayAttempted && isRequestReplayBufferError(result.status, result.error)) {
+        requestReplayAttempted = true;
+        requestReplayConnectionId = credentials.connectionId;
+        attemptCounts.delete(credentials.connectionId);
+        log.warn("RETRY", `ACC:${credentials.connectionName} replaying once after upstream request-buffer overflow`);
+        continue;
+      }
+      if (preferredConnectionId) {
+        // A pinned connection must not rotate. Return the failure response immediately.
+        log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal`);
+        return result.response;
+      }
+      if (result.quotaCapacityUnavailable) {
+        // A local atomic-capacity race is not provider evidence. Release/expiry is
+        // owned by the lifecycle; exclude this account and try a sibling without
+        // writing a synthetic 429 or breaker state.
+        excludeConnectionIds.add(credentials.connectionId);
+        lastError = "Provider quota capacity unavailable";
+        lastStatus = HTTP_STATUS.SERVICE_UNAVAILABLE;
+        continue;
+      }
+
+      const resultAttemptStartedAt = Number.isSafeInteger(result.attemptStartedAt) && result.attemptStartedAt > 0 ?
+      result.attemptStartedAt :
+      latestAttemptStartedAt;
+      const resultErrorBody = result.errorBody && isObject(result.errorBody) ? result.errorBody : null;
+      const resultHeaders = result.headers ?? null;
+      const fallbackState = await markAccountUnavailable(
+        credentials.connectionId,
+        result.status,
+        result.error,
+        provider,
+        model,
+        result.resetsAtMs,
+        {
+          attemptStartedAt: resultAttemptStartedAt,
+          rateLimitEvidence: result.rateLimitEvidence || null,
+          headers: resultHeaders,
+          errorBody: resultErrorBody,
+          signal: requestSignal
+        }
+      );
+      const { shouldFallback } = fallbackState;
+
+      if (shouldFallback) {
+        attemptedBlockers.set(credentials.connectionId, {
+          status: Number(result.status) || 503,
+          retryAt: fallbackState.retryAt || null,
+          retryAtKnown: fallbackState.retryAtKnown !== false
+        });
+        log.warn("FALLBACK", `⇄ ACC:${credentials.connectionId.slice(0, 8)} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
+        excludeConnectionIds.add(credentials.connectionId);
+        lastError = result.error;
+        lastStatus = result.status;
+        continue;
+      }
+
       return result.response;
     }
-    if (result.quotaCapacityUnavailable) {
-      // A local atomic-capacity race is not provider evidence. Release/expiry is
-      // owned by the lifecycle; exclude this account and try a sibling without
-      // writing a synthetic 429 or breaker state.
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = "Provider quota capacity unavailable";
-      lastStatus = HTTP_STATUS.SERVICE_UNAVAILABLE;
-      continue;
-    }
-
-    const resultAttemptStartedAt = Number.isSafeInteger(result.attemptStartedAt) && result.attemptStartedAt > 0
-      ? result.attemptStartedAt
-      : latestAttemptStartedAt;
-    const resultErrorBody = result.errorBody && typeof result.errorBody === "object" ? result.errorBody : null;
-    const resultHeaders = result.headers ?? null;
-    const fallbackState = await markAccountUnavailable(
-      credentials.connectionId,
-      result.status,
-      result.error,
-      provider,
-      model,
-      result.resetsAtMs,
-      {
-        attemptStartedAt: resultAttemptStartedAt,
-        rateLimitEvidence: result.rateLimitEvidence || null,
-        headers: resultHeaders,
-        errorBody: resultErrorBody,
-        signal: requestSignal,
-      },
-    );
-    const { shouldFallback } = fallbackState;
-
-    if (shouldFallback) {
-      attemptedBlockers.set(credentials.connectionId, {
-        status: Number(result.status) || 503,
-        retryAt: fallbackState.retryAt || null,
-        retryAtKnown: fallbackState.retryAtKnown !== false,
-      });
-      log.warn("FALLBACK", `⇄ ACC:${credentials.connectionId.slice(0, 8)} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = result.error;
-      lastStatus = result.status;
-      continue;
-    }
-
-    return result.response;
-  }
   } finally {
     // Persist the latest routing attempt's event once per logical request.
     // Awaited so the row is durable before the response returns (fail-open

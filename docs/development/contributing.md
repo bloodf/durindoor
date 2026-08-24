@@ -54,6 +54,7 @@ printf '%s\n' 'docs: describe the change' | npx commitlint
 
 ```bash
 npm run lint
+npm run lint:anti-slop
 npm run build
 npm run check:docs
 npm run check:agent-index
@@ -61,6 +62,8 @@ npm run check:registry-index
 npm run catalog:diff
 cd tests && npm run test:ci
 ```
+
+`npm run lint` already includes the anti-slop/oxlint gate (zero diagnostics required). Husky `pre-commit` runs `npm run lint:anti-slop` directly. See [Anti-slop gate](anti-slop.md).
 
 Run the smallest relevant test first. The full test gate must not add entries to `tests/__baseline__/known-fails.txt`.
 

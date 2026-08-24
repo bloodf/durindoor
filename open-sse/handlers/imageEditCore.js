@@ -2,9 +2,10 @@ import { createErrorResult, parseUpstreamError } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && isObject(value) && !Array.isArray(value);
 }
 
 // Derive a provider's /images/edits endpoint from its image generations URL.
@@ -12,7 +13,7 @@ function isRecord(value) {
 // are supported (DALL-E edits). Returns null otherwise.
 export function deriveImageEditsUrl(imageConfig) {
   const rec = isRecord(imageConfig) ? imageConfig : undefined;
-  const base = typeof rec?.baseUrl === "string" ? rec.baseUrl : undefined;
+  const base = isString(rec?.baseUrl) ? rec.baseUrl : undefined;
   if (base && /\/images\/generations$/.test(base)) return base.replace(/\/generations$/, "/edits");
   return null;
 }
@@ -36,7 +37,7 @@ export async function handleImageEditCore({
   modelInfo,
   credentials = null,
   log = null,
-  onRequestSuccess = null,
+  onRequestSuccess = null
 }) {
   const { provider, model } = modelInfo;
   const mediaCfg = PROVIDER_MEDIA[provider];
@@ -50,8 +51,8 @@ export async function handleImageEditCore({
   const upstream = new FormData();
   for (const [key, value] of formData.entries()) {
     if (key === "model") continue;
-    if (value instanceof Blob) upstream.append(key, value, value.name || key);
-    else upstream.append(key, value);
+    if (value instanceof Blob) upstream.append(key, value, value.name || key);else
+    upstream.append(key, value);
   }
   upstream.append("model", model);
 
@@ -86,8 +87,8 @@ export async function handleImageEditCore({
       status: 200,
       headers: {
         "Content-Type": res.headers.get("content-type") || "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    }),
+        "Access-Control-Allow-Origin": "*"
+      }
+    })
   };
 }

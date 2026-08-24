@@ -22,14 +22,14 @@ export default {
         requests: input.map((text) => ({
           model: m,
           content: { parts: [{ text: String(text) }] },
-          ...(hasOutputDimensionality ? { outputDimensionality } : {}),
-        })),
+          ...(hasOutputDimensionality ? { outputDimensionality } : null)
+        }))
       };
     }
     return {
       model: m,
       content: { parts: [{ text: String(input) }] },
-      ...(hasOutputDimensionality ? { outputDimensionality } : {}),
+      ...(hasOutputDimensionality ? { outputDimensionality } : null)
     };
   },
   normalize: (responseBody, model) => {
@@ -39,7 +39,7 @@ export default {
       items = responseBody.embeddings.map((emb, idx) => ({
         object: "embedding",
         index: idx,
-        embedding: emb.values || [],
+        embedding: emb.values || []
       }));
     } else if (responseBody.embedding?.values) {
       items = [{ object: "embedding", index: 0, embedding: responseBody.embedding.values }];
@@ -48,7 +48,7 @@ export default {
       object: "list",
       data: items,
       model,
-      usage: { prompt_tokens: 0, total_tokens: 0 },
+      usage: { prompt_tokens: 0, total_tokens: 0 }
     };
-  },
+  }
 };

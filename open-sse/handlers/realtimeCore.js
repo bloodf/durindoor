@@ -19,7 +19,7 @@
  */
 
 "use strict";
-
+const { isFunction, isNumber, isObject, isString } = require("../../src/shared/utils/typeChecks.cjs");
 const { randomUUID } = require("crypto");
 const { MAX_SESSION_ITEMS } = require("../../src/shared/utils/realtimeConfig");
 
@@ -51,8 +51,8 @@ function buildChatBody(session) {
     model: session.model,
     messages,
     stream: true,
-    ...(session.temperature != null ? { temperature: session.temperature } : {}),
-    ...(session.maxOutputTokens != null ? { max_tokens: session.maxOutputTokens } : {}),
+    ...(session.temperature != null ? { temperature: session.temperature } : null),
+    ...(session.maxOutputTokens != null ? { max_tokens: session.maxOutputTokens } : null)
   };
 }
 
@@ -64,7 +64,7 @@ function sendError(ws, message, { type = "invalid_request_error", code = null, e
   send(ws, {
     type: "error",
     event_id: eventId || `evt_${randomUUID()}`,
-    error: { type, code, message },
+    error: { type, code, message }
   });
 }
 
@@ -80,7 +80,7 @@ function sendError(ws, message, { type = "invalid_request_error", code = null, e
  * @returns {{ session: object, handleClientEvent: (raw: string|Buffer) => Promise<void> }}
  */
 function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX_SESSION_ITEMS }) {
-  if (typeof chat !== "function") throw new Error("createRealtimeSession requires an injected chat() dispatcher");
+  if (!isFunction(chat)) throw new Error("createRealtimeSession requires an injected chat() dispatcher");
 
   let inFlight = null; // AbortController for the active response
 
@@ -119,7 +119,7 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
    */
   function dispose() {
     if (inFlight) {
-      try { inFlight.abort(); } catch { /* ignore */ }
+      try {inFlight.abort();} catch {/* ignore */}
     }
   }
 
@@ -139,33 +139,33 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
     const has = (k) => Object.prototype.hasOwnProperty.call(s, k);
     const patch = {};
     if (has("model")) {
-      if (typeof s.model !== "string") return { error: "session.model must be a string" };
+      if (!isString(s.model)) return { error: "session.model must be a string" };
       patch.model = s.model;
     }
     if (has("instructions")) {
-      if (typeof s.instructions !== "string") return { error: "session.instructions must be a string" };
+      if (!isString(s.instructions)) return { error: "session.instructions must be a string" };
       patch.instructions = s.instructions;
     }
     if (has("modalities")) {
-      if (!Array.isArray(s.modalities) || !s.modalities.every((m) => typeof m === "string" && ALLOWED_MODALITIES.has(m))) {
+      if (!Array.isArray(s.modalities) || !s.modalities.every((m) => isString(m) && ALLOWED_MODALITIES.has(m))) {
         return { error: "session.modalities must be an array of: text, audio" };
       }
       patch.modalities = s.modalities.slice();
     }
     if (has("temperature")) {
-      if (typeof s.temperature !== "number" || !Number.isFinite(s.temperature) || s.temperature < TEMP_MIN || s.temperature > TEMP_MAX) {
+      if (!isNumber(s.temperature) || !Number.isFinite(s.temperature) || s.temperature < TEMP_MIN || s.temperature > TEMP_MAX) {
         return { error: `session.temperature must be a finite number in [${TEMP_MIN}, ${TEMP_MAX}]` };
       }
       patch.temperature = s.temperature;
     }
     if (has("max_output_tokens")) {
       if (
-        typeof s.max_output_tokens !== "number" ||
-        !Number.isFinite(s.max_output_tokens) ||
-        !Number.isInteger(s.max_output_tokens) ||
-        s.max_output_tokens < MAX_OUTPUT_TOKENS_MIN ||
-        s.max_output_tokens > MAX_OUTPUT_TOKENS_MAX
-      ) {
+      !isNumber(s.max_output_tokens) ||
+      !Number.isFinite(s.max_output_tokens) ||
+      !Number.isInteger(s.max_output_tokens) ||
+      s.max_output_tokens < MAX_OUTPUT_TOKENS_MIN ||
+      s.max_output_tokens > MAX_OUTPUT_TOKENS_MAX)
+      {
         return { error: `session.max_output_tokens must be an integer in [${MAX_OUTPUT_TOKENS_MIN}, ${MAX_OUTPUT_TOKENS_MAX}]` };
       }
       patch.maxOutputTokens = s.max_output_tokens;
@@ -205,7 +205,7 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
       if (!res || !res.ok) {
         const status = res ? res.status : 502;
         let msg = "upstream chat request failed";
-        try { const j = await res.json(); msg = j?.error?.message || msg; } catch { /* ignore */ }
+        try {const j = await res.json();msg = j?.error?.message || msg;} catch {/* ignore */}
         sendError(ws, msg, { type: status >= 500 ? "server_error" : "invalid_request_error" });
         send(ws, { type: "response.done", event_id: `evt_${randomUUID()}`, response: { id: responseId, status: "failed" } });
         return;
@@ -216,10 +216,10 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
         for await (const chunk of iterateSSE(res.body)) {
           if (chunk.data === "[DONE]") break;
           let json;
-          try { json = JSON.parse(chunk.data); } catch { continue; }
+          try {json = JSON.parse(chunk.data);} catch {continue;}
           const choice = json.choices?.[0];
           const delta = choice?.delta?.content;
-          if (typeof delta === "string" && delta.length) {
+          if (isString(delta) && delta.length) {
             accumulated += delta;
             send(ws, {
               type: "response.output_text.delta",
@@ -228,7 +228,7 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
               item_id: itemId,
               output_index: 0,
               content_index: 0,
-              delta,
+              delta
             });
           }
           if (choice?.finish_reason) finishReason = choice.finish_reason;
@@ -237,7 +237,7 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
       } else {
         // Non-streaming JSON fallback (provider forced non-stream upstream).
         let json = null;
-        try { json = await res.json(); } catch { json = null; }
+        try {json = await res.json();} catch {json = null;}
         const text = json?.choices?.[0]?.message?.content || "";
         if (text) {
           accumulated = text;
@@ -248,7 +248,7 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
             item_id: itemId,
             output_index: 0,
             content_index: 0,
-            delta: text,
+            delta: text
           });
         }
         finishReason = json?.choices?.[0]?.finish_reason || "stop";
@@ -262,7 +262,7 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
         item_id: itemId,
         output_index: 0,
         content_index: 0,
-        text: accumulated,
+        text: accumulated
       });
 
       // Persist assistant turn into the session conversation so subsequent
@@ -280,9 +280,9 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
           id: responseId,
           status: "completed",
           output: [{ id: itemId, type: "message", role: "assistant", content: [{ type: "output_text", text: accumulated }] }],
-          ...(usage ? { usage: mapUsage(usage) } : {}),
-          finish_reason: finishReason,
-        },
+          ...(usage ? { usage: mapUsage(usage) } : null),
+          finish_reason: finishReason
+        }
       });
     } catch (error) {
       if (error?.name === "AbortError") {
@@ -303,92 +303,92 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
   async function handleClientEvent(raw) {
     let event;
     try {
-      event = JSON.parse(typeof raw === "string" ? raw : raw.toString("utf8"));
+      event = JSON.parse(isString(raw) ? raw : raw.toString("utf8"));
     } catch {
       sendError(ws, "invalid JSON event");
       return;
     }
     const type = event?.type;
     switch (type) {
-      case "session.update": {
-        // `session`, when PRESENT, must be a non-null, non-array object. Use
-        // hasOwnProperty so an explicit `session: null` is rejected (a bare
-        // `!= null` check would let it through as a no-op `{}`). An omitted
-        // `session` key remains a valid no-op update → emits `session.updated`.
-        const hasSession = Object.prototype.hasOwnProperty.call(event, "session");
-        if (hasSession && (event.session === null || typeof event.session !== "object" || Array.isArray(event.session))) {
-          sendError(ws, "session.update session must be an object", { type: "invalid_request_error", code: "invalid_session_update", eventId: event.event_id || null });
+      case "session.update":{
+          // `session`, when PRESENT, must be a non-null, non-array object. Use
+          // hasOwnProperty so an explicit `session: null` is rejected (a bare
+          // `!= null` check would let it through as a no-op `{}`). An omitted
+          // `session` key remains a valid no-op update → emits `session.updated`.
+          const hasSession = Object.prototype.hasOwnProperty.call(event, "session");
+          if (hasSession && (event.session === null || !isObject(event.session) || Array.isArray(event.session))) {
+            sendError(ws, "session.update session must be an object", { type: "invalid_request_error", code: "invalid_session_update", eventId: event.event_id || null });
+            break;
+          }
+          const s = event.session || {};
+          // Validate ALL known fields before mutating anything. Unknown keys in
+          // `s` are accepted and ignored (not stored). On any invalid known
+          // field: emit error, apply NOTHING, send no `session.updated`.
+          const { patch, error } = validateSessionUpdate(s);
+          if (error) {
+            sendError(ws, error, { type: "invalid_request_error", code: "invalid_session_update", eventId: event.event_id || null });
+            break;
+          }
+          if (patch.model != null) session.model = patch.model;
+          if (patch.instructions != null) session.instructions = patch.instructions;
+          if (patch.modalities != null) session.modalities = patch.modalities;
+          if (patch.temperature != null) session.temperature = patch.temperature;
+          if (patch.maxOutputTokens != null) session.maxOutputTokens = patch.maxOutputTokens;
+          send(ws, { type: "session.updated", event_id: `evt_${randomUUID()}`, session: publicSession(session) });
           break;
         }
-        const s = event.session || {};
-        // Validate ALL known fields before mutating anything. Unknown keys in
-        // `s` are accepted and ignored (not stored). On any invalid known
-        // field: emit error, apply NOTHING, send no `session.updated`.
-        const { patch, error } = validateSessionUpdate(s);
-        if (error) {
-          sendError(ws, error, { type: "invalid_request_error", code: "invalid_session_update", eventId: event.event_id || null });
+      case "conversation.item.create":{
+          // `item`, when PRESENT, must be a non-null, non-array object. A
+          // malformed shape (null / array / string) must not be coerced into a
+          // default `{role:"user"}` message — reject at the trust boundary.
+          const hasItem = Object.prototype.hasOwnProperty.call(event, "item");
+          if (hasItem && (event.item === null || !isObject(event.item) || Array.isArray(event.item))) {
+            sendError(ws, "conversation.item.create item must be an object", { type: "invalid_request_error", code: "invalid_item", eventId: event.event_id || null });
+            break;
+          }
+          const item = event.item || {};
+          // Validate only known fields; unknown fields (future protocol
+          // extensions — e.g. function/tool call items that carry no `role`) are
+          // accepted and ignored, NOT preserved on the stored/emitted item.
+          // `role` defaults to "user" when the KEY is absent; an explicit
+          // `role: null` (JSON null over the wire) or any non-string / out-of-set
+          // value is rejected. Presence is detected with hasOwnProperty so null is
+          // not mistaken for "not supplied".
+          const hasRole = Object.prototype.hasOwnProperty.call(item, "role");
+          if (hasRole && (!isString(item.role) || !ALLOWED_ROLES.has(item.role))) {
+            sendError(ws, "item.role must be one of: user, assistant, system", { type: "invalid_request_error", code: "invalid_item_role", eventId: event.event_id || null });
+            break;
+          }
+          const stored = {
+            id: item.id || `item_${randomUUID()}`,
+            type: item.type || "message",
+            role: hasRole ? item.role : "user",
+            content: flattenContent(item.content)
+          };
+          // Preflight: if the history is already at the cap and EVERY existing
+          // item is a system item, there is nothing evictable (system items are
+          // never dropped) — any push would either overflow or immediately evict
+          // the very item we just added. Reject before mutating state, regardless
+          // of the new item's role. No `conversation.item.created` is emitted.
+          const cap = Number.isFinite(maxItems) && maxItems > 0 ? maxItems : MAX_SESSION_ITEMS;
+          if (session.items.length >= cap && session.items.every((it) => it.role === "system")) {
+            sendError(ws, `session item limit (${cap}) reached`, { type: "invalid_request_error", code: "session_item_limit", eventId: event.event_id || null });
+            break;
+          }
+          session.items.push(stored);
+          trimSessionItems();
+          send(ws, { type: "conversation.item.created", event_id: `evt_${randomUUID()}`, item: stored });
           break;
         }
-        if (patch.model != null) session.model = patch.model;
-        if (patch.instructions != null) session.instructions = patch.instructions;
-        if (patch.modalities != null) session.modalities = patch.modalities;
-        if (patch.temperature != null) session.temperature = patch.temperature;
-        if (patch.maxOutputTokens != null) session.maxOutputTokens = patch.maxOutputTokens;
-        send(ws, { type: "session.updated", event_id: `evt_${randomUUID()}`, session: publicSession(session) });
-        break;
-      }
-      case "conversation.item.create": {
-        // `item`, when PRESENT, must be a non-null, non-array object. A
-        // malformed shape (null / array / string) must not be coerced into a
-        // default `{role:"user"}` message — reject at the trust boundary.
-        const hasItem = Object.prototype.hasOwnProperty.call(event, "item");
-        if (hasItem && (event.item === null || typeof event.item !== "object" || Array.isArray(event.item))) {
-          sendError(ws, "conversation.item.create item must be an object", { type: "invalid_request_error", code: "invalid_item", eventId: event.event_id || null });
+      case "response.create":{
+          if (inFlight) sendError(ws, "a response is already in progress", { type: "invalid_request_error", code: "response_in_progress" });else
+          await runResponseCreate();
           break;
         }
-        const item = event.item || {};
-        // Validate only known fields; unknown fields (future protocol
-        // extensions — e.g. function/tool call items that carry no `role`) are
-        // accepted and ignored, NOT preserved on the stored/emitted item.
-        // `role` defaults to "user" when the KEY is absent; an explicit
-        // `role: null` (JSON null over the wire) or any non-string / out-of-set
-        // value is rejected. Presence is detected with hasOwnProperty so null is
-        // not mistaken for "not supplied".
-        const hasRole = Object.prototype.hasOwnProperty.call(item, "role");
-        if (hasRole && (typeof item.role !== "string" || !ALLOWED_ROLES.has(item.role))) {
-          sendError(ws, "item.role must be one of: user, assistant, system", { type: "invalid_request_error", code: "invalid_item_role", eventId: event.event_id || null });
+      case "response.cancel":{
+          dispose();
           break;
         }
-        const stored = {
-          id: item.id || `item_${randomUUID()}`,
-          type: item.type || "message",
-          role: hasRole ? item.role : "user",
-          content: flattenContent(item.content),
-        };
-        // Preflight: if the history is already at the cap and EVERY existing
-        // item is a system item, there is nothing evictable (system items are
-        // never dropped) — any push would either overflow or immediately evict
-        // the very item we just added. Reject before mutating state, regardless
-        // of the new item's role. No `conversation.item.created` is emitted.
-        const cap = Number.isFinite(maxItems) && maxItems > 0 ? maxItems : MAX_SESSION_ITEMS;
-        if (session.items.length >= cap && session.items.every((it) => it.role === "system")) {
-          sendError(ws, `session item limit (${cap}) reached`, { type: "invalid_request_error", code: "session_item_limit", eventId: event.event_id || null });
-          break;
-        }
-        session.items.push(stored);
-        trimSessionItems();
-        send(ws, { type: "conversation.item.created", event_id: `evt_${randomUUID()}`, item: stored });
-        break;
-      }
-      case "response.create": {
-        if (inFlight) sendError(ws, "a response is already in progress", { type: "invalid_request_error", code: "response_in_progress" });
-        else await runResponseCreate();
-        break;
-      }
-      case "response.cancel": {
-        dispose();
-        break;
-      }
       default:
         sendError(ws, `unsupported event type: ${type}`, { type: "invalid_request_error", code: "unsupported_event" });
     }
@@ -399,15 +399,15 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
 
 function flattenContent(content) {
   if (content == null) return "";
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (Array.isArray(content)) {
     return content.map((part) => {
-      if (typeof part === "string") return part;
-      if (part && typeof part === "object") return part.text ?? part.input_text ?? "";
+      if (isString(part)) return part;
+      if (part && isObject(part)) return part.text ?? part.input_text ?? "";
       return "";
     }).join("");
   }
-  if (typeof content === "object") return content.text ?? content.input_text ?? "";
+  if (isObject(content)) return content.text ?? content.input_text ?? "";
   return String(content);
 }
 
@@ -415,7 +415,7 @@ function mapUsage(u) {
   return {
     input_tokens: u.prompt_tokens ?? u.input_tokens ?? 0,
     output_tokens: u.completion_tokens ?? u.output_tokens ?? 0,
-    total_tokens: u.total_tokens ?? ((u.prompt_tokens || 0) + (u.completion_tokens || 0)),
+    total_tokens: u.total_tokens ?? (u.prompt_tokens || 0) + (u.completion_tokens || 0)
   };
 }
 
@@ -426,7 +426,7 @@ function publicSession(s) {
     instructions: s.instructions,
     modalities: s.modalities,
     temperature: s.temperature,
-    max_output_tokens: s.maxOutputTokens,
+    max_output_tokens: s.maxOutputTokens
   };
 }
 
@@ -455,7 +455,7 @@ async function* iterateSSE(readable) {
       }
     }
   } finally {
-    try { reader.releaseLock(); } catch { /* ignore */ }
+    try {reader.releaseLock();} catch {/* ignore */}
   }
 }
 
@@ -466,5 +466,5 @@ module.exports = {
   iterateSSE,
   mapUsage,
   publicSession,
-  sendError,
+  sendError
 };

@@ -3,8 +3,8 @@ import { CODEX_DEFAULT_INSTRUCTIONS } from "../config/codexInstructions.js";
 import { PROVIDERS } from "../config/providers.js";
 import {
   refreshProviderCredentials,
-  shouldRefreshCredentials,
-} from "../services/oauthCredentialManager.js";
+  shouldRefreshCredentials } from
+"../services/oauthCredentialManager.js";
 import { normalizeResponsesInput, normalizeStatelessResponseInput } from "../translator/formats/responsesApi.js";
 import { fetchImageAsBase64 } from "../translator/concerns/image.js";
 import { resolveOpenAiEffort } from "../translator/concerns/thinkingUnified.js";
@@ -13,16 +13,16 @@ import {
   CODEX_SSE_PEEK_TIMEOUT_MS,
   DEFAULT_RETRY_CONFIG,
   HTTP_STATUS,
-  resolveRetryEntry,
-} from "../config/runtimeConfig.js";
+  resolveRetryEntry } from
+"../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import {
   applyCodexClientIdentityHeaders,
   applyCodexClientMetadata,
   applyCodexOriginalIdentityHeaders,
-  withCodexFingerprintCredentials,
-} from "../config/codexIdentity.js";
+  withCodexFingerprintCredentials } from
+"../config/codexIdentity.js";
 import { applyCodexAccountHeader } from "../shared/codexAccountId.js";
 import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
@@ -30,6 +30,7 @@ import { cancelAndReleaseReader, releaseReader } from "../utils/streamReader.js"
 
 // Recognized Codex effort suffixes, lowest-to-highest. Single source of truth for
 // routing normalization: transformRequest strips the suffix from the wire id.
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 const CODEX_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
 /**
@@ -42,7 +43,7 @@ const CODEX_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'
  * @returns {{model: string, effort: string|null}} Bare id and effort (null when absent/unrecognized).
  */
 function splitCodexEffortSuffix(modelId) {
-  const model = typeof modelId === "string" ? modelId : "";
+  const model = isString(modelId) ? modelId : "";
   for (const level of CODEX_EFFORT_LEVELS) {
     if (model.endsWith(`-${level}`)) {
       return { model: model.slice(0, -`-${level}`.length), effort: level };
@@ -54,17 +55,17 @@ function splitCodexEffortSuffix(modelId) {
 // SSE error patterns inside 200-OK bodies. Some retry same account first; capacity rotates accounts.
 const CODEX_SSE_RETRY_PATTERNS = ["server_is_overloaded", "service_unavailable_error"];
 const CODEX_SSE_CONTEXT_OVERFLOW_PATTERNS = [
-  "exceeds the context window",
-  "maximum context length",
-  "context_length_exceeded",
-];
+"exceeds the context window",
+"maximum context length",
+"context_length_exceeded"];
+
 const CODEX_SSE_FAILURE_EVENTS = new Set(["error", "failed", "response.failed"]);
 
 const CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS = ["selected model is at capacity", "model_at_capacity"];
 const CODEX_SSE_USER_OUTPUT_EVENTS = new Set([
-  "response.output_text.delta",
-  "response.function_call_arguments.delta",
-]);
+"response.output_text.delta",
+"response.function_call_arguments.delta"]
+);
 const CODEX_SSE_PEEK_BYTES = 256 * 1024;
 const CODEX_MODEL_CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model.";
 // Codex sometimes disguises an overload as a successful output_text stream (#3232).
@@ -79,18 +80,18 @@ const CODEX_TOKEN_PART_PATTERN = /[A-Za-z0-9_]+|\s+|[^\sA-Za-z0-9_]/g;
 // concurrent requests never leak headers across shared credentials.
 const CODEX_RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
 const CODEX_LITE_METADATA_HEADERS = [
-  "openai-beta",
-  "x-client-request-id",
-  "x-codex-beta-features",
-  "x-codex-installation-id",
-  "x-codex-parent-thread-id",
-  "x-codex-turn-metadata",
-  "x-codex-turn-state",
-  "x-codex-window-id",
-  "x-openai-memgen-request",
-  "x-openai-subagent",
-  "x-responsesapi-include-timing-metrics",
-];
+"openai-beta",
+"x-client-request-id",
+"x-codex-beta-features",
+"x-codex-installation-id",
+"x-codex-parent-thread-id",
+"x-codex-turn-metadata",
+"x-codex-turn-state",
+"x-codex-window-id",
+"x-openai-memgen-request",
+"x-openai-subagent",
+"x-responsesapi-include-timing-metrics"];
+
 // Apply Codex transport-level effort aliases after model-aware semantic resolution.
 // Official openai/codex serializes semantic Ultra as Max for requests; other efforts identity-map.
 // Upstream provenance: decolua/9router#2523 — aliases are matched case-sensitively (no
@@ -156,18 +157,18 @@ function copyResponsesLiteHeaders(headers, requestContext) {
 
   for (const name of CODEX_LITE_METADATA_HEADERS) {
     const value = clientHeaders[name];
-    if (typeof value === "string" && value && value.length <= CODEX_LITE_METADATA_MAX_BYTES) {
+    if (isString(value) && value && value.length <= CODEX_LITE_METADATA_MAX_BYTES) {
       headers[name] = value;
     }
   }
 
   const userAgent = clientHeaders["user-agent"];
-  if (typeof userAgent === "string" && CODEX_LITE_USER_AGENT_RE.test(userAgent)) {
+  if (isString(userAgent) && CODEX_LITE_USER_AGENT_RE.test(userAgent)) {
     headers["User-Agent"] = userAgent;
   }
 
   const originator = clientHeaders.originator;
-  if (typeof originator === "string" && CODEX_LITE_ORIGINATOR_RE.test(originator)) {
+  if (isString(originator) && CODEX_LITE_ORIGINATOR_RE.test(originator)) {
     headers.originator = originator;
   }
 }
@@ -175,9 +176,9 @@ function copyResponsesLiteHeaders(headers, requestContext) {
 // Compact (/responses/compact) uses a unary JSON contract — narrower allowlist,
 // no stream/store/include fields — distinct from streaming Responses.
 const COMPACT_API_ALLOWLIST = new Set([
-  "model", "input", "instructions", "tools", "parallel_tool_calls", "reasoning",
-  "service_tier", "prompt_cache_key", "text"
-]);
+"model", "input", "instructions", "tools", "parallel_tool_calls", "reasoning",
+"service_tier", "prompt_cache_key", "text"]
+);
 
 /**
  * Canonicalize an SSE event name for case-insensitive comparison.
@@ -187,7 +188,7 @@ const COMPACT_API_ALLOWLIST = new Set([
  * @returns {string} Trimmed, lowercased name, or `""` for non-strings.
  */
 function normalizeEventName(value) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
+  return isString(value) ? value.trim().toLowerCase() : "";
 }
 
 /**
@@ -239,50 +240,50 @@ function classifyCodexSseFrame(frame) {
   const data = dataLines.join("\n");
   let payload = null;
   if (data && data !== "[DONE]") {
-    try { payload = JSON.parse(data); } catch { /* explicit text error events are handled below */ }
+    try {payload = JSON.parse(data);} catch {/* explicit text error events are handled below */}
   }
 
   const payloadType = normalizeEventName(payload?.type);
   const payloadEvent = normalizeEventName(payload?.event);
-  const userOutput = CODEX_SSE_USER_OUTPUT_EVENTS.has(eventName)
-    || CODEX_SSE_USER_OUTPUT_EVENTS.has(payloadType)
-    || CODEX_SSE_USER_OUTPUT_EVENTS.has(payloadEvent);
+  const userOutput = CODEX_SSE_USER_OUTPUT_EVENTS.has(eventName) ||
+  CODEX_SSE_USER_OUTPUT_EVENTS.has(payloadType) ||
+  CODEX_SSE_USER_OUTPUT_EVENTS.has(payloadEvent);
   if (userOutput) {
-    const isOutputTextDelta = eventName === "response.output_text.delta"
-      || payloadType === "response.output_text.delta"
-      || payloadEvent === "response.output_text.delta";
-    const delta = isOutputTextDelta && typeof payload?.delta === "string" ? payload.delta : null;
+    const isOutputTextDelta = eventName === "response.output_text.delta" ||
+    payloadType === "response.output_text.delta" ||
+    payloadEvent === "response.output_text.delta";
+    const delta = isOutputTextDelta && isString(payload?.delta) ? payload.delta : null;
     return { userOutput: true, kind: null, matched: null, message: null, delta };
   }
 
-  const errorObjects = [payload?.error, payload?.response?.error]
-    .filter((value) => value && typeof value === "object" && !Array.isArray(value));
+  const errorObjects = [payload?.error, payload?.response?.error].
+  filter((value) => value && isObject(value) && !Array.isArray(value));
   const responseStatus = normalizeEventName(payload?.response?.status);
-  const failureEvent = CODEX_SSE_FAILURE_EVENTS.has(eventName)
-    || CODEX_SSE_FAILURE_EVENTS.has(payloadType)
-    || CODEX_SSE_FAILURE_EVENTS.has(payloadEvent)
-    || CODEX_SSE_FAILURE_EVENTS.has(responseStatus);
-  const explicitError = failureEvent
-    || isExplicitErrorEvent(payloadType)
-    || isExplicitErrorEvent(payloadEvent)
-    || errorObjects.length > 0;
+  const failureEvent = CODEX_SSE_FAILURE_EVENTS.has(eventName) ||
+  CODEX_SSE_FAILURE_EVENTS.has(payloadType) ||
+  CODEX_SSE_FAILURE_EVENTS.has(payloadEvent) ||
+  CODEX_SSE_FAILURE_EVENTS.has(responseStatus);
+  const explicitError = failureEvent ||
+  isExplicitErrorEvent(payloadType) ||
+  isExplicitErrorEvent(payloadEvent) ||
+  errorObjects.length > 0;
   if (!explicitError) return { userOutput: false, kind: null, matched: null, message: null };
 
   const values = [];
   for (const error of errorObjects) {
     values.push(error.code, error.type, error.message);
   }
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+  if (payload && isObject(payload) && !Array.isArray(payload)) {
     values.push(payload.code, payload.type, payload.message);
   } else if (eventName === "error") {
     values.push(data);
   }
 
-  const message = errorObjects.find((error) => typeof error.message === "string")?.message
-    || (typeof payload?.message === "string" ? payload.message : null)
-    || (eventName === "error" && data ? data : null);
-  const contextMatch = (failureEvent || errorObjects.length > 0)
-    && firstPattern(values, CODEX_SSE_CONTEXT_OVERFLOW_PATTERNS);
+  const message = errorObjects.find((error) => isString(error.message))?.message || (
+  isString(payload?.message) ? payload.message : null) || (
+  eventName === "error" && data ? data : null);
+  const contextMatch = (failureEvent || errorObjects.length > 0) &&
+  firstPattern(values, CODEX_SSE_CONTEXT_OVERFLOW_PATTERNS);
   if (contextMatch) return { userOutput: false, kind: "context", matched: contextMatch, message };
 
   const accountMatch = firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
@@ -296,26 +297,26 @@ function classifyCodexSseFrame(frame) {
 
 // Hosted tool types that Codex/OpenAI Responses executes server-side
 const CODEX_HOSTED_TOOL_TYPES = new Set([
-  "image_generation", "web_search", "web_search_preview", "file_search",
-  "computer", "computer_use_preview", "code_interpreter", "mcp", "local_shell",
-  "tool_search"
-]);
+"image_generation", "web_search", "web_search_preview", "file_search",
+"computer", "computer_use_preview", "code_interpreter", "mcp", "local_shell",
+"tool_search"]
+);
 
 // Responses-native freeform tools carry a name plus format payload and must pass through intact.
 const CODEX_PASSTHROUGH_TOOL_TYPES = new Set(["custom"]);
 
 // Allowlist of fields accepted by Codex Responses API — anything else is stripped
 const RESPONSES_API_ALLOWLIST = new Set([
-  "model", "input", "instructions", "tools", "tool_choice", "parallel_tool_calls", "stream", "store",
-  "reasoning", "service_tier", "include", "prompt_cache_key", "client_metadata",
-  "text"
-]);
+"model", "input", "instructions", "tools", "tool_choice", "parallel_tool_calls", "stream", "store",
+"reasoning", "service_tier", "include", "prompt_cache_key", "client_metadata",
+"text"]
+);
 
 // Convert role=system → role=developer in body.input (keeps content in cacheable prefix)
 function convertSystemToDeveloperRole(body) {
   if (!Array.isArray(body.input)) return;
   for (const item of body.input) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    if (!item || !isObject(item) || Array.isArray(item)) continue;
     const isSystemMsg = item.role === "system" && (!item.type || item.type === "message");
     if (isSystemMsg) item.role = "developer";
   }
@@ -330,10 +331,10 @@ function convertSystemToDeveloperRole(body) {
 function normalizeCodexAssistantHistory(body) {
   if (!Array.isArray(body.input)) return;
   for (const item of body.input) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    if (!item || !isObject(item) || Array.isArray(item)) continue;
     if (item.role !== "assistant" || !Array.isArray(item.content)) continue;
     for (const part of item.content) {
-      if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+      if (!part || !isObject(part) || Array.isArray(part)) continue;
       if (part.type === "input_text" || part.type === "text") {
         part.type = "output_text";
         delete part.annotations;
@@ -350,12 +351,12 @@ function normalizeCodexTools(body) {
   if (!Array.isArray(body.tools)) return;
   const validNames = new Set();
   body.tools = body.tools.filter((tool) => {
-    if (!tool || typeof tool !== "object" || Array.isArray(tool)) return false;
-    const type = typeof tool.type === "string" ? tool.type : "";
+    if (!tool || !isObject(tool) || Array.isArray(tool)) return false;
+    const type = isString(tool.type) ? tool.type : "";
     if (type === "namespace") {
       if (Array.isArray(tool.tools)) {
         for (const st of tool.tools) {
-          const n = typeof st?.name === "string" ? st.name.trim().slice(0, 128) : "";
+          const n = isString(st?.name) ? st.name.trim().slice(0, 128) : "";
           if (n) validNames.add(n);
         }
       }
@@ -363,17 +364,17 @@ function normalizeCodexTools(body) {
     }
     if (type !== "function") {
       if (CODEX_PASSTHROUGH_TOOL_TYPES.has(type)) return true;
-      if (!type || tool.function || typeof tool.name === "string") return false;
+      if (!type || tool.function || isString(tool.name)) return false;
       return CODEX_HOSTED_TOOL_TYPES.has(type);
     }
-    const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function) ? tool.function : null;
-    const rawName = typeof tool.name === "string" ? tool.name : (typeof fn?.name === "string" ? fn.name : "");
+    const fn = tool.function && isObject(tool.function) && !Array.isArray(tool.function) ? tool.function : null;
+    const rawName = isString(tool.name) ? tool.name : isString(fn?.name) ? fn.name : "";
     const name = rawName.trim();
     if (!name) return false;
-    const description = typeof tool.description === "string" ? tool.description : (typeof fn?.description === "string" ? fn.description : "");
-    const parameters = (tool.parameters && typeof tool.parameters === "object" && !Array.isArray(tool.parameters))
-      ? tool.parameters
-      : (fn?.parameters && typeof fn.parameters === "object" && !Array.isArray(fn.parameters) ? fn.parameters : { type: "object", properties: {} });
+    const description = isString(tool.description) ? tool.description : isString(fn?.description) ? fn.description : "";
+    const parameters = tool.parameters && isObject(tool.parameters) && !Array.isArray(tool.parameters) ?
+    tool.parameters :
+    fn?.parameters && isObject(fn.parameters) && !Array.isArray(fn.parameters) ? fn.parameters : { type: "object", properties: {} };
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
     tool.name = name.slice(0, 128);
@@ -383,9 +384,9 @@ function normalizeCodexTools(body) {
     return true;
   });
   // Drop tool_choice if it references an unknown function name
-  if (body.tool_choice && typeof body.tool_choice === "object" && !Array.isArray(body.tool_choice)) {
+  if (body.tool_choice && isObject(body.tool_choice) && !Array.isArray(body.tool_choice)) {
     if (body.tool_choice.type === "function") {
-      const n = typeof body.tool_choice.name === "string" ? body.tool_choice.name.trim() : "";
+      const n = isString(body.tool_choice.name) ? body.tool_choice.name.trim() : "";
       if (!n || !validNames.has(n)) delete body.tool_choice;
     }
   }
@@ -403,7 +404,7 @@ function resolveCacheSessionId(body, credentials, requestContext = null) {
 }
 
 function cloneRequestBody(body) {
-  if (!body || typeof body !== "object") return body;
+  if (!body || !isObject(body)) return body;
   return structuredClone(body);
 }
 
@@ -448,15 +449,15 @@ async function readBeforeDeadline(reader, { signal = null, deadlineAt }) {
   let onAbort = null;
   try {
     return await Promise.race([
-      reader.read(),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(peekTimeoutError()), remaining);
-        if (signal) {
-          onAbort = () => reject(abortReason(signal));
-          signal.addEventListener("abort", onAbort, { once: true });
-        }
-      }),
-    ]);
+    reader.read(),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(peekTimeoutError()), remaining);
+      if (signal) {
+        onAbort = () => reject(abortReason(signal));
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    })]
+    );
   } finally {
     if (timer) clearTimeout(timer);
     if (onAbort) signal?.removeEventListener?.("abort", onAbort);
@@ -500,8 +501,8 @@ function createReplayBody(reader, chunks, terminalError = null) {
     async cancel(reason) {
       if (finished) return;
       finished = true;
-      try { await reader.cancel(reason); } finally { releaseReader(reader); }
-    },
+      try {await reader.cancel(reason);} finally {releaseReader(reader);}
+    }
   });
 }
 
@@ -510,14 +511,14 @@ function createReplayBody(reader, chunks, terminalError = null) {
 // returning 400 invalid_encrypted_content. Detect that exact failure so the
 // executor can retry ONCE with the bad encrypted reasoning stripped (#2667).
 async function isInvalidEncryptedContentResponse(response) {
-  if (response?.status !== HTTP_STATUS.BAD_REQUEST || typeof response.clone !== "function") return false;
+  if (response?.status !== HTTP_STATUS.BAD_REQUEST || !isFunction(response.clone)) return false;
   try {
     const payload = JSON.parse(await response.clone().text());
     const error = payload?.error || payload;
     if (error?.code === "invalid_encrypted_content") return true;
-    const message = typeof error?.message === "string" ? error.message.toLowerCase() : "";
-    return message.includes("encrypted content") &&
-      (message.includes("could not be verified") || message.includes("could not be decrypted or parsed"));
+    const message = isString(error?.message) ? error.message.toLowerCase() : "";
+    return message.includes("encrypted content") && (
+    message.includes("could not be verified") || message.includes("could not be decrypted or parsed"));
   } catch {
     return false;
   }
@@ -552,13 +553,13 @@ function codexSseErrorResponse(status, message) {
     error: {
       message,
       type: status >= 500 ? "server_error" : "invalid_request_error",
-      code: status === HTTP_STATUS.PAYLOAD_TOO_LARGE
-        ? "context_length_exceeded"
-        : status === HTTP_STATUS.SERVICE_UNAVAILABLE ? "service_unavailable" : "upstream_error",
+      code: status === HTTP_STATUS.PAYLOAD_TOO_LARGE ?
+      "context_length_exceeded" :
+      status === HTTP_STATUS.SERVICE_UNAVAILABLE ? "service_unavailable" : "upstream_error"
     }
   }), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" }
   });
 }
 
@@ -624,7 +625,7 @@ export class CodexExecutor extends BaseExecutor {
       if (!Array.isArray(item.content)) continue;
       const pending = item.content.map(async (c) => {
         if (c.type !== "image_url") return c;
-        const url = typeof c.image_url === "string" ? c.image_url : c.image_url?.url;
+        const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
         const detail = c.image_url?.detail || "auto";
         if (!url) return c;
         if (url.startsWith("data:")) return { type: "input_image", image_url: url, detail };
@@ -642,16 +643,16 @@ export class CodexExecutor extends BaseExecutor {
     const requestContext = Object.freeze({
       ...(args.requestContext || {}),
       compact: args.requestContext?.compact === true || legacyCompact,
-      sessionId: args.requestContext?.sessionId
-        || resolveCacheSessionId(requestBody, args.credentials, args.requestContext),
+      sessionId: args.requestContext?.sessionId ||
+      resolveCacheSessionId(requestBody, args.credentials, args.requestContext)
     });
     const credentials = withCodexFingerprintCredentials(
       args.credentials,
       requestContext.clientHeaders,
-      requestContext.compact ? "/compact" : null,
+      requestContext.compact ? "/compact" : null
     );
 
-    const imgCount = Array.isArray(requestBody.input) ? requestBody.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter(c => c.type === "image_url").length : 0), 0) : 0;
+    const imgCount = Array.isArray(requestBody.input) ? requestBody.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter((c) => c.type === "image_url").length : 0), 0) : 0;
     const inputLen = Array.isArray(requestBody.input) ? requestBody.input.length : 0;
     dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount}`);
     if (imgCount > 0) {
@@ -675,7 +676,7 @@ export class CodexExecutor extends BaseExecutor {
         ...args,
         credentials,
         body: cloneRequestBody(requestBody),
-        requestContext,
+        requestContext
       });
       // Surface the effective tier once per request (#3316).
       if (!tierLogged) {
@@ -684,7 +685,7 @@ export class CodexExecutor extends BaseExecutor {
       }
       // One-shot recovery: on a 400 invalid_encrypted_content, strip the
       // unverifiable encrypted reasoning and retry the SAME account once (#2667).
-      if (!encryptedRecoveryAttempted && await isInvalidEncryptedContentResponse(result.response)) {
+      if (!encryptedRecoveryAttempted && (await isInvalidEncryptedContentResponse(result.response))) {
         const removed = removeInvalidEncryptedReasoning(requestBody);
         if (removed > 0) {
           encryptedRecoveryAttempted = true;
@@ -696,9 +697,9 @@ export class CodexExecutor extends BaseExecutor {
       try {
         peek = await this._peekSseTransientError(result.response, args.signal);
       } catch (error) {
-        const reason = error?.name === "AbortError"
-          ? "abort"
-          : error?.name === "TimeoutError" ? "timeout" : "stream_error";
+        const reason = error?.name === "AbortError" ?
+        "abort" :
+        error?.name === "TimeoutError" ? "timeout" : "stream_error";
         await settleProviderAttemptDispatch(result.response, { success: false, reason });
         throw error;
       }
@@ -708,7 +709,7 @@ export class CodexExecutor extends BaseExecutor {
           result.response = new Response(peek.replacementBody, {
             status: result.response.status,
             statusText: result.response.statusText,
-            headers: result.response.headers,
+            headers: result.response.headers
           });
         }
         return result;
@@ -718,7 +719,7 @@ export class CodexExecutor extends BaseExecutor {
         await settleProviderAttemptDispatch(result.response, { success: false, reason: "upstream_error" });
         result.response = codexSseErrorResponse(
           HTTP_STATUS.PAYLOAD_TOO_LARGE,
-          peek.message || peek.matched,
+          peek.message || peek.matched
         );
         return result;
       }
@@ -778,9 +779,9 @@ export class CodexExecutor extends BaseExecutor {
       const value = read.value;
       chunks.push(value);
       const remainingBytes = CODEX_SSE_PEEK_BYTES - inspectedBytes;
-      const inspectable = value.byteLength > remainingBytes
-        ? value.subarray(0, remainingBytes)
-        : value;
+      const inspectable = value.byteLength > remainingBytes ?
+      value.subarray(0, remainingBytes) :
+      value;
       inspectedBytes += inspectable.byteLength;
       buffer += decoder.decode(inspectable, { stream: true });
 
@@ -790,12 +791,12 @@ export class CodexExecutor extends BaseExecutor {
       for (const frame of batch.frames) {
         const frameResult = classifyCodexSseFrame(frame);
         if (frameResult.userOutput) {
-          if (typeof frameResult.delta === "string") outputDeltaAccumulator += frameResult.delta;
-          else sawOutputInBatch = true;
+          if (isString(frameResult.delta)) outputDeltaAccumulator += frameResult.delta;else
+          sawOutputInBatch = true;
         }
-        if (frameResult.kind === "context") classification = frameResult;
-        else if (frameResult.kind === "account" && classification?.kind !== "context") classification = frameResult;
-        else if (frameResult.kind === "retry" && !["context", "account"].includes(classification?.kind)) classification = frameResult;
+        if (frameResult.kind === "context") classification = frameResult;else
+        if (frameResult.kind === "account" && classification?.kind !== "context") classification = frameResult;else
+        if (frameResult.kind === "retry" && !["context", "account"].includes(classification?.kind)) classification = frameResult;
       }
 
       if (classification) break;
@@ -812,16 +813,16 @@ export class CodexExecutor extends BaseExecutor {
     }
 
     // #3232: full-match overload detection after the loop terminates.
-    if (classification?.kind !== "context"
-        && outputDeltaAccumulator
-        && outputDeltaAccumulator.toLowerCase() === CODEX_OVERLOADED_OUTPUT_MESSAGE.toLowerCase()) {
+    if (classification?.kind !== "context" &&
+    outputDeltaAccumulator &&
+    outputDeltaAccumulator.toLowerCase() === CODEX_OVERLOADED_OUTPUT_MESSAGE.toLowerCase()) {
       await cancelAndReleaseReader(reader, "codex-sse-retry");
       return {
         matched: "codex_overloaded_output",
         message: CODEX_OVERLOADED_OUTPUT_MESSAGE,
         accountFallback: false,
         contextOverflow: false,
-        replacementBody: null,
+        replacementBody: null
       };
     }
 
@@ -832,7 +833,7 @@ export class CodexExecutor extends BaseExecutor {
         message: classification.message || classification.matched,
         accountFallback: classification.kind === "account",
         contextOverflow: classification.kind === "context",
-        replacementBody: null,
+        replacementBody: null
       };
     }
 
@@ -841,7 +842,7 @@ export class CodexExecutor extends BaseExecutor {
       message: null,
       accountFallback: false,
       contextOverflow: false,
-      replacementBody: createReplayBody(reader, chunks, terminalError),
+      replacementBody: createReplayBody(reader, chunks, terminalError)
     };
   }
 
@@ -854,18 +855,18 @@ export class CodexExecutor extends BaseExecutor {
         if (err?.type === "usage_limit_reached") {
           const now = Date.now();
           let resetsAtMs = null;
-          if (typeof err.resets_at === "number" && err.resets_at > 0) {
+          if (isNumber(err.resets_at) && err.resets_at > 0) {
             const ms = err.resets_at * 1000;
             if (ms > now) resetsAtMs = ms;
           }
-          if (!resetsAtMs && typeof err.resets_in_seconds === "number" && err.resets_in_seconds > 0) {
+          if (!resetsAtMs && isNumber(err.resets_in_seconds) && err.resets_in_seconds > 0) {
             resetsAtMs = now + err.resets_in_seconds * 1000;
           }
           if (resetsAtMs) {
             return { status: 429, message: err.message || bodyText, resetsAtMs };
           }
         }
-      } catch { /* fall through to default */ }
+      } catch {/* fall through to default */}
     }
     return super.parseError(response, bodyText);
   }
@@ -885,7 +886,7 @@ export class CodexExecutor extends BaseExecutor {
     if (normalized) body.input = normalized;
 
     // Ensure input is present and non-empty (Codex API rejects empty input)
-    if (!body.input || (Array.isArray(body.input) && body.input.length === 0)) {
+    if (!body.input || Array.isArray(body.input) && body.input.length === 0) {
       body.input = [{ type: "message", role: "user", content: [{ type: "input_text", text: "..." }] }];
     }
 
@@ -902,21 +903,21 @@ export class CodexExecutor extends BaseExecutor {
     normalizeCodexTools(body);
 
     // Ensure streaming is enabled (Codex API requires it); /responses/compact is unary JSON.
-    if (isCompact) delete body.stream;
-    else body.stream = true;
+    if (isCompact) delete body.stream;else
+    body.stream = true;
 
     // If no instructions provided, inject default Codex instructions.
     // Responses Lite / compact carry instructions inside body.input (developer
     // message); injecting the default top-level string would duplicate it.
-    if (!responsesLite && !isCompact && (typeof body.instructions !== "string" || body.instructions.trim() === "")) {
+    if (!responsesLite && !isCompact && (!isString(body.instructions) || body.instructions.trim() === "")) {
       body.instructions = CODEX_DEFAULT_INSTRUCTIONS;
     } else if (responsesLite && body.instructions === "") {
       delete body.instructions;
     }
 
     // Ensure store is false (Codex requirement); compact has no store field.
-    if (isCompact) delete body.store;
-    else body.store = false;
+    if (isCompact) delete body.store;else
+    body.store = false;
 
     // Inject prompt_cache_key for stable Codex prompt caching
     if (!body.prompt_cache_key && sessionId) {
@@ -981,7 +982,7 @@ export class CodexExecutor extends BaseExecutor {
       if (estimatedInputTokens >= CODEX_PRIORITY_ESTIMATED_INPUT_LIMIT) {
         delete body.service_tier;
         console.log(
-          `[Codex] Priority disabled for long context | estimated_input>=${CODEX_PRIORITY_ESTIMATED_INPUT_LIMIT} | short_limit=${CODEX_PRIORITY_SHORT_CONTEXT_LIMIT}`,
+          `[Codex] Priority disabled for long context | estimated_input>=${CODEX_PRIORITY_ESTIMATED_INPUT_LIMIT} | short_limit=${CODEX_PRIORITY_SHORT_CONTEXT_LIMIT}`
         );
       }
     }

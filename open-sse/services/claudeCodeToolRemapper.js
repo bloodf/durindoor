@@ -27,6 +27,7 @@
  */
 
 import { EXTRA_TOOL_RENAME_MAP } from "./claudeCodeExtraRemap.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const TOOL_RENAME_MAP = {
   ...EXTRA_TOOL_RENAME_MAP,
@@ -46,7 +47,7 @@ const TOOL_RENAME_MAP = {
   multiedit: "MultiEdit",
   notebook: "Notebook",
   lsp: "Lsp",
-  apply_patch: "ApplyPatch",
+  apply_patch: "ApplyPatch"
 };
 
 const REVERSE_MAP = {};
@@ -58,7 +59,7 @@ for (const [k, v] of Object.entries(TOOL_RENAME_MAP)) {
 // like "Edit" do not shadow "MultiEdit". Sort by entry key length desc.
 function reverseEntriesLongestFirst() {
   return Object.entries(REVERSE_MAP).sort(
-    ([a], [b]) => b.length - a.length,
+    ([a], [b]) => b.length - a.length
   );
 }
 
@@ -68,7 +69,7 @@ function getRequestToolNameMap(body) {
     value: existing,
     enumerable: false,
     configurable: true,
-    writable: true,
+    writable: true
   });
   return existing;
 }
@@ -89,7 +90,7 @@ function collectServerToolNames(tools) {
   if (!Array.isArray(tools)) return names;
   for (const tool of tools) {
     const t = tool;
-    if (t && isAnthropicServerToolType(t.type) && typeof t.name === "string") {
+    if (t && isAnthropicServerToolType(t.type) && isString(t.name)) {
       names.add(t.name);
     }
   }
@@ -129,7 +130,7 @@ export function remapToolNamesInRequest(body) {
       const content = msg.content;
       if (!Array.isArray(content)) continue;
       for (const block of content) {
-        if (block.type === "tool_use" && typeof block.name === "string") {
+        if (block.type === "tool_use" && isString(block.name)) {
           if (serverToolNames.has(block.name)) continue;
           const mapped = TOOL_RENAME_MAP[block.name];
           if (mapped) {
@@ -148,10 +149,10 @@ export function remapToolNamesInRequest(body) {
   // Remap tool_choice
   const toolChoice = body.tool_choice;
   if (
-    toolChoice?.type === "tool" &&
-    typeof toolChoice.name === "string" &&
-    !serverToolNames.has(toolChoice.name)
-  ) {
+  toolChoice?.type === "tool" && isString(
+    toolChoice.name) &&
+  !serverToolNames.has(toolChoice.name))
+  {
     const mapped = TOOL_RENAME_MAP[toolChoice.name];
     if (mapped) {
       const originalName = toolChoice.name;
@@ -190,14 +191,14 @@ function applyNameReplacementsToObject(value, orderedReplacements, perRequest, d
     }
     return;
   }
-  if (typeof value !== "object") return;
+  if (!isObject(value)) return;
 
   for (const key of Object.keys(value)) {
     if (
-      TOOL_NAME_KEYS.has(key) &&
-      typeof value[key] === "string" &&
-      /^[A-Z]/.test(value[key])
-    ) {
+    TOOL_NAME_KEYS.has(key) && isString(
+      value[key]) &&
+    /^[A-Z]/.test(value[key]))
+    {
       // 1) Per-request map first.
       if (perRequest && perRequest.size) {
         const perReqHit = perRequest.get(value[key]);
@@ -220,7 +221,7 @@ function applyNameReplacementsToObject(value, orderedReplacements, perRequest, d
           }
         }
       }
-    } else if (typeof value[key] === "object") {
+    } else if (isObject(value[key])) {
       // Recurse into nested objects/arrays.
       applyNameReplacementsToObject(value[key], orderedReplacements, perRequest, depth + 1);
     }
@@ -234,14 +235,14 @@ export function remapToolNamesInResponse(payload, forceLowercase = true, toolNam
   // Per Codex P2: when forceLowercase is false, generic reverse map should
   // not lowercase (the response may legitimately contain the canonical
   // TitleCase alias for the client's own canonical name).
-  const effective = forceLowercase
-    ? ordered
-    : []; // skip generic lowercasing when caller asks to preserve case
+  const effective = forceLowercase ?
+  ordered :
+  []; // skip generic lowercasing when caller asks to preserve case
 
   // Parse JSON if the caller passed a string; otherwise walk the object.
   let parsed = payload;
   let ownsParsed = false;
-  if (typeof payload === "string") {
+  if (isString(payload)) {
     try {
       parsed = JSON.parse(payload);
       ownsParsed = true;
@@ -251,7 +252,7 @@ export function remapToolNamesInResponse(payload, forceLowercase = true, toolNam
       return payload;
     }
   }
-  if (parsed === null || typeof parsed !== "object") {
+  if (parsed === null || !isObject(parsed)) {
     return ownsParsed ? payload : parsed;
   }
 
@@ -274,16 +275,16 @@ const HARNESS_CANONICAL_MAP = {
   fetch_url: "WebFetch",
   list_directory: "Glob",
   file_search: "Glob",
-  content_search: "Grep",
+  content_search: "Grep"
 };
 
 function toPascalCaseToolName(name) {
   if (!name) return name;
   const parts = name.split(/[_-]+/).filter(Boolean);
   if (parts.length === 0) return name;
-  return parts
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
-    .join("");
+  return parts.
+  map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).
+  join("");
 }
 
 // Normalize an incoming Claude-style tool name: prefer a per-request
@@ -291,7 +292,7 @@ function toPascalCaseToolName(name) {
 // built-in lowercase→PascalCase case map, then the response-side
 // REVERSE_MAP (cloaked alias → original), else pass through unchanged.
 export function normalizeClaudeToolName(name, toolNameMap) {
-  if (!name || typeof name !== "string") return name;
+  if (!name || !isString(name)) return name;
   if (toolNameMap instanceof Map) {
     const mapped = toolNameMap.get(name) ?? toolNameMap.get(name.toLowerCase());
     if (mapped) return mapped;
@@ -312,7 +313,7 @@ const VERSIONED_SERVER_TOOL_TYPE = /^[a-z][a-z0-9_]*_\d{8}$/;
 const NON_VERSIONED_SERVER_TOOL_TYPES = new Set(["web_search", "web_search_preview"]);
 
 export function isAnthropicServerToolType(type) {
-  if (typeof type !== "string" || type.length === 0) return false;
+  if (!isString(type) || type.length === 0) return false;
   return VERSIONED_SERVER_TOOL_TYPE.test(type) || NON_VERSIONED_SERVER_TOOL_TYPES.has(type);
 }
 
@@ -320,7 +321,7 @@ export function cloakThirdPartyToolNames(body, options) {
   const tools = body.tools;
   const serverToolNames = collectServerToolNames(tools);
   const existingMap =
-    body._toolNameMap instanceof Map ? body._toolNameMap : null;
+  body._toolNameMap instanceof Map ? body._toolNameMap : null;
 
   // Codex P2: when the kill-switch is on, return the existing per-request
   // map if the request already carried one (so the response path can
@@ -331,12 +332,12 @@ export function cloakThirdPartyToolNames(body, options) {
   }
 
   const shouldCloak = (name) =>
-    needsThirdPartyCloak(name) && !(options?.skip ? options.skip(name) : false);
+  needsThirdPartyCloak(name) && !(options?.skip ? options.skip(name) : false);
 
   const used = new Set();
   if (Array.isArray(tools)) {
     for (const tool of tools) {
-      if (tool && typeof tool.name === "string") used.add(tool.name);
+      if (tool && isString(tool.name)) used.add(tool.name);
     }
   }
   if (existingMap) {
@@ -350,9 +351,9 @@ export function cloakThirdPartyToolNames(body, options) {
     const existing = assigned.get(original);
     if (existing) return existing;
     const base =
-      TOOL_RENAME_MAP[original] ??
-      HARNESS_CANONICAL_MAP[original] ??
-      toPascalCaseToolName(original);
+    TOOL_RENAME_MAP[original] ??
+    HARNESS_CANONICAL_MAP[original] ??
+    toPascalCaseToolName(original);
     let alias = base;
     let suffix = 2;
     while (alias !== original && used.has(alias)) {
@@ -374,7 +375,7 @@ export function cloakThirdPartyToolNames(body, options) {
       if (isAnthropicServerToolType(tool.type)) {
         return tool;
       }
-      if (typeof tool.name === "string" && shouldCloak(tool.name)) {
+      if (isString(tool.name) && shouldCloak(tool.name)) {
         return { ...tool, name: aliasFor(tool.name) };
       }
       return tool;
@@ -389,11 +390,11 @@ export function cloakThirdPartyToolNames(body, options) {
       let changed = false;
       const newContent = content.map((block) => {
         if (
-          block?.type === "tool_use" &&
-          typeof block.name === "string" &&
-          !serverToolNames.has(block.name) &&
-          shouldCloak(block.name)
-        ) {
+        block?.type === "tool_use" && isString(
+          block.name) &&
+        !serverToolNames.has(block.name) &&
+        shouldCloak(block.name))
+        {
           changed = true;
           return { ...block, name: aliasFor(block.name) };
         }
@@ -405,11 +406,11 @@ export function cloakThirdPartyToolNames(body, options) {
 
   const toolChoice = body.tool_choice;
   if (
-    toolChoice?.type === "tool" &&
-    typeof toolChoice.name === "string" &&
-    !serverToolNames.has(toolChoice.name) &&
-    shouldCloak(toolChoice.name)
-  ) {
+  toolChoice?.type === "tool" && isString(
+    toolChoice.name) &&
+  !serverToolNames.has(toolChoice.name) &&
+  shouldCloak(toolChoice.name))
+  {
     body.tool_choice = { ...toolChoice, name: aliasFor(toolChoice.name) };
   }
 

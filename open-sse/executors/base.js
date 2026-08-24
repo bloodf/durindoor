@@ -12,12 +12,13 @@ import {
   prepareProviderAttemptDispatch,
   runQuotaBearingProviderRequest,
   settleProviderAttemptDispatch,
-  transferProviderAttemptDispatch,
-} from "../services/providerAttemptContext.js";
+  transferProviderAttemptDispatch } from
+"../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 
 // Format byte count to human-readable string for debug logs
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 function fmtBytes(n) {
   if (n < 1024) return `${n}B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
@@ -26,14 +27,14 @@ function fmtBytes(n) {
 function removeBetaFlag(headers, flag) {
   for (const key of ["anthropic-beta", "Anthropic-Beta"]) {
     if (!headers[key]) continue;
-    const filtered = headers[key]
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean)
-      .filter(f => f !== flag)
-      .join(",");
-    if (filtered) headers[key] = filtered;
-    else delete headers[key];
+    const filtered = headers[key].
+    split(",").
+    map((s) => s.trim()).
+    filter(Boolean).
+    filter((f) => f !== flag).
+    join(",");
+    if (filtered) headers[key] = filtered;else
+    delete headers[key];
   }
 }
 
@@ -47,7 +48,7 @@ function cancelDiscardedResponse(response) {
   try {
     const cancellation = response?.body?.cancel?.("discarded provider response");
     if (cancellation?.catch) void cancellation.catch(() => {});
-  } catch { /* body may already be locked or closed */ }
+  } catch {/* body may already be locked or closed */}
 }
 
 /** Abort-aware retry delay with deterministic listener/timer cleanup. */
@@ -83,15 +84,15 @@ export class BaseExecutor {
    */
   clampCustomMaxOutput(body, requestContext, fields = ["max_tokens", "max_completion_tokens", "max_output_tokens"]) {
     const customMax = requestContext?.modelCapabilities?.maxOutput;
-    if (!body || typeof body !== "object" || !(Number.isFinite(customMax) && customMax > 0)) return body;
+    if (!body || !isObject(body) || !(Number.isFinite(customMax) && customMax > 0)) return body;
     for (const field of fields) {
-      if (typeof body[field] === "number" && body[field] > customMax) {
+      if (isNumber(body[field]) && body[field] > customMax) {
         body[field] = customMax;
       }
     }
     for (const holder of [body, body.request]) {
       const gc = holder?.generationConfig;
-      if (gc && typeof gc.maxOutputTokens === "number" && gc.maxOutputTokens > customMax) {
+      if (gc && isNumber(gc.maxOutputTokens) && gc.maxOutputTokens > customMax) {
         gc.maxOutputTokens = customMax;
       }
     }
@@ -113,14 +114,14 @@ export class BaseExecutor {
   resolveEffectiveOutputReservation(body, requestContext) {
     const customMax = requestContext?.modelCapabilities?.maxOutput;
     const cap = Number.isFinite(customMax) && customMax > 0 ? customMax : 0;
-    if (!body || typeof body !== "object") return cap;
+    if (!body || !isObject(body)) return cap;
     const candidates = [
-      body.max_tokens,
-      body.max_completion_tokens,
-      body.max_output_tokens,
-      body?.generationConfig?.maxOutputTokens,
-      body?.request?.generationConfig?.maxOutputTokens,
-    ];
+    body.max_tokens,
+    body.max_completion_tokens,
+    body.max_output_tokens,
+    body?.generationConfig?.maxOutputTokens,
+    body?.request?.generationConfig?.maxOutputTokens];
+
     for (const value of candidates) {
       if (Number.isFinite(value) && value > 0) return cap > 0 ? Math.min(value, cap) : value;
     }
@@ -233,9 +234,9 @@ export class BaseExecutor {
     let lastError = null;
     let lastStatus = 0;
     const retryAttemptsByUrl = {};
-    let providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0
-      ? attemptStartedAt
-      : null;
+    let providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
+    attemptStartedAt :
+    null;
     let dispatchCount = 0;
     const beginDispatch = () => {
       const contextual = prepareProviderAttemptDispatch();
@@ -245,7 +246,7 @@ export class BaseExecutor {
         return providerAttemptStartedAt;
       }
       if (dispatchCount > 0 || providerAttemptStartedAt === null) {
-        const allocated = typeof onProviderAttempt === "function" ? onProviderAttempt() : Date.now();
+        const allocated = isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
         if (Number.isSafeInteger(allocated) && allocated > 0) providerAttemptStartedAt = allocated;
       }
       dispatchCount += 1;
@@ -269,9 +270,9 @@ export class BaseExecutor {
     // transport-attempt ceiling (see the attempts table in runtimeConfig.js).
     const resolveAttempts = ({ statusKey, errorKind, text }) => {
       const base = resolveRetryEntry(baseRetry[statusKey]);
-      const rule = skipRules
-        ? matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules)
-        : null;
+      const rule = skipRules ?
+      matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules) :
+      null;
       const cap = maxTransportAttempts != null ? Math.max(0, maxTransportAttempts - 1) : null;
 
       if (rule?.action === "skip") return { attempts: 0, delayMs: base.delayMs };
@@ -300,9 +301,9 @@ export class BaseExecutor {
     const tryRetry = async (urlIndex, statusKey, reason, response = null, errorKind = null, text = null) => {
       const { attempts, delayMs } = resolveAttempts({ statusKey, errorKind, text });
       if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts) return false;
-      const matchedRule = skipRules
-        ? matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules)
-        : null;
+      const matchedRule = skipRules ?
+      matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules) :
+      null;
       // Hook: subclass may derive delay from the response (headers/body). null → skip retry, use fallback.
       let waitMs = delayMs;
       if (response && this.computeRetryDelay) {
@@ -311,7 +312,7 @@ export class BaseExecutor {
           dynamic = await this.computeRetryDelay(response, retryAttemptsByUrl[urlIndex] + 1, delayMs, {
             signal,
             maxBytes: 64 * 1024,
-            timeoutMs: 2_000,
+            timeoutMs: 2_000
           });
         } catch (error) {
           await settleProviderAttemptDispatch(response, { success: false, reason: "upstream_error" });
@@ -323,9 +324,9 @@ export class BaseExecutor {
         // (antigravity.js untouched), so base converts ONLY that exact veto to the
         // base delay when a matching explicit retry-rule exists. Every other veto
         // (Retry-After too long, non-transient, etc.) still stands.
-        const isAntigravityCapacityVeto = this.provider === "antigravity"
-          && Number(statusKey) === 503
-          && typeof text === "string" && text.toLowerCase().includes("capacity");
+        const isAntigravityCapacityVeto = this.provider === "antigravity" &&
+        Number(statusKey) === 503 && isString(
+          text) && text.toLowerCase().includes("capacity");
         if (dynamic === false && !(isAntigravityCapacityVeto && matchedRule?.action === "retry")) {
           return false; // hook vetoes retry (e.g. Retry-After too long)
         }
@@ -350,7 +351,7 @@ export class BaseExecutor {
       const url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
       const transformedBody = this.clampCustomMaxOutput(
         this.transformRequest(model, body, stream, credentials, requestContext, url),
-        requestContext,
+        requestContext
       );
       const headers = this.buildHeaders(credentials, stream, requestContext, model);
       // Forward the client's request id through the relay (OmniRoute#7093),
@@ -360,8 +361,8 @@ export class BaseExecutor {
       if (proxyOptions?.vercelRelayUrl) {
         const clientRequestId = new Headers(requestContext?.clientHeaders ?? {}).get("x-request-id");
         if (clientRequestId && new Headers(headers).get("x-request-id") == null) {
-          if (headers instanceof Headers) headers.set("x-request-id", clientRequestId);
-          else headers["x-request-id"] = clientRequestId;
+          if (headers instanceof Headers) headers.set("x-request-id", clientRequestId);else
+          headers["x-request-id"] = clientRequestId;
         }
       }
       if (transformedBody?.thinking?.display === "summarized") {
@@ -395,17 +396,17 @@ export class BaseExecutor {
         }, proxyOptions));
         if (response.status === 400) {
           const clone = response.clone?.();
-          const errorText = clone
-            ? await readBoundedResponseText(clone, { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 })
-            : "";
+          const errorText = clone ?
+          await readBoundedResponseText(clone, { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 }) :
+          "";
           const field = findOffendingField(errorText);
           if (
-            field &&
-            requestBody &&
-            typeof requestBody === "object" &&
-            !Array.isArray(requestBody) &&
-            Object.prototype.hasOwnProperty.call(requestBody, field)
-          ) {
+          field &&
+          requestBody && isObject(
+            requestBody) &&
+          !Array.isArray(requestBody) &&
+          Object.prototype.hasOwnProperty.call(requestBody, field))
+          {
             requestBody = { ...requestBody };
             delete requestBody[field];
             bodyStr = JSON.stringify(requestBody);
@@ -437,12 +438,12 @@ export class BaseExecutor {
             boundRelayStreamLifetime(response.body, {
               signal: mergedSignal,
               timeoutSignal: connectCtrl.signal,
-              onFinalize: () => clearTimeout(connectTimer),
+              onFinalize: () => clearTimeout(connectTimer)
             }),
             {
               status: response.status,
               statusText: response.statusText,
-              headers: response.headers,
+              headers: response.headers
             }
           );
           // Keep the quota dispatch ticket reachable through the rebuilt response.
@@ -470,7 +471,7 @@ export class BaseExecutor {
           }
         }
 
-        if (await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) { urlIndex--; continue; }
+        if (await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) {urlIndex--;continue;}
 
         // A skip-rule matched this HTTP failure → abandon this account now; do NOT
         // fall through to shouldRetry()/other base URLs on the same account. The
@@ -486,7 +487,7 @@ export class BaseExecutor {
             headers,
             transformedBody: requestBody,
             attemptStartedAt: providerAttemptStartedAt,
-            terminalProvenance: "upstream",
+            terminalProvenance: "upstream"
           };
         }
 
@@ -504,7 +505,7 @@ export class BaseExecutor {
           headers,
           transformedBody: requestBody,
           attemptStartedAt: providerAttemptStartedAt,
-          terminalProvenance: "upstream",
+          terminalProvenance: "upstream"
         };
       } catch (error) {
         clearTimeout(connectTimer);
@@ -516,7 +517,7 @@ export class BaseExecutor {
         // fetch rejection reaches this catch; the reason on the merged signal
         // is whichever fired FIRST, so identity is authoritative.
         const isConnectTimeout = connectCtrl.signal.aborted &&
-          mergedSignal?.reason === connectCtrl.signal.reason;
+        mergedSignal?.reason === connectCtrl.signal.reason;
         // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
         const errorKind = isConnectTimeout ? "connect_timeout" : "network";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
@@ -528,7 +529,7 @@ export class BaseExecutor {
         }
 
         // connect_timeout / network → retryable per resolveAttempts (default: connect_timeout=0 retries)
-        if (await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `${errorKind} "${error.message}"`, null, errorKind, error.message)) { urlIndex--; continue; }
+        if (await tryRetry(urlIndex, HTTP_STATUS.BAD_GATEWAY, `${errorKind} "${error.message}"`, null, errorKind, error.message)) {urlIndex--;continue;}
 
         // A skip-rule matched this exception → abandon this account now; do NOT cycle
         // the remaining base URLs on the same account. Fires only when a caller

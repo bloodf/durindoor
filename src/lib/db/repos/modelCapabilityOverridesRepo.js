@@ -1,4 +1,5 @@
 import { getAdapter } from "../driver.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 function isMissingTable(err) {
   return /no such table:\s*modelCapabilityOverrides/i.test(String(err?.message || err));
@@ -18,7 +19,7 @@ export async function getModelCapabilityOverride(provider, modelId, overrideKey)
   try {
     row = db.get(
       `SELECT overrideValue FROM modelCapabilityOverrides WHERE provider = ? AND modelId = ? AND overrideKey = ?`,
-      [provider, modelId, overrideKey],
+      [provider, modelId, overrideKey]
     );
   } catch (err) {
     if (isMissingTable(err)) return null;
@@ -42,14 +43,14 @@ export async function getModelCapabilityOverride(provider, modelId, overrideKey)
 export async function setModelCapabilityOverride(provider, modelId, overrideKey, overrideValue) {
   if (!provider || !modelId || !overrideKey) return;
   const db = await getAdapter();
-  const value = typeof overrideValue === "string" ? overrideValue : JSON.stringify(overrideValue);
+  const value = isString(overrideValue) ? overrideValue : JSON.stringify(overrideValue);
   db.run(
     `INSERT INTO modelCapabilityOverrides(provider, modelId, overrideKey, overrideValue, refreshedAt)
      VALUES(?, ?, ?, ?, datetime('now'))
      ON CONFLICT(provider, modelId, overrideKey) DO UPDATE SET
        overrideValue = excluded.overrideValue,
        refreshedAt = excluded.refreshedAt`,
-    [provider, modelId, overrideKey, value],
+    [provider, modelId, overrideKey, value]
   );
 }
 
@@ -64,6 +65,6 @@ export async function deleteModelCapabilityOverride(provider, modelId, overrideK
   const db = await getAdapter();
   db.run(
     `DELETE FROM modelCapabilityOverrides WHERE provider = ? AND modelId = ? AND overrideKey = ?`,
-    [provider, modelId, overrideKey],
+    [provider, modelId, overrideKey]
   );
 }

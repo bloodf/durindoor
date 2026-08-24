@@ -11,6 +11,7 @@
  * server decodes in reverse. The obfuscation prevents Alibaba Cloud WAF from
  * pattern-matching the plaintext request body.
  */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const QODER_STD_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const QODER_CUSTOM_ALPHABET = "_doRTgHZBKcGVjlvpC,@aFSx#DPuNJme&i*MzLOEn)sUrthbf%Y^w.(kIQyXqWA!";
@@ -30,11 +31,11 @@ const QODER_S2C = (() => {
  * @returns {string} encoded string
  */
 export function qoderEncodeBody(plaintext) {
-  const buf = Buffer.isBuffer(plaintext)
-    ? plaintext
-    : typeof plaintext === "string"
-      ? Buffer.from(plaintext, "utf8")
-      : Buffer.from(plaintext);
+  const buf = Buffer.isBuffer(plaintext) ?
+  plaintext :
+  isString(plaintext) ?
+  Buffer.from(plaintext, "utf8") :
+  Buffer.from(plaintext);
 
   const std = buf.toString("base64");
   const n = std.length;

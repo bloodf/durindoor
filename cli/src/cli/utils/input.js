@@ -1,3 +1,4 @@
+const { isString } = require("../../../../src/shared/utils/typeChecks.cjs");
 const readline = require("readline");
 
 const COLORS = {
@@ -36,11 +37,11 @@ function suspendRawFor(fn) {
   // Temporarily drop raw mode so readline.question can buffer line input.
   const wasPrimed = rawPrimed;
   if (wasPrimed && process.stdin.isTTY) {
-    try { process.stdin.setRawMode(false); } catch {}
+    try {process.stdin.setRawMode(false);} catch {}
   }
   return fn().finally(() => {
     if (wasPrimed && process.stdin.isTTY) {
-      try { process.stdin.setRawMode(true); } catch {}
+      try {process.stdin.setRawMode(true);} catch {}
       process.stdin.resume();
     }
   });
@@ -88,7 +89,7 @@ async function promptSecret(question) {
         }
         return;
       }
-      if (!key.ctrl && !key.meta && typeof text === "string" && text && !/^[\r\n]$/.test(text)) {
+      if (!key.ctrl && !key.meta && isString(text) && text && !/^[\r\n]$/.test(text)) {
         value += text;
         process.stdout.write("•");
       }
@@ -122,7 +123,7 @@ async function confirm(question) {
 async function pause(message = "Press Enter to continue...") {
   return suspendRawFor(() => new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(message, () => { rl.close(); resolve(); });
+    rl.question(message, () => {rl.close();resolve();});
   }));
 }
 
@@ -137,7 +138,7 @@ async function selectMenu(title, items, defaultIndex = 0, subtitle = "", headerC
     let isActive = true;
 
     primeRawOnce();
-    if (!process.stdin.isTTY) { resolve(-1); return; }
+    if (!process.stdin.isTTY) {resolve(-1);return;}
 
     const renderMenu = () => {
       if (!isActive) return;
@@ -149,12 +150,12 @@ async function selectMenu(title, items, defaultIndex = 0, subtitle = "", headerC
       console.log(`${COLORS.terracotta}${"=".repeat(width)}${COLORS.reset}`);
       if (breadcrumb.length > 0) console.log(`  ${COLORS.dim}${breadcrumb.join(" > ")}${COLORS.reset}`);
       console.log();
-      if (headerContent) { console.log(headerContent); console.log(); }
+      if (headerContent) {console.log(headerContent);console.log();}
 
       const isWin = process.platform === "win32";
       items.forEach((item, index) => {
         const isSelected = index === selectedIndex;
-        const icon = isSelected ? (isWin ? ">" : "★") : (isWin ? " " : "☆");
+        const icon = isSelected ? isWin ? ">" : "★" : isWin ? " " : "☆";
         if (isSelected) {
           console.log(` ${COLORS.reverse}${COLORS.bright}${icon} ${item.label}${COLORS.reset}`);
         } else {
@@ -178,9 +179,9 @@ async function selectMenu(title, items, defaultIndex = 0, subtitle = "", headerC
       if (!isActive || !key) return;
       if (key.name === "up") return move(-1);
       if (key.name === "down") return move(1);
-      if (key.name === "return") { cleanup(); resolve(selectedIndex); return; }
-      if (key.name === "escape") { cleanup(); resolve(-1); return; }
-      if (key.ctrl && key.name === "c") { cleanup(); process.exit(0); }
+      if (key.name === "return") {cleanup();resolve(selectedIndex);return;}
+      if (key.name === "escape") {cleanup();resolve(-1);return;}
+      if (key.ctrl && key.name === "c") {cleanup();process.exit(0);}
     };
 
     process.stdin.on("keypress", onKeypress);

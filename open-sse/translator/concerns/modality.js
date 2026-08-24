@@ -5,24 +5,25 @@ import { FORMATS } from "../formats.js";
 
 // Placeholder text inserted where a media block was removed.
 // Current turn: explain the active model can't read what the user just sent.
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 const PLACEHOLDER_CURRENT = {
   vision: "[image omitted: model has no vision support]",
   audioInput: "[audio omitted: model has no audio support]",
   videoInput: "[video omitted: model has no video support]",
-  pdf: "[file omitted: model has no document support]",
+  pdf: "[file omitted: model has no document support]"
 };
 // Earlier turns: neutral (a combo may route to a different model each turn).
 const PLACEHOLDER_PREV = {
   vision: "[Previous image omitted from context.]",
   audioInput: "[Previous audio omitted from context.]",
   videoInput: "[Previous video omitted from context.]",
-  pdf: "[Previous file omitted from context.]",
+  pdf: "[Previous file omitted from context.]"
 };
 const ph = (cap, isLast) => (isLast ? PLACEHOLDER_CURRENT : PLACEHOLDER_PREV)[cap];
 
 // Map gemini inlineData/fileData mime prefix -> capability it requires.
 function capForMime(mime) {
-  if (typeof mime !== "string") return null;
+  if (!isString(mime)) return null;
   if (mime.startsWith("image/")) return "vision";
   if (mime.startsWith("audio/")) return "audioInput";
   if (mime.startsWith("video/")) return "videoInput";
@@ -54,7 +55,7 @@ function filterBlocks(blocks, capOf, caps, removed, isLast) {
   const out = [];
   for (const block of blocks) {
     const cap = capOf(block);
-    if (cap && caps[cap] === false) { removed.add(cap); continue; }
+    if (cap && caps[cap] === false) {removed.add(cap);continue;}
     out.push(block);
   }
   for (const cap of removed) out.push({ type: "text", text: ph(cap, isLast) });
@@ -63,7 +64,7 @@ function filterBlocks(blocks, capOf, caps, removed, isLast) {
 
 function capForAttachment(attachment) {
   const mime = attachment?.contentType || attachment?.mediaType ||
-    (typeof attachment?.url === "string" && attachment.url.match(/^data:([^;,:]{1,255})/)?.[1]);
+  isString(attachment?.url) && attachment.url.match(/^data:([^;,:]{1,255})/)?.[1];
   const cap = capForMime(mime);
   return cap || (!mime && (attachment?.url || attachment?.data) ? "vision" : null);
 }
@@ -85,11 +86,11 @@ function stripOpenAI(body, caps) {
   body.messages.forEach((msg, i) => {
     const removed = new Set();
     for (const field of [
-      ["images", "vision"], ["image", "vision"], ["image_url", "vision"],
-      ["audio", "audioInput"], ["audio_url", "audioInput"],
-      ["video", "videoInput"], ["video_url", "videoInput"],
-      ["file", "pdf"], ["document", "pdf"],
-    ]) {
+    ["images", "vision"], ["image", "vision"], ["image_url", "vision"],
+    ["audio", "audioInput"], ["audio_url", "audioInput"],
+    ["video", "videoInput"], ["video_url", "videoInput"],
+    ["file", "pdf"], ["document", "pdf"]])
+    {
       if (caps[field[1]] === false && msg[field[0]] != null) {
         delete msg[field[0]];
         removed.add(field[1]);
@@ -104,12 +105,12 @@ function stripOpenAI(body, caps) {
         return false;
       });
     }
-    if (typeof msg.content === "string") {
+    if (isString(msg.content)) {
       const inlineRemoved = new Set();
       msg.content = replaceUnsupportedDataUris(msg.content, caps, i === last, removed, inlineRemoved);
-      const placeholders = [...removed]
-        .filter((cap) => !inlineRemoved.has(cap))
-        .map((cap) => ph(cap, i === last)).join(" ");
+      const placeholders = [...removed].
+      filter((cap) => !inlineRemoved.has(cap)).
+      map((cap) => ph(cap, i === last)).join(" ");
       if (placeholders) msg.content = msg.content ? `${msg.content} ${placeholders}` : placeholders;
       if (removed.size && !msg.content) msg.content = [...removed].map((cap) => ph(cap, i === last)).join(" ");
       return;
@@ -139,7 +140,7 @@ function stripResponses(body, caps) {
     const removed = new Set();
     item.content = item.content.filter((b) => {
       const cap = b?.type === "input_image" ? "vision" : b?.type === "input_file" ? "pdf" : null;
-      if (cap && caps[cap] === false) { removed.add(cap); return false; }
+      if (cap && caps[cap] === false) {removed.add(cap);return false;}
       return true;
     });
     for (const cap of removed) item.content.push({ type: "input_text", text: ph(cap, i === last) });
@@ -156,7 +157,7 @@ function stripGeminiParts(contents, caps) {
     c.parts = c.parts.filter((p) => {
       const mime = p?.inlineData?.mimeType || p?.fileData?.mimeType;
       const cap = capForMime(mime);
-      if (cap && caps[cap] === false) { removed.add(cap); return false; }
+      if (cap && caps[cap] === false) {removed.add(cap);return false;}
       return true;
     });
     for (const cap of removed) c.parts.push({ text: ph(cap, i === last) });

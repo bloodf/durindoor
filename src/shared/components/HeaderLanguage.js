@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
 import LanguageSwitcher from "./LanguageSwitcher";
+import { isUndefined } from "../utils/typeChecks.js";
 
 function getLocaleFromCookie() {
-  if (typeof document === "undefined") return "en";
-  const cookie = document.cookie
-    .split(";")
-    .find((c) => c.trim().startsWith(`${LOCALE_COOKIE}=`));
+  if (isUndefined(globalThis.document)) return "en";
+  const cookie = document.cookie.
+  split(";").
+  find((c) => c.trim().startsWith(`${LOCALE_COOKIE}=`));
   const value = cookie ? decodeURIComponent(cookie.split("=")[1]) : "en";
   return normalizeLocale(value);
 }
@@ -28,8 +29,8 @@ export default function HeaderLanguage() {
         onClick={() => setOpen(true)}
         className="flex items-center justify-center p-2 rounded-lg text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5 transition-all"
         title="Language"
-        data-i18n-skip="true"
-      >
+        data-i18n-skip="true">
+        
         <span className="text-lg leading-none">{LOCALE_FLAGS[locale] || "🌐"}</span>
       </button>
 
@@ -39,8 +40,8 @@ export default function HeaderLanguage() {
         onClose={(next) => {
           setOpen(false);
           setLocale(next);
-        }}
-      />
-    </>
-  );
+        }} />
+      
+    </>);
+
 }

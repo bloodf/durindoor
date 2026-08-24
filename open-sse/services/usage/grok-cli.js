@@ -29,19 +29,20 @@
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U, parseResetTime, toFiniteNumber } from "./shared.js";
 import { decodeGrokCreditsFrame } from "./grokCliQuotaFrame.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const USAGE = U("grok-cli");
 const BILLING_URL = USAGE.url || "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 const USER_URL = USAGE.userUrl || "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
 // Absolute monthly window lives on the unformatted billing endpoint.
 const PLAIN_BILLING_URL =
-  (typeof BILLING_URL === "string" && BILLING_URL.includes("?"))
-    ? BILLING_URL.replace(/\?.*$/, "")
-    : "https://cli-chat-proxy.grok.com/v1/billing";
+isString(BILLING_URL) && BILLING_URL.includes("?") ?
+BILLING_URL.replace(/\?.*$/, "") :
+"https://cli-chat-proxy.grok.com/v1/billing";
 
 // SuperGrok weekly pool — same endpoint OmniRoute #6844 / steipete CodexBar docs.
 const GRPC_CREDITS_URL =
-  "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
+"https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
 // Empty gRPC-web request frame (flag 0 + length 0). Without it upstream returns
 // grpc-status 13 "Missing request message." with a 0-byte body.
 const GRPC_WEB_EMPTY_REQUEST_FRAME = Buffer.from([0, 0, 0, 0, 0]);
@@ -49,7 +50,7 @@ const GRPC_WEB_EMPTY_REQUEST_FRAME = Buffer.from([0, 0, 0, 0, 0]);
 /** Unwrap protobuf-json `{ val: n }` or plain numbers/strings. */
 function unwrapVal(value, fallback = 0) {
   if (value == null) return fallback;
-  if (typeof value === "object" && !Array.isArray(value) && "val" in value) {
+  if (isObject(value) && !Array.isArray(value) && "val" in value) {
     return toFiniteNumber(value.val, fallback);
   }
   return toFiniteNumber(value, fallback);
@@ -57,14 +58,14 @@ function unwrapVal(value, fallback = 0) {
 
 /** "GrokBuild" → "Grok Build", "XPremiumPlus" → "X Premium Plus", "super_grok" → "Super Grok" */
 function humanizeIdentifier(value) {
-  if (typeof value !== "string" || !value.trim()) return null;
-  const spaced = value
-    .trim()
-    .replace(/[_-]+/g, " ")
-    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .replace(/\s+/g, " ")
-    .trim();
+  if (!isString(value) || !value.trim()) return null;
+  const spaced = value.
+  trim().
+  replace(/[_-]+/g, " ").
+  replace(/([a-z\d])([A-Z])/g, "$1 $2").
+  replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2").
+  replace(/\s+/g, " ").
+  trim();
   return spaced.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -76,7 +77,7 @@ function buildGrokCliHeaders(accessToken, providerSpecificData = {}) {
     "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
     "x-xai-token-auth": "xai-grok-cli",
     "x-grok-client-identifier": "grok-pager",
-    "x-grok-client-version": "0.2.93",
+    "x-grok-client-version": "0.2.93"
   };
   const email = psd.email;
   const userId = psd.userId || psd.principalId;
@@ -86,7 +87,7 @@ function buildGrokCliHeaders(accessToken, providerSpecificData = {}) {
 }
 
 function resolvePlan(user, config) {
-  const tier = typeof user?.subscriptionTier === "string" ? user.subscriptionTier.trim() : "";
+  const tier = isString(user?.subscriptionTier) ? user.subscriptionTier.trim() : "";
   if (tier) return humanizeIdentifier(tier) || tier;
   if (user?.hasGrokCodeAccess === true) return "Grok Code";
   if (config?.isUnifiedBillingUser === true) return "Grok Build";
@@ -104,17 +105,17 @@ function makeQuota({ used, total, resetAt, unlimited = false }) {
       total: 0,
       remainingPercentage: unlimited ? 100 : 0,
       resetAt: resetAt || null,
-      unlimited: true,
+      unlimited: true
     };
   }
   const remaining = Math.max(0, safeTotal - safeUsed);
-  const remainingPercentage = (remaining / safeTotal) * 100;
+  const remainingPercentage = remaining / safeTotal * 100;
   return {
     used: safeUsed,
     total: safeTotal,
     remainingPercentage,
     resetAt: resetAt || null,
-    unlimited: false,
+    unlimited: false
   };
 }
 
@@ -126,16 +127,16 @@ function makePercentQuota(usagePercent, resetAt) {
     total: 100,
     remainingPercentage: Math.max(0, 100 - used),
     resetAt: resetAt || null,
-    unlimited: false,
+    unlimited: false
   };
 }
 
 function extractConfig(billing) {
-  const root = billing && typeof billing === "object" ? billing : {};
+  const root = billing && isObject(billing) ? billing : {};
   const config =
-    root.config && typeof root.config === "object" && !Array.isArray(root.config)
-      ? root.config
-      : root;
+  root.config && isObject(root.config) && !Array.isArray(root.config) ?
+  root.config :
+  root;
   return { root, config };
 }
 
@@ -149,27 +150,27 @@ export function parseGrokCliBilling(billing, user = null, plainBilling = null) {
   const { root, config } = extractConfig(billing);
 
   const periodEnd =
-    parseResetTime(config.billingPeriodEnd) ||
-    parseResetTime(config.currentPeriod?.end) ||
-    parseResetTime(root.billingPeriodEnd) ||
-    null;
+  parseResetTime(config.billingPeriodEnd) ||
+  parseResetTime(config.currentPeriod?.end) ||
+  parseResetTime(root.billingPeriodEnd) ||
+  null;
 
   const quotas = {};
 
   // ── 1. Unified / SuperGrok: percent-based weekly credits ─────────────────
   // Live SuperGrok accounts return creditUsagePercent + productUsage while
   // onDemandCap stays 0 — that must NOT be treated as exhausted.
-  const productUsage = Array.isArray(config.productUsage)
-    ? config.productUsage
-    : Array.isArray(root.productUsage)
-      ? root.productUsage
-      : [];
+  const productUsage = Array.isArray(config.productUsage) ?
+  config.productUsage :
+  Array.isArray(root.productUsage) ?
+  root.productUsage :
+  [];
 
   let hasPercentQuota = false;
 
   if (productUsage.length > 0) {
     for (const item of productUsage) {
-      if (!item || typeof item !== "object") continue;
+      if (!item || !isObject(item)) continue;
       const pct = unwrapVal(item.usagePercent, NaN);
       if (!Number.isFinite(pct)) continue;
       const name = humanizeIdentifier(item.product) || "Usage";
@@ -182,7 +183,7 @@ export function parseGrokCliBilling(billing, user = null, plainBilling = null) {
 
   const creditUsagePercent = unwrapVal(
     config.creditUsagePercent ?? root.creditUsagePercent,
-    NaN,
+    NaN
   );
   // Overall credits bar when no per-product rows (or as single summary when only overall exists)
   if (!hasPercentQuota && Number.isFinite(creditUsagePercent)) {
@@ -198,22 +199,22 @@ export function parseGrokCliBilling(billing, user = null, plainBilling = null) {
     quotas["On-demand"] = makeQuota({
       used,
       total: onDemandCap,
-      resetAt: periodEnd,
+      resetAt: periodEnd
     });
   } else if (
-    // Only synthesize depleted On-demand when we have nothing better to show.
-    // Unified accounts keep onDemandCap=0 even with remaining weekly credits.
-    !hasPercentQuota &&
-    Number.isFinite(onDemandCap) &&
-    onDemandCap === 0 &&
-    Number.isFinite(onDemandUsed)
-  ) {
+  // Only synthesize depleted On-demand when we have nothing better to show.
+  // Unified accounts keep onDemandCap=0 even with remaining weekly credits.
+  !hasPercentQuota &&
+  Number.isFinite(onDemandCap) &&
+  onDemandCap === 0 &&
+  Number.isFinite(onDemandUsed))
+  {
     quotas["On-demand"] = {
       used: 1,
       total: 1,
       remainingPercentage: 0,
       resetAt: periodEnd,
-      unlimited: false,
+      unlimited: false
     };
   }
 
@@ -225,38 +226,38 @@ export function parseGrokCliBilling(billing, user = null, plainBilling = null) {
       total: prepaid,
       remainingPercentage: 100,
       resetAt: null,
-      unlimited: false,
+      unlimited: false
     };
   }
 
   // ── 4. Opportunistic richer credit envelopes ─────────────────────────────
   const creditBags = [
-    root.credits,
-    root.creditBalance,
-    root.usage,
-    config.credits,
-    config.includedCredits,
-    config.subscriptionCredits,
-  ].filter((bag) => bag && typeof bag === "object" && !Array.isArray(bag));
+  root.credits,
+  root.creditBalance,
+  root.usage,
+  config.credits,
+  config.includedCredits,
+  config.subscriptionCredits].
+  filter((bag) => bag && isObject(bag) && !Array.isArray(bag));
 
   for (const bag of creditBags) {
     const total = unwrapVal(
       bag.total ?? bag.limit ?? bag.cap ?? bag.allocation ?? bag.amount,
-      NaN,
+      NaN
     );
     const used = unwrapVal(bag.used ?? bag.spent ?? bag.consumed, NaN);
     const remaining = unwrapVal(bag.remaining ?? bag.balance ?? bag.left, NaN);
     if (Number.isFinite(total) && total > 0) {
-      const resolvedUsed = Number.isFinite(used)
-        ? used
-        : Number.isFinite(remaining)
-          ? Math.max(0, total - remaining)
-          : 0;
+      const resolvedUsed = Number.isFinite(used) ?
+      used :
+      Number.isFinite(remaining) ?
+      Math.max(0, total - remaining) :
+      0;
       if (!quotas.Credits) {
         quotas.Credits = makeQuota({
           used: resolvedUsed,
           total,
-          resetAt: parseResetTime(bag.resetAt || bag.resetsAt || bag.end) || periodEnd,
+          resetAt: parseResetTime(bag.resetAt || bag.resetsAt || bag.end) || periodEnd
         });
       }
     } else if (Number.isFinite(remaining) && remaining >= 0 && !quotas.Credits) {
@@ -265,13 +266,13 @@ export function parseGrokCliBilling(billing, user = null, plainBilling = null) {
         total: remaining > 0 ? remaining : 1,
         remainingPercentage: remaining > 0 ? 100 : 0,
         resetAt: periodEnd,
-        unlimited: false,
+        unlimited: false
       };
     }
   }
 
   // ── 5. Plain /v1/billing monthly absolute window ─────────────────────────
-  if (plainBilling && typeof plainBilling === "object") {
+  if (plainBilling && isObject(plainBilling)) {
     const { config: plainConfig } = extractConfig(plainBilling);
     const monthlyLimit = unwrapVal(plainConfig.monthlyLimit, NaN);
     const monthlyUsed = unwrapVal(plainConfig.used, NaN);
@@ -281,24 +282,24 @@ export function parseGrokCliBilling(billing, user = null, plainBilling = null) {
       quotas.Monthly = makeQuota({
         used: Number.isFinite(monthlyUsed) ? Math.max(0, monthlyUsed) : 0,
         total: monthlyLimit,
-        resetAt: monthlyReset,
+        resetAt: monthlyReset
       });
     }
   }
 
   // Exhausted when every finite quota bar is at 0% remaining
   const exhausted =
-    Object.keys(quotas).length > 0 &&
-    Object.values(quotas).every(
-      (q) => q.unlimited !== true && (q.remainingPercentage ?? 100) <= 0,
-    );
+  Object.keys(quotas).length > 0 &&
+  Object.values(quotas).every(
+    (q) => q.unlimited !== true && (q.remainingPercentage ?? 100) <= 0
+  );
 
   return {
     plan: resolvePlan(user, config),
     quotas,
     periodEnd,
     exhausted,
-    rawConfig: config,
+    rawConfig: config
   };
 }
 
@@ -318,11 +319,11 @@ export async function fetchGrokCliCreditsConfig(accessToken, proxyOptions = null
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/grpc-web+proto",
           "X-Grpc-Web": "1",
-          Accept: "application/grpc-web+proto",
+          Accept: "application/grpc-web+proto"
         },
-        body: GRPC_WEB_EMPTY_REQUEST_FRAME,
+        body: GRPC_WEB_EMPTY_REQUEST_FRAME
       },
-      proxyOptions,
+      proxyOptions
     );
     if (!res?.ok) return null;
     const arrayBuffer = await res.arrayBuffer().catch(() => null);
@@ -341,8 +342,8 @@ function quotasFromGrpcCredits(decoded) {
     "Weekly SuperGrok": makeQuota({
       used,
       total: 100,
-      resetAt: decoded.resetAt || null,
-    }),
+      resetAt: decoded.resetAt || null
+    })
   };
 }
 
@@ -361,22 +362,22 @@ export async function getGrokCliUsage(accessToken, providerSpecificData = null, 
   try {
     // Credits (weekly %) + plain monthly + user profile — same startup pattern as CLI
     const [billingRes, plainRes, userRes] = await Promise.all([
-      proxyAwareFetch(
-        BILLING_URL,
-        { method: "GET", headers },
-        proxyOptions,
-      ),
-      proxyAwareFetch(
-        PLAIN_BILLING_URL,
-        { method: "GET", headers },
-        proxyOptions,
-      ).catch(() => null),
-      proxyAwareFetch(
-        USER_URL,
-        { method: "GET", headers },
-        proxyOptions,
-      ).catch(() => null),
-    ]);
+    proxyAwareFetch(
+      BILLING_URL,
+      { method: "GET", headers },
+      proxyOptions
+    ),
+    proxyAwareFetch(
+      PLAIN_BILLING_URL,
+      { method: "GET", headers },
+      proxyOptions
+    ).catch(() => null),
+    proxyAwareFetch(
+      USER_URL,
+      { method: "GET", headers },
+      proxyOptions
+    ).catch(() => null)]
+    );
 
     if (billingRes.status === 401 || billingRes.status === 403) {
       return { message: "Grok CLI authentication expired. Please re-authorize." };
@@ -389,7 +390,7 @@ export async function getGrokCliUsage(accessToken, providerSpecificData = null, 
     }
 
     const billing = await billingRes.json().catch(() => null);
-    if (!billing || typeof billing !== "object") {
+    if (!billing || !isObject(billing)) {
       return { message: "Grok CLI billing response was not JSON." };
     }
 
@@ -413,14 +414,14 @@ export async function getGrokCliUsage(accessToken, providerSpecificData = null, 
       if (grpcQuotas) {
         return {
           plan: parsed.plan,
-          quotas: grpcQuotas,
+          quotas: grpcQuotas
         };
       }
       return {
         plan: parsed.plan,
         message:
-          "Grok Build connected, but no credit allotment was returned. Free promo may be exhausted — upgrade at https://grok.com/supergrok or add credits at https://grok.com/?_s=usage.",
-        quotas: {},
+        "Grok Build connected, but no credit allotment was returned. Free promo may be exhausted — upgrade at https://grok.com/supergrok or add credits at https://grok.com/?_s=usage.",
+        quotas: {}
       };
     }
 
@@ -429,7 +430,7 @@ export async function getGrokCliUsage(accessToken, providerSpecificData = null, 
     // their 0% bars without a blocking message.
     return {
       plan: parsed.plan,
-      quotas: parsed.quotas,
+      quotas: parsed.quotas
     };
   } catch (error) {
     return { message: `Grok CLI usage error: ${error.message}` };

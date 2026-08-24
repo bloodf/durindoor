@@ -19,13 +19,13 @@ async function persistRefreshedCredentials(connection, newCredentials) {
 
   const providerSpecificUpdates = {
     ...(newCredentials.providerSpecificData || {}),
-    ...(newCredentials.copilotToken ? { copilotToken: newCredentials.copilotToken } : {}),
-    ...(newCredentials.copilotTokenExpiresAt ? { copilotTokenExpiresAt: newCredentials.copilotTokenExpiresAt } : {}),
+    ...(newCredentials.copilotToken ? { copilotToken: newCredentials.copilotToken } : null),
+    ...(newCredentials.copilotTokenExpiresAt ? { copilotTokenExpiresAt: newCredentials.copilotTokenExpiresAt } : null)
   };
   if (Object.keys(providerSpecificUpdates).length > 0) {
     updateData.providerSpecificData = {
       ...(connection.providerSpecificData || {}),
-      ...providerSpecificUpdates,
+      ...providerSpecificUpdates
     };
   }
 
@@ -43,7 +43,7 @@ export async function POST(request) {
     }
 
     const connections = await getProviderConnections({ provider });
-    const connection = connections.find(c => c.isActive !== false);
+    const connection = connections.find((c) => c.isActive !== false);
     if (!connection) {
       return Response.json({ success: false, error: `No active connection for provider: ${provider}` }, { status: 400 });
     }
@@ -54,7 +54,7 @@ export async function POST(request) {
       connectionNoProxy: resolvedProxy.connectionNoProxy || "",
       vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
       strictProxy: resolvedProxy.strictProxy === true,
-      disableEnvProxy: resolvedProxy.disableEnvProxy === true,
+      disableEnvProxy: resolvedProxy.disableEnvProxy === true
     };
 
     const credentials = {
@@ -69,7 +69,7 @@ export async function POST(request) {
       projectId: connection.projectId,
       providerSpecificData: {
         ...(connection.providerSpecificData || {}),
-        ...proxyOptions,
+        ...proxyOptions
       }
     };
 

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DATA_DIR } from "@/lib/dataDir";
 import { getSettings, getSettingsSync } from "@/lib/localDb";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 export const DEFAULT_PASSWORD = "123456";
 
@@ -11,7 +12,7 @@ export const DEFAULT_PASSWORD = "123456";
 export const JWT_SECRET_FILE_BASENAME = "jwt-secret";
 
 export function validateDashboardPassword(password) {
-  if (typeof password !== "string" || password.length < 6) {
+  if (!isString(password) || password.length < 6) {
     return "Password must be at least 6 characters";
   }
   if (password === DEFAULT_PASSWORD) return "Password must not use the built-in default";
@@ -99,7 +100,7 @@ export async function isUsingDefaultPassword(settings) {
  */
 export function loadJwtSecret() {
   const fromEnv = process.env.JWT_SECRET;
-  if (typeof fromEnv === "string" && fromEnv.length > 0) {
+  if (isString(fromEnv) && fromEnv.length > 0) {
     return fromEnv;
   }
 
@@ -154,14 +155,17 @@ export function shouldUseSecureCookie(request) {
 }
 
 export async function createDashboardAuthToken(claims = {}) {
-  const passwordSessionEpoch = claims.oidc
-    ? undefined
-    : (claims.passwordSessionEpoch ?? (await getSettings()).passwordSessionEpoch);
-  return new SignJWT({
+  const passwordSessionEpoch = claims.oidc ?
+  undefined :
+  claims.passwordSessionEpoch ?? (await getSettings()).passwordSessionEpoch;
+  const jwtPayload = {
     authenticated: true,
     ...claims,
-    ...(passwordSessionEpoch === undefined ? {} : { passwordSessionEpoch }),
-  })
+  };
+  if (passwordSessionEpoch !== undefined) {
+    jwtPayload.passwordSessionEpoch = passwordSessionEpoch;
+  }
+  return new SignJWT(jwtPayload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("24h")
@@ -204,7 +208,7 @@ export async function setDashboardAuthCookie(cookieStore, request, claims = {}, 
     httpOnly: true,
     secure: shouldUseSecureCookie(request),
     sameSite: "lax",
-    path: "/",
+    path: "/"
   });
 }
 
@@ -214,7 +218,7 @@ export function clearDashboardAuthCookie(cookieStore) {
 
 // Verify the current dashboard password (re-auth for sensitive actions).
 export async function verifyDashboardPassword(password) {
-  if (typeof password !== "string" || !password) return false;
+  if (!isString(password) || !password) return false;
   const settings = await getSettings();
   const storedHash = settings?.password;
   if (storedHash) return bcrypt.compare(password, storedHash);

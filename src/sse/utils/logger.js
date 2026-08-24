@@ -4,6 +4,7 @@
  * (`nextTag`, `tagForSession`, `line`, `errorLine`, `fmtThink`) print correlated
  * lifecycle lines (request, saver, completion/error), color-keyed by session.
  */
+import { isString } from "../../shared/utils/typeChecks.js";
 
 const LOG_LEVELS = {
   DEBUG: 0,
@@ -42,7 +43,7 @@ export function nextTag() {
 export function tagForSession(seed) {
   if (!seed) return nextTag();
   let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  for (let i = 0; i < seed.length; i++) h = h * 31 + seed.charCodeAt(i) | 0;
   return REQ_TAGS[Math.abs(h) % REQ_TAGS.length];
 }
 
@@ -89,7 +90,7 @@ export function fmtThink(intent) {
 
 function formatData(data) {
   if (!data) return "";
-  if (typeof data === "string") return data;
+  if (isString(data)) return data;
   try {
     return JSON.stringify(data);
   } catch {

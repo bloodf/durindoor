@@ -6,6 +6,7 @@ import { FORMATS } from "../translator/formats.js";
 // gc/ (Gemini Cloud Code Assist) occasionally prepends terminal control chars
 // (cursor-up, clear-line, carriage-return) to SSE frames before the "data:" prefix,
 // which masks the prefix and causes strict client SSE parsers to crash or hang.
+import { isObject } from "../../src/shared/utils/typeChecks.js";
 const ANSI_ESCAPE_RE = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[A-Z\[\]\\^_`])|[\x00-\x08\x0b\x0c\x0e-\x1f]/g;
 
 /**
@@ -39,9 +40,9 @@ export function parseSSELine(line, format = null) {
   // Assist) prepend to SSE lines as progress/loading indicators. Without this, the "data:"
   // prefix check below fails and the entire frame is silently dropped, which can cause the
   // client SSE parser to stall waiting for a frame that never arrives.
-  const clean = line.charCodeAt(0) === 0x1b || (line.charCodeAt(0) < 0x20 && line.charCodeAt(0) !== 0x09)
-    ? stripAnsiCodes(line)
-    : line;
+  const clean = line.charCodeAt(0) === 0x1b || line.charCodeAt(0) < 0x20 && line.charCodeAt(0) !== 0x09 ?
+  stripAnsiCodes(line) :
+  line;
 
   // Standard SSE format: "data: {...}"
   if (clean.charCodeAt(0) !== 100) return null; // 'd' = 100
@@ -76,10 +77,10 @@ export function hasValuableContent(chunk, format) {
       const delta = choice?.delta;
       if (!delta) return Boolean(choice?.finish_reason);
       return delta.content && delta.content !== "" ||
-             delta.reasoning_content && delta.reasoning_content !== "" ||
-             delta.tool_calls && delta.tool_calls.length > 0 ||
-             choice.finish_reason ||
-             delta.role;
+      delta.reasoning_content && delta.reasoning_content !== "" ||
+      delta.tool_calls && delta.tool_calls.length > 0 ||
+      choice.finish_reason ||
+      delta.role;
     });
   }
 
@@ -89,7 +90,7 @@ export function hasValuableContent(chunk, format) {
     const hasText = chunk.delta?.text && chunk.delta.text !== "";
     const hasThinking = chunk.delta?.thinking && chunk.delta.thinking !== "";
     const hasInputJson = chunk.delta?.partial_json && chunk.delta.partial_json !== "";
-    
+
     if (isContentBlockDelta && !hasText && !hasThinking && !hasInputJson) {
       return false;
     }
@@ -102,9 +103,9 @@ export function hasValuableContent(chunk, format) {
 // Fix invalid id (generic or too short)
 export function fixInvalidId(parsed) {
   if (parsed.id && (parsed.id === "chat" || parsed.id === "completion" || parsed.id.length < 8)) {
-    const fallbackId = parsed.extend_fields?.requestId || 
-                      parsed.extend_fields?.traceId || 
-                      Date.now().toString(36);
+    const fallbackId = parsed.extend_fields?.requestId ||
+    parsed.extend_fields?.traceId ||
+    Date.now().toString(36);
     parsed.id = `chatcmpl-${fallbackId}`;
     return true;
   }
@@ -112,7 +113,7 @@ export function fixInvalidId(parsed) {
 }
 
 function cleanUsagePayload(payload) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+  if (!payload || !isObject(payload) || Array.isArray(payload)) {
     return payload;
   }
 
@@ -122,13 +123,13 @@ function cleanUsagePayload(payload) {
     if (cleaned.usage === null) {
       const { usage, ...payloadWithoutUsage } = cleaned;
       cleaned = payloadWithoutUsage;
-    } else if (typeof cleaned.usage === "object" && cleaned.usage.perf_metrics === null) {
+    } else if (isObject(cleaned.usage) && cleaned.usage.perf_metrics === null) {
       const { perf_metrics, ...usageWithoutPerf } = cleaned.usage;
       cleaned = { ...cleaned, usage: usageWithoutPerf };
     }
   }
 
-  if (cleaned.response && typeof cleaned.response === "object" && !Array.isArray(cleaned.response)) {
+  if (cleaned.response && isObject(cleaned.response) && !Array.isArray(cleaned.response)) {
     const cleanedResponse = cleanUsagePayload(cleaned.response);
     if (cleanedResponse !== cleaned.response) {
       cleaned = { ...cleaned, response: cleanedResponse };

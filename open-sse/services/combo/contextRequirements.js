@@ -47,13 +47,14 @@ import REGISTRY from "../../providers/registry/index.js";
 import {
   PROVIDER_CAPABILITIES,
   MODEL_CAPABILITIES,
-  PATTERN_CAPABILITIES,
-} from "../../providers/capabilities.js";
+  PATTERN_CAPABILITIES } from
+"../../providers/capabilities.js";
 import { matchPattern } from "../../providers/pricing.js";
 
 // Alias→entry map for resolving the provider half of a model string.
 // REGISTRY is an array keyed by nothing; mirror pricing.js's map (id, alias,
 // uiAlias, aliases[]) so "alias/model" and "provider/model" both resolve.
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const PROVIDER_BY_ID = {};
 for (const entry of REGISTRY) {
   PROVIDER_BY_ID[entry.id] = entry;
@@ -70,7 +71,7 @@ for (const entry of REGISTRY) {
  * @returns {number|null}
  */
 export function getKnownContextWindow(modelStr, capabilitiesMap = null) {
-  const slash = typeof modelStr === "string" ? modelStr.indexOf("/") : -1;
+  const slash = isString(modelStr) ? modelStr.indexOf("/") : -1;
   const provider = slash > 0 ? modelStr.slice(0, slash) : "";
   const model = slash > 0 ? modelStr.slice(slash + 1) : String(modelStr || "");
   if (!model) return null;
@@ -80,13 +81,13 @@ export function getKnownContextWindow(modelStr, capabilitiesMap = null) {
   // (customKeys marker); merged static/default values fall through to the
   // catalog lookups below so unknown models stay unknown in strict mode.
   if (
-    caps && typeof caps === "object" && Number.isFinite(caps.contextWindow) && caps.contextWindow > 0
-    && (!(caps.customKeys instanceof Set) || caps.customKeys.has("contextWindow"))
-  ) {
+  caps && isObject(caps) && Number.isFinite(caps.contextWindow) && caps.contextWindow > 0 && (
+  !(caps.customKeys instanceof Set) || caps.customKeys.has("contextWindow")))
+  {
     return caps.contextWindow;
   }
 
-  const valid = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
+  const valid = (v) => isNumber(v) && Number.isFinite(v) && v > 0 ? v : null;
 
   // 1. Provider registry: per-model contextLength, then provider defaultContextLength.
   const entry = provider ? PROVIDER_BY_ID[provider] || null : null;
@@ -111,8 +112,8 @@ export function getKnownContextWindow(modelStr, capabilitiesMap = null) {
   // 2b. Canonical exact-id capability (strip vendor prefix) declaring contextWindow.
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
   const fromExact =
-    valid(MODEL_CAPABILITIES?.[baseModel]?.contextWindow) ??
-    valid(MODEL_CAPABILITIES?.[model]?.contextWindow);
+  valid(MODEL_CAPABILITIES?.[baseModel]?.contextWindow) ??
+  valid(MODEL_CAPABILITIES?.[model]?.contextWindow);
   if (fromExact !== null) return fromExact;
 
   // 2c. Glob-pattern capability declaring contextWindow (first match wins).
@@ -130,15 +131,15 @@ export function getKnownContextWindow(modelStr, capabilitiesMap = null) {
 // Parse + normalize the requirement config. Returns null when no active
 // requirement (so callers can keep a same-reference fast path).
 function parseRequirements(requirements) {
-  if (!requirements || typeof requirements !== "object") return null;
+  if (!requirements || !isObject(requirements)) return null;
   const { minContextWindow, preferLargeContext, contextFilterMode = "lenient" } = requirements;
   // minContextWindow: 0 is a VALID configured minimum: it keeps every model
   // with a known context size but still lets strict mode drop unknown-context
   // targets. Treating 0 as "unset" would silently disable strict filtering.
   const min =
-    typeof minContextWindow === "number" && Number.isFinite(minContextWindow) && minContextWindow >= 0
-      ? minContextWindow
-      : null;
+  isNumber(minContextWindow) && Number.isFinite(minContextWindow) && minContextWindow >= 0 ?
+  minContextWindow :
+  null;
   const prefer = preferLargeContext === true;
   if (min === null && !prefer) return null;
   // Fail-open: only the exact string "strict" opts into strict; any missing /
@@ -165,11 +166,11 @@ export function validateContextRequirementsMembers(models, requirements) {
     return { ok: false, status: 503, message: "Combo models are missing or invalid." };
   }
   for (const model of models) {
-    if (typeof model !== "string" || !model.includes("/")) {
+    if (!isString(model) || !model.includes("/")) {
       return {
         ok: false,
         status: 503,
-        message: `Context requirements require canonical provider/model members; "${model}" is not a valid provider/model member.`,
+        message: `Context requirements require canonical provider/model members; "${model}" is not a valid provider/model member.`
       };
     }
   }
@@ -226,19 +227,19 @@ export function sortByContextSize(models, requirements, log = null, capabilities
   const req = parseRequirements(requirements);
   if (!req || !req.prefer) return models;
 
-  const sorted = [...models]
-    .map((modelStr, i) => ({ modelStr, i, ctx: getKnownContextWindow(modelStr, capabilitiesMap) }))
-    .sort((a, b) => {
-      const ac = a.ctx ?? -1; // unknown sorts to the end
-      const bc = b.ctx ?? -1;
-      return bc - ac || a.i - b.i; // desc by context; stable tiebreak = incoming order
-    })
-    .map((x) => x.modelStr);
+  const sorted = [...models].
+  map((modelStr, i) => ({ modelStr, i, ctx: getKnownContextWindow(modelStr, capabilitiesMap) })).
+  sort((a, b) => {
+    const ac = a.ctx ?? -1; // unknown sorts to the end
+    const bc = b.ctx ?? -1;
+    return bc - ac || a.i - b.i; // desc by context; stable tiebreak = incoming order
+  }).
+  map((x) => x.modelStr);
   log?.debug?.(
     "COMBO",
-    `Context requirements: sorted by context size (descending): ${sorted
-      .map((m) => `${m}(${getKnownContextWindow(m, capabilitiesMap) ?? "unknown"})`)
-      .join(", ")}`
+    `Context requirements: sorted by context size (descending): ${sorted.
+    map((m) => `${m}(${getKnownContextWindow(m, capabilitiesMap) ?? "unknown"})`).
+    join(", ")}`
   );
   return sorted;
 }

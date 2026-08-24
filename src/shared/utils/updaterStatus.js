@@ -19,6 +19,7 @@ import { UPDATER_CONFIG } from "@/shared/constants/config";
  * the current implementation falls back to localhost for safety (HTTPS/tunnel
  * origins would require a secure transport the status server does not expose).
  */
+import { isNumber, isObject } from "./typeChecks.js";
 export function getUpdaterStatusUrl(port = UPDATER_CONFIG.statusPort, origin = null) {
   if (origin) {
     try {
@@ -31,9 +32,9 @@ export function getUpdaterStatusUrl(port = UPDATER_CONFIG.statusPort, origin = n
         return `http://${hostname}:${port}/update/status`;
       }
     } catch {
+
       // malformed origin: fall back to localhost below
-    }
-  }
+    }}
   return `http://127.0.0.1:${port}/update/status`;
 }
 
@@ -43,7 +44,7 @@ export function getUpdaterStatusUrl(port = UPDATER_CONFIG.statusPort, origin = n
  * before the fresh detached updater overwrites it.
  */
 export function isUpdaterStatusCurrent(status, notBefore) {
-  if (!status || typeof status !== "object" || !Number.isFinite(notBefore)) {
+  if (!status || !isObject(status) || !Number.isFinite(notBefore)) {
     return false;
   }
   const statusStartedAt = Number(status.startedAt);
@@ -66,9 +67,9 @@ export function getUpdaterPhaseLabel(phase, meta = {}) {
     case "waitingForExit":
       return "Stopping current app (releasing file locks)…";
     case "installing":
-      return attempt > 0
-        ? `Installing package (attempt ${attempt}/${maxRetries})…`
-        : "Installing package…";
+      return attempt > 0 ?
+      `Installing package (attempt ${attempt}/${maxRetries})…` :
+      "Installing package…";
     case "done":
       return "Update complete — restarting app…";
     case "error":
@@ -83,22 +84,22 @@ export function getUpdaterPhaseLabel(phase, meta = {}) {
  * @param {{ phase?: string, attempt?: number, maxRetries?: number, done?: boolean, success?: boolean }} status
  */
 export function getUpdaterProgressPercent(status) {
-  if (!status || typeof status !== "object") return 5;
+  if (!status || !isObject(status)) return 5;
   const { phase, attempt = 0, maxRetries = UPDATER_CONFIG.installRetries, done, success } = status;
   if (done && success) return 100;
-  if (phase === "error" || (done && !success)) return 90;
+  if (phase === "error" || done && !success) return 90;
   switch (phase) {
     case "starting":
       return 8;
     case "waitingForExit":
       return 22;
-    case "installing": {
-      const safeMax = Math.max(1, maxRetries);
-      const base = 35;
-      const span = 50;
-      const step = Math.min(attempt, safeMax) / safeMax;
-      return Math.round(base + span * step);
-    }
+    case "installing":{
+        const safeMax = Math.max(1, maxRetries);
+        const base = 35;
+        const span = 50;
+        const step = Math.min(attempt, safeMax) / safeMax;
+        return Math.round(base + span * step);
+      }
     case "done":
       return 100;
     default:
@@ -119,7 +120,7 @@ export function isUpdaterSuccess(status) {
  * @param {object|null|undefined} status
  */
 export function isUpdaterFailure(status) {
-  return !!(status && (status.phase === "error" || (status.done && !status.success)));
+  return !!(status && (status.phase === "error" || status.done && !status.success));
 }
 
 /**
@@ -129,10 +130,10 @@ export function isUpdaterFailure(status) {
  */
 export function getUpdaterStartupBudgetMs(config = UPDATER_CONFIG) {
   return (
-    30000 + // spawn + polling grace
-    (config.waitForExitMaxMs || 0) +
-    (config.installRetries || 0) * ((config.installRetryDelayMs || 0) + 90000)
-  );
+    30000 + (// spawn + polling grace
+    config.waitForExitMaxMs || 0) +
+    (config.installRetries || 0) * ((config.installRetryDelayMs || 0) + 90000));
+
 }
 
 /**
@@ -143,7 +144,7 @@ export function getUpdaterStartupBudgetMs(config = UPDATER_CONFIG) {
  * @param {{ budgetMs?: number }} [opts]
  */
 export function hasExceededStartupBudget(startedAt, now, opts = {}) {
-  if (typeof startedAt !== "number" || typeof now !== "number") return false;
-  const budgetMs = typeof opts.budgetMs === "number" ? opts.budgetMs : getUpdaterStartupBudgetMs();
+  if (!isNumber(startedAt) || !isNumber(now)) return false;
+  const budgetMs = isNumber(opts.budgetMs) ? opts.budgetMs : getUpdaterStartupBudgetMs();
   return now - startedAt > budgetMs;
 }

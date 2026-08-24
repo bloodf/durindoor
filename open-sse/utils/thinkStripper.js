@@ -13,6 +13,7 @@
  * visible and disable later extraction, but cannot retract reasoning that the
  * client has already consumed.
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const OPEN_TAG = "<think>";
 const CLOSE_TAG = "</think>";
@@ -23,7 +24,7 @@ function unchanged(content, malformed = false) {
 
 // Non-streaming: validate the whole tag sequence before returning a transform.
 export function extractThinkTags(content) {
-  if (typeof content !== "string") return unchanged(content);
+  if (!isString(content)) return unchanged(content);
   if (!content.includes(OPEN_TAG) && !content.includes(CLOSE_TAG)) return unchanged(content);
 
   const visible = [];
@@ -44,7 +45,7 @@ export function extractThinkTags(content) {
     const reasoningStart = openIndex + OPEN_TAG.length;
     const closeIndex = content.indexOf(CLOSE_TAG, reasoningStart);
     const nestedOpenIndex = content.indexOf(OPEN_TAG, reasoningStart);
-    if (closeIndex === -1 || (nestedOpenIndex !== -1 && nestedOpenIndex < closeIndex)) {
+    if (closeIndex === -1 || nestedOpenIndex !== -1 && nestedOpenIndex < closeIndex) {
       return unchanged(content, true);
     }
 
@@ -53,12 +54,12 @@ export function extractThinkTags(content) {
     cursor = closeIndex + CLOSE_TAG.length;
   }
 
-  const nonEmptyReasoning = reasoningSegments.filter(segment => segment.length > 0);
+  const nonEmptyReasoning = reasoningSegments.filter((segment) => segment.length > 0);
   return {
     content: visible.join(""),
     reasoning: nonEmptyReasoning.length > 0 ? nonEmptyReasoning.join("\n") : null,
     matched: true,
-    malformed: false,
+    malformed: false
   };
 }
 
@@ -67,7 +68,7 @@ export function stripThinkFromResponse(responseBody) {
   if (!responseBody?.choices) return responseBody;
   for (const choice of responseBody.choices) {
     const msg = choice?.message || choice?.delta;
-    if (msg?.content && typeof msg.content === "string") {
+    if (msg?.content && isString(msg.content)) {
       msg.content = stripThinkTags(msg.content);
     }
   }
@@ -79,7 +80,7 @@ export function stripThinkFromSSEChunk(dataStr) {
   try {
     const parsed = JSON.parse(dataStr);
     const delta = parsed?.choices?.[0]?.delta;
-    if (delta?.content && typeof delta.content === "string") {
+    if (delta?.content && isString(delta.content)) {
       delta.content = stripThinkTags(delta.content);
     }
     return JSON.stringify(parsed);
@@ -92,7 +93,7 @@ export function stripThinkFromSSEChunk(dataStr) {
 // Handles multi-line thinking blocks via the `s` flag (dot matches newlines).
 // Also strips leading whitespace that follows a </think> tag.
 export function stripThinkTags(text) {
-  if (typeof text !== "string") return text;
+  if (!isString(text)) return text;
   const extracted = extractThinkTags(text);
   return extracted.matched ? extracted.content : text;
 }
@@ -138,7 +139,7 @@ export function createThinkTagStreamExtractor() {
 
   return {
     process(text) {
-      if (typeof text !== "string") {
+      if (!isString(text)) {
         return { content: text, reasoning: null, changed: false };
       }
       if (disabled) return { content: text, reasoning: null, changed: false };
@@ -228,7 +229,7 @@ export function createThinkTagStreamExtractor() {
       return {
         content,
         reasoning: null,
-        changed: changed || transactionRaw !== null,
+        changed: changed || transactionRaw !== null
       };
     },
 
@@ -258,14 +259,14 @@ export function createThinkTagStreamExtractor() {
       if (transactionRaw !== null || pending.length > 0) return rollback();
       disabled = true;
       return { content: "", reasoning: null, changed: false };
-    },
+    }
   };
 }
 
 // Stream-safe version: strips <think> tags across chunks using a state object.
 // Returns the stripped content string. Mutates state.
 export function stripThinkFromDelta(deltaContent, state) {
-  if (typeof deltaContent !== "string" || !deltaContent) return deltaContent;
+  if (!isString(deltaContent) || !deltaContent) return deltaContent;
 
   let s = deltaContent;
   if (state.inside) {

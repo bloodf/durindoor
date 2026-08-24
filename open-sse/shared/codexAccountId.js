@@ -1,16 +1,17 @@
+import { isString } from "../../src/shared/utils/typeChecks.js";
 const CODEX_ACCOUNT_ID_FIELDS = Object.freeze([
-  "workspaceId",
-  "chatgptAccountId",
-  "accountId",
-]);
+"workspaceId",
+"chatgptAccountId",
+"accountId"]
+);
 const UNSAFE_HEADER_VALUE = /[\0\r\n]/;
 
 function normalizeAccountId(value) {
-  if (typeof value !== "string") return "";
+  if (!isString(value)) return "";
   const normalized = value.trim();
-  return normalized && normalized.length <= 256 && !UNSAFE_HEADER_VALUE.test(normalized)
-    ? normalized
-    : "";
+  return normalized && normalized.length <= 256 && !UNSAFE_HEADER_VALUE.test(normalized) ?
+  normalized :
+  "";
 }
 
 /**
@@ -18,11 +19,11 @@ function normalizeAccountId(value) {
  * Legacy connections may carry only an idToken with no explicit account field.
  */
 function decodeAccountIdFromIdToken(idToken) {
-  if (typeof idToken !== "string" || !idToken) return "";
+  if (!isString(idToken) || !idToken) return "";
   try {
     const payload = JSON.parse(Buffer.from(idToken.split(".")[1] || "", "base64url").toString("utf8"));
     return normalizeAccountId(
-      payload?.["https://api.openai.com/auth"]?.chatgpt_account_id || payload?.account_id || "",
+      payload?.["https://api.openai.com/auth"]?.chatgpt_account_id || payload?.account_id || ""
     );
   } catch {
     return "";
@@ -45,9 +46,9 @@ export function resolveCodexAccountId(providerSpecificData = {}, idToken = null)
 
 /** Conflicting aliases are unsafe for persistence deduplication. */
 export function hasConflictingCodexAccountIds(providerSpecificData = {}) {
-  const ids = CODEX_ACCOUNT_ID_FIELDS
-    .map((field) => normalizeAccountId(providerSpecificData?.[field]))
-    .filter(Boolean);
+  const ids = CODEX_ACCOUNT_ID_FIELDS.
+  map((field) => normalizeAccountId(providerSpecificData?.[field])).
+  filter(Boolean);
   return new Set(ids).size > 1;
 }
 

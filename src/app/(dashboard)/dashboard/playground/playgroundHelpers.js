@@ -9,23 +9,24 @@ import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
  * @param {object|null} group
  * @returns {Array<{value:string, label:string}>}
  */
+import { isString } from "../../../../shared/utils/typeChecks.js";
 export function getConnectionOptions(group) {
   if (!group || !Array.isArray(group.connections) || group.connections.length <= 1) {
     return [];
   }
-  const validConnections = group.connections.filter((c) => typeof c.id === "string" && c.id.length > 0);
+  const validConnections = group.connections.filter((c) => isString(c.id) && c.id.length > 0);
   if (validConnections.length <= 1) return [];
   return [
-    { value: "auto", label: "Auto" },
-    ...validConnections.map((connection) => ({
-      value: connection.id,
-      label: typeof connection.name === "string" && connection.name.length > 0
-        ? connection.name
-        : typeof connection.email === "string" && connection.email.length > 0
-          ? connection.email
-          : connection.id,
-    })),
-  ];
+  { value: "auto", label: "Auto" },
+  ...validConnections.map((connection) => ({
+    value: connection.id,
+    label: isString(connection.name) && connection.name.length > 0 ?
+    connection.name :
+    isString(connection.email) && connection.email.length > 0 ?
+    connection.email :
+    connection.id
+  }))];
+
 }
 
 /**
@@ -88,7 +89,7 @@ export function groupModelsByProvider(connections = [], normalizedModels = []) {
         providerName: connection.providerName || connection.name || connection.provider || connection.id || providerId,
         providerType: connection.providerType || providerId,
         connections: [],
-        models: [],
+        models: []
       });
     }
     map.get(providerId).connections.push(connection);
@@ -100,13 +101,13 @@ export function groupModelsByProvider(connections = [], normalizedModels = []) {
     map.get(providerId).models.push(model);
   }
 
-  return Array.from(map.values())
-    .map((group) => ({
-      ...group,
-      models: dedupeModels(group.models).sort((a, b) => a.name.localeCompare(b.name)),
-    }))
-    .filter((group) => group.models.length > 0)
-    .sort((a, b) => a.providerName.localeCompare(b.providerName));
+  return Array.from(map.values()).
+  map((group) => ({
+    ...group,
+    models: dedupeModels(group.models).sort((a, b) => a.name.localeCompare(b.name))
+  })).
+  filter((group) => group.models.length > 0).
+  sort((a, b) => a.providerName.localeCompare(b.providerName));
 }
 
 /**

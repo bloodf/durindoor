@@ -5,6 +5,7 @@ import { DATA_DIR } from "@/lib/dataDir.js";
 import { findHeadroomBinary, HEADROOM_COMPRESSION_EXTRAS, getInstalledHeadroomExtras } from "./detect.js";
 import { ensureManagedVenv, managedVenvBinary } from "./pythonEnv.js";
 import { createDiagnostic, quoteShellArg, redactSensitive, SetupError } from "@/shared/utils/setupDiagnostics.js";
+import { isNumber } from "../../shared/utils/typeChecks.js";
 
 const HEADROOM_DIR = path.join(DATA_DIR, "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");
@@ -25,7 +26,7 @@ function ensureDir() {
 function readPid() {
   try {
     if (fs.existsSync(PID_FILE)) return parseInt(fs.readFileSync(PID_FILE, "utf8"), 10);
-  } catch { /* ignore */ }
+  } catch {/* ignore */}
   return null;
 }
 
@@ -35,13 +36,13 @@ function writePid(pid) {
 }
 
 function clearPid() {
-  try { if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
+  try {if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE);} catch {/* ignore */}
 }
 
 // process.kill throws if pid is dead — use this to probe.
 export function isPidAlive(pid) {
-  if (!pid || typeof pid !== "number") return false;
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  if (!pid || !isNumber(pid)) return false;
+  try {process.kill(pid, 0);return true;} catch {return false;}
 }
 
 export function getManagedPid() {
@@ -65,7 +66,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
       code: "NOT_INSTALLED",
       summary: "No usable Headroom CLI was found",
       detail: "The managed Headroom virtualenv has no headroom binary and no Headroom CLI was found on PATH.",
-      fixes: [{ label: "Install Headroom with the required compression extras from the dashboard" }],
+      fixes: [{ label: "Install Headroom with the required compression extras from the dashboard" }]
     }));
   }
 
@@ -80,7 +81,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
     stdio: ["ignore", outFd, outFd],
     detached: true,
     windowsHide: true,
-    env: { ...process.env },
+    env: { ...process.env }
   });
 
   if (!child.pid) {
@@ -99,7 +100,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
     const closeOnce = () => {
       if (closed) return;
       closed = true;
-      try { fs.closeSync(outFd); } catch { /* already closed */ }
+      try {fs.closeSync(outFd);} catch {/* already closed */}
     };
     const onExit = (code) => {
       clearTimeout(startupTimer);
@@ -110,7 +111,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
         summary: "Headroom proxy exited during startup",
         detail: `The proxy process exited with code ${code}.`,
         fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${quoteShellArg(LOG_FILE)}` }],
-        logTail: redactSensitive(getHeadroomLogTail(40)),
+        logTail: redactSensitive(getHeadroomLogTail(40))
       })));
     };
     const startupTimer = setTimeout(() => {
@@ -127,7 +128,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
         summary: "Headroom proxy exited during startup",
         detail: `The proxy process ${child.pid} was no longer running after ${STARTUP_TIMEOUT_MS}ms.`,
         fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${quoteShellArg(LOG_FILE)}` }],
-        logTail: redactSensitive(getHeadroomLogTail(40)),
+        logTail: redactSensitive(getHeadroomLogTail(40))
       })));
     }, STARTUP_TIMEOUT_MS);
     child.once("exit", onExit);
@@ -147,7 +148,7 @@ export function stopHeadroomProxy() {
     // SIGKILL can target a reused pid after a fresh proxy start.
     const escalationTimer = setTimeout(() => {
       if (isPidAlive(pid)) {
-        try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+        try {process.kill(pid, "SIGKILL");} catch {/* already gone */}
       }
       if (!isPidAlive(pid)) clearPid();
     }, 2000);
@@ -167,7 +168,7 @@ export function getHeadroomLogTail(maxLines = 200) {
     const content = fs.readFileSync(LOG_FILE, "utf8");
     const lines = content.split(/\r?\n/).filter(Boolean);
     return lines.slice(-maxLines).join("\n");
-  } catch { return ""; }
+  } catch {return "";}
 }
 
 /**
@@ -193,7 +194,7 @@ export async function installHeadroomExtras(extras) {
         code: "UNKNOWN_EXTRA",
         summary: `Unknown Headroom extra name(s): ${unknowns.join(", ")}`,
         detail: `Valid extras are: ${HEADROOM_COMPRESSION_EXTRAS.join(", ")}. An empty array installs every extra; any non-empty array must list only known names.`,
-        fixes: [{ label: "Retry with only supported Headroom extras" }],
+        fixes: [{ label: "Retry with only supported Headroom extras" }]
       }));
     }
     const requested = candidates;
@@ -222,7 +223,7 @@ export async function installHeadroomExtras(extras) {
       const child = spawn(python, args, {
         stdio: ["ignore", outFd, outFd],
         windowsHide: true,
-        env: { ...process.env, TMPDIR: scratchDir, PIP_CACHE_DIR: path.join(scratchDir, "cache") },
+        env: { ...process.env, TMPDIR: scratchDir, PIP_CACHE_DIR: path.join(scratchDir, "cache") }
       });
 
       let settled = false;
@@ -231,14 +232,14 @@ export async function installHeadroomExtras(extras) {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutTimer);
-        try { fs.closeSync(outFd); } catch { /* already closed */ }
+        try {fs.closeSync(outFd);} catch {/* already closed */}
         fn(value);
       };
 
       timeoutTimer = setTimeout(() => {
-        try { child.kill("SIGTERM"); } catch { /* already gone */ }
+        try {child.kill("SIGTERM");} catch {/* already gone */}
         const killTimer = setTimeout(() => {
-          try { child.kill("SIGKILL"); } catch { /* already gone */ }
+          try {child.kill("SIGKILL");} catch {/* already gone */}
         }, INSTALL_KILL_GRACE_MS);
         killTimer.unref?.();
         finish(reject, new SetupError(createDiagnostic({
@@ -246,10 +247,10 @@ export async function installHeadroomExtras(extras) {
           summary: `Headroom install exceeded ${Math.round(INSTALL_TIMEOUT_MS / 60000)} minutes and was stopped`,
           detail: `${manualCommand} did not finish within ${INSTALL_TIMEOUT_MS} ms. A slow or blocked package index is the usual cause; the ml extra downloads torch.`,
           fixes: [
-            { label: "Run the install manually and watch its output", command: manualCommand },
-            { label: "Or install without the heavy ml extra", command: [python, "-m", "pip", "install", "--upgrade", "headroom-ai[proxy,code]"].map(quoteShellArg).join(" ") },
-          ],
-          logTail: redactSensitive(getLogTail(installLog, 40)),
+          { label: "Run the install manually and watch its output", command: manualCommand },
+          { label: "Or install without the heavy ml extra", command: [python, "-m", "pip", "install", "--upgrade", "headroom-ai[proxy,code]"].map(quoteShellArg).join(" ") }],
+
+          logTail: redactSensitive(getLogTail(installLog, 40))
         })));
       }, INSTALL_TIMEOUT_MS);
 
@@ -316,10 +317,10 @@ function assertInstallDiskSpace(requested, python) {
     summary: `Not enough free space to install the ${requested.join(" and ")} extras`,
     detail: `${HEADROOM_DIR} has ${formatGiB(free)} available; ${requested.includes("ml") ? "the ml extra (torch plus the CUDA wheel stack) needs about" : "the install needs about"} ${formatGiB(needed)} including pip's unpack space.`,
     fixes: [
-      { label: "Check free space on the data directory's filesystem", command: `df -h ${quoteShellArg(HEADROOM_DIR)}` },
-      { label: "Install without the large ml extra", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy,code]")}` },
-      { label: "Or point DATA_DIR at a larger filesystem and restart DurinDoor" },
-    ],
+    { label: "Check free space on the data directory's filesystem", command: `df -h ${quoteShellArg(HEADROOM_DIR)}` },
+    { label: "Install without the large ml extra", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy,code]")}` },
+    { label: "Or point DATA_DIR at a larger filesystem and restart DurinDoor" }]
+
   }));
 }
 
@@ -339,11 +340,11 @@ function createInstallError({ python, requested, manualCommand, reason, rawLog }
       summary: "Pip ran out of disk space while installing Headroom",
       detail: `The install wrote to ${dir} and unpacked through the scratch directory beside it. The ml extra needs roughly 12 GiB across download, unpack and the final venv.`,
       fixes: [
-        { label: "Check free space on the data directory's filesystem", command: `df -h ${quoteShellArg(dir)}` },
-        { label: "Install without the large ml extra", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy,code]")}` },
-        { label: "Or point DATA_DIR at a larger filesystem and restart DurinDoor" },
-      ],
-      logTail,
+      { label: "Check free space on the data directory's filesystem", command: `df -h ${quoteShellArg(dir)}` },
+      { label: "Install without the large ml extra", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy,code]")}` },
+      { label: "Or point DATA_DIR at a larger filesystem and restart DurinDoor" }],
+
+      logTail
     }));
   }
 
@@ -353,7 +354,7 @@ function createInstallError({ python, requested, manualCommand, reason, rawLog }
       summary: "Pip reported an externally managed Python environment",
       detail: `The managed virtualenv at ${path.dirname(path.dirname(python))} exists precisely to avoid PEP 668. This output means managed venv creation was skipped.`,
       fixes: [{ label: "Recreate the managed Headroom virtualenv, then retry the install", command: `rm -rf ${quoteShellArg(path.dirname(path.dirname(python)))}` }],
-      logTail,
+      logTail
     }));
   }
 
@@ -364,10 +365,10 @@ function createInstallError({ python, requested, manualCommand, reason, rawLog }
       summary: "A requested Headroom extra has no compatible package wheel",
       detail: `Pip using ${version} could not resolve one of the requested extras: ${requested.join(", ") || "none"}.`,
       fixes: [
-        { label: "Install a different Python minor version with venv support", command: "sudo apt install -y python3.13 python3.13-venv" },
-        { label: "Install Headroom without compression extras", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy]")}` },
-      ],
-      logTail,
+      { label: "Install a different Python minor version with venv support", command: "sudo apt install -y python3.13 python3.13-venv" },
+      { label: "Install Headroom without compression extras", command: `${quoteShellArg(python)} -m pip install --upgrade ${quoteShellArg("headroom-ai[proxy]")}` }],
+
+      logTail
     }));
   }
 
@@ -376,7 +377,7 @@ function createInstallError({ python, requested, manualCommand, reason, rawLog }
     summary: "Headroom installation did not complete",
     detail: reason,
     fixes: [{ label: "Run the failed install command manually", command: manualCommand }],
-    logTail,
+    logTail
   }));
 }
 
@@ -384,7 +385,7 @@ function getPythonVersion(python) {
   try {
     return `Python ${execFileSync(python, ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"], {
       stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
+      windowsHide: true
     }).toString().trim()}`;
   } catch {
     return python;

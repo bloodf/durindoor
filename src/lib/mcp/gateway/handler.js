@@ -4,9 +4,10 @@ import {
   validateGatewayKey,
   getGrantsForKeyDetailed,
   getEnabledInstancesByIds,
-  saveRequestUsage,
-} from "@/lib/localDb";
+  saveRequestUsage } from
+"@/lib/localDb";
 import { isRecord } from "./guards";
+import { isNumber, isString } from "../../../shared/utils/typeChecks.js";
 
 const SERVER_INFO = { name: "9router-gateway", version: "1" };
 const PROTOCOL_VERSION = "2025-06-18";
@@ -34,7 +35,7 @@ function jsonRpcOk(id, result) {
 }
 
 function jsonRpcErr(id, code, message, data) {
-  return { jsonrpc: "2.0", id: id ?? null, error: { code, message, ...(data !== undefined ? { data } : {}) } };
+  return { jsonrpc: "2.0", id: id ?? null, error: { code, message, ...(data !== undefined ? { data } : null) } };
 }
 
 async function authenticate(request) {
@@ -47,7 +48,7 @@ async function authenticate(request) {
   const grants = grantsDetailed.map((g) => ({
     instanceId: g.instanceId,
     slug: instances.find((i) => i.id === g.instanceId)?.slug || null,
-    toolAllowlist: g.toolAllowlist,
+    toolAllowlist: g.toolAllowlist
   }));
   return { ok: true, rawKey, keyRow, instances, grants };
 }
@@ -74,72 +75,72 @@ export async function handleJsonRpc(request, body, opts = {}) {
   const respond = async (rpcBody) => ({ kind: "response", status: 200, body: rpcBody });
 
   switch (obj.method) {
-    case "initialize": {
-      const result = {
-        protocolVersion: PROTOCOL_VERSION,
-        capabilities: SERVER_CAPABILITIES,
-        serverInfo: SERVER_INFO,
-        instructions: opts.instructions || "9Router MCP Gateway — tools are namespaced as <instanceSlug>__<toolName>",
-      };
-      return respond(jsonRpcOk(obj.id, result));
-    }
+    case "initialize":{
+        const result = {
+          protocolVersion: PROTOCOL_VERSION,
+          capabilities: SERVER_CAPABILITIES,
+          serverInfo: SERVER_INFO,
+          instructions: opts.instructions || "9Router MCP Gateway — tools are namespaced as <instanceSlug>__<toolName>"
+        };
+        return respond(jsonRpcOk(obj.id, result));
+      }
     case "notifications/initialized":
       return { kind: "notification" };
     case "ping":
       return respond(jsonRpcOk(obj.id, {}));
-    case "tools/list": {
-      const { aggregateTools } = await import("./aggregator");
-      const { tools, errors } = await aggregateTools(instances, grants);
-      return respond(jsonRpcOk(obj.id, { tools, nextCursor: null, _gateway: { errors } }));
-    }
-    case "tools/call": {
-      const params = isRecord(obj.params) ? obj.params : {};
-      if (typeof params.name !== "string" || !params.name) {
-        return respond(jsonRpcErr(obj.id, -32602, "tools/call requires params.name"));
+    case "tools/list":{
+        const { aggregateTools } = await import("./aggregator");
+        const { tools, errors } = await aggregateTools(instances, grants);
+        return respond(jsonRpcOk(obj.id, { tools, nextCursor: null, _gateway: { errors } }));
       }
-      const toolName = params.name;
-      const splitIdx = toolName.indexOf("__");
-      const slug = splitIdx > 0 ? toolName.slice(0, splitIdx) : null;
-      const instance = slug ? instances.find((i) => i.slug === slug) || null : null;
-      if (!instance) {
-        return respond(jsonRpcErr(obj.id, -32602, `unknown tool: ${toolName}`));
-      }
-      try {
-        const { dispatchToolCall } = await import("./aggregator");
-        const args = isRecord(params.arguments) ? params.arguments : {};
-        const { result } = await dispatchToolCall(instances, grants, toolName, args);
-        saveRequestUsage({
-          provider: "mcp-gateway",
-          model: toolName,
-          connectionId: instance.id,
-          apiKey: rawKey,
-          endpoint: "/api/mcp-gateway",
-          tokens: {},
-          status: "ok",
-        }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
-        return respond(jsonRpcOk(obj.id, result ?? { content: [], isError: false }));
-      } catch (e) {
-        const errMsg = (typeof e.message === "string" ? e.message : undefined) || String(e);
-        const code = typeof e.code === "number" ? e.code : -32603;
-        const isUpstream = !e.code;
-        saveRequestUsage({
-          provider: "mcp-gateway",
-          model: toolName,
-          connectionId: instance.id,
-          apiKey: rawKey,
-          endpoint: "/api/mcp-gateway",
-          tokens: {},
-          status: "error",
-        }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
-        if (isUpstream) {
-          return respond(jsonRpcOk(obj.id, {
-            content: [{ type: "text", text: `tool error: ${errMsg}` }],
-            isError: true,
-          }));
+    case "tools/call":{
+        const params = isRecord(obj.params) ? obj.params : {};
+        if (!isString(params.name) || !params.name) {
+          return respond(jsonRpcErr(obj.id, -32602, "tools/call requires params.name"));
         }
-        return respond(jsonRpcErr(obj.id, code, errMsg));
+        const toolName = params.name;
+        const splitIdx = toolName.indexOf("__");
+        const slug = splitIdx > 0 ? toolName.slice(0, splitIdx) : null;
+        const instance = slug ? instances.find((i) => i.slug === slug) || null : null;
+        if (!instance) {
+          return respond(jsonRpcErr(obj.id, -32602, `unknown tool: ${toolName}`));
+        }
+        try {
+          const { dispatchToolCall } = await import("./aggregator");
+          const args = isRecord(params.arguments) ? params.arguments : {};
+          const { result } = await dispatchToolCall(instances, grants, toolName, args);
+          saveRequestUsage({
+            provider: "mcp-gateway",
+            model: toolName,
+            connectionId: instance.id,
+            apiKey: rawKey,
+            endpoint: "/api/mcp-gateway",
+            tokens: {},
+            status: "ok"
+          }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
+          return respond(jsonRpcOk(obj.id, result ?? { content: [], isError: false }));
+        } catch (e) {
+          const errMsg = (isString(e.message) ? e.message : undefined) || String(e);
+          const code = isNumber(e.code) ? e.code : -32603;
+          const isUpstream = !e.code;
+          saveRequestUsage({
+            provider: "mcp-gateway",
+            model: toolName,
+            connectionId: instance.id,
+            apiKey: rawKey,
+            endpoint: "/api/mcp-gateway",
+            tokens: {},
+            status: "error"
+          }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
+          if (isUpstream) {
+            return respond(jsonRpcOk(obj.id, {
+              content: [{ type: "text", text: `tool error: ${errMsg}` }],
+              isError: true
+            }));
+          }
+          return respond(jsonRpcErr(obj.id, code, errMsg));
+        }
       }
-    }
     default:
       return respond(jsonRpcErr(obj.id, -32601, `method not implemented: ${String(obj.method)}`));
   }

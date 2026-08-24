@@ -10,11 +10,12 @@ import { resolveKiroCredentialsFromSsoCache } from "open-sse/services/kiroModels
  * For IDC (organization) tokens, accepts clientId/clientSecret/region so the
  * token can be refreshed via the regional AWS OIDC endpoint.
  */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { refreshToken, clientId, clientSecret, region, authMethod, profileArn } = await request.json();
 
-    if (!refreshToken || typeof refreshToken !== "string") {
+    if (!refreshToken || !isString(refreshToken)) {
       return NextResponse.json(
         { error: "Refresh token is required" },
         { status: 400 }
@@ -26,9 +27,9 @@ export async function POST(request) {
 
     // For IDC tokens, refresh via the regional OIDC endpoint with client credentials.
     // For social/builder-id tokens, use the standard social refresh endpoint.
-    let resolvedProviderData = isIdc
-      ? { clientId, clientSecret, region: region || "us-east-1", authMethod: "idc" }
-      : {};
+    let resolvedProviderData = isIdc ?
+    { clientId, clientSecret, region: region || "us-east-1", authMethod: "idc" } :
+    {};
 
     let resolvedProfileArn = profileArn || null;
 
@@ -44,6 +45,7 @@ export async function POST(request) {
     try {
       cacheResult = await resolveKiroCredentialsFromSsoCache(refreshToken.trim());
     } catch (cacheError) {
+
       // Cache unavailable or token not cached — proceed with standard flow.
     }
     if (cacheResult?.authMethod === "external_idp" && cacheResult.rawAuth) {
@@ -71,12 +73,12 @@ export async function POST(request) {
         profileArn: resolvedProfileArn,
         authMethod: resolvedAuthMethod,
         provider: providerLabel,
-        ...(isIdc ? { clientId, clientSecret, region: region || "us-east-1" } : {}),
+        ...(isIdc ? { clientId, clientSecret, region: region || "us-east-1" } : null),
         // Persist the full external_idp metadata (clientId, tokenEndpoint,
         // scope) so later runtime refreshes stay on the Microsoft endpoint.
-        ...(tokenData.providerSpecificData?.authMethod === "external_idp" ? tokenData.providerSpecificData : {}),
+        ...(tokenData.providerSpecificData?.authMethod === "external_idp" ? tokenData.providerSpecificData : null)
       },
-      testStatus: "active",
+      testStatus: "active"
     });
 
     return NextResponse.json({
@@ -84,8 +86,8 @@ export async function POST(request) {
       connection: {
         id: connection.id,
         provider: connection.provider,
-        email: connection.email,
-      },
+        email: connection.email
+      }
     });
   } catch (error) {
     console.log("Kiro import token error:", error);

@@ -4,8 +4,9 @@ import { deriveModelName } from "./namePatterns.js";
 // Registry ids use dots for versions ("claude-sonnet-4.5") but clients (CLIs, aliases)
 // often send them with dashes ("claude-sonnet-4-5"). Only digit-digit hyphens are
 // touched, so word/suffix hyphens stay intact ("-thinking", "-agentic", "qwen3-coder-next").
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function normalizeModelId(modelId) {
-  if (typeof modelId !== "string") return modelId;
+  if (!isString(modelId)) return modelId;
   return modelId.replace(/(\d)-(\d)/g, "$1.$2");
 }
 
@@ -24,7 +25,7 @@ export const MODEL_DEFAULTS = {
 // Normalize a registry model entry: accept terse "id" string, fill name via regex when omitted.
 // Override always wins (raw spread last); name falls back to regex → id.
 export function normalizeModel(raw) {
-  const model = typeof raw === "string" ? { id: raw } : raw;
+  const model = isString(raw) ? { id: raw } : raw;
   if (model.name !== undefined) return model;
   return { ...model, name: deriveModelName(model.id) };
 }

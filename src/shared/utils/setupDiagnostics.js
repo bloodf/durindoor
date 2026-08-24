@@ -4,6 +4,7 @@
  * @property {string} [command] Exact copy-pasteable command.
  * @property {string} [url]
  */
+import { isString } from "./typeChecks.js";
 
 /**
  * @typedef {Object} SetupDiagnostic
@@ -16,22 +17,22 @@
  */
 
 const USER_FIXABLE_CODES = new Set([
-  "NO_SUPPORTED_PYTHON",
-  "PYTHON_USER_SCOPED_ONLY",
-  "VENV_TOOLS_MISSING",
-  "VENV_CREATE_FAILED",
-  "INSTALL_FAILED",
-  "PEP668",
-  "EXTRA_WHEEL_UNAVAILABLE",
-  "NOT_INSTALLED",
-  "EARLY_EXIT",
-  "EXTERNAL_PROXY",
-  "VENV_UNTRUSTED",
-  "UNKNOWN_EXTRA",
-  "INSTALL_IN_PROGRESS",
-  "INSTALL_DISK_FULL",
-  "INSTALL_TIMEOUT",
-]);
+"NO_SUPPORTED_PYTHON",
+"PYTHON_USER_SCOPED_ONLY",
+"VENV_TOOLS_MISSING",
+"VENV_CREATE_FAILED",
+"INSTALL_FAILED",
+"PEP668",
+"EXTRA_WHEEL_UNAVAILABLE",
+"NOT_INSTALLED",
+"EARLY_EXIT",
+"EXTERNAL_PROXY",
+"VENV_UNTRUSTED",
+"UNKNOWN_EXTRA",
+"INSTALL_IN_PROGRESS",
+"INSTALL_DISK_FULL",
+"INSTALL_TIMEOUT"]
+);
 
 /**
  * Quote a value for safe interpolation into a copy-pasteable shell command
@@ -72,12 +73,12 @@ const EXTRA_INDEX_URL_FLAG_RE = /(--extra-index-url[= ])\S+/g;
  * @returns {string}
  */
 export function redactSensitive(text) {
-  if (typeof text !== "string") return "";
-  return text
-    .replace(PIP_INDEX_URL_ENV_RE, "$1[redacted]")
-    .replace(EXTRA_INDEX_URL_FLAG_RE, "$1[redacted]")
-    .replace(URL_CREDENTIALS_RE, "$1[redacted]@")
-    .replace(TOKEN_RUN_RE, "[redacted]");
+  if (!isString(text)) return "";
+  return text.
+  replace(PIP_INDEX_URL_ENV_RE, "$1[redacted]").
+  replace(EXTRA_INDEX_URL_FLAG_RE, "$1[redacted]").
+  replace(URL_CREDENTIALS_RE, "$1[redacted]@").
+  replace(TOKEN_RUN_RE, "[redacted]");
 }
 
 /**
@@ -89,10 +90,10 @@ export function redactSensitive(text) {
  * @returns {Readonly<SetupDiagnostic>}
  */
 export function createDiagnostic({ code, summary, detail, fixes, docs, logTail }) {
-  if (![code, summary, detail].every((value) => typeof value === "string" && value.trim())) {
+  if (![code, summary, detail].every((value) => isString(value) && value.trim())) {
     throw new TypeError("Setup diagnostics require code, summary, and detail");
   }
-  if (!Array.isArray(fixes) || fixes.length === 0 || fixes.some((fix) => !fix || typeof fix.label !== "string" || !fix.label.trim())) {
+  if (!Array.isArray(fixes) || fixes.length === 0 || fixes.some((fix) => !fix || !isString(fix.label) || !fix.label.trim())) {
     throw new TypeError("Setup diagnostics require at least one labeled fix");
   }
 
@@ -101,8 +102,8 @@ export function createDiagnostic({ code, summary, detail, fixes, docs, logTail }
     summary,
     detail,
     fixes: Object.freeze(fixes.map((fix) => Object.freeze({ ...fix }))),
-    ...(docs ? { docs } : {}),
-    ...(logTail !== undefined ? { logTail } : {}),
+    ...(docs ? { docs } : null),
+    ...(logTail !== undefined ? { logTail } : null)
   });
 }
 

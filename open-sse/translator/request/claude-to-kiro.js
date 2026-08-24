@@ -31,16 +31,17 @@ import {
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
   normalizeKiroToolSchema,
-  resolveKiroProfileArn,
-} from "../../config/kiroConstants.js";
+  resolveKiroProfileArn } from
+"../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
 
 /** Stringify a tool_use input as a readable line. */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 function toolUseToText(name, input) {
   let argStr;
   try {
-    argStr = typeof input === "string" ? input : JSON.stringify(input ?? {});
+    argStr = isString(input) ? input : JSON.stringify(input ?? {});
   } catch {
     argStr = "{}";
   }
@@ -50,13 +51,13 @@ function toolUseToText(name, input) {
 /** Render a Claude tool_result block's content as a readable line. */
 function toolResultBlockToText(content) {
   let text = "";
-  if (typeof content === "string") {
+  if (isString(content)) {
     text = content;
   } else if (Array.isArray(content)) {
-    text = content
-      .map((c) => (typeof c === "string" ? c : c?.text || ""))
-      .filter(Boolean)
-      .join("\n");
+    text = content.
+    map((c) => isString(c) ? c : c?.text || "").
+    filter(Boolean).
+    join("\n");
   } else if (content) {
     try {
       text = JSON.stringify(content);
@@ -92,9 +93,9 @@ function flattenClaudeToolInteractions(messages) {
 
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
       const newContent = msg.content.map((block) =>
-        block.type === CLAUDE_BLOCK.TOOL_RESULT
-          ? { type: CLAUDE_BLOCK.TEXT, text: toolResultBlockToText(block.content) }
-          : block
+      block.type === CLAUDE_BLOCK.TOOL_RESULT ?
+      { type: CLAUDE_BLOCK.TEXT, text: toolResultBlockToText(block.content) } :
+      block
       );
       out.push({ ...msg, content: newContent });
       continue;
@@ -124,19 +125,19 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
   const clientProvidedTools = Array.isArray(tools) && tools.length > 0;
 
   const buildToolSpecs = () =>
-    tools.map((t) => {
-      const name = t.name;
-      const description = t.description || `Tool: ${name}`;
-      const schema = t.input_schema || {};
-      const normalizedSchema = normalizeKiroToolSchema(schema);
-      return {
-        toolSpecification: {
-          name,
-          description,
-          inputSchema: { json: normalizedSchema },
-        },
-      };
-    });
+  tools.map((t) => {
+    const name = t.name;
+    const description = t.description || `Tool: ${name}`;
+    const schema = t.input_schema || {};
+    const normalizedSchema = normalizeKiroToolSchema(schema);
+    return {
+      toolSpecification: {
+        name,
+        description,
+        inputSchema: { json: normalizedSchema }
+      }
+    };
+  });
 
   const flushPending = () => {
     if (currentRole === ROLE.USER) {
@@ -157,7 +158,7 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
       }
       if (pendingToolResults.length > 0) {
         userMsg.userInputMessage.userInputMessageContext = {
-          toolResults: pendingToolResults,
+          toolResults: pendingToolResults
         };
       }
       // Attach tools to the first user turn only.
@@ -187,7 +188,7 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
     currentRole = role;
 
     if (role === ROLE.USER) {
-      if (typeof msg.content === "string") {
+      if (isString(msg.content)) {
         pendingUserContent.push(msg.content);
       } else if (Array.isArray(msg.content)) {
         for (const block of msg.content) {
@@ -199,21 +200,21 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
             pendingImages.push({ format, source: { bytes: block.source.data } });
           } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
             let resultContent = "";
-            if (typeof block.content === "string") {
+            if (isString(block.content)) {
               resultContent = block.content;
             } else if (Array.isArray(block.content)) {
               resultContent =
-                block.content
-                  .filter((c) => c.type === CLAUDE_BLOCK.TEXT)
-                  .map((c) => c.text)
-                  .join("\n") || JSON.stringify(block.content);
+              block.content.
+              filter((c) => c.type === CLAUDE_BLOCK.TEXT).
+              map((c) => c.text).
+              join("\n") || JSON.stringify(block.content);
             } else if (block.content) {
               resultContent = JSON.stringify(block.content);
             }
             pendingToolResults.push({
               toolUseId: block.tool_use_id,
               status: "success",
-              content: [{ text: resultContent }],
+              content: [{ text: resultContent }]
             });
           }
         }
@@ -221,7 +222,7 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
     } else if (role === ROLE.ASSISTANT) {
       let textContent = "";
       const toolUses = [];
-      if (typeof msg.content === "string") {
+      if (isString(msg.content)) {
         textContent = msg.content;
       } else if (Array.isArray(msg.content)) {
         for (const block of msg.content) {
@@ -231,7 +232,7 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
             toolUses.push({
               toolUseId: block.id,
               name: block.name,
-              input: block.input || {},
+              input: block.input || {}
             });
           }
         }
@@ -261,16 +262,16 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
 
   // Grab tools from the first history user turn before cleanup strips them.
   const firstHistoryTools =
-    history[0]?.userInputMessage?.userInputMessageContext?.tools;
+  history[0]?.userInputMessage?.userInputMessageContext?.tools;
 
   history.forEach((item) => {
     if (item.userInputMessage?.userInputMessageContext?.tools) {
       delete item.userInputMessage.userInputMessageContext.tools;
     }
     if (
-      item.userInputMessage?.userInputMessageContext &&
-      Object.keys(item.userInputMessage.userInputMessageContext).length === 0
-    ) {
+    item.userInputMessage?.userInputMessageContext &&
+    Object.keys(item.userInputMessage.userInputMessageContext).length === 0)
+    {
       delete item.userInputMessage.userInputMessageContext;
     }
     if (item.userInputMessage && !item.userInputMessage.modelId) {
@@ -292,9 +293,9 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
         } else {
           if (curCtx.toolResults?.length > 0) {
             prevCtx.toolResults = [
-              ...(prevCtx.toolResults || []),
-              ...curCtx.toolResults,
-            ];
+            ...(prevCtx.toolResults || []),
+            ...curCtx.toolResults];
+
           }
           if (curCtx.tools?.length > 0) {
             prevCtx.tools = [...(prevCtx.tools || []), ...curCtx.tools];
@@ -312,14 +313,14 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
 
   // Inject tools into currentMessage after cleanup if not already present.
   if (
-    firstHistoryTools?.length > 0 &&
-    !currentMessage.userInputMessage.userInputMessageContext?.tools
-  ) {
+  firstHistoryTools?.length > 0 &&
+  !currentMessage.userInputMessage.userInputMessageContext?.tools)
+  {
     if (!currentMessage.userInputMessage.userInputMessageContext) {
       currentMessage.userInputMessage.userInputMessageContext = {};
     }
     currentMessage.userInputMessage.userInputMessageContext.tools =
-      firstHistoryTools;
+    firstHistoryTools;
   }
 
   return { history: mergedHistory, currentMessage };
@@ -352,9 +353,9 @@ function reconcileOrphanedToolResults(history, currentMessage) {
       if (validIds.has(tr.toolUseId)) {
         kept.push(tr);
       } else {
-        const text = Array.isArray(tr.content)
-          ? tr.content.map((c) => c?.text || "").join("\n")
-          : "";
+        const text = Array.isArray(tr.content) ?
+        tr.content.map((c) => c?.text || "").join("\n") :
+        "";
         salvaged.push(`[Tool result: ${text}]`);
       }
     }
@@ -388,7 +389,7 @@ export function claudeToKiroRequest(model, body, stream, credentials, translatio
     body,
     credentials?.rawHeaders,
     model,
-    translationContext?.thinkingIntent,
+    translationContext?.thinkingIntent
   );
 
   // Guard 1: no client tools → flatten all tool interactions to text.
@@ -418,7 +419,7 @@ export function claudeToKiroRequest(model, body, stream, credentials, translatio
   let systemInstruction = undefined;
   if (body.system) {
     let systemText = "";
-    if (typeof body.system === "string") {
+    if (isString(body.system)) {
       systemText = body.system;
     } else if (Array.isArray(body.system)) {
       systemText = body.system.map((s) => s.text || "").join("\n");
@@ -449,11 +450,11 @@ export function claudeToKiroRequest(model, body, stream, credentials, translatio
     origin: "AI_EDITOR",
     ...(currentMessage?.userInputMessage?.userInputMessageContext && {
       userInputMessageContext:
-        currentMessage.userInputMessage.userInputMessageContext,
+      currentMessage.userInputMessage.userInputMessageContext
     }),
     ...(currentMessage?.userInputMessage?.images && {
-      images: currentMessage.userInputMessage.images,
-    }),
+      images: currentMessage.userInputMessage.images
+    })
   };
 
   if (systemInstruction) {
@@ -467,13 +468,13 @@ export function claudeToKiroRequest(model, body, stream, credentials, translatio
         headers: credentials?.rawHeaders,
         body,
         connectionId: credentials?.connectionId,
-        scope: "kiro",
+        scope: "kiro"
       }),
       currentMessage: {
-        userInputMessage,
+        userInputMessage
       },
-      history,
-    },
+      history
+    }
   };
 
   if (profileArn) payload.profileArn = profileArn;

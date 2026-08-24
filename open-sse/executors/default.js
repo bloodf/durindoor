@@ -21,6 +21,7 @@ import { FORMATS } from "../translator/formats.js";
 // the same mechanism the Codex executor uses. We do NOT enable it by default:
 // some strict openai-compatible gateways reject unknown fields. A custom
 // provider opts in via providerSpecificData.enablePromptCacheKey === true.
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export function normalizePromptCacheKey(provider, sessionId) {
   if (!sessionId) return "";
   const scoped = `${provider || "openai-compatible"}:${sessionId}`;
@@ -28,9 +29,9 @@ export function normalizePromptCacheKey(provider, sessionId) {
 }
 
 export function injectPromptCacheKey(provider, body, credentials) {
-  if (!body || typeof body !== "object") return body;
+  if (!body || !isObject(body)) return body;
   if (credentials?.providerSpecificData?.enablePromptCacheKey !== true) return body;
-  if (typeof body.prompt_cache_key === "string" && body.prompt_cache_key) return body;
+  if (isString(body.prompt_cache_key) && body.prompt_cache_key) return body;
 
   // translateRequest() already captured a conversation-stable id into
   // credentials._clientSessionId; fall back to resolving one here so this
@@ -42,7 +43,7 @@ export function injectPromptCacheKey(provider, body, credentials) {
     body,
     connectionId: credentials?.connectionId,
     workspaceId: credentials?.providerSpecificData?.workspaceId,
-    scope: provider,
+    scope: provider
   });
 
   const promptCacheKey = normalizePromptCacheKey(provider, sessionId);
@@ -51,7 +52,7 @@ export function injectPromptCacheKey(provider, body, credentials) {
 }
 
 export function injectOpenAIStore(body, provider, credentials, transportFormat) {
-  if (!body || typeof body !== "object") return body;
+  if (!body || !isObject(body)) return body;
   if (provider !== "openai" && !provider?.startsWith("openai-compatible-responses-")) return body;
   if (credentials?.providerSpecificData?.openaiStoreEnabled !== true) return body;
   if (transportFormat !== FORMATS.OPENAI_RESPONSES && transportFormat !== FORMATS.OPENAI_RESPONSE) return body;
@@ -72,7 +73,7 @@ export function normalizeOpenAIToolCallIds(body) {
 
   const normalizedIds = new Map();
   const normalize = (id) => {
-    if (typeof id !== "string" || id.length <= OPENAI_TOOL_CALL_ID_MAX_LENGTH) return id;
+    if (!isString(id) || id.length <= OPENAI_TOOL_CALL_ID_MAX_LENGTH) return id;
     if (normalizedIds.has(id)) return normalizedIds.get(id);
 
     const prefix = id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, OPENAI_TOOL_CALL_ID_PREFIX_LENGTH) || "call";
@@ -100,9 +101,9 @@ export function normalizeOpenAIToolCallIds(body) {
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
 const XAPIKEY = { combined: true, header: "x-api-key", scheme: "raw" };
 const AUTH_DESCRIPTORS = Object.fromEntries(
-  Object.entries(PROVIDERS)
-    .filter(([, t]) => t.auth)
-    .map(([id, t]) => [id, t.auth])
+  Object.entries(PROVIDERS).
+  filter(([, t]) => t.auth).
+  map(([id, t]) => [id, t.auth])
 );
 
 // Apply a token to a header per scheme. Missing tokens intentionally leave the
@@ -130,11 +131,11 @@ export function normalizeAccountIdPlaceholder(provider, accountId) {
   const normalized = trimmed.replace(/_/g, "-");
 
   const labels = normalized.split(".");
-  const validDnsLabels = labels.every((label) => (
-    label.length > 0
-    && label.length <= 63
-    && /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(label)
-  ));
+  const validDnsLabels = labels.every((label) =>
+  label.length > 0 &&
+  label.length <= 63 &&
+  /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(label)
+  );
   if (!validDnsLabels || normalized.length > 253) {
     throw new Error(`${provider} requires a valid accountId in providerSpecificData`);
   }
@@ -146,10 +147,10 @@ export function normalizeAccountIdPlaceholder(provider, accountId) {
 function setAuth(headers, spec, token) {
   if (!token) return;
   const scheme = spec.scheme;
-  if (scheme === "bearer") headers[spec.header] = `Bearer ${token}`;
-  else if (scheme === "key") headers[spec.header] = `Key ${token}`;
-  else if (spec.prefix) headers[spec.header] = `${spec.prefix} ${token}`;
-  else headers[spec.header] = token;
+  if (scheme === "bearer") headers[spec.header] = `Bearer ${token}`;else
+  if (scheme === "key") headers[spec.header] = `Key ${token}`;else
+  if (spec.prefix) headers[spec.header] = `${spec.prefix} ${token}`;else
+  headers[spec.header] = token;
 }
 
 // Resolve auth onto headers from a descriptor.
@@ -161,8 +162,8 @@ function applyAuth(headers, desc, credentials) {
     return;
   }
   // split apiKey/oauth: set only the matching branch (legacy: anthropic-compatible skips when both absent)
-  if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);
-  else if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
+  if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);else
+  if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
   applyExtraHeaders(headers, desc.extraHeaders, credentials);
   if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
 }
@@ -180,7 +181,7 @@ function applyExtraHeaders(headers, extraHeaders, credentials) {
 const HEADER_HOOKS = {
   kimiHeaders: (h) => Object.assign(h, buildKimiHeaders()),
   clineHeaders: (h, c) => Object.assign(h, buildClineHeaders(c.apiKey || c.accessToken)),
-  kilocodeOrg: (h, c) => { if (c.providerSpecificData?.orgId) h["X-Kilocode-OrganizationID"] = c.providerSpecificData.orgId; },
+  kilocodeOrg: (h, c) => {if (c.providerSpecificData?.orgId) h["X-Kilocode-OrganizationID"] = c.providerSpecificData.orgId;},
   claudeOverlay: (h) => {
     const cached = getCachedClaudeHeaders();
     if (!cached) return;
@@ -188,32 +189,32 @@ const HEADER_HOOKS = {
       const titleKey = lcKey.replace(/(^|-)([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
       if (lcKey === "anthropic-beta") {
         const staticBetaStr = h[titleKey] || h[lcKey] || "";
-        const flags = new Set(staticBetaStr.split(",").map(f => f.trim()).filter(Boolean));
-        for (const f of cached[lcKey].split(",").map(f => f.trim()).filter(Boolean)) flags.add(f);
+        const flags = new Set(staticBetaStr.split(",").map((f) => f.trim()).filter(Boolean));
+        for (const f of cached[lcKey].split(",").map((f) => f.trim()).filter(Boolean)) flags.add(f);
         cached[lcKey] = Array.from(flags).join(",");
       }
       if (titleKey !== lcKey && h[titleKey] !== undefined) delete h[titleKey];
     }
     Object.assign(h, cached);
-  },
+  }
 };
 
 // Config-driven OAuth refresh grants — derived from registry oauth.refresh.
 const REFRESH_GRANTS = Object.fromEntries(
-  Object.entries(PROVIDER_OAUTH)
-    .filter(([, o]) => o.refresh)
-    .map(([id, o]) => {
-      const tokenUrl = o.tokenUrl;
-      const encoding = o.refresh.encoding;
-      const extraParams = o.refresh.scope ? { scope: o.refresh.scope } : {};
-      return [id, {
-        encoding,
-        url: () => tokenUrl,
-        params: (ex) => id === "gemini"
-          ? { client_id: ex.config.clientId, client_secret: ex.config.clientSecret, ...extraParams }
-          : { client_id: o.clientId, ...extraParams },
-      }];
-    })
+  Object.entries(PROVIDER_OAUTH).
+  filter(([, o]) => o.refresh).
+  map(([id, o]) => {
+    const tokenUrl = o.tokenUrl;
+    const encoding = o.refresh.encoding;
+    const extraParams = o.refresh.scope ? { scope: o.refresh.scope } : {};
+    return [id, {
+      encoding,
+      url: () => tokenUrl,
+      params: (ex) => id === "gemini" ?
+      { client_id: ex.config.clientId, client_secret: ex.config.clientSecret, ...extraParams } :
+      { client_id: o.clientId, ...extraParams }
+    }];
+  })
 );
 
 // OmniRoute local/self-hosted parity: these provider IDs are configurable
@@ -229,17 +230,17 @@ export const LOCAL_PROVIDER_DEFAULT_BASE_URLS = {
   "docker-model-runner": "http://localhost:12434/v1",
   xinference: "http://localhost:9997/v1",
   oobabooga: "http://localhost:5000/v1",
-  "9router": "http://127.0.0.1:20130/v1",
+  "9router": "http://127.0.0.1:20130/v1"
 };
 
 
 const GLMT_MODEL_ALIASES = {
   "glm-5.2-high": { model: "glm-5.2", reasoningEffort: "high" },
-  "glm-5.2-max": { model: "glm-5.2", reasoningEffort: "max" },
+  "glm-5.2-max": { model: "glm-5.2", reasoningEffort: "max" }
 };
 
 function applyGlmtModelAlias(provider, model, body) {
-  if (provider !== "glmt" || !body || typeof body !== "object") return body;
+  if (provider !== "glmt" || !body || !isObject(body)) return body;
   const alias = GLMT_MODEL_ALIASES[model] || GLMT_MODEL_ALIASES[body.model];
   if (!alias) return body;
   body.model = alias.model;
@@ -255,9 +256,9 @@ export const THINKING_BUDGET_FLOOR = 4096;
 // write, or null to leave as-is. Never lowers a positive budget; bumps an
 // undersized one only when the cap allows reaching the full floor.
 export function computeThinkingBudget(current, cap) {
-  const maxOutput = typeof cap === "number" && cap > 0 ? cap : THINKING_BUDGET_FLOOR;
+  const maxOutput = isNumber(cap) && cap > 0 ? cap : THINKING_BUDGET_FLOOR;
   const target = Math.min(THINKING_BUDGET_FLOOR, maxOutput);
-  if (typeof current !== "number" || current <= 0) return target;
+  if (!isNumber(current) || current <= 0) return target;
   // Never lower a positive budget; only bump when the cap can reach the floor.
   if (current < THINKING_BUDGET_FLOOR && maxOutput >= THINKING_BUDGET_FLOOR) return THINKING_BUDGET_FLOOR;
   return null;
@@ -270,7 +271,7 @@ export class DefaultExecutor extends BaseExecutor {
 
   applyRequestDefaults(body) {
     const defaults = this.config?.requestDefaults;
-    if (!defaults || !body || typeof body !== "object") return body;
+    if (!defaults || !body || !isObject(body)) return body;
     if (defaults.maxTokens !== undefined && body.max_tokens === undefined && body.max_completion_tokens === undefined) {
       body.max_tokens = defaults.maxTokens;
     }
@@ -278,11 +279,11 @@ export class DefaultExecutor extends BaseExecutor {
       body.temperature = defaults.temperature;
     }
     if (defaults.thinkingBudgetTokens !== undefined || defaults.thinkingType !== undefined) {
-      const current = body.thinking && typeof body.thinking === "object" ? body.thinking : {};
+      const current = body.thinking && isObject(body.thinking) ? body.thinking : {};
       body.thinking = {
         ...current,
-        ...(current.type === undefined && defaults.thinkingType !== undefined ? { type: defaults.thinkingType } : {}),
-        ...(current.budget_tokens === undefined && defaults.thinkingBudgetTokens !== undefined ? { budget_tokens: defaults.thinkingBudgetTokens } : {}),
+        ...(current.type === undefined && defaults.thinkingType !== undefined ? { type: defaults.thinkingType } : null),
+        ...(current.budget_tokens === undefined && defaults.thinkingBudgetTokens !== undefined ? { budget_tokens: defaults.thinkingBudgetTokens } : null)
       };
     }
     return body;
@@ -301,11 +302,11 @@ export class DefaultExecutor extends BaseExecutor {
       provider: this.provider,
       model: requestContext?.catalogModel || model,
       body: transformed,
-      transportFormat,
+      transportFormat
     });
 
 
-    if (transformed && typeof transformed === "object") {
+    if (transformed && isObject(transformed)) {
       // The official OpenAI transport is force-streamed even for JSON clients.
       // Keep the actual upstream body aligned with the executor's resolved mode;
       // chat core converts the SSE response back to JSON for those clients.
@@ -315,7 +316,7 @@ export class DefaultExecutor extends BaseExecutor {
         if (!clientRequestedStreaming) {
           transformed.stream_options = {
             ...transformed.stream_options,
-            include_usage: true,
+            include_usage: true
           };
         }
       }
@@ -359,19 +360,19 @@ export class DefaultExecutor extends BaseExecutor {
        * preserves its flat intermediate contract and avoids double nesting.
        */
       if (
-        transportFormat === FORMATS.OPENAI_RESPONSES
-        || transportFormat === FORMATS.OPENAI_RESPONSE
-      ) {
-        if (typeof transformed.reasoning_effort === "string") {
-          const priorReasoning = transformed.reasoning
-            && typeof transformed.reasoning === "object"
-            && !Array.isArray(transformed.reasoning)
-              ? transformed.reasoning
-              : null;
+      transportFormat === FORMATS.OPENAI_RESPONSES ||
+      transportFormat === FORMATS.OPENAI_RESPONSE)
+      {
+        if (isString(transformed.reasoning_effort)) {
+          const priorReasoning = transformed.reasoning && isObject(
+            transformed.reasoning) &&
+          !Array.isArray(transformed.reasoning) ?
+          transformed.reasoning :
+          null;
           transformed.reasoning = {
             summary: "auto",
             ...priorReasoning,
-            effort: transformed.reasoning_effort,
+            effort: transformed.reasoning_effort
           };
           delete transformed.reasoning_effort;
         }
@@ -398,14 +399,14 @@ export class DefaultExecutor extends BaseExecutor {
     const caps = modelCapabilities || getCapabilitiesForModel(this.provider, model);
     if (!caps?.reasoning) return body;
 
-    const reasoningEnabled = body.extra_body?.thinking?.type === "enabled"
-      || (typeof body.reasoning_effort === "string" && body.reasoning_effort !== "none" && body.reasoning_effort !== "off")
-      || body.reasoning_effort === true;
+    const reasoningEnabled = body.extra_body?.thinking?.type === "enabled" ||
+    isString(body.reasoning_effort) && body.reasoning_effort !== "none" && body.reasoning_effort !== "off" ||
+    body.reasoning_effort === true;
     if (!reasoningEnabled) return body;
 
-    const cap = typeof caps.maxOutput === "number" && caps.maxOutput > 0 ? caps.maxOutput : THINKING_BUDGET_FLOOR;
+    const cap = isNumber(caps.maxOutput) && caps.maxOutput > 0 ? caps.maxOutput : THINKING_BUDGET_FLOOR;
     // Preserve whichever token field the caller used; never introduce the other.
-    const field = typeof body.max_completion_tokens === "number" ? "max_completion_tokens" : "max_tokens";
+    const field = isNumber(body.max_completion_tokens) ? "max_completion_tokens" : "max_tokens";
     const next = computeThinkingBudget(body[field], cap);
     if (next != null) body[field] = next;
     return body;
@@ -419,7 +420,7 @@ export class DefaultExecutor extends BaseExecutor {
     if (!this.provider?.startsWith?.("openai-compatible-")) return;
     if (!this.provider.includes("responses")) return;
     const text = body.text;
-    if (!text || typeof text !== "object" || Array.isArray(text)) return;
+    if (!text || !isObject(text) || Array.isArray(text)) return;
     if (text.format !== undefined) return;
     body.text = { ...text, format: { type: "text" } };
   }
@@ -433,11 +434,11 @@ export class DefaultExecutor extends BaseExecutor {
     const schemaJson = JSON.stringify(rf.json_schema.schema, null, 2);
     const prompt = `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text.`;
 
-    const messages = Array.isArray(body.messages) ? body.messages.map(m => ({ ...m })) : [];
-    const sys = messages.find(m => m.role === "system");
+    const messages = Array.isArray(body.messages) ? body.messages.map((m) => ({ ...m })) : [];
+    const sys = messages.find((m) => m.role === "system");
     if (sys) {
-      if (typeof sys.content === "string") sys.content = `${sys.content}\n\n${prompt}`;
-      else if (Array.isArray(sys.content)) sys.content.push({ type: "text", text: `\n\n${prompt}` });
+      if (isString(sys.content)) sys.content = `${sys.content}\n\n${prompt}`;else
+      if (Array.isArray(sys.content)) sys.content.push({ type: "text", text: `\n\n${prompt}` });
     } else {
       messages.unshift({ role: "system", content: prompt });
     }
@@ -468,13 +469,13 @@ export class DefaultExecutor extends BaseExecutor {
     }
     if (LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider]) {
       const baseUrl =
-        credentials?.providerSpecificData?.baseUrl ||
-        this.config.baseUrl ||
-        LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider];
+      credentials?.providerSpecificData?.baseUrl ||
+      this.config.baseUrl ||
+      LOCAL_PROVIDER_DEFAULT_BASE_URLS[this.provider];
       const normalized = baseUrl.replace(/\/$/, "");
-      return normalized.endsWith("/chat/completions")
-        ? normalized
-        : `${normalized}/chat/completions`;
+      return normalized.endsWith("/chat/completions") ?
+      normalized :
+      `${normalized}/chat/completions`;
     }
     // gemini-format: build :streamGenerateContent / :generateContent path
     if (this.config.format === "gemini") {
@@ -548,11 +549,11 @@ export class DefaultExecutor extends BaseExecutor {
         // Strip claude-code-20250219 from Anthropic-Beta / anthropic-beta
         for (const betaKey of ["anthropic-beta", "Anthropic-Beta"]) {
           if (headers[betaKey]) {
-            const filtered = headers[betaKey]
-              .split(",")
-              .map(s => s.trim())
-              .filter(f => f && f !== "claude-code-20250219")
-              .join(",");
+            const filtered = headers[betaKey].
+            split(",").
+            map((s) => s.trim()).
+            filter((f) => f && f !== "claude-code-20250219").
+            join(",");
             if (filtered) {
               headers[betaKey] = filtered;
             } else {
@@ -572,9 +573,9 @@ export class DefaultExecutor extends BaseExecutor {
   refreshFromGrant(credentials, proxyOptions) {
     const grant = REFRESH_GRANTS[this.provider];
     const params = { grant_type: "refresh_token", refresh_token: credentials.refreshToken, ...grant.params(this) };
-    return grant.encoding === "json"
-      ? this.refreshWithJSON(grant.url(), params, proxyOptions)
-      : this.refreshWithForm(grant.url(), params, proxyOptions);
+    return grant.encoding === "json" ?
+    this.refreshWithJSON(grant.url(), params, proxyOptions) :
+    this.refreshWithForm(grant.url(), params, proxyOptions);
   }
 
   async refreshCredentials(credentials, log, proxyOptions = null) {

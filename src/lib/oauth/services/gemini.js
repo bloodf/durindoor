@@ -9,6 +9,7 @@ import { spinner as createSpinner } from "../utils/ui.js";
  * Gemini CLI (Google Cloud Code Assist) OAuth Service
  * Uses standard OAuth2 Authorization Code flow (no PKCE)
  */
+import { isString } from "../../../shared/utils/typeChecks.js";
 export class GeminiCLIService {
   constructor() {
     this.config = GEMINI_CONFIG;
@@ -25,7 +26,7 @@ export class GeminiCLIService {
       scope: this.config.scopes.join(" "),
       state: state,
       access_type: "offline",
-      prompt: "consent",
+      prompt: "consent"
     });
 
     return `${this.config.authorizeUrl}?${params.toString()}`;
@@ -39,15 +40,15 @@ export class GeminiCLIService {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
+        Accept: "application/json"
       },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: this.config.clientId,
         client_secret: this.config.clientSecret,
         code: code,
-        redirect_uri: redirectUri,
-      }),
+        redirect_uri: redirectUri
+      })
     });
 
     if (!response.ok) {
@@ -89,7 +90,7 @@ export class GeminiCLIService {
 
     // Extract project ID
     let projectId = "";
-    if (typeof data.cloudaicompanionProject === "string") {
+    if (isString(data.cloudaicompanionProject)) {
       projectId = data.cloudaicompanionProject.trim();
     } else if (data.cloudaicompanionProject?.id) {
       projectId = data.cloudaicompanionProject.id.trim();
@@ -109,8 +110,8 @@ export class GeminiCLIService {
     const response = await fetch(`${this.config.userInfoUrl}?alt=json`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-      },
+        Accept: "application/json"
+      }
     });
 
     if (!response.ok) {
@@ -132,7 +133,7 @@ export class GeminiCLIService {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        "X-User-Id": userId,
+        "X-User-Id": userId
       },
       body: JSON.stringify({
         accessToken: tokens.access_token,
@@ -140,8 +141,8 @@ export class GeminiCLIService {
         expiresIn: tokens.expires_in,
         scope: tokens.scope,
         email: userInfo.email,
-        projectId: projectId,
-      }),
+        projectId: projectId
+      })
     });
 
     if (!response.ok) {
@@ -237,4 +238,3 @@ export class GeminiCLIService {
     }
   }
 }
-

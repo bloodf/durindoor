@@ -303,13 +303,13 @@ export default function ConnectionRow({ connection, plan = null, proxyPools, isO
 }
 
 ConnectionRow.propTypes = {
-  connection: PropTypes.shape({
+  connection: PropTypes['shape']({
     id: PropTypes.string,
     name: PropTypes.string,
     email: PropTypes.string,
     displayName: PropTypes.string,
     provider: PropTypes.string,
-    providerSpecificData: PropTypes.shape({
+    providerSpecificData: PropTypes['shape']({
       chatgptPlanType: PropTypes.string,
     }),
     modelLockUntil: PropTypes.string,
@@ -323,7 +323,7 @@ ConnectionRow.propTypes = {
   }).isRequired,
   /** Live Codex plan from the usage API; falls back to stored OAuth metadata. */
   plan: PropTypes.string,
-  proxyPools: PropTypes.arrayOf(PropTypes.shape({
+  proxyPools: PropTypes.arrayOf(PropTypes['shape']({
     id: PropTypes.string,
     name: PropTypes.string,
     proxyUrl: PropTypes.string,
@@ -340,11 +340,11 @@ ConnectionRow.propTypes = {
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   onReconnect: PropTypes.func,
-  oneByOneStatus: PropTypes.shape({
+  oneByOneStatus: PropTypes['shape']({
     state: PropTypes.string,
     error: PropTypes.string,
   }),
-  autoPing: PropTypes.shape({
+  autoPing: PropTypes['shape']({
     on: PropTypes.bool,
     onToggle: PropTypes.func,
     provider: PropTypes.string,

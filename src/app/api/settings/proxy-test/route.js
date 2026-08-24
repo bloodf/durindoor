@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { testProxyUrl } from "@/lib/network/proxyTest";
+import { isNumber } from "../../../../shared/utils/typeChecks.js";
 
 export async function POST(request) {
   try {
@@ -11,17 +12,17 @@ export async function POST(request) {
     // route into an SSRF amplifier (the dispatcher was a red herring).
     const result = await testProxyUrl({
       proxyUrl: body?.proxyUrl,
-      timeoutMs: body?.timeoutMs,
+      timeoutMs: body?.timeoutMs
     });
 
     if (result?.ok) {
       return NextResponse.json(result);
     }
 
-    const status = typeof result?.status === "number" ? result.status : 500;
+    const status = isNumber(result?.status) ? result.status : 500;
     return NextResponse.json({ ok: false, error: result?.error || "Proxy test failed" }, { status });
   } catch (err) {
-    const message = err?.name === "AbortError" ? "Proxy test timed out" : (err?.message || String(err));
+    const message = err?.name === "AbortError" ? "Proxy test timed out" : err?.message || String(err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

@@ -7,41 +7,42 @@ import { U, parseResetTime, toFiniteNumber } from "./shared.js";
 import { applyCodexAccountHeader, resolveCodexAccountId } from "../../shared/codexAccountId.js";
 
 // Codex (OpenAI) API config
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CODEX_CONFIG = {
   usageUrl: U("codex").url,
   modelsUrl: U("codex").modelsUrl,
   clientVersion: U("codex").clientVersion,
   resetCreditsUrl: U("codex").resetCreditsUrl,
-  resetCreditsConsumeUrl: U("codex").resetCreditsConsumeUrl,
+  resetCreditsConsumeUrl: U("codex").resetCreditsConsumeUrl
 };
 
 const RESET_CREDIT_ARRAY_KEYS = [
-  "credits",
-  "available_credits",
-  "availableCredits",
-  "reset_credits",
-  "resetCredits",
-  "items",
-  "grants",
-];
+"credits",
+"available_credits",
+"availableCredits",
+"reset_credits",
+"resetCredits",
+"items",
+"grants"];
+
 
 const RESET_CREDIT_EXPIRY_KEYS = [
-  "expires_at",
-  "expiresAt",
-  "expiration_time",
-  "expirationTime",
-  "expiry",
-  "expiry_at",
-  "expiryAt",
-  "valid_until",
-  "validUntil",
-];
+"expires_at",
+"expiresAt",
+"expiration_time",
+"expirationTime",
+"expiry",
+"expiry_at",
+"expiryAt",
+"valid_until",
+"validUntil"];
+
 
 function toIsoDate(value) {
   if (!value) return null;
-  const date = value instanceof Date
-    ? value
-    : new Date(typeof value === "number" && value < 1e12 ? value * 1000 : value);
+  const date = value instanceof Date ?
+  value :
+  new Date(isNumber(value) && value < 1e12 ? value * 1000 : value);
   const time = date.getTime();
   return Number.isFinite(time) ? date.toISOString() : null;
 }
@@ -57,22 +58,22 @@ function toIsoDate(value) {
 export const getCodexAccountId = resolveCodexAccountId;
 
 function looksLikeProxyOptions(value) {
-  return value && typeof value === "object" && (
-    "connectionProxyEnabled" in value ||
-    "connectionProxyUrl" in value ||
-    "connectionNoProxy" in value ||
-    "vercelRelayUrl" in value ||
-    "strictProxy" in value
-  );
+  return value && isObject(value) && (
+  "connectionProxyEnabled" in value ||
+  "connectionProxyUrl" in value ||
+  "connectionNoProxy" in value ||
+  "vercelRelayUrl" in value ||
+  "strictProxy" in value);
+
 }
 
 function normalizeCodexUsageArgs(providerSpecificData, proxyOptions, idToken = null) {
   if (!proxyOptions && looksLikeProxyOptions(providerSpecificData)) {
     // Ambiguous legacy call: the 2nd arg is really proxyOptions. Keep it as the
     // account source only when it (or the idToken) still resolves an account id.
-    return resolveCodexAccountId(providerSpecificData, idToken)
-      ? [providerSpecificData, providerSpecificData]
-      : [{}, providerSpecificData];
+    return resolveCodexAccountId(providerSpecificData, idToken) ?
+    [providerSpecificData, providerSpecificData] :
+    [{}, providerSpecificData];
   }
   return [providerSpecificData || {}, proxyOptions];
 }
@@ -83,7 +84,7 @@ function buildCodexHeaders(accessToken, providerSpecificData = {}, extra = {}, i
     "Accept": "application/json",
     "originator": "codex_cli_rs",
     "User-Agent": "codex_cli_rs/0.136.0",
-    ...extra,
+    ...extra
   };
   applyCodexAccountHeader(headers, providerSpecificData, "ChatGPT-Account-ID", idToken);
   return headers;
@@ -105,46 +106,46 @@ function firstParsedResetTime(source, keys) {
 }
 
 function isAvailableResetCredit(credit) {
-  if (!credit || typeof credit !== "object") return false;
+  if (!credit || !isObject(credit)) return false;
   if (credit.used_at || credit.consumed_at || credit.redeemed_at) return false;
   const status = String(credit.status || credit.state || "").toLowerCase();
   return !["used", "consumed", "redeemed", "expired", "inactive"].includes(status);
 }
 
 export function parseCodexResetCredits(resetCredits) {
-  if (!resetCredits || typeof resetCredits !== "object" || Array.isArray(resetCredits)) {
+  if (!resetCredits || !isObject(resetCredits) || Array.isArray(resetCredits)) {
     return { availableCount: 0, credits: [] };
   }
 
-  const credits = firstArrayField(resetCredits, RESET_CREDIT_ARRAY_KEYS)
-    .filter(isAvailableResetCredit)
-    .map((credit, index) => ({
-      id: credit.id || credit.credit_id || credit.reset_credit_id || null,
-      index,
-      status: String(credit.status || credit.state || "available"),
-      grantedAt: toIsoDate(credit.granted_at ?? credit.grantedAt),
-      expiresAt: firstParsedResetTime(credit, RESET_CREDIT_EXPIRY_KEYS),
-      type: credit.type || credit.kind || null,
-    }));
-  const countValue = resetCredits.available_count
-    ?? resetCredits.availableCount
-    ?? resetCredits.count
-    ?? resetCredits.total_available
-    ?? resetCredits.totalAvailable;
+  const credits = firstArrayField(resetCredits, RESET_CREDIT_ARRAY_KEYS).
+  filter(isAvailableResetCredit).
+  map((credit, index) => ({
+    id: credit.id || credit.credit_id || credit.reset_credit_id || null,
+    index,
+    status: String(credit.status || credit.state || "available"),
+    grantedAt: toIsoDate(credit.granted_at ?? credit.grantedAt),
+    expiresAt: firstParsedResetTime(credit, RESET_CREDIT_EXPIRY_KEYS),
+    type: credit.type || credit.kind || null
+  }));
+  const countValue = resetCredits.available_count ??
+  resetCredits.availableCount ??
+  resetCredits.count ??
+  resetCredits.total_available ??
+  resetCredits.totalAvailable;
   const count = toFiniteNumber(countValue, Number.NaN);
   const availableCount = Number.isFinite(count) ? Math.max(0, count) : credits.length;
 
   return {
     availableCount,
-    credits: credits.slice(0, availableCount),
+    credits: credits.slice(0, availableCount)
   };
 }
 
 function getCodexRateLimitBody(snapshot) {
-  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return null;
-  return snapshot.rate_limit && typeof snapshot.rate_limit === "object"
-    ? snapshot.rate_limit
-    : snapshot;
+  if (!snapshot || !isObject(snapshot) || Array.isArray(snapshot)) return null;
+  return snapshot.rate_limit && isObject(snapshot.rate_limit) ?
+  snapshot.rate_limit :
+  snapshot;
 }
 
 /**
@@ -158,7 +159,7 @@ function formatCodexWindow(window) {
     remaining: Math.max(0, 100 - used),
     resetAt: parseResetTime(window?.reset_at ?? window?.resets_at ?? window?.resetAt ?? null),
     windowSeconds: toFiniteNumber(window?.limit_window_seconds, null),
-    unlimited: false,
+    unlimited: false
   };
 }
 
@@ -188,7 +189,7 @@ function getCodexReviewRateLimit(data) {
   }
 
   const byLimitId = data.rate_limits_by_limit_id;
-  if (byLimitId && typeof byLimitId === "object" && !Array.isArray(byLimitId)) {
+  if (byLimitId && isObject(byLimitId) && !Array.isArray(byLimitId)) {
     return byLimitId.code_review || byLimitId.codex_review || byLimitId.review || null;
   }
 
@@ -205,7 +206,7 @@ export async function getCodexUsage(accessToken, providerSpecificData = {}, prox
   try {
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {
       method: "GET",
-      headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken),
+      headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken)
     }, proxyOptions);
 
     if (!response.ok) {
@@ -226,7 +227,7 @@ export async function getCodexUsage(accessToken, providerSpecificData = {}, prox
       limitReached: getCodexRateLimitBody(normalRateLimit)?.limit_reached || false,
       reviewLimitReached: getCodexRateLimitBody(reviewRateLimit)?.limit_reached || false,
       resetCredits,
-      quotas,
+      quotas
     };
   } catch (error) {
     throw new Error(`Failed to fetch Codex usage: ${error.message}`);
@@ -250,15 +251,15 @@ export async function getCodexModels(accessToken, proxyOptions = null, providerS
 
     const response = await proxyAwareFetch(url, {
       method: "GET",
-      headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken),
+      headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken)
     }, proxyOptions);
     if (!response.ok) return [];
 
     const data = await response.json();
     const models = Array.isArray(data?.models) ? data.models : [];
-    return models
-      .filter((model) => model?.supported_in_api !== false && typeof model?.slug === "string" && model.slug)
-      .sort((a, b) => Number(a.priority || 0) - Number(b.priority || 0));
+    return models.
+    filter((model) => model?.supported_in_api !== false && isString(model?.slug) && model.slug).
+    sort((a, b) => Number(a.priority || 0) - Number(b.priority || 0));
   } catch {
     return [];
   }
@@ -271,12 +272,12 @@ export async function getCodexRateLimitResetCredits(accessToken, proxyOptions = 
   }
 
   const headers = buildCodexHeaders(accessToken, providerSpecificData, {
-    "OpenAI-Beta": "codex-1",
+    "OpenAI-Beta": "codex-1"
   }, idToken);
 
   const response = await proxyAwareFetch(CODEX_CONFIG.resetCreditsUrl, {
     method: "GET",
-    headers,
+    headers
   }, proxyOptions);
 
   let data = null;
@@ -299,7 +300,7 @@ export async function consumeCodexRateLimitResetCredit(accessToken, redeemReques
   if (!accessToken) {
     throw new Error("No Codex access token available. Please re-authorize the connection.");
   }
-  if (!redeemRequestId || typeof redeemRequestId !== "string") {
+  if (!redeemRequestId || !isString(redeemRequestId)) {
     throw new Error("A redeem request id is required to consume a Codex reset credit.");
   }
   if (!resolveCodexAccountId(providerSpecificData, idToken)) {
@@ -312,7 +313,7 @@ export async function consumeCodexRateLimitResetCredit(accessToken, redeemReques
     response = await proxyAwareFetch(CODEX_CONFIG.resetCreditsConsumeUrl, {
       method: "POST",
       headers: buildCodexHeaders(accessToken, providerSpecificData || {}, { "Content-Type": "application/json" }, idToken),
-      body: JSON.stringify({ redeem_request_id: redeemRequestId }),
+      body: JSON.stringify({ redeem_request_id: redeemRequestId })
     }, proxyOptions);
 
     const text = await response.text();
@@ -332,6 +333,6 @@ export async function consumeCodexRateLimitResetCredit(accessToken, redeemReques
     code,
     windowsReset,
     message: data?.message || null,
-    raw: data,
+    raw: data
   };
 }

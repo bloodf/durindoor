@@ -17,6 +17,7 @@ import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function createEventEmitter(state) {
   const events = [];
   const emit = (eventType, data) => {
@@ -38,7 +39,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (chunk.model) state.model = chunk.model;
   // Merge rather than overwrite so provider-only fields already extracted
   // into shared state (e.g. Kiro credits) survive the Responses projection.
-  if (chunk.usage && typeof chunk.usage === "object") {
+  if (chunk.usage && isObject(chunk.usage)) {
     state.usage = { ...(state.usage || {}), ...chunk.usage };
   }
 
@@ -64,7 +65,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (!state.started) {
     state.started = true;
     state.responseId = chunk.id ? `resp_${chunk.id}` : state.responseId;
-    
+
     emit("response.created", {
       type: "response.created",
       response: {
@@ -166,7 +167,7 @@ function startReasoning(state, emit, idx) {
     const outputIndex = state.nextOutputIndex++;
     state.reasoningId = `rs_${state.responseId}_${idx}`;
     state.reasoningIndex = outputIndex;
-    
+
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
@@ -199,7 +200,7 @@ function emitReasoningDelta(state, emit, text) {
 function closeReasoning(state, emit) {
   if (state.reasoningId && !state.reasoningDone) {
     state.reasoningDone = true;
-    
+
     emit("response.reasoning_summary_text.done", {
       type: "response.reasoning_summary_text.done",
       item_id: state.reasoningId,
@@ -234,7 +235,7 @@ function emitTextContent(state, emit, idx, content) {
     state.msgItemAdded[idx] = true;
     state.msgOutputIndexes[idx] = outputIndex;
     const msgId = `msg_${state.responseId}_${idx}`;
-    
+
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
@@ -246,7 +247,7 @@ function emitTextContent(state, emit, idx, content) {
 
   if (!state.msgContentAdded[idx]) {
     state.msgContentAdded[idx] = true;
-    
+
     emit("response.content_part.added", {
       type: "response.content_part.added",
       item_id: `msg_${state.responseId}_${idx}`,
@@ -343,23 +344,23 @@ function emitToolCall(state, emit, tc) {
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
-      item: isCustomTool
-        ? {
-            id: `fc_${refCallId}`,
-            type: "custom_tool_call",
-            input: "",
-            call_id: refCallId,
-            name: refName,
-            status: "in_progress"
-          }
-        : {
-            id: `fc_${refCallId}`,
-            type: RESPONSES_ITEM.FUNCTION_CALL,
-            arguments: "",
-            call_id: refCallId,
-            ...splitToolName(state, refName),
-            status: "in_progress"
-          }
+      item: isCustomTool ?
+      {
+        id: `fc_${refCallId}`,
+        type: "custom_tool_call",
+        input: "",
+        call_id: refCallId,
+        name: refName,
+        status: "in_progress"
+      } :
+      {
+        id: `fc_${refCallId}`,
+        type: RESPONSES_ITEM.FUNCTION_CALL,
+        arguments: "",
+        call_id: refCallId,
+        ...splitToolName(state, refName),
+        status: "in_progress"
+      }
     });
 
     // Replay any regular argument deltas that arrived while we were waiting for the name.
@@ -400,7 +401,7 @@ function emitToolCall(state, emit, tc) {
 function isCustomToolByState(state, tcIdx, funcName) {
   const name = state.funcNames[tcIdx] || funcName || "";
   const declaredType = state.toolTypes?.[name] || "";
-  return declaredType === "custom" || (name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name));
+  return declaredType === "custom" || name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name);
 }
 
 function closeToolCall(state, emit, idx) {
@@ -418,8 +419,8 @@ function closeToolCall(state, emit, idx) {
       // deltas so concatenated deltas equal the final done input.
       let rawInput = args;
       let parsed = null;
-      try { parsed = JSON.parse(args); } catch { /* not JSON */ }
-      if (parsed && typeof parsed.input === "string") rawInput = parsed.input;
+      try {parsed = JSON.parse(args);} catch {/* not JSON */}
+      if (parsed && isString(parsed.input)) rawInput = parsed.input;
       state.funcCustomInput[idx] = rawInput;
 
       if (!state.funcCustomDeltaEmitted[idx]) {
@@ -492,7 +493,7 @@ function sendCompleted(state, emit) {
         status: "completed",
         background: false,
         error: null,
-        usage,
+        usage
       }
     });
   }
@@ -500,23 +501,23 @@ function sendCompleted(state, emit) {
 
 function flushEvents(state) {
   if (state.completedSent) return [];
-  
+
   const { events, emit } = createEventEmitter(state);
 
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
   for (const i in state.funcCallIds) closeToolCall(state, emit, i);
   sendCompleted(state, emit);
-  
+
   return events;
 }
 
 // currentToolCallId is intentionally sticky for the current turn so flush/completion
-  // can still finalize as tool_calls even if the tool call was emitted before stream end.
+// can still finalize as tool_calls even if the tool call was emitted before stream end.
 function computeFinishReason(state) {
-   return state.toolCallIndex > 0 || state.currentToolCallId
-    ? OPENAI_FINISH.TOOL_CALLS
-    : OPENAI_FINISH.STOP;
+  return state.toolCallIndex > 0 || state.currentToolCallId ?
+  OPENAI_FINISH.TOOL_CALLS :
+  OPENAI_FINISH.STOP;
 }
 
 /**
@@ -539,7 +540,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       finishReason
     );
 
-    if (state.usage && typeof state.usage === "object") {
+    if (state.usage && isObject(state.usage)) {
       finalChunk.usage = state.usage;
     }
 
@@ -614,24 +615,24 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
-    if (responseUsage && typeof responseUsage === "object") {
+    if (responseUsage && isObject(responseUsage)) {
       const inputTokens = responseUsage.input_tokens || responseUsage.prompt_tokens || 0;
       const outputTokens = responseUsage.output_tokens || responseUsage.completion_tokens || 0;
       // OpenAI Responses API: input_tokens already includes cached_tokens
       // Cache info is in input_tokens_details.cached_tokens
       const cacheReadTokens = responseUsage.input_tokens_details?.cached_tokens || responseUsage.cache_read_input_tokens || 0;
-      
+
       state.usage = buildUsage({ promptTokens: inputTokens, completionTokens: outputTokens, totalTokens: inputTokens + outputTokens, cachedTokens: cacheReadTokens });
     }
-    
+
     if (!state.finishReasonSent) {
-      const finishReason = eventType === "response.incomplete"
-        ? OPENAI_FINISH.LENGTH
-        : computeFinishReason(state);
+      const finishReason = eventType === "response.incomplete" ?
+      OPENAI_FINISH.LENGTH :
+      computeFinishReason(state);
 
       state.finishReasonSent = true;
       state.finishReason = finishReason; // Mark for usage injection in stream.js
-      
+
       const finalChunk = buildChunk(
         { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
         {},
@@ -639,10 +640,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       );
 
       // Include usage in final chunk if available
-      if (state.usage && typeof state.usage === "object") {
+      if (state.usage && isObject(state.usage)) {
         finalChunk.usage = state.usage;
       }
-      
+
       return finalChunk;
     }
     return null;

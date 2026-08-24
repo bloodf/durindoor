@@ -11,67 +11,68 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-                                                                
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
-                                                                
-                                                 
 
-                    
-               
-                  
-                       
-                                          
-                 
-                               
-                                 
-                                  
-                       
- 
 
-                    
-                   
-                   
-                    
- 
 
-                                   
-                   
-                       
-                    
- 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const VALID_CONTEXTS = new Set(["all", "user", "system", "assistant"]);
 const VALID_CATEGORIES = new Set(["filler", "context", "structural", "dedup", "terse", "ultra"]);
 const VALID_INTENSITIES = new Set(["lite", "full", "ultra"]);
-const cache = new Map                       ();
-let rulesDirCache                = null;
+const cache = new Map();
+let rulesDirCache = null;
 
-function normalizeReplacementKey(value        )         {
+function normalizeReplacementKey(value) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function compileReplacement(rule          )                             {
+function compileReplacement(rule) {
   if (!rule.replacementMap) return rule.replacement ?? "";
 
   const normalizedMap = new Map(
     Object.entries(rule.replacementMap).map(([key, value]) => [normalizeReplacementKey(key), value])
   );
   const fallback = rule.replacement;
-  return (match        ) => {
+  return (match) => {
     const normalized = normalizeReplacementKey(match);
     if (normalizedMap.has(normalized)) return normalizedMap.get(normalized) ?? "";
     return fallback ?? match;
   };
 }
 
-function getRuleFlags(rule          )         {
+function getRuleFlags(rule) {
   return rule.flags ?? "gi";
 }
 
-function getModuleDir()         {
+function getModuleDir() {
   const anchors = [process.cwd()];
   const argv1 = process.argv[1];
-  if (typeof argv1 === "string" && argv1) anchors.push(path.dirname(argv1));
+  if (isString(argv1) && argv1) anchors.push(path.dirname(argv1));
   const rel = path.join("open-sse", "services", "compression");
   for (const anchor of anchors) {
     let dir = path.resolve(anchor);
@@ -85,21 +86,21 @@ function getModuleDir()         {
   return path.join(os.homedir(), ".omniroute");
 }
 
-function getRulesDir()         {
+function getRulesDir() {
   if (rulesDirCache) return rulesDirCache;
   const root = getModuleDir();
   const candidates = [
-    path.join(root, "open-sse", "services", "compression", "rules"),
-    path.join(root, "app", "open-sse", "services", "compression", "rules"),
-  ];
+  path.join(root, "open-sse", "services", "compression", "rules"),
+  path.join(root, "app", "open-sse", "services", "compression", "rules")];
+
   rulesDirCache =
-    candidates.find((candidate, index) => {
-      return candidates.indexOf(candidate) === index && fs.existsSync(candidate);
-    }) ?? candidates[0];
+  candidates.find((candidate, index) => {
+    return candidates.indexOf(candidate) === index && fs.existsSync(candidate);
+  }) ?? candidates[0];
   return rulesDirCache;
 }
 
-function compileRule(rule          , source        )              {
+function compileRule(rule, source) {
   try {
     const flags = getRuleFlags(rule);
     return {
@@ -109,7 +110,7 @@ function compileRule(rule          , source        )              {
       context: rule.context ?? "all",
       category: rule.category ?? "filler",
       minIntensity: rule.minIntensity ?? "lite",
-      description: rule.description,
+      description: rule.description
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -117,33 +118,33 @@ function compileRule(rule          , source        )              {
   }
 }
 
-export function validateRulePack(pack         )                                       {
-  const errors           = [];
-  if (!pack || typeof pack !== "object") {
+export function validateRulePack(pack) {
+  const errors = [];
+  if (!pack || !isObject(pack)) {
     return { valid: false, errors: ["Rule pack must be an object"] };
   }
 
-  const value = pack                     ;
-  if (typeof value.language !== "string" || !value.language.trim()) {
+  const value = pack;
+  if (!isString(value.language) || !value.language.trim()) {
     errors.push("language must be a non-empty string");
   }
-  if (typeof value.category !== "string" || !value.category.trim()) {
+  if (!isString(value.category) || !value.category.trim()) {
     errors.push("category must be a non-empty string");
   }
   if (!Array.isArray(value.rules)) {
     errors.push("rules must be an array");
   } else {
     value.rules.forEach((rule, index) => {
-      if (!rule || typeof rule !== "object") {
+      if (!rule || !isObject(rule)) {
         errors.push(`rules[${index}] must be an object`);
         return;
       }
-      const entry = rule                     ;
-      const flags = typeof entry.flags === "string" ? entry.flags : "gi";
-      if (typeof entry.name !== "string" || !entry.name.trim()) {
+      const entry = rule;
+      const flags = isString(entry.flags) ? entry.flags : "gi";
+      if (!isString(entry.name) || !entry.name.trim()) {
         errors.push(`rules[${index}].name must be a non-empty string`);
       }
-      if (typeof entry.pattern !== "string" || !entry.pattern.trim()) {
+      if (!isString(entry.pattern) || !entry.pattern.trim()) {
         errors.push(`rules[${index}].pattern must be a non-empty string`);
       } else {
         try {
@@ -153,31 +154,31 @@ export function validateRulePack(pack         )                                 
           errors.push(`rules[${index}].pattern is invalid: ${message}`);
         }
       }
-      if (entry.flags !== undefined && typeof entry.flags !== "string") {
+      if (entry.flags !== undefined && !isString(entry.flags)) {
         errors.push(`rules[${index}].flags must be a string`);
       }
-      if (entry.replacement !== undefined && typeof entry.replacement !== "string") {
+      if (entry.replacement !== undefined && !isString(entry.replacement)) {
         errors.push(`rules[${index}].replacement must be a string`);
       }
       if (entry.replacementMap !== undefined) {
         if (
-          !entry.replacementMap ||
-          typeof entry.replacementMap !== "object" ||
-          Array.isArray(entry.replacementMap)
-        ) {
+        !entry.replacementMap || !isObject(
+          entry.replacementMap) ||
+        Array.isArray(entry.replacementMap))
+        {
           errors.push(`rules[${index}].replacementMap must be an object`);
         } else {
           Object.entries(entry.replacementMap).forEach(([key, replacement]) => {
             if (!key.trim()) {
               errors.push(`rules[${index}].replacementMap contains an empty key`);
             }
-            if (typeof replacement !== "string") {
+            if (!isString(replacement)) {
               errors.push(`rules[${index}].replacementMap.${key} must be a string`);
             }
           });
         }
       }
-      if (typeof entry.replacement !== "string" && entry.replacementMap === undefined) {
+      if (!isString(entry.replacement) && entry.replacementMap === undefined) {
         errors.push(`rules[${index}] must define replacement or replacementMap`);
       }
       if (entry.context !== undefined && !VALID_CONTEXTS.has(entry.context)) {
@@ -194,24 +195,24 @@ export function validateRulePack(pack         )                                 
   return { valid: errors.length === 0, errors };
 }
 
-function readPack(language        , category        )                  {
+function readPack(language, category) {
   const filename = path.join(getRulesDir(), language, `${category}.json`);
   if (!fs.existsSync(filename)) return null;
-  const parsed = JSON.parse(fs.readFileSync(filename, "utf8"))           ;
+  const parsed = JSON.parse(fs.readFileSync(filename, "utf8"));
   const validation = validateRulePack(parsed);
   if (!validation.valid) {
     throw new Error(
       `Invalid Caveman rule pack ${language}/${category}: ${validation.errors.join("; ")}`
     );
   }
-  return parsed            ;
+  return parsed;
 }
 
 export function loadRulePack(
-  language        ,
-  category        ,
-  options                        = {}
-)                {
+language,
+category,
+options = {})
+{
   const key = `${getRulesDir()}:${language}:${category}`;
   if (cache.has(key) && !options.refresh) return cache.get(key) ?? [];
 
@@ -227,9 +228,9 @@ export function loadRulePack(
 }
 
 export function loadAllRulesForLanguage(
-  language        ,
-  options                        = {}
-)                {
+language,
+options = {})
+{
   const key = `${getRulesDir()}:${language}:*`;
   if (cache.has(key) && !options.refresh) return cache.get(key) ?? [];
 
@@ -239,45 +240,45 @@ export function loadAllRulesForLanguage(
     return [];
   }
 
-  const rules = fs
-    .readdirSync(languageDir)
-    .filter((entry) => entry.endsWith(".json"))
-    .sort()
-    .flatMap((entry) => loadRulePack(language, path.basename(entry, ".json"), options));
+  const rules = fs.
+  readdirSync(languageDir).
+  filter((entry) => entry.endsWith(".json")).
+  sort().
+  flatMap((entry) => loadRulePack(language, path.basename(entry, ".json"), options));
 
   cache.set(key, rules);
   return rules;
 }
 
-export function getAvailableLanguagePacks()                     {
+export function getAvailableLanguagePacks() {
   const root = getRulesDir();
   if (!fs.existsSync(root)) return [];
 
-  return fs
-    .readdirSync(root)
-    .filter((entry) => fs.statSync(path.join(root, entry)).isDirectory())
-    .map((language) => {
-      const categories = fs
-        .readdirSync(path.join(root, language))
-        .filter((entry) => entry.endsWith(".json"))
-        .map((entry) => path.basename(entry, ".json"))
-        .sort();
-      const ruleCount = categories.reduce(
-        (count, category) => count + loadRulePack(language, category).length,
-        0
-      );
-      return { language, categories, ruleCount };
-    })
-    .sort((a, b) => a.language.localeCompare(b.language));
+  return fs.
+  readdirSync(root).
+  filter((entry) => fs.statSync(path.join(root, entry)).isDirectory()).
+  map((language) => {
+    const categories = fs.
+    readdirSync(path.join(root, language)).
+    filter((entry) => entry.endsWith(".json")).
+    map((entry) => path.basename(entry, ".json")).
+    sort();
+    const ruleCount = categories.reduce(
+      (count, category) => count + loadRulePack(language, category).length,
+      0
+    );
+    return { language, categories, ruleCount };
+  }).
+  sort((a, b) => a.language.localeCompare(b.language));
 }
 
 export function loadCavemanFileRules(
-  language        ,
-  options                        = {}
-)                {
+language,
+options = {})
+{
   return loadAllRulesForLanguage(language, options);
 }
 
-export function listCavemanRulePacks()                     {
+export function listCavemanRulePacks() {
   return getAvailableLanguagePacks();
 }

@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const WS_BASE_URL = "https://server.self-serve.windsurf.com";
 const WS_SERVICE = "exa.language_server_pb.LanguageServerService";
@@ -109,7 +110,7 @@ const MODEL_ALIAS_MAP = {
   "deepseek-v4": "deepseek-v4",
   "kimi-k2.6": "kimi-k2-6",
   "kimi-k2.5": "kimi-k2-5",
-  "glm-5.1": "glm-5-1",
+  "glm-5.1": "glm-5-1"
 };
 
 const TEXT_ENC = new TextEncoder();
@@ -123,7 +124,7 @@ function encodeVarint(value) {
   const bytes = [];
   let v = value >>> 0;
   while (v > 0x7f) {
-    bytes.push((v & 0x7f) | 0x80);
+    bytes.push(v & 0x7f | 0x80);
     v >>>= 7;
   }
   bytes.push(v & 0x7f);
@@ -142,7 +143,7 @@ function concatBytes(arrays) {
 }
 
 function encodeField(fieldNum, payload) {
-  return concatBytes([encodeVarint((fieldNum << 3) | 2), encodeVarint(payload.length), payload]);
+  return concatBytes([encodeVarint(fieldNum << 3 | 2), encodeVarint(payload.length), payload]);
 }
 
 function encodeString(fieldNum, value) {
@@ -151,13 +152,13 @@ function encodeString(fieldNum, value) {
 
 function buildMetadata(apiKey, sessionId) {
   return concatBytes([
-    encodeString(1, apiKey),
-    encodeString(2, WS_IDE_NAME),
-    encodeString(3, WS_IDE_VERSION),
-    encodeString(4, WS_EXT_VERSION),
-    encodeString(5, sessionId),
-    encodeString(6, WS_LOCALE),
-  ]);
+  encodeString(1, apiKey),
+  encodeString(2, WS_IDE_NAME),
+  encodeString(3, WS_IDE_VERSION),
+  encodeString(4, WS_EXT_VERSION),
+  encodeString(5, sessionId),
+  encodeString(6, WS_LOCALE)]
+  );
 }
 
 function buildModelOrAlias(model) {
@@ -174,10 +175,10 @@ function buildGetChatMessageRequest(apiKey, model, messages) {
   const sessionId = randomUUID();
   const cascadeId = randomUUID();
   const parts = [
-    encodeField(1, buildMetadata(apiKey, sessionId)),
-    encodeString(2, cascadeId),
-    encodeField(3, buildModelOrAlias(model)),
-  ];
+  encodeField(1, buildMetadata(apiKey, sessionId)),
+  encodeString(2, cascadeId),
+  encodeField(3, buildModelOrAlias(model))];
+
   for (const msg of messages) {
     parts.push(encodeField(4, buildChatMessage(msg)));
   }
@@ -303,7 +304,7 @@ function decodeCompletionChunk(buf) {
     } else if (fieldNum === 4) {
       return {
         kind: "error",
-        message: decodeStringField(payload, 1) || "unknown windsurf error",
+        message: decodeStringField(payload, 1) || "unknown windsurf error"
       };
     }
   }
@@ -315,11 +316,11 @@ function openAIMessagesToWs(messages) {
   for (const m of messages) {
     const role = String(m?.role || "user");
     let content = "";
-    if (typeof m?.content === "string") {
+    if (isString(m?.content)) {
       content = m.content;
     } else if (Array.isArray(m?.content)) {
       for (const part of m.content) {
-        if (part && typeof part === "object" && part.type === "text") {
+        if (part && isObject(part) && part.type === "text") {
           content += String(part.text || "");
         }
       }
@@ -347,7 +348,7 @@ function hasUnsupportedMedia(messages) {
   for (const m of messages || []) {
     if (Array.isArray(m?.content)) {
       for (const part of m.content) {
-        if (part && typeof part === "object" && part.type && part.type !== "text") {
+        if (part && isObject(part) && part.type && part.type !== "text") {
           return true;
         }
       }
@@ -358,13 +359,13 @@ function hasUnsupportedMedia(messages) {
 
 function toolCallingNotSupportedResponse() {
   return new Response(JSON.stringify({
-    error: { message: "Tool calling is not supported for Windsurf", type: "invalid_request_error", code: "unsupported_parameter" },
+    error: { message: "Tool calling is not supported for Windsurf", type: "invalid_request_error", code: "unsupported_parameter" }
   }), { status: 400, headers: { "Content-Type": "application/json" } });
 }
 
 function mediaNotSupportedResponse() {
   return new Response(JSON.stringify({
-    error: { message: "Media files are not supported for Windsurf", type: "invalid_request_error", code: "unsupported_parameter" },
+    error: { message: "Media files are not supported for Windsurf", type: "invalid_request_error", code: "unsupported_parameter" }
   }), { status: 400, headers: { "Content-Type": "application/json" } });
 }
 
@@ -374,7 +375,7 @@ function decodeGrpcWebCompletion(bytes) {
     error: null,
     contentParts: [],
     promptTokens: 0,
-    completionTokens: 0,
+    completionTokens: 0
   };
   const parsed = parseGrpcWebFrames(bytes);
   if (parsed.incomplete) {
@@ -390,9 +391,9 @@ function decodeGrpcWebCompletion(bytes) {
           result.ok = true;
         } else {
           const msgMatch = /grpc-message:\s*(.+)/i.exec(trailer);
-          result.error = msgMatch
-            ? decodeURIComponent(msgMatch[1].trim())
-            : `gRPC status ${statusMatch[1]}`;
+          result.error = msgMatch ?
+          decodeURIComponent(msgMatch[1].trim()) :
+          `gRPC status ${statusMatch[1]}`;
         }
       }
       continue;
@@ -421,10 +422,10 @@ function parseGrpcWebFrames(buf) {
   while (offset + 5 <= buf.length) {
     const flag = buf[offset];
     const len =
-      (buf[offset + 1] << 24) |
-      (buf[offset + 2] << 16) |
-      (buf[offset + 3] << 8) |
-      buf[offset + 4];
+    buf[offset + 1] << 24 |
+    buf[offset + 2] << 16 |
+    buf[offset + 3] << 8 |
+    buf[offset + 4];
     if (len < 0 || offset + 5 + len > buf.length) break;
     frames.push({ flag, payload: buf.slice(offset + 5, offset + 5 + len) });
     offset += 5 + len;
@@ -433,7 +434,7 @@ function parseGrpcWebFrames(buf) {
 }
 
 function mergeExtraHeaders(headers, upstreamExtraHeaders) {
-  if (!upstreamExtraHeaders || typeof upstreamExtraHeaders !== "object") return headers;
+  if (!upstreamExtraHeaders || !isObject(upstreamExtraHeaders)) return headers;
   for (const [key, value] of Object.entries(upstreamExtraHeaders)) {
     if (value == null) continue;
     headers[key] = String(value);
@@ -459,9 +460,9 @@ export class WindsurfExecutor extends BaseExecutor {
     return {
       "Content-Type": "application/grpc-web+proto",
       Accept: "application/grpc-web+proto",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : null),
       "User-Agent": `windsurf/${WS_IDE_VERSION}`,
-      "X-Grpc-Web": "1",
+      "X-Grpc-Web": "1"
     };
   }
 
@@ -477,7 +478,7 @@ export class WindsurfExecutor extends BaseExecutor {
     signal,
     log,
     proxyOptions = null,
-    upstreamExtraHeaders,
+    upstreamExtraHeaders
   } = {}) {
     const apiKey = credentials.accessToken || credentials.apiKey || "";
     const wsModel = resolveWsModelId(model);
@@ -505,22 +506,22 @@ export class WindsurfExecutor extends BaseExecutor {
       method: "POST",
       headers,
       body: framedPayload,
-      signal,
+      signal
     }, proxyOptions);
 
     if (!upstream.ok) {
       return { response: upstream, url, headers, transformedBody: null };
     }
 
-    const response = stream === false
-      ? await this.transformToJSON(upstream, model)
-      : await this.transformToSSE(upstream, model);
+    const response = stream === false ?
+    await this.transformToJSON(upstream, model) :
+    await this.transformToSSE(upstream, model);
 
     return {
       response,
       url,
       headers,
-      transformedBody: null,
+      transformedBody: null
     };
   }
 
@@ -533,12 +534,12 @@ export class WindsurfExecutor extends BaseExecutor {
       error,
       contentParts,
       promptTokens,
-      completionTokens,
+      completionTokens
     } = decodeGrpcWebCompletion(bytes);
 
     if (!ok || error) {
       return new Response(JSON.stringify({
-        error: { message: error || "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" },
+        error: { message: error || "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
     }
 
@@ -552,20 +553,20 @@ export class WindsurfExecutor extends BaseExecutor {
       choices: [{
         index: 0,
         message: { role: "assistant", content },
-        finish_reason: "stop",
-      }],
+        finish_reason: "stop"
+      }]
     };
     if (promptTokens > 0 || completionTokens > 0) {
       json.usage = {
         prompt_tokens: promptTokens,
         completion_tokens: completionTokens,
-        total_tokens: promptTokens + completionTokens,
+        total_tokens: promptTokens + completionTokens
       };
     }
 
     return new Response(JSON.stringify(json), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" }
     });
   }
 
@@ -578,12 +579,12 @@ export class WindsurfExecutor extends BaseExecutor {
       error,
       contentParts,
       promptTokens,
-      completionTokens,
+      completionTokens
     } = decodeGrpcWebCompletion(bytes);
 
     if (!ok || error) {
       return new Response(JSON.stringify({
-        error: { message: error || "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" },
+        error: { message: error || "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
     }
 
@@ -597,7 +598,7 @@ export class WindsurfExecutor extends BaseExecutor {
           object: "chat.completion.chunk",
           created,
           model,
-          choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+          choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }]
         }));
 
         for (const text of contentParts) {
@@ -606,7 +607,7 @@ export class WindsurfExecutor extends BaseExecutor {
             object: "chat.completion.chunk",
             created,
             model,
-            choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
+            choices: [{ index: 0, delta: { content: text }, finish_reason: null }]
           }));
         }
 
@@ -615,19 +616,19 @@ export class WindsurfExecutor extends BaseExecutor {
           object: "chat.completion.chunk",
           created,
           model,
-          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }]
         };
         if (promptTokens > 0 || completionTokens > 0) {
           finishPayload.usage = {
             prompt_tokens: promptTokens,
             completion_tokens: completionTokens,
-            total_tokens: promptTokens + completionTokens,
+            total_tokens: promptTokens + completionTokens
           };
         }
         emit(sseChunk(finishPayload));
         emit("data: [DONE]\n\n");
         controller.close();
-      },
+      }
     });
 
     return new Response(sseStream, {
@@ -635,8 +636,8 @@ export class WindsurfExecutor extends BaseExecutor {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
+        Connection: "keep-alive"
+      }
     });
   }
 }
@@ -652,5 +653,5 @@ export const __windsurfInternals = {
   grpcWebFrame,
   openAIMessagesToWs,
   parseGrpcWebFrames,
-  resolveWsModelId,
+  resolveWsModelId
 };

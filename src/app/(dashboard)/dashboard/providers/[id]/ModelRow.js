@@ -99,7 +99,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
 }
 
 ModelRow.propTypes = {
-  model: PropTypes.shape({
+  model: PropTypes['shape']({
     id: PropTypes.string.isRequired,
   }).isRequired,
   fullModel: PropTypes.string.isRequired,

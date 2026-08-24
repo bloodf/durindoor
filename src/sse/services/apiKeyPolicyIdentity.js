@@ -1,8 +1,9 @@
 import { resolveProviderAlias } from "open-sse/services/model.js";
 
 /** Canonicalize a policy identity without resolving user-defined model aliases. */
+import { isString } from "../../shared/utils/typeChecks.js";
 export function canonicalizePolicyModelIdentity(identity) {
-  if (typeof identity !== "string") return identity;
+  if (!isString(identity)) return identity;
   const trimmed = identity.trim();
   if (!trimmed) return trimmed;
   const slash = trimmed.indexOf("/");

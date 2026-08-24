@@ -13,14 +13,15 @@ import { getCommittedTokenCount } from "../helpers/committedTokens.js";
  * - Expired keys remain visible in the dashboard/CLI but stop authenticating requests.
  * - Setting `expiresAt` to null clears an existing expiry.
  */
+import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 function parseApiKeyPolicy(raw) {
   if (raw == null) return null;
-  if (typeof raw === 'object') return raw;
-  if (typeof raw === 'string' && raw.length) {
+  if (isObject(raw)) return raw;
+  if (isString(raw) && raw.length) {
     // Preserve malformed storage as an invalid value. Returning null here
     // would downgrade a corrupt restrictive policy into unrestricted access.
-    try { return JSON.parse(raw); } catch { return raw; }
+    try {return JSON.parse(raw);} catch {return raw;}
   }
   return null;
 }
@@ -33,11 +34,11 @@ function rowToKey(row) {
     name: row.name,
     machineId: row.machineId,
     isActive: row.isActive === 1 || row.isActive === true,
-    allowedCombos: (() => { try { const v = JSON.parse(row.allowedCombos); return Array.isArray(v) ? v : []; } catch { return []; } })(),
+    allowedCombos: (() => {try {const v = JSON.parse(row.allowedCombos);return Array.isArray(v) ? v : [];} catch {return [];}})(),
     dailyLimitTokens: row.dailyLimitTokens ?? null,
     policy: parseApiKeyPolicy(row.policy),
     expiresAt: row.expiresAt ?? null,
-    createdAt: row.createdAt,
+    createdAt: row.createdAt
   };
 }
 
@@ -75,7 +76,7 @@ export async function getApiKeyByKey(key) {
 
 export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null, expiresAt = null, optionsOrNow = {}) {
   if (!machineId) throw new Error("machineId is required");
-  const options = typeof optionsOrNow === "number" ? { now: optionsOrNow } : (optionsOrNow || {});
+  const options = isNumber(optionsOrNow) ? { now: optionsOrNow } : optionsOrNow || {};
   const now = options.now ?? Date.now();
   const tokenLimit = normalizeDailyLimitTokens(dailyLimitTokens);
   const expiry = normalizeApiKeyExpiresAt(expiresAt, now);
@@ -93,7 +94,7 @@ export async function createApiKey(name, machineId, allowedCombos = [], dailyLim
     dailyLimitTokens: tokenLimit ?? null,
     policy,
     expiresAt: expiry,
-    createdAt: new Date(Number(now)).toISOString(),
+    createdAt: new Date(Number(now)).toISOString()
   };
   db.run(
     `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -117,9 +118,9 @@ export async function updateApiKey(id, data, now = Date.now()) {
     const updatesPolicy = Object.hasOwn(data, "policy") || Object.hasOwn(data, "policyPatch");
     if (Object.hasOwn(data, "policy")) merged.policy = normalizeApiKeyPolicy(data.policy);
     if (Object.hasOwn(data, "policyPatch")) merged.policy = mergeApiKeyPolicy(merged.policy, data.policyPatch);
-    const policyStorage = updatesPolicy
-      ? (merged.policy == null ? null : JSON.stringify(merged.policy))
-      : row.policy;
+    const policyStorage = updatesPolicy ?
+    merged.policy == null ? null : JSON.stringify(merged.policy) :
+    row.policy;
     db.run(
       `UPDATE apiKeys SET name = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, policy = ?, expiresAt = ? WHERE id = ?`,
       [merged.name, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, policyStorage, merged.expiresAt ?? null, id]
@@ -147,10 +148,10 @@ export async function getApiKeyUsageLimitStatus(key, now = new Date()) {
   const start = getLocalDayStartIso(now);
   const usedTokens = db.all(
     `SELECT promptTokens, completionTokens, tokens FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
-    [key, start],
+    [key, start]
   ).reduce((total, usage) => {
     let tokens = {};
-    try { tokens = usage.tokens ? JSON.parse(usage.tokens) : {}; } catch { tokens = {}; }
+    try {tokens = usage.tokens ? JSON.parse(usage.tokens) : {};} catch {tokens = {};}
     return total + getCommittedTokenCount(tokens, usage);
   }, 0);
   return {
@@ -159,7 +160,7 @@ export async function getApiKeyUsageLimitStatus(key, now = new Date()) {
     usedTokens,
     limitTokens: limit,
     remainingTokens: Math.max(0, limit - usedTokens),
-    resetAt: new Date(new Date(now).setHours(24, 0, 0, 0)).toISOString(),
+    resetAt: new Date(new Date(now).setHours(24, 0, 0, 0)).toISOString()
   };
 }
 

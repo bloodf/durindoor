@@ -2,17 +2,18 @@ import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usa
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage } from "../../utils/usageTracking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
+import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 const OPTIONAL_PARAMS = [
-  "temperature", "top_p", "top_k",
-  "max_tokens", "max_completion_tokens",
-  "thinking", "reasoning", "enable_thinking",
-  "presence_penalty", "frequency_penalty",
-  "seed", "stop", "tools", "tool_choice",
-  "response_format", "prediction", "store", "metadata",
-  "n", "logprobs", "top_logprobs", "logit_bias",
-  "user", "parallel_tool_calls"
-];
+"temperature", "top_p", "top_k",
+"max_tokens", "max_completion_tokens",
+"thinking", "reasoning", "enable_thinking",
+"presence_penalty", "frequency_penalty",
+"seed", "stop", "tools", "tool_choice",
+"response_format", "prediction", "store", "metadata",
+"n", "logprobs", "top_logprobs", "logit_bias",
+"user", "parallel_tool_calls"];
+
 
 export function extractRequestConfig(body, stream) {
   const config = { messages: body.messages || [], model: body.model, stream };
@@ -23,7 +24,7 @@ export function extractRequestConfig(body, stream) {
 }
 
 export function extractUsageFromResponse(responseBody) {
-  if (!responseBody || typeof responseBody !== "object") return null;
+  if (!responseBody || !isObject(responseBody)) return null;
 
   // Claude format
   if (responseBody.usage?.input_tokens !== undefined) {
@@ -117,18 +118,18 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
 }
 
 export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, label = "USAGE", silent = false }) {
-  if (!tokens || typeof tokens !== "object") return;
+  if (!tokens || !isObject(tokens)) return;
 
-  const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined
-    ? toOpenAIUsage(tokens, "gemini")
-    : tokens;
+  const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined ?
+  toOpenAIUsage(tokens, "gemini") :
+  tokens;
 
   // Canonicalize before deciding what to persist. Cache-only, reasoning-only,
   // total-only, cost-only, and zero-token successful requests are all valid
   // committed events even when their visible input/output counters are zero.
   const normalized = canonicalizeUsage(providerNormalized) || {
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
-    completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0,
+    completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
   };
   const inTokens = normalized.prompt_tokens ?? 0;
   const outTokens = normalized.completion_tokens ?? 0;
@@ -147,6 +148,6 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
     endpoint: endpoint || null,
-    usageEventId: usageEventId || undefined,
+    usageEventId: usageEventId || undefined
   }).catch(() => {});
 }

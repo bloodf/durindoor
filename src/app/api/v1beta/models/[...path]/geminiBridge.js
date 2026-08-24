@@ -3,6 +3,7 @@
  * outside route.js lets unit tests exercise the translation surface without
  * adding non-route exports to the Next.js app route module.
  */
+import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 /**
  * Convert Gemini request format to OpenAI/internal format.
@@ -15,9 +16,9 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
   const messages = [];
 
   if (geminiBody.systemInstruction) {
-    const systemText = geminiBody.systemInstruction.parts
-      ?.map((p) => p.text)
-      .join("\n") || "";
+    const systemText = geminiBody.systemInstruction.parts?.
+    map((p) => p.text).
+    join("\n") || "";
     if (systemText) {
       messages.push({ role: "system", content: systemText });
     }
@@ -27,8 +28,8 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
     const toolCallIdState = { serialByName: new Map(), queueByName: new Map() };
     for (const content of geminiBody.contents) {
       const converted = convertGeminiContentToInternal(content, toolCallIdState);
-      if (Array.isArray(converted)) messages.push(...converted);
-      else if (converted) messages.push(converted);
+      if (Array.isArray(converted)) messages.push(...converted);else
+      if (converted) messages.push(converted);
     }
   }
 
@@ -38,7 +39,7 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
     stream,
     max_tokens: geminiBody.generationConfig?.maxOutputTokens,
     temperature: geminiBody.generationConfig?.temperature,
-    top_p: geminiBody.generationConfig?.topP,
+    top_p: geminiBody.generationConfig?.topP
   };
 
   if (Array.isArray(geminiBody.tools)) {
@@ -50,8 +51,8 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
           function: {
             name: func.name || "",
             description: func.description || "",
-            parameters: normalizeGeminiSchemaTypes(func.parameters) || { type: "object", properties: {} },
-          },
+            parameters: normalizeGeminiSchemaTypes(func.parameters) || { type: "object", properties: {} }
+          }
         });
       }
     }
@@ -84,15 +85,15 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
  * OpenAI tool bridge expects lowercase JSON Schema type values at every depth.
  */
 export function normalizeGeminiSchemaTypes(schema) {
-  if (!schema || typeof schema !== "object") return schema;
+  if (!schema || !isObject(schema)) return schema;
   if (Array.isArray(schema)) return schema.map((item) => normalizeGeminiSchemaTypes(item));
 
   const normalized = {};
   for (const [key, value] of Object.entries(schema)) {
-    if (key === "type" && typeof value === "string") {
+    if (key === "type" && isString(value)) {
       normalized[key] = value.toLowerCase();
     } else if (key === "type" && Array.isArray(value)) {
-      normalized[key] = value.map((item) => typeof item === "string" ? item.toLowerCase() : item);
+      normalized[key] = value.map((item) => isString(item) ? item.toLowerCase() : item);
     } else {
       normalized[key] = normalizeGeminiSchemaTypes(value);
     }
@@ -111,9 +112,9 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
   for (const part of parts) {
     if (part.functionResponse) {
       const response = part.functionResponse.response || {};
-      const payload = Object.prototype.hasOwnProperty.call(response, "result")
-        ? response.result
-        : response;
+      const payload = Object.prototype.hasOwnProperty.call(response, "result") ?
+      response.result :
+      response;
       const name = part.functionResponse.name || "";
       let toolCallId = part.functionResponse.id;
       if (!toolCallId) {
@@ -130,39 +131,39 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
       messages.push({
         role: "tool",
         tool_call_id: toolCallId,
-        content: JSON.stringify(payload ?? {}),
+        content: JSON.stringify(payload ?? {})
       });
     } else {
       remainingParts.push(part);
     }
   }
 
-  const text = remainingParts
-    .filter((part) => typeof part.text === "string")
-    .map((part) => part.text)
-    .join("\n");
-  const toolCalls = remainingParts
-    .filter((part) => part.functionCall)
-    .map((part) => {
-      const name = part.functionCall.name || "";
-      let id = part.functionCall.id;
-      if (!id) {
-        const serial = (serialByName.get(name) || 0) + 1;
-        serialByName.set(name, serial);
-        id = `call_${name}_${serial}`;
+  const text = remainingParts.
+  filter((part) => isString(part.text)).
+  map((part) => part.text).
+  join("\n");
+  const toolCalls = remainingParts.
+  filter((part) => part.functionCall).
+  map((part) => {
+    const name = part.functionCall.name || "";
+    let id = part.functionCall.id;
+    if (!id) {
+      const serial = (serialByName.get(name) || 0) + 1;
+      serialByName.set(name, serial);
+      id = `call_${name}_${serial}`;
+    }
+    const queue = queueByName.get(name) || [];
+    queue.push(id);
+    queueByName.set(name, queue);
+    return {
+      id,
+      type: "function",
+      function: {
+        name: part.functionCall.name || "",
+        arguments: JSON.stringify(part.functionCall.args || {})
       }
-      const queue = queueByName.get(name) || [];
-      queue.push(id);
-      queueByName.set(name, queue);
-      return {
-        id,
-        type: "function",
-        function: {
-          name: part.functionCall.name || "",
-          arguments: JSON.stringify(part.functionCall.args || {}),
-        },
-      };
-    });
+    };
+  });
 
   if (toolCalls.length > 0) {
     const assistantMessage = { role: "assistant", tool_calls: toolCalls };
@@ -179,7 +180,7 @@ const FINISH_REASON_MAP = {
   stop: "STOP",
   length: "MAX_TOKENS",
   tool_calls: "STOP",
-  content_filter: "SAFETY",
+  content_filter: "SAFETY"
 };
 
 /**
@@ -199,10 +200,10 @@ export function openAIChunkToGeminiChunk(parsed, model, state = {}) {
   }
 
   if (Array.isArray(delta.tool_calls)) {
-    const accum = (state.toolCallAccum ??= {});
+    const accum = state.toolCallAccum ??= {};
     for (const tc of delta.tool_calls) {
       const index = tc.index ?? 0;
-      const entry = (accum[index] ??= { id: "", name: "", arguments: "" });
+      const entry = accum[index] ??= { id: "", name: "", arguments: "" };
       if (tc.id) entry.id = tc.id;
       if (tc.function?.name) entry.name += tc.function.name;
       if (tc.function?.arguments) entry.arguments += tc.function.arguments;
@@ -229,9 +230,9 @@ export function openAIChunkToGeminiChunk(parsed, model, state = {}) {
   const candidate = {
     content: {
       role: "model",
-      parts: parts.length > 0 ? parts : [{ text: "" }],
+      parts: parts.length > 0 ? parts : [{ text: "" }]
     },
-    index: 0,
+    index: 0
   };
 
   if (choice.finish_reason) {
@@ -244,7 +245,7 @@ export function openAIChunkToGeminiChunk(parsed, model, state = {}) {
     geminiChunk.usageMetadata = {
       promptTokenCount: parsed.usage.prompt_tokens || 0,
       candidatesTokenCount: parsed.usage.completion_tokens || 0,
-      totalTokenCount: parsed.usage.total_tokens || 0,
+      totalTokenCount: parsed.usage.total_tokens || 0
     };
     const reasoningTokens = parsed.usage.completion_tokens_details?.reasoning_tokens;
     if (reasoningTokens) {
@@ -311,9 +312,9 @@ export function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
           );
         }
       } catch {
+
         // Ignore partial trailing frames; Gemini SSE ends by stream close.
-      }
-    },
+      }}
   });
 
   return new Response(upstreamResponse.body.pipeThrough(transformStream), {
@@ -321,8 +322,8 @@ export function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Access-Control-Allow-Origin": "*",
-    },
+      "Access-Control-Allow-Origin": "*"
+    }
   });
 }
 
@@ -341,18 +342,18 @@ export async function convertOpenAIResponseToGemini(response, model) {
   }
 
   if (body.candidates) return Response.json(body, {
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
   });
 
   if (body.error) return Response.json(body, {
     status: response.status,
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
   });
 
   const choice = body.choices?.[0];
   if (!choice) {
     return Response.json(body, {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
   }
 
@@ -376,8 +377,8 @@ export async function convertOpenAIResponseToGemini(response, model) {
     parts.push({
       functionCall: {
         name: toolCall.function?.name || "",
-        args,
-      },
+        args
+      }
     });
   }
 
@@ -385,20 +386,20 @@ export async function convertOpenAIResponseToGemini(response, model) {
 
   const geminiResponse = {
     candidates: [
-      {
-        content: { role: "model", parts },
-        finishReason,
-        index: 0,
-      },
-    ],
-    modelVersion: body.model || model,
+    {
+      content: { role: "model", parts },
+      finishReason,
+      index: 0
+    }],
+
+    modelVersion: body.model || model
   };
 
   if (body.usage) {
     geminiResponse.usageMetadata = {
       promptTokenCount: body.usage.prompt_tokens || 0,
       candidatesTokenCount: body.usage.completion_tokens || 0,
-      totalTokenCount: body.usage.total_tokens || 0,
+      totalTokenCount: body.usage.total_tokens || 0
     };
     const reasoningTokens = body.usage.completion_tokens_details?.reasoning_tokens;
     if (reasoningTokens) {
@@ -407,6 +408,6 @@ export async function convertOpenAIResponseToGemini(response, model) {
   }
 
   return Response.json(geminiResponse, {
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
   });
 }

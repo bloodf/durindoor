@@ -3,9 +3,10 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && isObject(value) && !Array.isArray(value);
 }
 
 // Derive a provider's /moderations endpoint from its chat completions baseUrl.
@@ -38,11 +39,11 @@ export async function handleModerationsCore({
   modelInfo,
   credentials = null,
   log = null,
-  onRequestSuccess = null,
+  onRequestSuccess = null
 }) {
   const { provider, model } = modelInfo;
   const cfg = PROVIDERS[provider];
-  const baseUrl = isRecord(cfg) && typeof cfg.baseUrl === "string" ? cfg.baseUrl : undefined;
+  const baseUrl = isRecord(cfg) && isString(cfg.baseUrl) ? cfg.baseUrl : undefined;
   if (!baseUrl) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' has no base URL for moderation`);
   }
@@ -58,7 +59,7 @@ export async function handleModerationsCore({
     res = await proxyAwareFetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ ...body, model }),
+      body: JSON.stringify({ ...body, model })
     });
   } catch (err) {
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Moderation request failed");
@@ -79,8 +80,8 @@ export async function handleModerationsCore({
       status: 200,
       headers: {
         "Content-Type": res.headers.get("content-type") || "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    }),
+        "Access-Control-Allow-Origin": "*"
+      }
+    })
   };
 }

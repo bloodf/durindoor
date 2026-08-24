@@ -4,6 +4,7 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal, Select } from "@/shared/components";
 import { translate } from "@/i18n/runtime";
+import { isFunction, isObject } from "../../../../../shared/utils/typeChecks.js";
 
 const PLACEHOLDER = `[
   {
@@ -16,7 +17,7 @@ const PLACEHOLDER = `[
 
 function normalizeToArray(parsed) {
   if (Array.isArray(parsed)) return parsed;
-  if (parsed && typeof parsed === "object") {
+  if (parsed && isObject(parsed)) {
     if (Array.isArray(parsed.accounts)) return parsed.accounts;
     return [parsed];
   }
@@ -65,7 +66,7 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
       const res = await fetch("/api/oauth/codex/bulk-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accounts, codexFingerprintMode }),
+        body: JSON.stringify({ accounts, codexFingerprintMode })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -73,7 +74,7 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
         return;
       }
       setResult(data);
-      if (data.success > 0 && typeof onSuccess === "function") {
+      if (data.success > 0 && isFunction(onSuccess)) {
         onSuccess();
       }
     } catch (err) {
@@ -98,54 +99,54 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
           value={codexFingerprintMode}
           onChange={(event) => setCodexFingerprintMode(event.target.value)}
           options={[
-            { value: "off", label: translate("Off — preserve client identity") },
-            { value: "device", label: translate("Device — stable installation") },
-            { value: "session", label: translate("Session — stable account session (recommended)") },
-            { value: "full", label: translate("Full — stable account thread") },
-          ]}
-          disabled={submitting}
-        />
+          { value: "off", label: translate("Off — preserve client identity") },
+          { value: "device", label: translate("Device — stable installation") },
+          { value: "session", label: translate("Session — stable account session (recommended)") },
+          { value: "full", label: translate("Full — stable account thread") }]
+          }
+          disabled={submitting} />
+        
 
         <textarea
           className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[240px] focus:outline-none focus:ring-1 focus:ring-primary"
           placeholder={PLACEHOLDER}
           value={jsonText}
           onChange={(e) => setJsonText(e.target.value)}
-          disabled={submitting}
-        />
+          disabled={submitting} />
+        
 
-        {parseError && (
-          <p className="text-xs text-red-500 break-words">{parseError}</p>
-        )}
+        {parseError &&
+        <p className="text-xs text-red-500 break-words">{parseError}</p>
+        }
 
-        {result && (
-          <div className="flex flex-col gap-2">
+        {result &&
+        <div className="flex flex-col gap-2">
             <div
-              className={`text-sm font-medium ${
-                result.failed > 0 ? "text-yellow-400" : "text-green-400"
-              }`}
-            >
+            className={`text-sm font-medium ${
+            result.failed > 0 ? "text-yellow-400" : "text-green-400"}`
+            }>
+            
               ✓ {result.success} {translate("added")}
               {result.failed > 0 ? `, ✗ ${result.failed} ${translate("failed")}` : ""}
             </div>
-            {failedItems.length > 0 && (
-              <ul className="rounded border border-accent/20 bg-sidebar/50 p-2 text-xs font-mono max-h-40 overflow-y-auto">
-                {failedItems.map((item) => (
-                  <li key={item.index} className="text-red-400">
+            {failedItems.length > 0 &&
+          <ul className="rounded border border-accent/20 bg-sidebar/50 p-2 text-xs font-mono max-h-40 overflow-y-auto">
+                {failedItems.map((item) =>
+            <li key={item.index} className="text-red-400">
                     [{item.index}] {item.error}
                   </li>
-                ))}
-              </ul>
             )}
+              </ul>
+          }
           </div>
-        )}
+        }
 
         <div className="flex gap-2">
           <Button
             onClick={handleSubmit}
             fullWidth
-            disabled={submitting || !jsonText.trim()}
-          >
+            disabled={submitting || !jsonText.trim()}>
+            
             {submitting ? translate("Importing...") : translate("Import All")}
           </Button>
           <Button onClick={handleClose} variant="ghost" fullWidth disabled={submitting}>
@@ -153,12 +154,12 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
           </Button>
         </div>
       </div>
-    </Modal>
-  );
+    </Modal>);
+
 }
 
 BulkImportCodexModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
-  onSuccess: PropTypes.func,
+  onSuccess: PropTypes.func
 };

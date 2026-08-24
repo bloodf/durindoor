@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AI_PROVIDERS } from "@/shared/constants/providers.js";
 import { FILTERS } from "./filters.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -8,16 +9,16 @@ export const dynamic = "force-dynamic";
 // Treat it as an identifier, not an arbitrary server-side URL: accepting an
 // unregistered target here would turn this route into an SSRF primitive.
 const ALLOWED_FETCHERS = new Set(
-  Object.values(AI_PROVIDERS)
-    .map((provider) => provider?.modelsFetcher)
-    .filter((fetcher) => fetcher && typeof fetcher.url === "string" && typeof fetcher.type === "string")
-    .map((fetcher) => `${fetcher.type}\n${fetcher.url}`),
+  Object.values(AI_PROVIDERS).
+  map((provider) => provider?.modelsFetcher).
+  filter((fetcher) => fetcher && isString(fetcher.url) && isString(fetcher.type)).
+  map((fetcher) => `${fetcher.type}\n${fetcher.url}`)
 );
 
 export function isAllowedSuggestedModelsFetcher(url, type) {
-  return typeof url === "string"
-    && typeof type === "string"
-    && ALLOWED_FETCHERS.has(`${type}\n${url}`);
+  return isString(url) && isString(
+    type) &&
+  ALLOWED_FETCHERS.has(`${type}\n${url}`);
 }
 
 export async function GET(request) {

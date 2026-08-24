@@ -5,21 +5,22 @@ import { NextResponse } from "next/server";
 
 import {
   resolveFlowProxySelection,
-  saveOAuthConnection,
-} from "@/lib/oauth/flowCompletion.js";
+  saveOAuthConnection } from
+"@/lib/oauth/flowCompletion.js";
 import { claimOAuthFlow, consumeOAuthFlow } from "@/lib/oauth/flowStore.js";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { ensureOutboundProxyInitialized } from "@/lib/network/initOutboundProxy";
 
 /** Exchange a Kiro social code using only server-bound flow metadata. */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   let claim = null;
   try {
     await ensureOutboundProxyInitialized();
     const body = await request.json();
-    const code = typeof body?.code === "string" ? body.code.trim() : "";
-    const state = typeof body?.state === "string" ? body.state.trim() : "";
-    const flowId = typeof body?.flowId === "string" ? body.flowId.trim() : "";
+    const code = isString(body?.code) ? body.code.trim() : "";
+    const state = isString(body?.state) ? body.state.trim() : "";
+    const flowId = isString(body?.flowId) ? body.flowId.trim() : "";
     if (!code || !state || !flowId) throw new Error("Missing required fields");
 
     claim = claimOAuthFlow({ flowId, state, provider: "kiro" });
@@ -31,7 +32,7 @@ export async function POST(request) {
     const tokens = await service.exchangeSocialCode(
       code,
       claim.payload.codeVerifier,
-      resolvedProxy.proxyOptions,
+      resolvedProxy.proxyOptions
     );
     const email = service.extractEmailFromJWT(tokens.accessToken);
     const socialProvider = claim.payload.socialProvider;
@@ -45,12 +46,12 @@ export async function POST(request) {
         providerSpecificData: {
           profileArn: tokens.profileArn,
           authMethod: socialProvider,
-          provider: socialProvider.charAt(0).toUpperCase() + socialProvider.slice(1),
-        },
+          provider: socialProvider.charAt(0).toUpperCase() + socialProvider.slice(1)
+        }
       },
       resolvedProxy,
       {},
-      claim,
+      claim
     );
 
     return NextResponse.json({
@@ -58,8 +59,8 @@ export async function POST(request) {
       connection: {
         id: connection.id,
         provider: connection.provider,
-        email: connection.email,
-      },
+        email: connection.email
+      }
     });
   } catch (error) {
     const message = sanitizeErrorMessage(error?.message || "Social token exchange failed");

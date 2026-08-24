@@ -8,18 +8,19 @@ import {
   normalizeQuotaIdentity,
   normalizeQuotaSourceId,
   normalizeQuotaSnapshot,
-  quotaIdentityKey,
-} from "../../../shared/utils/quotaSnapshot.js";
+  quotaIdentityKey } from
+"../../../shared/utils/quotaSnapshot.js";
 import {
   QUOTA_DEFAULT_RETENTION_MS,
   QUOTA_MAX_IMPORT_ROWS,
   QUOTA_MAX_SOURCE_SNAPSHOTS,
-  QUOTA_PORTABLE_VERSION,
-} from "../../../shared/constants/quota.js";
+  QUOTA_PORTABLE_VERSION } from
+"../../../shared/constants/quota.js";
+import { isFunction, isNumber, isObject } from "../../../shared/utils/typeChecks.js";
 
 function assertRuntimeCommitAllowed({ signal = null, shouldCommit = null } = {}) {
   if (signal?.aborted) throw new DOMException("Provider quota persistence aborted", "AbortError");
-  if (typeof shouldCommit === "function" && !shouldCommit()) {
+  if (isFunction(shouldCommit) && !shouldCommit()) {
     const error = new Error("Provider quota persistence superseded");
     error.code = "PROVIDER_QUOTA_PERSISTENCE_SUPERSEDED";
     throw error;
@@ -124,22 +125,22 @@ function acquireQuotaWriteLockSync(db) {
 function readSourceStateSync(db, connectionId, sourceId) {
   const state = db.get(
     `SELECT lastObservedAt, attemptedAt FROM quotaFetchStates WHERE connectionId = ? AND sourceId = ?`,
-    [connectionId, sourceId],
+    [connectionId, sourceId]
   ) ?? null;
   const rows = db.get(
     `SELECT COUNT(*) AS count, MIN(observedAt) AS minimum, MAX(observedAt) AS maximum
      FROM providerQuotaSnapshots WHERE connectionId = ? AND sourceId = ?`,
-    [connectionId, sourceId],
+    [connectionId, sourceId]
   );
   const count = rows?.count ?? 0;
   if (count > QUOTA_MAX_SOURCE_SNAPSHOTS) {
     throw new QuotaSnapshotValidationError("Stored quota source exceeds its row limit");
   }
   if (count > 0 && (
-    !state?.lastObservedAt
-    || rows.minimum !== state.lastObservedAt
-    || rows.maximum !== state.lastObservedAt
-  )) {
+  !state?.lastObservedAt ||
+  rows.minimum !== state.lastObservedAt ||
+  rows.maximum !== state.lastObservedAt))
+  {
     throw new QuotaSnapshotValidationError("Stored quota source does not match its observation watermark");
   }
   return state;
@@ -147,26 +148,26 @@ function readSourceStateSync(db, connectionId, sourceId) {
 
 function snapshotParams(snapshot) {
   return [
-    snapshot.identity.connectionId,
-    snapshot.identity.accountKey,
-    snapshot.identity.resourceKey,
-    snapshot.identity.dimensionKey,
-    snapshot.state,
-    snapshot.amounts.limitKind,
-    snapshot.amounts.limit,
-    snapshot.amounts.used,
-    snapshot.amounts.remaining,
-    snapshot.amounts.remainingRatio,
-    snapshot.amounts.unit,
-    snapshot.timing.resetAt,
-    snapshot.timing.cooldownUntil,
-    snapshot.timing.observedAt,
-    snapshot.timing.staleAt,
-    snapshot.provenance.sourceType,
-    snapshot.provenance.sourceId,
-    snapshot.provenance.reasonCode,
-    JSON.stringify(snapshot.provenance.metadata),
-  ];
+  snapshot.identity.connectionId,
+  snapshot.identity.accountKey,
+  snapshot.identity.resourceKey,
+  snapshot.identity.dimensionKey,
+  snapshot.state,
+  snapshot.amounts.limitKind,
+  snapshot.amounts.limit,
+  snapshot.amounts.used,
+  snapshot.amounts.remaining,
+  snapshot.amounts.remainingRatio,
+  snapshot.amounts.unit,
+  snapshot.timing.resetAt,
+  snapshot.timing.cooldownUntil,
+  snapshot.timing.observedAt,
+  snapshot.timing.staleAt,
+  snapshot.provenance.sourceType,
+  snapshot.provenance.sourceId,
+  snapshot.provenance.reasonCode,
+  JSON.stringify(snapshot.provenance.metadata)];
+
 }
 
 function insertSnapshotSync(db, snapshot) {
@@ -175,36 +176,36 @@ function insertSnapshotSync(db, snapshot) {
 
 function insertFetchStateSync(db, state) {
   return db.run(FETCH_STATE_INSERT_SQL, [
-    state.connectionId,
-    state.sourceId,
-    state.outcome,
-    state.lastObservedAt,
-    state.attemptedAt,
-    state.retryAt,
-    state.lastSuccessAt,
-    state.reasonCode,
-  ]);
+  state.connectionId,
+  state.sourceId,
+  state.outcome,
+  state.lastObservedAt,
+  state.attemptedAt,
+  state.retryAt,
+  state.lastSuccessAt,
+  state.reasonCode]
+  );
 }
 
 function upsertFetchSuccessSync(db, state) {
   return db.run(FETCH_SUCCESS_UPSERT_SQL, [
-    state.connectionId,
-    state.sourceId,
-    state.lastObservedAt,
-    state.attemptedAt,
-    state.lastSuccessAt,
-  ]);
+  state.connectionId,
+  state.sourceId,
+  state.lastObservedAt,
+  state.attemptedAt,
+  state.lastSuccessAt]
+  );
 }
 
 function upsertFetchFailureSync(db, state) {
   return db.run(FETCH_FAILURE_UPSERT_SQL, [
-    state.connectionId,
-    state.sourceId,
-    state.outcome,
-    state.attemptedAt,
-    state.retryAt,
-    state.reasonCode,
-  ]);
+  state.connectionId,
+  state.sourceId,
+  state.outcome,
+  state.attemptedAt,
+  state.retryAt,
+  state.reasonCode]
+  );
 }
 
 function rowToSnapshot(row, { now } = {}) {
@@ -215,7 +216,7 @@ function rowToSnapshot(row, { now } = {}) {
         provider: row.provider,
         accountKey: row.accountKey,
         resourceKey: row.resourceKey,
-        dimensionKey: row.dimensionKey,
+        dimensionKey: row.dimensionKey
       },
       state: row.state,
       amounts: {
@@ -224,20 +225,20 @@ function rowToSnapshot(row, { now } = {}) {
         used: row.usedValue ?? null,
         remaining: row.remainingValue ?? null,
         remainingRatio: row.remainingRatio ?? null,
-        unit: row.unit ?? null,
+        unit: row.unit ?? null
       },
       timing: {
         resetAt: row.resetAt ?? null,
         cooldownUntil: row.cooldownUntil ?? null,
         observedAt: row.observedAt,
-        staleAt: row.staleAt,
+        staleAt: row.staleAt
       },
       provenance: {
         sourceType: row.sourceType,
         sourceId: row.sourceId,
         reasonCode: row.reasonCode ?? null,
-        metadata: JSON.parse(row.metadataJson),
-      },
+        metadata: JSON.parse(row.metadataJson)
+      }
     }, { allowCanonicalSentinels: true, now });
   } catch {
     throw new Error("Stored quota snapshot is invalid");
@@ -255,7 +256,7 @@ function rowToFetchState(row, { now } = {}) {
       attemptedAt: row.attemptedAt,
       retryAt: row.retryAt ?? null,
       lastSuccessAt: row.lastSuccessAt ?? null,
-      reasonCode: row.reasonCode ?? null,
+      reasonCode: row.reasonCode ?? null
     }, { now });
   } catch {
     throw new Error("Stored quota fetch state is invalid");
@@ -288,7 +289,7 @@ export async function upsertProviderQuotaSnapshot(value, { now = Date.now() } = 
     sourceId: snapshot.provenance.sourceId,
     outcome: "success",
     lastObservedAt: snapshot.timing.observedAt,
-    attemptedAt: snapshot.timing.observedAt,
+    attemptedAt: snapshot.timing.observedAt
   }, { now });
   const db = await getAdapter();
   let accepted = false;
@@ -299,7 +300,7 @@ export async function upsertProviderQuotaSnapshot(value, { now = Date.now() } = 
     if (!stored?.lastObservedAt || snapshot.timing.observedAt > stored.lastObservedAt) {
       db.run(
         `DELETE FROM providerQuotaSnapshots WHERE connectionId = ? AND sourceId = ?`,
-        [snapshot.identity.connectionId, snapshot.provenance.sourceId],
+        [snapshot.identity.connectionId, snapshot.provenance.sourceId]
       );
       accepted = (insertSnapshotSync(db, snapshot).changes || 0) > 0;
     }
@@ -307,11 +308,11 @@ export async function upsertProviderQuotaSnapshot(value, { now = Date.now() } = 
   });
   if (!accepted) return null;
   const row = db.get(snapshotSelect(`WHERE s.connectionId = ? AND s.accountKey = ? AND s.resourceKey = ? AND s.dimensionKey = ?`), [
-    snapshot.identity.connectionId,
-    snapshot.identity.accountKey,
-    snapshot.identity.resourceKey,
-    snapshot.identity.dimensionKey,
-  ]);
+  snapshot.identity.connectionId,
+  snapshot.identity.accountKey,
+  snapshot.identity.resourceKey,
+  snapshot.identity.dimensionKey]
+  );
   return rowToSnapshot(row, { now });
 }
 
@@ -320,9 +321,9 @@ export async function replaceProviderQuotaSnapshotsForSource(value, {
   signal = null,
   shouldCommit = null,
   returnCommitResult = false,
-  allowCanonicalSentinels = false,
+  allowCanonicalSentinels = false
 } = {}) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new QuotaSnapshotValidationError("Quota source replacement must be an object");
+  if (!value || !isObject(value) || Array.isArray(value)) throw new QuotaSnapshotValidationError("Quota source replacement must be an object");
   rejectUnknownKeys(value, new Set(["connectionId", "provider", "sourceId", "observedAt", "snapshots", "fetchState"]), "quota source replacement");
   const connectionId = normalizeQuotaIdentifier(value.connectionId, "connectionId");
   const provider = normalizeQuotaIdentifier(value.provider, "provider");
@@ -369,7 +370,7 @@ export async function replaceProviderQuotaSnapshotsForSource(value, {
       accepted = true;
       db.run(
         `DELETE FROM providerQuotaSnapshots WHERE connectionId = ? AND sourceId = ?`,
-        [connectionId, sourceId],
+        [connectionId, sourceId]
       );
       for (const snapshot of snapshots) insertSnapshotSync(db, snapshot);
     }
@@ -377,7 +378,7 @@ export async function replaceProviderQuotaSnapshotsForSource(value, {
     currentObservedAt = readSourceStateSync(db, connectionId, sourceId)?.lastObservedAt || observedAt;
     const storedSourceCount = db.get(
       `SELECT COUNT(*) AS count FROM providerQuotaSnapshots WHERE connectionId = ? AND sourceId = ?`,
-      [connectionId, sourceId],
+      [connectionId, sourceId]
     )?.count ?? 0;
     if (storedSourceCount > QUOTA_MAX_SOURCE_SNAPSHOTS) {
       throw new QuotaSnapshotValidationError("Stored quota source exceeds its row limit");
@@ -388,7 +389,7 @@ export async function replaceProviderQuotaSnapshotsForSource(value, {
   if (returnCommitResult) {
     return {
       accepted,
-      snapshots: persisted.filter((snapshot) => snapshot.provenance.sourceId === sourceId),
+      snapshots: persisted.filter((snapshot) => snapshot.provenance.sourceId === sourceId)
     };
   }
   return persisted;
@@ -397,15 +398,15 @@ export async function replaceProviderQuotaSnapshotsForSource(value, {
 export async function recordQuotaFetchFailure(value, {
   now = Date.now(),
   signal = null,
-  shouldCommit = null,
+  shouldCommit = null
 } = {}) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new QuotaSnapshotValidationError("Quota fetch failure must be an object");
+  if (!value || !isObject(value) || Array.isArray(value)) throw new QuotaSnapshotValidationError("Quota fetch failure must be an object");
   if (value.fetchState !== undefined) {
     rejectUnknownKeys(value, new Set(["connectionId", "provider", "sourceId", "fetchState"]), "quota fetch failure");
   }
   let candidate = value;
   if (value.fetchState !== undefined) {
-    if (!value.fetchState || typeof value.fetchState !== "object" || Array.isArray(value.fetchState)) {
+    if (!value.fetchState || !isObject(value.fetchState) || Array.isArray(value.fetchState)) {
       throw new QuotaSnapshotValidationError("fetchState must be an object");
     }
     for (const field of ["connectionId", "provider", "sourceId"]) {
@@ -417,7 +418,7 @@ export async function recordQuotaFetchFailure(value, {
       ...value.fetchState,
       connectionId: value.fetchState.connectionId ?? value.connectionId,
       provider: value.fetchState.provider ?? value.provider,
-      sourceId: value.fetchState.sourceId ?? value.sourceId,
+      sourceId: value.fetchState.sourceId ?? value.sourceId
     };
   }
   if (candidate.lastObservedAt != null || candidate.lastSuccessAt != null) {
@@ -455,10 +456,10 @@ export async function listProviderQuotaSnapshots({ connectionId, provider, inclu
   const clock = canonicalizeQuotaNow(now);
   const where = [];
   const params = [];
-  if (normalizedConnection) { where.push("s.connectionId = ?"); params.push(normalizedConnection); }
-  if (normalizedProvider) { where.push("c.provider = ?"); params.push(normalizedProvider); }
-  where.push("s.observedAt <= ?"); params.push(clock.value);
-  if (!includeStale) { where.push("s.staleAt > ?"); params.push(clock.value); }
+  if (normalizedConnection) {where.push("s.connectionId = ?");params.push(normalizedConnection);}
+  if (normalizedProvider) {where.push("c.provider = ?");params.push(normalizedProvider);}
+  where.push("s.observedAt <= ?");params.push(clock.value);
+  if (!includeStale) {where.push("s.staleAt > ?");params.push(clock.value);}
   const db = await getAdapter();
   const rows = db.all(`${snapshotSelect(`WHERE ${where.join(" AND ")}`)} ORDER BY s.observedAt DESC, s.connectionId, s.accountKey, s.resourceKey, s.dimensionKey`, params);
   return rows.map((row) => rowToSnapshot(row, { now: clock.timestamp }));
@@ -477,7 +478,7 @@ export async function getQuotaFetchState({ connectionId, provider, sourceId }, {
 /** Delete observations strictly older than the retention cutoff; the boundary remains. */
 export async function pruneProviderQuotaSnapshots({ now = Date.now(), retentionMs = QUOTA_DEFAULT_RETENTION_MS } = {}) {
   const clock = canonicalizeQuotaNow(now);
-  if (typeof retentionMs !== "number" || !Number.isSafeInteger(retentionMs) || retentionMs < 0) {
+  if (!isNumber(retentionMs) || !Number.isSafeInteger(retentionMs) || retentionMs < 0) {
     throw new QuotaSnapshotValidationError("retentionMs must be a non-negative safe integer");
   }
   const cutoffTime = clock.timestamp - retentionMs;
@@ -491,8 +492,8 @@ export async function pruneProviderQuotaSnapshots({ now = Date.now(), retentionM
 /** Synchronous helpers used only inside the full-database import transaction. */
 export function assertQuotaForeignKeysSync(db) {
   const quotaTables = new Set(["providerquotasnapshots", "quotafetchstates"]);
-  const violations = db.all(`PRAGMA foreign_key_check`)
-    .filter((row) => quotaTables.has(String(row.table).toLowerCase()));
+  const violations = db.all(`PRAGMA foreign_key_check`).
+  filter((row) => quotaTables.has(String(row.table).toLowerCase()));
   if (violations.length > 0) throw new Error("Stored quota state has an invalid provider-connection reference");
 }
 
@@ -521,13 +522,13 @@ export function readQuotaPortableStateSync(db, { now = Date.now() } = {}) {
   const oversizedSource = db.get(
     `SELECT 1 AS present FROM providerQuotaSnapshots
      GROUP BY connectionId, sourceId HAVING COUNT(*) > ? LIMIT 1`,
-    [QUOTA_MAX_SOURCE_SNAPSHOTS],
+    [QUOTA_MAX_SOURCE_SNAPSHOTS]
   );
   if (oversizedSource) throw new Error("Stored quota source exceeds its row safety limit");
-  const snapshots = db.all(`${snapshotSelect()} ORDER BY s.connectionId, s.accountKey, s.resourceKey, s.dimensionKey`)
-    .map((row) => rowToSnapshot(row, { now }));
-  const fetchStates = db.all(`${fetchStateSelect()} ORDER BY f.connectionId, f.sourceId`)
-    .map((row) => rowToFetchState(row, { now }));
+  const snapshots = db.all(`${snapshotSelect()} ORDER BY s.connectionId, s.accountKey, s.resourceKey, s.dimensionKey`).
+  map((row) => rowToSnapshot(row, { now }));
+  const fetchStates = db.all(`${fetchStateSelect()} ORDER BY f.connectionId, f.sourceId`).
+  map((row) => rowToFetchState(row, { now }));
   return { version: QUOTA_PORTABLE_VERSION, snapshots, fetchStates };
 }
 

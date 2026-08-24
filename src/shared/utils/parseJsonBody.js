@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
  * @param {Request} request
  * @returns {Promise<{ok: true, body: object} | {ok: false, response: Response}>}
  */
+import { isObject } from "./typeChecks.js";
 export async function parseJsonBody(request) {
   let body;
   try {
@@ -15,7 +16,7 @@ export async function parseJsonBody(request) {
   } catch {
     return { ok: false, response: NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }) };
   }
-  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+  if (body === null || !isObject(body) || Array.isArray(body)) {
     return { ok: false, response: NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }) };
   }
   return { ok: true, body };

@@ -1,5 +1,6 @@
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export function isAccountIdValid(accountId) {
-  return typeof accountId === "string" && accountId.trim().length > 0;
+  return isString(accountId) && accountId.trim().length > 0;
 }
 
 export function getAccountIdProviderData(accountId) {
@@ -24,14 +25,14 @@ export function getBulkGuidance(opts) {
       format: "name|apiKey|accountId",
       allowsKeyOnly: false,
       placeholder:
-        "name1|sk-key1|acc123456\nname2|sk-key2|def789012\nname3|sk-key3|ghi345678",
+      "name1|sk-key1|acc123456\nname2|sk-key2|def789012\nname3|sk-key3|ghi345678"
     };
   }
   return {
     format: "name|apiKey",
     allowsKeyOnly: true,
     placeholder:
-      "name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named",
+    "name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named"
   };
 }
 // Pure parser + validator for the "Bulk Add" rows in AddApiKeyModal.
@@ -92,9 +93,9 @@ export function prepareBulkKeyRows(lines, opts) {
  *   providerSpecificData?: { accountId: string }
  * }}
  */
- export function parseBulkKeyRow(line, opts) {
+export function parseBulkKeyRow(line, opts) {
   const { index, requiresAccountId = false, defaultName = "Key" } = opts || {};
-  if (typeof line !== "string" || line.length === 0) {
+  if (!isString(line) || line.length === 0) {
     return { ok: false, error: "empty row" };
   }
   const parts = line.split("|");
@@ -120,7 +121,7 @@ export function prepareBulkKeyRows(lines, opts) {
       ok: true,
       name: `${baseName} ${index + 1}`,
       apiKey,
-      providerSpecificData: { accountId },
+      providerSpecificData: { accountId }
     };
   }
 
@@ -134,7 +135,7 @@ export function prepareBulkKeyRows(lines, opts) {
     return {
       ok: true,
       name: `${baseName} ${index + 1}`,
-      apiKey,
+      apiKey
     };
   }
 
@@ -145,6 +146,6 @@ export function prepareBulkKeyRows(lines, opts) {
   return {
     ok: true,
     name: `${defaultName} ${index + 1}`,
-    apiKey,
+    apiKey
   };
 }

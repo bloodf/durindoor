@@ -15,6 +15,7 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function stopThinkingBlock(state, results) {
   if (!state.thinkingBlockStarted) return;
@@ -50,7 +51,7 @@ export function kiroToClaudeResponse(chunk, state) {
   // KiroExecutor emits chat.completion.chunk objects; tolerate string chunks
   // by attempting a parse (defensive — the direct path is always objects).
   let data = chunk;
-  if (typeof chunk === "string") {
+  if (isString(chunk)) {
     const trimmed = chunk.trim();
     if (!trimmed || trimmed === "[DONE]") return null;
     try {
@@ -67,30 +68,30 @@ export function kiroToClaudeResponse(chunk, state) {
   const delta = choice.delta || {};
 
   // Track usage if present on the chunk.
-  if (data.usage && typeof data.usage === "object") {
+  if (data.usage && isObject(data.usage)) {
     const promptTokens =
-      typeof data.usage.prompt_tokens === "number" ? data.usage.prompt_tokens : 0;
+    isNumber(data.usage.prompt_tokens) ? data.usage.prompt_tokens : 0;
     const outputTokens =
-      typeof data.usage.completion_tokens === "number"
-        ? data.usage.completion_tokens
-        : 0;
+    isNumber(data.usage.completion_tokens) ?
+    data.usage.completion_tokens :
+    0;
     state.usage = { input_tokens: promptTokens, output_tokens: outputTokens };
     // Cache tokens arrive either flat or nested under prompt_tokens_details;
     // flat wins. Dropping them made every cached Kiro turn look uncached.
     const details = data.usage.prompt_tokens_details;
     for (const field of ["cache_read_input_tokens", "cache_creation_input_tokens"]) {
-      const value = typeof data.usage[field] === "number"
-        ? data.usage[field]
-        : (typeof details?.[field] === "number" ? details[field] : null);
+      const value = isNumber(data.usage[field]) ?
+      data.usage[field] :
+      isNumber(details?.[field]) ? details[field] : null;
       if (value !== null) state.usage[field] = value;
     }
     // Preserve Kiro credit metering attached upstream (executor meteringEvent)
     // so onStreamComplete persists credits on the Claude route too.
-    const kiroCredits = data.usage.kiro_credits !== null && data.usage.kiro_credits !== undefined
-      ? Number(data.usage.kiro_credits) : NaN;
+    const kiroCredits = data.usage.kiro_credits !== null && data.usage.kiro_credits !== undefined ?
+    Number(data.usage.kiro_credits) : NaN;
     if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
       state.usage.kiro_credits = kiroCredits;
-      if (typeof data.usage.kiro_credit_unit === "string") {
+      if (isString(data.usage.kiro_credit_unit)) {
         state.usage.kiro_credit_unit = data.usage.kiro_credit_unit;
       }
     }
@@ -106,8 +107,8 @@ export function kiroToClaudeResponse(chunk, state) {
   if (!state.messageStartSent) {
     state.messageStartSent = true;
     state.messageId =
-      (typeof data.id === "string" && data.id.replace("chatcmpl-", "")) ||
-      `msg_${Date.now()}`;
+    isString(data.id) && data.id.replace("chatcmpl-", "") ||
+    `msg_${Date.now()}`;
     state.model = data.model || "kiro";
     state.nextBlockIndex = 0;
     results.push({
@@ -120,8 +121,8 @@ export function kiroToClaudeResponse(chunk, state) {
         content: [],
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 0, output_tokens: 0 },
-      },
+        usage: { input_tokens: 0, output_tokens: 0 }
+      }
     });
   }
 
@@ -135,13 +136,13 @@ export function kiroToClaudeResponse(chunk, state) {
       results.push({
         type: "content_block_start",
         index: state.thinkingBlockIndex,
-        content_block: { type: "thinking", thinking: "" },
+        content_block: { type: "thinking", thinking: "" }
       });
     }
     results.push({
       type: "content_block_delta",
       index: state.thinkingBlockIndex,
-      delta: { type: "thinking_delta", thinking: reasoningContent },
+      delta: { type: "thinking_delta", thinking: reasoningContent }
     });
   }
 
@@ -155,13 +156,13 @@ export function kiroToClaudeResponse(chunk, state) {
       results.push({
         type: "content_block_start",
         index: state.textBlockIndex,
-        content_block: { type: "text", text: "" },
+        content_block: { type: "text", text: "" }
       });
     }
     results.push({
       type: "content_block_delta",
       index: state.textBlockIndex,
-      delta: { type: "text_delta", text: delta.content },
+      delta: { type: "text_delta", text: delta.content }
     });
   }
 
@@ -181,7 +182,7 @@ export function kiroToClaudeResponse(chunk, state) {
         state.toolCalls.set(idx, {
           id: tc.id,
           name: toolName,
-          blockIndex: toolBlockIndex,
+          blockIndex: toolBlockIndex
         });
         results.push({
           type: "content_block_start",
@@ -190,8 +191,8 @@ export function kiroToClaudeResponse(chunk, state) {
             type: "tool_use",
             id: tc.id,
             name: toolName,
-            input: {},
-          },
+            input: {}
+          }
         });
       }
       if (tc.function?.arguments) {
@@ -218,7 +219,7 @@ export function kiroToClaudeResponse(chunk, state) {
           results.push({
             type: "content_block_delta",
             index: toolInfo.blockIndex,
-            delta: { type: "input_json_delta", partial_json: buffered },
+            delta: { type: "input_json_delta", partial_json: buffered }
           });
         }
         results.push({ type: "content_block_stop", index: toolInfo.blockIndex });
@@ -230,7 +231,7 @@ export function kiroToClaudeResponse(chunk, state) {
     results.push({
       type: "message_delta",
       delta: { stop_reason: convertFinishReason(choice.finish_reason) },
-      usage: finalUsage,
+      usage: finalUsage
     });
     results.push({ type: "message_stop" });
   }
@@ -256,9 +257,9 @@ export function kiroToClaudeNonStreaming(data) {
       let input = {};
       try {
         input =
-          typeof tc.function?.arguments === "string"
-            ? JSON.parse(tc.function.arguments)
-            : tc.function?.arguments || {};
+        isString(tc.function?.arguments) ?
+        JSON.parse(tc.function.arguments) :
+        tc.function?.arguments || {};
       } catch {
         input = {};
       }
@@ -266,7 +267,7 @@ export function kiroToClaudeNonStreaming(data) {
         type: "tool_use",
         id: tc.id || `toolu_${Date.now()}`,
         name: tc.function?.name || "",
-        input,
+        input
       });
     }
   }
@@ -281,8 +282,8 @@ export function kiroToClaudeNonStreaming(data) {
     stop_reason: convertFinishReason(choice?.finish_reason || "stop"),
     usage: {
       input_tokens: usage.prompt_tokens || 0,
-      output_tokens: usage.completion_tokens || 0,
-    },
+      output_tokens: usage.completion_tokens || 0
+    }
   };
 }
 

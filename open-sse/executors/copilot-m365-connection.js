@@ -5,6 +5,7 @@
  * Microsoft's browser client, so logged URLs must pass through redactWsUrl().
  */
 import { randomBytes, randomUUID } from "node:crypto";
+import { isBoolean, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const M365_INDIVIDUAL_DEFAULTS = {
   host: "substrate.office.com",
@@ -13,7 +14,7 @@ export const M365_INDIVIDUAL_DEFAULTS = {
   agentHost: "Bizchat.FullScreen",
   licenseType: "Starter",
   agent: "web",
-  scenario: "OfficeWebPaidConsumerCopilot",
+  scenario: "OfficeWebPaidConsumerCopilot"
 };
 
 export const M365_ALLOWED_HOSTS = new Set([M365_INDIVIDUAL_DEFAULTS.host]);
@@ -22,58 +23,58 @@ const M365_CHATHUB_PATH_RE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/;
 export const M365_EDU_OVERRIDES = {
   scenario: "OfficeWebIncludedCopilot",
   isEdu: "true",
-  licenseType: "Starter",
+  licenseType: "Starter"
 };
 
 export const M365_DEFAULT_VARIANTS = [
-  "EnableMcpServerWidgets",
-  "feature.EnableMcpServerWidgets",
-  "feature.EnableLuForChatCIQ",
-  "feature.enableChatCIQPlugin",
-  "EnableRequestPlugins",
-  "feature.EnableSensitivityLabels",
-  "EnableUnsupportedUrlDetector",
-  "feature.IsCustomEngineCopilotEnabled",
-  "feature.bizchatfluxv3",
-  "feature.enablechatpages",
-  "feature.enableCodeCanvas",
-  "feature.turnOnDARecommendation",
-  "feature.IsStreamingModeInChatRequestEnabled",
-  "IncludeSourceAttributionsConcise",
-  "SkipPublishEmptyMessage",
-  "feature.EnableDeduplicatingSourceAttributions",
-  "Enable3PActionProgressMessages",
-  "feature.enableClientWebRtc",
-  "feature.EnableMeetingRecapOfSeriesMeetingWithCiq",
-  "feature.cwcfluxv3fe",
-  "feature.cwcfluxv3fem",
-  "feature.EnableReferencesListCompleteSignal",
-  "feature.StorageMessageSplitDisabled",
-  "feature.EnableCuaTakeControlApi",
-  "SingletonEnvOn",
-  "EnableComposeWidget",
-  "feature.cwcallowedos",
-  "feature.EnableMergingPureDeltas",
-  "feature.disabledisallowedmsgs",
-  "feature.enableCitationsForSynthesisData",
-  "feature.EnableConversationShareApis",
-  "feature.enableGenerateGraphicArtOptionsSet",
-  "cdximagen",
-  "feature.EnableUpdatedUXForConfirmationDialog",
-  "feature.EnableContentApiandDocTypeHtmlInRichAnswers",
-  "cdxgrounding_api_v2_rich_web_answers_reference_bottom_force",
-  "cdxenablerenderforisocomp",
-  "feature.EnableClientFileURLSupportForOfficeWebPaidCopilot",
-  "feature.EnableDesignEditorImageGrounding",
-  "feature.EnableDesignerEditor",
-  "feature.EnableSkipRehydrationForSpeCIdImages",
-  "feature.EnablePersonalizationForMSA",
-  "agt_bizchat_enableRichResponses",
-  "feature.EnableBase64DataInMessageAnnotations",
-  "feature.EnableSkipEmittingMessageOnFlush",
-  "feature.EnableRemoveEmptySourceAttributions",
-  "feature.EnableRemoveStreamingMode",
-];
+"EnableMcpServerWidgets",
+"feature.EnableMcpServerWidgets",
+"feature.EnableLuForChatCIQ",
+"feature.enableChatCIQPlugin",
+"EnableRequestPlugins",
+"feature.EnableSensitivityLabels",
+"EnableUnsupportedUrlDetector",
+"feature.IsCustomEngineCopilotEnabled",
+"feature.bizchatfluxv3",
+"feature.enablechatpages",
+"feature.enableCodeCanvas",
+"feature.turnOnDARecommendation",
+"feature.IsStreamingModeInChatRequestEnabled",
+"IncludeSourceAttributionsConcise",
+"SkipPublishEmptyMessage",
+"feature.EnableDeduplicatingSourceAttributions",
+"Enable3PActionProgressMessages",
+"feature.enableClientWebRtc",
+"feature.EnableMeetingRecapOfSeriesMeetingWithCiq",
+"feature.cwcfluxv3fe",
+"feature.cwcfluxv3fem",
+"feature.EnableReferencesListCompleteSignal",
+"feature.StorageMessageSplitDisabled",
+"feature.EnableCuaTakeControlApi",
+"SingletonEnvOn",
+"EnableComposeWidget",
+"feature.cwcallowedos",
+"feature.EnableMergingPureDeltas",
+"feature.disabledisallowedmsgs",
+"feature.enableCitationsForSynthesisData",
+"feature.EnableConversationShareApis",
+"feature.enableGenerateGraphicArtOptionsSet",
+"cdximagen",
+"feature.EnableUpdatedUXForConfirmationDialog",
+"feature.EnableContentApiandDocTypeHtmlInRichAnswers",
+"cdxgrounding_api_v2_rich_web_answers_reference_bottom_force",
+"cdxenablerenderforisocomp",
+"feature.EnableClientFileURLSupportForOfficeWebPaidCopilot",
+"feature.EnableDesignEditorImageGrounding",
+"feature.EnableDesignerEditor",
+"feature.EnableSkipRehydrationForSpeCIdImages",
+"feature.EnablePersonalizationForMSA",
+"agt_bizchat_enableRichResponses",
+"feature.EnableBase64DataInMessageAnnotations",
+"feature.EnableSkipEmittingMessageOnFlush",
+"feature.EnableRemoveEmptySourceAttributions",
+"feature.EnableRemoveStreamingMode"];
+
 
 export function newChatSessionId() {
   return randomBytes(16).toString("hex");
@@ -107,16 +108,16 @@ function parsePastedCredential(raw) {
       const token = url.searchParams.get("access_token") || "";
       if (!isRedactedToken(token)) parts.access_token ||= token;
       parts.chathubPath ||= decodeURIComponent(
-        url.pathname.split("/m365Copilot/Chathub/")[1] || "",
+        url.pathname.split("/m365Copilot/Chathub/")[1] || ""
       );
     } catch {
+
       // Keep any key/value fields already parsed from the pasted text.
-    }
-  }
+    }}
 
   return {
     accessToken: parts.access_token || parts.accessToken,
-    chathubPath: parts.chathubPath || parts.userTenant,
+    chathubPath: parts.chathubPath || parts.userTenant
   };
 }
 
@@ -129,62 +130,62 @@ export function isStructuredWsUrlCredential(value) {
 }
 
 function resolveTierOverrides(psd) {
-  const tier = typeof psd.tier === "string" ? psd.tier.toLowerCase() : "";
+  const tier = isString(psd.tier) ? psd.tier.toLowerCase() : "";
   const isEduTier = tier === "edu" || tier === "included";
   const psdIsEdu =
-    (typeof psd.isEdu === "string" && psd.isEdu) ||
-    (typeof psd.isEdu === "boolean" && String(psd.isEdu)) ||
-    undefined;
+  isString(psd.isEdu) && psd.isEdu ||
+  isBoolean(psd.isEdu) && String(psd.isEdu) ||
+  undefined;
   return {
     scenario:
-      (typeof psd.scenario === "string" && psd.scenario) ||
-      (isEduTier ? M365_EDU_OVERRIDES.scenario : undefined),
+    isString(psd.scenario) && psd.scenario || (
+    isEduTier ? M365_EDU_OVERRIDES.scenario : undefined),
     isEdu: psdIsEdu || (isEduTier ? M365_EDU_OVERRIDES.isEdu : undefined),
     licenseType:
-      (typeof psd.licenseType === "string" && psd.licenseType) ||
-      (isEduTier ? M365_EDU_OVERRIDES.licenseType : undefined),
+    isString(psd.licenseType) && psd.licenseType || (
+    isEduTier ? M365_EDU_OVERRIDES.licenseType : undefined)
   };
 }
 
 export function resolveConnectionParams(credentials) {
   const psd = credentials?.providerSpecificData ?? {};
-  const parsedApiKey = typeof credentials?.apiKey === "string"
-    ? parsePastedCredential(credentials.apiKey)
-    : {};
+  const parsedApiKey = isString(credentials?.apiKey) ?
+  parsePastedCredential(credentials.apiKey) :
+  {};
   const accessToken =
-    parsedApiKey.accessToken ||
-    (typeof credentials?.apiKey === "string" &&
-      credentials.apiKey &&
-      !isStructuredWsUrlCredential(credentials.apiKey) &&
-      !isStructuredPathOnlyCredential(credentials.apiKey) &&
-      !hasEmptyOrRedactedAccessToken(credentials.apiKey) &&
-      credentials.apiKey) ||
-    (typeof psd.accessToken === "string" && psd.accessToken) ||
-    (typeof psd.access_token === "string" && psd.access_token) ||
-    "";
+  parsedApiKey.accessToken ||
+  isString(credentials?.apiKey) &&
+  credentials.apiKey &&
+  !isStructuredWsUrlCredential(credentials.apiKey) &&
+  !isStructuredPathOnlyCredential(credentials.apiKey) &&
+  !hasEmptyOrRedactedAccessToken(credentials.apiKey) &&
+  credentials.apiKey ||
+  isString(psd.accessToken) && psd.accessToken ||
+  isString(psd.access_token) && psd.access_token ||
+  "";
   if (!accessToken) {
     return { error: "Missing M365 Copilot access_token. Paste it as the provider credential." };
   }
 
   const chathubPath =
-    parsedApiKey.chathubPath ||
-    (typeof psd.chathubPath === "string" && psd.chathubPath) ||
-    (typeof psd.userTenant === "string" && psd.userTenant) ||
-    "";
+  parsedApiKey.chathubPath ||
+  isString(psd.chathubPath) && psd.chathubPath ||
+  isString(psd.userTenant) && psd.userTenant ||
+  "";
   if (!chathubPath || !M365_CHATHUB_PATH_RE.test(chathubPath)) {
     return {
       error:
-        "Invalid M365 Chathub path. Paste only the '<user-oid>@<tenant-id>' segment from the WebSocket URL.",
+      "Invalid M365 Chathub path. Paste only the '<user-oid>@<tenant-id>' segment from the WebSocket URL."
     };
   }
 
-  const host = ((typeof psd.host === "string" && psd.host) || M365_INDIVIDUAL_DEFAULTS.host)
-    .trim()
-    .toLowerCase();
+  const host = (isString(psd.host) && psd.host || M365_INDIVIDUAL_DEFAULTS.host).
+  trim().
+  toLowerCase();
   if (!M365_ALLOWED_HOSTS.has(host)) {
     return { error: "Unsupported M365 Copilot WebSocket host." };
   }
-  const variants = typeof psd.variants === "string" && psd.variants ? psd.variants : undefined;
+  const variants = isString(psd.variants) && psd.variants ? psd.variants : undefined;
   return { host, chathubPath, accessToken, variants, ...resolveTierOverrides(psd) };
 }
 
@@ -210,7 +211,7 @@ export function buildWsUrl(params) {
     licenseType: params.licenseType ?? M365_INDIVIDUAL_DEFAULTS.licenseType,
     isEdu: params.isEdu ?? "false",
     agent: M365_INDIVIDUAL_DEFAULTS.agent,
-    scenario: params.scenario ?? M365_INDIVIDUAL_DEFAULTS.scenario,
+    scenario: params.scenario ?? M365_INDIVIDUAL_DEFAULTS.scenario
   });
   return `wss://${host}/m365Copilot/Chathub/${encodedPath}?${query.toString()}`;
 }
@@ -222,33 +223,33 @@ export function redactWsUrl(wsUrl) {
 export function buildPrompt(body) {
   const messages = body?.messages || [];
   const textOf = (content) => {
-    if (typeof content === "string") return content;
+    if (isString(content)) return content;
     if (Array.isArray(content)) {
-      return content
-        .map((part) => {
-          if (typeof part === "string") return part;
-          if (part?.type === "text" && typeof part.text === "string") return part.text;
-          return JSON.stringify(part ?? "");
-        })
-        .filter(Boolean)
-        .join("\n");
+      return content.
+      map((part) => {
+        if (isString(part)) return part;
+        if (part?.type === "text" && isString(part.text)) return part.text;
+        return JSON.stringify(part ?? "");
+      }).
+      filter(Boolean).
+      join("\n");
     }
     return content == null ? "" : JSON.stringify(content);
   };
-  const sysText = messages
-    .filter((m) => m.role === "system" || m.role === "developer")
-    .map((m) => textOf(m.content))
-    .filter(Boolean)
-    .join("\n");
-  const turns = messages
-    .filter((m) => m.role !== "system" && m.role !== "developer")
-    .map((m) => {
-      const text = textOf(m.content).trim();
-      if (!text) return "";
-      const role = m.role === "assistant" ? "Assistant" : m.role === "tool" ? "Tool" : "User";
-      return `[${role}]\n${text}`;
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  const sysText = messages.
+  filter((m) => m.role === "system" || m.role === "developer").
+  map((m) => textOf(m.content)).
+  filter(Boolean).
+  join("\n");
+  const turns = messages.
+  filter((m) => m.role !== "system" && m.role !== "developer").
+  map((m) => {
+    const text = textOf(m.content).trim();
+    if (!text) return "";
+    const role = m.role === "assistant" ? "Assistant" : m.role === "tool" ? "Tool" : "User";
+    return `[${role}]\n${text}`;
+  }).
+  filter(Boolean).
+  join("\n\n");
   return `${sysText ? `[System Instructions]\n${sysText}\n\n` : ""}${turns}`;
 }

@@ -18,7 +18,8 @@
     "verify:static": "node scripts/verify-static-assets.mjs",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli",
-    "lint": "eslint src",
+    "lint": "eslint src && npm run lint:anti-slop",
+    "lint:anti-slop": "node scripts/build-anti-slop-plugin.mjs && node scripts/check-anti-slop.mjs",
     "gen:agent-index": "node scripts/gen-agent-index.mjs",
     "check:agent-index": "node scripts/check-agent-index.mjs",
     "gen:registry-index": "node scripts/gen-registry-index.mjs",
@@ -65,13 +66,21 @@
   "optionalDependencies": {
     "better-sqlite3": "^12.11.1"
   },
-  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools \u2014 sql.js is used as fallback at runtime",
+  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
   "devDependencies": {
+    "@oxlint/plugins": "1.78.0",
     "@tailwindcss/postcss": "^4.3.2",
+    "esbuild": "^0.25.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "lint-staged": "15.5.2",
+    "oxlint": "1.78.0",
     "postcss": "^8.5.23",
     "tailwindcss": "^4"
+  },
+  "lint-staged": {
+    "src/**/*.{js,jsx,mjs}": "eslint --max-warnings=0"
   },
   "overrides": {
     "dompurify": "3.4.13",

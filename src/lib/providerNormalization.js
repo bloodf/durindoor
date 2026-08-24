@@ -5,12 +5,13 @@ import { AI_PROVIDERS, getProviderByAlias, resolveProviderId } from "../shared/c
  * @param {string} modelId
  * @returns {boolean}
  */
+import { isObject, isString } from "../shared/utils/typeChecks.js";
 export function isXaiModel(modelId) {
-  return typeof modelId === "string" && /^grok[-_]/i.test(modelId.trim());
+  return isString(modelId) && /^grok[-_]/i.test(modelId.trim());
 }
 
 export function normalizeProviderId(provider) {
-  if (typeof provider !== "string") return provider;
+  if (!isString(provider)) return provider;
 
   const trimmed = provider.trim();
   if (AI_PROVIDERS[trimmed]) return trimmed;
@@ -33,9 +34,9 @@ export function normalizeProviderId(provider) {
 }
 
 export function normalizeProviderSpecificData(provider, body = {}, providerSpecificData = null) {
-  const next = providerSpecificData && typeof providerSpecificData === "object"
-    ? { ...providerSpecificData }
-    : {};
+  const next = providerSpecificData && isObject(providerSpecificData) ?
+  { ...providerSpecificData } :
+  {};
 
   if (provider === "codex") {
     delete next.codexClientIdentity;
@@ -47,22 +48,22 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
 
   if (provider === "ollama-local") {
     const baseUrl = (
-      next.baseUrl ||
-      body.baseUrl ||
-      body.baseURL ||
-      body.ollamaHostUrl ||
-      ""
-    ).trim();
+    next.baseUrl ||
+    body.baseUrl ||
+    body.baseURL ||
+    body.ollamaHostUrl ||
+    "").
+    trim();
 
     if (baseUrl) next.baseUrl = baseUrl;
   }
 
   if (provider === "google-pse") {
-    const cx = [next.cx, body.cx, body.searchEngineId]
-      .map((value) => (typeof value === "string" ? value.trim() : ""))
-      .find(Boolean);
-    if (cx) next.cx = cx;
-    else delete next.cx;
+    const cx = [next.cx, body.cx, body.searchEngineId].
+    map((value) => isString(value) ? value.trim() : "").
+    find(Boolean);
+    if (cx) next.cx = cx;else
+    delete next.cx;
   }
 
   if (AI_PROVIDERS[provider]?.noAuth && AI_PROVIDERS[provider]?.defaultBaseUrl) {

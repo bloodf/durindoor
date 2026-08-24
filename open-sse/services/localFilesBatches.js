@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const APP_DIRNAME = ".9router";
 
@@ -29,7 +30,7 @@ const newId = (prefix) => `${prefix}_${crypto.randomUUID().replace(/-/g, "").sli
 const resolveRoot = (filesRoot) => filesRoot || path.join(os.homedir(), APP_DIRNAME, "files");
 
 function assertSafeId(id) {
-  if (typeof id !== "string" || !SAFE_ID.test(id)) {
+  if (!isString(id) || !SAFE_ID.test(id)) {
     const e = new Error("invalid id");
     e.statusCode = 400;
     throw e;
@@ -78,7 +79,7 @@ function publicFileMeta(meta) {
  */
 export async function uploadFile({ filename, bytes, purpose }, { filesRoot, ownerId = null } = {}) {
   const root = resolveRoot(filesRoot);
-  if (typeof filename !== "string" || !filename) throw statusError("filename is required", 400);
+  if (!isString(filename) || !filename) throw statusError("filename is required", 400);
   const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? "");
   const id = newId("file");
   fs.mkdirSync(fileDir(root, id), { recursive: true });
@@ -90,7 +91,7 @@ export async function uploadFile({ filename, bytes, purpose }, { filesRoot, owne
     created_at: nowSeconds(),
     filename,
     purpose: purpose || "batch",
-    ownerId,
+    ownerId
   };
   fs.writeFileSync(metaPath(root, id), JSON.stringify(meta));
   return publicFileMeta(meta);
@@ -169,7 +170,7 @@ export function validateOpenAIJsonl(text) {
       continue;
     }
     const { custom_id, method, url, body } = parsed || {};
-    if (typeof custom_id !== "string" || !custom_id) {
+    if (!isString(custom_id) || !custom_id) {
       errors.push({ line: i + 1, error: "custom_id required" });
       continue;
     }
@@ -181,7 +182,7 @@ export function validateOpenAIJsonl(text) {
       errors.push({ line: i + 1, custom_id, error: `unsupported url ${url}` });
       continue;
     }
-    if (!body || typeof body !== "object") {
+    if (!body || !isObject(body)) {
       errors.push({ line: i + 1, custom_id, error: "body required" });
       continue;
     }
@@ -197,11 +198,11 @@ export function validateAnthropicRequests(requests) {
   if (!Array.isArray(requests)) return { rows, errors: [{ error: "requests must be an array" }] };
   for (let i = 0; i < requests.length; i++) {
     const r = requests[i];
-    if (!r || typeof r.custom_id !== "string" || !r.custom_id) {
+    if (!r || !isString(r.custom_id) || !r.custom_id) {
       errors.push({ line: i + 1, error: "custom_id required" });
       continue;
     }
-    if (!r.params || typeof r.params !== "object") {
+    if (!r.params || !isObject(r.params)) {
       errors.push({ line: i + 1, custom_id: r.custom_id, error: "params required" });
       continue;
     }
@@ -231,7 +232,7 @@ function openAIPublicView(b) {
     cancelling_at: b.cancelling_at,
     cancelled_at: b.cancelled_at,
     request_counts: b.request_counts,
-    metadata: b.metadata,
+    metadata: b.metadata
   };
 }
 
@@ -243,7 +244,7 @@ function anthropicStatus(b) {
 }
 
 function anthropicPublicView(b) {
-  const iso = (s) => (s ? new Date(s * 1000).toISOString() : null);
+  const iso = (s) => s ? new Date(s * 1000).toISOString() : null;
   const ended = b.status === "completed" || b.status === "failed" || b.status === "cancelled";
   return {
     id: b.id,
@@ -254,13 +255,13 @@ function anthropicPublicView(b) {
       succeeded: b.request_counts.completed,
       errored: b.request_counts.failed,
       canceled: b.request_counts.canceled || 0,
-      expired: 0,
+      expired: 0
     },
     ended_at: ended ? iso(b.completed_at || b.cancelled_at) : null,
     created_at: iso(b.created_at),
     expires_at: iso(b.expires_at),
     cancel_initiated_at: iso(b.cancelling_at),
-    results_url: ended ? `/v1/messages/batches/${b.id}/results` : null,
+    results_url: ended ? `/v1/messages/batches/${b.id}/results` : null
   };
 }
 
@@ -297,7 +298,7 @@ async function runBatch(id, { filesRoot, executor, concurrency = 2 } = {}) {
         id: newId("batchreq"),
         custom_id: row.custom_id,
         response: { status_code: res?.status_code ?? 200, request_id, body: res?.body ?? null },
-        error: null,
+        error: null
       });
       outRecords.push({ index, line });
       b.request_counts.completed++;
@@ -306,7 +307,7 @@ async function runBatch(id, { filesRoot, executor, concurrency = 2 } = {}) {
         id: newId("batchreq"),
         custom_id: row.custom_id,
         response: null,
-        error: { type: "error", error: { type: err?.type || "api_error", message: err?.message || String(err) } },
+        error: { type: "error", error: { type: err?.type || "api_error", message: err?.message || String(err) } }
       });
       errRecords.push({ index, line });
       b.request_counts.failed++;
@@ -372,7 +373,7 @@ function newBatchRecord({ surface, id, endpoint, input_file_id, rows, metadata, 
     ownerId,
     rows,
     cancelRequested: false,
-    _runner: null,
+    _runner: null
   };
 }
 
@@ -380,9 +381,9 @@ function startBatch(b, { filesRoot, executor, concurrency }) {
   batches.set(b.id, b);
   // Defer the runner one microtask so create*Batch returns the validating view
   // before runBatch flips status to in_progress.
-  b._runner = Promise.resolve()
-    .then(() => runBatch(b.id, { filesRoot, executor, concurrency }))
-    .catch((err) => {
+  b._runner = Promise.resolve().
+  then(() => runBatch(b.id, { filesRoot, executor, concurrency })).
+  catch((err) => {
     b.status = "failed";
     b.failed_at = nowSeconds();
     b.completed_at = nowSeconds();
@@ -461,7 +462,7 @@ export async function cancelBatch(id, { filesRoot, surface, ownerId = null, allo
       b.cancelling_at = nowSeconds();
     }
     if (b._runner) {
-      try { await b._runner; } catch { /* runner finalizes */ }
+      try {await b._runner;} catch {/* runner finalizes */}
     }
   }
   return b.surface === "anthropic" ? anthropicPublicView(b) : openAIPublicView(b);
@@ -512,11 +513,11 @@ export async function getAnthropicResultsJsonl(id, { filesRoot, ownerId = null, 
     if (!hit) continue;
     const { rec, fromErrorFile } = hit;
     const status = rec.response?.status_code;
-    const isError = fromErrorFile || (typeof status === "number" && status >= 400);
+    const isError = fromErrorFile || isNumber(status) && status >= 400;
     if (isError) {
-      const errBody = fromErrorFile
-        ? (rec.error?.error || { type: "api_error", message: "unknown" })
-        : (rec.response?.body?.error || { type: "api_error", message: `HTTP ${status}` });
+      const errBody = fromErrorFile ?
+      rec.error?.error || { type: "api_error", message: "unknown" } :
+      rec.response?.body?.error || { type: "api_error", message: `HTTP ${status}` };
       lines.push(JSON.stringify({ custom_id: rec.custom_id, result: { type: "errored", error: errBody } }));
     } else {
       lines.push(JSON.stringify({ custom_id: rec.custom_id, result: { type: "succeeded", message: rec.response?.body ?? null } }));
@@ -529,7 +530,7 @@ export async function getAnthropicResultsJsonl(id, { filesRoot, ownerId = null, 
 export async function _waitForBatch(id) {
   const b = batches.get(id);
   if (b?._runner) {
-    try { await b._runner; } catch { /* ignore */ }
+    try {await b._runner;} catch {/* ignore */}
   }
 }
 

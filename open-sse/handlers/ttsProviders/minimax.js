@@ -1,7 +1,8 @@
 import { Buffer } from "node:buffer";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 function hexToBase64(audioHex) {
-  const clean = typeof audioHex === "string" ? audioHex.trim() : "";
+  const clean = isString(audioHex) ? audioHex.trim() : "";
   if (!clean) throw new Error("MiniMax TTS returned no audio");
   if (clean.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(clean)) {
     throw new Error("MiniMax TTS returned invalid audio");
@@ -24,21 +25,21 @@ export default async function minimaxTts({ baseUrl, apiKey, text, modelId, voice
         voice_id: voiceId || "English_expressive_narrator",
         speed: 1,
         vol: 1,
-        pitch: 0,
+        pitch: 0
       },
       audio_setting: {
         sample_rate: 32000,
         bitrate: 128000,
         format: "mp3",
-        channel: 1,
-      },
-    }),
+        channel: 1
+      }
+    })
   });
 
   const rawText = await res.text();
   let data = {};
   if (rawText) {
-    try { data = JSON.parse(rawText); } catch { data = {}; }
+    try {data = JSON.parse(rawText);} catch {data = {};}
   }
 
   const baseResp = data.base_resp || data.baseResp || {};
@@ -54,6 +55,6 @@ export default async function minimaxTts({ baseUrl, apiKey, text, modelId, voice
 
   return {
     base64: hexToBase64(data.data?.audio),
-    format: data.extra_info?.audio_format || data.extraInfo?.audioFormat || "mp3",
+    format: data.extra_info?.audio_format || data.extraInfo?.audioFormat || "mp3"
   };
 }

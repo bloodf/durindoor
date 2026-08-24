@@ -1,18 +1,18 @@
-                    
-                 
-                    
-                                     
-                                               
-                         
-  
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
-                      
-                 
-                 
-                    
-                   
-                         
-  
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const RESPONSES_MESSAGE_TYPES = new Set(["message", "function_call_output"]);
 const COMPRESSION_INPUT_INDEX = Symbol("compressionInputIndex");
@@ -27,30 +27,30 @@ const COMPRESSION_INPUT_INDEX = Symbol("compressionInputIndex");
 // covers Kiro/CodeWhisperer payloads, not just RTK.
 const KIRO_TOOL_RESULT_PATH = Symbol("kiroToolResultPath");
 
-                           
-                                      
-                                                                  
-                          
-                       
-  
 
-function isRecord(value         )                                   {
-  return !!value && typeof value === "object" && !Array.isArray(value);
+
+
+
+
+
+
+function isRecord(value) {
+  return !!value && isObject(value) && !Array.isArray(value);
 }
 
-function normalizeRole(role         , fallback        )         {
-  return typeof role === "string" && role.length > 0 ? role : fallback;
+function normalizeRole(role, fallback) {
+  return isString(role) && role.length > 0 ? role : fallback;
 }
 
-function toChatContent(content         , fallbackOutput          )          {
+function toChatContent(content, fallbackOutput) {
   return content === undefined ? fallbackOutput : content;
 }
 
-function fromChatContent(nextContent         , originalContent         )          {
-  if (Array.isArray(originalContent) && typeof nextContent === "string") {
+function fromChatContent(nextContent, originalContent) {
+  if (Array.isArray(originalContent) && isString(nextContent)) {
     let replaced = false;
     const mapped = originalContent.map((part) => {
-      if (!isRecord(part) || typeof part.text !== "string") return part;
+      if (!isRecord(part) || !isString(part.text)) return part;
       if (replaced) return { ...part, text: "" };
       replaced = true;
       return { ...part, text: nextContent };
@@ -60,8 +60,8 @@ function fromChatContent(nextContent         , originalContent         )        
   return nextContent;
 }
 
-function responsesItemToMessage(item               )                     {
-  const type = typeof item.type === "string" ? item.type : "message";
+function responsesItemToMessage(item) {
+  const type = isString(item.type) ? item.type : "message";
   if (!RESPONSES_MESSAGE_TYPES.has(type)) return null;
 
   if (type === "function_call_output") {
@@ -71,57 +71,57 @@ function responsesItemToMessage(item               )                     {
     // compression engines can process the text. On restore the serialised string
     // is kept as output — the Responses API accepts string output. (#1998)
     const isObjectOutput =
-      rawOutput !== null &&
-      rawOutput !== undefined &&
-      typeof rawOutput === "object" &&
-      !Array.isArray(rawOutput);
+    rawOutput !== null &&
+    rawOutput !== undefined && isObject(
+      rawOutput) &&
+    !Array.isArray(rawOutput);
     return {
       role: "tool",
-      content: isObjectOutput ? JSON.stringify(rawOutput) : toChatContent(rawOutput),
+      content: isObjectOutput ? JSON.stringify(rawOutput) : toChatContent(rawOutput)
     };
   }
 
   return {
     role: normalizeRole(item.role, "user"),
-    content: toChatContent(item.content, item.output),
+    content: toChatContent(item.content, item.output)
   };
 }
 
-function messageToResponsesItem(message             , originalItem               )                {
-  const type = typeof originalItem.type === "string" ? originalItem.type : "message";
+function messageToResponsesItem(message, originalItem) {
+  const type = isString(originalItem.type) ? originalItem.type : "message";
   if (type === "function_call_output") {
     return {
       ...originalItem,
-      output: fromChatContent(message.content, originalItem.output),
+      output: fromChatContent(message.content, originalItem.output)
     };
   }
 
   return {
     ...originalItem,
-    content: fromChatContent(message.content, originalItem.content),
+    content: fromChatContent(message.content, originalItem.content)
   };
 }
 
-function hasTextContent(message             )          {
-  if (typeof message.content === "string") return message.content.length > 0;
+function hasTextContent(message) {
+  if (isString(message.content)) return message.content.length > 0;
   if (!Array.isArray(message.content)) return false;
   return message.content.some(
-    (part) => isRecord(part) && typeof part.text === "string" && part.text.length > 0
+    (part) => isRecord(part) && isString(part.text) && part.text.length > 0
   );
 }
 
-                                      
-                                
-                   
-                                                                            
-  
 
-export function adaptBodyForCompression(body                         )                         {
+
+
+
+
+
+export function adaptBodyForCompression(body) {
   if (Array.isArray(body.messages)) {
     return {
       body,
       adapted: false,
-      restore: (compressedBody) => compressedBody,
+      restore: (compressedBody) => compressedBody
     };
   }
 
@@ -133,25 +133,25 @@ export function adaptBodyForCompression(body                         )          
     return adaptKiroBodyForCompression(body);
   }
 
-  if (!Array.isArray(body.input) && typeof body.input !== "string") {
+  if (!Array.isArray(body.input) && !isString(body.input)) {
     return {
       body,
       adapted: false,
-      restore: (compressedBody) => compressedBody,
+      restore: (compressedBody) => compressedBody
     };
   }
 
-  const inputItems = Array.isArray(body.input)
-    ? body.input
-    : [{ type: "message", role: "user", content: body.input }];
-  const mappings                                                = [];
-  const messages                = [];
+  const inputItems = Array.isArray(body.input) ?
+  body.input :
+  [{ type: "message", role: "user", content: body.input }];
+  const mappings = [];
+  const messages = [];
 
   inputItems.forEach((item, index) => {
     if (!isRecord(item)) return;
     const message = responsesItemToMessage(item);
     if (!message || !hasTextContent(message)) return;
-    mappings.push({ index, item: item                  });
+    mappings.push({ index, item: item });
     messages.push({ ...message, [COMPRESSION_INPUT_INDEX]: index });
   });
 
@@ -159,7 +159,7 @@ export function adaptBodyForCompression(body                         )          
     return {
       body,
       adapted: false,
-      restore: (compressedBody) => compressedBody,
+      restore: (compressedBody) => compressedBody
     };
   }
 
@@ -170,10 +170,10 @@ export function adaptBodyForCompression(body                         )          
     body: { ...bodyWithoutInput, messages },
     adapted: true,
     restore(compressedBody) {
-      const compressedMessagesByIndex = new Map                     ();
+      const compressedMessagesByIndex = new Map();
       if (Array.isArray(compressedBody.messages)) {
-        for (const message of compressedBody.messages                 ) {
-          if (typeof message[COMPRESSION_INPUT_INDEX] === "number") {
+        for (const message of compressedBody.messages) {
+          if (isNumber(message[COMPRESSION_INPUT_INDEX])) {
             compressedMessagesByIndex.set(message[COMPRESSION_INPUT_INDEX], message);
           }
         }
@@ -186,12 +186,12 @@ export function adaptBodyForCompression(body                         )          
       });
       const rest = { ...compressedBody };
       delete rest.messages;
-      if (typeof body.input === "string") {
+      if (isString(body.input)) {
         const first = nextInput[0];
-        return { ...rest, input: isRecord(first) ? (first.content ?? body.input) : body.input };
+        return { ...rest, input: isRecord(first) ? first.content ?? body.input : body.input };
       }
       return { ...rest, input: nextInput };
-    },
+    }
   };
 }
 
@@ -209,18 +209,18 @@ export function adaptBodyForCompression(body                         )          
  * - On restore, only string `content` (or an array whose first text part is a string)
  *   is written back to `toolResults[N].content[M].text`.
  */
-function adaptKiroBodyForCompression(body                         )                         {
-  const state = body.conversationState                           ;
-  const history = Array.isArray(state.history) ? (state.history                  ) : [];
+function adaptKiroBodyForCompression(body) {
+  const state = body.conversationState;
+  const history = Array.isArray(state.history) ? state.history : [];
   const currentMessage = isRecord(state.currentMessage) ? state.currentMessage : null;
 
-  const messages                = [];
+  const messages = [];
 
   const collectFrom = (
-    container                         ,
-    scope                              ,
-    historyIndex        
-  )       => {
+  container,
+  scope,
+  historyIndex) =>
+  {
     const uim = container.userInputMessage;
     if (!isRecord(uim)) return;
     const ctx = uim.userInputMessageContext;
@@ -234,7 +234,7 @@ function adaptKiroBodyForCompression(body                         )             
       if (!Array.isArray(content)) return;
       content.forEach((part, partIdx) => {
         if (!isRecord(part)) return;
-        if (typeof part.text !== "string" || part.text.length === 0) return;
+        if (!isString(part.text) || part.text.length === 0) return;
         messages.push({
           role: "tool",
           content: part.text,
@@ -242,8 +242,8 @@ function adaptKiroBodyForCompression(body                         )             
             scope,
             historyIndex,
             toolResultIndex: trIdx,
-            contentIndex: partIdx,
-          },
+            contentIndex: partIdx
+          }
         });
       });
     });
@@ -259,7 +259,7 @@ function adaptKiroBodyForCompression(body                         )             
     return {
       body,
       adapted: false,
-      restore: (compressedBody) => compressedBody,
+      restore: (compressedBody) => compressedBody
     };
   }
 
@@ -268,18 +268,18 @@ function adaptKiroBodyForCompression(body                         )             
     adapted: true,
     restore(compressedBody) {
       // Build a path → rewritten text map from the synthesized tool messages.
-      const rewrites = new Map                ();
+      const rewrites = new Map();
       if (Array.isArray(compressedBody.messages)) {
-        for (const message of compressedBody.messages                 ) {
+        for (const message of compressedBody.messages) {
           const path = message[KIRO_TOOL_RESULT_PATH];
           if (!path) continue;
-          let nextText                = null;
-          if (typeof message.content === "string") {
+          let nextText = null;
+          if (isString(message.content)) {
             nextText = message.content;
           } else if (Array.isArray(message.content)) {
             const firstText = message.content.find(
-              (part)                           =>
-                isRecord(part) && typeof (part                      ).text === "string"
+              (part) =>
+              isRecord(part) && isString(part.text)
             );
             if (firstText) nextText = firstText.text;
           }
@@ -288,7 +288,7 @@ function adaptKiroBodyForCompression(body                         )             
         }
       }
 
-      const nextState                          = { ...state };
+      const nextState = { ...state };
       // Rebuild history with any rewritten tool-result text.
       if (history.length > 0) {
         nextState.history = history.map((entry, idx) => {
@@ -303,20 +303,20 @@ function adaptKiroBodyForCompression(body                         )             
       const rest = { ...compressedBody };
       delete rest.messages;
       return { ...rest, conversationState: nextState };
-    },
+    }
   };
 }
 
-function kiroPathKey(path                    )         {
+function kiroPathKey(path) {
   return `${path.scope}|${path.historyIndex}|${path.toolResultIndex}|${path.contentIndex}`;
 }
 
 function rewriteKiroEntry(
-  entry                         ,
-  scope                              ,
-  historyIndex        ,
-  rewrites                     
-)                          {
+entry,
+scope,
+historyIndex,
+rewrites)
+{
   const uim = entry.userInputMessage;
   if (!isRecord(uim)) return entry;
   const ctx = uim.userInputMessageContext;
@@ -331,7 +331,7 @@ function rewriteKiroEntry(
     if (!Array.isArray(content)) return tr;
     let trChanged = false;
     const nextContent = content.map((part, partIdx) => {
-      if (!isRecord(part) || typeof part.text !== "string") return part;
+      if (!isRecord(part) || !isString(part.text)) return part;
       const key = kiroPathKey({ scope, historyIndex, toolResultIndex: trIdx, contentIndex: partIdx });
       const rewritten = rewrites.get(key);
       if (rewritten === undefined || rewritten === part.text) return part;
@@ -348,7 +348,7 @@ function rewriteKiroEntry(
     ...entry,
     userInputMessage: {
       ...uim,
-      userInputMessageContext: { ...ctx, toolResults: nextToolResults },
-    },
+      userInputMessageContext: { ...ctx, toolResults: nextToolResults }
+    }
   };
 }

@@ -1,27 +1,28 @@
 import { DefaultExecutor } from "./default.js";
 import { getCachedKimchiModelMetadata } from "../services/kimchiModels.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const TOP_LEVEL_OPENAI_GATEWAY_DROPS = [
-  "anthropic_version",
-  "anthropic_beta",
-  "client_metadata",
-  "mcp_servers",
-  "stop_sequences",
-  "thinking",
-  "top_k",
-];
+"anthropic_version",
+"anthropic_beta",
+"client_metadata",
+"mcp_servers",
+"stop_sequences",
+"thinking",
+"top_k"];
+
 
 function systemToText(system) {
-  if (typeof system === "string") return system;
+  if (isString(system)) return system;
   if (Array.isArray(system)) {
-    return system
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (typeof part?.text === "string") return part.text;
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n");
+    return system.
+    map((part) => {
+      if (isString(part)) return part;
+      if (isString(part?.text)) return part.text;
+      return "";
+    }).
+    filter(Boolean).
+    join("\n");
   }
   return "";
 }
@@ -37,7 +38,7 @@ function mergeTopLevelSystem(body) {
     return;
   }
 
-  if (typeof existing.content === "string") {
+  if (isString(existing.content)) {
     existing.content = `${text}\n\n${existing.content}`;
   } else if (Array.isArray(existing.content)) {
     existing.content.unshift({ type: "text", text });
@@ -47,11 +48,11 @@ function mergeTopLevelSystem(body) {
 function stripMessageArtifacts(body) {
   if (!Array.isArray(body?.messages)) return;
   for (const msg of body.messages) {
-    if (!msg || typeof msg !== "object") continue;
+    if (!msg || !isObject(msg)) continue;
     delete msg.cache_control;
     if (!Array.isArray(msg.content)) continue;
     msg.content = msg.content.map((part) => {
-      if (!part || typeof part !== "object") return part;
+      if (!part || !isObject(part)) return part;
       const { cache_control, signature, ...clean } = part;
       return clean;
     });
@@ -61,7 +62,7 @@ function stripMessageArtifacts(body) {
 function stripToolArtifacts(body) {
   if (!Array.isArray(body?.tools)) return;
   body.tools = body.tools.map((tool) => {
-    if (!tool || typeof tool !== "object") return tool;
+    if (!tool || !isObject(tool)) return tool;
     const { cache_control, ...clean } = tool;
     return clean;
   });
@@ -79,8 +80,8 @@ const REASONING_PLACEHOLDER_MAX_LEN = 8;
 export function stripReasoningContent(body) {
   if (!Array.isArray(body?.messages)) return;
   for (const msg of body.messages) {
-    if (msg && msg.role === "assistant" && typeof msg.reasoning_content === "string"
-        && msg.reasoning_content.length > REASONING_PLACEHOLDER_MAX_LEN) {
+    if (msg && msg.role === "assistant" && isString(msg.reasoning_content) &&
+    msg.reasoning_content.length > REASONING_PLACEHOLDER_MAX_LEN) {
       delete msg.reasoning_content;
     }
   }
@@ -99,7 +100,7 @@ export class KimchiExecutor extends DefaultExecutor {
 
   transformRequest(model, body, stream, credentials, requestContext = null) {
     const transformed = super.transformRequest(model, body, stream, credentials, requestContext);
-    if (!transformed || typeof transformed !== "object") return transformed;
+    if (!transformed || !isObject(transformed)) return transformed;
 
     mergeTopLevelSystem(transformed);
     for (const key of TOP_LEVEL_OPENAI_GATEWAY_DROPS) {

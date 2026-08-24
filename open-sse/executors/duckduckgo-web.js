@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { errorJson, extractTextFromContent, jsonResponse, readTextStream, withTimeoutSignal } from "./websession-utils.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DUCKDUCKGO_BASE = "https://duckduckgo.com";
 const STATUS_URL = `${DUCKDUCKGO_BASE}/duckchat/v1/status`;
 const CHAT_URL = `${DUCKDUCKGO_BASE}/duckchat/v1/chat`;
 const USER_AGENT =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 function normalizeModel(model) {
   const clean = model?.startsWith?.("duckduckgo-web/") ? model.slice("duckduckgo-web/".length) : model;
@@ -19,9 +20,9 @@ function normalizeModel(model) {
 }
 
 function normalizeMessages(messages = []) {
-  return messages
-    .map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: extractTextFromContent(message.content) }))
-    .filter((message) => message.content);
+  return messages.
+  map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: extractTextFromContent(message.content) })).
+  filter((message) => message.content);
 }
 
 function parseDataLine(line) {
@@ -34,8 +35,8 @@ function parseDataLine(line) {
 }
 
 function extractContent(data) {
-  if (!data || typeof data !== "object") return "";
-  return typeof data.content === "string" ? data.content : typeof data.message === "string" ? data.message : "";
+  if (!data || !isObject(data)) return "";
+  return isString(data.content) ? data.content : isString(data.message) ? data.message : "";
 }
 
 function isDoneLine(line) {
@@ -73,7 +74,7 @@ function transformDuckStream(body, signal) {
       }
       const content = extractContent(parseDataLine(buffer));
       if (content) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content }, index: 0, finish_reason: null }] })}\n\n`));
-    },
+    }
   }));
 }
 
@@ -103,25 +104,25 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
       "User-Agent": USER_AGENT,
       Origin: DUCKDUCKGO_BASE,
       Referer: `${DUCKDUCKGO_BASE}/`,
-      "x-vqd-accept": "1",
+      "x-vqd-accept": "1"
     };
     const status = await proxyAwareFetch(STATUS_URL, { method: "GET", headers, signal: setupSignal }, proxyOptions);
     const vqd4 = status.headers.get("x-vqd-4");
     const vqdHash = status.headers.get("x-vqd-hash-1");
-    if (!status.ok || (!vqd4 && !vqdHash)) return { response: errorJson(503, "Failed to acquire DuckDuckGo VQD token"), url: STATUS_URL, headers, transformedBody: body };
+    if (!status.ok || !vqd4 && !vqdHash) return { response: errorJson(503, "Failed to acquire DuckDuckGo VQD token"), url: STATUS_URL, headers, transformedBody: body };
 
     const transformedBody = {
       model: normalizeModel(model),
       messages,
       canUseTools: true,
-      metadata: { toolChoice: { NewsSearch: false, VideosSearch: false, LocalSearch: false, WeatherForecast: false } },
+      metadata: { toolChoice: { NewsSearch: false, VideosSearch: false, LocalSearch: false, WeatherForecast: false } }
     };
     const chatHeaders = {
       ...headers,
       Accept: "text/event-stream",
       "x-ddg-journey-id": randomUUID().replaceAll("-", ""),
-      ...(vqd4 ? { "x-vqd-4": vqd4 } : {}),
-      ...(vqdHash ? { "x-vqd-hash-1": vqdHash } : {}),
+      ...(vqd4 ? { "x-vqd-4": vqd4 } : null),
+      ...(vqdHash ? { "x-vqd-hash-1": vqdHash } : null)
     };
     const response = await proxyAwareFetch(CHAT_URL, { method: "POST", headers: chatHeaders, body: JSON.stringify(transformedBody), signal }, proxyOptions);
     if (!response.ok) {

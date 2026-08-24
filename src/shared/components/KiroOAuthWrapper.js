@@ -114,12 +114,12 @@ export default function KiroOAuthWrapper({
 
 KiroOAuthWrapper.propTypes = {
   isOpen: PropTypes.bool.isRequired,
-  providerInfo: PropTypes.shape({
+  providerInfo: PropTypes['shape']({
     name: PropTypes.string,
   }),
   onSuccess: PropTypes.func,
   onClose: PropTypes.func.isRequired,
-  proxyPools: PropTypes.arrayOf(PropTypes.shape({
+  proxyPools: PropTypes.arrayOf(PropTypes['shape']({
     id: PropTypes.string,
     name: PropTypes.string,
     isActive: PropTypes.bool,

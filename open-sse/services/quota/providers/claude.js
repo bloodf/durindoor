@@ -8,16 +8,17 @@ import {
   quotaPercent,
   quotaRow,
   quotaScopedKey,
-  ratioQuotaRow,
-} from "../normalize.js";
+  ratioQuotaRow } from
+"../normalize.js";
 import {
   connectionCredential,
   createProviderRequest,
   futureResetAt,
   missingCredential,
   providerFailure,
-  providerSuccess,
-} from "../providerHelpers.js";
+  providerSuccess } from
+"../providerHelpers.js";
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
 
 function appendClaudeWindow(rows, raw, {
   name,
@@ -25,7 +26,7 @@ function appendClaudeWindow(rows, raw, {
   accountKey = null,
   plan = null,
   now,
-  windowSeconds,
+  windowSeconds
 } = {}) {
   if (raw === null || raw === undefined) return true;
   const window = asRecord(raw);
@@ -38,7 +39,7 @@ function appendClaudeWindow(rows, raw, {
     dimensionKey: quotaScopedKey("requests", name),
     remainingRatio: 1 - usedRatio,
     resetAt: futureResetAt(parseQuotaTimestamp(window.resets_at ?? window.resetAt), now),
-    metadata: quotaMetadata({ plan, windowSeconds }),
+    metadata: quotaMetadata({ plan, windowSeconds })
   });
   if (!row) return false;
   rows.push(row);
@@ -48,7 +49,7 @@ function appendClaudeWindow(rows, raw, {
 export function normalizeClaudeQuota(payload, {
   accountId = null,
   plan = "Claude Code",
-  now = Date.now(),
+  now = Date.now()
 } = {}) {
   const data = asRecord(payload);
   if (!data) return null;
@@ -66,7 +67,7 @@ export function normalizeClaudeQuota(payload, {
       resourceKey: quotaScopedKey("model", model),
       plan,
       now,
-      windowSeconds: 7 * 24 * 60 * 60,
+      windowSeconds: 7 * 24 * 60 * 60
     })) return null;
   }
   return rows.length > 0 ? rows : null;
@@ -75,7 +76,7 @@ export function normalizeClaudeQuota(payload, {
 export function normalizeClaudeLegacyQuota(payload, {
   accountId = null,
   plan = "Claude Code",
-  now = Date.now(),
+  now = Date.now()
 } = {}) {
   const data = asRecord(payload);
   if (!data || Object.keys(data).length === 0) return null;
@@ -99,18 +100,18 @@ export function normalizeClaudeLegacyQuota(payload, {
       remaining,
       unit: "requests",
       resetAt,
-      metadata: quotaMetadata({ plan }),
+      metadata: quotaMetadata({ plan })
     };
     let row;
     if (limit !== null) {
-      if (limit <= 0 || (used === null && remaining === null)) return null;
+      if (limit <= 0 || used === null && remaining === null) return null;
       const effectiveUsed = used ?? limit - remaining;
       const effectiveRemaining = remaining ?? limit - used;
       if (
-        effectiveUsed < 0
-        || effectiveRemaining < 0
-        || Math.abs(limit - effectiveUsed - effectiveRemaining) > Math.max(1e-9, limit * 1e-9)
-      ) return null;
+      effectiveUsed < 0 ||
+      effectiveRemaining < 0 ||
+      Math.abs(limit - effectiveUsed - effectiveRemaining) > Math.max(1e-9, limit * 1e-9))
+      return null;
       row = boundedQuotaRow({ ...options, limit, used: effectiveUsed, remaining: effectiveRemaining });
     } else {
       row = quotaRow({ ...options, limitKind: "unknown" });
@@ -129,19 +130,19 @@ async function fetchLegacy(context, token, request, oauthResult, { apiKey = fals
   const headers = {
     ...(apiKey ? { "x-api-key": token } : { Authorization: `Bearer ${token}` }),
     Accept: "application/json",
-    "anthropic-version": ANTHROPIC_API_VERSION,
+    "anthropic-version": ANTHROPIC_API_VERSION
   };
   const settings = await request(config.settingsUrl, { method: "GET", headers });
   if (!settings.ok) return providerFailure(config, settings);
   const settingsBody = asRecord(settings.data);
-  const organizationId = typeof settingsBody?.organization_id === "string" ? settingsBody.organization_id : null;
+  const organizationId = isString(settingsBody?.organization_id) ? settingsBody.organization_id : null;
   if (!organizationId) return providerFailure(config, { outcome: "missing", attemptedAt: settings.attemptedAt });
   const usage = await request(config.orgUsageUrl.replace("{org_id}", encodeURIComponent(organizationId)), { method: "GET", headers });
   if (!usage.ok) return providerFailure(config, usage);
   const rows = normalizeClaudeLegacyQuota(usage.data, {
     accountId: organizationId,
-    plan: typeof settingsBody.plan === "string" ? settingsBody.plan : null,
-    now: new Date(usage.attemptedAt).getTime(),
+    plan: isString(settingsBody.plan) ? settingsBody.plan : null,
+    now: new Date(usage.attemptedAt).getTime()
   });
   if (rows === null) return providerFailure(config, { outcome: "malformed", attemptedAt: usage.attemptedAt });
   return providerSuccess(config, rows, usage.attemptedAt);
@@ -160,8 +161,8 @@ export async function fetchClaudeQuota(context) {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
       "anthropic-beta": "oauth-2025-04-20",
-      "anthropic-version": ANTHROPIC_API_VERSION,
-    },
+      "anthropic-version": ANTHROPIC_API_VERSION
+    }
   });
   if (!response.ok) return fetchLegacy(context, token, request, response);
   const rows = normalizeClaudeQuota(response.data, { now: new Date(response.attemptedAt).getTime() });

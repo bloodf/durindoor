@@ -14,17 +14,19 @@ import {
   ROLE,
   GEMINI_ROLE,
   OPENAI_BLOCK,
-  CLAUDE_BLOCK,
-} from "./schema/index.js";
+  CLAUDE_BLOCK } from
+"./schema/index.js";
 
 // Internal-only keys that must NEVER be sent to an upstream provider.
 // Detection of these fails validation; stripping always removes them.
+import { isNumber, isObject, isString, runtimeTypeName } from "../../src/shared/utils/typeChecks.js";
+
 export const INTERNAL_KEYS = Object.freeze([
-  "_toolNameMap",
-  "_customToolNames",
-  "_clientSessionId",
-  "_kiroUpstreamModel",
-]);
+"_toolNameMap",
+"_customToolNames",
+"_clientSessionId",
+"_kiroUpstreamModel"]
+);
 
 // Keys that may legitimately start with "_" in provider payloads (none today,
 // but keep a list so future additions are explicit). Anything else starting with
@@ -32,32 +34,32 @@ export const INTERNAL_KEYS = Object.freeze([
 const ALLOWED_UNDERSCORE_KEYS = new Set();
 
 const OPENAI_ROLES = new Set([
-  ROLE.USER,
-  ROLE.ASSISTANT,
-  ROLE.TOOL,
-  ROLE.SYSTEM,
-  ROLE.DEVELOPER,
-]);
+ROLE.USER,
+ROLE.ASSISTANT,
+ROLE.TOOL,
+ROLE.SYSTEM,
+ROLE.DEVELOPER]
+);
 const CLAUDE_ROLES = new Set([ROLE.USER, ROLE.ASSISTANT]);
 const GEMINI_ROLES = new Set([GEMINI_ROLE.USER, GEMINI_ROLE.MODEL]);
 const CLAUDE_BLOCK_TYPES = new Set([
-  ...Object.values(CLAUDE_BLOCK),
-  // Extended Claude-compatible blocks emitted by some clients / tool systems.
-  "server_tool_use",
-  "web_search_tool_result",
-  "mcp_tool_use",
-  "mcp_tool_result",
-  "search_result",
-  "code_execution_tool_result",
-]);
+...Object.values(CLAUDE_BLOCK),
+// Extended Claude-compatible blocks emitted by some clients / tool systems.
+"server_tool_use",
+"web_search_tool_result",
+"mcp_tool_use",
+"mcp_tool_result",
+"search_result",
+"code_execution_tool_result"]
+);
 const OPENAI_CONTENT_TYPES = new Set([
-  OPENAI_BLOCK.TEXT,
-  OPENAI_BLOCK.IMAGE_URL,
-  OPENAI_BLOCK.IMAGE,
-  OPENAI_BLOCK.INPUT_AUDIO,
-  OPENAI_BLOCK.AUDIO_URL,
-  OPENAI_BLOCK.FILE,
-]);
+OPENAI_BLOCK.TEXT,
+OPENAI_BLOCK.IMAGE_URL,
+OPENAI_BLOCK.IMAGE,
+OPENAI_BLOCK.INPUT_AUDIO,
+OPENAI_BLOCK.AUDIO_URL,
+OPENAI_BLOCK.FILE]
+);
 
 function pushError(errors, path, message) {
   errors.push({ path, message });
@@ -74,7 +76,7 @@ function pushError(errors, path, message) {
  * absent/non-object. Mutates the schema in place.
  */
 function coerceRootObjectType(schema) {
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+  if (!schema || !isObject(schema) || Array.isArray(schema)) return;
   const hasOwn = (k) => Object.prototype.hasOwnProperty.call(schema, k);
   // Drop a null root type first (mirroring the upstream sanitizer) so a
   // combinator root carrying `type: null` does not retain the invalid sibling.
@@ -85,7 +87,7 @@ function coerceRootObjectType(schema) {
   // change their meaning. Own-property checks, not truthiness.
   if (hasOwn("anyOf") || hasOwn("oneOf") || hasOwn("allOf")) return;
   schema.type = "object";
-  if (!schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties)) {
+  if (!schema.properties || !isObject(schema.properties) || Array.isArray(schema.properties)) {
     schema.properties = {};
     // Synthesizing an empty-properties object under a strict validator reads as
     // "no properties allowed"; keep it open to match the upstream sanitizer.
@@ -104,7 +106,7 @@ function coerceRootObjectType(schema) {
 const KIMI_ANYOF_PROVIDERS = new Set(["kimi", "kimi-coding"]);
 
 function stripRootAnyOf(schema) {
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return;
+  if (!schema || !isObject(schema) || Array.isArray(schema)) return;
   if (!Object.prototype.hasOwnProperty.call(schema, "anyOf")) return;
   delete schema.anyOf;
 }
@@ -121,12 +123,12 @@ function stripRootAnyOf(schema) {
  * returns it. 9router#6359 / OmniRoute#6375.
  */
 export function normalizeToolSchemaRoots(body, context = {}) {
-  if (!body || typeof body !== "object" || !Array.isArray(body.tools)) return body;
+  if (!body || !isObject(body) || !Array.isArray(body.tools)) return body;
   const stripAnyOf = context.transportFormat === "openai" && KIMI_ANYOF_PROVIDERS.has(context.provider);
   for (const tool of body.tools) {
-    if (!tool || typeof tool !== "object") continue;
+    if (!tool || !isObject(tool)) continue;
     // Chat Completions shape: { type: "function", function: { parameters } }
-    if (tool.function && typeof tool.function === "object") {
+    if (tool.function && isObject(tool.function)) {
       if (stripAnyOf) stripRootAnyOf(tool.function.parameters);
       coerceRootObjectType(tool.function.parameters);
     }
@@ -141,7 +143,7 @@ export function normalizeToolSchemaRoots(body, context = {}) {
 // (silently — those don't fail validation, they just get removed).
 // Mutates the body in place and returns it for convenience.
 export function stripInternalKeys(body) {
-  if (!body || typeof body !== "object") return body;
+  if (!body || !isObject(body)) return body;
   // getOwnPropertyNames also catches non-enumerable metadata. Object.keys did
   // not remove legacy `_kiroUpstreamModel` hints before the executor boundary.
   for (const k of Object.getOwnPropertyNames(body)) {
@@ -154,34 +156,34 @@ export function stripInternalKeys(body) {
 
 function validateKiro(body, errors) {
   const state = body.conversationState;
-  if (!state || typeof state !== "object" || Array.isArray(state)) {
+  if (!state || !isObject(state) || Array.isArray(state)) {
     pushError(errors, "conversationState", "Kiro conversationState object is required");
     return;
   }
 
-  if (typeof state.conversationId !== "string" || !state.conversationId.trim()) {
+  if (!isString(state.conversationId) || !state.conversationId.trim()) {
     pushError(errors, "conversationState.conversationId", "Kiro conversationId string is required");
   }
   const input = state.currentMessage?.userInputMessage;
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
+  if (!input || !isObject(input) || Array.isArray(input)) {
     pushError(
       errors,
       "conversationState.currentMessage.userInputMessage",
-      "Kiro current userInputMessage object is required",
+      "Kiro current userInputMessage object is required"
     );
   } else {
-    if (typeof input.modelId !== "string" || !input.modelId.trim()) {
+    if (!isString(input.modelId) || !input.modelId.trim()) {
       pushError(
         errors,
         "conversationState.currentMessage.userInputMessage.modelId",
-        "Kiro modelId string is required",
+        "Kiro modelId string is required"
       );
     }
-    if (typeof input.content !== "string") {
+    if (!isString(input.content)) {
       pushError(
         errors,
         "conversationState.currentMessage.userInputMessage.content",
-        "Kiro content must be a string",
+        "Kiro content must be a string"
       );
     }
   }
@@ -190,7 +192,7 @@ function validateKiro(body, errors) {
     pushError(errors, "conversationState.history", "Kiro history must be an array");
   } else {
     state.history.forEach((item, index) => {
-      if (!item || typeof item !== "object" || Array.isArray(item)) {
+      if (!item || !isObject(item) || Array.isArray(item)) {
         pushError(errors, `conversationState.history[${index}]`, "Kiro history item must be an object");
       }
     });
@@ -201,54 +203,54 @@ function validateKiro(body, errors) {
 
 function validateOpenAI(body, errors) {
   if (
-    body.model === null ||
-    body.model === undefined ||
-    (typeof body.model !== "string" && typeof body.model !== "object")
-  ) {
+  body.model === null ||
+  body.model === undefined ||
+  !isString(body.model) && !isObject(body.model))
+  {
     pushError(errors, "model", "model is required for openai target");
   }
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     pushError(
       errors,
       "messages",
-      "messages[] is required and must be non-empty for openai target",
+      "messages[] is required and must be non-empty for openai target"
     );
     return;
   }
   body.messages.forEach((msg, i) => {
     const p = `messages[${i}]`;
-    if (!msg || typeof msg !== "object") {
+    if (!msg || !isObject(msg)) {
       pushError(errors, p, "message must be an object");
       return;
     }
     const m = msg;
-    if (typeof m.role !== "string" || m.role.length === 0 || !OPENAI_ROLES.has(m.role)) {
+    if (!isString(m.role) || m.role.length === 0 || !OPENAI_ROLES.has(m.role)) {
       pushError(
         errors,
         `${p}.role`,
-        `role must be one of ${[...OPENAI_ROLES].join("|")}`,
+        `role must be one of ${[...OPENAI_ROLES].join("|")}`
       );
     }
     if (m.role === ROLE.ASSISTANT) {
       // Assistant must have content or tool_calls.
       const hasContent =
-        m.content !== undefined &&
-        !(typeof m.content === "string" && m.content === "");
+      m.content !== undefined &&
+      !(isString(m.content) && m.content === "");
       const hasToolCalls =
-        Array.isArray(m.tool_calls) && m.tool_calls.length > 0;
+      Array.isArray(m.tool_calls) && m.tool_calls.length > 0;
       if (!hasContent && !hasToolCalls) {
         pushError(
           errors,
           `${p}.content`,
-          "assistant message must have content or tool_calls",
+          "assistant message must have content or tool_calls"
         );
       }
     } else if (m.role === ROLE.TOOL) {
-      if (m.tool_call_id === null || m.tool_call_id === undefined || typeof m.tool_call_id !== "string") {
+      if (m.tool_call_id === null || m.tool_call_id === undefined || !isString(m.tool_call_id)) {
         pushError(
           errors,
           `${p}.tool_call_id`,
-          "tool message requires string tool_call_id",
+          "tool message requires string tool_call_id"
         );
       }
     } else {
@@ -256,20 +258,20 @@ function validateOpenAI(body, errors) {
         pushError(
           errors,
           `${p}.content`,
-          `${m.role} message requires content`,
+          `${m.role} message requires content`
         );
       }
     }
     // Array content block type check
     if (Array.isArray(m.content)) {
       m.content.forEach((block, j) => {
-        if (!block || typeof block !== "object") return;
+        if (!block || !isObject(block)) return;
         const b = block;
         if (b.type && !OPENAI_CONTENT_TYPES.has(b.type)) {
           pushError(
             errors,
             `${p}.content[${j}].type`,
-            `unsupported openai content type "${b.type}"`,
+            `unsupported openai content type "${b.type}"`
           );
         }
       });
@@ -278,36 +280,36 @@ function validateOpenAI(body, errors) {
   if (Array.isArray(body.tools)) {
     body.tools.forEach((tool, i) => {
       const p = `tools[${i}]`;
-      if (!tool || typeof tool !== "object") {
+      if (!tool || !isObject(tool)) {
         pushError(errors, p, "tool must be an object");
         return;
       }
       const t = tool;
       if (t.type === OPENAI_BLOCK.FUNCTION) {
-        if (!t.function || typeof t.function !== "object") {
+        if (!t.function || !isObject(t.function)) {
           pushError(
             errors,
             `${p}.function`,
-            "function tool requires .function object",
+            "function tool requires .function object"
           );
         } else {
           const fn = t.function;
-          if (typeof fn.name !== "string" || fn.name.length === 0) {
+          if (!isString(fn.name) || fn.name.length === 0) {
             pushError(
               errors,
               `${p}.function.name`,
-              "function tool requires .function.name string",
+              "function tool requires .function.name string"
             );
           }
           // parameters must be a plain object (JSON Schema) — null/undefined allowed
           if (
-            fn.parameters != null &&
-            typeof fn.parameters !== "object"
-          ) {
+          fn.parameters != null && !isObject(
+            fn.parameters))
+          {
             pushError(
               errors,
               `${p}.function.parameters`,
-              "function tool .function.parameters must be an object",
+              "function tool .function.parameters must be an object"
             );
           }
         }
@@ -318,51 +320,51 @@ function validateOpenAI(body, errors) {
 
 function validateClaude(body, errors) {
   if (
-    body.model === null ||
-    body.model === undefined ||
-    (typeof body.model !== "string" && typeof body.model !== "object")
-  ) {
+  body.model === null ||
+  body.model === undefined ||
+  !isString(body.model) && !isObject(body.model))
+  {
     pushError(errors, "model", "model is required for claude target");
   }
   // max_tokens is mandatory for Anthropic Messages API.
   if (
-    body.max_tokens === null ||
-    body.max_tokens === undefined ||
-    (typeof body.max_tokens !== "number" && typeof body.max_tokens !== "string")
-  ) {
+  body.max_tokens === null ||
+  body.max_tokens === undefined ||
+  !isNumber(body.max_tokens) && !isString(body.max_tokens))
+  {
     pushError(errors, "max_tokens", "max_tokens is required for claude target");
   }
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     pushError(
       errors,
       "messages",
-      "messages[] is required and must be non-empty for claude target",
+      "messages[] is required and must be non-empty for claude target"
     );
   } else {
     body.messages.forEach((msg, i) => {
       const p = `messages[${i}]`;
-      if (!msg || typeof msg !== "object") {
+      if (!msg || !isObject(msg)) {
         pushError(errors, p, "message must be an object");
         return;
       }
       const m = msg;
-      if (typeof m.role !== "string" || m.role.length === 0 || !CLAUDE_ROLES.has(m.role)) {
+      if (!isString(m.role) || m.role.length === 0 || !CLAUDE_ROLES.has(m.role)) {
         pushError(
           errors,
           `${p}.role`,
-          `role must be one of ${[...CLAUDE_ROLES].join("|")}`,
+          `role must be one of ${[...CLAUDE_ROLES].join("|")}`
         );
       }
       // content can be a string or an array of blocks
       if (Array.isArray(m.content)) {
         m.content.forEach((block, j) => {
-          if (!block || typeof block !== "object") return;
+          if (!block || !isObject(block)) return;
           const b = block;
           if (b.type && !CLAUDE_BLOCK_TYPES.has(b.type)) {
             pushError(
               errors,
               `${p}.content[${j}].type`,
-              `unsupported claude content type "${b.type}"`,
+              `unsupported claude content type "${b.type}"`
             );
           }
         });
@@ -371,23 +373,23 @@ function validateClaude(body, errors) {
   }
   // system: string OR array of {type:"text", text:string}
   if (body.system != null) {
-    if (typeof body.system !== "string" && !Array.isArray(body.system)) {
+    if (!isString(body.system) && !Array.isArray(body.system)) {
       pushError(
         errors,
         "system",
-        "system must be string or array of text blocks",
+        "system must be string or array of text blocks"
       );
     } else if (Array.isArray(body.system)) {
       body.system.forEach((block, i) => {
         if (
-          !block ||
-          typeof block !== "object" ||
-          (block.type && block.type !== "text")
-        ) {
+        !block || !isObject(
+          block) ||
+        block.type && block.type !== "text")
+        {
           pushError(
             errors,
             `system[${i}]`,
-            'system block must be {type:"text", text:string}',
+            'system block must be {type:"text", text:string}'
           );
         }
       });
@@ -396,19 +398,19 @@ function validateClaude(body, errors) {
   if (Array.isArray(body.tools)) {
     body.tools.forEach((tool, i) => {
       const p = `tools[${i}]`;
-      if (!tool || typeof tool !== "object") {
+      if (!tool || !isObject(tool)) {
         pushError(errors, p, "tool must be an object");
         return;
       }
       const t = tool;
-      if (typeof t.name !== "string" || t.name.length === 0) {
+      if (!isString(t.name) || t.name.length === 0) {
         pushError(errors, `${p}.name`, "claude tool requires .name string");
       }
-      if (t.input_schema != null && typeof t.input_schema !== "object") {
+      if (t.input_schema != null && !isObject(t.input_schema)) {
         pushError(
           errors,
           `${p}.input_schema`,
-          "input_schema must be an object",
+          "input_schema must be an object"
         );
       }
     });
@@ -417,47 +419,47 @@ function validateClaude(body, errors) {
 
 function validateGemini(body, errors) {
   if (
-    body.model === null ||
-    body.model === undefined ||
-    (typeof body.model !== "string" && typeof body.model !== "object")
-  ) {
+  body.model === null ||
+  body.model === undefined ||
+  !isString(body.model) && !isObject(body.model))
+  {
     pushError(errors, "model", "model is required for gemini/vertex target");
   }
   // Cloud Code envelopes (Gemini-CLI / Antigravity) nest the actual Gemini
   // payload under body.request, while model stays at the top level. Resolve
   // the payload root for contents/parts validation without mutating body.
   const root =
-    body.request && typeof body.request === "object"
-      ? body.request
-      : body;
+  body.request && isObject(body.request) ?
+  body.request :
+  body;
   const contentsPath = root === body.request ? "request.contents" : "contents";
   if (!Array.isArray(root.contents) || root.contents.length === 0) {
     pushError(
       errors,
       contentsPath,
-      "contents[] is required and must be non-empty for gemini/vertex target",
+      "contents[] is required and must be non-empty for gemini/vertex target"
     );
     return;
   }
   root.contents.forEach((msg, i) => {
     const p = `${contentsPath}[${i}]`;
-    if (!msg || typeof msg !== "object") {
+    if (!msg || !isObject(msg)) {
       pushError(errors, p, "content must be an object");
       return;
     }
     const m = msg;
-    if (typeof m.role !== "string" || m.role.length === 0 || !GEMINI_ROLES.has(m.role)) {
+    if (!isString(m.role) || m.role.length === 0 || !GEMINI_ROLES.has(m.role)) {
       pushError(
         errors,
         `${p}.role`,
-        `role must be one of ${[...GEMINI_ROLES].join("|")}`,
+        `role must be one of ${[...GEMINI_ROLES].join("|")}`
       );
     }
     if (!Array.isArray(m.parts) || m.parts.length === 0) {
       pushError(
         errors,
         `${p}.parts`,
-        "gemini content requires non-empty parts[]",
+        "gemini content requires non-empty parts[]"
       );
     }
   });
@@ -465,10 +467,10 @@ function validateGemini(body, errors) {
 
 function validateOpenAIResponses(body, errors) {
   if (
-    body.model === null ||
-    body.model === undefined ||
-    (typeof body.model !== "string" && typeof body.model !== "object")
-  ) {
+  body.model === null ||
+  body.model === undefined ||
+  !isString(body.model) && !isObject(body.model))
+  {
     pushError(errors, "model", "model is required for openai-responses target");
   }
   const hasInput = Array.isArray(body.input) && body.input.length > 0;
@@ -477,7 +479,7 @@ function validateOpenAIResponses(body, errors) {
     pushError(
       errors,
       "input",
-      "openai-responses target requires input[] or messages[]",
+      "openai-responses target requires input[] or messages[]"
     );
   }
   if (body.tools != null) {
@@ -486,7 +488,7 @@ function validateOpenAIResponses(body, errors) {
     } else {
       body.tools.forEach((tool, i) => {
         const p = `tools[${i}]`;
-        if (!tool || typeof tool !== "object") {
+        if (!tool || !isObject(tool)) {
           pushError(errors, p, "tool must be an object");
           return;
         }
@@ -498,14 +500,14 @@ function validateOpenAIResponses(body, errors) {
         // resolvable name. Tolerate a nested .function.name so no upstream path regresses.
         if (t.type === OPENAI_BLOCK.FUNCTION) {
           const name =
-            (typeof t.name === "string" && t.name) ||
-            (t.function && typeof t.function.name === "string" && t.function.name) ||
-            "";
+          isString(t.name) && t.name ||
+          t.function && isString(t.function.name) && t.function.name ||
+          "";
           if (name.trim() === "") {
             pushError(
               errors,
               `${p}.name`,
-              "function tool requires a non-empty .name (Responses API flattened function tool shape)",
+              "function tool requires a non-empty .name (Responses API flattened function tool shape)"
             );
           }
         }
@@ -519,12 +521,12 @@ function validateOpenAIResponses(body, errors) {
 // Caller is expected to short-circuit (return 400 to the client) on ok=false.
 export function validateOutboundPayload(targetFormat, body) {
   const errors = [];
-  if (!body || typeof body !== "object") {
+  if (!body || !isObject(body)) {
     return {
       ok: false,
       errors: [
-        { path: "<root>", message: "outbound body must be a non-null object" },
-      ],
+      { path: "<root>", message: "outbound body must be a non-null object" }]
+
     };
   }
   const b = body;
@@ -618,26 +620,26 @@ function errorEnvelope(message, type, code) {
  * @returns {Response | null} a 400 `Response` on failure, or `null` to proceed.
  */
 export function validateMessagesField(body) {
-  const b = body && typeof body === "object" ? body : {};
+  const b = body && isObject(body) ? body : {};
   const hasMessages = Object.prototype.hasOwnProperty.call(b, "messages");
   const hasInput = Object.prototype.hasOwnProperty.call(b, "input");
 
   if (hasMessages && !Array.isArray(b.messages)) {
     return Response.json(
       errorEnvelope("messages: Expected array", "invalid_request_error"),
-      { status: 400 },
+      { status: 400 }
     );
   }
   if (Array.isArray(b.messages) && b.messages.length === 0) {
     return Response.json(
       errorEnvelope("messages: at least one message is required", "invalid_request_error"),
-      { status: 400 },
+      { status: 400 }
     );
   }
   if (!hasMessages && !hasInput) {
     return Response.json(
       errorEnvelope("messages: Expected array, received undefined", "invalid_request_error"),
-      { status: 400 },
+      { status: 400 }
     );
   }
   return null;
@@ -656,13 +658,13 @@ export function validateMessagesField(body) {
  * @returns {Response | null} a 400 `Response` on failure, or `null` to proceed.
  */
 export function validateModelField(body) {
-  const b = body && typeof body === "object" ? body : {};
+  const b = body && isObject(body) ? body : {};
   const raw = b.model;
-  if (raw === undefined || raw === null || typeof raw === "string") return null;
-  const received = Array.isArray(raw) ? "array" : typeof raw;
+  if (raw === undefined || raw === null || isString(raw)) return null;
+  const received = Array.isArray(raw) ? "array" : runtimeTypeName(raw);
   return Response.json(
     errorEnvelope(`model: Expected string, received ${received}`, "invalid_request_error"),
-    { status: 400 },
+    { status: 400 }
   );
 }
 
@@ -680,14 +682,14 @@ export function validateModelField(body) {
  * @returns {Response | null} a 400 `Response` on failure, or `null` to proceed.
  */
 export function validateChatScalarParams(body) {
-  const b = body && typeof body === "object" ? body : {};
+  const b = body && isObject(body) ? body : {};
   const bad = (name, msg) =>
-    Response.json(errorEnvelope(`${name}: ${msg}`, "invalid_request_error"), {
-      status: 400,
-    });
+  Response.json(errorEnvelope(`${name}: ${msg}`, "invalid_request_error"), {
+    status: 400
+  });
 
   if (b.temperature !== undefined) {
-    if (typeof b.temperature !== "number" || Number.isNaN(b.temperature)) {
+    if (!isNumber(b.temperature) || Number.isNaN(b.temperature)) {
       return bad("temperature", "must be a number");
     }
     if (b.temperature < 0 || b.temperature > 2) {
@@ -695,7 +697,7 @@ export function validateChatScalarParams(body) {
     }
   }
   if (b.top_p !== undefined) {
-    if (typeof b.top_p !== "number" || Number.isNaN(b.top_p)) {
+    if (!isNumber(b.top_p) || Number.isNaN(b.top_p)) {
       return bad("top_p", "must be a number");
     }
     if (b.top_p < 0 || b.top_p > 1) {
@@ -704,15 +706,15 @@ export function validateChatScalarParams(body) {
   }
   if (b.max_tokens !== undefined) {
     if (
-      typeof b.max_tokens !== "number" ||
-      !Number.isInteger(b.max_tokens) ||
-      b.max_tokens < 1
-    ) {
+    !isNumber(b.max_tokens) ||
+    !Number.isInteger(b.max_tokens) ||
+    b.max_tokens < 1)
+    {
       return bad("max_tokens", "must be a positive integer");
     }
   }
   if (b.n !== undefined) {
-    if (typeof b.n !== "number" || !Number.isInteger(b.n) || b.n < 1) {
+    if (!isNumber(b.n) || !Number.isInteger(b.n) || b.n < 1) {
       return bad("n", "must be a positive integer");
     }
   }
@@ -742,9 +744,9 @@ export function requireJsonContentType(request) {
     errorEnvelope(
       "Content-Type must be application/json",
       "invalid_request_error",
-      "unsupported_media_type",
+      "unsupported_media_type"
     ),
-    { status: 415 },
+    { status: 415 }
   );
 }
 
@@ -765,8 +767,8 @@ export function validateChatRequestBody(body) {
     validateMessagesField(body) ||
     validateModelField(body) ||
     validateChatScalarParams(body) ||
-    null
-  );
+    null);
+
 }
 
 /**
@@ -787,10 +789,10 @@ export function jsonNotFoundResponse(request) {
         message: `Unknown API route: ${url.pathname}`,
         type: "not_found",
         code: "unknown_route",
-        path: url.pathname,
-      },
+        path: url.pathname
+      }
     },
-    { status: 404 },
+    { status: 404 }
   );
 }
 
@@ -808,8 +810,8 @@ export function headOkResponse() {
     status: 200,
     headers: {
       "content-type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    },
+      "Access-Control-Allow-Origin": "*"
+    }
   });
 }
 
@@ -827,7 +829,7 @@ export function headNotFoundResponse() {
     status: 404,
     headers: {
       "content-type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    },
+      "Access-Control-Allow-Origin": "*"
+    }
   });
 }

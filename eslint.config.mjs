@@ -1,5 +1,6 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
+import reactHooks from "eslint-plugin-react-hooks";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -18,7 +19,13 @@ const eslintConfig = defineConfig([
   // migrate to a React Compiler-friendly signature (`useReducer`, immutable
   // store props, `useEffectEvent`-style guards) and re-promote these to
   // errors; remove the override block once the dashboard refactor lands.
+  //
+  // Re-declare the plugin on this object: ESLint flat-config does not inherit
+  // plugin instances into later config objects that only set `rules`.
   {
+    plugins: {
+      "react-hooks": reactHooks,
+    },
     rules: {
       "react-hooks/set-state-in-effect": "warn",
       "react-hooks/immutability": "warn",
@@ -35,7 +42,6 @@ const eslintConfig = defineConfig([
       "react-hooks/config": "warn",
       "react-hooks/gating": "warn",
       "react-hooks/globals": "warn",
-      "react-hooks/preserve-manual-memoization": "warn",
       "react-hooks/rules-of-hooks": "warn",
       "react-hooks/exhaustive-deps": "warn",
     },

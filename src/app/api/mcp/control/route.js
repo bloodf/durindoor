@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
  * JSON-RPC 2.0 MCP server for DurinDoor management. Stateless over HTTP.
  * Auth is enforced by the dashboard guard before this handler runs.
  */
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 export const dynamic = "force-dynamic";
 
 function jsonRpcError(id, code, message) {
@@ -14,7 +15,7 @@ function jsonRpcError(id, code, message) {
 
 export async function POST(request) {
   const body = await request.json().catch(() => null);
-  if (!body || typeof body !== "object") {
+  if (!body || !isObject(body)) {
     return jsonRpcError(null, -32700, "Parse error");
   }
 
@@ -24,7 +25,7 @@ export async function POST(request) {
   if (body.jsonrpc !== "2.0") {
     return jsonRpcError(id, -32600, "Invalid Request: jsonrpc must be 2.0");
   }
-  if (typeof method !== "string") {
+  if (!isString(method)) {
     return jsonRpcError(id, -32600, "Invalid Request: method must be a string");
   }
 
@@ -40,8 +41,8 @@ export async function POST(request) {
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "durindoor-control", version: "1.0.0" },
-      },
+        serverInfo: { name: "durindoor-control", version: "1.0.0" }
+      }
     });
   }
 
@@ -51,7 +52,7 @@ export async function POST(request) {
   }
 
   if (method === "tools/call") {
-    if (typeof params !== "object" || params == null || typeof params.name !== "string") {
+    if (!isObject(params) || params == null || !isString(params.name)) {
       return jsonRpcError(id, -32602, "Invalid params: tools/call requires name");
     }
     try {

@@ -13,41 +13,42 @@ import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/Overview
 import UsageTable, { fmt, fmtTime } from "@/app/(dashboard)/dashboard/usage/components/UsageTable";
 import dynamic from "next/dynamic";
 // Lazy-load: keeps @xyflow/react out of the shared bundle until topology renders
+import { isString } from "../utils/typeChecks.js";
 const ProviderTopology = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/ProviderTopology"), { ssr: false });
 import UsageChart from "@/app/(dashboard)/dashboard/usage/components/UsageChart";
 import RequestsPanel from "@/app/(dashboard)/dashboard/usage/components/RequestsPanel";
 
 
 function sortData(dataMap, pendingMap = {}, sortBy, sortOrder) {
-  return Object.entries(dataMap || {})
-    .map(([key, data]) => {
-      const totalTokens = (data.promptTokens || 0) + (data.completionTokens || 0);
-      const totalCost = data.cost || 0;
-      // ponytail: cost split is a token-share allocation of the (rate-accurate)
-      // server total, not a per-rate recompute. cached is a subset of prompt, so
-      // peel it out of the input share. Upgrade to a stored per-component cost
-      // breakdown if exact cached-rate cost display is needed.
-      const allocation = allocateUsageCost(data);
-      return { ...data, key, totalTokens, totalCost, ...allocation, pending: pendingMap[key] || 0 };
-    })
-    .sort((a, b) => {
-      let valA = a[sortBy];
-      let valB = b[sortBy];
-      if (typeof valA === "string") valA = valA.toLowerCase();
-      if (typeof valB === "string") valB = valB.toLowerCase();
-      if (valA < valB) return sortOrder === "asc" ? -1 : 1;
-      if (valA > valB) return sortOrder === "asc" ? 1 : -1;
-      return 0;
-    });
+  return Object.entries(dataMap || {}).
+  map(([key, data]) => {
+    const totalTokens = (data.promptTokens || 0) + (data.completionTokens || 0);
+    const totalCost = data.cost || 0;
+    // ponytail: cost split is a token-share allocation of the (rate-accurate)
+    // server total, not a per-rate recompute. cached is a subset of prompt, so
+    // peel it out of the input share. Upgrade to a stored per-component cost
+    // breakdown if exact cached-rate cost display is needed.
+    const allocation = allocateUsageCost(data);
+    return { ...data, key, totalTokens, totalCost, ...allocation, pending: pendingMap[key] || 0 };
+  }).
+  sort((a, b) => {
+    let valA = a[sortBy];
+    let valB = b[sortBy];
+    if (isString(valA)) valA = valA.toLowerCase();
+    if (isString(valB)) valB = valB.toLowerCase();
+    if (valA < valB) return sortOrder === "asc" ? -1 : 1;
+    if (valA > valB) return sortOrder === "asc" ? 1 : -1;
+    return 0;
+  });
 }
 
 function getGroupKey(item, keyField) {
   switch (keyField) {
-    case "rawModel": return item.rawModel || "Unknown Model";
-    case "accountName": return item.accountName || `Account ${item.connectionId?.slice(0, 8)}...` || "Unknown Account";
-    case "keyName": return item.keyName || "Unknown Key";
-    case "endpoint": return item.endpoint || "Unknown Endpoint";
-    default: return item[keyField] || "Unknown";
+    case "rawModel":return item.rawModel || "Unknown Model";
+    case "accountName":return item.accountName || `Account ${item.connectionId?.slice(0, 8)}...` || "Unknown Account";
+    case "keyName":return item.keyName || "Unknown Key";
+    case "endpoint":return item.endpoint || "Unknown Endpoint";
+    default:return item[keyField] || "Unknown";
   }
 }
 
@@ -60,7 +61,7 @@ function groupDataByKey(data, keyField) {
       groups[gk] = {
         groupKey: gk,
         summary: { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, totalTokens: 0, cost: 0, inputCost: 0, cachedCost: 0, cacheCreationCost: 0, outputCost: 0, reasoningCost: 0, lastUsed: null, pending: 0 },
-        items: [],
+        items: []
       };
     }
     const s = groups[gk].summary;
@@ -92,53 +93,53 @@ function getSingleGroupItem(group) {
 }
 
 const MODEL_COLUMNS = [
-  { field: "rawModel", label: "Model" },
-  { field: "provider", label: "Provider" },
-  { field: "requests", label: "Requests", align: "right" },
-  { field: "lastUsed", label: "Last Used", align: "right" },
-];
+{ field: "rawModel", label: "Model" },
+{ field: "provider", label: "Provider" },
+{ field: "requests", label: "Requests", align: "right" },
+{ field: "lastUsed", label: "Last Used", align: "right" }];
+
 
 const ACCOUNT_COLUMNS = [
-  // ponytail: Account must be the first (group-key) column, matching MODEL/API_KEY/ENDPOINT.
-  // Prior order (Model/Provider/Account/...) misaligned cells by one; PROVIDER col showed model.
-  { field: "accountName", label: "Account" },
-  { field: "rawModel", label: "Model" },
-  { field: "provider", label: "Provider" },
-  { field: "requests", label: "Requests", align: "right" },
-  { field: "lastUsed", label: "Last Used", align: "right" },
-];
+// ponytail: Account must be the first (group-key) column, matching MODEL/API_KEY/ENDPOINT.
+// Prior order (Model/Provider/Account/...) misaligned cells by one; PROVIDER col showed model.
+{ field: "accountName", label: "Account" },
+{ field: "rawModel", label: "Model" },
+{ field: "provider", label: "Provider" },
+{ field: "requests", label: "Requests", align: "right" },
+{ field: "lastUsed", label: "Last Used", align: "right" }];
+
 
 const PROVIDER_COLUMNS = [
-  // byProvider rows are keyed by provider slug and carry only request/token/cost
-  // totals — no rawModel, accountName, or lastUsed. sortData exposes the slug
-  // as `item.key`; Requests is the only extra leading column before value cells.
-  { field: "key", label: "Provider" },
-  { field: "requests", label: "Requests", align: "right" },
-];
+// byProvider rows are keyed by provider slug and carry only request/token/cost
+// totals — no rawModel, accountName, or lastUsed. sortData exposes the slug
+// as `item.key`; Requests is the only extra leading column before value cells.
+{ field: "key", label: "Provider" },
+{ field: "requests", label: "Requests", align: "right" }];
+
 
 const API_KEY_COLUMNS = [
-  { field: "keyName", label: "API Key Name" },
-  { field: "rawModel", label: "Model" },
-  { field: "provider", label: "Provider" },
-  { field: "requests", label: "Requests", align: "right" },
-  { field: "lastUsed", label: "Last Used", align: "right" },
-];
+{ field: "keyName", label: "API Key Name" },
+{ field: "rawModel", label: "Model" },
+{ field: "provider", label: "Provider" },
+{ field: "requests", label: "Requests", align: "right" },
+{ field: "lastUsed", label: "Last Used", align: "right" }];
+
 
 const ENDPOINT_COLUMNS = [
-  { field: "endpoint", label: "Endpoint" },
-  { field: "rawModel", label: "Model" },
-  { field: "provider", label: "Provider" },
-  { field: "requests", label: "Requests", align: "right" },
-  { field: "lastUsed", label: "Last Used", align: "right" },
-];
+{ field: "endpoint", label: "Endpoint" },
+{ field: "rawModel", label: "Model" },
+{ field: "provider", label: "Provider" },
+{ field: "requests", label: "Requests", align: "right" },
+{ field: "lastUsed", label: "Last Used", align: "right" }];
+
 
 const TABLE_OPTIONS = [
-  { value: "model", label: "Usage by Model" },
-  { value: "provider", label: "Usage by Provider" },
-  { value: "account", label: "Usage by Account" },
-  { value: "apiKey", label: "Usage by API Key" },
-  { value: "endpoint", label: "Usage by Endpoint" },
-];
+{ value: "model", label: "Usage by Model" },
+{ value: "provider", label: "Usage by Provider" },
+{ value: "account", label: "Usage by Account" },
+{ value: "apiKey", label: "Usage by API Key" },
+{ value: "endpoint", label: "Usage by Endpoint" }];
+
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
 
@@ -168,19 +169,19 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      fetch("/api/providers", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
-      fetch("/api/provider-nodes", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
-      fetch("/api/settings", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
-    ])
-      .then(([d, nodesData, settings]) => {
-        const providers = buildUsageProviders(
-          d?.connections || [],
-          nodesData?.nodes || [],
-          settings?.disabledFreeProviders || [],
-        );
-        if (!controller.signal.aborted) setProviders(providers);
-      })
-      .catch(() => {});
+    fetch("/api/providers", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
+    fetch("/api/provider-nodes", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
+    fetch("/api/settings", { signal: controller.signal }).then((r) => r.ok ? r.json() : null)]
+    ).
+    then(([d, nodesData, settings]) => {
+      const providers = buildUsageProviders(
+        d?.connections || [],
+        nodesData?.nodes || [],
+        settings?.disabledFreeProviders || []
+      );
+      if (!controller.signal.aborted) setProviders(providers);
+    }).
+    catch(() => {});
     return () => controller.abort();
   }, []);
 
@@ -197,26 +198,26 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       setFetching(true);
     }
 
-    const rangeParams = customRange?.startDate && customRange?.endDate
-      ? `&startDate=${encodeURIComponent(customRange.startDate)}&endDate=${encodeURIComponent(customRange.endDate)}`
-      : "";
-    fetch(`/api/usage/stats?period=${encodeURIComponent(period)}${rangeParams}`, { signal: controller.signal })
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data && !controller.signal.aborted && requestToken.isCurrent()) {
-          setStats((prev) => mergeUsageResponse(prev, data, liveOverlayRef.current));
-        }
-      })
-      .catch((error) => {
-        if (error?.name !== "AbortError") console.error("Failed to fetch usage stats:", error);
-      })
-      .finally(() => {
-        if (statsFetchAbortRef.current === controller) statsFetchAbortRef.current = null;
-        if (!controller.signal.aborted) {
-          setLoading(false);
-          setFetching(false);
-        }
-      });
+    const rangeParams = customRange?.startDate && customRange?.endDate ?
+    `&startDate=${encodeURIComponent(customRange.startDate)}&endDate=${encodeURIComponent(customRange.endDate)}` :
+    "";
+    fetch(`/api/usage/stats?period=${encodeURIComponent(period)}${rangeParams}`, { signal: controller.signal }).
+    then((r) => r.ok ? r.json() : null).
+    then((data) => {
+      if (data && !controller.signal.aborted && requestToken.isCurrent()) {
+        setStats((prev) => mergeUsageResponse(prev, data, liveOverlayRef.current));
+      }
+    }).
+    catch((error) => {
+      if (error?.name !== "AbortError") console.error("Failed to fetch usage stats:", error);
+    }).
+    finally(() => {
+      if (statsFetchAbortRef.current === controller) statsFetchAbortRef.current = null;
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setFetching(false);
+      }
+    });
     return () => {
       controller.abort();
       if (statsFetchAbortRef.current === controller) statsFetchAbortRef.current = null;
@@ -239,16 +240,16 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           activeSessions: data.activeSessions,
           recentRequests: data.recentRequests,
           errorProvider: data.errorProvider,
-          pending: data.pending,
+          pending: data.pending
         };
         if (!isCustomRange) {
           const staleRest = statsFetchAbortRef.current;
           staleRest?.abort();
           if (statsFetchAbortRef.current === staleRest) statsFetchAbortRef.current = null;
         }
-        setStats((prev) => isCustomRange
-          ? mergeUsageResponse(prev, prev, liveOverlayRef.current)
-          : data);
+        setStats((prev) => isCustomRange ?
+        mergeUsageResponse(prev, prev, liveOverlayRef.current) :
+        data);
         if (!isCustomRange) {
           setLoading(false);
           setFetching(false);
@@ -278,88 +279,88 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const activeTableConfig = useMemo(() => {
     if (!stats) return null;
     switch (tableView) {
-      case "model": {
-        const pendingMap = stats.pending?.byModel || {};
-        return {
-          columns: MODEL_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byModel, pendingMap, sortBy, sortOrder), "rawModel"),
-          storageKey: "usage-stats:expanded-models",
-          emptyMessage: "No usage recorded yet.",
-          renderSummaryCells: (group) => {
-            const item = getSingleGroupItem(group);
-            return (
-              <>
+      case "model":{
+          const pendingMap = stats.pending?.byModel || {};
+          return {
+            columns: MODEL_COLUMNS,
+            groupedData: groupDataByKey(sortData(stats.byModel, pendingMap, sortBy, sortOrder), "rawModel"),
+            storageKey: "usage-stats:expanded-models",
+            emptyMessage: "No usage recorded yet.",
+            renderSummaryCells: (group) => {
+              const item = getSingleGroupItem(group);
+              return (
+                <>
                 <td className="px-6 py-3">
                   {item ? <Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider || "—"}</Badge> : <span className="text-text-muted">—</span>}
                 </td>
                 <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
                 <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              </>
-            );
-          },
-          renderDetailCells: (item) => (
+              </>);
+
+            },
+            renderDetailCells: (item) =>
             <>
               <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.rawModel}</td>
               <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
             </>
-          ),
-        };
-      }
-      case "provider": {
-        // byProvider is { slug: { requests, promptTokens, completionTokens, cachedTokens,
-        // reasoningTokens, cacheCreationTokens, cost } } — no rawModel/lastUsed/accountName.
-        // sortData surfaces the slug as item.key; group by it so each provider is one row.
-        return {
-          columns: PROVIDER_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byProvider, {}, sortBy, sortOrder), "key"),
-          storageKey: "usage-stats:expanded-providers",
-          emptyMessage: "No provider usage recorded yet.",
-          renderSummaryCells: (group) => (
+
+          };
+        }
+      case "provider":{
+          // byProvider is { slug: { requests, promptTokens, completionTokens, cachedTokens,
+          // reasoningTokens, cacheCreationTokens, cost } } — no rawModel/lastUsed/accountName.
+          // sortData surfaces the slug as item.key; group by it so each provider is one row.
+          return {
+            columns: PROVIDER_COLUMNS,
+            groupedData: groupDataByKey(sortData(stats.byProvider, {}, sortBy, sortOrder), "key"),
+            storageKey: "usage-stats:expanded-providers",
+            emptyMessage: "No provider usage recorded yet.",
+            renderSummaryCells: (group) =>
             <>
               <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
-            </>
-          ),
-          renderDetailCells: (item) => (
+            </>,
+
+            renderDetailCells: (item) =>
             <>
               <td className="px-6 py-3 font-medium">{item.key}</td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
             </>
-          ),
-        };
-      }
-      case "account": {
-        const pendingMap = {};
-        if (stats?.pending?.byAccount) {
-          Object.entries(stats.byAccount || {}).forEach(([accountKey, data]) => {
-            const connPending = stats.pending.byAccount[data.connectionId];
-            if (connPending) {
-            const rawProvider = data.rawProvider || data.provider;
-            const modelKey = rawProvider ? `${data.rawModel} (${rawProvider})` : data.rawModel;
-              pendingMap[accountKey] = connPending[modelKey] || 0;
-            }
-          });
+
+          };
         }
-        return {
-          columns: ACCOUNT_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byAccount, pendingMap, sortBy, sortOrder), "accountName"),
-          storageKey: "usage-stats:expanded-accounts",
-          emptyMessage: "No account-specific usage recorded yet.",
-          renderSummaryCells: (group) => {
-            const item = getSingleGroupItem(group);
-            return (
-              <>
+      case "account":{
+          const pendingMap = {};
+          if (stats?.pending?.byAccount) {
+            Object.entries(stats.byAccount || {}).forEach(([accountKey, data]) => {
+              const connPending = stats.pending.byAccount[data.connectionId];
+              if (connPending) {
+                const rawProvider = data.rawProvider || data.provider;
+                const modelKey = rawProvider ? `${data.rawModel} (${rawProvider})` : data.rawModel;
+                pendingMap[accountKey] = connPending[modelKey] || 0;
+              }
+            });
+          }
+          return {
+            columns: ACCOUNT_COLUMNS,
+            groupedData: groupDataByKey(sortData(stats.byAccount, pendingMap, sortBy, sortOrder), "accountName"),
+            storageKey: "usage-stats:expanded-accounts",
+            emptyMessage: "No account-specific usage recorded yet.",
+            renderSummaryCells: (group) => {
+              const item = getSingleGroupItem(group);
+              return (
+                <>
                 <td className="px-6 py-3">{item?.rawModel || <span className="text-text-muted">—</span>}</td>
                 <td className="px-6 py-3">
                   {item ? <Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider || "—"}</Badge> : <span className="text-text-muted">—</span>}
                 </td>
                 <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
                 <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              </>
-            );
-          },
-          renderDetailCells: (item) => (
+              </>);
+
+            },
+            renderDetailCells: (item) =>
             <>
               <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.accountName || `Account ${item.connectionId?.slice(0, 8)}...`}</td>
               <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.rawModel}</td>
@@ -367,29 +368,29 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
             </>
-          ),
-        };
-      }
-      case "apiKey": {
-        return {
-          columns: API_KEY_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byApiKey, {}, sortBy, sortOrder), "keyName"),
-          storageKey: "usage-stats:expanded-apikeys",
-          emptyMessage: "No API key usage recorded yet.",
-          renderSummaryCells: (group) => {
-            const item = getSingleGroupItem(group);
-            return (
-              <>
+
+          };
+        }
+      case "apiKey":{
+          return {
+            columns: API_KEY_COLUMNS,
+            groupedData: groupDataByKey(sortData(stats.byApiKey, {}, sortBy, sortOrder), "keyName"),
+            storageKey: "usage-stats:expanded-apikeys",
+            emptyMessage: "No API key usage recorded yet.",
+            renderSummaryCells: (group) => {
+              const item = getSingleGroupItem(group);
+              return (
+                <>
                 <td className="px-6 py-3">{item?.rawModel || <span className="text-text-muted">—</span>}</td>
                 <td className="px-6 py-3">
                   {item ? <Badge variant="neutral" size="sm">{item.provider || "—"}</Badge> : <span className="text-text-muted">—</span>}
                 </td>
                 <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
                 <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              </>
-            );
-          },
-          renderDetailCells: (item) => (
+              </>);
+
+            },
+            renderDetailCells: (item) =>
             <>
               <td className="px-6 py-3 font-medium">{item.keyName}</td>
               <td className="px-6 py-3">{item.rawModel}</td>
@@ -397,30 +398,30 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
             </>
-          ),
-        };
-      }
+
+          };
+        }
       case "endpoint":
-      default: {
-        return {
-          columns: ENDPOINT_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byEndpoint, {}, sortBy, sortOrder), "endpoint"),
-          storageKey: "usage-stats:expanded-endpoints",
-          emptyMessage: "No endpoint usage recorded yet.",
-          renderSummaryCells: (group) => {
-            const item = getSingleGroupItem(group);
-            return (
-              <>
+      default:{
+          return {
+            columns: ENDPOINT_COLUMNS,
+            groupedData: groupDataByKey(sortData(stats.byEndpoint, {}, sortBy, sortOrder), "endpoint"),
+            storageKey: "usage-stats:expanded-endpoints",
+            emptyMessage: "No endpoint usage recorded yet.",
+            renderSummaryCells: (group) => {
+              const item = getSingleGroupItem(group);
+              return (
+                <>
                 <td className="px-6 py-3">{item?.rawModel || <span className="text-text-muted">—</span>}</td>
                 <td className="px-6 py-3">
                   {item ? <Badge variant="neutral" size="sm">{item.provider || "—"}</Badge> : <span className="text-text-muted">—</span>}
                 </td>
                 <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
                 <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              </>
-            );
-          },
-          renderDetailCells: (item) => (
+              </>);
+
+            },
+            renderDetailCells: (item) =>
             <>
               <td className="px-6 py-3 font-medium font-mono text-sm">{item.endpoint}</td>
               <td className="px-6 py-3">{item.rawModel}</td>
@@ -428,69 +429,69 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
             </>
-          ),
-        };
-      }
+
+          };
+        }
     }
   }, [stats, tableView, sortBy, sortOrder]);
 
   if (!stats && !loading) return <div className="text-text-muted">Failed to load usage statistics.</div>;
 
-  const spinner = (
-    <div className="flex items-center justify-center py-12 text-text-muted">
+  const spinner =
+  <div className="flex items-center justify-center py-12 text-text-muted">
       <span className="material-symbols-outlined text-[32px] animate-spin">progress_activity</span>
-    </div>
-  );
+    </div>;
+
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
       {/* Period selector (hidden when controlled by parent) */}
-      {!hidePeriodSelector && (
-        <div className="flex w-full items-center gap-2 sm:w-auto sm:self-end">
+      {!hidePeriodSelector &&
+      <div className="flex w-full items-center gap-2 sm:w-auto sm:self-end">
           <div className="flex flex-1 flex-wrap items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex-none">
-            {PERIODS.map((p) => (
-              <button
-                key={p.value}
-                onClick={() => setPeriod(p.value)}
-                disabled={fetching}
-                className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${period === p.value ? "bg-primary text-white shadow-sm" : "text-text-muted hover:bg-bg-hover hover:text-text"}`}
-              >
+            {PERIODS.map((p) =>
+          <button
+            key={p.value}
+            onClick={() => setPeriod(p.value)}
+            disabled={fetching}
+            className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${period === p.value ? "bg-primary text-white shadow-sm" : "text-text-muted hover:bg-bg-hover hover:text-text"}`}>
+            
                 {p.label}
               </button>
-            ))}
-          </div>
-          {fetching && (
-            <span className="material-symbols-outlined text-[16px] text-text-muted animate-spin">progress_activity</span>
           )}
+          </div>
+          {fetching &&
+        <span className="material-symbols-outlined text-[16px] text-text-muted animate-spin">progress_activity</span>
+        }
         </div>
-      )}
+      }
 
       {/* Overview cards */}
       {loading ? spinner : <OverviewCards stats={stats} />}
 
       {/* Provider topology + tabbed requests panel */}
-      {loading ? spinner : (
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+      {loading ? spinner :
+      <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
           <ProviderTopology
-            providers={providers}
-            activeRequests={stats.activeRequests || []}
-            lastProvider={stats.recentRequests?.[0]?.provider || ""}
-            errorProvider={stats.errorProvider || ""}
-          />
+          providers={providers}
+          activeRequests={stats.activeRequests || []}
+          lastProvider={stats.recentRequests?.[0]?.provider || ""}
+          errorProvider={stats.errorProvider || ""} />
+        
           <RequestsPanel recentRequests={stats.recentRequests || []} activeSessions={stats.activeSessions || []} />
         </div>
-      )}
+      }
 
       {/* Token / Cost chart — preset ranges only. On a custom calendar range the
-          chart endpoint has no matching window, so show an honest note instead
-          of a graph that disagrees with the cards/table above. Request count is
-          stable but can miss a 24h refresh when one request enters as another
-          ages out. */}
-      {loading ? spinner : isCustomRange ? (
-        <div className="flex h-40 items-center justify-center rounded-lg border border-border bg-surface text-sm text-text-muted">
+           chart endpoint has no matching window, so show an honest note instead
+           of a graph that disagrees with the cards/table above. Request count is
+           stable but can miss a 24h refresh when one request enters as another
+           ages out. */}
+      {loading ? spinner : isCustomRange ?
+      <div className="flex h-40 items-center justify-center rounded-lg border border-border bg-surface text-sm text-text-muted">
           Chart shows preset ranges only — pick a preset to view the graph.
-        </div>
-      ) : <UsageChart period={period} refreshKey={stats.totalRequests} />}
+        </div> :
+      <UsageChart period={period} refreshKey={stats.totalRequests} />}
 
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">
@@ -499,44 +500,44 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             value={tableView}
             onChange={(e) => setTableView(e.target.value)}
             className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
-            style={{ colorScheme: 'auto' }}
-          >
-            {TABLE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
+            style={{ colorScheme: 'auto' }}>
+            
+            {TABLE_OPTIONS.map((opt) =>
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+            )}
           </select>
           <div className="grid grid-cols-2 items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex">
             <button
               onClick={() => setViewMode("costs")}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "costs" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
-            >
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "costs" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}>
+              
               Costs
             </button>
             <button
               onClick={() => setViewMode("tokens")}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "tokens" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
-            >
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "tokens" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}>
+              
               Tokens
             </button>
           </div>
         </div>
-        {loading ? spinner : activeTableConfig && (
-          <UsageTable
-            title=""
-            columns={activeTableConfig.columns}
-            groupedData={activeTableConfig.groupedData}
-            tableType={tableView}
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onToggleSort={toggleSort}
-            viewMode={viewMode}
-            storageKey={activeTableConfig.storageKey}
-            renderSummaryCells={activeTableConfig.renderSummaryCells}
-            renderDetailCells={activeTableConfig.renderDetailCells}
-            emptyMessage={activeTableConfig.emptyMessage}
-          />
-        )}
+        {loading ? spinner : activeTableConfig &&
+        <UsageTable
+          title=""
+          columns={activeTableConfig.columns}
+          groupedData={activeTableConfig.groupedData}
+          tableType={tableView}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          onToggleSort={toggleSort}
+          viewMode={viewMode}
+          storageKey={activeTableConfig.storageKey}
+          renderSummaryCells={activeTableConfig.renderSummaryCells}
+          renderDetailCells={activeTableConfig.renderDetailCells}
+          emptyMessage={activeTableConfig.emptyMessage} />
+
+        }
       </div>
-    </div>
-  );
+    </div>);
+
 }

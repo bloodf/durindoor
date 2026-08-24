@@ -2,6 +2,7 @@
 // to be echoed back on assistant messages. Clients in OpenAI format don't send it,
 // so we inject a non-empty placeholder to satisfy upstream validation.
 import { PROVIDERS } from "../config/providers.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const PLACEHOLDER = " ";
 
@@ -10,9 +11,9 @@ const providerRuleFor = (provider) => PROVIDERS[provider]?.reasoningInject;
 
 // Model-level rules: matched by predicate against model id
 const MODEL_RULES = [
-  { match: m => /^kimi-/i.test(m || ""), scope: "toolCalls" },
-  { match: m => /deepseek/i.test(m || ""), scope: "all" }
-];
+{ match: (m) => /^kimi-/i.test(m || ""), scope: "toolCalls" },
+{ match: (m) => /deepseek/i.test(m || ""), scope: "all" }];
+
 
 const DEEPSEEK_V4_PRO = "deepseek-v4-pro";
 const DEEPSEEK_V4_PRO_ALIASES = {
@@ -29,15 +30,15 @@ const DEEPSEEK_V4_PRO_ALIASES = {
 function shouldInject(message, scope) {
   if (message?.role !== "assistant") return false;
   const rc = message.reasoning_content;
-  if (typeof rc === "string" && rc.length > 0) return false;
+  if (isString(rc) && rc.length > 0) return false;
   if (scope === "toolCalls") return Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
   return true;
 }
 
 function applyRule(body, rule) {
   if (!rule || !body?.messages) return body;
-  const messages = body.messages.map(m =>
-    shouldInject(m, rule.scope) ? { ...m, reasoning_content: PLACEHOLDER } : m
+  const messages = body.messages.map((m) =>
+  shouldInject(m, rule.scope) ? { ...m, reasoning_content: PLACEHOLDER } : m
   );
   return { ...body, messages };
 }
@@ -51,9 +52,9 @@ export function applyDeepSeekV4ProAlias({ provider, model, body, transportFormat
       ...body,
       model: DEEPSEEK_V4_PRO,
       thinking: {
-        ...(body.thinking && typeof body.thinking === "object" ? body.thinking : {}),
-        type: alias.thinkingType,
-      },
+        ...(body.thinking && isObject(body.thinking) ? body.thinking : null),
+        type: alias.thinkingType
+      }
     };
     delete nextBody.extra_body;
     delete nextBody.reasoning_effort;
@@ -67,9 +68,9 @@ export function applyDeepSeekV4ProAlias({ provider, model, body, transportFormat
       ...(body.extra_body || {}),
       thinking: {
         ...(body.extra_body?.thinking || {}),
-        type: alias.thinkingType,
-      },
-    },
+        type: alias.thinkingType
+      }
+    }
   };
 
   if (alias.reasoningEffort) {
@@ -83,7 +84,7 @@ export function applyDeepSeekV4ProAlias({ provider, model, body, transportFormat
 
 export function injectReasoningContent({ provider, model, body }) {
   const providerRule = providerRuleFor(provider);
-  const modelRule = MODEL_RULES.find(r => r.match(model));
+  const modelRule = MODEL_RULES.find((r) => r.match(model));
   const rule = providerRule || modelRule;
   const nextBody = applyDeepSeekV4ProAlias({ provider, model, body });
   return applyRule(nextBody, rule);

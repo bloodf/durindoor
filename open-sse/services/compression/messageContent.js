@@ -1,32 +1,32 @@
-                            
-                
-                
-                         
- 
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
-                                  
-               
-                                             
-                         
- 
 
-export function isTextBlock(value         )                     {
+
+
+
+
+
+
+
+
+
+export function isTextBlock(value) {
   return (
-    !!value &&
-    typeof value === "object" &&
-    "text" in value &&
-    typeof (value             ).text === "string" &&
-    ((value             ).type === undefined ||
-      (value             ).type === "text" ||
-      (value             ).type === "input_text")
-  );
+    !!value && isObject(
+      value) &&
+    "text" in value && isString(
+      value.text) && (
+    value.type === undefined ||
+    value.type === "text" ||
+    value.type === "input_text"));
+
 }
 
-export function extractTextContent(content                            )         {
-  if (typeof content === "string") return content;
+export function extractTextContent(content) {
+  if (isString(content)) return content;
   if (!Array.isArray(content)) return "";
 
-  const textParts           = [];
+  const textParts = [];
   for (const part of content) {
     if (isTextBlock(part) && part.text) {
       textParts.push(part.text);
@@ -36,10 +36,10 @@ export function extractTextContent(content                            )         
 }
 
 export function mapTextContent(
-  msg                 ,
-  transform                                         
-)                  {
-  if (typeof msg.content === "string") {
+msg,
+transform)
+{
+  if (isString(msg.content)) {
     return { ...msg, content: transform(msg.content, 0) };
   }
   if (!Array.isArray(msg.content)) return msg;
@@ -58,8 +58,8 @@ export function mapTextContent(
   return changed ? { ...msg, content } : msg;
 }
 
-export function replaceTextContent(msg                 , newText        )                  {
-  if (typeof msg.content === "string" || !Array.isArray(msg.content)) {
+export function replaceTextContent(msg, newText) {
+  if (isString(msg.content) || !Array.isArray(msg.content)) {
     return { ...msg, content: newText };
   }
 

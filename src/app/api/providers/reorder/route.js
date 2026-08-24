@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { reorderProviderConnectionsByIds } from "@/lib/db";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +22,10 @@ export async function PUT(request) {
   }
 
   const { providerId, orderedIds } = body ?? {};
-  if (typeof providerId !== "string" || !providerId) {
+  if (!isString(providerId) || !providerId) {
     return NextResponse.json({ error: "providerId is required" }, { status: 400 });
   }
-  if (!Array.isArray(orderedIds) || orderedIds.some((id) => typeof id !== "string")) {
+  if (!Array.isArray(orderedIds) || orderedIds.some((id) => !isString(id))) {
     return NextResponse.json({ error: "orderedIds must be an array of strings" }, { status: 400 });
   }
 
@@ -33,7 +34,7 @@ export async function PUT(request) {
   } catch {
     return NextResponse.json(
       { error: "orderedIds must match the provider's connection set exactly (no duplicates, none missing)" },
-      { status: 409 },
+      { status: 409 }
     );
   }
 

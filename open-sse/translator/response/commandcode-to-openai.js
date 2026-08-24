@@ -23,6 +23,7 @@ import { toOpenAIUsage } from "../concerns/usage.js";
 import { reasoningDelta } from "../concerns/reasoning.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function ensureState(state, model) {
   state.responseId ??= `chatcmpl-${Date.now()}`;
@@ -51,13 +52,13 @@ export function commandCodeToOpenAIResponse(chunk, state) {
   if (!chunk) return null;
 
   // Already-OpenAI chunk: pass through
-  if (chunk && typeof chunk === "object" && chunk.object === "chat.completion.chunk") {
+  if (chunk && isObject(chunk) && chunk.object === "chat.completion.chunk") {
     return chunk;
   }
 
   // Parse string lines coming out of upstream
   let event = chunk;
-  if (typeof chunk === "string") {
+  if (isString(chunk)) {
     const line = chunk.trim();
     if (!line) return null;
     // Tolerate raw "data: {...}" framing if the upstream wrapper inserts it
@@ -70,106 +71,106 @@ export function commandCodeToOpenAIResponse(chunk, state) {
     }
   }
 
-  if (!event || typeof event !== "object" || !event.type) return null;
+  if (!event || !isObject(event) || !event.type) return null;
 
   ensureState(state, event.model);
   const out = [];
 
   switch (event.type) {
-    case "text-delta": {
-      const text = event.text || event.delta || "";
-      if (!text) break;
-      const delta = state.chunkIndex === 0 ? { role: ROLE.ASSISTANT, content: text } : { content: text };
-      state.chunkIndex++;
-      state.openText = true;
-      out.push(makeChunk(state, delta));
-      break;
-    }
-    case "reasoning-delta": {
-      const text = event.text || "";
-      if (!text) break;
-      // Map reasoning to OpenAI "reasoning_content" field (used by deepseek-reasoner-style clients).
-      const delta = reasoningDelta(text, state.chunkIndex === 0);
-      state.chunkIndex++;
-      out.push(makeChunk(state, delta));
-      break;
-    }
-    case "tool-input-start": {
-      const id = event.id || event.toolCallId || fallbackToolCallId(state.toolIndex);
-      let idx = state.toolIndexById.get(id);
-      if (idx == null) {
-        idx = state.toolIndex++;
-        state.toolIndexById.set(id, idx);
+    case "text-delta":{
+        const text = event.text || event.delta || "";
+        if (!text) break;
+        const delta = state.chunkIndex === 0 ? { role: ROLE.ASSISTANT, content: text } : { content: text };
+        state.chunkIndex++;
+        state.openText = true;
+        out.push(makeChunk(state, delta));
+        break;
       }
-      state.openTools.add(id);
-      const delta = {
-        ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : {}),
-        tool_calls: [{
-          index: idx,
-          id,
-          type: OPENAI_BLOCK.FUNCTION,
-          function: { name: event.toolName || "", arguments: "" },
-        }],
-      };
-      state.chunkIndex++;
-      out.push(makeChunk(state, delta));
-      break;
-    }
-    case "tool-input-delta": {
-      const id = event.id || event.toolCallId;
-      const idx = state.toolIndexById.get(id);
-      if (idx == null) break;
-      const delta = {
-        tool_calls: [{
-          index: idx,
-          function: { arguments: event.delta || event.inputTextDelta || "" },
-        }],
-      };
-      out.push(makeChunk(state, delta));
-      break;
-    }
-    case "tool-call": {
-      // Final consolidated tool call — only emit if we never saw tool-input-* deltas.
-      const id = event.toolCallId;
-      if (state.toolIndexById.has(id)) break;
-      const idx = state.toolIndex++;
-      state.toolIndexById.set(id, idx);
-      const argsStr = typeof event.input === "string" ? event.input : JSON.stringify(event.input ?? {});
-      const delta = {
-        ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : {}),
-        tool_calls: [{
-          index: idx,
-          id,
-          type: OPENAI_BLOCK.FUNCTION,
-          function: { name: event.toolName || "", arguments: argsStr },
-        }],
-      };
-      state.chunkIndex++;
-      out.push(makeChunk(state, delta));
-      break;
-    }
-    case "finish-step": {
-      state.finishReason = mapFinishReason(event.finishReason);
-      if (event.usage) state.usage = event.usage;
-      break;
-    }
-    case "finish": {
-      const finishReason = state.finishReason || mapFinishReason(event.finishReason || "stop");
-      const finalChunk = makeChunk(state, {}, finishReason);
-      const totalUsage = event.totalUsage || state.usage;
-      const usage = toOpenAIUsage(totalUsage, "commandcode");
-      if (usage) finalChunk.usage = usage;
-      out.push(finalChunk);
-      break;
-    }
-    case "error": {
-      state.finishReason = OPENAI_FINISH.STOP;
-      const errVal = event.error ?? event.message ?? "unknown";
-      const errStr = typeof errVal === "string" ? errVal : JSON.stringify(errVal);
-      out.push(makeChunk(state, { content: `\n\n[CommandCode error: ${errStr}]` }));
-      out.push(makeChunk(state, {}, OPENAI_FINISH.STOP));
-      break;
-    }
+    case "reasoning-delta":{
+        const text = event.text || "";
+        if (!text) break;
+        // Map reasoning to OpenAI "reasoning_content" field (used by deepseek-reasoner-style clients).
+        const delta = reasoningDelta(text, state.chunkIndex === 0);
+        state.chunkIndex++;
+        out.push(makeChunk(state, delta));
+        break;
+      }
+    case "tool-input-start":{
+        const id = event.id || event.toolCallId || fallbackToolCallId(state.toolIndex);
+        let idx = state.toolIndexById.get(id);
+        if (idx == null) {
+          idx = state.toolIndex++;
+          state.toolIndexById.set(id, idx);
+        }
+        state.openTools.add(id);
+        const delta = {
+          ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : null),
+          tool_calls: [{
+            index: idx,
+            id,
+            type: OPENAI_BLOCK.FUNCTION,
+            function: { name: event.toolName || "", arguments: "" }
+          }]
+        };
+        state.chunkIndex++;
+        out.push(makeChunk(state, delta));
+        break;
+      }
+    case "tool-input-delta":{
+        const id = event.id || event.toolCallId;
+        const idx = state.toolIndexById.get(id);
+        if (idx == null) break;
+        const delta = {
+          tool_calls: [{
+            index: idx,
+            function: { arguments: event.delta || event.inputTextDelta || "" }
+          }]
+        };
+        out.push(makeChunk(state, delta));
+        break;
+      }
+    case "tool-call":{
+        // Final consolidated tool call — only emit if we never saw tool-input-* deltas.
+        const id = event.toolCallId;
+        if (state.toolIndexById.has(id)) break;
+        const idx = state.toolIndex++;
+        state.toolIndexById.set(id, idx);
+        const argsStr = isString(event.input) ? event.input : JSON.stringify(event.input ?? {});
+        const delta = {
+          ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : null),
+          tool_calls: [{
+            index: idx,
+            id,
+            type: OPENAI_BLOCK.FUNCTION,
+            function: { name: event.toolName || "", arguments: argsStr }
+          }]
+        };
+        state.chunkIndex++;
+        out.push(makeChunk(state, delta));
+        break;
+      }
+    case "finish-step":{
+        state.finishReason = mapFinishReason(event.finishReason);
+        if (event.usage) state.usage = event.usage;
+        break;
+      }
+    case "finish":{
+        const finishReason = state.finishReason || mapFinishReason(event.finishReason || "stop");
+        const finalChunk = makeChunk(state, {}, finishReason);
+        const totalUsage = event.totalUsage || state.usage;
+        const usage = toOpenAIUsage(totalUsage, "commandcode");
+        if (usage) finalChunk.usage = usage;
+        out.push(finalChunk);
+        break;
+      }
+    case "error":{
+        state.finishReason = OPENAI_FINISH.STOP;
+        const errVal = event.error ?? event.message ?? "unknown";
+        const errStr = isString(errVal) ? errVal : JSON.stringify(errVal);
+        out.push(makeChunk(state, { content: `\n\n[CommandCode error: ${errStr}]` }));
+        out.push(makeChunk(state, {}, OPENAI_FINISH.STOP));
+        break;
+      }
     // Silently ignore: start, start-step, reasoning-start, reasoning-end, text-start, text-end,
     // provider-metadata, message-metadata, etc. They carry no client-visible content.
     default:

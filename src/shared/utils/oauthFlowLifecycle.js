@@ -1,10 +1,11 @@
+import { isString } from "./typeChecks.js";
 export const OAUTH_CALLBACK_FRESHNESS_MS = 30_000;
 
 /** Build the explicit browser-to-server routing contract for a new flow. */
 export function oauthProxySelection(proxyPoolId) {
-  return proxyPoolId
-    ? { proxyMode: "strict-pool", proxyPoolId }
-    : { proxyMode: "direct" };
+  return proxyPoolId ?
+  { proxyMode: "strict-pool", proxyPoolId } :
+  { proxyMode: "direct" };
 }
 
 /**
@@ -19,7 +20,7 @@ export function createOAuthFlowLifecycle({
   createAbortController = () => new AbortController(),
   setTimer = (callback, delay) => setTimeout(callback, delay),
   clearTimer = (timer) => clearTimeout(timer),
-  createOwnerId = () => globalThis.crypto?.randomUUID?.() || `oauth-${Date.now()}-${Math.random()}`,
+  createOwnerId = () => globalThis.crypto?.randomUUID?.() || `oauth-${Date.now()}-${Math.random()}`
 } = {}) {
   let generation = 0;
   let activeFlow = null;
@@ -37,9 +38,9 @@ export function createOAuthFlowLifecycle({
     try {
       if (flow.popup && !flow.popup.closed) flow.popup.close();
     } catch {
+
       // Cross-origin popup access can throw. Cancellation must remain fail-safe.
-    }
-    flow.popup = null;
+    }flow.popup = null;
   }
 
   function cancel(reason = "cancelled") {
@@ -63,7 +64,7 @@ export function createOAuthFlowLifecycle({
       resourcesReleased: false,
       controller: createAbortController(),
       timers: new Map(),
-      popup: null,
+      popup: null
     };
     activeFlow = flow;
     return { flow, previous };
@@ -74,14 +75,14 @@ export function createOAuthFlowLifecycle({
   }
 
   function isActive(flow) {
-    return flow != null
-      && activeFlow === flow
-      && !flow.settled
-      && !flow.controller.signal.aborted;
+    return flow != null &&
+    activeFlow === flow &&
+    !flow.settled &&
+    !flow.controller.signal.aborted;
   }
 
   function bindState(flow, state) {
-    if (!isActive(flow) || typeof state !== "string" || state.length === 0) return false;
+    if (!isActive(flow) || !isString(state) || state.length === 0) return false;
     flow.expectedState = state;
     return true;
   }
@@ -91,6 +92,7 @@ export function createOAuthFlowLifecycle({
       try {
         if (popup && !popup.closed) popup.close();
       } catch {
+
         // Best-effort cleanup for a popup created by stale work.
       }
       return false;
@@ -100,7 +102,7 @@ export function createOAuthFlowLifecycle({
   }
 
   function bindFlowId(flow, flowId) {
-    if (!isActive(flow) || typeof flowId !== "string" || flowId.length === 0) return false;
+    if (!isActive(flow) || !isString(flowId) || flowId.length === 0) return false;
     flow.flowId = flowId;
     return true;
   }
@@ -117,19 +119,19 @@ export function createOAuthFlowLifecycle({
   }
 
   function hasExactState(flow, data) {
-    return isActive(flow)
-      && typeof flow.expectedState === "string"
-      && flow.expectedState.length > 0
-      && data?.state === flow.expectedState;
+    return isActive(flow) && isString(
+      flow.expectedState) &&
+    flow.expectedState.length > 0 &&
+    data?.state === flow.expectedState;
   }
 
   function isFresh(flow, data, maxAgeMs = OAUTH_CALLBACK_FRESHNESS_MS) {
     const timestamp = Number(data?.timestamp);
     const receivedAt = now();
-    return Number.isFinite(timestamp)
-      && timestamp >= flow.createdAt
-      && timestamp <= receivedAt
-      && receivedAt - timestamp <= maxAgeMs;
+    return Number.isFinite(timestamp) &&
+    timestamp >= flow.createdAt &&
+    timestamp <= receivedAt &&
+    receivedAt - timestamp <= maxAgeMs;
   }
 
   function acceptsCallback(flow, data, { requireFresh = false, maxAgeMs } = {}) {
@@ -138,10 +140,10 @@ export function createOAuthFlowLifecycle({
   }
 
   function acceptsPostMessage(flow, event, allowedOrigin) {
-    return event?.origin === allowedOrigin
-      && event?.source === flow?.popup
-      && event?.data?.type === "oauth_callback"
-      && acceptsCallback(flow, event.data.data);
+    return event?.origin === allowedOrigin &&
+    event?.source === flow?.popup &&
+    event?.data?.type === "oauth_callback" &&
+    acceptsCallback(flow, event.data.data);
   }
 
   function claimCallback(flow, data, options) {
@@ -171,6 +173,6 @@ export function createOAuthFlowLifecycle({
     current,
     isActive,
     settle,
-    wait,
+    wait
   };
 }

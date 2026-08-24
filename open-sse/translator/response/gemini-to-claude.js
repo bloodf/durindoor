@@ -3,13 +3,14 @@ import { FORMATS } from "../formats.js";
 import { GEMINI_ERROR_FINISH_REASONS } from "../schema/finishReasons.js";
 import { buildGeminiThoughtSignatureKey, storeGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function restoreToolName(name, toolNameMap) {
   return normalizeClaudeToolName(name, toolNameMap);
 }
 
 function readInlineSignature(part) {
-  return typeof part.thoughtSignature === "string" && part.thoughtSignature || typeof part.thought_signature === "string" && part.thought_signature || null;
+  return isString(part.thoughtSignature) && part.thoughtSignature || isString(part.thought_signature) && part.thought_signature || null;
 }
 
 export function geminiToClaudeResponse(chunk, state) {
@@ -35,7 +36,7 @@ export function geminiToClaudeResponse(chunk, state) {
       continue;
     }
     if (part.functionCall) {
-      if (state.openTextBlockIdx !== null) { results.push({ type: "content_block_stop", index: state.openTextBlockIdx }); state.openTextBlockIdx = null; }
+      if (state.openTextBlockIdx !== null) {results.push({ type: "content_block_stop", index: state.openTextBlockIdx });state.openTextBlockIdx = null;}
       const index = state.contentBlockIndex++;
       const call = part.functionCall;
       const id = call.id || `toolu_${Date.now()}_${index}`;
@@ -46,17 +47,17 @@ export function geminiToClaudeResponse(chunk, state) {
       continue;
     }
     if (part.text) {
-      if (state.openTextBlockIdx === null) { state.openTextBlockIdx = state.contentBlockIndex++; results.push({ type: "content_block_start", index: state.openTextBlockIdx, content_block: { type: "text", text: "" } }); }
+      if (state.openTextBlockIdx === null) {state.openTextBlockIdx = state.contentBlockIndex++;results.push({ type: "content_block_start", index: state.openTextBlockIdx, content_block: { type: "text", text: "" } });}
       results.push({ type: "content_block_delta", index: state.openTextBlockIdx, delta: { type: "text_delta", text: part.text } });
     }
   }
   const usage = response.usageMetadata || chunk.usageMetadata;
-  if (usage && typeof usage === "object") {
-    state.usage = { input_tokens: typeof usage.promptTokenCount === "number" ? usage.promptTokenCount : 0, output_tokens: (typeof usage.candidatesTokenCount === "number" ? usage.candidatesTokenCount : 0) + (typeof usage.thoughtsTokenCount === "number" ? usage.thoughtsTokenCount : 0) };
-    if (typeof usage.cachedContentTokenCount === "number" && usage.cachedContentTokenCount > 0) state.usage.cache_read_input_tokens = usage.cachedContentTokenCount;
+  if (usage && isObject(usage)) {
+    state.usage = { input_tokens: isNumber(usage.promptTokenCount) ? usage.promptTokenCount : 0, output_tokens: (isNumber(usage.candidatesTokenCount) ? usage.candidatesTokenCount : 0) + (isNumber(usage.thoughtsTokenCount) ? usage.thoughtsTokenCount : 0) };
+    if (isNumber(usage.cachedContentTokenCount) && usage.cachedContentTokenCount > 0) state.usage.cache_read_input_tokens = usage.cachedContentTokenCount;
   }
   if (candidate.finishReason) {
-    if (state.openTextBlockIdx !== null) { results.push({ type: "content_block_stop", index: state.openTextBlockIdx }); state.openTextBlockIdx = null; }
+    if (state.openTextBlockIdx !== null) {results.push({ type: "content_block_stop", index: state.openTextBlockIdx });state.openTextBlockIdx = null;}
     const reason = candidate.finishReason.toUpperCase();
     const stopReason = state.hasToolUse || reason === "TOOL_CALLS" || GEMINI_ERROR_FINISH_REASONS.has(reason) ? "tool_use" : reason === "MAX_TOKENS" || reason === "LENGTH" ? "max_tokens" : "end_turn";
     results.push({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: null }, usage: state.usage || { input_tokens: 0, output_tokens: 0 } }, { type: "message_stop" });

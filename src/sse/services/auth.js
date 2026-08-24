@@ -2,8 +2,8 @@ import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js
 import {
   getProviderConnections, getProviderConnectionById, getApiKeyByKey, validateApiKey,
   updateProviderConnection, getSettings, getProxyPools,
-  getQuotaReservationPressure,
-} from "@/lib/localDb";
+  getQuotaReservationPressure } from
+"@/lib/localDb";
 import { MEMORY_CONFIG } from "open-sse/config/runtimeConfig.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
@@ -17,13 +17,13 @@ import { getConsistentMachineId } from "@/shared/utils/machineId";
 import {
   buildQuotaResourceKeys,
   evaluateProviderQuotaPreflight,
-  inspectProviderQuota,
-} from "@/shared/services/providerQuotaPreflight";
+  inspectProviderQuota } from
+"@/shared/services/providerQuotaPreflight";
 import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
 import {
   clearProviderRateLimitEvidence,
-  recordProviderRateLimitEvidence,
-} from "@/shared/services/providerRateLimitEvidence";
+  recordProviderRateLimitEvidence } from
+"@/shared/services/providerRateLimitEvidence";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
 import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
@@ -31,16 +31,17 @@ import { rankQuotaConnections } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
+import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
 const CODEX_PERMANENT_OAUTH_ERRORS = [
-  "invalidated oauth token",
-  "authentication token has been invalidated",
-  "refresh_token_invalidated",
-  "refresh_token_reused",
-  "refresh token already used",
-];
+"invalidated oauth token",
+"authentication token has been invalidated",
+"refresh_token_invalidated",
+"refresh_token_reused",
+"refresh token already used"];
+
 
 function isCodexPermanentOAuthError(provider, status, errorText) {
   if (provider !== "codex" || Number(status) !== 401) return false;
@@ -61,7 +62,7 @@ function githubMonthlyResetMs(status, errorText, provider) {
  */
 function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
   if (resolveProviderId(provider) !== "qoder" || Number(status) !== 403) return false;
-  if (errorBody && typeof errorBody === "object") {
+  if (errorBody && isObject(errorBody)) {
     return isQoderQuotaExhaustedBody(errorBody?.error?.message);
   }
   const candidate = String(errorText || "").trim().replace(/^\[\d+\]:\s*/, "");
@@ -69,9 +70,9 @@ function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
 }
 const FREE_TIER_STATIC_COOLDOWN_CAP_MS = 60 * 1000;
 const SHORT_COOLDOWN_PROVIDERS = new Set([
-  ...Object.keys(FREE_PROVIDERS),
-  ...Object.keys(FREE_TIER_PROVIDERS),
-]);
+...Object.keys(FREE_PROVIDERS),
+...Object.keys(FREE_TIER_PROVIDERS)]
+);
 /**
  * Resolves decolua/9router#2895 static fallback policy after provider-reset
  * normalization. Configured delays win; free and free-tier providers cap only
@@ -92,6 +93,7 @@ async function resolveStaticRetryCooldown(provider, defaultCooldownMs) {
       configured = true;
     }
   } catch {
+
     // Settings failure keeps the validated BACKOFF_CONFIG schedule.
   }
   if (!configured && SHORT_COOLDOWN_PROVIDERS.has(providerKey)) {
@@ -117,7 +119,7 @@ const sessionAffinityState = new Map();
 const MAX_SESSION_AFFINITIES = 5000;
 
 function normalizeSessionAffinityId(value) {
-  if (typeof value !== "string") return null;
+  if (!isString(value)) return null;
   const v = value.trim();
   if (!v || v.length > 256) return null;
   return v;
@@ -134,7 +136,7 @@ function rememberSessionAffinity(providerId, sessionId, connectionId) {
   }
   sessionAffinityState.set(sessionAffinityKey(providerId, sessionId), {
     connectionId,
-    lastUsed: Date.now(),
+    lastUsed: Date.now()
   });
 }
 
@@ -166,20 +168,20 @@ const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
 // lookups still surface the ephemeral credential, while stored-but-unavailable
 // Mimocode connections are suppressed by the stored-row branch below.
 const PUBLIC_NO_AUTH_FALLBACK_PROVIDERS = new Set([
-  "auggie",
-  "chipotle",
-  "duckduckgo-web",
-  "mimocode",
-  "opencode",
-  "pollinations",
-  "theoldllm",
-]);
+"auggie",
+"chipotle",
+"duckduckgo-web",
+"mimocode",
+"opencode",
+"pollinations",
+"theoldllm"]
+);
 
 /** Whether auth may replace an unavailable saved key with the public credential. */
 export function providerAllowsPublicNoAuthFallback(provider) {
   const providerId = resolveProviderId(provider);
-  return PUBLIC_NO_AUTH_FALLBACK_PROVIDERS.has(providerId)
-    && AI_PROVIDERS[providerId]?.noAuth === true;
+  return PUBLIC_NO_AUTH_FALLBACK_PROVIDERS.has(providerId) &&
+  AI_PROVIDERS[providerId]?.noAuth === true;
 }
 /**
  * Builds a no-auth credential object: the public fallback when `connection`
@@ -201,11 +203,11 @@ function buildNoAuthCredential(providerSpecificData = {}, resolvedProxy = {}, co
       connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
       vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
       strictProxy: resolvedProxy.strictProxy === true,
-      disableEnvProxy: resolvedProxy.disableEnvProxy === true,
+      disableEnvProxy: resolvedProxy.disableEnvProxy === true
     },
     connectionId: connection?.id || "noauth",
     authType: "none",
-    _connection: connection || null,
+    _connection: connection || null
   };
 }
 
@@ -217,7 +219,7 @@ function buildOptionalNoAuthCredential() {
     authType: "none",
     providerSpecificData: {},
     connectionId: "noauth",
-    _connection: null,
+    _connection: null
   };
 }
 
@@ -244,7 +246,7 @@ function waitForSelectionTurn(promise, signal) {
     signal.addEventListener("abort", onAbort, { once: true });
     promise.then(
       (value) => finish(resolve, value),
-      (error) => finish(reject, error),
+      (error) => finish(reject, error)
     );
   });
 }
@@ -274,13 +276,13 @@ export async function projectProviderCredentials(connection, quotaPreflight = nu
       connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
       vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
       strictProxy: resolvedProxy.strictProxy === true,
-      disableEnvProxy: resolvedProxy.disableEnvProxy === true,
+      disableEnvProxy: resolvedProxy.disableEnvProxy === true
     },
     connectionId: connection.id,
     testStatus: connection.testStatus,
     lastError: connection.lastError,
     _connection: connection,
-    _quotaPreflight: quotaPreflight,
+    _quotaPreflight: quotaPreflight
   };
 }
 
@@ -299,10 +301,10 @@ export function isProviderConnectionModelLocked(connection, provider, model, now
 }
 
 function requestedModelLockUntil(connection, rawModel, boundedModel, now) {
-  const deadlines = requestedLockScopes(rawModel, boundedModel)
-    .map((scope) => getActiveModelLockUntil(connection, scope, now))
-    .filter(Boolean)
-    .sort((left, right) => Date.parse(right) - Date.parse(left));
+  const deadlines = requestedLockScopes(rawModel, boundedModel).
+  map((scope) => getActiveModelLockUntil(connection, scope, now)).
+  filter(Boolean).
+  sort((left, right) => Date.parse(right) - Date.parse(left));
   return deadlines[0] || null;
 }
 
@@ -311,12 +313,12 @@ function blockedRetryAt(connection, decision, rawModel, boundedModel, now) {
   let unknown = false;
   if (requestedModelLockActive(connection, rawModel, boundedModel, now)) {
     const deadline = requestedModelLockUntil(connection, rawModel, boundedModel, now);
-    if (deadline) deadlines.push(deadline);
-    else unknown = true;
+    if (deadline) deadlines.push(deadline);else
+    unknown = true;
   }
   if (decision?.skip) {
-    if (decision.retryAt) deadlines.push(decision.retryAt);
-    else unknown = true;
+    if (decision.retryAt) deadlines.push(decision.retryAt);else
+    unknown = true;
   }
   if (unknown || deadlines.length === 0) return null;
   return deadlines.sort((a, b) => Date.parse(b) - Date.parse(a))[0];
@@ -324,35 +326,35 @@ function blockedRetryAt(connection, decision, rawModel, boundedModel, now) {
 
 function summarizeBlockedConnections(connections, decisions, rawModel, boundedModel, now) {
   const blocked = connections.filter((connection) =>
-    requestedModelLockActive(connection, rawModel, boundedModel, now) || decisions.get(connection.id)?.skip,
+  requestedModelLockActive(connection, rawModel, boundedModel, now) || decisions.get(connection.id)?.skip
   );
   const legacyLocked = blocked.filter(
-    (connection) => requestedModelLockActive(connection, rawModel, boundedModel, now),
+    (connection) => requestedModelLockActive(connection, rawModel, boundedModel, now)
   );
   // Authentication failures must not be hidden by an earlier priority account's
   // rate-limit lock. Legacy 429 deadlines are combined with quota decisions
   // below so a no-reset exhaustion cannot expose the local breaker as provider
   // Retry-After evidence.
-  const legacy = legacyLocked.find((connection) => [401, 403].includes(Number(connection.errorCode)))
-    || legacyLocked.find((connection) => Number(connection.errorCode) !== 429);
+  const legacy = legacyLocked.find((connection) => [401, 403].includes(Number(connection.errorCode))) ||
+  legacyLocked.find((connection) => Number(connection.errorCode) !== 429);
   if (legacy) {
     const code = Number(legacy.errorCode);
     const status = code >= 400 && code <= 599 ? code : 503;
-    const message = status === 429
-      ? "Rate limited"
-      : status === 401
-      ? "Authentication failed"
-      : status === 403
-        ? "Access forbidden"
-        : "Provider unavailable";
-    const retryAfter = status === 429
-      ? requestedModelLockUntil(legacy, rawModel, boundedModel, now)
-      : null;
+    const message = status === 429 ?
+    "Rate limited" :
+    status === 401 ?
+    "Authentication failed" :
+    status === 403 ?
+    "Access forbidden" :
+    "Provider unavailable";
+    const retryAfter = status === 429 ?
+    requestedModelLockUntil(legacy, rawModel, boundedModel, now) :
+    null;
     return {
       status,
       message,
       retryAfter,
-      retryAfterHuman: retryAfter ? formatRetryAfter(retryAfter, now) : "",
+      retryAfterHuman: retryAfter ? formatRetryAfter(retryAfter, now) : ""
     };
   }
   const retries = blocked.map((connection) => blockedRetryAt(
@@ -360,24 +362,24 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
     decisions.get(connection.id),
     rawModel,
     boundedModel,
-    now,
+    now
   ));
   const earliest = retries.length > 0 && retries.every(Boolean) ? retries.sort()[0] : null;
   return {
     status: 429,
     message: "Rate limited",
     retryAfter: earliest,
-    retryAfterHuman: earliest ? formatRetryAfter(earliest, now) : "",
+    retryAfterHuman: earliest ? formatRetryAfter(earliest, now) : ""
   };
 }
 
 /** Build existing allRateLimited contract when every otherwise-eligible account hits #3203 RPM cap. */
 function summarizeRpmLimitedConnections(connections, rpmLimit, now) {
   if (connections.length === 0 || !connections.every(
-    (connection) => isOverLimit(connection.id, rpmLimit, now),
+    (connection) => isOverLimit(connection.id, rpmLimit, now)
   )) return null;
   const retryAtMs = Math.min(...connections.map(
-    (connection) => retryAfterMs(connection.id, rpmLimit, now),
+    (connection) => retryAfterMs(connection.id, rpmLimit, now)
   ));
   const retryAfter = new Date(retryAtMs).toISOString();
   return {
@@ -385,7 +387,7 @@ function summarizeRpmLimitedConnections(connections, rpmLimit, now) {
     retryAfter,
     retryAfterHuman: formatRetryAfter(retryAfter, now),
     lastError: "Rate limited",
-    lastErrorCode: 429,
+    lastErrorCode: 429
   };
 }
 
@@ -429,16 +431,16 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   /** decolua/9router#3203: blank settings default NVIDIA to 40 RPM; other providers stay unlimited. */
   const rpmLimit = resolveProviderRpm(settings, providerId);
   // Normalize to Set for consistent handling
-  const excludeSet = excludeConnectionIds instanceof Set
-    ? excludeConnectionIds
-    : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
+  const excludeSet = excludeConnectionIds instanceof Set ?
+  excludeConnectionIds :
+  excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set();
   const preferredConnectionId = options?.preferredConnectionId || null;
   // Acquire the provider-scoped selection turn. SQLite reservations, not this
   // mutex, remain the global capacity authority at dispatch time.
   const currentMutex = selectionMutexes.get(providerId) || Promise.resolve();
   let resolveMutex;
   let releaseAfterPredecessor = false;
-  const ownMutex = new Promise(resolve => { resolveMutex = resolve; });
+  const ownMutex = new Promise((resolve) => {resolveMutex = resolve;});
   selectionMutexes.set(providerId, ownMutex);
   ownMutex.then(() => {
     if (selectionMutexes.get(providerId) === ownMutex) selectionMutexes.delete(providerId);
@@ -465,14 +467,14 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const resourceKeys = options?.resourceKeys || buildQuotaResourceKeys({
       provider: providerId,
       modelCandidates: options?.modelCandidates || (model ? [model] : []),
-      quotaFamily: options?.quotaFamily || null,
+      quotaFamily: options?.quotaFamily || null
     });
     const quotaDecisions = await inspectProviderQuota(connections, {
       provider: providerId,
       resourceKeys,
       now: selectionNow,
       snapshotsLoader: options?.quotaSnapshotsLoader || null,
-      fetchStateLoader: options?.quotaFetchStateLoader || null,
+      fetchStateLoader: options?.quotaFetchStateLoader || null
     });
     throwIfAborted(signal);
 
@@ -484,21 +486,21 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // Once rows exist, they never fall back to the public no-auth credential.
       if (NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) && connections.length > 0) {
         const storedEligibleBeforeRpm = connections.filter(
-          (c) => !excludeSet.has(c.id)
-            && !requestedModelLockActive(c, model, boundedModel, selectionNow)
-            && !quotaDecisions.get(c.id)?.skip
+          (c) => !excludeSet.has(c.id) &&
+          !requestedModelLockActive(c, model, boundedModel, selectionNow) &&
+          !quotaDecisions.get(c.id)?.skip
         );
         const availableStoredConnections = storedEligibleBeforeRpm.filter(
-          (connection) => !isOverLimit(connection.id, rpmLimit, selectionNow),
+          (connection) => !isOverLimit(connection.id, rpmLimit, selectionNow)
         );
-        const connection = preferredConnectionId
-          ? availableStoredConnections.find((c) => c.id === preferredConnectionId)
-          : availableStoredConnections[0];
+        const connection = preferredConnectionId ?
+        availableStoredConnections.find((c) => c.id === preferredConnectionId) :
+        availableStoredConnections[0];
         if (connection) {
           const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
           const credentials = {
             ...buildNoAuthCredential(connection.providerSpecificData || {}, resolvedProxy, connection),
-            _quotaPreflight: quotaDecisions.get(connection.id) || null,
+            _quotaPreflight: quotaDecisions.get(connection.id) || null
           };
           recordRequest(connection.id, rpmLimit, selectionNow);
           return credentials;
@@ -518,7 +520,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
             retryAfter: summary.retryAfter,
             retryAfterHuman: summary.retryAfterHuman,
             lastError: summary.message,
-            lastErrorCode: summary.status,
+            lastErrorCode: summary.status
           };
         }
         // Stored connections exist but all are excluded or unavailable; do not fall back to the public credential.
@@ -542,18 +544,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return null;
     }
     // decolua/9router#3203: evaluate RPM without spending budget; record only final selection.
-    const eligibleBeforeRpm = connections.filter(c => {
+    const eligibleBeforeRpm = connections.filter((c) => {
       if (excludeSet.has(c.id)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;
       return true;
     });
     let availableConnections = eligibleBeforeRpm.filter(
-      (connection) => !isOverLimit(connection.id, rpmLimit, selectionNow),
+      (connection) => !isOverLimit(connection.id, rpmLimit, selectionNow)
     );
 
     log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
-    connections.forEach(c => {
+    connections.forEach((c) => {
       const excluded = excludeSet.has(c.id);
       const locked = requestedModelLockActive(c, model, boundedModel, selectionNow);
       const quotaBlocked = quotaDecisions.get(c.id)?.skip === true;
@@ -593,7 +595,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           retryAfter: summary.retryAfter,
           retryAfterHuman: summary.retryAfterHuman,
           lastError: summary.message,
-          lastErrorCode: summary.status,
+          lastErrorCode: summary.status
         };
       }
       log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
@@ -610,21 +612,21 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         const pressure = await getQuotaReservationPressure({
           provider: providerId,
           connectionIds: availableConnections.map((candidate) => candidate.id),
-          now: selectionNow,
+          now: selectionNow
         });
         const ranked = rankQuotaConnections(availableConnections, quotaDecisions, pressure, {
           now: selectionNow,
           provider: providerId,
-          config: selectionSettings.quotaSelection || {},
+          config: selectionSettings.quotaSelection || {}
         });
         for (const candidate of ranked) {
           log.debug("QUOTA", `${provider} account candidate`, quotaDecisionDiagnostic(candidate.quotaDecision));
         }
         const eligibleRanked = ranked.filter((candidate) => candidate.quotaDecision?.eligible !== false);
-        const floorBlocked = ranked.filter((candidate) => (
-          candidate.quotaDecision?.eligible === false
-          && candidate.quotaDecision?.reasons?.includes("below_routing_floor")
-        ));
+        const floorBlocked = ranked.filter((candidate) =>
+        candidate.quotaDecision?.eligible === false &&
+        candidate.quotaDecision?.reasons?.includes("below_routing_floor")
+        );
         if (eligibleRanked.length === 0 && floorBlocked.length > 0) {
           return {
             allRateLimited: true,
@@ -632,7 +634,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
             retryAfterHuman: "",
             lastError: "Provider quota routing floor reached",
             lastErrorCode: 503,
-            localQuotaFloor: true,
+            localQuotaFloor: true
           };
         }
         quotaRanked = eligibleRanked.some((candidate) => candidate.quotaDecision?.comparable);
@@ -649,12 +651,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     let connection;
     // For round-robin, honor existing session affinity before quota ranking so
     // a session that already picked an account stays on it when it remains eligible.
-    const stickyConnectionId = sessionId && strategy === "round-robin"
-      ? getSessionAffinity(providerId, sessionId)
-      : null;
-    const stickyConnection = stickyConnectionId
-      ? availableConnections.find((c) => c.id === stickyConnectionId)
-      : null;
+    const stickyConnectionId = sessionId && strategy === "round-robin" ?
+    getSessionAffinity(providerId, sessionId) :
+    null;
+    const stickyConnection = stickyConnectionId ?
+    availableConnections.find((c) => c.id === stickyConnectionId) :
+    null;
 
     // Pin to preferred connection if specified and available
     if (preferredConnectionId) {
@@ -664,13 +666,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     }
     if (connection) {
+
       // skip strategy
-    } else if (stickyConnection) {
-      connection = stickyConnection;
+    } else if (stickyConnection) {connection = stickyConnection;
       log.debug("AUTH", `${provider} | session-sticky ${sessionId.slice(0, 8)} → ${connection.id?.slice(0, 8)}`);
-      connection = await updateProviderConnection(connection.id, {
-        lastUsedAt: new Date().toISOString(),
-      }) || connection;
+      connection = (await updateProviderConnection(connection.id, {
+        lastUsedAt: new Date().toISOString()
+      })) || connection;
     } else if (quotaRanked) {
       // Persistent pressure + last-selection history provide the fairness tier
       // for quota-comparable accounts. Atomic acquire remains the final arbiter.
@@ -690,10 +692,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
       if (sessionId) {
         connection = pickOldest();
-        connection = await updateProviderConnection(connection.id, {
+        connection = (await updateProviderConnection(connection.id, {
           lastUsedAt: new Date().toISOString(),
           consecutiveUseCount: 1
-        }) || connection;
+        })) || connection;
       } else {
         // Sort by lastUsed (most recent first) to find current candidate
         const byRecency = [...availableConnections].sort((a, b) => {
@@ -710,18 +712,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           // Stay with current account
           connection = current;
           // Update lastUsedAt and increment count (await to ensure persistence)
-          connection = await updateProviderConnection(connection.id, {
+          connection = (await updateProviderConnection(connection.id, {
             lastUsedAt: new Date().toISOString(),
             consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1
-          }) || connection;
+          })) || connection;
         } else {
           connection = pickOldest();
 
           // Update lastUsedAt and reset count to 1 (await to ensure persistence)
-          connection = await updateProviderConnection(connection.id, {
+          connection = (await updateProviderConnection(connection.id, {
             lastUsedAt: new Date().toISOString(),
             consecutiveUseCount: 1
-          }) || connection;
+          })) || connection;
         }
       }
     } else {
@@ -785,7 +787,7 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
   const resourceKeys = options?.resourceKeys || buildQuotaResourceKeys({
     provider: providerId,
     modelCandidates: options?.modelCandidates || (model ? [model] : []),
-    quotaFamily: options?.quotaFamily || null,
+    quotaFamily: options?.quotaFamily || null
   });
   // Bound live refreshes to one per connection id per call: if a loader never
   // reflects tracker persistence, the same account cannot loop forever.
@@ -854,7 +856,7 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
       provider: providerId,
       resourceKeys,
       now: Date.now(),
-      refreshSupported: true,
+      refreshSupported: true
     });
     if (!decision?.skip) {
       // Upstream says the account is usable — return it with fresh tokens.
@@ -869,7 +871,7 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
     log.info("AUTH", `${provider} | quota preflight blocked ${String(connectionId).slice(0, 8)} (reason=${decision.reason || "unknown"}); reselecting`);
     credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
       ...options,
-      now: Date.now(),
+      now: Date.now()
     });
   }
 }
@@ -888,13 +890,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
   const signal = context?.signal || null;
   throwIfAborted(signal);
-  const observedAt = Number.isSafeInteger(context?.attemptStartedAt)
-    ? context.attemptStartedAt
-    : Date.now();
+  const observedAt = Number.isSafeInteger(context?.attemptStartedAt) ?
+  context.attemptStartedAt :
+  Date.now();
   const connections = await getProviderConnections({ provider });
 
   throwIfAborted(signal);
-  const conn = connections.find(c => c.id === connectionId);
+  const conn = connections.find((c) => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;
 
   if ((provider === "antigravity" || provider === "agy") && isAntigravityCapacityError(status, errorText)) {
@@ -909,9 +911,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
 
   if (isCodexPermanentOAuthError(provider, status, errorText)) {
     const clearLocks = Object.fromEntries(
-      Object.keys(conn || {})
-        .filter((field) => field.startsWith("modelLock_"))
-        .map((field) => [field, null]),
+      Object.keys(conn || {}).
+      filter((field) => field.startsWith("modelLock_")).
+      map((field) => [field, null])
     );
     log.warn("AUTH", `${connectionId.slice(0, 8)} hit permanent Codex OAuth invalidation; quarantining for reauth [${status}]`);
     await updateProviderConnection(connectionId, {
@@ -921,7 +923,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       errorCode: status,
       lastError: "Codex OAuth token invalidated; reauthorization required",
       lastErrorAt: new Date(observedAt).toISOString(),
-      backoffLevel: 0,
+      backoffLevel: 0
     });
     return { shouldFallback: true, cooldownMs: 0 };
   }
@@ -929,9 +931,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // dedicated discriminator so renderers never mistake stale generic errors
   // for this automatic account-wide disable (#3331).
   if (isQoderQuotaExhausted(status, errorText, provider, context?.errorBody)) {
-    const reason = typeof errorText === "string"
-      ? errorText.slice(0, 200)
-      : "Qoder quota exhausted (code 112)";
+    const reason = isString(errorText) ?
+    errorText.slice(0, 200) :
+    "Qoder quota exhausted (code 112)";
     const disabledAt = new Date(observedAt).toISOString();
     await updateProviderConnection(connectionId, {
       isActive: false,
@@ -941,7 +943,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       lastErrorAt: disabledAt,
       autoDisabledReason: reason,
       autoDisabledAt: disabledAt,
-      backoffLevel: 0,
+      backoffLevel: 0
     });
     log.warn("AUTH", `${connectionId.slice(0, 8)} disabled: Qoder quota exhausted [403/code 112]`);
     return { shouldFallback: true, cooldownMs: 0 };
@@ -958,16 +960,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // effectiveEvidence = caller-supplied evidence, else whatever checkFallbackError
   // parsed from the body; its state/reset then drive the deadline uniformly.
   const callerEvidence =
-    context?.rateLimitEvidence && typeof context.rateLimitEvidence === "object"
-      ? context.rateLimitEvidence
-      : null;
+  context?.rateLimitEvidence && isObject(context.rateLimitEvidence) ?
+  context.rateLimitEvidence :
+  null;
   const fallbackResult = checkFallbackError(
     status,
     errorText,
     backoffLevel,
     provider,
     context?.headers ?? null,
-    context?.errorBody ?? null,
+    context?.errorBody ?? null
   );
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
   const evidenceState = effectiveEvidence?.state === "exhausted" ? "exhausted" : "cooldown";
@@ -977,19 +979,19 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // resetsAtMs applies, so an explicit quota-exhausted 429 keeps its real reset
   // window instead of collapsing to the short transient bench.
   const parsedEvidenceReset = Number(fallbackResult.rateLimitEvidence?.resetAtMs);
-  const rawProviderReset = callerEvidence
-    ? callerEvidence.resetAtMs
-    : Number.isFinite(parsedEvidenceReset) && parsedEvidenceReset > now
-      ? parsedEvidenceReset
-      : resetsAtMs;
+  const rawProviderReset = callerEvidence ?
+  callerEvidence.resetAtMs :
+  Number.isFinite(parsedEvidenceReset) && parsedEvidenceReset > now ?
+  parsedEvidenceReset :
+  resetsAtMs;
   const providerReset = Number(rawProviderReset);
   // Provider-specific precise cooldown (codex resets_at, kiro confirmed credit
   // exhaustion) is capped at a provider-appropriate max so a far-future reset
   // doesn't lock the account past its next low-frequency recheck (#2664).
   const cooldownCapMs = RESET_COOLDOWN_CAP_MS[provider] ?? MAX_RATE_LIMIT_COOLDOWN_MS;
-  const normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now
-    ? Math.min(providerReset, now + cooldownCapMs)
-    : null);
+  const normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now ?
+  Math.min(providerReset, now + cooldownCapMs) :
+  null);
   if (normalizedReset !== null) {
     shouldFallback = true;
     cooldownMs = Math.ceil(normalizedReset - now);
@@ -1005,50 +1007,50 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
   cooldownMs = Math.max(0, Math.ceil(cooldownMs));
-  const deadline = normalizedReset !== null
-    ? normalizedReset
-    : now + cooldownMs;
+  const deadline = normalizedReset !== null ?
+  normalizedReset :
+  now + cooldownMs;
   const legacyCooldownMs = Math.max(
     0,
-    githubResetAtMs ? Math.ceil(deadline - observedAt) : Math.min(Math.ceil(deadline - observedAt), cooldownCapMs),
+    githubResetAtMs ? Math.ceil(deadline - observedAt) : Math.min(Math.ceil(deadline - observedAt), cooldownCapMs)
   );
-  const reasonCode = Number(status) === 429
-    ? "rate_limited"
-    : (Number(status) === 401 || Number(status) === 403)
-      ? "authentication_error"
-      : Number(status) === 502
-        ? "network_error"
-        : "provider_error";
+  const reasonCode = Number(status) === 429 ?
+  "rate_limited" :
+  Number(status) === 401 || Number(status) === 403 ?
+  "authentication_error" :
+  Number(status) === 502 ?
+  "network_error" :
+  "provider_error";
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const quotaFamily = getModelQuotaFamily(alias, model);
   const hasFamilyScope = Boolean(quotaFamily && getProviderQuotaConfig(provider)?.preflightScopes?.quotaFamilies?.[quotaFamily]);
-  const accountWideRuntime = Number(status) === 429
-    && evidenceState === "exhausted"
-    && !hasFamilyScope
-    && getProviderQuotaConfig(provider)?.runtimeScopes?.exhausted === "account";
+  const accountWideRuntime = Number(status) === 429 &&
+  evidenceState === "exhausted" &&
+  !hasFamilyScope &&
+  getProviderQuotaConfig(provider)?.runtimeScopes?.exhausted === "account";
   // #6888: only providers flagged `passthroughConnectionWideErrors` treat
   // connection-class failures (5xx, network) as account-wide. NVIDIA NIM is
   // currently the only opt-in provider; generic passthrough routers such as
   // OpenRouter keep 5xx responses model-scoped.
   const passthroughConnectionError = isPassthroughConnectionWideError(
     AI_PROVIDERS[resolveProviderId(provider)]?.passthroughConnectionWideErrors,
-    status,
+    status
   );
   const providerRuleConnectionWide = fallbackResult.scope === "connection";
   const fallbackModel = resolveFallbackModelScope(provider, model, {
-    accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide,
+    accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide
   });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");
-    if (typeof db.recordProviderConnectionFallbackState === "function") {
+    if (isFunction(db.recordProviderConnectionFallbackState)) {
       await db.recordProviderConnectionFallbackState(connectionId, {
         model: fallbackModel,
         status,
         reasonCode,
         cooldownMs: legacyCooldownMs,
         backoffLevel: newBackoffLevel ?? backoffLevel,
-        observedAt,
+        observedAt
       }, { signal });
       atomicApplied = true;
     }
@@ -1064,7 +1066,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       lastError: reasonCode === "rate_limited" ? "Rate limited" : "Provider unavailable",
       errorCode: status,
       lastErrorAt: new Date(observedAt).toISOString(),
-      backoffLevel: newBackoffLevel ?? backoffLevel,
+      backoffLevel: newBackoffLevel ?? backoffLevel
     });
   }
 
@@ -1079,8 +1081,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         // A no-reset plan exhaustion is persisted without inventing the short
         // compatibility breaker as a provider reset. Generic cooldown evidence
         // may use that bounded local deadline.
-        resetAtMs: evidenceState === "exhausted" ? normalizedReset : (normalizedReset || deadline),
-        signal,
+        resetAtMs: evidenceState === "exhausted" ? normalizedReset : normalizedReset || deadline,
+        signal
       });
     } catch (error) {
       if (error?.name === "AbortError") throw error;
@@ -1096,7 +1098,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     cooldownMs,
     retryAt: retryAtKnown ? new Date(deadline).toISOString() : null,
     retryAtKnown,
-    status: Number(status) || 503,
+    status: Number(status) || 503
   };
 }
 
@@ -1114,15 +1116,15 @@ export async function clearAccountError(connectionId, currentConnection, model =
   const conn = currentConnection._connection || currentConnection;
   const signal = context?.signal || null;
   throwIfAborted(signal);
-  const now = Number.isSafeInteger(context?.attemptStartedAt)
-    ? context.attemptStartedAt
-    : Date.now();
+  const now = Number.isSafeInteger(context?.attemptStartedAt) ?
+  context.attemptStartedAt :
+  Date.now();
   const provider = context?.provider || conn?.provider;
   const fallbackModel = resolveFallbackModelScope(provider, model);
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");
-    if (typeof db.clearProviderConnectionFallbackState === "function") {
+    if (isFunction(db.clearProviderConnectionFallbackState)) {
       await db.clearProviderConnectionFallbackState(connectionId, { model: fallbackModel, observedAt: now }, { signal });
       atomicApplied = true;
     }
@@ -1131,21 +1133,21 @@ export async function clearAccountError(connectionId, currentConnection, model =
     log.warn("AUTH", "Atomic fallback-state clear failed; using compatibility update");
   }
 
-  const allLockKeys = Object.keys(conn).filter(k => k.startsWith("modelLock_"));
+  const allLockKeys = Object.keys(conn).filter((k) => k.startsWith("modelLock_"));
   if (!atomicApplied && (conn.testStatus || conn.lastError || allLockKeys.length > 0)) {
-    const keysToClear = allLockKeys.filter(k => {
+    const keysToClear = allLockKeys.filter((k) => {
       if (fallbackModel && k === `modelLock_${fallbackModel}`) return true;
       if (model && k === `modelLock_${model}`) return true;
       if (model && k === "modelLock___all") return true;
       const expiry = conn[k];
       return expiry && new Date(expiry).getTime() <= now;
     });
-    const remainingActiveLocks = allLockKeys.filter(k => {
+    const remainingActiveLocks = allLockKeys.filter((k) => {
       if (keysToClear.includes(k)) return false;
       const expiry = conn[k];
       return expiry && new Date(expiry).getTime() > now;
     });
-    const clearObj = Object.fromEntries(keysToClear.map(k => [k, null]));
+    const clearObj = Object.fromEntries(keysToClear.map((k) => [k, null]));
     // Never let ordinary request success clear a durable reauth_required state;
     // only a successful OAuth reconnect (which writes testStatus:"active"
     // directly) may revive the account. See connectionsRepo fallback-clear guard.
@@ -1162,7 +1164,7 @@ export async function clearAccountError(connectionId, currentConnection, model =
       provider,
       model,
       attemptStartedAt: now,
-      signal,
+      signal
     });
   } catch (error) {
     if (error?.name === "AbortError") throw error;

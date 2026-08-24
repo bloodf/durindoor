@@ -1,4 +1,5 @@
 // OpenAI-compatible error types mapping (client-facing)
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export const ERROR_TYPES = {
   400: { type: "invalid_request_error", code: "bad_request" },
   401: { type: "authentication_error", code: "invalid_api_key" },
@@ -52,7 +53,7 @@ const DEFAULT_BACKOFF_CONFIG = Object.freeze({
 });
 
 function parsePositiveInteger(value) {
-  if (typeof value !== "string" || !/^\d+$/.test(value.trim())) return null;
+  if (!isString(value) || !/^\d+$/.test(value.trim())) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
@@ -88,13 +89,13 @@ export const KIRO_CREDIT_EXHAUSTION_PROBE_MS = 24 * 60 * 60 * 1000;
 // Per-provider override for the max resetsAtMs-derived cooldown (see markAccountUnavailable).
 // Any provider not listed here falls back to MAX_RATE_LIMIT_COOLDOWN_MS.
 export const RESET_COOLDOWN_CAP_MS = {
-  kiro: KIRO_CREDIT_EXHAUSTION_PROBE_MS,
+  kiro: KIRO_CREDIT_EXHAUSTION_PROBE_MS
 };
 
 // Cooldown durations (ms)
 const COOLDOWN = {
   long: 2 * 60 * 1000,
-  short: 5 * 1000,
+  short: 5 * 1000
 };
 
 /**
@@ -112,25 +113,25 @@ const COOLDOWN = {
  * Upstream provenance: decolua/9router#3386.
  */
 export const ERROR_RULES = [
-  // --- Text-based rules (checked first, order = priority) ---
-  { text: "no credentials",           cooldownMs: COOLDOWN.long },
-  { text: "request not allowed",      cooldownMs: COOLDOWN.short },
-  { text: "rate limit",               backoff: true },
-  { text: "too many requests",        backoff: true },
-  { text: "quota exceeded",           backoff: true },
-  { text: "quota reached",            backoff: true },
-  { text: "individual quota",         backoff: true },
-  { text: "capacity",                 backoff: true },
-  { text: "overloaded",               backoff: true },
+// --- Text-based rules (checked first, order = priority) ---
+{ text: "no credentials", cooldownMs: COOLDOWN.long },
+{ text: "request not allowed", cooldownMs: COOLDOWN.short },
+{ text: "rate limit", backoff: true },
+{ text: "too many requests", backoff: true },
+{ text: "quota exceeded", backoff: true },
+{ text: "quota reached", backoff: true },
+{ text: "individual quota", backoff: true },
+{ text: "capacity", backoff: true },
+{ text: "overloaded", backoff: true },
 
-  // --- Status-based rules (fallback when text doesn't match) ---
-  { status: 401, cooldownMs: COOLDOWN.long },
-  { status: 402, cooldownMs: COOLDOWN.long },
-  { status: 403, cooldownMs: COOLDOWN.long },
-  { status: 404, cooldownMs: COOLDOWN.long },
-  { status: 413, fallback: false },
-  { status: 429, backoff: true },
-];
+// --- Status-based rules (fallback when text doesn't match) ---
+{ status: 401, cooldownMs: COOLDOWN.long },
+{ status: 402, cooldownMs: COOLDOWN.long },
+{ status: 403, cooldownMs: COOLDOWN.long },
+{ status: 404, cooldownMs: COOLDOWN.long },
+{ status: 413, fallback: false },
+{ status: 429, backoff: true }];
+
 
 // Backward compat: COOLDOWN_MS object (used by index.js re-export)
 export const COOLDOWN_MS = {
@@ -138,5 +139,5 @@ export const COOLDOWN_MS = {
   paymentRequired: COOLDOWN.long,
   notFound: COOLDOWN.long,
   transient: TRANSIENT_COOLDOWN_MS,
-  requestNotAllowed: COOLDOWN.short,
+  requestNotAllowed: COOLDOWN.short
 };

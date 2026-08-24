@@ -1,4 +1,5 @@
 import { buildKiroProfileEndpoint } from "../../../open-sse/config/kiroRegions.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 const BASE64_BLOCK_SIZE = 4;
 const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
@@ -7,7 +8,7 @@ function validateXaiOAuthEndpoint(rawUrl, field) {
   const value = String(rawUrl || "").trim();
   if (!value) throw new Error(`xai discovery ${field} is empty`);
   let parsed;
-  try { parsed = new URL(value); } catch (err) {
+  try {parsed = new URL(value);} catch (err) {
     throw new Error(`xai discovery ${field} is invalid: ${err.message}`);
   }
   if (parsed.protocol !== "https:") throw new Error(`xai discovery ${field} must use https: ${value}`);
@@ -19,12 +20,12 @@ function validateXaiOAuthEndpoint(rawUrl, field) {
 }
 
 function decodeXaiIdTokenEmail(idToken) {
-  if (!idToken || typeof idToken !== "string") return undefined;
+  if (!idToken || !isString(idToken)) return undefined;
   const parts = idToken.split(".");
   if (parts.length !== 3) return undefined;
   try {
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padding = (BASE64_BLOCK_SIZE - (base64.length % BASE64_BLOCK_SIZE)) % BASE64_BLOCK_SIZE;
+    const padding = (BASE64_BLOCK_SIZE - base64.length % BASE64_BLOCK_SIZE) % BASE64_BLOCK_SIZE;
     const json = Buffer.from(base64 + "=".repeat(padding), "base64").toString("utf8");
     const payload = JSON.parse(json);
     return payload.email || payload.preferred_username || payload.sub || undefined;
@@ -35,11 +36,11 @@ function decodeXaiIdTokenEmail(idToken) {
 
 function decodeJwtPayload(jwt) {
   try {
-    if (!jwt || typeof jwt !== "string") return null;
+    if (!jwt || !isString(jwt)) return null;
     const parts = jwt.split(".");
     if (parts.length !== 3) return null;
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const missingPadding = (BASE64_BLOCK_SIZE - (base64.length % BASE64_BLOCK_SIZE)) % BASE64_BLOCK_SIZE;
+    const missingPadding = (BASE64_BLOCK_SIZE - base64.length % BASE64_BLOCK_SIZE) % BASE64_BLOCK_SIZE;
     const padded = base64 + "=".repeat(missingPadding);
     return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
   } catch {
@@ -55,7 +56,7 @@ function extractEmailFromAccessToken(accessToken) {
 
 export async function fetchKiroProfileArn(accessToken, region = "us-east-1", proxyOptions = null) {
   if (!accessToken) return null;
-  const safeRegion = typeof region === "string" && AWS_REGION_PATTERN.test(region) ? region : "us-east-1";
+  const safeRegion = isString(region) && AWS_REGION_PATTERN.test(region) ? region : "us-east-1";
   const endpoint = `${buildKiroProfileEndpoint(safeRegion)}`;
   try {
     const response = await fetch(endpoint, {
@@ -64,11 +65,11 @@ export async function fetchKiroProfileArn(accessToken, region = "us-east-1", pro
         "Content-Type": "application/x-amz-json-1.0",
         "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
         Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${accessToken}`
       },
       body: JSON.stringify({ maxResults: 10 }),
       // Route Kiro profile discovery through the OAuth-selected proxy pool.
-      proxyOptions,
+      proxyOptions
     });
     if (!response.ok) {
       if (proxyOptions?.strictProxy === true) {
@@ -98,7 +99,7 @@ export function extractCodexAccountInfo(idToken) {
   return {
     email: payload.email,
     chatgptAccountId: chatgpt.chatgpt_account_id || payload.account_id,
-    chatgptPlanType: chatgpt.chatgpt_plan_type || payload.plan_type,
+    chatgptPlanType: chatgpt.chatgpt_plan_type || payload.plan_type
   };
 }
 
@@ -107,5 +108,4 @@ export {
   validateXaiOAuthEndpoint,
   decodeXaiIdTokenEmail,
   decodeJwtPayload,
-  extractEmailFromAccessToken,
-};
+  extractEmailFromAccessToken };

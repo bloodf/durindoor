@@ -1,5 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const STREAM_TIMEOUT_MS = parseInt(process.env.TRAE_STREAM_TIMEOUT_MS || "300000", 10);
 
@@ -7,17 +8,17 @@ function flattenQuery(messages = []) {
   const parts = [];
   for (const message of messages) {
     let content = "";
-    if (typeof message.content === "string") content = message.content;
-    else if (Array.isArray(message.content)) {
-      content = message.content.map(part => {
-        if (typeof part === "string") return part;
-        if (part && typeof part === "object") return String(part.text ?? "");
+    if (isString(message.content)) content = message.content;else
+    if (Array.isArray(message.content)) {
+      content = message.content.map((part) => {
+        if (isString(part)) return part;
+        if (part && isObject(part)) return String(part.text ?? "");
         return "";
       }).join("");
     }
-    if (message.role === "system") parts.push(`[System]\n${content}`);
-    else if (message.role === "assistant") parts.push(`[Assistant]\n${content}`);
-    else parts.push(content);
+    if (message.role === "system") parts.push(`[System]\n${content}`);else
+    if (message.role === "assistant") parts.push(`[Assistant]\n${content}`);else
+    parts.push(content);
   }
   return JSON.stringify([{ type: "text", data: { content: parts.join("\n\n") } }]);
 }
@@ -44,7 +45,7 @@ export class TraeExecutor extends BaseExecutor {
       "X-Preferenced-Language": providerData.appLanguage || "en",
       "x-user-region": providerData.userRegion || "US",
       Referer: "https://solo.trae.ai/",
-      "User-Agent": "Mozilla/5.0 AppleWebKit/537.36 Chrome Safari TraeWeb",
+      "User-Agent": "Mozilla/5.0 AppleWebKit/537.36 Chrome Safari TraeWeb"
     };
   }
 
@@ -74,7 +75,7 @@ export class TraeExecutor extends BaseExecutor {
       aiRegion: providerData.aiRegion || providerData.region || "US-East",
       is_privacy_mode: 0,
       privacy_mode: "off",
-      solo_chat_mode: mode,
+      solo_chat_mode: mode
     };
     if (sessionId) params.biz_session_id = sessionId;
     return JSON.stringify(params);
@@ -92,17 +93,17 @@ export class TraeExecutor extends BaseExecutor {
         model_name: modelName,
         agent_type: "solo_agent_remote",
         model_selection_strategy: strategy,
-        common_params: this.commonParams(providerData, mode),
+        common_params: this.commonParams(providerData, mode)
       },
       env: "remote",
       auto_create_project: false,
-      origin: "web",
+      origin: "web"
     };
     const response = await fetch(`${this.base()}/chat_sessions`, {
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
-      signal: signal || undefined,
+      signal: signal || undefined
     });
     const text = await response.text();
     if (!response.ok) throw new Error(`[${response.status}] ${text}`);
@@ -133,8 +134,8 @@ export class TraeExecutor extends BaseExecutor {
         while ((newline = buffer.indexOf("\n")) >= 0) {
           const line = buffer.slice(0, newline).replace(/\r$/, "");
           buffer = buffer.slice(newline + 1);
-          if (line.startsWith("event:")) eventName = line.slice(6).trim();
-          else if (line.startsWith("data:")) {
+          if (line.startsWith("event:")) eventName = line.slice(6).trim();else
+          if (line.startsWith("data:")) {
             let data;
             try {
               data = JSON.parse(line.slice(5).trim());
@@ -170,11 +171,11 @@ export class TraeExecutor extends BaseExecutor {
       return {
         response: new Response(JSON.stringify({ error: { message: safeErrorMessage(error.message), type: "api_error", code: "" } }), {
           status: 502,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" }
         }),
         url: this.base(),
         headers,
-        transformedBody: body,
+        transformedBody: body
       };
     }
 
@@ -183,13 +184,13 @@ export class TraeExecutor extends BaseExecutor {
     let sent = 0;
     let usage = null;
     let errorEvent = null;
-    const renderNewText = data => {
+    const renderNewText = (data) => {
       const id = data.id;
       if (!id) return "";
       if (!(id in thoughts)) order.push(id);
       const next = data.thought || "";
       if (next.length >= (thoughts[id] || "").length) thoughts[id] = next;
-      const full = order.map(item => thoughts[item]).join("");
+      const full = order.map((item) => thoughts[item]).join("");
       const piece = full.slice(sent);
       sent = full.length;
       return piece;
@@ -198,8 +199,8 @@ export class TraeExecutor extends BaseExecutor {
     if (stream !== false) {
       const enc = new TextEncoder();
       const sse = new ReadableStream({
-        start: async controller => {
-          const emit = obj => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        start: async (controller) => {
+          const emit = (obj) => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
           try {
             emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] });
             await this.streamEvents(headers, session.sessionId, session.messageId, (eventName, data) => {
@@ -214,8 +215,8 @@ export class TraeExecutor extends BaseExecutor {
               }
               return eventName === "done";
             }, signal);
-            if (errorEvent) emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [], error: { message: `trae ${errorEvent.code}: ${errorEvent.message}`, type: "api_error" } });
-            else emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage });
+            if (errorEvent) emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [], error: { message: `trae ${errorEvent.code}: ${errorEvent.message}`, type: "api_error" } });else
+            emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage });
             controller.enqueue(enc.encode("data: [DONE]\n\n"));
           } catch (error) {
             emit({ error: { message: safeErrorMessage(error.message), type: "api_error" } });
@@ -223,13 +224,13 @@ export class TraeExecutor extends BaseExecutor {
           } finally {
             controller.close();
           }
-        },
+        }
       });
       return {
         response: new Response(sse, { headers: { "Content-Type": "text/event-stream" } }),
         url: this.base(),
         headers,
-        transformedBody: body,
+        transformedBody: body
       };
     }
 
@@ -247,28 +248,28 @@ export class TraeExecutor extends BaseExecutor {
       return {
         response: new Response(JSON.stringify({ error: { message: safeErrorMessage(`trae ${errorEvent.code}: ${errorEvent.message}`), type: "api_error", code: "" } }), {
           status: 502,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" }
         }),
         url: this.base(),
         headers,
-        transformedBody: body,
+        transformedBody: body
       };
     }
 
-    const text = order.map(item => thoughts[item]).join("");
+    const text = order.map((item) => thoughts[item]).join("");
     const json = {
       id: responseId,
       object: "chat.completion",
       created,
       model,
       choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
-      usage,
+      usage
     };
     return {
       response: new Response(JSON.stringify(json), { headers: { "Content-Type": "application/json" } }),
       url: this.base(),
       headers,
-      transformedBody: body,
+      transformedBody: body
     };
   }
 }

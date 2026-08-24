@@ -6,6 +6,7 @@ import { getDefaultPricing } from "open-sse/providers/pricing.js";
  * GET /api/pricing
  * Get current pricing configuration (merged user + defaults)
  */
+import { isNumber, isObject } from "../../../shared/utils/typeChecks.js";
 export async function GET() {
   try {
     const pricing = await getPricing();
@@ -29,7 +30,7 @@ export async function PATCH(request) {
     const body = await request.json();
 
     // Validate body structure
-    if (typeof body !== "object" || body === null) {
+    if (!isObject(body) || body === null) {
       return NextResponse.json(
         { error: "Invalid pricing data format" },
         { status: 400 }
@@ -38,7 +39,7 @@ export async function PATCH(request) {
 
     // Validate pricing structure
     for (const [provider, models] of Object.entries(body)) {
-      if (typeof models !== "object" || models === null) {
+      if (!isObject(models) || models === null) {
         return NextResponse.json(
           { error: `Invalid pricing for provider: ${provider}` },
           { status: 400 }
@@ -46,7 +47,7 @@ export async function PATCH(request) {
       }
 
       for (const [model, pricing] of Object.entries(models)) {
-        if (typeof pricing !== "object" || pricing === null) {
+        if (!isObject(pricing) || pricing === null) {
           return NextResponse.json(
             { error: `Invalid pricing for model: ${provider}/${model}` },
             { status: 400 }
@@ -62,7 +63,7 @@ export async function PATCH(request) {
               { status: 400 }
             );
           }
-          if (typeof value !== "number" || isNaN(value) || value < 0) {
+          if (!isNumber(value) || isNaN(value) || value < 0) {
             return NextResponse.json(
               { error: `Invalid pricing value for ${key} in ${provider}/${model}: must be non-negative number` },
               { status: 400 }

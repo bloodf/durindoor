@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 /**
  * OAuth Callback Page Content
  */
+import { isBrowser } from "../../shared/utils/typeChecks.js";
 function CallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState("processing");
@@ -26,7 +27,7 @@ function CallbackContent() {
       state,
       error,
       errorDescription,
-      timestamp: Date.now(),
+      timestamp: Date.now()
     };
 
     // The OAuth code/state is relayed only to the exact dashboard origin.
@@ -91,18 +92,18 @@ function CallbackContent() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg">
       <div className="text-center p-8 max-w-md">
-        {status === "processing" && (
-          <>
+        {status === "processing" &&
+        <>
             <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
               <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
             </div>
             <h1 className="text-xl font-semibold mb-2">Processing...</h1>
             <p className="text-text-muted">Please wait while we complete the authorization.</p>
           </>
-        )}
+        }
 
-        {(status === "success" || status === "done") && (
-          <>
+        {(status === "success" || status === "done") &&
+        <>
             <div className="size-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
               <span className="material-symbols-outlined text-3xl text-green-600">check_circle</span>
             </div>
@@ -111,20 +112,20 @@ function CallbackContent() {
               {status === "success" ? "This window will close automatically..." : "You can close this tab now."}
             </p>
           </>
-        )}
+        }
 
-        {status === "error" && (
-          <>
+        {status === "error" &&
+        <>
             <div className="size-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
               <span className="material-symbols-outlined text-3xl text-red-600">error</span>
             </div>
             <h1 className="text-xl font-semibold mb-2">Authorization Failed</h1>
             <p className="text-text-muted">{failureMessage || "The provider rejected this login."}</p>
           </>
-        )}
+        }
 
-        {status === "manual" && (
-          <>
+        {status === "manual" &&
+        <>
             <div className="size-16 mx-auto mb-4 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
               <span className="material-symbols-outlined text-3xl text-yellow-600">info</span>
             </div>
@@ -133,13 +134,13 @@ function CallbackContent() {
               Please copy the URL from the address bar and paste it in the application.
             </p>
             <div className="bg-surface border border-border rounded-lg p-3 text-left">
-              <code className="text-xs break-all">{typeof window !== "undefined" ? window.location.href : ""}</code>
+              <code className="text-xs break-all">{isBrowser() ? window.location.href : ""}</code>
             </div>
           </>
-        )}
+        }
       </div>
-    </div>
-  );
+    </div>);
+
 }
 
 /**
@@ -149,7 +150,7 @@ function CallbackContent() {
 export default function CallbackPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-bg">
+    <div className="min-h-screen flex items-center justify-center bg-bg">
         <div className="text-center p-8">
           <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
             <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
@@ -159,6 +160,6 @@ export default function CallbackPage() {
       </div>
     }>
       <CallbackContent />
-    </Suspense>
-  );
+    </Suspense>);
+
 }

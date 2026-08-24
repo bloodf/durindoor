@@ -304,7 +304,7 @@ KiroSocialOAuthModal.propTypes = {
   provider: PropTypes.oneOf(["google", "github"]).isRequired,
   onSuccess: PropTypes.func,
   onClose: PropTypes.func.isRequired,
-  proxyPools: PropTypes.arrayOf(PropTypes.shape({
+  proxyPools: PropTypes.arrayOf(PropTypes['shape']({
     id: PropTypes.string,
     name: PropTypes.string,
     isActive: PropTypes.bool,

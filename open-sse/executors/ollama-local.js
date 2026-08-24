@@ -4,6 +4,7 @@ import { OLLAMA_LOCAL_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
 
 // Format byte count to human-readable string for debug logs
+import { isString } from "../../src/shared/utils/typeChecks.js";
 function fmtBytes(n) {
   if (n < 1024) return `${n}B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
@@ -31,19 +32,19 @@ function summariseMessages(messages) {
     roleCounts[role] = (roleCounts[role] || 0) + 1;
     if (Array.isArray(m?.tool_calls)) toolCalls += m.tool_calls.length;
 
-    if (typeof m?.content === "string") {
+    if (isString(m?.content)) {
       contentChars += m.content.length;
     } else if (Array.isArray(m?.content)) {
       for (const block of m.content) {
-        if (typeof block?.text === "string") contentChars += block.text.length;
-        else contentChars += JSON.stringify(block || "").length;
+        if (isString(block?.text)) contentChars += block.text.length;else
+        contentChars += JSON.stringify(block || "").length;
       }
     }
   }
 
-  const roleStr = Object.entries(roleCounts)
-    .map(([role, count]) => `${role.slice(0, 3)}=${count}`)
-    .join(" ");
+  const roleStr = Object.entries(roleCounts).
+  map(([role, count]) => `${role.slice(0, 3)}=${count}`).
+  join(" ");
 
   const parts = [`${msgs.length} msgs [${roleStr}]`];
   if (toolCalls > 0) parts.push(`tool_calls=${toolCalls}`);
@@ -60,25 +61,25 @@ function warnLargeBody(body, bodyBytes, host) {
   const totalMsgs = msgs.length;
 
   // Find biggest messages (top 3)
-  const withSize = msgs
-    .map((m, i) => ({ i, role: m?.role, size: JSON.stringify(m).length }))
-    .sort((a, b) => b.size - a.size)
-    .slice(0, 3);
+  const withSize = msgs.
+  map((m, i) => ({ i, role: m?.role, size: JSON.stringify(m).length })).
+  sort((a, b) => b.size - a.size).
+  slice(0, 3);
 
-  const topStr = withSize
-    .map(m => `  msg[${m.i}] ${m.role} = ${fmtBytes(m.size)}`)
-    .join("\n");
+  const topStr = withSize.
+  map((m) => `  msg[${m.i}] ${m.role} = ${fmtBytes(m.size)}`).
+  join("\n");
 
   dbg("OLLAMA-LOCAL", [
-    `⚠ Large body (${fmtBytes(bodyBytes)}) — breakdown:`,
-    `  total_messages : ${totalMsgs}`,
-    `  top offenders  :\n${topStr}`,
-    `  tools          : ${body?.tools?.length ?? 0} defined`,
-    `  max_tokens     : ${body?.max_tokens ?? "unset"}`,
-    `Hints: trim old messages, reduce tool definitions, or set a lower max_tokens.`,
-    `Ollama timeout raised to ${fmtMs(OLLAMA_LOCAL_CONNECT_TIMEOUT_MS)} — if it still fails,`,
-    `consider setting OLLAMA_LOCAL_CONNECT_TIMEOUT_MS env var higher.`,
-  ].join("\n    "));
+  `⚠ Large body (${fmtBytes(bodyBytes)}) — breakdown:`,
+  `  total_messages : ${totalMsgs}`,
+  `  top offenders  :\n${topStr}`,
+  `  tools          : ${body?.tools?.length ?? 0} defined`,
+  `  max_tokens     : ${body?.max_tokens ?? "unset"}`,
+  `Hints: trim old messages, reduce tool definitions, or set a lower max_tokens.`,
+  `Ollama timeout raised to ${fmtMs(OLLAMA_LOCAL_CONNECT_TIMEOUT_MS)} — if it still fails,`,
+  `consider setting OLLAMA_LOCAL_CONNECT_TIMEOUT_MS env var higher.`].
+  join("\n    "));
 }
 
 export class OllamaLocalExecutor extends DefaultExecutor {
@@ -94,8 +95,8 @@ export class OllamaLocalExecutor extends DefaultExecutor {
       retry: {
         502: { attempts: 0, delayMs: 0 },
         503: { attempts: 0, delayMs: 0 },
-        504: { attempts: 0, delayMs: 0 },
-      },
+        504: { attempts: 0, delayMs: 0 }
+      }
     };
   }
 
@@ -137,14 +138,14 @@ export class OllamaLocalExecutor extends DefaultExecutor {
     const msgSummary = summariseMessages(body?.messages);
 
     dbg("OLLAMA-LOCAL", [
-      `→ ${host}/api/chat`,
-      `model=${model}`,
-      `stream=${stream ?? "unset"}`,
-      `body=${fmtBytes(bodyBytes)}`,
-      `timeout=${fmtMs(timeoutMs)}`,
-      `max_tokens=${body?.max_tokens ?? "unset"}`,
-      `tools=${body?.tools?.length ?? 0}`,
-    ].join(" | "));
+    `→ ${host}/api/chat`,
+    `model=${model}`,
+    `stream=${stream ?? "unset"}`,
+    `body=${fmtBytes(bodyBytes)}`,
+    `timeout=${fmtMs(timeoutMs)}`,
+    `max_tokens=${body?.max_tokens ?? "unset"}`,
+    `tools=${body?.tools?.length ?? 0}`].
+    join(" | "));
 
     dbg("OLLAMA-LOCAL", `  messages: ${msgSummary}`);
 
@@ -161,22 +162,22 @@ export class OllamaLocalExecutor extends DefaultExecutor {
     } catch (error) {
       const elapsed = Date.now() - t0;
       const isTimeout =
-        error.name === "AbortError" || error.message?.includes("fetch connect timeout");
+      error.name === "AbortError" || error.message?.includes("fetch connect timeout");
 
       const lines = [
-        `✖ ${error.name}: ${error.message}`,
-        `  elapsed    : ${fmtMs(elapsed)} / timeout=${fmtMs(timeoutMs)}`,
-        `  target     : ${host}/api/chat`,
-        `  model      : ${model}`,
-        `  body size  : ${fmtBytes(bodyBytes)}`,
-      ];
+      `✖ ${error.name}: ${error.message}`,
+      `  elapsed    : ${fmtMs(elapsed)} / timeout=${fmtMs(timeoutMs)}`,
+      `  target     : ${host}/api/chat`,
+      `  model      : ${model}`,
+      `  body size  : ${fmtBytes(bodyBytes)}`];
+
 
       if (isTimeout) {
         lines.push(
           `  diagnosis  : Ollama did not return response headers within ${fmtMs(timeoutMs)}.`,
           `  candidates : model not loaded, Ollama not running, or body too large for available RAM.`,
           `  check      : curl -s ${host}/api/tags | jq '.models[].name'`,
-          `  env fix    : OLLAMA_LOCAL_CONNECT_TIMEOUT_MS=${timeoutMs * 2} (current × 2)`,
+          `  env fix    : OLLAMA_LOCAL_CONNECT_TIMEOUT_MS=${timeoutMs * 2} (current × 2)`
         );
       }
 

@@ -14,6 +14,7 @@ import { v5 as uuidv5 } from "uuid";
  * @param {string} salt - Optional salt
  * @returns {string} - 64-character hex string
  */
+import { isUndefined } from "../../src/shared/utils/typeChecks.js";
 export function generateHashed64Hex(input, salt = "") {
   return crypto.createHash("sha256").update(input + salt).digest("hex");
 }
@@ -46,18 +47,18 @@ export function generateCursorChecksum(machineId) {
 
   // Create byte array from timestamp (6 bytes, big-endian)
   const byteArray = new Uint8Array([
-    (timestamp >> 40) & 0xFF,
-    (timestamp >> 32) & 0xFF,
-    (timestamp >> 24) & 0xFF,
-    (timestamp >> 16) & 0xFF,
-    (timestamp >> 8) & 0xFF,
-    timestamp & 0xFF
-  ]);
+  timestamp >> 40 & 0xFF,
+  timestamp >> 32 & 0xFF,
+  timestamp >> 24 & 0xFF,
+  timestamp >> 16 & 0xFF,
+  timestamp >> 8 & 0xFF,
+  timestamp & 0xFF]
+  );
 
   // Jyh cipher obfuscation
   let t = 165;
   for (let i = 0; i < byteArray.length; i++) {
-    byteArray[i] = ((byteArray[i] ^ t) + (i % 256)) & 0xFF;
+    byteArray[i] = (byteArray[i] ^ t) + i % 256 & 0xFF;
     t = byteArray[i];
   }
 
@@ -71,10 +72,10 @@ export function generateCursorChecksum(machineId) {
     const c = i + 2 < byteArray.length ? byteArray[i + 2] : 0;
 
     encoded += alphabet[a >> 2];
-    encoded += alphabet[((a & 3) << 4) | (b >> 4)];
+    encoded += alphabet[(a & 3) << 4 | b >> 4];
 
     if (i + 1 < byteArray.length) {
-      encoded += alphabet[((b & 15) << 2) | (c >> 6)];
+      encoded += alphabet[(b & 15) << 2 | c >> 6];
     }
     if (i + 2 < byteArray.length) {
       encoded += alphabet[c & 63];
@@ -94,9 +95,9 @@ export function generateCursorChecksum(machineId) {
  */
 export function buildCursorHeaders(accessToken, machineId = null, ghostMode = true) {
   // Clean token if it has prefix
-  const cleanToken = accessToken.includes("::")
-    ? accessToken.split("::")[1]
-    : accessToken;
+  const cleanToken = accessToken.includes("::") ?
+  accessToken.split("::")[1] :
+  accessToken;
 
   // Generate machine ID if not provided
   const effectiveMachineId = machineId || generateHashed64Hex(cleanToken, "machineId");
@@ -108,14 +109,14 @@ export function buildCursorHeaders(accessToken, machineId = null, ghostMode = tr
 
   // Detect OS
   let os = "linux";
-  if (typeof process !== "undefined") {
-    if (process.platform === "win32") os = "windows";
-    else if (process.platform === "darwin") os = "macos";
+  if (!isUndefined(globalThis.process)) {
+    if (process.platform === "win32") os = "windows";else
+    if (process.platform === "darwin") os = "macos";
   }
 
   // Detect architecture
   let arch = "x64";
-  if (typeof process !== "undefined") {
+  if (!isUndefined(globalThis.process)) {
     if (process.arch === "arm64") arch = "aarch64";
   }
 

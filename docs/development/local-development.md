@@ -71,6 +71,7 @@ Translator tests that call translation entry points must import `translator/regi
 
 ```bash
 npm run lint
+npm run lint:anti-slop
 npm run build
 npm run check:docs
 npm run check:agent-index
@@ -78,6 +79,8 @@ npm run check:registry-index
 npm run catalog:diff
 cd tests && npm run test:ci
 ```
+
+See [Anti-slop gate](anti-slop.md) for the vendored oxlint plugin and clean-tree workflow.
 
 ## Generated indexes
 

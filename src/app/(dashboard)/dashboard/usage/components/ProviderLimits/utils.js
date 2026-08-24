@@ -2,6 +2,7 @@ import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
+import { isBrowser, isNumber, isObject, isString, isUndefined } from "../../../../../../shared/utils/typeChecks.js";
 export const QUOTA_CACHE_KEY = "quotaCacheData";
 export const REFRESH_INTERVAL_MS = 60000;
 // Claude usage/quota endpoint rate-limits; poll it less often than other providers
@@ -12,15 +13,15 @@ export const CONNECTIONS_PAGE_SIZE = 20;
 export const ACCOUNT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 export const ACCOUNT_PAGE_SIZE_MAX = 500;
 export const ACCOUNT_FILTER_OPTIONS = [
-  { value: "all", label: "All accounts" },
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Turned off" },
-];
+{ value: "all", label: "All accounts" },
+{ value: "active", label: "Active" },
+{ value: "inactive", label: "Turned off" }];
+
 export const QUOTA_SORT_OPTIONS = [
-  { value: "default", label: "Default quota order" },
-  { value: "remaining-asc", label: "% quota: low to high" },
-  { value: "remaining-desc", label: "% quota: high to low" },
-];
+{ value: "default", label: "Default quota order" },
+{ value: "remaining-asc", label: "% quota: low to high" },
+{ value: "remaining-desc", label: "% quota: high to low" }];
+
 
 export function getRefreshCountdown(nextRefreshAt, now = Date.now()) {
   if (!Number.isFinite(nextRefreshAt)) return 0;
@@ -31,12 +32,12 @@ export function createAutoRefreshScheduler({
   intervalMs = REFRESH_INTERVAL_MS,
   onRefresh,
   onCountdown = () => {},
-  isHidden = () => typeof document !== "undefined" && document.hidden,
+  isHidden = () => !isUndefined(globalThis.document) && document.hidden,
   now = () => Date.now(),
   setTimeoutFn = setTimeout,
   clearTimeoutFn = clearTimeout,
   setIntervalFn = setInterval,
-  clearIntervalFn = clearInterval,
+  clearIntervalFn = clearInterval
 }) {
   let stopped = true;
   let refreshTimer = null;
@@ -75,14 +76,14 @@ export function createAutoRefreshScheduler({
     }
 
     clearTimers();
-    running = Promise.resolve()
-      .then(() => onRefresh(force))
-      .finally(() => {
-        running = null;
-        if (stopped) return;
-        nextRefreshAt = now() + intervalMs;
-        schedule();
-      });
+    running = Promise.resolve().
+    then(() => onRefresh(force)).
+    finally(() => {
+      running = null;
+      if (stopped) return;
+      nextRefreshAt = now() + intervalMs;
+      schedule();
+    });
     return running;
   }
 
@@ -112,7 +113,7 @@ export function createAutoRefreshScheduler({
     },
     getNextRefreshAt() {
       return nextRefreshAt;
-    },
+    }
   };
 }
 
@@ -127,38 +128,38 @@ export function createAutoRefreshScheduler({
 
 /** Prefer registry names so stale saved labels cannot misidentify providers. */
 export function getConnectionLabel(connection) {
-  return AI_PROVIDERS[connection.provider]?.name?.trim()
-    || connection.name?.trim()
-    || connection.email?.trim()
-    || connection.displayName?.trim()
-    || null;
+  return AI_PROVIDERS[connection.provider]?.name?.trim() ||
+  connection.name?.trim() ||
+  connection.email?.trim() ||
+  connection.displayName?.trim() ||
+  null;
 }
 
 export function getConnectionQuotaRemaining(connection, quotaData) {
   const quota = quotaData[connection.id]?.quotas?.[0];
   if (!quota) return Number.POSITIVE_INFINITY;
-  if (typeof quota.remaining === "number") return quota.remaining;
+  if (isNumber(quota.remaining)) return quota.remaining;
   return Number.POSITIVE_INFINITY;
 }
 
 export function sortVisibleConnections(
-  connections,
-  quotaData,
-  expiringFirst,
-  providerFilter,
-  quotaSortMode,
-) {
+connections,
+quotaData,
+expiringFirst,
+providerFilter,
+quotaSortMode)
+{
   if (providerFilter === "codex" && quotaSortMode !== "default") {
     return [...connections].sort((a, b) => {
       const remainingA = getConnectionQuotaRemaining(a, quotaData);
       const remainingB = getConnectionQuotaRemaining(b, quotaData);
       const remainingDiff =
-        quotaSortMode === "remaining-asc"
-          ? remainingA - remainingB
-          : remainingB - remainingA;
+      quotaSortMode === "remaining-asc" ?
+      remainingA - remainingB :
+      remainingB - remainingA;
       if (remainingDiff !== 0) return remainingDiff;
       return (getConnectionLabel(a) || "").localeCompare(
-        getConnectionLabel(b) || "",
+        getConnectionLabel(b) || ""
       );
     });
   }
@@ -166,16 +167,16 @@ export function sortVisibleConnections(
   if (!expiringFirst) return connections;
 
   const getEarliestResetTime = (connection) => {
-    const resetTimes = (quotaData[connection.id]?.quotas || [])
-      .map((quota) =>
-        quota.resetAt
-          ? new Date(quota.resetAt).getTime()
-          : Number.POSITIVE_INFINITY,
-      )
-      .filter((time) => Number.isFinite(time));
-    return resetTimes.length > 0
-      ? Math.min(...resetTimes)
-      : Number.POSITIVE_INFINITY;
+    const resetTimes = (quotaData[connection.id]?.quotas || []).
+    map((quota) =>
+    quota.resetAt ?
+    new Date(quota.resetAt).getTime() :
+    Number.POSITIVE_INFINITY
+    ).
+    filter((time) => Number.isFinite(time));
+    return resetTimes.length > 0 ?
+    Math.min(...resetTimes) :
+    Number.POSITIVE_INFINITY;
   };
 
   return [...connections].sort((a, b) => {
@@ -183,22 +184,22 @@ export function sortVisibleConnections(
     if (expiryDiff !== 0) return expiryDiff;
     return (
       (a.provider || "").localeCompare(b.provider || "") ||
-      (getConnectionLabel(a) || "").localeCompare(getConnectionLabel(b) || "")
-    );
+      (getConnectionLabel(a) || "").localeCompare(getConnectionLabel(b) || ""));
+
   });
 }
 
 /** Returns the exact connection set that a refresh will fetch and mark loading. */
 export function getRefreshConnections(connections, force, tick, claudeEvery) {
   return connections.filter((connection) =>
-    force || connection.provider !== "claude" || tick % claudeEvery === 0
+  force || connection.provider !== "claude" || tick % claudeEvery === 0
   );
 }
 
 /** Dispatches the selected Refresh All connections with its force intent intact. */
 export function refreshProviderQuotas(connections, force, fetchQuota) {
   return Promise.all(
-    connections.map((connection) => fetchQuota(connection.id, connection.provider, { force })),
+    connections.map((connection) => fetchQuota(connection.id, connection.provider, { force }))
   );
 }
 
@@ -213,7 +214,7 @@ export function buildLoadingState(connections) {
 export function filterQuotaStateByConnections(state, connections) {
   const visibleIds = new Set(connections.map((connection) => connection.id));
   return Object.fromEntries(
-    Object.entries(state).filter(([id]) => visibleIds.has(id)),
+    Object.entries(state).filter(([id]) => visibleIds.has(id))
   );
 }
 
@@ -232,7 +233,7 @@ export function getConnectionsEmptyMessage(totals, providerFilter, accountFilter
       icon: "cloud_off",
       title: "No Providers Connected",
       description:
-        "Connect to providers with OAuth to track your API quota limits and usage.",
+      "Connect to providers with OAuth to track your API quota limits and usage."
     };
   }
   if (!totals.providerFilteredConnections) {
@@ -240,16 +241,16 @@ export function getConnectionsEmptyMessage(totals, providerFilter, accountFilter
       icon: "filter_alt_off",
       title: "No Accounts Match Current Filters",
       description:
-        providerFilter === "all"
-          ? "Try changing the account status filter to see more quota trackers."
-          : `No ${accountFilter === "inactive" ? "turned off" : accountFilter === "active" ? "active" : "matching"} accounts found for ${providerFilter}.`,
+      providerFilter === "all" ?
+      "Try changing the account status filter to see more quota trackers." :
+      `No ${accountFilter === "inactive" ? "turned off" : accountFilter === "active" ? "active" : "matching"} accounts found for ${providerFilter}.`
     };
   }
   return {
     icon: "filter_alt_off",
     title: "No Accounts On This Page",
     description:
-      "Try moving to another page or refreshing the current filters.",
+    "Try moving to another page or refreshing the current filters."
   };
 }
 
@@ -272,18 +273,18 @@ export function getSafePagination(pagination, fallbackPageSize) {
       page: 1,
       pageSize: fallbackPageSize,
       total: 0,
-      totalPages: 1,
-    }
-  );
+      totalPages: 1
+    });
+
 }
 
 export function getSafeTotals(totals, fallbackTotal = 0) {
   return (
     totals || {
       eligibleConnections: fallbackTotal,
-      providerFilteredConnections: fallbackTotal,
-    }
-  );
+      providerFilteredConnections: fallbackTotal
+    });
+
 }
 
 export function shouldResetPage(previousValue, nextValue) {
@@ -303,7 +304,7 @@ export async function reconcileConnectionsPage(fetchConnections, targetPage) {
 }
 
 export function getQuotaCache() {
-  if (typeof window === "undefined") return {};
+  if (!isBrowser()) return {};
   try {
     const cached = window.localStorage.getItem(QUOTA_CACHE_KEY);
     return cached ? JSON.parse(cached) : {};
@@ -314,12 +315,12 @@ export function getQuotaCache() {
 }
 
 export function setQuotaCache(connectionId, quotaEntry) {
-  if (typeof window === "undefined") return;
+  if (!isBrowser()) return;
   try {
     const cache = getQuotaCache();
     cache[connectionId] = {
       ...quotaEntry,
-      cachedAt: new Date().toISOString(),
+      cachedAt: new Date().toISOString()
     };
     window.localStorage.setItem(QUOTA_CACHE_KEY, JSON.stringify(cache));
   } catch (error) {
@@ -336,27 +337,27 @@ export function formatResetTime(date) {
   if (!date) return "-";
 
   try {
-    const resetDate = typeof date === "string" ? new Date(date) : date;
+    const resetDate = isString(date) ? new Date(date) : date;
     const now = new Date();
     const diffMs = resetDate - now;
 
     if (diffMs <= 0) return "-";
 
     const totalMinutes = Math.ceil(diffMs / (1000 * 60));
-    
+
     // < 60 minutes: show only minutes
     if (totalMinutes < 60) {
       return `${totalMinutes}m`;
     }
-    
+
     const totalHours = Math.floor(totalMinutes / 60);
     const remainingMinutes = totalMinutes % 60;
-    
+
     // < 24 hours: show hours and minutes
     if (totalHours < 24) {
       return `${totalHours}h ${remainingMinutes}m`;
     }
-    
+
     // >= 24 hours: show days, hours, and minutes
     const days = Math.floor(totalHours / 24);
     const remainingHours = totalHours % 24;
@@ -399,7 +400,7 @@ export function calculatePercentage(used, total) {
   if (!used || used < 0) return 100;
   if (used >= total) return 0;
 
-  return Math.round(((total - used) / total) * 100);
+  return Math.round((total - used) / total * 100);
 }
 
 /**
@@ -437,7 +438,7 @@ export function getRemainingPercentage(quota) {
  * @returns {string} Stable visibility key
  */
 export function getQuotaVisibilityKey(quota, index) {
-  if (!quota || typeof quota !== "object") return "";
+  if (!quota || !isObject(quota)) return "";
   if (quota.modelKey) return String(quota.modelKey).trim();
   const name = String(quota.name || "").trim();
   if (name === "") return "";
@@ -480,25 +481,25 @@ function getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey) {
  * @returns {Object} Updated visibility settings
  */
 export function updateQuotaVisibility(
-  quotaVisibility,
-  connectionId,
-  provider,
-  quotaKey,
-  hidden,
-) {
+quotaVisibility,
+connectionId,
+provider,
+quotaKey,
+hidden)
+{
   const connectionVisibility = quotaVisibility[connectionId];
   const legacyVisibility = quotaVisibility[provider];
   const hiddenKeys = new Set(
-    connectionVisibility?.hidden || (connectionId !== provider ? legacyVisibility?.hidden : []) || [],
+    connectionVisibility?.hidden || (connectionId !== provider ? legacyVisibility?.hidden : []) || []
   );
-  if (hidden) hiddenKeys.add(quotaKey);
-  else hiddenKeys.delete(quotaKey);
+  if (hidden) hiddenKeys.add(quotaKey);else
+  hiddenKeys.delete(quotaKey);
   return {
     ...quotaVisibility,
     [connectionId]: {
       ...connectionVisibility,
-      hidden: [...hiddenKeys],
-    },
+      hidden: [...hiddenKeys]
+    }
   };
 }
 
@@ -512,11 +513,11 @@ export function updateQuotaVisibility(
  * @returns {Array<Object>} Quota rows that are not hidden
  */
 export function filterQuotasByVisibility(
-  scopeKey,
-  quotas = [],
-  quotaVisibility = {},
-  legacyScopeKey,
-) {
+scopeKey,
+quotas = [],
+quotaVisibility = {},
+legacyScopeKey)
+{
   if (!Array.isArray(quotas) || quotas.length === 0) return [];
   const hidden = getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey);
   if (hidden.size === 0) return quotas;
@@ -533,11 +534,11 @@ export function filterQuotasByVisibility(
  * @returns {Array<Object>} Hidden quota rows
  */
 export function getHiddenQuotaRows(
-  scopeKey,
-  quotas = [],
-  quotaVisibility = {},
-  legacyScopeKey,
-) {
+scopeKey,
+quotas = [],
+quotaVisibility = {},
+legacyScopeKey)
+{
   if (!Array.isArray(quotas) || quotas.length === 0) return [];
   const hidden = getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey);
   if (hidden.size === 0) return [];
@@ -561,7 +562,7 @@ function buildCreditsQuota(name, remaining, remainingPercentage, extra = {}) {
     isCredits: true,
     remainingPercentage,
     creditCount: remaining,
-    ...extra,
+    ...extra
   };
 }
 
@@ -569,15 +570,15 @@ function buildClaudeExtraUsageQuota(extraUsage) {
   const monthlyLimit = Number(extraUsage?.monthly_limit ?? 0);
   const usedCredits = Number(extraUsage?.used_credits ?? 0);
   const utilization = Number(extraUsage?.utilization ?? 0);
-  const remainingPercentage = Number.isFinite(utilization)
-    ? Math.max(0, 100 - utilization)
-    : undefined;
+  const remainingPercentage = Number.isFinite(utilization) ?
+  Math.max(0, 100 - utilization) :
+  undefined;
   const remaining = Number.isFinite(monthlyLimit) ? Math.max(0, monthlyLimit - usedCredits) : 0;
 
   return buildCreditsQuota("extra_usage", remaining, remainingPercentage ?? 100, {
     used: Number.isFinite(usedCredits) ? usedCredits : 0,
     total: Number.isFinite(monthlyLimit) ? monthlyLimit : 0,
-    currency: extraUsage?.currency,
+    currency: extraUsage?.currency
   });
 }
 
@@ -588,7 +589,7 @@ function buildClaudeExtraUsageQuota(extraUsage) {
  * @returns {Array<Object>} Normalized quota objects with { name, used, total, resetAt }
  */
 export function parseQuotaData(provider, data) {
-  if (!data || typeof data !== "object") return [];
+  if (!data || !isObject(data)) return [];
 
   const normalizedQuotas = [];
 
@@ -601,7 +602,7 @@ export function parseQuotaData(provider, data) {
               name,
               used: quota.used || 0,
               total: quota.total || 0,
-              resetAt: quota.resetAt || null,
+              resetAt: quota.resetAt || null
             });
           });
         }
@@ -616,7 +617,7 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
-              remainingPercentage: quota.remainingPercentage,
+              remainingPercentage: quota.remainingPercentage
             });
           });
         }
@@ -630,7 +631,7 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               remaining: quota.remaining,
-              resetAt: quota.resetAt || null,
+              resetAt: quota.resetAt || null
             });
           });
         }
@@ -643,7 +644,7 @@ export function parseQuotaData(provider, data) {
               name: quotaType,
               used: quota.used || 0,
               total: quota.total || 0,
-              resetAt: quota.resetAt || null,
+              resetAt: quota.resetAt || null
             });
           });
         }
@@ -663,19 +664,19 @@ export function parseQuotaData(provider, data) {
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([quotaType, quota]) => {
             if (
-              quotaType === "organization"
-              && (!quota || [quota.total, quota.used, quota.remaining]
-                .every((value) => (Number(value) || 0) === 0))
-            ) {
+            quotaType === "organization" && (
+            !quota || [quota.total, quota.used, quota.remaining].
+            every((value) => (Number(value) || 0) === 0)))
+            {
               return;
             }
             normalizedQuotas.push({
               name: quotaType === "user" ? "Personal" : quotaType === "organization" ? "Organization" : quotaType,
               used: quota.used || 0,
-              total: Math.max(0, Number(quota.total) || 0)
-                || ((Number(quota.used) || 0) + (Number(quota.remaining) || 0)),
+              total: Math.max(0, Number(quota.total) || 0) ||
+              (Number(quota.used) || 0) + (Number(quota.remaining) || 0),
               unit: quota.unit,
-              resetAt: quota.resetAt || null,
+              resetAt: quota.resetAt || null
             });
           });
         }
@@ -689,7 +690,7 @@ export function parseQuotaData(provider, data) {
             used: 0,
             total: 0,
             resetAt: null,
-            message: data.message,
+            message: data.message
           });
         } else {
           if (data.quotas) {
@@ -704,7 +705,7 @@ export function parseQuotaData(provider, data) {
                 // prefers `remaining` over the derived percentage — a row like
                 // {used:1000,total:5000,remaining:4000} would render "4,000%".
                 // Percentage comes from remainingPercentage or used/total.
-                remainingPercentage: quota.remainingPercentage,
+                remainingPercentage: quota.remainingPercentage
               });
             });
           }
@@ -731,7 +732,7 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
-              remainingPercentage: quota.remainingPercentage,
+              remainingPercentage: quota.remainingPercentage
             });
           });
         }
@@ -749,7 +750,7 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
-              recurring: quota.recurring !== false,
+              recurring: quota.recurring !== false
             });
           });
         }
@@ -760,19 +761,19 @@ export function parseQuotaData(provider, data) {
         // map. The dashboard rows expect used / total / remainingPercentage
         // (so the percent bar renders); fall back to a derived percent when
         // the upstream doesn't supply it.
-        if (data.quotas && typeof data.quotas === "object" && !Array.isArray(data.quotas)) {
+        if (data.quotas && isObject(data.quotas) && !Array.isArray(data.quotas)) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
-            const used = typeof quota?.used === "number" ? quota.used : 0;
-            const total = typeof quota?.total === "number" ? quota.total : 0;
-            const remainingPercentage = typeof quota?.remainingPercentage === "number"
-              ? quota.remainingPercentage
-              : (total > 0 ? Math.max(0, Math.min(100, Math.round(((total - used) / total) * 100))) : 0);
+            const used = isNumber(quota?.used) ? quota.used : 0;
+            const total = isNumber(quota?.total) ? quota.total : 0;
+            const remainingPercentage = isNumber(quota?.remainingPercentage) ?
+            quota.remainingPercentage :
+            total > 0 ? Math.max(0, Math.min(100, Math.round((total - used) / total * 100))) : 0;
             normalizedQuotas.push({
               name,
               used,
               total,
               remainingPercentage,
-              ...(quota?.resetAt ? { resetAt: quota.resetAt } : {}),
+              ...(quota?.resetAt ? { resetAt: quota.resetAt } : null)
             });
           });
         }
@@ -787,7 +788,7 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
-              remainingPercentage: quota.remainingPercentage,
+              remainingPercentage: quota.remainingPercentage
             });
           });
         }
@@ -802,7 +803,7 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
-              remainingPercentage: quota.remainingPercentage,
+              remainingPercentage: quota.remainingPercentage
             });
           });
         }
@@ -819,7 +820,7 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
-              remainingPercentage: quota.remainingPercentage,
+              remainingPercentage: quota.remainingPercentage
             });
           });
         }
@@ -835,7 +836,7 @@ export function parseQuotaData(provider, data) {
               total: quota.total || 0,
               remaining: quota.remaining !== undefined ? quota.remaining : undefined,
               unlimited: quota.unlimited || false,
-              resetAt: quota.resetAt || null,
+              resetAt: quota.resetAt || null
             });
           });
         }
@@ -849,7 +850,7 @@ export function parseQuotaData(provider, data) {
   const modelOrder = getModelsByProviderId(provider);
   if (modelOrder.length > 0) {
     const orderMap = new Map(modelOrder.map((m, i) => [m.id, i]));
-    
+
     normalizedQuotas.sort((a, b) => {
       // Use modelKey for antigravity, otherwise use name
       const keyA = a.modelKey || a.name;
@@ -862,4 +863,3 @@ export function parseQuotaData(provider, data) {
 
   return normalizedQuotas;
 }
-

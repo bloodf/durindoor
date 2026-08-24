@@ -6,9 +6,10 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U } from "./shared.js";
 
 // GLM quota endpoints (region-aware) — url from registry transport.usage
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const GLM_QUOTA_URLS = {
   international: U("glm").url,
-  china: U("glm-cn").url,
+  china: U("glm-cn").url
 };
 
 // Vercel AI Gateway credits endpoint
@@ -57,7 +58,7 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
 
   try {
     const response = await proxyAwareFetch("https://ollama.com/api/usage", {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" }
     }, proxyOptions);
 
     if (response.status === 401 || response.status === 403) {
@@ -80,16 +81,16 @@ export async function getOllamaUsage(apiKey, providerSpecificData, proxyOptions 
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: "application/json",
-        "Content-Length": "0",
-      },
-    }, proxyOptions).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        "Content-Length": "0"
+      }
+    }, proxyOptions).then((r) => r.ok ? r.json() : null).catch(() => null);
 
-    const planRaw = typeof me?.Plan === "string" ? me.Plan : "";
-    const plan = planRaw
-      ? planRaw.charAt(0).toUpperCase() + planRaw.slice(1).toLowerCase()
-      : "Ollama Cloud";
+    const planRaw = isString(me?.Plan) ? me.Plan : "";
+    const plan = planRaw ?
+    planRaw.charAt(0).toUpperCase() + planRaw.slice(1).toLowerCase() :
+    "Ollama Cloud";
 
-    const limits = data?.limits && typeof data.limits === "object" ? data.limits : {};
+    const limits = data?.limits && isObject(data.limits) ? data.limits : {};
 
     // `usage` is a 0..1 ratio (1.0 = limit reached), so convert to a 0..100 bar.
     // Deliberately no absolute `remaining`: QuotaTable reads remainingPercentage.
@@ -135,8 +136,8 @@ export async function getGlmUsage(apiKey, provider, proxyOptions = null) {
     const response = await proxyAwareFetch(quotaUrl, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-      },
+        Accept: "application/json"
+      }
     }, proxyOptions);
 
     if (!response.ok) {
@@ -147,7 +148,7 @@ export async function getGlmUsage(apiKey, provider, proxyOptions = null) {
     }
 
     const json = await response.json();
-    const data = json?.data && typeof json.data === "object" ? json.data : {};
+    const data = json?.data && isObject(json.data) ? json.data : {};
     const limits = Array.isArray(data.limits) ? data.limits : [];
     const quotas = {};
 
@@ -163,14 +164,14 @@ export async function getGlmUsage(apiKey, provider, proxyOptions = null) {
         remaining,
         remainingPercentage: remaining,
         resetAt: resetMs > 0 ? new Date(resetMs).toISOString() : null,
-        unlimited: false,
+        unlimited: false
       };
     }
 
-    const levelRaw = typeof data.level === "string" ? data.level : "";
-    const plan = levelRaw
-      ? levelRaw.charAt(0).toUpperCase() + levelRaw.slice(1).toLowerCase()
-      : "Unknown";
+    const levelRaw = isString(data.level) ? data.level : "";
+    const plan = levelRaw ?
+    levelRaw.charAt(0).toUpperCase() + levelRaw.slice(1).toLowerCase() :
+    "Unknown";
 
     return { plan, quotas };
   } catch (error) {
@@ -201,8 +202,8 @@ export async function getVercelAiGatewayUsage(apiKey, proxyOptions = null) {
       method: "GET",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-      },
+        Accept: "application/json"
+      }
     }, proxyOptions);
 
     if (response.status === 401 || response.status === 403) {
@@ -224,13 +225,13 @@ export async function getVercelAiGatewayUsage(apiKey, proxyOptions = null) {
     // Vercel gives $5/month free credit. The API doesn't return the
     // monthly allocation so we use the known constant as the denominator.
     const MONTHLY_CREDIT = 5;
-    const remainingPercentage = (balance / MONTHLY_CREDIT) * 100;
+    const remainingPercentage = balance / MONTHLY_CREDIT * 100;
 
     if (balance <= 0 && totalUsed <= 0) {
       return {
         plan: "Pay-as-you-go",
         message: "Vercel AI Gateway connected. No credit allocation found (BYOK or unfunded account).",
-        quotas: {},
+        quotas: {}
       };
     }
 
@@ -244,16 +245,16 @@ export async function getVercelAiGatewayUsage(apiKey, proxyOptions = null) {
           total: 0,
           remaining: 0,
           remainingPercentage: 100,
-          unlimited: true,
+          unlimited: true
         },
         "Remaining (USD)": {
           used: balance,
           total: MONTHLY_CREDIT,
           remaining: balance,
           remainingPercentage,
-          unlimited: false,
-        },
-      },
+          unlimited: false
+        }
+      }
     };
   } catch (error) {
     return { message: `Vercel AI Gateway error: ${error.message}` };
@@ -271,10 +272,10 @@ export async function getQoderUsage(accessToken, proxyOptions = null) {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-        },
+          Accept: "application/json"
+        }
       },
-      proxyOptions,
+      proxyOptions
     );
     if (!response.ok) {
       return { message: `Qoder connected. Usage fetch returned ${response.status}.` };
@@ -291,9 +292,9 @@ export async function getQoderUsage(accessToken, proxyOptions = null) {
     // Qoder publishes a single absolute reset timestamp (`expiresAt` in ms);
     // surface it on every quota record as ISO so the table can render
     // "resets at" alongside used/total.
-    const expiresAtMs = Number.isFinite(Number(body.expiresAt)) && Number(body.expiresAt) > 0
-      ? Number(body.expiresAt)
-      : null;
+    const expiresAtMs = Number.isFinite(Number(body.expiresAt)) && Number(body.expiresAt) > 0 ?
+    Number(body.expiresAt) :
+    null;
     const resetAt = expiresAtMs ? new Date(expiresAtMs).toISOString() : null;
     const quotas = {
       user: {
@@ -301,21 +302,21 @@ export async function getQoderUsage(accessToken, proxyOptions = null) {
         used: Number(userQuota.used) || 0,
         remaining: Number(userQuota.remaining) || 0,
         unit: userQuota.unit || "credits",
-        resetAt,
+        resetAt
       },
       organization: {
         total: Number(orgQuota.total) || 0,
         used: Number(orgQuota.used) || 0,
         remaining: Number(orgQuota.remaining) || 0,
         unit: orgQuota.unit || "credits",
-        resetAt,
-      },
+        resetAt
+      }
     };
     return {
       quotas,
       totalUsagePercentage: Number(body.totalUsagePercentage) || 0,
       isQuotaExceeded: !!body.isQuotaExceeded,
-      expiresAt: expiresAtMs,
+      expiresAt: expiresAtMs
     };
   } catch (error) {
     return { message: `Qoder connected. Unable to fetch usage: ${error.message}` };
@@ -333,7 +334,7 @@ export async function getXaiUsage(connectionId) {
     return {
       message: "xAI usage requires a connection id.",
       plan,
-      quotas: {},
+      quotas: {}
     };
   }
 
@@ -350,7 +351,7 @@ export async function getXaiUsage(connectionId) {
     return {
       message: "No requests recorded for this xAI connection in the last 30 days.",
       plan,
-      quotas: {},
+      quotas: {}
     };
   }
 
@@ -372,7 +373,7 @@ export async function getXaiUsage(connectionId) {
 
   const quotas = {
     "Total tokens (30d)": { used: totalTokens, limit: null, unit: "tokens" },
-    "Total spend (30d)": { used: totalCost, limit: null, unit: "usd" },
+    "Total spend (30d)": { used: totalCost, limit: null, unit: "usd" }
   };
   for (const [model, agg] of perModel) {
     quotas[`${model} (30d)`] = { used: agg.used, limit: null, unit: "tokens" };
@@ -380,13 +381,13 @@ export async function getXaiUsage(connectionId) {
   return {
     message: `Aggregated ${rows.length} request${rows.length === 1 ? "" : "s"} for this xAI connection.`,
     plan,
-    quotas,
+    quotas
   };
 }
 
 export async function getGrokWebUsage() {
   return {
     message: "Grok Web connected. Subscription quota is not exposed by a stable usage API; local request usage is tracked by DurinDoor.",
-    quotas: {},
+    quotas: {}
   };
 }

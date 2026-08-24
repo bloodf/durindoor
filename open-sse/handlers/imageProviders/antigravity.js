@@ -4,8 +4,9 @@ import { nowSec } from "./_base.js";
 import { getExecutor } from "../../executors/index.js";
 
 // Convert image input (data URI or raw base64) to Gemini inlineData part
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 function resolveImageInput(input) {
-  if (!input || typeof input !== "string") return null;
+  if (!input || !isString(input)) return null;
   // data:image/png;base64,... format
   const dataUriMatch = input.match(/^data:(image\/[^;]+);base64,(.+)$/);
   if (dataUriMatch) {
@@ -33,14 +34,14 @@ export default {
 
     // Build parts: text prompt + optional input image for editing
     const parts = [{ text: body.prompt }];
-    const imageInput = body.image || (Array.isArray(body.images) && body.images[0]);
+    const imageInput = body.image || Array.isArray(body.images) && body.images[0];
     if (imageInput) {
       const inlineData = resolveImageInput(imageInput);
       if (inlineData) parts.unshift(inlineData);
     }
 
     const chatBody = {
-      contents: [{ role: "user", parts }],
+      contents: [{ role: "user", parts }]
     };
 
     const result = await executor.execute({
@@ -49,7 +50,7 @@ export default {
       stream: false,
       credentials,
       log,
-      proxyOptions,
+      proxyOptions
     });
 
     if (!result.response.ok) {
@@ -64,11 +65,11 @@ export default {
     const candidates = responseBody.candidates || responseBody.response?.candidates || [];
     const parts = candidates[0]?.content?.parts || [];
     const images = parts.filter((p) => p.inlineData?.data).map((p) => ({
-      b64_json: p.inlineData.data,
+      b64_json: p.inlineData.data
     }));
     return {
       created: nowSec(),
-      data: images.length > 0 ? images : [{ b64_json: "", revised_prompt: prompt }],
+      data: images.length > 0 ? images : [{ b64_json: "", revised_prompt: prompt }]
     };
-  },
+  }
 };

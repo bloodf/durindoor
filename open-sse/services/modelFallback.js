@@ -3,21 +3,22 @@
  * On a fallback-eligible failure of the primary, the whole request is retried
  * once against the fallback. One hop only — no chaining, no recursion.
  */
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && isObject(value) && !Array.isArray(value);
 }
 
 /** True for upstream errors that retrying a different model will NOT fix
  *  (request payload too large / context length). Moved from chat.js. */
 export function isDeterministicPayloadError(status, errorText) {
   if (status !== 400) return false;
-  const text = typeof errorText === "string" ? errorText.toLowerCase() : "";
+  const text = isString(errorText) ? errorText.toLowerCase() : "";
   return text.includes("content_length_exceeds_threshold") ||
-    text.includes("input is too long") ||
-    text.includes("context length") ||
-    text.includes("maximum context") ||
-    text.includes("too many tokens");
+  text.includes("input is too long") ||
+  text.includes("context length") ||
+  text.includes("maximum context") ||
+  text.includes("too many tokens");
 }
 
 /**
@@ -30,13 +31,13 @@ export function getModelFallbacks(primaryModelStr, modelFallbacks) {
   if (!isRecord(modelFallbacks)) return [];
   const entry = modelFallbacks[primaryModelStr];
   if (!isRecord(entry) || entry.enabled === false) return [];
-  const list = Array.isArray(entry.fallbacks)
-    ? entry.fallbacks
-    : (entry.fallback ? [entry.fallback] : []);
+  const list = Array.isArray(entry.fallbacks) ?
+  entry.fallbacks :
+  entry.fallback ? [entry.fallback] : [];
   const seen = new Set([primaryModelStr]);
   const out = [];
   for (const f of list) {
-    if (typeof f !== "string" || !f || seen.has(f)) continue;
+    if (!isString(f) || !f || seen.has(f)) continue;
     seen.add(f);
     out.push(f);
   }
@@ -115,9 +116,9 @@ export async function runWithModelFallback(primaryModelStr, modelFallbacks, runn
   let errText = "";
   try {
     errText = await Promise.race([
-      primaryResult.clone().text(),
-      new Promise((resolve) => setTimeout(() => resolve(""), 200)),
-    ]);
+    primaryResult.clone().text(),
+    new Promise((resolve) => setTimeout(() => resolve(""), 200))]
+    );
   } catch {
     errText = "";
   }
@@ -138,15 +139,15 @@ export async function runWithModelFallback(primaryModelStr, modelFallbacks, runn
       let fbErrText = "";
       try {
         fbErrText = await Promise.race([
-          result.clone().text(),
-          new Promise((resolve) => setTimeout(() => resolve(""), 200)),
-        ]);
-      } catch { fbErrText = ""; }
+        result.clone().text(),
+        new Promise((resolve) => setTimeout(() => resolve(""), 200))]
+        );
+      } catch {fbErrText = "";}
       if (isDeterministicPayloadError(result.status, fbErrText)) return result;
     } catch (e) {
+
       // try next fallback — swallow runner exception
-    }
-  }
+    }}
   // All fallbacks failed — return the last fallback's response so the client
   // sees the most recent upstream error (not the stale primary error).
   // Falls back to primaryResult only if every fallback threw.

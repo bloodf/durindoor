@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState, useEffect } from "react";
 import { Card, Button, Input } from "@/shared/components";
 import { safeNextPath } from "@/lib/auth/safeNextPath";
+import { isBrowser } from "../../shared/utils/typeChecks.js";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -25,7 +26,7 @@ export default function LoginPage() {
   // Countdown for rate-limit
   useEffect(() => {
     if (retryAfter <= 0) return;
-    const id = setInterval(() => setRetryAfter((s) => (s > 0 ? s - 1 : 0)), 1000);
+    const id = setInterval(() => setRetryAfter((s) => s > 0 ? s - 1 : 0), 1000);
     return () => clearInterval(id);
   }, [retryAfter]);
   useEffect(() => {
@@ -36,12 +37,12 @@ export default function LoginPage() {
     async function checkAuth() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const baseUrl = isBrowser() ? window.location.origin : "";
       const redirectPath = safeNextPath(new URLSearchParams(window.location.search).get("next"));
 
       try {
         const res = await fetch(`${baseUrl}/api/auth/status`, {
-          signal: controller.signal,
+          signal: controller.signal
         });
         clearTimeout(timeoutId);
         const data = await res.json();
@@ -53,8 +54,8 @@ export default function LoginPage() {
 
         setHasPassword(!!data.hasPassword);
         setUsingDefaultPassword(
-          data.usingDefaultPassword === true &&
-            (data.authMode === "password" || data.authMode === "both"),
+          data.usingDefaultPassword === true && (
+          data.authMode === "password" || data.authMode === "both")
         );
         setAuthMode(data.authMode || "password");
         setOidcConfigured(data.oidcConfigured === true);
@@ -78,7 +79,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password })
       });
 
       const data = await res.json().catch(() => ({}));
@@ -119,7 +120,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proof: passwordChangeProof, newPassword }),
+        body: JSON.stringify({ proof: passwordChangeProof, newPassword })
       });
       const data = await res.json().catch(() => ({}));
       if (data.reauthenticate) {
@@ -157,8 +158,8 @@ export default function LoginPage() {
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           <p className="text-text-muted mt-4">Loading...</p>
         </div>
-      </div>
-    );
+      </div>);
+
   }
 
   return (
@@ -168,134 +169,134 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
           <h1>
-            {wordmarkFailed ? (
-              <span>DurinDoor</span>
-            ) : (
-              <Image
-                src="/durindoor-wordmark.png"
-                alt="DurinDoor"
-                width={872}
-                height={354}
-                priority
-                onError={() => setWordmarkFailed(true)}
-                className="mx-auto h-auto w-72 max-w-full"
-              />
-            )}
+            {wordmarkFailed ?
+            <span>DurinDoor</span> :
+
+            <Image
+              src="/durindoor-wordmark.png"
+              alt="DurinDoor"
+              width={872}
+              height={354}
+              priority
+              onError={() => setWordmarkFailed(true)}
+              className="mx-auto h-auto w-72 max-w-full" />
+
+            }
           </h1>
           <p className="text-text-muted">
-            {authMode === "oidc" && oidcConfigured
-              ? "Sign in with your OIDC provider to access the dashboard"
-              : "Enter your password to access the dashboard"}
+            {authMode === "oidc" && oidcConfigured ?
+            "Sign in with your OIDC provider to access the dashboard" :
+            "Enter your password to access the dashboard"}
           </p>
         </div>
 
         <Card>
-          {mustChange && passwordChangeProof ? (
-            <form onSubmit={handleSetNewPassword} className="flex flex-col gap-4">
+          {mustChange && passwordChangeProof ?
+          <form onSubmit={handleSetNewPassword} className="flex flex-col gap-4">
               <p className="text-sm text-amber-600 dark:text-amber-400 text-center">
                 Set a new password before accessing the dashboard remotely.
               </p>
               <div className="flex flex-col gap-2">
                 <label htmlFor="new-password" className="text-sm font-medium">New password</label>
                 <Input
-                  id="new-password"
-                  type="password"
-                  placeholder="Enter new password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  aria-describedby={error ? "login-error" : undefined}
-                  required
-                  autoFocus
-                />
+                id="new-password"
+                type="password"
+                placeholder="Enter new password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                aria-describedby={error ? "login-error" : undefined}
+                required
+                autoFocus />
+              
                 {error && <p id="login-error" role="alert" aria-live="assertive" className="text-xs text-red-500">{error}</p>}
               </div>
               <Button type="submit" variant="primary" className="w-full" loading={loading} disabled={!newPassword}>
                 Set password
               </Button>
-            </form>
-          ) : mustChange ? (
-            <p className="text-sm text-amber-600 dark:text-amber-400 text-center">
+            </form> :
+          mustChange ?
+          <p className="text-sm text-amber-600 dark:text-amber-400 text-center">
               This dashboard is still using the default password. Sign in from
               the local machine to set a new password before remote access is
               allowed.
-            </p>
-          ) : (
+            </p> :
+
           <div className="flex flex-col gap-4">
-            {oidcAvailable && (
-              <Button type="button" variant="primary" className="w-full" onClick={handleOidcLogin}>
+            {oidcAvailable &&
+            <Button type="button" variant="primary" className="w-full" onClick={handleOidcLogin}>
                 {oidcLoginLabel}
               </Button>
-            )}
+            }
 
             {oidcAvailable && passwordAvailable && <div className="h-px bg-border/60" />}
 
-            {passwordAvailable ? (
-              <form onSubmit={handleLogin} className="flex flex-col gap-4">
-                {((authMode === "oidc" && !oidcConfigured) || (authMode === "both" && !oidcConfigured)) && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+            {passwordAvailable ?
+            <form onSubmit={handleLogin} className="flex flex-col gap-4">
+                {(authMode === "oidc" && !oidcConfigured || authMode === "both" && !oidcConfigured) &&
+              <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
                     OIDC login is enabled, but the issuer/client fields are not configured yet. Password login is still available for recovery.
                   </p>
-                )}
+              }
 
-                {authMode === "both" && oidcConfigured && (
-                  <p className="text-xs text-text-muted text-center">
+                {authMode === "both" && oidcConfigured &&
+              <p className="text-xs text-text-muted text-center">
                     Password and OIDC login are both enabled.
                   </p>
-                )}
+              }
 
                 <div className="flex flex-col gap-2">
                   <label htmlFor="dashboard-password" className="text-sm font-medium">Password</label>
                   <Input
-                    id="dashboard-password"
-                    type="password"
-                    placeholder="Enter password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    aria-describedby={error ? "login-error" : undefined}
-                    required
-                    autoFocus={!oidcAvailable}
-                  />
+                  id="dashboard-password"
+                  type="password"
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  aria-describedby={error ? "login-error" : undefined}
+                  required
+                  autoFocus={!oidcAvailable} />
+                
                   {error && <p id="login-error" role="alert" aria-live="assertive" className="text-xs text-red-500">{error}</p>}
-                  {retryAfter > 0 && (
-                    <p aria-live="polite" className="text-xs text-amber-600 dark:text-amber-400">
+                  {retryAfter > 0 &&
+                <p aria-live="polite" className="text-xs text-amber-600 dark:text-amber-400">
                       Locked. Retry in <span className="font-mono">{retryAfter}s</span>.
                     </p>
-                  )}
-                  {resetHint && (
-                    <p className="text-xs text-text-muted">
+                }
+                  {resetHint &&
+                <p className="text-xs text-text-muted">
                       Forgot password? Open <code className="bg-sidebar px-1 rounded">durindoor</code> CLI on the host → <b>Settings</b> → <b>Reset Password to Default</b>.
                     </p>
-                  )}
+                }
                 </div>
 
                 <Button
-                  type="submit"
-                  variant="primary"
-                  className="w-full"
-                  loading={loading}
-                  disabled={retryAfter > 0}
-                >
+                type="submit"
+                variant="primary"
+                className="w-full"
+                loading={loading}
+                disabled={retryAfter > 0}>
+                
                   {retryAfter > 0 ? `Wait ${retryAfter}s` : "Login"}
                 </Button>
 
-                {usingDefaultPassword && (
-                  <p className="text-xs text-center text-text-muted mt-2">
+                {usingDefaultPassword &&
+              <p className="text-xs text-center text-text-muted mt-2">
                     The configured default password must be changed before remote access is allowed.
                   </p>
-                )}
-                {hasPassword === false && (
-                  <p className="text-xs text-center text-amber-600 dark:text-amber-400">
+              }
+                {hasPassword === false &&
+              <p className="text-xs text-center text-amber-600 dark:text-amber-400">
                     Security risk: no password set. You will be asked to set one when logging in remotely.
                   </p>
-                )}
-              </form>
-            ) : (
-              error && <p className="text-xs text-red-500">{error}</p>
-            )}
+              }
+              </form> :
+
+            error && <p className="text-xs text-red-500">{error}</p>
+            }
           </div>
-          )}
+          }
         </Card>
       </div>
-    </div>
-  );
+    </div>);
+
 }

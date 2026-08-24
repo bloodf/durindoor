@@ -8,6 +8,7 @@ import { collapseTextParts } from "../concerns/message.js";
 
 // Convert Antigravity request to OpenAI format
 // Antigravity body: { project, model, userAgent, requestType, requestId, request: { contents, systemInstruction, tools, toolConfig, generationConfig, sessionId } }
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 export function antigravityToOpenAIRequest(model, body, stream) {
   const req = body.request || body;
   const result = {
@@ -95,12 +96,12 @@ export function antigravityToOpenAIRequest(model, body, stream) {
  * @returns {object} Normalized schema (a shallow-cloned tree).
  */
 function normalizeSchemaTypes(schema) {
-  if (!schema || typeof schema !== "object") return schema;
+  if (!schema || !isObject(schema)) return schema;
 
   const result = Array.isArray(schema) ? [...schema] : { ...schema };
 
 
-  if (typeof result.type === "string") {
+  if (isString(result.type)) {
     result.type = result.type.toLowerCase();
   }
 
@@ -120,7 +121,7 @@ function normalizeSchemaTypes(schema) {
     result.items = normalizeSchemaTypes(result.items);
   }
 
-  if (result.additionalProperties && typeof result.additionalProperties === "object") {
+  if (result.additionalProperties && isObject(result.additionalProperties)) {
     result.additionalProperties = normalizeSchemaTypes(result.additionalProperties);
   }
 
@@ -248,9 +249,9 @@ function convertContent(content) {
 
 // Extract text from systemInstruction
 function extractText(instruction) {
-  if (typeof instruction === "string") return instruction;
+  if (isString(instruction)) return instruction;
   if (instruction.parts && Array.isArray(instruction.parts)) {
-    return instruction.parts.map(p => p.text || "").join("");
+    return instruction.parts.map((p) => p.text || "").join("");
   }
   return "";
 }

@@ -1,3 +1,4 @@
+import { isString } from "./typeChecks.js";
 const ABSOLUTE_ISO_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
 
 /**
@@ -5,7 +6,7 @@ const ABSOLUTE_ISO_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})
  * calendar normalization (for example February 30). Returns epoch ms or null.
  */
 export function parseAbsoluteTimestamp(value) {
-  if (typeof value !== "string") return null;
+  if (!isString(value)) return null;
   const match = ABSOLUTE_ISO_TIMESTAMP.exec(value);
   if (!match) return null;
 
@@ -28,19 +29,19 @@ export function parseAbsoluteTimestamp(value) {
   wallClock.setUTCFullYear(year, month - 1, day);
   wallClock.setUTCHours(hour, minute, second, millisecond);
   if (
-    wallClock.getUTCFullYear() !== year
-    || wallClock.getUTCMonth() !== month - 1
-    || wallClock.getUTCDate() !== day
-    || wallClock.getUTCHours() !== hour
-    || wallClock.getUTCMinutes() !== minute
-    || wallClock.getUTCSeconds() !== second
-    || wallClock.getUTCMilliseconds() !== millisecond
-  ) {
+  wallClock.getUTCFullYear() !== year ||
+  wallClock.getUTCMonth() !== month - 1 ||
+  wallClock.getUTCDate() !== day ||
+  wallClock.getUTCHours() !== hour ||
+  wallClock.getUTCMinutes() !== minute ||
+  wallClock.getUTCSeconds() !== second ||
+  wallClock.getUTCMilliseconds() !== millisecond)
+  {
     return null;
   }
 
-  const offsetMinutes = zone === "Z" ? 0 : (sign === "-" ? -1 : 1) * ((offsetHour * 60) + offsetMinute);
-  const timestamp = wallClock.getTime() - (offsetMinutes * 60_000);
+  const offsetMinutes = zone === "Z" ? 0 : (sign === "-" ? -1 : 1) * (offsetHour * 60 + offsetMinute);
+  const timestamp = wallClock.getTime() - offsetMinutes * 60_000;
   return Number.isFinite(timestamp) && Date.parse(value) === timestamp ? timestamp : null;
 }
 

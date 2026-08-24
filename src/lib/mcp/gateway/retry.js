@@ -1,4 +1,5 @@
 // Bounded retry helper with exponential backoff and jitter for transient
+import { isNumber, isString } from "../../../shared/utils/typeChecks.js";
 // MCP gateway failures. Used by HTTP and stdio clients to handle temporary
 // network/upstream blips without surfacing them as fatal errors to the harness.
 
@@ -69,9 +70,9 @@ export async function retryWithBackoff(fn, opts = {}) {
  */
 function defaultIsTransient(err) {
   if (!err) return false;
-  const msg = (typeof err.message === "string" ? err.message : "").toLowerCase();
-  const code = typeof err.code === "string" ? err.code : "";
-  const status = typeof err.status === "number" ? err.status : 0;
+  const msg = (isString(err.message) ? err.message : "").toLowerCase();
+  const code = isString(err.code) ? err.code : "";
+  const status = isNumber(err.status) ? err.status : 0;
 
   if (err.name === "McpAuthError") return false;
   if (status === 401 || status === 403) return false;
@@ -97,5 +98,5 @@ export const __test__ = {
   DEFAULT_BASE_DELAY_MS,
   DEFAULT_BACKOFF_FACTOR,
   DEFAULT_JITTER_RATIO,
-  DEFAULT_MAX_DELAY_MS,
+  DEFAULT_MAX_DELAY_MS
 };

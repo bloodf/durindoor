@@ -1,29 +1,30 @@
 import { FORMATS } from "../translator/formats.js";
 import { GEMINI_ERROR_FINISH_REASONS } from "../translator/schema/finishReasons.js";
 import { buildAbortedResponsesTerminalBytes } from "./responsesStreamHelpers.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const RESPONSES_SUCCESS_EVENTS = new Set([
-  "response.completed",
-  "response.done",
-  "response.incomplete",
-]);
+"response.completed",
+"response.done",
+"response.incomplete"]
+);
 const RESPONSES_FAILURE_EVENTS = new Set([
-  "response.failed",
-  "response.cancelled",
-  "response.canceled",
-  "error",
-]);
+"response.failed",
+"response.cancelled",
+"response.canceled",
+"error"]
+);
 
 function responseEventName(eventName, chunk) {
-  if (typeof eventName === "string" && eventName) return eventName;
-  return typeof chunk?.type === "string" ? chunk.type : null;
+  if (isString(eventName) && eventName) return eventName;
+  return isString(chunk?.type) ? chunk.type : null;
 }
 
 function responseEventTypes(eventName, chunk) {
   return [
-    typeof eventName === "string" && eventName ? eventName : null,
-    typeof chunk?.type === "string" && chunk.type ? chunk.type : null,
-  ].filter(Boolean);
+  isString(eventName) && eventName ? eventName : null,
+  isString(chunk?.type) && chunk.type ? chunk.type : null].
+  filter(Boolean);
 }
 
 function responseStatus(chunk) {
@@ -73,7 +74,7 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
     successKind = kind;
     if (!deferSuccessCallback && !fired) {
       fired = true;
-      try { onCoherentTerminal?.({ kind }); } catch { /* success cleanup is fail-open */ }
+      try {onCoherentTerminal?.({ kind });} catch {/* success cleanup is fail-open */}
     }
     return true;
   };
@@ -84,9 +85,9 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
 
   const allOpenAIChoicesFinished = () => {
     const required = expectedChoices || seenChoices.size;
-    return required > 0
-      && finishedChoices.size >= required
-      && [...seenChoices].every((index) => finishedChoices.has(index));
+    return required > 0 &&
+    finishedChoices.size >= required &&
+    [...seenChoices].every((index) => finishedChoices.has(index));
   };
 
   function observeOpenAI(chunk, rawDone) {
@@ -99,10 +100,10 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
     if (!Array.isArray(chunk?.choices)) return false;
     if (chunk.choices.length === 0) {
       if (
-        chunk?.usage && typeof chunk.usage === "object"
-        && allOpenAIChoicesFinished()
-        && !openAIUsageTrailerSeen
-      ) {
+      chunk?.usage && isObject(chunk.usage) &&
+      allOpenAIChoicesFinished() &&
+      !openAIUsageTrailerSeen)
+      {
         openAIUsageTrailerSeen = true;
         return false;
       }
@@ -114,7 +115,7 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
       if (finishedChoices.has(index)) return fail();
       seenChoices.add(index);
       if (choice?.finish_reason === "error") return fail();
-      if (typeof choice?.finish_reason === "string" && choice.finish_reason) finishedChoices.add(index);
+      if (isString(choice?.finish_reason) && choice.finish_reason) finishedChoices.add(index);
     }
     return false;
   }
@@ -126,26 +127,26 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
     const status = responseStatus(chunk);
     if (types.some((candidate) => RESPONSES_FAILURE_EVENTS.has(candidate)) || ["failed", "cancelled", "canceled"].includes(status)) return fail();
     if (
-      types.length > 1
-      && types[0] !== types[1]
-      && types.some((candidate) => RESPONSES_SUCCESS_EVENTS.has(candidate) || RESPONSES_FAILURE_EVENTS.has(candidate))
-    ) return fail();
+    types.length > 1 &&
+    types[0] !== types[1] &&
+    types.some((candidate) => RESPONSES_SUCCESS_EVENTS.has(candidate) || RESPONSES_FAILURE_EVENTS.has(candidate)))
+    return fail();
     if (!RESPONSES_SUCCESS_EVENTS.has(type)) return false;
     if (type === "response.incomplete") {
       return !status || status === "incomplete" ? succeedApplication("responses_incomplete") : fail();
     }
-    return !status || status === "completed"
-      ? succeedApplication("responses_completed")
-      : fail();
+    return !status || status === "completed" ?
+    succeedApplication("responses_completed") :
+    fail();
   }
 
   function observeClaude(chunk, eventName) {
-    const eventType = typeof eventName === "string" ? eventName : null;
+    const eventType = isString(eventName) ? eventName : null;
     if (eventType === "error" || chunk?.type === "error" || chunk?.error) return fail();
     if (eventType && chunk?.type && eventType !== chunk.type) return fail();
-    return (eventType === "message_stop" || chunk?.type === "message_stop")
-      ? succeedApplication("claude_message_stop")
-      : false;
+    return eventType === "message_stop" || chunk?.type === "message_stop" ?
+    succeedApplication("claude_message_stop") :
+    false;
   }
 
   function observeGemini(chunk) {
@@ -154,20 +155,20 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
     if (promptBlock) return succeedApplication("gemini_prompt_block");
     const candidates = geminiCandidates(chunk);
     expectedCandidates = positiveInteger(
-      chunk?.candidate_count ?? chunk?.candidateCount
-      ?? chunk?.response?.candidate_count ?? chunk?.response?.candidateCount,
+      chunk?.candidate_count ?? chunk?.candidateCount ??
+      chunk?.response?.candidate_count ?? chunk?.response?.candidateCount
     ) || expectedCandidates;
     for (const [position, candidate] of candidates.entries()) {
       const index = Number.isSafeInteger(candidate?.index) ? candidate.index : position;
       seenCandidates.add(index);
       const reason = candidate?.finishReason || candidate?.finish_reason;
       if (GEMINI_ERROR_FINISH_REASONS.has(reason)) return fail();
-      if (typeof reason === "string" && reason) finishedCandidates.add(index);
+      if (isString(reason) && reason) finishedCandidates.add(index);
     }
     const required = expectedCandidates || seenCandidates.size;
-    return required > 0 && finishedCandidates.size >= required && [...seenCandidates].every((index) => finishedCandidates.has(index))
-      ? succeedApplication("gemini_finish")
-      : false;
+    return required > 0 && finishedCandidates.size >= required && [...seenCandidates].every((index) => finishedCandidates.has(index)) ?
+    succeedApplication("gemini_finish") :
+    false;
   }
 
   function observeOllama(chunk) {
@@ -190,7 +191,7 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
     if (Array.isArray(chunk?.choices)) {
       for (const choice of chunk.choices) {
         if (choice?.finish_reason === "error") return fail();
-        if (typeof choice?.finish_reason === "string" && choice.finish_reason) specialTerminalSeen = true;
+        if (isString(choice?.finish_reason) && choice.finish_reason) specialTerminalSeen = true;
       }
     }
     return false;
@@ -201,16 +202,16 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
     finalize() {
       if (outcome !== "success" || fired) return false;
       fired = true;
-      try { onCoherentTerminal?.({ kind: successKind }); } catch { /* success cleanup is fail-open */ }
+      try {onCoherentTerminal?.({ kind: successKind });} catch {/* success cleanup is fail-open */}
       return true;
     },
     observe({ chunk = null, eventName = null, rawDone = false } = {}) {
       if (outcome === "failure") return false;
-      if (rawDone && typeof eventName === "string" && eventName.trim()) return fail();
+      if (rawDone && isString(eventName) && eventName.trim()) return fail();
       if (rawDoneSeen) return fail();
-      const isResponses = format === FORMATS.OPENAI_RESPONSES
-        || format === FORMATS.OPENAI_RESPONSE
-        || format === FORMATS.CODEX;
+      const isResponses = format === FORMATS.OPENAI_RESPONSES ||
+      format === FORMATS.OPENAI_RESPONSE ||
+      format === FORMATS.CODEX;
       if (isResponses) {
         if (rawDone) {
           if (!applicationTerminalSeen || outcome !== "success") return fail();
@@ -221,15 +222,15 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
         return observeResponses(chunk, eventName);
       }
       if (format === FORMATS.CLAUDE) {
-        if (rawDone || (applicationTerminalSeen && chunk != null)) return fail();
+        if (rawDone || applicationTerminalSeen && chunk != null) return fail();
         return observeClaude(chunk, eventName);
       }
       if ([FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX, FORMATS.ANTIGRAVITY].includes(format)) {
-        if (rawDone || (applicationTerminalSeen && chunk != null)) return fail();
+        if (rawDone || applicationTerminalSeen && chunk != null) return fail();
         return observeGemini(chunk);
       }
       if (format === FORMATS.OLLAMA) {
-        if (rawDone || (applicationTerminalSeen && chunk != null)) return fail();
+        if (rawDone || applicationTerminalSeen && chunk != null) return fail();
         return observeOllama(chunk);
       }
       if ([FORMATS.KIRO, FORMATS.COMMANDCODE, FORMATS.CURSOR].includes(format)) {
@@ -242,36 +243,36 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
       }
       return observeOpenAI(chunk, rawDone);
     },
-    get outcome() { return outcome; },
-    get fired() { return fired; },
+    get outcome() {return outcome;},
+    get fired() {return fired;}
   };
 }
 
 function isCoherentOpenAICompletion(chunk) {
-  return Array.isArray(chunk?.choices)
-    && chunk.choices.length > 0
-    && chunk.choices.every((choice) => (
-      choice
-      && typeof choice.finish_reason === "string"
-      && choice.finish_reason.length > 0
-      && choice.finish_reason !== "error"
-      && (choice.message && typeof choice.message === "object" || typeof choice.text === "string")
-    ));
+  return Array.isArray(chunk?.choices) &&
+  chunk.choices.length > 0 &&
+  chunk.choices.every((choice) =>
+  choice && isString(
+    choice.finish_reason) &&
+  choice.finish_reason.length > 0 &&
+  choice.finish_reason !== "error" && (
+  choice.message && isObject(choice.message) || isString(choice.text))
+  );
 }
 
 /** Validate a fully buffered provider response before clearing runtime health. */
 export function isCoherentNonStreamingResponse(chunk, format = FORMATS.OPENAI) {
-  if (!chunk || typeof chunk !== "object" || chunk.error || chunk.type === "error") return false;
+  if (!chunk || !isObject(chunk) || chunk.error || chunk.type === "error") return false;
   if ([FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE, FORMATS.CODEX].includes(format)) {
     const status = responseStatus(chunk);
     return ["completed", "incomplete"].includes(status) && Array.isArray(chunk.output);
   }
   if (format === FORMATS.CLAUDE) {
     if (isCoherentOpenAICompletion(chunk)) return true;
-    return chunk.type === "message"
-      && (Array.isArray(chunk.content) || chunk.content === null)
-      && typeof chunk.stop_reason === "string"
-      && chunk.stop_reason.length > 0;
+    return chunk.type === "message" && (
+    Array.isArray(chunk.content) || chunk.content === null) && isString(
+      chunk.stop_reason) &&
+    chunk.stop_reason.length > 0;
   }
   if ([FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX, FORMATS.ANTIGRAVITY].includes(format)) {
     const promptBlock = chunk?.promptFeedback?.blockReason || chunk?.response?.promptFeedback?.blockReason;
@@ -279,7 +280,7 @@ export function isCoherentNonStreamingResponse(chunk, format = FORMATS.OPENAI) {
     const candidates = geminiCandidates(chunk);
     return candidates.length > 0 && candidates.every((candidate) => {
       const reason = candidate?.finishReason || candidate?.finish_reason;
-      return typeof reason === "string" && reason.length > 0 && !GEMINI_ERROR_FINISH_REASONS.has(reason);
+      return isString(reason) && reason.length > 0 && !GEMINI_ERROR_FINISH_REASONS.has(reason);
     });
   }
   if (format === FORMATS.OLLAMA) return chunk.done === true;
@@ -302,17 +303,17 @@ export function createTerminalTracker(format) {
     observeClientFrame(frame) {
       if (terminated || !frame) return;
       if (format === FORMATS.OPENAI) {
-        terminated = /^data: \[DONE\]/m.test(frame)
-          || /"finish_reason"\s*:\s*"[^"\n]+"/.test(frame)
-          || /"error"\s*:\s*\{/.test(frame);
+        terminated = /^data: \[DONE\]/m.test(frame) ||
+        /"finish_reason"\s*:\s*"[^"\n]+"/.test(frame) ||
+        /"error"\s*:\s*\{/.test(frame);
       } else if (format === FORMATS.CLAUDE) {
-        terminated = /^event: (message_stop|error)/m.test(frame)
-          || frame.includes('"type":"message_stop"')
-          || frame.includes('"type":"error"');
+        terminated = /^event: (message_stop|error)/m.test(frame) ||
+        frame.includes('"type":"message_stop"') ||
+        frame.includes('"type":"error"');
       } else {
-        terminated = /^event: (response\.(completed|done|incomplete|failed|cancelled|canceled)|error)/m.test(frame)
-          || /^data: \[DONE\]/m.test(frame)
-          || frame.includes('"type":"error"');
+        terminated = /^event: (response\.(completed|done|incomplete|failed|cancelled|canceled)|error)/m.test(frame) ||
+        /^data: \[DONE\]/m.test(frame) ||
+        frame.includes('"type":"error"');
       }
     },
     buildRecoveryBytes() {
@@ -325,6 +326,6 @@ export function createTerminalTracker(format) {
         return clientTerminalEncoder.encode('event: error\ndata: {"type":"error","error":{"type":"stream_error","message":"Upstream stream ended before completing"}}\n\n');
       }
       return buildAbortedResponsesTerminalBytes();
-    },
+    }
   };
 }

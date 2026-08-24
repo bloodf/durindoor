@@ -8,11 +8,12 @@ import { createProviderConnection } from "@/models";
  * credential — there is no refresh token. It is validated by listing
  * CodeWhisperer profiles, then stored with authMethod="api_key".
  */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { apiKey, region } = await request.json();
 
-    if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+    if (!apiKey || !isString(apiKey) || !apiKey.trim()) {
       return NextResponse.json(
         { error: "API key is required" },
         { status: 400 }
@@ -43,9 +44,9 @@ export async function POST(request) {
         profileArn: credential.profileArn,
         region: credential.region,
         authMethod: "api_key",
-        provider: "API Key",
+        provider: "API Key"
       },
-      testStatus: "active",
+      testStatus: "active"
     });
 
     return NextResponse.json({
@@ -53,8 +54,8 @@ export async function POST(request) {
       connection: {
         id: connection.id,
         provider: connection.provider,
-        email: connection.email,
-      },
+        email: connection.email
+      }
     });
   } catch (error) {
     console.log("Kiro API key import error:", error);

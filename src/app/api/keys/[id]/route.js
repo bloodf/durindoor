@@ -5,6 +5,7 @@ import { isApiKeyPolicyInputError, resolveApiKeyPolicyInput } from "@/shared/uti
 import { deleteApiKey, getApiKeyById, getApiKeyUsageTotals, updateApiKey } from "@/lib/localDb";
 
 // GET /api/keys/[id] - Get single key
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
@@ -28,7 +29,7 @@ export async function PUT(request, { params }) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
+  if (!body || !isObject(body) || Array.isArray(body)) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
   try {
@@ -42,7 +43,7 @@ export async function PUT(request, { params }) {
 
     const updateData = {};
     if ("name" in body) {
-      const trimmedName = typeof name === "string" ? name.trim() : "";
+      const trimmedName = isString(name) ? name.trim() : "";
       if (!trimmedName) return NextResponse.json({ error: "Name is required" }, { status: 400 });
       updateData.name = trimmedName;
     }
@@ -52,8 +53,8 @@ export async function PUT(request, { params }) {
     if ("expiresAt" in body) updateData.expiresAt = expiresAt;
     const policyInput = await resolveApiKeyPolicyInput(body);
     if (policyInput.present) {
-      if (Object.hasOwn(policyInput, "value")) updateData.policy = policyInput.value;
-      else updateData.policyPatch = policyInput.patch;
+      if (Object.hasOwn(policyInput, "value")) updateData.policy = policyInput.value;else
+      updateData.policyPatch = policyInput.patch;
     }
 
     const updated = await updateApiKey(id, updateData);

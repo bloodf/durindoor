@@ -12,7 +12,7 @@ import { DATA_DIR } from "@/lib/dataDir";
 //   3. Throw — refuses to silently forge keys with a public secret.
 // `requireLogin` is intentionally NOT consulted here: a login-disabled local
 // install still needs a stable secret so already-issued keys keep validating.
-
+import { isString } from "./typeChecks.js";
 const SECRET_FILE_BASENAME = "api-key-secret";
 
 let cachedSecret = null;
@@ -26,12 +26,12 @@ export function getApiKeySecret() {
   if (cachedSecret) return cachedSecret;
 
   const fromEnv = process.env.API_KEY_SECRET;
-  if (typeof fromEnv === "string" && fromEnv.length > 0) {
+  if (isString(fromEnv) && fromEnv.length > 0) {
     cachedSecret = fromEnv;
     return cachedSecret;
   }
 
-  if (typeof process.env.DATA_DIR === "string" && process.env.DATA_DIR.length > 0) {
+  if (isString(process.env.DATA_DIR) && process.env.DATA_DIR.length > 0) {
     const secretPath = path.join(DATA_DIR, SECRET_FILE_BASENAME);
     let existing = null;
     try {
@@ -49,8 +49,8 @@ export function getApiKeySecret() {
     // Warn without leaking the secret value or its full path.
     console.warn(
       "[apiKey] API_KEY_SECRET unset — minted a fresh secret under DATA_DIR/" +
-        SECRET_FILE_BASENAME +
-        " (mode 0600). Set API_KEY_SECRET explicitly in production.",
+      SECRET_FILE_BASENAME +
+      " (mode 0600). Set API_KEY_SECRET explicitly in production."
     );
     cachedSecret = generated;
     return cachedSecret;
@@ -80,11 +80,11 @@ function generateKeyId() {
  * Generate CRC (8-char HMAC)
  */
 function generateCrc(machineId, keyId) {
-  return crypto
-    .createHmac("sha256", getApiKeySecret())
-    .update(machineId + keyId)
-    .digest("hex")
-    .slice(0, 8);
+  return crypto.
+  createHmac("sha256", getApiKeySecret()).
+  update(machineId + keyId).
+  digest("hex").
+  slice(0, 8);
 }
 
 /**

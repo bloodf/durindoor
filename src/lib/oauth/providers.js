@@ -32,16 +32,17 @@ import {
   CODEBUDDY_CONFIG,
   KIMCHI_CONFIG,
   GROK_CLI_CONFIG,
-  getOAuthClientMetadata,
-} from "./constants/oauth";
+  getOAuthClientMetadata } from
+"./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
 import {
   validateXaiOAuthEndpoint,
   decodeXaiIdTokenEmail,
   extractEmailFromAccessToken,
   extractCodexAccountInfo,
-  fetchKiroProfileArn,
-} from "./providerHelpers";
+  fetchKiroProfileArn } from
+"./providerHelpers";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn };
 
@@ -53,17 +54,17 @@ async function discoverXaiEndpoints(proxyOptions = null) {
   try {
     const res = await fetch(XAI_CONFIG.discoveryUrl, {
       headers: { Accept: "application/json" },
-      proxyOptions,
+      proxyOptions
     });
     if (res.ok) {
       const data = await res.json();
       cachedXaiDiscovery = {
         authorizeUrl: validateXaiOAuthEndpoint(data.authorization_endpoint, "authorization_endpoint"),
-        tokenUrl: validateXaiOAuthEndpoint(data.token_endpoint, "token_endpoint"),
+        tokenUrl: validateXaiOAuthEndpoint(data.token_endpoint, "token_endpoint")
       };
       return cachedXaiDiscovery;
     }
-  } catch { /* fall through to static fallback */ }
+  } catch {/* fall through to static fallback */}
   cachedXaiDiscovery = { authorizeUrl: XAI_CONFIG.authorizeUrl, tokenUrl: XAI_CONFIG.tokenUrl };
   return cachedXaiDiscovery;
 }
@@ -82,7 +83,7 @@ const PROVIDERS = {
         scope: config.scopes.join(" "),
         code_challenge: codeChallenge,
         code_challenge_method: config.codeChallengeMethod,
-        state: state,
+        state: state
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
@@ -100,7 +101,7 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: JSON.stringify({
           code: authCode,
@@ -108,9 +109,9 @@ const PROVIDERS = {
           grant_type: "authorization_code",
           client_id: config.clientId,
           redirect_uri: redirectUri,
-          code_verifier: codeVerifier,
+          code_verifier: codeVerifier
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       if (!response.ok) {
@@ -124,8 +125,8 @@ const PROVIDERS = {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresIn: tokens.expires_in,
-      scope: tokens.scope,
-    }),
+      scope: tokens.scope
+    })
   },
 
   codex: {
@@ -142,11 +143,11 @@ const PROVIDERS = {
         code_challenge: codeChallenge,
         code_challenge_method: config.codeChallengeMethod,
         ...config.extraParams,
-        state: state,
+        state: state
       };
-      const queryString = Object.entries(params)
-        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-        .join("&");
+      const queryString = Object.entries(params).
+      map(([key, value]) => `${key}=${encodeURIComponent(value)}`).
+      join("&");
       return `${config.authorizeUrl}?${queryString}`;
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
@@ -155,26 +156,26 @@ const PROVIDERS = {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         },
         body: new URLSearchParams({
           grant_type: "authorization_code",
           client_id: config.clientId,
           code: code,
           redirect_uri: redirectUri,
-          code_verifier: codeVerifier,
+          code_verifier: codeVerifier
         }).toString(),
-        proxyOptions: nextProxyOptions,
+        proxyOptions: nextProxyOptions
       });
 
       let response = await fetch(config.tokenUrl, buildRequest(proxyOptions));
       if (!response.ok) {
         const error = await response.text();
         if (
-          isCloudflareHtmlBadRequest(response.status, error) &&
-          proxyOptions?.disableEnvProxy !== true &&
-          proxyOptions?.strictProxy !== true
-        ) {
+        isCloudflareHtmlBadRequest(response.status, error) &&
+        proxyOptions?.disableEnvProxy !== true &&
+        proxyOptions?.strictProxy !== true)
+        {
           response = await fetch(config.tokenUrl, buildRequest({ disableEnvProxy: true }));
           if (response.ok) return await response.json();
           const directError = await response.text();
@@ -192,18 +193,18 @@ const PROVIDERS = {
         refreshToken: tokens.refresh_token,
         idToken: tokens.id_token,
         expiresIn: tokens.expires_in,
-        lastRefreshAt: new Date().toISOString(),
+        lastRefreshAt: new Date().toISOString()
       };
       const email = info.email || extractEmailFromAccessToken(tokens.access_token);
       if (email) mapped.email = email;
       if (info.chatgptAccountId || info.chatgptPlanType) {
         mapped.providerSpecificData = {
           chatgptAccountId: info.chatgptAccountId,
-          chatgptPlanType: info.chatgptPlanType,
+          chatgptPlanType: info.chatgptPlanType
         };
       }
       return mapped;
-    },
+    }
   },
 
   xai: {
@@ -217,7 +218,7 @@ const PROVIDERS = {
       return {
         ...config,
         authorizeUrl: endpoints.authorizeUrl,
-        tokenUrl: endpoints.tokenUrl,
+        tokenUrl: endpoints.tokenUrl
       };
     },
     buildAuthUrl: (config, redirectUri, state, codeChallenge) => {
@@ -233,11 +234,11 @@ const PROVIDERS = {
         state,
         nonce,
         plan: "generic",
-        referrer: "cli-proxy-api",
+        referrer: "cli-proxy-api"
       };
-      const qs = Object.entries(params)
-        .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-        .join("&");
+      const qs = Object.entries(params).
+      map(([k, v]) => `${k}=${encodeURIComponent(v)}`).
+      join("&");
       return `${config.authorizeUrl}?${qs}`;
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
@@ -245,16 +246,16 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: new URLSearchParams({
           grant_type: "authorization_code",
           client_id: config.clientId,
           code,
           redirect_uri: redirectUri,
-          code_verifier: codeVerifier,
+          code_verifier: codeVerifier
         }),
-        proxyOptions,
+        proxyOptions
       });
       if (!response.ok) {
         const error = await response.text();
@@ -267,7 +268,7 @@ const PROVIDERS = {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
         expiresIn: tokens.expires_in,
-        scope: tokens.scope,
+        scope: tokens.scope
       };
       const email = decodeXaiIdTokenEmail(tokens.id_token);
       if (email) mapped.email = email;
@@ -275,7 +276,7 @@ const PROVIDERS = {
         mapped.providerSpecificData = { idToken: tokens.id_token };
       }
       return mapped;
-    },
+    }
   },
 
   "grok-cli": {
@@ -285,7 +286,7 @@ const PROVIDERS = {
     requestDeviceCode: async (config, codeChallenge, options, proxyOptions) => {
       const body = new URLSearchParams({
         client_id: config.clientId,
-        scope: config.scope,
+        scope: config.scope
       });
       // Official CLI sends referrer=grok-build
       if (config.referrer) body.set("referrer", config.referrer);
@@ -295,10 +296,10 @@ const PROVIDERS = {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
-          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)"
         },
         body,
-        proxyOptions,
+        proxyOptions
       });
 
       if (!response.ok) {
@@ -314,14 +315,14 @@ const PROVIDERS = {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
-          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)"
         },
         body: new URLSearchParams({
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
           device_code: deviceCode,
-          client_id: config.clientId,
+          client_id: config.clientId
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       let data;
@@ -345,30 +346,30 @@ const PROVIDERS = {
             Accept: "application/json",
             "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
             "x-xai-token-auth": "xai-grok-cli",
-            "x-grok-client-version": "0.2.93",
+            "x-grok-client-version": "0.2.93"
           },
-          proxyOptions,
+          proxyOptions
         });
         if (res.ok) return { user: await res.json() };
       } catch {
-        /* ignore */
-      }
+
+        /* ignore */}
       return { user: null };
     },
     mapTokens: (tokens, extra) => {
       const email =
-        decodeXaiIdTokenEmail(tokens.id_token) ||
-        extractEmailFromAccessToken(tokens.access_token) ||
-        extra?.user?.email ||
-        null;
+      decodeXaiIdTokenEmail(tokens.id_token) ||
+      extractEmailFromAccessToken(tokens.access_token) ||
+      extra?.user?.email ||
+      null;
       const userId = extra?.user?.userId || extra?.user?.principalId || null;
       const displayName =
-        [extra?.user?.firstName, extra?.user?.lastName].filter(Boolean).join(" ").trim() || null;
+      [extra?.user?.firstName, extra?.user?.lastName].filter(Boolean).join(" ").trim() || null;
 
       // Branch fix/feat/durindoor-fixes-ports: absolute expiresAt enables proactive refresh.
-      const expiresAt = tokens.expires_in
-        ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
-        : null;
+      const expiresAt = tokens.expires_in ?
+      new Date(Date.now() + tokens.expires_in * 1000).toISOString() :
+      null;
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || null,
@@ -377,15 +378,15 @@ const PROVIDERS = {
         scope: tokens.scope,
         // Top-level for dashboard connection cards.
         email,
-        ...(displayName ? { displayName } : {}),
+        ...(displayName ? { displayName } : null),
         providerSpecificData: {
           authMethod: "device_code",
-          ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
-          ...(email ? { email } : {}),
-          ...(userId ? { userId } : {}),
-        },
+          ...(tokens.id_token ? { idToken: tokens.id_token } : null),
+          ...(email ? { email } : null),
+          ...(userId ? { userId } : null)
+        }
       };
-    },
+    }
   },
 
   "gemini-cli": {
@@ -399,7 +400,7 @@ const PROVIDERS = {
         scope: config.scopes.join(" "),
         state: state,
         access_type: "offline",
-        prompt: "consent",
+        prompt: "consent"
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
@@ -408,16 +409,16 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: new URLSearchParams({
           grant_type: "authorization_code",
           client_id: config.clientId,
           client_secret: config.clientSecret,
           code: code,
-          redirect_uri: redirectUri,
+          redirect_uri: redirectUri
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       if (!response.ok) {
@@ -431,7 +432,7 @@ const PROVIDERS = {
       // Fetch user info
       const userInfoRes = await fetch(`${GEMINI_CONFIG.userInfoUrl}?alt=json`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
-        proxyOptions,
+        proxyOptions
       });
       const userInfo = userInfoRes.ok ? await userInfoRes.json() : {};
 
@@ -444,13 +445,13 @@ const PROVIDERS = {
             method: "POST",
             headers: {
               Authorization: `Bearer ${tokens.access_token}`,
-              "Content-Type": "application/json",
+              "Content-Type": "application/json"
             },
             body: JSON.stringify({
               metadata: getOAuthClientMetadata(),
-              mode: 1,
+              mode: 1
             }),
-            proxyOptions,
+            proxyOptions
           }
         );
         if (projectRes.ok) {
@@ -469,8 +470,8 @@ const PROVIDERS = {
       expiresIn: tokens.expires_in,
       scope: tokens.scope,
       email: extra?.userInfo?.email,
-      projectId: extra?.projectId,
-    }),
+      projectId: extra?.projectId
+    })
   },
 
   antigravity: {
@@ -484,7 +485,7 @@ const PROVIDERS = {
         scope: config.scopes.join(" "),
         state: state,
         access_type: "offline",
-        prompt: "consent",
+        prompt: "consent"
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
@@ -493,16 +494,16 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: new URLSearchParams({
           grant_type: "authorization_code",
           client_id: config.clientId,
           client_secret: config.clientSecret,
           code: code,
-          redirect_uri: redirectUri,
+          redirect_uri: redirectUri
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       if (!response.ok) {
@@ -520,7 +521,7 @@ const PROVIDERS = {
         "Authorization": `Bearer ${tokens.access_token}`,
         "Content-Type": "application/json",
         "User-Agent": ANTIGRAVITY_CONFIG.loadCodeAssistUserAgent,
-        "x-request-source": "local",
+        "x-request-source": "local"
       };
       const metadata = getOAuthClientMetadata();
 
@@ -528,9 +529,9 @@ const PROVIDERS = {
       const userInfoRes = await fetch(`${ANTIGRAVITY_CONFIG.userInfoUrl}?alt=json`, {
         headers: {
           Authorization: `Bearer ${tokens.access_token}`,
-          "x-request-source": "local",
+          "x-request-source": "local"
         },
-        proxyOptions,
+        proxyOptions
       });
       const userInfo = userInfoRes.ok ? await userInfoRes.json() : {};
 
@@ -542,7 +543,7 @@ const PROVIDERS = {
           method: "POST",
           headers: loadHeaders,
           body: JSON.stringify({ metadata }),
-          proxyOptions,
+          proxyOptions
         });
         if (loadRes.ok) {
           const data = await loadRes.json();
@@ -569,7 +570,7 @@ const PROVIDERS = {
                 method: "POST",
                 headers: loadHeaders,
                 body: JSON.stringify({ tierId, metadata }),
-                proxyOptions,
+                proxyOptions
               });
               if (onboardRes.ok) {
                 const result = await onboardRes.json();
@@ -578,7 +579,7 @@ const PROVIDERS = {
             } catch (e) {
               break;
             }
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise((resolve) => setTimeout(resolve, 5000));
           }
         };
         doOnboard().catch(() => {});
@@ -592,8 +593,8 @@ const PROVIDERS = {
       expiresIn: tokens.expires_in,
       scope: tokens.scope,
       email: extra?.userInfo?.email,
-      projectId: extra?.projectId,
-    }),
+      projectId: extra?.projectId
+    })
   },
 
   iflow: {
@@ -605,7 +606,7 @@ const PROVIDERS = {
         type: config.extraParams.type,
         redirect: redirectUri,
         state: state,
-        client_id: config.clientId,
+        client_id: config.clientId
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
@@ -620,16 +621,16 @@ const PROVIDERS = {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
-          Authorization: `Basic ${basicAuth}`,
+          Authorization: `Basic ${basicAuth}`
         },
         body: new URLSearchParams({
           grant_type: "authorization_code",
           code: code,
           redirect_uri: redirectUri,
           client_id: config.clientId,
-          client_secret: config.clientSecret,
+          client_secret: config.clientSecret
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       if (!response.ok) {
@@ -645,35 +646,35 @@ const PROVIDERS = {
         `${IFLOW_CONFIG.userInfoUrl}?accessToken=${encodeURIComponent(tokens.access_token)}`,
         {
           headers: {
-            Accept: "application/json",
+            Accept: "application/json"
           },
-          proxyOptions,
+          proxyOptions
         }
       );
-      
+
       if (!userInfoRes.ok) {
         const errorText = await userInfoRes.text();
         throw new Error(`Failed to fetch user info: ${errorText}`);
       }
-      
+
       const result = await userInfoRes.json();
       if (!result.success) {
         throw new Error(`User info request failed: ${result.message || 'Unknown error'}`);
       }
-      
+
       const userInfo = result.data || {};
-      
+
       // Validate API key (critical for iFlow)
       if (!userInfo.apiKey || userInfo.apiKey.trim() === "") {
         throw new Error("Empty API key returned from iFlow");
       }
-      
+
       // Validate email/phone
       const email = userInfo.email?.trim() || userInfo.phone?.trim();
       if (!email) {
         throw new Error("Missing account email/phone in user info");
       }
-      
+
       return { userInfo };
     },
     mapTokens: (tokens, extra) => ({
@@ -682,8 +683,8 @@ const PROVIDERS = {
       expiresIn: tokens.expires_in,
       apiKey: extra?.userInfo?.apiKey,
       email: extra?.userInfo?.email || extra?.userInfo?.phone,
-      displayName: extra?.userInfo?.nickname || extra?.userInfo?.name,
-    }),
+      displayName: extra?.userInfo?.nickname || extra?.userInfo?.name
+    })
   },
 
   qoder: {
@@ -710,7 +711,7 @@ const PROVIDERS = {
         interval: 2,
         codeVerifier: flow.codeVerifier,
         _qoderNonce: flow.nonce,
-        _qoderMachineId: flow.machineId,
+        _qoderMachineId: flow.machineId
       };
     },
     pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
@@ -721,7 +722,7 @@ const PROVIDERS = {
       if (!nonce || !verifier) {
         return {
           ok: false,
-          data: { error: "invalid_request", error_description: "Missing nonce/verifier" },
+          data: { error: "invalid_request", error_description: "Missing nonce/verifier" }
         };
       }
       let result;
@@ -730,7 +731,7 @@ const PROVIDERS = {
       } catch (err) {
         return {
           ok: false,
-          data: { error: "poll_failed", error_description: err.message },
+          data: { error: "poll_failed", error_description: err.message }
         };
       }
       if (result.status === "pending") {
@@ -756,8 +757,8 @@ const PROVIDERS = {
           _qoderMachineId: extraData?._qoderMachineId || "",
           _qoderName: userInfo.name,
           _qoderEmail: userInfo.email,
-          _qoderOrganizationId: userInfo.organizationId,
-        },
+          _qoderOrganizationId: userInfo.organizationId
+        }
       };
     },
     mapTokens: (tokens) => {
@@ -779,10 +780,10 @@ const PROVIDERS = {
           authMethod: "device",
           userId,
           machineId: tokens._qoderMachineId || "",
-          organizationId: tokens._qoderOrganizationId || "",
-        },
+          organizationId: tokens._qoderOrganizationId || ""
+        }
       };
-    },
+    }
   },
 
   qwen: {
@@ -793,15 +794,15 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: new URLSearchParams({
           client_id: config.clientId,
           scope: config.scope,
           code_challenge: codeChallenge,
-          code_challenge_method: config.codeChallengeMethod,
+          code_challenge_method: config.codeChallengeMethod
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       if (!response.ok) {
@@ -816,28 +817,28 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: new URLSearchParams({
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
           client_id: config.clientId,
           device_code: deviceCode,
-          code_verifier: codeVerifier,
+          code_verifier: codeVerifier
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       return {
         ok: response.ok,
-        data: await response.json(),
+        data: await response.json()
       };
     },
     mapTokens: (tokens) => ({
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresIn: tokens.expires_in,
-      providerSpecificData: { resourceUrl: tokens.resource_url },
-    }),
+      providerSpecificData: { resourceUrl: tokens.resource_url }
+    })
   },
 
   github: {
@@ -848,13 +849,13 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: new URLSearchParams({
           client_id: config.clientId,
-          scope: config.scopes,
+          scope: config.scopes
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       if (!response.ok) {
@@ -869,14 +870,14 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: new URLSearchParams({
           client_id: config.clientId,
           device_code: deviceCode,
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code"
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       // Handle response properly - if not ok, try to get error as text first
@@ -891,7 +892,7 @@ const PROVIDERS = {
 
       return {
         ok: response.ok,
-        data: data,
+        data: data
       };
     },
     postExchange: async (tokens, proxyOptions) => {
@@ -901,9 +902,9 @@ const PROVIDERS = {
           Authorization: `Bearer ${tokens.access_token}`,
           Accept: "application/json",
           "X-GitHub-Api-Version": GITHUB_CONFIG.apiVersion,
-          "User-Agent": GITHUB_CONFIG.userAgent,
+          "User-Agent": GITHUB_CONFIG.userAgent
         },
-        proxyOptions,
+        proxyOptions
       });
       const copilotToken = copilotRes.ok ? await copilotRes.json() : {};
 
@@ -913,9 +914,9 @@ const PROVIDERS = {
           Authorization: `Bearer ${tokens.access_token}`,
           Accept: "application/json",
           "X-GitHub-Api-Version": GITHUB_CONFIG.apiVersion,
-          "User-Agent": GITHUB_CONFIG.userAgent,
+          "User-Agent": GITHUB_CONFIG.userAgent
         },
-        proxyOptions,
+        proxyOptions
       });
       const userInfo = userRes.ok ? await userRes.json() : {};
 
@@ -934,9 +935,9 @@ const PROVIDERS = {
         githubUserId: extra?.userInfo?.id,
         githubLogin: extra?.userInfo?.login,
         githubName: extra?.userInfo?.name,
-        githubEmail: extra?.userInfo?.email,
-      },
-    }),
+        githubEmail: extra?.userInfo?.email
+      }
+    })
   },
 
   kiro: {
@@ -944,10 +945,10 @@ const PROVIDERS = {
     flowType: "device_code",
     // Kiro uses AWS SSO OIDC - requires client registration first
     requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
-      const trimmedRegion = typeof options.region === "string" ? options.region.trim() : "";
+      const trimmedRegion = isString(options.region) ? options.region.trim() : "";
       const region = trimmedRegion || "us-east-1";
       assertValidAwsRegion(region);
-      const trimmedStartUrl = typeof options.startUrl === "string" ? options.startUrl.trim() : "";
+      const trimmedStartUrl = isString(options.startUrl) ? options.startUrl.trim() : "";
       const startUrl = trimmedStartUrl || config.startUrl;
       const authMethod = options.authMethod === "idc" ? "idc" : "builder-id";
       const registerClientUrl = `https://oidc.${region}.amazonaws.com/client/register`;
@@ -958,16 +959,16 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: JSON.stringify({
           clientName: config.clientName,
           clientType: config.clientType,
           scopes: config.scopes,
           grantTypes: config.grantTypes,
-          issuerUrl: config.issuerUrl,
+          issuerUrl: config.issuerUrl
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       if (!registerRes.ok) {
@@ -982,14 +983,14 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: JSON.stringify({
           clientId: clientInfo.clientId,
           clientSecret: clientInfo.clientSecret,
-          startUrl,
+          startUrl
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       if (!deviceRes.ok) {
@@ -1012,7 +1013,7 @@ const PROVIDERS = {
         _clientSecret: clientInfo.clientSecret,
         _region: region,
         _authMethod: authMethod,
-        _startUrl: startUrl,
+        _startUrl: startUrl
       };
     },
     pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
@@ -1023,15 +1024,15 @@ const PROVIDERS = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: JSON.stringify({
           clientId: extraData?._clientId,
           clientSecret: extraData?._clientSecret,
           deviceCode: deviceCode,
-          grantType: "urn:ietf:params:oauth:grant-type:device_code",
+          grantType: "urn:ietf:params:oauth:grant-type:device_code"
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       let data;
@@ -1056,8 +1057,8 @@ const PROVIDERS = {
             _clientSecret: extraData?._clientSecret,
             _region: extraData?._region,
             _authMethod: extraData?._authMethod,
-            _startUrl: extraData?._startUrl,
-          },
+            _startUrl: extraData?._startUrl
+          }
         };
       }
 
@@ -1065,8 +1066,8 @@ const PROVIDERS = {
         ok: false,
         data: {
           error: data.error || "authorization_pending",
-          error_description: data.error_description || data.message,
-        },
+          error_description: data.error_description || data.message
+        }
       };
     },
     mapTokens: (tokens) => {
@@ -1082,11 +1083,11 @@ const PROVIDERS = {
           clientSecret: tokens._clientSecret,
           region: tokens._region || "us-east-1",
           authMethod: tokens._authMethod || "builder-id",
-          startUrl: tokens._startUrl || KIRO_CONFIG.startUrl,
-        },
+          startUrl: tokens._startUrl || KIRO_CONFIG.startUrl
+        }
       };
       return mapped;
-    },
+    }
   },
 
   cursor: {
@@ -1100,9 +1101,9 @@ const PROVIDERS = {
       expiresIn: tokens.expiresIn || 86400,
       providerSpecificData: {
         machineId: tokens.machineId,
-        authMethod: "imported",
-      },
-    }),
+        authMethod: "imported"
+      }
+    })
   },
 
   "kimi-coding": {
@@ -1113,7 +1114,7 @@ const PROVIDERS = {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: new URLSearchParams({ client_id: config.clientId }),
-        proxyOptions,
+        proxyOptions
       });
       if (!response.ok) {
         const error = await response.text();
@@ -1125,10 +1126,10 @@ const PROVIDERS = {
         user_code: data.user_code,
         verification_uri: data.verification_uri || "https://www.kimi.com/code/authorize_device",
         verification_uri_complete:
-          data.verification_uri_complete ||
-          `https://www.kimi.com/code/authorize_device?user_code=${data.user_code}`,
+        data.verification_uri_complete ||
+        `https://www.kimi.com/code/authorize_device?user_code=${data.user_code}`,
         expires_in: data.expires_in,
-        interval: data.interval || 5,
+        interval: data.interval || 5
       };
     },
     pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
@@ -1138,9 +1139,9 @@ const PROVIDERS = {
         body: new URLSearchParams({
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
           client_id: config.clientId,
-          device_code: deviceCode,
+          device_code: deviceCode
         }),
-        proxyOptions,
+        proxyOptions
       });
       let data;
       try {
@@ -1154,8 +1155,8 @@ const PROVIDERS = {
     mapTokens: (tokens) => ({
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in,
-    }),
+      expiresIn: tokens.expires_in
+    })
   },
 
   kilocode: {
@@ -1165,7 +1166,7 @@ const PROVIDERS = {
       const response = await fetch(config.initiateUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        proxyOptions,
+        proxyOptions
       });
       if (!response.ok) {
         if (response.status === 429) {
@@ -1181,7 +1182,7 @@ const PROVIDERS = {
         verification_uri: data.verificationUrl,
         verification_uri_complete: data.verificationUrl,
         expires_in: data.expiresIn || 300,
-        interval: 3,
+        interval: 3
       };
     },
     pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
@@ -1197,7 +1198,7 @@ const PROVIDERS = {
         try {
           const profileRes = await fetch(`${config.apiBaseUrl}/api/profile`, {
             headers: { "Authorization": `Bearer ${data.token}` },
-            proxyOptions,
+            proxyOptions
           });
           if (profileRes.ok) {
             const profile = await profileRes.json();
@@ -1213,8 +1214,8 @@ const PROVIDERS = {
       refreshToken: null,
       expiresIn: null,
       email: tokens._userEmail,
-      ...(tokens._orgId ? { providerSpecificData: { orgId: tokens._orgId } } : {}),
-    }),
+      ...(tokens._orgId ? { providerSpecificData: { orgId: tokens._orgId } } : null)
+    })
   },
 
   cline: {
@@ -1225,7 +1226,7 @@ const PROVIDERS = {
         client_type: "extension",
         callback_url: redirectUri,
         redirect_uri: redirectUri,
-        state,
+        state
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
@@ -1233,7 +1234,7 @@ const PROVIDERS = {
       try {
         // Cline encodes token data as base64 in the code param
         let base64 = code;
-        const padding = 4 - (base64.length % 4);
+        const padding = 4 - base64.length % 4;
         if (padding !== 4) base64 += "=".repeat(padding);
         const decoded = Buffer.from(base64, "base64").toString("utf-8");
         const lastBrace = decoded.lastIndexOf("}");
@@ -1245,14 +1246,14 @@ const PROVIDERS = {
           email: tokenData.email,
           firstName: tokenData.firstName,
           lastName: tokenData.lastName,
-          expires_at: tokenData.expiresAt,
+          expires_at: tokenData.expiresAt
         };
       } catch (e) {
         const response = await fetch(config.tokenExchangeUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({ grant_type: "authorization_code", code, client_type: "extension", redirect_uri: redirectUri }),
-          proxyOptions,
+          proxyOptions
         });
         if (!response.ok) {
           const error = await response.text();
@@ -1263,19 +1264,19 @@ const PROVIDERS = {
           access_token: data.data?.accessToken || data.accessToken,
           refresh_token: data.data?.refreshToken || data.refreshToken,
           email: data.data?.userInfo?.email || "",
-          expires_at: data.data?.expiresAt || data.expiresAt,
+          expires_at: data.data?.expiresAt || data.expiresAt
         };
       }
     },
     mapTokens: (tokens) => ({
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_at
-        ? Math.floor((new Date(tokens.expires_at).getTime() - Date.now()) / 1000)
-        : 3600,
+      expiresIn: tokens.expires_at ?
+      Math.floor((new Date(tokens.expires_at).getTime() - Date.now()) / 1000) :
+      3600,
       email: tokens.email,
-      providerSpecificData: { firstName: tokens.firstName, lastName: tokens.lastName },
-    }),
+      providerSpecificData: { firstName: tokens.firstName, lastName: tokens.lastName }
+    })
   },
   clinepass: {
     config: CLINEPASS_CONFIG,
@@ -1285,7 +1286,7 @@ const PROVIDERS = {
         client_type: "extension",
         callback_url: redirectUri,
         redirect_uri: redirectUri,
-        state,
+        state
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
@@ -1293,7 +1294,7 @@ const PROVIDERS = {
       try {
         // Cline encodes token data as base64 in the code param
         let base64 = code;
-        const padding = 4 - (base64.length % 4);
+        const padding = 4 - base64.length % 4;
         if (padding !== 4) base64 += "=".repeat(padding);
         const decoded = Buffer.from(base64, "base64").toString("utf-8");
         const lastBrace = decoded.lastIndexOf("}");
@@ -1305,14 +1306,14 @@ const PROVIDERS = {
           email: tokenData.email,
           firstName: tokenData.firstName,
           lastName: tokenData.lastName,
-          expires_at: tokenData.expiresAt,
+          expires_at: tokenData.expiresAt
         };
       } catch (e) {
         const response = await fetch(config.tokenUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({ grant_type: "authorization_code", code, client_type: "extension", redirect_uri: redirectUri }),
-          proxyOptions,
+          proxyOptions
         });
         if (!response.ok) {
           const error = await response.text();
@@ -1323,19 +1324,19 @@ const PROVIDERS = {
           access_token: data.data?.accessToken || data.accessToken,
           refresh_token: data.data?.refreshToken || data.refreshToken,
           email: data.data?.userInfo?.email || "",
-          expires_at: data.data?.expiresAt || data.expiresAt,
+          expires_at: data.data?.expiresAt || data.expiresAt
         };
       }
     },
     mapTokens: (tokens) => ({
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_at
-        ? Math.floor((new Date(tokens.expires_at).getTime() - Date.now()) / 1000)
-        : 3600,
+      expiresIn: tokens.expires_at ?
+      Math.floor((new Date(tokens.expires_at).getTime() - Date.now()) / 1000) :
+      3600,
       email: tokens.email,
-      providerSpecificData: { firstName: tokens.firstName, lastName: tokens.lastName },
-    }),
+      providerSpecificData: { firstName: tokens.firstName, lastName: tokens.lastName }
+    })
   },
   // GitLab Duo - Authorization Code Flow with PKCE
   // Supports two login modes via loginMode metadata: "oauth" (default) or "pat"
@@ -1352,7 +1353,7 @@ const PROVIDERS = {
         state,
         scope: config.scope,
         code_challenge: codeChallenge,
-        code_challenge_method: config.codeChallengeMethod,
+        code_challenge_method: config.codeChallengeMethod
       });
       return `${baseUrl}${config.authorizeUrlPath}?${params.toString()}`;
     },
@@ -1365,21 +1366,21 @@ const PROVIDERS = {
         grant_type: "authorization_code",
         code,
         redirect_uri: redirectUri,
-        code_verifier: codeVerifier,
+        code_verifier: codeVerifier
       });
       if (clientSecret) body.set("client_secret", clientSecret);
       const response = await fetch(`${baseUrl}${config.tokenUrlPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: body.toString(),
-        proxyOptions,
+        proxyOptions
       });
       if (!response.ok) throw new Error(`GitLab token exchange failed: ${await response.text()}`);
       const tokens = await response.json();
       // Fetch user info
       const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
-        proxyOptions,
+        proxyOptions
       });
       const user = userRes.ok ? await userRes.json() : {};
       return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
@@ -1395,9 +1396,9 @@ const PROVIDERS = {
         name: tokens._user?.name || "",
         baseUrl: tokens._baseUrl,
         clientId: tokens._clientId,
-        authKind: "oauth",
-      },
-    }),
+        authKind: "oauth"
+      }
+    })
   },
 
   "gitlab-duo": {
@@ -1414,7 +1415,7 @@ const PROVIDERS = {
         state,
         scope: config.scope,
         code_challenge: codeChallenge,
-        code_challenge_method: config.codeChallengeMethod,
+        code_challenge_method: config.codeChallengeMethod
       });
       return `${baseUrl}${config.authorizeUrlPath}?${params.toString()}`;
     },
@@ -1427,20 +1428,20 @@ const PROVIDERS = {
         grant_type: "authorization_code",
         code,
         redirect_uri: redirectUri,
-        code_verifier: codeVerifier,
+        code_verifier: codeVerifier
       });
       if (clientSecret) body.set("client_secret", clientSecret);
       const response = await fetch(`${baseUrl}${config.tokenUrlPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: body.toString(),
-        proxyOptions,
+        proxyOptions
       });
       if (!response.ok) throw new Error(`GitLab Duo token exchange failed: ${await response.text()}`);
       const tokens = await response.json();
       const userRes = await fetch(`${baseUrl}${config.userInfoUrlPath}`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
-        proxyOptions,
+        proxyOptions
       });
       const user = userRes.ok ? await userRes.json() : {};
       return { ...tokens, _user: user, _baseUrl: baseUrl, _clientId: clientId };
@@ -1456,9 +1457,9 @@ const PROVIDERS = {
         name: tokens._user?.name || "",
         baseUrl: tokens._baseUrl || GITLAB_DUO_CONFIG.defaultBaseUrl,
         clientId: tokens._clientId || GITLAB_DUO_CONFIG.clientId,
-        authKind: "oauth",
-      },
-    }),
+        authKind: "oauth"
+      }
+    })
   },
 
   trae: {
@@ -1475,9 +1476,9 @@ const PROVIDERS = {
         userUniqueId: tokens.userUniqueId || tokens.user_unique_id || "",
         scope: tokens.scope || "marscode-us",
         tenant: tokens.tenant || "marscode",
-        region: tokens.region || "US-East",
-      },
-    }),
+        region: tokens.region || "US-East"
+      }
+    })
   },
 
   "devin-cli": {
@@ -1488,8 +1489,8 @@ const PROVIDERS = {
       accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
       refreshToken: null,
       expiresIn: tokens.expiresIn || null,
-      providerSpecificData: { authKind: "import_token" },
-    }),
+      providerSpecificData: { authKind: "import_token" }
+    })
   },
 
   windsurf: {
@@ -1500,8 +1501,8 @@ const PROVIDERS = {
       accessToken: tokens.accessToken || tokens.access_token || tokens.token || tokens,
       refreshToken: null,
       expiresIn: tokens.expiresIn || null,
-      providerSpecificData: { authKind: "import_token" },
-    }),
+      providerSpecificData: { authKind: "import_token" }
+    })
   },
 
   // CodeBuddy (Tencent) - Browser OAuth Polling Flow
@@ -1522,10 +1523,10 @@ const PROVIDERS = {
           "X-Domain": "copilot.tencent.com",
           "X-No-Authorization": "true",
           "X-No-User-Id": "true",
-          "X-Product": "SaaS",
+          "X-Product": "SaaS"
         },
         body: "{}",
-        proxyOptions,
+        proxyOptions
       });
       if (!response.ok) throw new Error(`CodeBuddy state request failed: ${await response.text()}`);
       const data = await response.json();
@@ -1537,7 +1538,7 @@ const PROVIDERS = {
         verification_uri: data.data.authUrl,
         user_code: "",
         interval: config.pollInterval / 1000,
-        _isCodeBuddy: true,
+        _isCodeBuddy: true
       };
     },
     pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
@@ -1554,9 +1555,9 @@ const PROVIDERS = {
           "X-No-User-Id": "true",
           "X-No-Enterprise-Id": "true",
           "X-No-Department-Info": "true",
-          "X-Product": "SaaS",
+          "X-Product": "SaaS"
         },
-        proxyOptions,
+        proxyOptions
       });
       if (!response.ok) return { ok: false, data: { error: "request_failed" } };
       const data = await response.json();
@@ -1568,8 +1569,8 @@ const PROVIDERS = {
             access_token: data.data.accessToken,
             refresh_token: data.data.refreshToken || "",
             token_type: data.data.tokenType || "Bearer",
-            expires_in: data.data.expiresIn,
-          },
+            expires_in: data.data.expiresIn
+          }
         };
       }
       if (data.code === 11217) return { ok: true, data: { error: "authorization_pending" } };
@@ -1579,8 +1580,8 @@ const PROVIDERS = {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresIn: tokens.expires_in || 86400,
-      providerSpecificData: {},
-    }),
+      providerSpecificData: {}
+    })
   },
 
   kimchi: {
@@ -1590,7 +1591,7 @@ const PROVIDERS = {
       const baseUrl = (config.webAppUrl || "https://app.kimchi.dev").replace(/\/+$/, "");
       const params = new URLSearchParams({
         callback: redirectUri,
-        state,
+        state
       });
       return `${baseUrl}/cli-auth?${params.toString()}`;
     },
@@ -1605,9 +1606,9 @@ const PROVIDERS = {
         method: "GET",
         headers: {
           Accept: "application/json",
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`
         },
-        proxyOptions,
+        proxyOptions
       });
       if (!validationRes.ok) {
         throw new Error(`Kimchi token validation failed: ${validationRes.status}`);
@@ -1620,9 +1621,9 @@ const PROVIDERS = {
             method: "GET",
             headers: {
               Accept: "application/json",
-              Authorization: `Bearer ${accessToken}`,
+              Authorization: `Bearer ${accessToken}`
             },
-            proxyOptions,
+            proxyOptions
           });
           if (userRes.ok) {
             userInfo = await userRes.json();
@@ -1635,7 +1636,7 @@ const PROVIDERS = {
       return {
         access_token: accessToken,
         token_type: "Bearer",
-        _kimchiUser: userInfo,
+        _kimchiUser: userInfo
       };
     },
     mapTokens: (tokens) => {
@@ -1651,11 +1652,11 @@ const PROVIDERS = {
         providerSpecificData: {
           authMethod: "browser_token",
           userId,
-          username,
-        },
+          username
+        }
       };
-    },
-  },
+    }
+  }
 };
 
 function isCloudflareHtmlBadRequest(status, body) {
@@ -1686,9 +1687,9 @@ export function getProviderNames() {
  */
 export async function generateAuthData(providerName, redirectUri, meta, proxyOptions = null) {
   const provider = getProvider(providerName);
-  const config = provider.prepareConfig
-    ? await provider.prepareConfig(provider.config, meta || {}, proxyOptions)
-    : provider.config;
+  const config = provider.prepareConfig ?
+  await provider.prepareConfig(provider.config, meta || {}, proxyOptions) :
+  provider.config;
   const { codeVerifier, codeChallenge, state } = generatePKCE(provider.pkceVerifierBytes);
 
   let authUrl;
@@ -1709,7 +1710,7 @@ export async function generateAuthData(providerName, redirectUri, meta, proxyOpt
     redirectUri,
     flowType: provider.flowType,
     fixedPort: provider.fixedPort,
-    callbackPath: provider.callbackPath || "/callback",
+    callbackPath: provider.callbackPath || "/callback"
   };
 }
 
@@ -1719,9 +1720,9 @@ export async function generateAuthData(providerName, redirectUri, meta, proxyOpt
  */
 export async function exchangeTokens(providerName, code, redirectUri, codeVerifier, state, meta, proxyOptions = null) {
   const provider = getProvider(providerName);
-  const config = provider.prepareConfig
-    ? await provider.prepareConfig(provider.config, meta || {}, proxyOptions)
-    : provider.config;
+  const config = provider.prepareConfig ?
+  await provider.prepareConfig(provider.config, meta || {}, proxyOptions) :
+  provider.config;
 
   const tokens = await provider.exchangeToken(config, code, redirectUri, codeVerifier, state, meta || {}, proxyOptions);
 
@@ -1829,7 +1830,7 @@ export async function backfillCodexEmails() {
         patch.providerSpecificData = {
           ...(conn.providerSpecificData || {}),
           chatgptAccountId: info.chatgptAccountId,
-          chatgptPlanType: info.chatgptPlanType,
+          chatgptPlanType: info.chatgptPlanType
         };
       }
       if (Object.keys(patch).length) {

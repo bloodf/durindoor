@@ -12,21 +12,22 @@
  * Treat them as local lifecycle events: the cooldown / fallback accrual must
  * skip them. Genuine upstream failures (5xx/429/401) still count.
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export function isLocalStreamLifecycleError(error) {
   if (!error) return false;
-  const name = typeof error?.name === "string" ? error.name : "";
+  const name = isString(error?.name) ? error.name : "";
   if (name === "AbortError") return true;
   const message =
-    typeof error === "string"
-      ? error
-      : typeof error?.message === "string"
-        ? error.message
-        : "";
+  isString(error) ?
+  error :
+  isString(error?.message) ?
+  error.message :
+  "";
   if (!message) return false;
   return (
     /controller is already closed/i.test(message) ||
     /request_signal_aborted/i.test(message) ||
     /client disconnected/i.test(message) ||
-    /operation was aborted/i.test(message)
-  );
+    /operation was aborted/i.test(message));
+
 }

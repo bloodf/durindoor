@@ -3,8 +3,8 @@ import {
   markAccountUnavailable,
   clearAccountError,
   resolveClientApiKey,
-  projectProviderCredentials,
-} from "../services/auth.js";
+  projectProviderCredentials } from
+"../services/auth.js";
 import { getSettings, getCombos, getApiKeyByKey, getProviderConnections } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
@@ -25,6 +25,7 @@ import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../servi
  *
  * @param {Request} request
  */
+import { isString } from "../../shared/utils/typeChecks.js";
 export async function handleFetch(request) {
   let body;
   try {
@@ -45,7 +46,7 @@ export async function handleFetch(request) {
 
   const settings = await getSettings();
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+    required: settings.requireApiKey === true
   });
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
@@ -61,12 +62,12 @@ export async function handleFetch(request) {
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
-  if (!providerInput || typeof providerInput !== "string") {
+  if (!providerInput || !isString(providerInput)) {
     log.warn("FETCH", "Missing provider/model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: provider (or model)");
   }
 
-  if (!targetUrl || typeof targetUrl !== "string") {
+  if (!targetUrl || !isString(targetUrl)) {
     log.warn("FETCH", "Missing url");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: url");
   }
@@ -110,14 +111,14 @@ export async function handleFetch(request) {
   // stay against the real member list.
   const comboModels = filterPaidModels(
     getComboModelsFromData(providerInput, combos, autoOptions),
-    settings.hidePaidModels === true,
+    settings.hidePaidModels === true
   );
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[providerInput] || {};
-    const comboSpecificStrategy = isAutoComboId(providerInput)
-      ? (perCombo.strategy ?? perCombo.fallbackStrategy)
-      : perCombo.fallbackStrategy;
+    const comboSpecificStrategy = isAutoComboId(providerInput) ?
+    perCombo.strategy ?? perCombo.fallbackStrategy :
+    perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("FETCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
@@ -142,7 +143,7 @@ export async function handleFetch(request) {
  * @returns {string}
  */
 export function normalizeFetchProviderInput(providerInput) {
-  if (typeof providerInput !== "string" || !providerInput.endsWith("/fetch")) {
+  if (!isString(providerInput) || !providerInput.endsWith("/fetch")) {
     return providerInput;
   }
   const stripped = providerInput.slice(0, -"/fetch".length);
@@ -211,7 +212,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       });
       return recordApiKeyUsageForResponse(apiKey, response, {
         tokens: 0,
-        cost: Number(result.data?.usage?.fetch_cost_usd) || 0,
+        cost: Number(result.data?.usage?.fetch_cost_usd) || 0
       });
     }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Fetch failed");
@@ -276,7 +277,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       });
       return recordApiKeyUsageForResponse(apiKey, response, {
         tokens: 0,
-        cost: Number(result.data?.usage?.fetch_cost_usd) || 0,
+        cost: Number(result.data?.usage?.fetch_cost_usd) || 0
       });
     }
 

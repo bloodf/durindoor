@@ -10,8 +10,9 @@ import {
   modifyOpenCodeConfig,
   parseOpenCodeConfig,
   resolveOpenCodeConfigDir,
-  resolveOpenCodeConfigPath,
-} from "@/shared/services/opencodeConfig";
+  resolveOpenCodeConfigPath } from
+"@/shared/services/opencodeConfig";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 
@@ -22,9 +23,9 @@ const checkOpenCodeInstalled = async () => {
   try {
     const isWindows = os.platform() === "win32";
     const command = isWindows ? "where opencode" : "which opencode";
-    const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
-      : process.env;
+    const env = isWindows ?
+    { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` } :
+    process.env;
     await execAsync(command, { windowsHide: true, env });
     return true;
   } catch {
@@ -60,7 +61,7 @@ export async function GET() {
       return NextResponse.json({
         installed: false,
         config: null,
-        message: "OpenCode CLI is not installed",
+        message: "OpenCode CLI is not installed"
       });
     }
 
@@ -73,11 +74,11 @@ export async function GET() {
       config: redactSecrets(config),
       has9Router: has9RouterConfig(config),
       configPath: getConfigPath(),
-        opencode: {
-          models: Object.keys(modelMap),
-          activeModel: config?.model?.startsWith("9router/") ? config.model.replace(/^9router\//, "") : null,
-          baseURL: providerConfig?.options?.baseURL || null,
-        },
+      opencode: {
+        models: Object.keys(modelMap),
+        activeModel: config?.model?.startsWith("9router/") ? config.model.replace(/^9router\//, "") : null,
+        baseURL: providerConfig?.options?.baseURL || null
+      }
     });
   } catch (error) {
     console.log("Error checking opencode settings:", error);
@@ -99,7 +100,7 @@ export async function POST(request) {
   try {
     const { baseUrl, apiKey, model, models, activeModel, subagentModel } = await request.json();
 
-    const modelsArray = Array.isArray(models) ? models.slice() : (typeof model === "string" ? [model] : []);
+    const modelsArray = Array.isArray(models) ? models.slice() : isString(model) ? [model] : [];
 
     if (!baseUrl || modelsArray.length === 0) {
       return NextResponse.json({ error: "baseUrl and at least one model are required" }, { status: 400 });
@@ -123,10 +124,10 @@ export async function POST(request) {
     next = modifyOpenCodeConfig(next, ["provider", "9router", "options", "baseURL"], normalizedBaseUrl);
     next = modifyOpenCodeConfig(next, ["provider", "9router", "options", "apiKey"], keyToUse);
     for (const m of modelsArray) {
-      if (!m || typeof m !== "string") continue;
+      if (!m || !isString(m)) continue;
       next = modifyOpenCodeConfig(next, ["provider", "9router", "models", m], {
         name: m,
-        modalities: { input: ["text", "image"], output: ["text"] },
+        modalities: { input: ["text", "image"], output: ["text"] }
       });
     }
     if (activeModel === "") {
@@ -138,7 +139,7 @@ export async function POST(request) {
     next = modifyOpenCodeConfig(next, ["agent", "explorer"], {
       description: "Fast explorer subagent for codebase exploration",
       mode: "subagent",
-      model: `9router/${effectiveSubagentModel}`,
+      model: `9router/${effectiveSubagentModel}`
     });
 
     await fs.writeFile(configPath, next);
@@ -146,13 +147,13 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       message: "OpenCode settings applied successfully!",
-      configPath,
+      configPath
     });
   } catch (error) {
     console.log("Error applying opencode settings:", error);
-    const message = error instanceof Error && error.message.includes("invalid JSONC")
-      ? error.message
-      : "Failed to apply settings";
+    const message = error instanceof Error && error.message.includes("invalid JSONC") ?
+    error.message :
+    "Failed to apply settings";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -227,7 +228,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: modelToRemove ? `Model "${modelToRemove}" removed` : "DurinDoor settings removed from OpenCode",
+      message: modelToRemove ? `Model "${modelToRemove}" removed` : "DurinDoor settings removed from OpenCode"
     });
   } catch (error) {
     console.log("Error resetting opencode settings:", error);

@@ -7,6 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 
@@ -14,8 +15,8 @@ const execAsync = promisify(exec);
 // (legacy) or as an object `{ primary, fallbacks }`. Normalize to the
 // string id so downstream consumers can call `.startsWith()` safely.
 const resolveAgentModel = (m) => {
-  if (typeof m === "string") return m;
-  if (m && typeof m === "object") return m.primary ?? "";
+  if (isString(m)) return m;
+  if (m && isObject(m)) return m.primary ?? "";
   return "";
 };
 
@@ -28,9 +29,9 @@ const checkOpenClawInstalled = async () => {
     const isWindows = os.platform() === "win32";
     const command = isWindows ? "where openclaw" : "which openclaw";
     // On Windows, inject %APPDATA%\npm into PATH so npm global packages are found
-    const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
-      : process.env;
+    const env = isWindows ?
+    { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` } :
+    process.env;
     await execAsync(command, { windowsHide: true, env });
     return true;
   } catch {
@@ -80,12 +81,12 @@ const readAgentModel = async (agentDir) => {
 export async function GET() {
   try {
     const isInstalled = await checkOpenClawInstalled();
-    
+
     if (!isInstalled) {
       return NextResponse.json({
         installed: false,
         settings: null,
-        message: "Open Claw CLI is not installed",
+        message: "Open Claw CLI is not installed"
       });
     }
 
@@ -107,7 +108,7 @@ export async function GET() {
       settings: redactSecrets(settings),
       agents: enrichedAgents,
       has9Router: has9RouterConfig(settings),
-      settingsPath: getOpenClawSettingsPath(),
+      settingsPath: getOpenClawSettingsPath()
     });
   } catch (error) {
     console.log("Error checking openclaw settings:", error);
@@ -123,7 +124,7 @@ const writeAgentModels = async (agentDir, model, baseUrl, apiKey) => {
   try {
     const content = await fs.readFile(modelsPath, "utf-8");
     existing = JSON.parse(content);
-  } catch { /* No existing */ }
+  } catch {/* No existing */}
 
   if (!existing.providers) existing.providers = {};
   const keyToUse = apiKey || existing.providers["9router"]?.apiKey || "your_api_key";
@@ -131,7 +132,7 @@ const writeAgentModels = async (agentDir, model, baseUrl, apiKey) => {
     baseUrl,
     apiKey: keyToUse,
     api: "openai-completions",
-    models: [{ id: model, name: model.split("/").pop() || model }],
+    models: [{ id: model, name: model.split("/").pop() || model }]
   };
   await fs.writeFile(modelsPath, JSON.stringify(existing, null, 2));
 };
@@ -141,7 +142,7 @@ export async function POST(request) {
   try {
     // agentModels: { [agentId]: modelId } for per-agent override
     const { baseUrl, apiKey, model, agentModels = {} } = await request.json();
-    
+
     if (!baseUrl || !model) {
       return NextResponse.json({ error: "baseUrl and model are required" }, { status: 400 });
     }
@@ -155,7 +156,7 @@ export async function POST(request) {
     try {
       const existingSettings = await fs.readFile(settingsPath, "utf-8");
       settings = JSON.parse(existingSettings);
-    } catch { /* No existing settings */ }
+    } catch {/* No existing settings */}
 
     if (!settings.agents) settings.agents = {};
     if (!settings.agents.defaults) settings.agents.defaults = {};
@@ -169,16 +170,16 @@ export async function POST(request) {
     const keyToUse = apiKey || settings.models.providers["9router"]?.apiKey || "your_api_key";
 
     // Remove all old 9router/* entries from agents.defaults.models
-    Object.keys(settings.agents.defaults.models)
-      .filter((k) => k.startsWith("9router/"))
-      .forEach((k) => { delete settings.agents.defaults.models[k]; });
+    Object.keys(settings.agents.defaults.models).
+    filter((k) => k.startsWith("9router/")).
+    forEach((k) => {delete settings.agents.defaults.models[k];});
 
     // Update default model
     settings.agents.defaults.model.primary = fullModelId;
 
     // Collect all unique models (default + per-agent)
     const allModelIds = new Set([model]);
-    Object.values(agentModels).forEach((m) => { if (m) allModelIds.add(m); });
+    Object.values(agentModels).forEach((m) => {if (m) allModelIds.add(m);});
 
     // Add fresh 9router models to allowlist
     allModelIds.forEach((m) => {
@@ -202,7 +203,7 @@ export async function POST(request) {
       baseUrl: normalizedBaseUrl,
       apiKey: keyToUse,
       api: "openai-completions",
-      models: [...allModelIds].map((m) => ({ id: m, name: m.split("/").pop() || m })),
+      models: [...allModelIds].map((m) => ({ id: m, name: m.split("/").pop() || m }))
     };
 
     // Set per-agent model in agents.list and write models.json
@@ -229,7 +230,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       message: "Open Claw settings applied successfully!",
-      settingsPath,
+      settingsPath
     });
   } catch (error) {
     console.log("Error updating openclaw settings:", error);
@@ -251,7 +252,7 @@ export async function DELETE() {
       if (error.code === "ENOENT") {
         return NextResponse.json({
           success: true,
-          message: "No settings file to reset",
+          message: "No settings file to reset"
         });
       }
       throw error;
@@ -260,7 +261,7 @@ export async function DELETE() {
     // Remove 9Router from models.providers
     if (settings.models && settings.models.providers) {
       delete settings.models.providers["9router"];
-      
+
       // Remove providers object if empty
       if (Object.keys(settings.models.providers).length === 0) {
         delete settings.models.providers;
@@ -288,7 +289,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: "DurinDoor settings removed successfully",
+      message: "DurinDoor settings removed successfully"
     });
   } catch (error) {
     console.log("Error resetting openclaw settings:", error);

@@ -1,4 +1,5 @@
 // Port of OmniRoute #7891 (eadcbea1c), adapted to DurinDoor JS.
+import { isBoolean, isObject } from "../../src/shared/utils/typeChecks.js";
 //
 // Providers backed by the opencode-go backend (opencode-go, opencode,
 // opencode-zen) use a Go ChatCompletionRequest struct where the `reasoning`
@@ -30,7 +31,7 @@ export function isOpencodeGoProvider(provider) {
  * @returns {Record<string, unknown>} the same body (mutated when a bool was removed)
  */
 export function stripBooleanReasoning(body) {
-  if (!body || typeof body !== "object") return body;
-  if (typeof body.reasoning === "boolean") delete body.reasoning;
+  if (!body || !isObject(body)) return body;
+  if (isBoolean(body.reasoning)) delete body.reasoning;
   return body;
 }

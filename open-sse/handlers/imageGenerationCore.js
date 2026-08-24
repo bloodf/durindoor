@@ -5,10 +5,11 @@ import { resolveCredentialProxyOptions } from "../services/oauthCredentialManage
 import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
 import { urlToBase64 } from "./imageProviders/_base.js";
+import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 
 function serializeRequestBody(requestBody) {
-  if (typeof FormData !== "undefined" && requestBody instanceof FormData) return requestBody;
-  if (typeof requestBody === "string") return requestBody;
+  if (!isUndefined(FormData) && requestBody instanceof FormData) return requestBody;
+  if (isString(requestBody)) return requestBody;
   return JSON.stringify(requestBody);
 }
 
@@ -35,7 +36,7 @@ export async function handleImageGenerationCore({
   streamToClient = false,
   binaryOutput = false,
   onCredentialsRefreshed,
-  onRequestSuccess,
+  onRequestSuccess
 }) {
   const { provider, model } = modelInfo;
   const proxyOptions = resolveCredentialProxyOptions(credentials);
@@ -61,17 +62,17 @@ export async function handleImageGenerationCore({
         body,
         credentials,
         log,
-        proxyOptions,
+        proxyOptions
       );
       if (onRequestSuccess) await onRequestSuccess();
       const normalized = adapter.normalize(responseBody, body.prompt);
-      const finalBody = (normalized.created && Array.isArray(normalized.data)) ? normalized : responseBody;
+      const finalBody = normalized.created && Array.isArray(normalized.data) ? normalized : responseBody;
 
       if (binaryOutput) {
         const first = finalBody.data?.[0];
         let b64 = first?.b64_json;
         if (!b64 && first?.url) {
-          try { b64 = await urlToBase64(first.url); } catch {}
+          try {b64 = await urlToBase64(first.url);} catch {}
         }
         if (b64) {
           const buf = Buffer.from(b64, "base64");
@@ -80,8 +81,8 @@ export async function handleImageGenerationCore({
           return {
             success: true,
             response: new Response(buf, {
-              headers: { "Content-Type": mime, "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`, "Access-Control-Allow-Origin": "*" },
-            }),
+              headers: { "Content-Type": mime, "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`, "Access-Control-Allow-Origin": "*" }
+            })
           };
         }
       }
@@ -89,8 +90,8 @@ export async function handleImageGenerationCore({
       return {
         success: true,
         response: new Response(JSON.stringify(finalBody), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-        }),
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        })
       };
     } catch (error) {
       const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
@@ -119,7 +120,7 @@ export async function handleImageGenerationCore({
       method: "POST",
       headers,
       body: serializeRequestBody(requestBody),
-      proxyOptions,
+      proxyOptions
     });
   } catch (error) {
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
@@ -130,11 +131,11 @@ export async function handleImageGenerationCore({
   // Handle 401/403 — try token refresh (skipped for noAuth providers)
   const executor = getExecutor(provider);
   if (
-    !executor?.noAuth &&
-    !adapter.noAuth &&
-    (providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
-      providerResponse.status === HTTP_STATUS.FORBIDDEN)
-  ) {
+  !executor?.noAuth &&
+  !adapter.noAuth && (
+  providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
+  providerResponse.status === HTTP_STATUS.FORBIDDEN))
+  {
     const newCredentials = await refreshWithRetry(
       () => executor.refreshCredentials(credentials, log, proxyOptions),
       3,
@@ -154,7 +155,7 @@ export async function handleImageGenerationCore({
           method: "POST",
           headers: retryHeaders,
           body: serializeRequestBody(retryBody),
-          proxyOptions,
+          proxyOptions
         });
       } catch {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
@@ -183,7 +184,7 @@ export async function handleImageGenerationCore({
         url,
         requestBody,
         model,
-        body,
+        body
       });
       // Codex streaming case: returns an SSE Response directly
       if (parsed?.sseResponse) {
@@ -198,9 +199,9 @@ export async function handleImageGenerationCore({
     // generic upstream failure. Only honor a sane client/server error status;
     // anything else stays a 502.
     const tagged = Number(parseError?.status);
-    const status = Number.isInteger(tagged) && tagged >= 400 && tagged <= 599
-      ? tagged
-      : HTTP_STATUS.BAD_GATEWAY;
+    const status = Number.isInteger(tagged) && tagged >= 400 && tagged <= 599 ?
+    tagged :
+    HTTP_STATUS.BAD_GATEWAY;
     return createErrorResult(status, parseError.message || `Invalid response from ${provider}`);
   }
 
@@ -210,14 +211,14 @@ export async function handleImageGenerationCore({
   const normalized = adapter.normalize(parsed, body.prompt);
 
   // Already in OpenAI shape? skip re-normalize
-  const finalBody = (normalized.created && Array.isArray(normalized.data)) ? normalized : parsed;
+  const finalBody = normalized.created && Array.isArray(normalized.data) ? normalized : parsed;
 
   // Binary output: decode first b64_json (or fetch url) into raw bytes
   if (binaryOutput) {
     const first = finalBody.data?.[0];
     let b64 = first?.b64_json;
     if (!b64 && first?.url) {
-      try { b64 = await urlToBase64(first.url); } catch {}
+      try {b64 = await urlToBase64(first.url);} catch {}
     }
     if (b64) {
       const buf = Buffer.from(b64, "base64");
@@ -229,9 +230,9 @@ export async function handleImageGenerationCore({
           headers: {
             "Content-Type": mime,
             "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`,
-            "Access-Control-Allow-Origin": "*",
-          },
-        }),
+            "Access-Control-Allow-Origin": "*"
+          }
+        })
       };
     }
   }
@@ -241,8 +242,8 @@ export async function handleImageGenerationCore({
     response: new Response(JSON.stringify(finalBody), {
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    }),
+        "Access-Control-Allow-Origin": "*"
+      }
+    })
   };
 }

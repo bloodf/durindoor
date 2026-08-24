@@ -18,6 +18,7 @@
 // paid even when some ancillary rate happens to be 0.
 
 import { FREE_MODEL_BUDGETS } from "./freeModelCatalog.data.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const PROVIDERS_WITH_FREE_MODELS = new Set(FREE_MODEL_BUDGETS.map((m) => m.provider));
 
@@ -40,13 +41,13 @@ const FREE_MODEL_IDS_BY_PROVIDER = (() => {
  * layer-pure: no dependency on the alias map).
  */
 export function providerHasFreeModels(providerId) {
-  if (typeof providerId !== "string") return false;
+  if (!isString(providerId)) return false;
   return PROVIDERS_WITH_FREE_MODELS.has(providerId);
 }
 
 function isZeroPrice(value) {
-  if (typeof value === "number") return value === 0;
-  if (typeof value !== "string") return false;
+  if (isNumber(value)) return value === 0;
+  if (!isString(value)) return false;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed === 0;
 }
@@ -57,7 +58,7 @@ function isZeroPrice(value) {
  * No-pricing → false (unknown ≠ free).
  */
 function isZeroPricePricing(pricing) {
-  if (!pricing || typeof pricing !== "object") return false;
+  if (!pricing || !isObject(pricing)) return false;
   const hasPromptPair = "prompt" in pricing || "completion" in pricing;
   const prompt = hasPromptPair ? pricing.prompt : pricing.input;
   const completion = hasPromptPair ? pricing.completion : pricing.output;
@@ -66,9 +67,9 @@ function isZeroPricePricing(pricing) {
 
 /** Whether a single model qualifies as free for the given provider (id or alias). */
 export function isFreeModel(provider, model) {
-  if (typeof model?.id === "string" && model.id.endsWith(":free")) return true;
+  if (isString(model?.id) && model.id.endsWith(":free")) return true;
   if (isZeroPricePricing(model?.pricing)) return true;
-  if (typeof model?.id === "string") {
+  if (isString(model?.id)) {
     return FREE_MODEL_IDS_BY_PROVIDER.get(provider)?.has(model.id) === true;
   }
   return false;

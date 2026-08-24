@@ -12,6 +12,7 @@ import { reasoningDelta } from "../concerns/reasoning.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
 
 // Build chunk meta for current kiro state
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function chunkMeta(state) {
   return { id: state.responseId, created: state.created, model: state.model || "kiro" };
 }
@@ -50,7 +51,7 @@ function restoreToolNames(chunk, state) {
  * Kiro events: assistantResponseEvent, codeEvent, supplementaryWebLinksEvent, etc.
  */
 export function kiroToOpenAIResponse(chunk, state) {
-  
+
   if (!chunk) return null;
 
   // If chunk is already in OpenAI format (from executor transform), return as-is.
@@ -78,10 +79,10 @@ export function kiroToOpenAIResponse(chunk, state) {
     }
     return restored;
   }
-  
+
   // Handle string chunk (raw SSE data)
   let data = chunk;
-  if (typeof chunk === "string") {
+  if (isString(chunk)) {
     // Parse SSE format: event:xxx\ndata:xxx
     const lines = chunk.split("\n");
     let eventType = "";
@@ -95,9 +96,9 @@ export function kiroToOpenAIResponse(chunk, state) {
       } else if (line.startsWith("data:")) {
         eventData = line.slice(5).trim();
       } else if (line.startsWith(":content-type:")) {
+
         // Skip content-type header
-      } else if (line.trim() && !line.startsWith(":")) {
-        // Raw JSON data
+      } else if (line.trim() && !line.startsWith(":")) {// Raw JSON data
         eventData = line.trim();
       }
     }
@@ -128,7 +129,7 @@ export function kiroToOpenAIResponse(chunk, state) {
     if (!content) return null;
 
     const openaiChunk = buildChunk(chunkMeta(state), {
-      ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : {}),
+      ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : null),
       content: content
     }, null);
 
@@ -143,9 +144,9 @@ export function kiroToOpenAIResponse(chunk, state) {
   // it to Claude thinking blocks / Anthropic reasoning / etc.
   if (eventType === "reasoningContentEvent" || data.reasoningContentEvent) {
     const reasoning = data.reasoningContentEvent || data;
-    const content = (typeof reasoning === "string")
-      ? reasoning
-      : (reasoning.text || reasoning.content || data.content || "");
+    const content = isString(reasoning) ?
+    reasoning :
+    reasoning.text || reasoning.content || data.content || "";
     if (!content) return null;
 
     const openaiChunk = buildChunk(chunkMeta(state), reasoningDelta(content, state.chunkIndex === 0), null);
@@ -171,7 +172,7 @@ export function kiroToOpenAIResponse(chunk, state) {
     state.toolCallIndex = idx + 1;
 
     const openaiChunk = buildChunk(chunkMeta(state), {
-      ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : {}),
+      ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : null),
       tool_calls: [{
         index: idx,
         id: toolCallId,
@@ -196,14 +197,14 @@ export function kiroToOpenAIResponse(chunk, state) {
     const openaiChunk = buildChunk(chunkMeta(state), {}, finishReason);
 
     // Include usage in final chunk if available
-    if (state.usage && typeof state.usage === "object") {
+    if (state.usage && isObject(state.usage)) {
       openaiChunk.usage = state.usage;
     }
 
     return openaiChunk;
   }
 
-// Handle usage events
+  // Handle usage events
   if (eventType === "usageEvent" || data.usageEvent) {
     const usage = toOpenAIUsage(data.usageEvent || data, "kiro");
     if (usage) state.usage = usage;

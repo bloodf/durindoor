@@ -1,3 +1,4 @@
+import { isFunction, isNumber } from "../../src/shared/utils/typeChecks.js";
 const SIDECAR_COMPATIBLE_EXECUTORS = new Set(["default"]);
 
 function compactObject(value) {
@@ -10,16 +11,16 @@ function resolveAuth(entry) {
   const transportAuth = entry.transport?.auth || {};
   const isNoAuth = entry.noAuth === true;
   const type =
-    entry.authType ||
-    (isNoAuth
-      ? "none"
-      : entry.hasOAuth || entry.oauth || entry.authModes?.includes("oauth")
-        ? "oauth"
-        : "apikey");
+  entry.authType || (
+  isNoAuth ?
+  "none" :
+  entry.hasOAuth || entry.oauth || entry.authModes?.includes("oauth") ?
+  "oauth" :
+  "apikey");
   const header =
-    transportAuth.header ||
-    transportAuth.apiKey?.header ||
-    (entry.transport?.format === "claude" ? "x-api-key" : "Authorization");
+  transportAuth.header ||
+  transportAuth.apiKey?.header || (
+  entry.transport?.format === "claude" ? "x-api-key" : "Authorization");
   const authScheme = transportAuth.scheme ?? transportAuth.apiKey?.scheme;
   const authPrefix = transportAuth.prefix ?? transportAuth.apiKey?.prefix;
   const prefix = authScheme === "bearer" ? "Bearer" : authPrefix;
@@ -41,7 +42,7 @@ function mapModel(model) {
     supportsVision: model.supportsVision,
     unsupportedParams: model.unsupportedParams,
     targetFormat: model.targetFormat,
-    kind: model.kind,
+    kind: model.kind
   });
 }
 
@@ -52,10 +53,10 @@ function sidecarEligibility(entry) {
   const authType = auth.type;
   const transport = entry.transport || {};
   const hasTemplatedUrl =
-    (transport.baseUrl && /{[^{}]+}/.test(transport.baseUrl)) ||
-    (transport.baseUrls || []).some((url) => /{[^{}]+}/.test(url)) ||
-    (transport.responsesBaseUrl && /{[^{}]+}/.test(transport.responsesBaseUrl)) ||
-    (transport.responsesUrl && /{[^{}]+}/.test(transport.responsesUrl));
+  transport.baseUrl && /{[^{}]+}/.test(transport.baseUrl) ||
+  (transport.baseUrls || []).some((url) => /{[^{}]+}/.test(url)) ||
+  transport.responsesBaseUrl && /{[^{}]+}/.test(transport.responsesBaseUrl) ||
+  transport.responsesUrl && /{[^{}]+}/.test(transport.responsesUrl);
   const isGeminiLike = transport.format === "gemini" || transport.format === "gemini-tts" || transport.format === "gemini-stt";
 
   if (!SIDECAR_COMPATIBLE_EXECUTORS.has(executor)) reasons.push(`custom executor: ${executor}`);
@@ -64,7 +65,7 @@ function sidecarEligibility(entry) {
     reasons.push("no static upstream endpoint");
   }
   if (hasTemplatedUrl) reasons.push("templated URL requires JS handling");
-  if (typeof transport.urlBuilder === "function") reasons.push("dynamic URL builder");
+  if (isFunction(transport.urlBuilder)) reasons.push("dynamic URL builder");
   if (entry.oauth || entry.hasOAuth) reasons.push("oauth metadata");
   if (entry.poolConfig) reasons.push("session pool config");
   if (isGeminiLike) reasons.push("Gemini endpoint constructed at dispatch");
@@ -93,10 +94,10 @@ export function createProviderPluginManifestEntry(entry) {
 
   return {
     id: entry.id,
-    ...(entry.alias ? { alias: entry.alias } : {}),
-    ...(Array.isArray(entry.aliases) && entry.aliases.length
-      ? { aliases: entry.aliases }
-      : {}),
+    ...(entry.alias ? { alias: entry.alias } : null),
+    ...(Array.isArray(entry.aliases) && entry.aliases.length ?
+    { aliases: entry.aliases } : null),
+
     format: transport.format || "openai",
     executor: resolveExecutor(entry),
     auth: resolveAuth(entry),
@@ -107,14 +108,14 @@ export function createProviderPluginManifestEntry(entry) {
       chatPath: transport.chatPath,
       modelsUrl: transport.modelsUrl,
       headers: transport.headers ? { ...transport.headers } : undefined,
-      urlSuffix: transport.urlSuffix,
+      urlSuffix: transport.urlSuffix
     }),
     capabilities: capabilitiesFor(entry, sidecar.eligible),
     passthroughModels: entry.passthroughModels === true,
-    ...(typeof entry.defaultContextLength === "number" ? { defaultContextLength: entry.defaultContextLength } : {}),
-    ...(typeof transport.timeoutMs === "number" ? { timeoutMs: transport.timeoutMs } : {}),
+    ...(isNumber(entry.defaultContextLength) ? { defaultContextLength: entry.defaultContextLength } : null),
+    ...(isNumber(transport.timeoutMs) ? { timeoutMs: transport.timeoutMs } : null),
     models: (entry.models || []).map(mapModel),
-    sidecar,
+    sidecar
   };
 }
 
@@ -122,15 +123,15 @@ export function generateProviderPluginManifestFromRegistry(registry) {
   return {
     schemaVersion: 1,
     generatedFrom: "open-sse/providers/registry",
-    providers: Object.values(registry)
-      .map(createProviderPluginManifestEntry)
-      .sort((a, b) => a.id.localeCompare(b.id)),
+    providers: Object.values(registry).
+    map(createProviderPluginManifestEntry).
+    sort((a, b) => a.id.localeCompare(b.id))
   };
 }
 
 export function getProviderPluginManifestEntryFromRegistry(registry, provider) {
   const entry =
-    registry[provider] ||
-    Object.values(registry).find((candidate) => candidate.alias === provider);
+  registry[provider] ||
+  Object.values(registry).find((candidate) => candidate.alias === provider);
   return entry ? createProviderPluginManifestEntry(entry) : null;
 }

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { nowSec } from "./_base.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { resolveCodexAccountId } from "../../shared/codexAccountId.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CODEX_RESPONSES_URL = PROVIDERS["codex"].baseUrl;
 const CODEX_USER_AGENT = "codex_cli_rs/0.136.0";
@@ -16,7 +17,7 @@ function stripImageSuffix(model) {
 }
 
 function toDataUrl(input) {
-  if (!input || typeof input !== "string") return null;
+  if (!input || !isString(input)) return null;
   if (/^data:image\//i.test(input) || /^https?:\/\//i.test(input)) return input;
   return `data:image/png;base64,${input}`;
 }
@@ -57,8 +58,8 @@ async function parseStream(response, log, callbacks = {}) {
       let eventName = null;
       let dataStr = "";
       for (const line of lines) {
-        if (line.startsWith("event:")) eventName = line.slice(6).trim();
-        else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+        if (line.startsWith("event:")) eventName = line.slice(6).trim();else
+        if (line.startsWith("data:")) dataStr += line.slice(5).trim();
       }
       if (!eventName) continue;
       if (eventName !== lastEvent) {
@@ -106,7 +107,7 @@ function buildSseResponse(providerResponse, log, onSuccess) {
       try {
         const b64 = await parseStream(providerResponse, log, {
           onProgress: (info) => send("progress", info),
-          onPartialImage: (info) => send("partial_image", info),
+          onPartialImage: (info) => send("partial_image", info)
         });
         if (!b64) {
           send("error", { message: "Codex did not return an image. Account may not be entitled (Plus/Pro required)." });
@@ -119,7 +120,7 @@ function buildSseResponse(providerResponse, log, onSuccess) {
       } finally {
         controller.close();
       }
-    },
+    }
   });
   return new Response(stream, {
     headers: {
@@ -127,8 +128,8 @@ function buildSseResponse(providerResponse, log, onSuccess) {
       "Cache-Control": "no-cache, no-transform",
       "Connection": "keep-alive",
       "X-Accel-Buffering": "no",
-      "Access-Control-Allow-Origin": "*",
-    },
+      "Access-Control-Allow-Origin": "*"
+    }
   });
 }
 
@@ -145,14 +146,14 @@ export default {
       "session_id": randomUUID(),
       "user-agent": CODEX_USER_AGENT,
       "version": CODEX_VERSION,
-      "x-client-request-id": randomUUID(),
+      "x-client-request-id": randomUUID()
     };
     if (accountId) headers["chatgpt-account-id"] = accountId;
     return headers;
   },
   buildBody: (model, body) => {
     const refs = [];
-    if (Array.isArray(body.images)) body.images.forEach((i) => { const u = toDataUrl(i); if (u) refs.push(u); });
+    if (Array.isArray(body.images)) body.images.forEach((i) => {const u = toDataUrl(i);if (u) refs.push(u);});
     const single = toDataUrl(body.image);
     if (single) refs.push(single);
     const detail = body.image_detail || CODEX_REF_DETAIL;
@@ -170,7 +171,7 @@ export default {
       prompt_cache_key: randomUUID(),
       stream: true,
       store: false,
-      reasoning: null,
+      reasoning: null
     };
   },
   // Custom: codex parses SSE → either pipe to client or collect b64
@@ -184,5 +185,5 @@ export default {
     }
     return { created: nowSec(), data: [{ b64_json: b64 }] };
   },
-  normalize: (responseBody) => responseBody,
+  normalize: (responseBody) => responseBody
 };

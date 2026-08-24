@@ -10,6 +10,7 @@ import { buildExternalIdpRefreshParams } from "../kiroExternalIdp.js";
  * 3. Google/GitHub Social Login (Authorization Code Flow + Manual Callback)
  * 4. Import Token (Manual refresh token paste)
  */
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 const KIRO_AUTH_SERVICE = "https://prod.us-east-1.auth.desktop.kiro.dev";
 
@@ -25,16 +26,16 @@ export class KiroService {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         clientName: KIRO_CONFIG.clientName,
         clientType: KIRO_CONFIG.clientType,
         scopes: KIRO_CONFIG.scopes,
         grantTypes: KIRO_CONFIG.grantTypes,
-        issuerUrl: KIRO_CONFIG.issuerUrl,
+        issuerUrl: KIRO_CONFIG.issuerUrl
       }),
-      proxyOptions,
+      proxyOptions
     });
 
     if (!response.ok) {
@@ -46,7 +47,7 @@ export class KiroService {
     return {
       clientId: data.clientId,
       clientSecret: data.clientSecret,
-      clientSecretExpiresAt: data.clientSecretExpiresAt,
+      clientSecretExpiresAt: data.clientSecretExpiresAt
     };
   }
 
@@ -60,14 +61,14 @@ export class KiroService {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         clientId,
         clientSecret,
-        startUrl,
+        startUrl
       }),
-      proxyOptions,
+      proxyOptions
     });
 
     if (!response.ok) {
@@ -82,7 +83,7 @@ export class KiroService {
       verificationUri: data.verificationUri,
       verificationUriComplete: data.verificationUriComplete,
       expiresIn: data.expiresIn,
-      interval: data.interval || 5,
+      interval: data.interval || 5
     };
   }
 
@@ -96,15 +97,15 @@ export class KiroService {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         clientId,
         clientSecret,
         deviceCode,
-        grantType: "urn:ietf:params:oauth:grant-type:device_code",
+        grantType: "urn:ietf:params:oauth:grant-type:device_code"
       }),
-      proxyOptions,
+      proxyOptions
     });
 
     const data = await response.json();
@@ -115,7 +116,7 @@ export class KiroService {
         success: false,
         error: data.error,
         errorDescription: data.error_description,
-        pending: data.error === "authorization_pending" || data.error === "slow_down",
+        pending: data.error === "authorization_pending" || data.error === "slow_down"
       };
     }
 
@@ -125,8 +126,8 @@ export class KiroService {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
         expiresIn: data.expiresIn,
-        tokenType: data.tokenType,
-      },
+        tokenType: data.tokenType
+      }
     };
   }
 
@@ -153,14 +154,14 @@ export class KiroService {
     const response = await fetch(`${KIRO_AUTH_SERVICE}/oauth/token`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         code,
         code_verifier: codeVerifier,
-        redirect_uri: redirectUri,
+        redirect_uri: redirectUri
       }),
-      proxyOptions,
+      proxyOptions
     });
 
     if (!response.ok) {
@@ -173,7 +174,7 @@ export class KiroService {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
       profileArn: data.profileArn,
-      expiresIn: data.expiresIn || 3600,
+      expiresIn: data.expiresIn || 3600
     };
   }
 
@@ -193,10 +194,10 @@ export class KiroService {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
+          Accept: "application/json"
         },
         body: refreshRequest.body,
-        proxyOptions,
+        proxyOptions
       });
 
       if (!response.ok) {
@@ -205,7 +206,7 @@ export class KiroService {
       }
 
       const data = await response.json();
-      if (!data || typeof data.access_token !== "string" || !data.access_token) {
+      if (!data || !isString(data.access_token) || !data.access_token) {
         throw new Error("Token refresh failed for external_idp: response missing access_token");
       }
       return {
@@ -217,8 +218,8 @@ export class KiroService {
         // route persists the full external_idp identity.
         providerSpecificData: {
           ...providerSpecificData,
-          ...refreshRequest.providerSpecificData,
-        },
+          ...refreshRequest.providerSpecificData
+        }
       };
     }
 
@@ -231,15 +232,15 @@ export class KiroService {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           clientId,
           clientSecret,
           refreshToken,
-          grantType: "refresh_token",
+          grantType: "refresh_token"
         }),
-        proxyOptions,
+        proxyOptions
       });
 
       if (!response.ok) {
@@ -252,7 +253,7 @@ export class KiroService {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken || refreshToken,
         profileArn: data.profileArn,
-        expiresIn: data.expiresIn,
+        expiresIn: data.expiresIn
       };
     }
 
@@ -260,12 +261,12 @@ export class KiroService {
     const response = await fetch(`${KIRO_AUTH_SERVICE}/refreshToken`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        refreshToken,
+        refreshToken
       }),
-      proxyOptions,
+      proxyOptions
     });
 
     if (!response.ok) {
@@ -278,7 +279,7 @@ export class KiroService {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken || refreshToken,
       profileArn: data.profileArn,
-      expiresIn: data.expiresIn || 3600,
+      expiresIn: data.expiresIn || 3600
     };
   }
 
@@ -299,7 +300,7 @@ export class KiroService {
         refreshToken: result.refreshToken || refreshToken,
         profileArn: result.profileArn,
         expiresIn: result.expiresIn,
-        authMethod: "imported",
+        authMethod: "imported"
       };
     } catch (error) {
       throw new Error(`Token validation failed: ${error.message}`);
@@ -334,10 +335,10 @@ export class KiroService {
             "Content-Type": "application/x-amz-json-1.0",
             "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
             "Authorization": `Bearer ${accessToken}`,
-            "Accept": "application/json",
+            "Accept": "application/json"
           },
           body: JSON.stringify({ maxResults: 10 }),
-          proxyOptions,
+          proxyOptions
         });
         if (!response.ok) {
           lastError = new Error(`ListAvailableProfiles ${r} failed: ${await response.text()}`);
@@ -365,7 +366,7 @@ export class KiroService {
    * ready to persist as a "kiro" connection with authMethod="api_key".
    */
   async validateApiKey(apiKey, region = "us-east-1") {
-    if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+    if (!apiKey || !isString(apiKey) || !apiKey.trim()) {
       throw new Error("API key is required");
     }
     const trimmed = apiKey.trim();
@@ -382,7 +383,7 @@ export class KiroService {
       refreshToken: null,
       profileArn,
       region,
-      authMethod: "api_key",
+      authMethod: "api_key"
     };
   }
 
@@ -399,12 +400,12 @@ export class KiroService {
         "Content-Type": "application/x-amz-json-1.0",
         "x-amz-target": target,
         "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/json",
+        "Accept": "application/json"
       },
       body: JSON.stringify({
         origin: "AI_EDITOR",
-        profileArn,
-      }),
+        profileArn
+      })
     });
 
     if (!response.ok) {
@@ -413,13 +414,13 @@ export class KiroService {
     }
 
     const data = await response.json();
-    return (data.models || []).map(m => ({
+    return (data.models || []).map((m) => ({
       id: m.modelId,
       name: m.modelName || m.modelId,
       description: m.description,
       rateMultiplier: m.rateMultiplier,
       rateUnit: m.rateUnit,
-      maxInputTokens: m.tokenLimits?.maxInputTokens || 0,
+      maxInputTokens: m.tokenLimits?.maxInputTokens || 0
     }));
   }
 

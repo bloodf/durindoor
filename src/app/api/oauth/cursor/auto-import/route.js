@@ -9,8 +9,9 @@ import {
   CURSOR_CACHED_EMAIL_KEYS,
   CURSOR_MACHINE_ID_KEYS,
   getCursorDbCandidatePaths,
-  readCursorLocalAuthSync,
-} from "@/lib/oauth/services/cursorLocalStore.js";
+  readCursorLocalAuthSync } from
+"@/lib/oauth/services/cursorLocalStore.js";
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,7 +28,7 @@ async function extractTokensViaCLI(dbPath) {
     const value = raw.trim();
     try {
       const parsed = JSON.parse(value);
-      return typeof parsed === "string" ? parsed : value;
+      return isString(parsed) ? parsed : value;
     } catch {
       return value;
     }
@@ -35,7 +36,7 @@ async function extractTokensViaCLI(dbPath) {
 
   const query = async (sql) => {
     const { stdout } = await execFileAsync("sqlite3", [dbPath, sql], {
-      timeout: 10000,
+      timeout: 10000
     });
     return stdout.trim();
   };
@@ -45,45 +46,45 @@ async function extractTokensViaCLI(dbPath) {
   for (const key of CURSOR_ACCESS_TOKEN_KEYS) {
     try {
       const raw = await query(
-        `SELECT value FROM itemTable WHERE key='${key}' LIMIT 1`,
+        `SELECT value FROM itemTable WHERE key='${key}' LIMIT 1`
       );
       if (raw) {
         accessToken = normalize(raw);
         break;
       }
     } catch {
-      /* try next */
-    }
+
+      /* try next */}
   }
 
   let machineId = null;
   for (const key of CURSOR_MACHINE_ID_KEYS) {
     try {
       const raw = await query(
-        `SELECT value FROM itemTable WHERE key='${key}' LIMIT 1`,
+        `SELECT value FROM itemTable WHERE key='${key}' LIMIT 1`
       );
       if (raw) {
         machineId = normalize(raw);
         break;
       }
     } catch {
-      /* try next */
-    }
+
+      /* try next */}
   }
 
   let cachedEmail = null;
   for (const key of CURSOR_CACHED_EMAIL_KEYS) {
     try {
       const raw = await query(
-        `SELECT value FROM itemTable WHERE key='${key}' LIMIT 1`,
+        `SELECT value FROM itemTable WHERE key='${key}' LIMIT 1`
       );
       if (raw) {
         cachedEmail = normalize(raw);
         break;
       }
     } catch {
-      /* try next */
-    }
+
+      /* try next */}
   }
 
   return { accessToken, machineId, cachedEmail };
@@ -114,8 +115,8 @@ export async function GET() {
     let dbPath;
     if (platform === "win32") {
       const appData =
-        process.env.APPDATA ||
-        join(homedir(), "AppData", "Roaming");
+      process.env.APPDATA ||
+      join(homedir(), "AppData", "Roaming");
       dbPath = join(appData, "Cursor", "User", "globalStorage", "state.vscdb");
     } else {
       dbPath = join(
@@ -143,13 +144,13 @@ export async function GET() {
         found: true,
         accessToken: tokens.accessToken,
         machineId: tokens.machineId,
-        cachedEmail: tokens.cachedEmail || null,
+        cachedEmail: tokens.cachedEmail || null
       });
     }
     return NextResponse.json({
       found: false,
       error:
-        "Cursor database not found. Make sure Cursor IDE is installed and you are logged in.",
+      "Cursor database not found. Make sure Cursor IDE is installed and you are logged in."
     });
   }
 
@@ -163,14 +164,14 @@ export async function GET() {
       dbPath = candidate;
       break;
     } catch {
+
       // try next candidate
-    }
-  }
+    }}
 
   if (!dbPath) {
     return NextResponse.json({
       found: false,
-      error: "Cursor database not found in known macOS locations",
+      error: "Cursor database not found in known macOS locations"
     });
   }
 
@@ -181,7 +182,7 @@ export async function GET() {
     const msg = err && err.message ? String(err.message) : String(err);
     return NextResponse.json({
       found: false,
-      error: `could not open it: ${msg}`.replace(/^Error:\s*/, ""),
+      error: `could not open it: ${msg}`.replace(/^Error:\s*/, "")
     });
   }
 
@@ -190,7 +191,7 @@ export async function GET() {
       found: true,
       accessToken: tokens.accessToken,
       machineId: tokens.machineId,
-      cachedEmail: tokens.cachedEmail || null,
+      cachedEmail: tokens.cachedEmail || null
     });
   }
 
@@ -202,15 +203,15 @@ export async function GET() {
         found: true,
         accessToken: tokens.accessToken,
         machineId: tokens.machineId,
-        cachedEmail: tokens.cachedEmail || null,
+        cachedEmail: tokens.cachedEmail || null
       });
     }
   } catch {
+
     // ignore
   }
-
   return NextResponse.json({
     found: false,
-    error: "Please login to Cursor IDE first",
+    error: "Please login to Cursor IDE first"
   });
 }

@@ -3,15 +3,16 @@ import { uploadFile, listFiles } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
+  "Access-Control-Allow-Headers": "*"
 };
 
 const json = (body, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
+new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
 
 export async function OPTIONS() {
   return new Response(null, { headers: CORS });
@@ -47,7 +48,7 @@ export async function POST(request) {
   }
   const file = form.get("file");
   const purpose = form.get("purpose") || "batch";
-  if (!file || typeof file === "string") {
+  if (!file || isString(file)) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "file field is required");
   }
   const buf = Buffer.from(await file.arrayBuffer());

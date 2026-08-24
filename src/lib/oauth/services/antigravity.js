@@ -9,6 +9,7 @@ import { spinner as createSpinner } from "../utils/ui.js";
  * Antigravity OAuth Service
  * Uses standard OAuth2 Authorization Code flow (similar to Gemini)
  */
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 export class AntigravityService {
   constructor() {
     this.config = ANTIGRAVITY_CONFIG;
@@ -25,7 +26,7 @@ export class AntigravityService {
       scope: this.config.scopes.join(" "),
       state: state,
       access_type: "offline",
-      prompt: "consent",
+      prompt: "consent"
     });
 
     return `${this.config.authorizeUrl}?${params.toString()}`;
@@ -39,15 +40,15 @@ export class AntigravityService {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
+        Accept: "application/json"
       },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: this.config.clientId,
         client_secret: this.config.clientSecret,
         code: code,
-        redirect_uri: redirectUri,
-      }),
+        redirect_uri: redirectUri
+      })
     });
 
     if (!response.ok) {
@@ -65,8 +66,8 @@ export class AntigravityService {
     const response = await fetch(`${this.config.userInfoUrl}?alt=json`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-      },
+        Accept: "application/json"
+      }
     });
 
     if (!response.ok) {
@@ -84,7 +85,7 @@ export class AntigravityService {
     return {
       "Authorization": `Bearer ${accessToken}`,
       "Content-Type": "application/json",
-      "User-Agent": this.config.loadCodeAssistUserAgent,
+      "User-Agent": this.config.loadCodeAssistUserAgent
       // No X-Goog-Api-Client / Client-Metadata: Google fingerprints them and
       // refuses to provision a cloudaicompanionProject.
     };
@@ -105,7 +106,7 @@ export class AntigravityService {
     const response = await fetch(this.config.loadCodeAssistEndpoint, {
       method: "POST",
       headers: this.getApiHeaders(accessToken),
-      body: JSON.stringify({ metadata: this.getMetadata() }),
+      body: JSON.stringify({ metadata: this.getMetadata() })
     });
 
     if (!response.ok) {
@@ -117,7 +118,7 @@ export class AntigravityService {
 
     // Extract project ID
     let projectId = data.cloudaicompanionProject;
-    if (typeof projectId === 'object' && projectId !== null && projectId.id) {
+    if (isObject(projectId) && projectId !== null && projectId.id) {
       projectId = projectId.id;
     }
 
@@ -142,7 +143,7 @@ export class AntigravityService {
     const response = await fetch(this.config.onboardUserEndpoint, {
       method: "POST",
       headers: this.getApiHeaders(accessToken),
-      body: JSON.stringify({ tierId, metadata: this.getMetadata() }),
+      body: JSON.stringify({ tierId, metadata: this.getMetadata() })
     });
 
     if (!response.ok) {
@@ -165,7 +166,7 @@ export class AntigravityService {
         let finalProjectId = projectId;
         if (result.response?.cloudaicompanionProject) {
           const respProject = result.response.cloudaicompanionProject;
-          if (typeof respProject === 'string') {
+          if (isString(respProject)) {
             finalProjectId = respProject.trim();
           } else if (respProject.id) {
             finalProjectId = respProject.id.trim();
@@ -175,7 +176,7 @@ export class AntigravityService {
       }
 
       // Wait 5 seconds before retry
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, 5000));
     }
 
     throw new Error("Onboarding timeout - please try again");
@@ -203,7 +204,7 @@ export class AntigravityService {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        "X-User-Id": userId,
+        "X-User-Id": userId
       },
       body: JSON.stringify({
         accessToken: tokens.access_token,
@@ -211,8 +212,8 @@ export class AntigravityService {
         expiresIn: tokens.expires_in,
         scope: tokens.scope,
         email: userInfo.email,
-        projectId: projectId, // Send projectId to server
-      }),
+        projectId: projectId // Send projectId to server
+      })
     });
 
     if (!response.ok) {
@@ -318,4 +319,3 @@ export class AntigravityService {
     }
   }
 }
-

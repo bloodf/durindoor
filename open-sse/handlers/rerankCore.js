@@ -3,9 +3,10 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 import { PROVIDERS, PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && isObject(value) && !Array.isArray(value);
 }
 
 // Derive a provider's /rerank endpoint from two sources:
@@ -15,13 +16,13 @@ function isRecord(value) {
 // Returns null when no rerank endpoint can be derived.
 export function deriveRerankUrl(transportCfg, mediaCfg) {
   const tc = isRecord(transportCfg) ? transportCfg : undefined;
-  const chat = typeof tc?.baseUrl === "string" ? tc.baseUrl : undefined;
+  const chat = isString(tc?.baseUrl) ? tc.baseUrl : undefined;
   if (chat && /\/chat\/completions$/.test(chat)) return chat.replace(/\/chat\/completions$/, "/rerank");
 
   const mc = isRecord(mediaCfg) ? mediaCfg : undefined;
   const embeddingConfig = mc?.embeddingConfig;
   const embCfg = isRecord(embeddingConfig) ? embeddingConfig : undefined;
-  const emb = typeof embCfg?.baseUrl === "string" ? embCfg.baseUrl : undefined;
+  const emb = isString(embCfg?.baseUrl) ? embCfg.baseUrl : undefined;
   if (emb && /\/embeddings$/.test(emb)) return emb.replace(/\/embeddings$/, "/rerank");
 
   return null;
@@ -45,7 +46,7 @@ export async function handleRerankCore({
   modelInfo,
   credentials = null,
   log = null,
-  onRequestSuccess = null,
+  onRequestSuccess = null
 }) {
   const { provider, model } = modelInfo;
   const url = deriveRerankUrl(PROVIDERS[provider], PROVIDER_MEDIA[provider]);
@@ -63,7 +64,7 @@ export async function handleRerankCore({
     res = await proxyAwareFetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ ...body, model }),
+      body: JSON.stringify({ ...body, model })
     });
   } catch (err) {
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Rerank request failed");
@@ -84,8 +85,8 @@ export async function handleRerankCore({
       status: 200,
       headers: {
         "Content-Type": res.headers.get("content-type") || "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    }),
+        "Access-Control-Allow-Origin": "*"
+      }
+    })
   };
 }

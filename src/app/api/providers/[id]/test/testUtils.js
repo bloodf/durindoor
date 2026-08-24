@@ -10,8 +10,8 @@ import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connect
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import {
   refreshProviderCredentials,
-  shouldRefreshCredentials,
-} from "open-sse/services/oauthCredentialManager.js";
+  shouldRefreshCredentials } from
+"open-sse/services/oauthCredentialManager.js";
 import {
   GEMINI_CONFIG,
   ANTIGRAVITY_CONFIG,
@@ -20,8 +20,8 @@ import {
   CLAUDE_CONFIG,
   CLINE_CONFIG,
   KILOCODE_CONFIG,
-  KIMCHI_CONFIG,
-} from "@/lib/oauth/constants/oauth";
+  KIMCHI_CONFIG } from
+"@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
@@ -30,6 +30,7 @@ import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/se
 import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 
 // OAuth provider test endpoints
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export const OAUTH_TEST_CONFIG = {
   claude: { checkExpiry: true, refreshable: true },
   codex: {
@@ -42,28 +43,28 @@ export const OAUTH_TEST_CONFIG = {
     body: JSON.stringify({ model: "gpt-5.3-codex", input: [], stream: false, store: false }),
     // 400 (bad request) means auth succeeded; only 401/403 means token is bad
     acceptStatuses: [400],
-    refreshable: true,
+    refreshable: true
   },
   "gemini-cli": {
     url: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
-    refreshable: true,
+    refreshable: true
   },
   antigravity: {
     url: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
-    refreshable: true,
+    refreshable: true
   },
   agy: {
     url: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
-    refreshable: true,
+    refreshable: true
   },
   "grok-cli": {
     url: "https://cli-chat-proxy.grok.com/v1/chat/completions",
@@ -75,25 +76,25 @@ export const OAUTH_TEST_CONFIG = {
       Accept: "application/json",
       "x-grok-client-version": "0.2.72",
       "x-grok-client-identifier": "grok_cli_rs",
-      "User-Agent": "grok-cli/0.2.72 (Windows 10.0.26200; x64)",
+      "User-Agent": "grok-cli/0.2.72 (Windows 10.0.26200; x64)"
     },
     // Minimal invalid body: a 400 means auth reached the upstream service.
     body: JSON.stringify({ model: "grok-build", messages: [] }),
     acceptStatuses: [400],
-    refreshable: true,
+    refreshable: true
   },
   github: {
     url: "https://api.github.com/user",
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
-    extraHeaders: { "User-Agent": "9Router", "Accept": "application/vnd.github+json" },
+    extraHeaders: { "User-Agent": "9Router", "Accept": "application/vnd.github+json" }
   },
   iflow: {
     // iFlow getUserInfo requires accessToken as query param, not header
     buildUrl: (token) => `https://iflow.cn/api/oauth/getUserInfo?accessToken=${encodeURIComponent(token)}`,
     method: "GET",
-    noAuth: true,
+    noAuth: true
   },
   qwen: { checkExpiry: true, refreshable: true },
   kiro: { checkExpiry: true, refreshable: true },
@@ -106,7 +107,7 @@ export const OAUTH_TEST_CONFIG = {
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
-    refreshable: false,
+    refreshable: false
   },
   "kimi-coding": { checkExpiry: true, refreshable: false },
   cursor: { tokenExists: true },
@@ -114,7 +115,7 @@ export const OAUTH_TEST_CONFIG = {
     url: `${KILOCODE_CONFIG.apiBaseUrl}/api/profile`,
     method: "GET",
     authHeader: "Authorization",
-    authPrefix: "Bearer ",
+    authPrefix: "Bearer "
   },
   cline: { refreshable: true },
   gitlab: {
@@ -122,7 +123,7 @@ export const OAUTH_TEST_CONFIG = {
     url: "https://gitlab.com/api/v4/user",
     method: "GET",
     authHeader: "Authorization",
-    authPrefix: "Bearer ",
+    authPrefix: "Bearer "
   },
   "gitlab-duo": {
     buildUrl: (_token, connection) => {
@@ -131,7 +132,7 @@ export const OAUTH_TEST_CONFIG = {
     },
     method: "GET",
     authHeader: "Authorization",
-    authPrefix: "Bearer ",
+    authPrefix: "Bearer "
   },
   "codebuddy-cn": { tokenExists: true },
   kimchi: {
@@ -141,18 +142,18 @@ export const OAUTH_TEST_CONFIG = {
     authPrefix: "Bearer ",
     extraHeaders: {
       Accept: "application/json",
-      "User-Agent": "kimchi/0.1.50",
+      "User-Agent": "kimchi/0.1.50"
     },
-    refreshable: false,
-  },
+    refreshable: false
+  }
 };
 
 async function probeClineAccessToken(accessToken, effectiveProxy) {
   const res = await fetchWithConnectionProxy("https://api.cline.bot/api/v1/users/me", {
     method: "GET",
     headers: buildClineHeaders(accessToken, {
-      Accept: "application/json",
-    }),
+      Accept: "application/json"
+    })
   }, effectiveProxy);
 
   return res;
@@ -163,8 +164,8 @@ const CLOUD_CODE_ASSIST_TEST_BODY = JSON.stringify({
   metadata: {
     ideType: "IDE_UNSPECIFIED",
     platform: "PLATFORM_UNSPECIFIED",
-    pluginType: "GEMINI",
-  },
+    pluginType: "GEMINI"
+  }
 });
 
 function parseProviderErrorMessage(bodyText, fallback) {
@@ -172,27 +173,28 @@ function parseProviderErrorMessage(bodyText, fallback) {
   try {
     const parsed = JSON.parse(bodyText);
     const message = parsed?.error?.message || parsed?.message || parsed?.error;
-    if (typeof message === "string" && message.trim()) return message.trim();
+    if (isString(message) && message.trim()) return message.trim();
     if (message) return JSON.stringify(message);
   } catch {
+
     // fall through
   }
   return bodyText.trim() || fallback;
 }
 
 async function probeCloudCodeAssistAccess(connection, accessToken, effectiveProxy = null) {
-  const userAgent = connection.provider === "antigravity" || connection.provider === "agy"
-    ? "google-api-nodejs-client/9.15.1 vscode-antigravity/1.107.0"
-    : "google-api-nodejs-client/9.15.1 gemini-cli/0.34.0";
+  const userAgent = connection.provider === "antigravity" || connection.provider === "agy" ?
+  "google-api-nodejs-client/9.15.1 vscode-antigravity/1.107.0" :
+  "google-api-nodejs-client/9.15.1 gemini-cli/0.34.0";
 
   const res = await fetchWithConnectionProxy(CLOUD_CODE_ASSIST_TEST_URL, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${accessToken}`,
       "Content-Type": "application/json",
-      "User-Agent": userAgent,
+      "User-Agent": userAgent
     },
-    body: CLOUD_CODE_ASSIST_TEST_BODY,
+    body: CLOUD_CODE_ASSIST_TEST_BODY
   }, effectiveProxy);
 
   if (res.ok) return { valid: true, error: null };
@@ -201,7 +203,7 @@ async function probeCloudCodeAssistAccess(connection, accessToken, effectiveProx
   return {
     valid: false,
     error: parseProviderErrorMessage(bodyText, `API returned ${res.status}`),
-    status: res.status,
+    status: res.status
   };
 }
 
@@ -220,8 +222,8 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
           client_id: config.clientId,
           client_secret: config.clientSecret,
           grant_type: "refresh_token",
-          refresh_token: refreshToken,
-        }),
+          refresh_token: refreshToken
+        })
       }, effectiveProxy);
       if (!response.ok) return null;
       const data = await response.json();
@@ -239,8 +241,8 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
         body: JSON.stringify({
           grant_type: "refresh_token",
           refresh_token: refreshToken,
-          client_id: CLAUDE_CONFIG.clientId,
-        }),
+          client_id: CLAUDE_CONFIG.clientId
+        })
       }, effectiveProxy);
       if (!response.ok) return null;
       const data = await response.json();
@@ -257,7 +259,7 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
         const response = await fetchWithConnectionProxy(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId, clientSecret, refreshToken, grantType: "refresh_token" }),
+          body: JSON.stringify({ clientId, clientSecret, refreshToken, grantType: "refresh_token" })
         }, effectiveProxy);
         if (!response.ok) return null;
         const data = await response.json();
@@ -266,7 +268,7 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
       const response = await fetchWithConnectionProxy(KIRO_CONFIG.socialRefreshUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "User-Agent": "kiro-cli/1.0.0" },
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify({ refreshToken })
       }, effectiveProxy);
       if (!response.ok) return null;
       const data = await response.json();
@@ -280,8 +282,8 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
         body: new URLSearchParams({
           grant_type: "refresh_token",
           refresh_token: refreshToken,
-          client_id: QWEN_CONFIG.clientId,
-        }),
+          client_id: QWEN_CONFIG.clientId
+        })
       }, effectiveProxy);
       if (!response.ok) return null;
       const data = await response.json();
@@ -295,19 +297,19 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
         body: JSON.stringify({
           refreshToken,
           grantType: "refresh_token",
-          clientType: "extension",
-        }),
+          clientType: "extension"
+        })
       }, effectiveProxy);
       if (!response.ok) return null;
       const payload = await response.json();
       const data = payload?.data || payload;
-      const expiresIn = data?.expiresAt
-        ? Math.max(1, Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000))
-        : 3600;
+      const expiresIn = data?.expiresAt ?
+      Math.max(1, Math.floor((new Date(data.expiresAt).getTime() - Date.now()) / 1000)) :
+      3600;
       return {
         accessToken: data?.accessToken,
         expiresIn,
-        refreshToken: data?.refreshToken || refreshToken,
+        refreshToken: data?.refreshToken || refreshToken
       };
     }
 
@@ -346,11 +348,11 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
   // let the reactive, serialized 401 path (or the next real request) handle
   // genuine expiry. Same guard as quotaAutoPing.js.
   if (
-    config.refreshable &&
-    tokenExpired &&
-    connection.refreshToken &&
-    rotationGroupFor(connection.provider) === null
-  ) {
+  config.refreshable &&
+  tokenExpired &&
+  connection.refreshToken &&
+  rotationGroupFor(connection.provider) === null)
+  {
     const tokens = await refreshOAuthToken(connection, effectiveProxy);
     if (tokens) {
       accessToken = tokens.accessToken;
@@ -411,9 +413,9 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
 
   try {
     const testUrl = config.buildUrl ? config.buildUrl(accessToken, connection) : config.url;
-    const headers = config.noAuth
-      ? { ...config.extraHeaders }
-      : { [config.authHeader]: `${config.authPrefix}${accessToken}`, ...config.extraHeaders };
+    const headers = config.noAuth ?
+    { ...config.extraHeaders } :
+    { [config.authHeader]: `${config.authPrefix}${accessToken}`, ...config.extraHeaders };
     if (connection.provider === "codex") {
       applyCodexAccountHeader(headers, connection.providerSpecificData);
     }
@@ -421,23 +423,23 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     if (config.body) fetchOpts.body = config.body;
     const res = await fetchWithConnectionProxy(testUrl, fetchOpts, effectiveProxy);
 
-    const accepted = res.ok || (config.acceptStatuses && config.acceptStatuses.includes(res.status));
+    const accepted = res.ok || config.acceptStatuses && config.acceptStatuses.includes(res.status);
     if (accepted) return { valid: true, error: null, refreshed, newTokens };
 
     if (res.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
       const tokens = await refreshOAuthToken(connection, effectiveProxy);
       if (tokens) {
         const retryUrl = config.buildUrl ? config.buildUrl(tokens.accessToken, connection) : testUrl;
-        const retryHeaders = config.noAuth
-          ? { ...config.extraHeaders }
-          : { [config.authHeader]: `${config.authPrefix}${tokens.accessToken}`, ...config.extraHeaders };
+        const retryHeaders = config.noAuth ?
+        { ...config.extraHeaders } :
+        { [config.authHeader]: `${config.authPrefix}${tokens.accessToken}`, ...config.extraHeaders };
         if (connection.provider === "codex") {
           applyCodexAccountHeader(retryHeaders, connection.providerSpecificData);
         }
         const retryOpts = { method: config.method, headers: retryHeaders };
         if (config.body) retryOpts.body = config.body;
         const retryRes = await fetchWithConnectionProxy(retryUrl, retryOpts, effectiveProxy);
-        const retryAccepted = retryRes.ok || (config.acceptStatuses && config.acceptStatuses.includes(retryRes.status));
+        const retryAccepted = retryRes.ok || config.acceptStatuses && config.acceptStatuses.includes(retryRes.status);
         if (retryAccepted) return { valid: true, error: null, refreshed: true, newTokens: tokens };
       }
       return { valid: false, error: "Token invalid or revoked", refreshed: false };
@@ -457,7 +459,7 @@ let providerTestFetchOverride = null;
 export function __setProviderTestFetchForTesting(fetchFn) {
   const previous = providerTestFetchOverride;
   providerTestFetchOverride = fetchFn;
-  return () => { providerTestFetchOverride = previous; };
+  return () => {providerTestFetchOverride = previous;};
 }
 
 async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null) {
@@ -467,17 +469,17 @@ async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null
 }
 
 const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
-  "9router",
-  "lm-studio",
-  "vllm",
-  "lemonade",
-  "llamafile",
-  "llama-cpp",
-  "triton",
-  "docker-model-runner",
-  "xinference",
-  "oobabooga",
-]);
+"9router",
+"lm-studio",
+"vllm",
+"lemonade",
+"llamafile",
+"llama-cpp",
+"triton",
+"docker-model-runner",
+"xinference",
+"oobabooga"]
+);
 
 export function resolveLocalOpenAICompatibleBaseUrl(connection) {
   const { provider } = connection;
@@ -499,9 +501,9 @@ async function exchangeGigaChatApiKey(apiKey, effectiveProxy = null) {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
       Authorization: `Basic ${apiKey}`,
-      RqUID: crypto.randomUUID(),
+      RqUID: crypto.randomUUID()
     },
-    body: new URLSearchParams({ scope: cfg.tokenScope || "GIGACHAT_API_PERS" }),
+    body: new URLSearchParams({ scope: cfg.tokenScope || "GIGACHAT_API_PERS" })
   }, effectiveProxy);
 
   if (!res.ok) return null;
@@ -515,8 +517,8 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
   if (cfg.noAuth) return { valid: true, error: null };
 
   const headers = { "Content-Type": "application/json", ...(cfg.headers || {}) };
-  if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = connection.apiKey;
-  else headers.Authorization = `Bearer ${connection.apiKey}`;
+  if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = connection.apiKey;else
+  headers.Authorization = `Bearer ${connection.apiKey}`;
 
   // Use cfg.modelsUrl when present; scoped providers may not expose /models
   // beside their chat endpoint.
@@ -528,9 +530,9 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
     }
     if (modelsRes.ok) return { valid: true, error: null };
   } catch {
+
     // Fall back to chat below.
   }
-
   const res = await fetchWithConnectionProxy(cfg.baseUrl, {
     method: "POST",
     headers,
@@ -538,8 +540,8 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
       model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
       messages: [{ role: "user", content: "ping" }],
       max_tokens: 1,
-      stream: false,
-    }),
+      stream: false
+    })
   }, effectiveProxy);
   const valid = res.status !== 401 && res.status !== 403;
   return { valid, error: valid ? null : "Invalid API key" };
@@ -551,7 +553,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
     if (!modelsBase) return { valid: false, error: "Missing base URL" };
     try {
       const res = await fetchWithConnectionProxy(`${modelsBase.replace(/\/$/, "")}/models`, {
-        headers: { "Authorization": `Bearer ${connection.apiKey}` },
+        headers: { "Authorization": `Bearer ${connection.apiKey}` }
       }, effectiveProxy);
       return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };
     } catch (err) {
@@ -574,13 +576,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           "x-api-key": connection.apiKey,
           "anthropic-version": "2023-06-01",
           "content-type": "application/json",
-          "Authorization": `Bearer ${connection.apiKey}`,
+          "Authorization": `Bearer ${connection.apiKey}`
         },
         body: JSON.stringify({
           model,
           max_tokens: 1,
-          messages: [{ role: "user", content: "test" }],
-        }),
+          messages: [{ role: "user", content: "test" }]
+        })
       }, effectiveProxy);
       // 400/529 still confirms key accepted; only 401/403 = bad key
       const valid = res.status !== 401 && res.status !== 403;
@@ -603,9 +605,9 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid: false, error: "Invalid API key" };
       }
 
-      const chatHeaders = connection.apiKey
-        ? { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" }
-        : { "content-type": "application/json" };
+      const chatHeaders = connection.apiKey ?
+      { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" } :
+      { "content-type": "application/json" };
       const chatRes = await fetchWithConnectionProxy(
         `${localBaseUrl}/chat/completions`,
         {
@@ -614,8 +616,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           body: JSON.stringify({
             model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
             max_tokens: 1,
-            messages: [{ role: "user", content: "test" }],
-          }),
+            messages: [{ role: "user", content: "test" }]
+          })
         },
         effectiveProxy
       );
@@ -633,476 +635,476 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
 
   try {
     switch (connection.provider) {
-      case "cloudflare-ai": {
-        const psd = connection.providerSpecificData || {};
-        const accountId = psd.accountId;
-        if (!accountId) return { valid: false, error: "Missing Account ID" };
-        const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`;
-        const res = await fetchWithConnectionProxy(url, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${connection.apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: getDefaultModel("cloudflare-ai"), messages: [{ role: "user", content: "test" }], max_tokens: 1 }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403 && res.status !== 404;
-        return { valid, error: valid ? null : "Invalid API token or Account ID" };
-      }
-      case "gigachat": {
-        const accessToken = await exchangeGigaChatApiKey(connection.apiKey, effectiveProxy);
-        if (!accessToken) return { valid: false, error: "Invalid API key" };
-        const res = await fetchWithConnectionProxy(PROVIDERS.gigachat.modelsUrl || "https://gigachat.devices.sberbank.ru/api/v1/models", {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
-      case "azure": {
-        const psd = connection.providerSpecificData || {};
-        const endpoint = (psd.azureEndpoint || "").replace(/\/$/, "");
-        const deployment = psd.deployment || "gpt-4";
-        const apiVersion = psd.apiVersion || "2024-10-01-preview";
-        const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
-        const headers = { "api-key": connection.apiKey, "Content-Type": "application/json" };
-        if (psd.organization) headers["OpenAI-Organization"] = psd.organization;
-        const res = await fetchWithConnectionProxy(url, {
-          method: "POST", headers,
-          body: JSON.stringify({ messages: [{ role: "user", content: "test" }], max_completion_tokens: 1 }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key or Azure configuration" };
-      }
-      case "kimchi": {
-        const res = await fetchWithConnectionProxy(
-          KIMCHI_CONFIG.validationUrl,
-          {
-            method: "GET",
-            headers: {
-              Accept: "application/json",
-              Authorization: `Bearer ${connection.apiKey}`,
-              "User-Agent": "kimchi/0.1.40",
+      case "cloudflare-ai":{
+          const psd = connection.providerSpecificData || {};
+          const accountId = psd.accountId;
+          if (!accountId) return { valid: false, error: "Missing Account ID" };
+          const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`;
+          const res = await fetchWithConnectionProxy(url, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${connection.apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: getDefaultModel("cloudflare-ai"), messages: [{ role: "user", content: "test" }], max_tokens: 1 })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403 && res.status !== 404;
+          return { valid, error: valid ? null : "Invalid API token or Account ID" };
+        }
+      case "gigachat":{
+          const accessToken = await exchangeGigaChatApiKey(connection.apiKey, effectiveProxy);
+          if (!accessToken) return { valid: false, error: "Invalid API key" };
+          const res = await fetchWithConnectionProxy(PROVIDERS.gigachat.modelsUrl || "https://gigachat.devices.sberbank.ru/api/v1/models", {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "azure":{
+          const psd = connection.providerSpecificData || {};
+          const endpoint = (psd.azureEndpoint || "").replace(/\/$/, "");
+          const deployment = psd.deployment || "gpt-4";
+          const apiVersion = psd.apiVersion || "2024-10-01-preview";
+          const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+          const headers = { "api-key": connection.apiKey, "Content-Type": "application/json" };
+          if (psd.organization) headers["OpenAI-Organization"] = psd.organization;
+          const res = await fetchWithConnectionProxy(url, {
+            method: "POST", headers,
+            body: JSON.stringify({ messages: [{ role: "user", content: "test" }], max_completion_tokens: 1 })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key or Azure configuration" };
+        }
+      case "kimchi":{
+          const res = await fetchWithConnectionProxy(
+            KIMCHI_CONFIG.validationUrl,
+            {
+              method: "GET",
+              headers: {
+                Accept: "application/json",
+                Authorization: `Bearer ${connection.apiKey}`,
+                "User-Agent": "kimchi/0.1.40"
+              }
             },
-          },
-          effectiveProxy,
-        );
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key", refreshed: false };
-      }
-      case "openai": {
-        const res = await fetchWithConnectionProxy("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "vercel-ai-gateway": {
-        const res = await fetchWithConnectionProxy("https://ai-gateway.vercel.sh/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "anthropic": {
-        const res = await fetchWithConnectionProxy("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-3-haiku-20240307", max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-        }, effectiveProxy);
-        const valid = res.status !== 401;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
-      case "gemini": {
-        const res = await fetchWithConnectionProxy(`https://generativelanguage.googleapis.com/v1/models?key=${connection.apiKey}`, {}, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "openrouter": {
-        const res = await fetchWithConnectionProxy("https://openrouter.ai/api/v1/auth/key", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "glm": {
-        const res = await fetchWithConnectionProxy("https://api.z.ai/api/anthropic/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "glm-4.7", max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
-      case "glm-cn": {
-        const res = await fetchWithConnectionProxy("https://open.bigmodel.cn/api/coding/paas/v4/chat/completions", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "glm-4.7", max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
+            effectiveProxy
+          );
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key", refreshed: false };
+        }
+      case "openai":{
+          const res = await fetchWithConnectionProxy("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "vercel-ai-gateway":{
+          const res = await fetchWithConnectionProxy("https://ai-gateway.vercel.sh/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "anthropic":{
+          const res = await fetchWithConnectionProxy("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-3-haiku-20240307", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+          }, effectiveProxy);
+          const valid = res.status !== 401;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "gemini":{
+          const res = await fetchWithConnectionProxy(`https://generativelanguage.googleapis.com/v1/models?key=${connection.apiKey}`, {}, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "openrouter":{
+          const res = await fetchWithConnectionProxy("https://openrouter.ai/api/v1/auth/key", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "glm":{
+          const res = await fetchWithConnectionProxy("https://api.z.ai/api/anthropic/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "glm-4.7", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "glm-cn":{
+          const res = await fetchWithConnectionProxy("https://open.bigmodel.cn/api/coding/paas/v4/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
+            body: JSON.stringify({ model: "glm-4.7", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
       case "minimax":
-      case "minimax-cn": {
-        const endpoints = { minimax: "https://api.minimax.io/anthropic/v1/messages", "minimax-cn": "https://api.minimaxi.com/anthropic/v1/messages" };
-        const res = await fetchWithConnectionProxy(endpoints[connection.provider], {
-          method: "POST",
-          headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "minimax-m2", max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
-      case "kimi": {
-        const res = await fetchWithConnectionProxy("https://api.moonshot.cn/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "kimi-latest", max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
+      case "minimax-cn":{
+          const endpoints = { minimax: "https://api.minimax.io/anthropic/v1/messages", "minimax-cn": "https://api.minimaxi.com/anthropic/v1/messages" };
+          const res = await fetchWithConnectionProxy(endpoints[connection.provider], {
+            method: "POST",
+            headers: { "x-api-key": connection.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "minimax-m2", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "kimi":{
+          const res = await fetchWithConnectionProxy("https://api.moonshot.cn/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" },
+            body: JSON.stringify({ model: "kimi-latest", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
       case "alicode":
-      case "alicode-intl": {
-        // Aliyun Coding Plan uses OpenAI-compatible API
-        const aliBaseUrl = connection.provider === "alicode-intl"
-          ? "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions"
-          : "https://coding.dashscope.aliyuncs.com/v1/chat/completions";
-        const res = await fetchWithConnectionProxy(aliBaseUrl, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: getDefaultModel(connection.provider), max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
+      case "alicode-intl":{
+          // Aliyun Coding Plan uses OpenAI-compatible API
+          const aliBaseUrl = connection.provider === "alicode-intl" ?
+          "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions" :
+          "https://coding.dashscope.aliyuncs.com/v1/chat/completions";
+          const res = await fetchWithConnectionProxy(aliBaseUrl, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
+            body: JSON.stringify({ model: getDefaultModel(connection.provider), max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
       case "volcengine-ark":
-      case "byteplus": {
-        const res = await fetchWithConnectionProxy(PROVIDERS[connection.provider]?.baseUrl, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: getDefaultModel(connection.provider), max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
-      case "deepseek": {
-        const res = await fetchWithConnectionProxy("https://api.deepseek.com/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "groq": {
-        const res = await fetchWithConnectionProxy("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "mistral": {
-        const res = await fetchWithConnectionProxy("https://api.mistral.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "xai": {
-        const res = await fetchWithConnectionProxy("https://api.x.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "nvidia": {
-        const res = await fetchWithConnectionProxy("https://integrate.api.nvidia.com/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "perplexity": {
-        const res = await fetchWithConnectionProxy("https://api.perplexity.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "together": {
-        const res = await fetchWithConnectionProxy("https://api.together.xyz/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "tokenrouter": {
-        const baseUrl = connection.providerSpecificData?.baseUrl || "https://api.tokenrouter.com/v1";
-        const res = await fetchWithConnectionProxy(`${baseUrl.replace(/\/$/, "")}/models`, {
-          headers: { Authorization: `Bearer ${connection.apiKey}` },
-        }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };
-      }
-      case "fireworks": {
-        const res = await fetchWithConnectionProxy("https://api.fireworks.ai/inference/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "cerebras": {
-        const res = await fetchWithConnectionProxy("https://api.cerebras.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "novita": {
-        const res = await fetchWithConnectionProxy("https://api.novita.ai/openai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "cohere": {
-        const res = await fetchWithConnectionProxy("https://api.cohere.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "nebius": {
-        const res = await fetchWithConnectionProxy("https://api.studio.nebius.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "siliconflow": {
-        const res = await fetchWithConnectionProxy("https://api.siliconflow.com/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "hyperbolic": {
-        const res = await fetchWithConnectionProxy("https://api.hyperbolic.xyz/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "ollama": {
-        const res = await fetch("https://ollama.com/api/tags", { headers: { Authorization: `Bearer ${connection.apiKey}` } });
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "ollama-local": {
-        const host = resolveOllamaLocalHost(connection);
-        const res = await fetch(`${host}/api/tags`);
-        return { valid: res.ok, error: res.ok ? null : `Ollama not reachable at ${host}` };
-      }
-      case "deepgram": {
-        const res = await fetchWithConnectionProxy("https://api.deepgram.com/v1/projects", { headers: { Authorization: `Token ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "assemblyai": {
-        const res = await fetchWithConnectionProxy("https://api.assemblyai.com/v1/account", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "nanobanana": {
-        const res = await fetchWithConnectionProxy("https://api.nanobananaapi.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "fal-ai": {
-        const res = await fetchWithConnectionProxy("https://api.fal.ai/v1/models?limit=1", { headers: { Authorization: `Key ${connection.apiKey}` } }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
-      case "chutes": {
-        const res = await fetchWithConnectionProxy("https://llm.chutes.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "grok-web": {
-        const token = connection.apiKey.startsWith("sso=") ? connection.apiKey.slice(4) : connection.apiKey;
-        const randomHex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, "0")).join("");
-        const statsigId = Buffer.from("e:TypeError: Cannot read properties of null (reading 'children')").toString("base64");
-        const res = await fetchWithConnectionProxy("https://grok.com/rest/app-chat/conversations/new", {
-          method: "POST",
-          headers: {
-            Accept: "*/*", "Content-Type": "application/json",
-            Cookie: `sso=${token}`, Origin: "https://grok.com", Referer: "https://grok.com/",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-            "x-statsig-id": statsigId, "x-xai-request-id": crypto.randomUUID(),
-            traceparent: `00-${randomHex(16)}-${randomHex(8)}-00`,
-          },
-          body: JSON.stringify({ temporary: true, modelName: "grok-4", message: "ping", fileAttachments: [], imageAttachments: [], disableSearch: false, enableImageGeneration: false, sendFinalMetadata: true }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid SSO cookie" };
-      }
-      case "copilot-web": {
-        const credential = String(connection.apiKey || "").trim();
-        const token =
+      case "byteplus":{
+          const res = await fetchWithConnectionProxy(PROVIDERS[connection.provider]?.baseUrl, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
+            body: JSON.stringify({ model: getDefaultModel(connection.provider), max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "deepseek":{
+          const res = await fetchWithConnectionProxy("https://api.deepseek.com/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "groq":{
+          const res = await fetchWithConnectionProxy("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "mistral":{
+          const res = await fetchWithConnectionProxy("https://api.mistral.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "xai":{
+          const res = await fetchWithConnectionProxy("https://api.x.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "nvidia":{
+          const res = await fetchWithConnectionProxy("https://integrate.api.nvidia.com/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "perplexity":{
+          const res = await fetchWithConnectionProxy("https://api.perplexity.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "together":{
+          const res = await fetchWithConnectionProxy("https://api.together.xyz/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "tokenrouter":{
+          const baseUrl = connection.providerSpecificData?.baseUrl || "https://api.tokenrouter.com/v1";
+          const res = await fetchWithConnectionProxy(`${baseUrl.replace(/\/$/, "")}/models`, {
+            headers: { Authorization: `Bearer ${connection.apiKey}` }
+          }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };
+        }
+      case "fireworks":{
+          const res = await fetchWithConnectionProxy("https://api.fireworks.ai/inference/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "cerebras":{
+          const res = await fetchWithConnectionProxy("https://api.cerebras.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "novita":{
+          const res = await fetchWithConnectionProxy("https://api.novita.ai/openai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "cohere":{
+          const res = await fetchWithConnectionProxy("https://api.cohere.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "nebius":{
+          const res = await fetchWithConnectionProxy("https://api.studio.nebius.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "siliconflow":{
+          const res = await fetchWithConnectionProxy("https://api.siliconflow.com/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "hyperbolic":{
+          const res = await fetchWithConnectionProxy("https://api.hyperbolic.xyz/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "ollama":{
+          const res = await fetch("https://ollama.com/api/tags", { headers: { Authorization: `Bearer ${connection.apiKey}` } });
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "ollama-local":{
+          const host = resolveOllamaLocalHost(connection);
+          const res = await fetch(`${host}/api/tags`);
+          return { valid: res.ok, error: res.ok ? null : `Ollama not reachable at ${host}` };
+        }
+      case "deepgram":{
+          const res = await fetchWithConnectionProxy("https://api.deepgram.com/v1/projects", { headers: { Authorization: `Token ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "assemblyai":{
+          const res = await fetchWithConnectionProxy("https://api.assemblyai.com/v1/account", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "nanobanana":{
+          const res = await fetchWithConnectionProxy("https://api.nanobananaapi.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "fal-ai":{
+          const res = await fetchWithConnectionProxy("https://api.fal.ai/v1/models?limit=1", { headers: { Authorization: `Key ${connection.apiKey}` } }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "chutes":{
+          const res = await fetchWithConnectionProxy("https://llm.chutes.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "grok-web":{
+          const token = connection.apiKey.startsWith("sso=") ? connection.apiKey.slice(4) : connection.apiKey;
+          const randomHex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, "0")).join("");
+          const statsigId = Buffer.from("e:TypeError: Cannot read properties of null (reading 'children')").toString("base64");
+          const res = await fetchWithConnectionProxy("https://grok.com/rest/app-chat/conversations/new", {
+            method: "POST",
+            headers: {
+              Accept: "*/*", "Content-Type": "application/json",
+              Cookie: `sso=${token}`, Origin: "https://grok.com", Referer: "https://grok.com/",
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+              "x-statsig-id": statsigId, "x-xai-request-id": crypto.randomUUID(),
+              traceparent: `00-${randomHex(16)}-${randomHex(8)}-00`
+            },
+            body: JSON.stringify({ temporary: true, modelName: "grok-4", message: "ping", fileAttachments: [], imageAttachments: [], disableSearch: false, enableImageGeneration: false, sendFinalMetadata: true })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid SSO cookie" };
+        }
+      case "copilot-web":{
+          const credential = String(connection.apiKey || "").trim();
+          const token =
           credential.match(/access_token=([^;]+)/)?.[1] ||
           credential.match(/[Bb]earer\s+(.+)/)?.[1] ||
           credential;
-        if (!token) {
-          return { valid: false, error: "Paste your access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
-        }
-        const res = await fetchWithConnectionProxy("https://copilot.microsoft.com/c/api/start", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-            Origin: "https://copilot.microsoft.com",
-            Referer: "https://copilot.microsoft.com/",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            timeZone: "America/New_York",
-            startNewConversation: true,
-            teenSupportEnabled: false,
-          }),
-        }, effectiveProxy);
-        if (res.status === 401 || res.status === 403) {
-          return { valid: false, error: "Invalid or expired access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
-        }
-        return { valid: true, error: null, refreshed: false, newTokens: null };
-      }
-
-      case "copilot-m365-web": {
-        const params = resolveConnectionParams(connection);
-        if (!("error" in params)) {
-          return { valid: true, error: null, refreshed: false, newTokens: null };
-        }
-        return { valid: false, error: params.error, refreshed: false, newTokens: null };
-      }
-
-      case "perplexity-web": {
-        let sessionToken = connection.apiKey;
-        if (sessionToken.startsWith("__Secure-next-auth.session-token=")) sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
-        const res = await fetchWithConnectionProxy("https://www.perplexity.ai/api/auth/session", {
-          method: "GET",
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-            Cookie: `__Secure-next-auth.session-token=${sessionToken}`,
-          },
-        }, effectiveProxy);
-        if (!res.ok) return { valid: false, error: "Invalid session cookie" };
-        const data = await res.json().catch(() => null);
-        const valid = !!(data && data.user);
-        return { valid, error: valid ? null : "Session expired — re-paste cookie" };
-      }
-      case "zenmux-free": {
-        const cookie = normalizeZenmuxCookie(connection.apiKey);
-        const ctoken = extractZenmuxCtoken(cookie);
-        if (!ctoken) return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" };
-
-        const model = connection.defaultModel || getDefaultModel("zenmux-free") || "deepseek/deepseek-chat";
-        const url = new URL(ZENMUX_FREE_CHAT_URL);
-        url.searchParams.set("ctoken", ctoken);
-        const res = await fetchWithConnectionProxy(url.toString(), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-            Accept: "text/event-stream",
-            Origin: "https://zenmux.ai",
-            Referer: "https://zenmux.ai/platform/chat",
-            "anthropic-version": "2023-06-01",
-            "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
-            "x-zenmux-accept-processing": "true, true",
-            "x-zenmux-apikey-source": "subscription",
-            Cookie: cookie,
-          },
-          body: JSON.stringify(buildZenmuxAnthropicBody({
-            model,
-            max_tokens: 1,
-            messages: [{ role: "user", content: "ping" }],
-          }, model)),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid ZenMux cookie - re-paste cookies from zenmux.ai" };
-      }
-      case "opencode-go": {
-        /** Guard the authenticated usage probe and retain the resolved connection route. */
-        const res = await guardedProbeFetch(
-          OPENCODE_GO_USAGE_URL,
-          { headers: { Authorization: `Bearer ${connection.apiKey}`, Accept: "application/json" } },
-          undefined,
-          (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
-        );
-        return classifyOpenCodeGoValidation(res, await res.text().catch(() => ""));
-      }
-      case "opencode-zen": {
-        const res = await fetchWithConnectionProxy("https://opencode.ai/zen/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${connection.apiKey}` },
-          body: JSON.stringify({ model: getDefaultModel("opencode-zen") || "big-pickle", messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
-      case "xiaomi-mimo":
-      case "xiaomi-tokenplan": {
-        const baseUrls = { "xiaomi-mimo": "https://api.xiaomimimo.com/v1", "xiaomi-tokenplan": resolveXiaomiTokenplanBaseUrl(connection) };
-        const res = await fetchWithConnectionProxy(`${baseUrls[connection.provider]}/models`, {
-          headers: { Authorization: `Bearer ${connection.apiKey}` },
-        }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "blackbox": {
-        const baseUrl = PROVIDERS["blackbox"]?.baseUrl?.replace(/\/chat\/completions$/, "") || "https://api.blackbox.ai/v1";
-        const res = await fetchWithConnectionProxy(`${baseUrl}/models`, {
-          headers: { Authorization: `Bearer ${connection.apiKey}` },
-        }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "pollinations": {
-        const baseUrl = PROVIDERS["pollinations"]?.baseUrl?.replace(/\/chat\/completions\/?$/, "") || "https://gen.pollinations.ai/v1";
-        const headers = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
-        const res = await fetchWithConnectionProxy(`${baseUrl}/models`, { headers }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Pollinations test failed" };
-      }
-      case "nube":
-      case "kenari": {
-        const config = PROVIDERS[connection.provider] || {};
-        const validateUrl = config.validateUrl || config.baseUrl?.replace(/\/chat\/completions\/?$/, "/models");
-        if (!validateUrl) return { valid: false, error: "Provider test not supported" };
-        const res = await fetchWithConnectionProxy(validateUrl, {
-          headers: { Authorization: `Bearer ${connection.apiKey}` },
-        }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "digitalocean": {
-        const res = await fetchWithConnectionProxy("https://inference.do-ai.run/v1/models", {
-          headers: { Authorization: `Bearer ${connection.apiKey}` },
-        }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "puter": {
-        const baseUrl = PROVIDERS["puter"]?.baseUrl?.replace(/\/chat\/completions\/?$/, "") || "https://api.puter.com/puterai/openai/v1";
-        const res = await fetchWithConnectionProxy(`${baseUrl}/models`, {
-          headers: { Authorization: `Bearer ${connection.apiKey}` },
-        }, effectiveProxy);
-        return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
-      }
-      case "bailian-coding-plan": {
-        const cfg = PROVIDERS[connection.provider];
-        const res = await fetchWithConnectionProxy(cfg.baseUrl, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${connection.apiKey}`,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-            ...(cfg.headers || {}),
-          },
-          body: JSON.stringify({
-            model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
-            max_tokens: 1,
-            messages: [{ role: "user", content: "test" }],
-          }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
-      case "agentrouter": {
-        const cfg = PROVIDERS[connection.provider];
-        const res = await fetchWithConnectionProxy(cfg.baseUrl, {
-          method: "POST",
-          headers: {
-            "x-api-key": connection.apiKey,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-            ...(cfg.headers || {}),
-          },
-          body: JSON.stringify({
-            model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
-            max_tokens: 1,
-            messages: [{ role: "user", content: "test" }],
-          }),
-        }, effectiveProxy);
-        const valid = res.status !== 401 && res.status !== 403;
-        return { valid, error: valid ? null : "Invalid API key" };
-      }
-      case "qoder": {
-        // A successful PAT-to-job-token exchange proves the personal token.
-        const raw = connection.apiKey || "";
-        const pat = raw.startsWith("pt-") ? raw : `pt-${raw}`;
-        const res = await fetchWithConnectionProxy(
-          "https://openapi.qoder.sh/api/v1/jobToken/exchange",
-          {
+          if (!token) {
+            return { valid: false, error: "Paste your access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
+          }
+          const res = await fetchWithConnectionProxy("https://copilot.microsoft.com/c/api/start", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Accept: "application/json",
-              "Cosy-Version": "1.0.1",
-              "Cosy-ClientType": "5",
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+              Origin: "https://copilot.microsoft.com",
+              Referer: "https://copilot.microsoft.com/",
+              Authorization: `Bearer ${token}`
             },
-            body: JSON.stringify({ personal_token: pat }),
-          },
-          effectiveProxy,
-        );
-        return { valid: res.ok, error: res.ok ? null : "Invalid Personal Access Token" };
-      }
-      default: {
-        const result = await probeRegistryProvider(
-          connection.provider,
-          connection.apiKey,
-          (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
-          connection.providerSpecificData || {},
-        );
-        if (result) {
-          return {
-            valid: result.valid,
-            error: result.valid ? null : (result.error || "Invalid API key"),
-          };
+            body: JSON.stringify({
+              timeZone: "America/New_York",
+              startNewConversation: true,
+              teenSupportEnabled: false
+            })
+          }, effectiveProxy);
+          if (res.status === 401 || res.status === 403) {
+            return { valid: false, error: "Invalid or expired access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
+          }
+          return { valid: true, error: null, refreshed: false, newTokens: null };
         }
-        return { valid: false, error: "Provider test not supported" };
-      }
+
+      case "copilot-m365-web":{
+          const params = resolveConnectionParams(connection);
+          if (!("error" in params)) {
+            return { valid: true, error: null, refreshed: false, newTokens: null };
+          }
+          return { valid: false, error: params.error, refreshed: false, newTokens: null };
+        }
+
+      case "perplexity-web":{
+          let sessionToken = connection.apiKey;
+          if (sessionToken.startsWith("__Secure-next-auth.session-token=")) sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
+          const res = await fetchWithConnectionProxy("https://www.perplexity.ai/api/auth/session", {
+            method: "GET",
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+              Cookie: `__Secure-next-auth.session-token=${sessionToken}`
+            }
+          }, effectiveProxy);
+          if (!res.ok) return { valid: false, error: "Invalid session cookie" };
+          const data = await res.json().catch(() => null);
+          const valid = !!(data && data.user);
+          return { valid, error: valid ? null : "Session expired — re-paste cookie" };
+        }
+      case "zenmux-free":{
+          const cookie = normalizeZenmuxCookie(connection.apiKey);
+          const ctoken = extractZenmuxCtoken(cookie);
+          if (!ctoken) return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" };
+
+          const model = connection.defaultModel || getDefaultModel("zenmux-free") || "deepseek/deepseek-chat";
+          const url = new URL(ZENMUX_FREE_CHAT_URL);
+          url.searchParams.set("ctoken", ctoken);
+          const res = await fetchWithConnectionProxy(url.toString(), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+              Accept: "text/event-stream",
+              Origin: "https://zenmux.ai",
+              Referer: "https://zenmux.ai/platform/chat",
+              "anthropic-version": "2023-06-01",
+              "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
+              "x-zenmux-accept-processing": "true, true",
+              "x-zenmux-apikey-source": "subscription",
+              Cookie: cookie
+            },
+            body: JSON.stringify(buildZenmuxAnthropicBody({
+              model,
+              max_tokens: 1,
+              messages: [{ role: "user", content: "ping" }]
+            }, model))
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid ZenMux cookie - re-paste cookies from zenmux.ai" };
+        }
+      case "opencode-go":{
+          /** Guard the authenticated usage probe and retain the resolved connection route. */
+          const res = await guardedProbeFetch(
+            OPENCODE_GO_USAGE_URL,
+            { headers: { Authorization: `Bearer ${connection.apiKey}`, Accept: "application/json" } },
+            undefined,
+            (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy)
+          );
+          return classifyOpenCodeGoValidation(res, await res.text().catch(() => ""));
+        }
+      case "opencode-zen":{
+          const res = await fetchWithConnectionProxy("https://opencode.ai/zen/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${connection.apiKey}` },
+            body: JSON.stringify({ model: getDefaultModel("opencode-zen") || "big-pickle", messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "xiaomi-mimo":
+      case "xiaomi-tokenplan":{
+          const baseUrls = { "xiaomi-mimo": "https://api.xiaomimimo.com/v1", "xiaomi-tokenplan": resolveXiaomiTokenplanBaseUrl(connection) };
+          const res = await fetchWithConnectionProxy(`${baseUrls[connection.provider]}/models`, {
+            headers: { Authorization: `Bearer ${connection.apiKey}` }
+          }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "blackbox":{
+          const baseUrl = PROVIDERS["blackbox"]?.baseUrl?.replace(/\/chat\/completions$/, "") || "https://api.blackbox.ai/v1";
+          const res = await fetchWithConnectionProxy(`${baseUrl}/models`, {
+            headers: { Authorization: `Bearer ${connection.apiKey}` }
+          }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "pollinations":{
+          const baseUrl = PROVIDERS["pollinations"]?.baseUrl?.replace(/\/chat\/completions\/?$/, "") || "https://gen.pollinations.ai/v1";
+          const headers = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
+          const res = await fetchWithConnectionProxy(`${baseUrl}/models`, { headers }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Pollinations test failed" };
+        }
+      case "nube":
+      case "kenari":{
+          const config = PROVIDERS[connection.provider] || {};
+          const validateUrl = config.validateUrl || config.baseUrl?.replace(/\/chat\/completions\/?$/, "/models");
+          if (!validateUrl) return { valid: false, error: "Provider test not supported" };
+          const res = await fetchWithConnectionProxy(validateUrl, {
+            headers: { Authorization: `Bearer ${connection.apiKey}` }
+          }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "digitalocean":{
+          const res = await fetchWithConnectionProxy("https://inference.do-ai.run/v1/models", {
+            headers: { Authorization: `Bearer ${connection.apiKey}` }
+          }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "puter":{
+          const baseUrl = PROVIDERS["puter"]?.baseUrl?.replace(/\/chat\/completions\/?$/, "") || "https://api.puter.com/puterai/openai/v1";
+          const res = await fetchWithConnectionProxy(`${baseUrl}/models`, {
+            headers: { Authorization: `Bearer ${connection.apiKey}` }
+          }, effectiveProxy);
+          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+        }
+      case "bailian-coding-plan":{
+          const cfg = PROVIDERS[connection.provider];
+          const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${connection.apiKey}`,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+              ...(cfg.headers || {})
+            },
+            body: JSON.stringify({
+              model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
+              max_tokens: 1,
+              messages: [{ role: "user", content: "test" }]
+            })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "agentrouter":{
+          const cfg = PROVIDERS[connection.provider];
+          const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+            method: "POST",
+            headers: {
+              "x-api-key": connection.apiKey,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+              ...(cfg.headers || {})
+            },
+            body: JSON.stringify({
+              model: getDefaultModel(connection.provider) || "claude-sonnet-4-20250514",
+              max_tokens: 1,
+              messages: [{ role: "user", content: "test" }]
+            })
+          }, effectiveProxy);
+          const valid = res.status !== 401 && res.status !== 403;
+          return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "qoder":{
+          // A successful PAT-to-job-token exchange proves the personal token.
+          const raw = connection.apiKey || "";
+          const pat = raw.startsWith("pt-") ? raw : `pt-${raw}`;
+          const res = await fetchWithConnectionProxy(
+            "https://openapi.qoder.sh/api/v1/jobToken/exchange",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+                "Cosy-Version": "1.0.1",
+                "Cosy-ClientType": "5"
+              },
+              body: JSON.stringify({ personal_token: pat })
+            },
+            effectiveProxy
+          );
+          return { valid: res.ok, error: res.ok ? null : "Invalid Personal Access Token" };
+        }
+      default:{
+          const result = await probeRegistryProvider(
+            connection.provider,
+            connection.apiKey,
+            (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
+            connection.providerSpecificData || {}
+          );
+          if (result) {
+            return {
+              valid: result.valid,
+              error: result.valid ? null : result.error || "Invalid API key"
+            };
+          }
+          return { valid: false, error: "Provider test not supported" };
+        }
     }
   } catch (err) {
     return { valid: false, error: err.message };
@@ -1122,12 +1124,12 @@ export async function testSingleConnection(id) {
     const proxyResult = await testProxyUrl({ proxyUrl: effectiveProxy.connectionProxyUrl });
     if (!proxyResult.ok) {
       const proxyError = sanitizeErrorMessage(
-        proxyResult.error || `Proxy test failed with status ${proxyResult.status}`,
+        proxyResult.error || `Proxy test failed with status ${proxyResult.status}`
       );
       await updateProviderConnection(id, {
         testStatus: "error",
         lastError: proxyError,
-        lastErrorAt: new Date().toISOString(),
+        lastErrorAt: new Date().toISOString()
       });
       return { valid: false, error: proxyError, latencyMs: 0, testedAt: new Date().toISOString() };
     }
@@ -1143,14 +1145,14 @@ export async function testSingleConnection(id) {
   }
 
   const latencyMs = Date.now() - start;
-  const resultError = result.valid
-    ? null
-    : sanitizeErrorMessage(result.error || "Connection validation failed");
+  const resultError = result.valid ?
+  null :
+  sanitizeErrorMessage(result.error || "Connection validation failed");
 
   const updateData = {
     testStatus: result.valid ? "active" : "error",
     lastError: resultError,
-    lastErrorAt: result.valid ? null : new Date().toISOString(),
+    lastErrorAt: result.valid ? null : new Date().toISOString()
   };
 
   if (result.refreshed && result.newTokens) {
@@ -1167,7 +1169,7 @@ export async function testSingleConnection(id) {
     if (result.newTokens.providerSpecificData) {
       updateData.providerSpecificData = {
         ...(connection.providerSpecificData || {}),
-        ...result.newTokens.providerSpecificData,
+        ...result.newTokens.providerSpecificData
       };
     }
   }

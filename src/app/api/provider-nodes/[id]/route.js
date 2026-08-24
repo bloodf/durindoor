@@ -36,7 +36,7 @@ export async function PUT(request, { params }) {
     }
 
     let sanitizedBaseUrl = baseUrl.trim();
-    
+
     // Sanitize Base URL for Anthropic Compatible
     if (node.type === "anthropic-compatible") {
       sanitizedBaseUrl = sanitizedBaseUrl.replace(/\/$/, "");
@@ -57,7 +57,7 @@ export async function PUT(request, { params }) {
       name: name.trim(),
       prefix: prefix.trim(),
       baseUrl: sanitizedBaseUrl,
-      ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : {}),
+      ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : null)
     };
 
     if (node.type === "openai-compatible") {
@@ -67,17 +67,17 @@ export async function PUT(request, { params }) {
     const updated = await updateProviderNode(id, updates);
 
     const connections = await getProviderConnections({ provider: id });
-    await Promise.all(connections.map((connection) => (
-      updateProviderConnection(connection.id, {
-        providerSpecificData: {
-          ...(connection.providerSpecificData || {}),
-          prefix: prefix.trim(),
-          apiType: node.type === "openai-compatible" ? apiType : undefined,
-          baseUrl: sanitizedBaseUrl,
-          nodeName: updated.name,
-        }
-      })
-    )));
+    await Promise.all(connections.map((connection) =>
+    updateProviderConnection(connection.id, {
+      providerSpecificData: {
+        ...(connection.providerSpecificData || {}),
+        prefix: prefix.trim(),
+        apiType: node.type === "openai-compatible" ? apiType : undefined,
+        baseUrl: sanitizedBaseUrl,
+        nodeName: updated.name
+      }
+    })
+    ));
 
     return NextResponse.json({ node: updated });
   } catch (error) {

@@ -13,6 +13,7 @@ import { createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
 
@@ -25,12 +26,12 @@ function shouldEnableClaudeCompat(mode, sourceFormat, body) {
   if (sourceFormat !== FORMATS.CLAUDE) return false;
   if (mode === "always") return true;
   if (mode !== "auto") return false;
-  const systemTexts = Array.isArray(body?.system)
-    ? body.system.map((part) => (typeof part?.text === "string" ? part.text : "")).filter(Boolean)
-    : [];
+  const systemTexts = Array.isArray(body?.system) ?
+  body.system.map((part) => isString(part?.text) ? part.text : "").filter(Boolean) :
+  [];
   const stopSequences = Array.isArray(body?.stop_sequences) ? body.stop_sequences : [];
-  return systemTexts.some((text) => text.includes("You are a security monitor for autonomous AI coding agents"))
-    || stopSequences.includes("</block>");
+  return systemTexts.some((text) => text.includes("You are a security monitor for autonomous AI coding agents")) ||
+  stopSequences.includes("</block>");
 }
 
 /**
@@ -39,17 +40,17 @@ function shouldEnableClaudeCompat(mode, sourceFormat, body) {
  */
 export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
   format = FORMATS.OPENAI,
-  providerBody = null,
+  providerBody = null
 } = {}) {
   const chunks = [];
   let eventName = null;
   const terminal = createUpstreamTerminalTracker({
     format,
     expectedChoiceCount: providerBody?.n,
-    expectedCandidateCount: providerBody?.candidate_count
-      ?? providerBody?.candidateCount
-      ?? providerBody?.generationConfig?.candidateCount
-      ?? providerBody?.generation_config?.candidate_count,
+    expectedCandidateCount: providerBody?.candidate_count ??
+    providerBody?.candidateCount ??
+    providerBody?.generationConfig?.candidateCount ??
+    providerBody?.generation_config?.candidate_count
   });
 
   for (const line of String(rawSSE || "").split("\n")) {
@@ -70,7 +71,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
       const parsed = JSON.parse(payload);
       chunks.push(parsed);
       terminal.observe({ chunk: parsed, eventName });
-    } catch { terminal.fail(); }
+    } catch {terminal.fail();}
     eventName = null;
   }
 
@@ -81,7 +82,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
   let usage = null;
 
   for (const chunk of chunks) {
-    if (chunk?.usage && typeof chunk.usage === "object") usage = chunk.usage;
+    if (chunk?.usage && isObject(chunk.usage)) usage = chunk.usage;
 
     for (const [position, choice] of (chunk?.choices || []).entries()) {
       const choiceIndex = Number.isInteger(choice?.index) ? choice.index : position;
@@ -92,26 +93,26 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
           contentParts: [],
           reasoningParts: [],
           toolCallMap: new Map(),
-          finishReason: null,
+          finishReason: null
         });
       }
 
       const accumulator = choicesByIndex.get(choiceIndex);
       const delta = choice?.delta || {};
-      if (typeof delta.role === "string" && delta.role) accumulator.role = delta.role;
-      if (typeof delta.content === "string" && delta.content.length > 0) accumulator.contentParts.push(delta.content);
+      if (isString(delta.role) && delta.role) accumulator.role = delta.role;
+      if (isString(delta.content) && delta.content.length > 0) accumulator.contentParts.push(delta.content);
       const reasoning = extractReasoningText(delta);
       if (reasoning) accumulator.reasoningParts.push(reasoning);
       if (choice?.finish_reason) accumulator.finishReason = choice.finish_reason;
 
       // Tool-call indexes are scoped to a response choice, not the response.
-      for (const toolCall of (Array.isArray(delta.tool_calls) ? delta.tool_calls : [])) {
+      for (const toolCall of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) {
         const toolIndex = toolCall.index ?? 0;
         if (!accumulator.toolCallMap.has(toolIndex)) {
           accumulator.toolCallMap.set(toolIndex, {
             id: toolCall.id || "",
             type: toolCall.type || "function",
-            function: { name: "", arguments: "" },
+            function: { name: "", arguments: "" }
           });
         }
         const existing = accumulator.toolCallMap.get(toolIndex);
@@ -130,39 +131,39 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
       contentParts: [],
       reasoningParts: [],
       toolCallMap: new Map(),
-      finishReason: null,
+      finishReason: null
     });
   }
 
-  const choices = [...choicesByIndex.values()]
-    .sort((left, right) => left.index - right.index)
-    .map(accumulator => {
-      const text = accumulator.contentParts.join("");
-      const message = {
-        role: accumulator.role,
-        content: text || (accumulator.toolCallMap.size > 0 ? null : ""),
-      };
-      if (accumulator.reasoningParts.length > 0) {
-        message.reasoning_content = accumulator.reasoningParts.join("");
-      }
-      if (accumulator.toolCallMap.size > 0) {
-        message.tool_calls = [...accumulator.toolCallMap.entries()]
-          .sort((left, right) => left[0] - right[0])
-          .map(([, toolCall]) => toolCall);
-      }
-      return {
-        index: accumulator.index,
-        message,
-        finish_reason: accumulator.finishReason || "stop",
-      };
-    });
+  const choices = [...choicesByIndex.values()].
+  sort((left, right) => left.index - right.index).
+  map((accumulator) => {
+    const text = accumulator.contentParts.join("");
+    const message = {
+      role: accumulator.role,
+      content: text || (accumulator.toolCallMap.size > 0 ? null : "")
+    };
+    if (accumulator.reasoningParts.length > 0) {
+      message.reasoning_content = accumulator.reasoningParts.join("");
+    }
+    if (accumulator.toolCallMap.size > 0) {
+      message.tool_calls = [...accumulator.toolCallMap.entries()].
+      sort((left, right) => left[0] - right[0]).
+      map(([, toolCall]) => toolCall);
+    }
+    return {
+      index: accumulator.index,
+      message,
+      finish_reason: accumulator.finishReason || "stop"
+    };
+  });
 
   const result = {
     id: first.id || `chatcmpl-${Date.now()}`,
     object: "chat.completion",
     created: first.created || Math.floor(Date.now() / 1000),
     model: first.model || fallbackModel || "unknown",
-    choices,
+    choices
   };
   if (usage) result.usage = usage;
   return result;
@@ -174,12 +175,12 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
  */
 export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS }) {
   const contentType = providerResponse.headers.get("content-type") || "";
-  const isSSE = contentType.includes("text/event-stream") || (contentType === "" && isResponsesProvider(provider));
+  const isSSE = contentType.includes("text/event-stream") || contentType === "" && isResponsesProvider(provider);
   if (!isSSE) return null; // not handled here
   /** Upstream PR #3373: request translators emit arrays; projection uses Set membership. */
-  const customToolNameSet = customToolNames instanceof Set
-    ? customToolNames
-    : new Set(customToolNames || []);
+  const customToolNameSet = customToolNames instanceof Set ?
+  customToolNames :
+  new Set(customToolNames || []);
 
   const ctx = {
     provider, model, connectionId,
@@ -189,150 +190,150 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
   const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
   const markSuccess = async () => {
     if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
-    try { await onRequestSuccess(); }
-    catch { console.error("[ChatCore] completed-response cleanup failed"); }
+    try {await onRequestSuccess();}
+    catch {console.error("[ChatCore] completed-response cleanup failed");}
   };
 
   try {
     // Codex/Responses API SSE path
     const isCodexResponsesApi = isResponsesProvider(provider) || targetFormat === FORMATS.OPENAI_RESPONSES;
     if (isCodexResponsesApi) {
-    try {
-      const jsonResponse = await convertResponsesStreamToJson(providerResponse.body, {
-        signal,
-        maxBytes: MAX_PROVIDER_BODY_BYTES,
-        timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
-        throwOnTimeout: true,
-      });
-      if (!["completed", "incomplete"].includes(jsonResponse?.status)) {
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider stream ended before a coherent terminal");
-      }
-      const usage = jsonResponse.usage || {};
-      appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
-      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
+      try {
+        const jsonResponse = await convertResponsesStreamToJson(providerResponse.body, {
+          signal,
+          maxBytes: MAX_PROVIDER_BODY_BYTES,
+          timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
+          throwOnTimeout: true
+        });
+        if (!["completed", "incomplete"].includes(jsonResponse?.status)) {
+          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider stream ended before a coherent terminal");
+        }
+        const usage = jsonResponse.usage || {};
+        appendLog({ tokens: usage, status: "200 OK" });
+        saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
+        if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
-      // Cache-inclusive prompt total for the recorded detail — same logic the
-      // client-facing response uses below, so the DB and the client can't disagree.
-      const inTokensForLog = (usage.input_tokens || 0)
-        + (usage.cache_read_input_tokens || usage.cached_tokens || 0)
-        + (usage.cache_creation_input_tokens || 0);
+        // Cache-inclusive prompt total for the recorded detail — same logic the
+        // client-facing response uses below, so the DB and the client can't disagree.
+        const inTokensForLog = (usage.input_tokens || 0) + (
+        usage.cache_read_input_tokens || usage.cached_tokens || 0) + (
+        usage.cache_creation_input_tokens || 0);
 
-      // When the client asked for the Responses API format, return the converted JSON directly.
-      // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
-      if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
-        logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: jsonResponse });
+        // When the client asked for the Responses API format, return the converted JSON directly.
+        // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
+        if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
+          logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: jsonResponse });
+
+          const totalLatency = Date.now() - requestStartTime;
+          saveRequestDetail(buildRequestDetail({
+            ...ctx,
+            latency: { ttft: totalLatency, total: totalLatency },
+            tokens: { prompt_tokens: inTokensForLog, completion_tokens: usage.output_tokens || 0 },
+            response: { content: jsonResponse.output?.map?.((o) => o.type === "message" ? o.content?.map?.((c) => c.type === "output_text" ? c.text : "").join("") : "").join("") || null, thinking: null, finish_reason: jsonResponse.status === "completed" ? "stop" : jsonResponse.status || "unknown" },
+            status: "success"
+          }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
+
+          await markSuccess();
+          return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+        }
+
+        const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
+        const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
+        const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
+        logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
 
         const totalLatency = Date.now() - requestStartTime;
         saveRequestDetail(buildRequestDetail({
           ...ctx,
           latency: { ttft: totalLatency, total: totalLatency },
-          tokens: { prompt_tokens: inTokensForLog, completion_tokens: usage.output_tokens || 0 },
-          response: { content: jsonResponse.output?.map?.(o => o.type === "message" ? o.content?.map?.(c => c.type === "output_text" ? c.text : "").join("") : "").join("") || null, thinking: null, finish_reason: jsonResponse.status === "completed" ? "stop" : jsonResponse.status || "unknown" },
+          tokens: { prompt_tokens: openAICompletion.usage?.prompt_tokens ?? inTokensForLog, completion_tokens: usage.output_tokens || 0 },
+          response: { content: openAICompletion.choices?.[0]?.message?.content || null, thinking: openAICompletion.choices?.[0]?.message?.reasoning_content || null, finish_reason: openAICompletion.choices?.[0]?.finish_reason || "unknown" },
           status: "success"
         }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
         await markSuccess();
-        return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+        return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+      } catch (err) {
+        console.error(`[ChatCore] Responses API SSE→JSON failed: ${err?.name || "Error"}`);
+        return {
+          ...createErrorResult(err?.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY, err?.name === "AbortError" ? "Request aborted" : "Failed to convert streaming response to JSON"),
+          quotaTerminalReason: err?.name === "AbortError" ?
+          "abort" :
+          err?.name === "TimeoutError" ? "timeout" : "stream_error"
+        };
       }
+    }
 
-      const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
-      const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-      const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
-      logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
+    // Standard Chat Completions SSE path
+    try {
+      const sseText = await readBodyWithTimeout(providerResponse, {
+        signal,
+        maxBytes: MAX_PROVIDER_BODY_BYTES,
+        timeoutMs: responseBodyTimeoutMs
+      });
+      const terminalFormat = [FORMATS.KIRO, FORMATS.COMMANDCODE, FORMATS.CURSOR].includes(targetFormat) ?
+      targetFormat :
+      FORMATS.OPENAI;
+      let parsed = parseSSEToOpenAIResponse(sseText, model, {
+        format: terminalFormat,
+        providerBody: finalBody || translatedBody
+      });
+      if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+
+      const inlineThinking = normalizeInlineThinkingResponse(parsed, { provider, model, targetFormat });
+      parsed = inlineThinking.responseBody;
+
+      const usage = parsed.usage || {};
+      appendLog({ tokens: usage, status: "200 OK" });
+      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
+      if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
       const totalLatency = Date.now() - requestStartTime;
       saveRequestDetail(buildRequestDetail({
         ...ctx,
         latency: { ttft: totalLatency, total: totalLatency },
-        tokens: { prompt_tokens: openAICompletion.usage?.prompt_tokens ?? inTokensForLog, completion_tokens: usage.output_tokens || 0 },
-        response: { content: openAICompletion.choices?.[0]?.message?.content || null, thinking: openAICompletion.choices?.[0]?.message?.reasoning_content || null, finish_reason: openAICompletion.choices?.[0]?.finish_reason || "unknown" },
+        tokens: usage,
+        response: {
+          content: parsed.choices?.[0]?.message?.content || null,
+          thinking: parsed.choices?.[0]?.message?.reasoning_content || null,
+          finish_reason: parsed.choices?.[0]?.finish_reason || "unknown"
+        },
         status: "success"
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
+
+      // OpenAI reasoning is preserved unless the client or deployment explicitly opts out.
+      const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
+      if (sourceFormat !== FORMATS.CLAUDE) {
+        applyReasoningVisibility(parsed, clientRawRequest);
+      }
+
+      // Provider-only metering fields (e.g. Kiro credits) must not reach the
+      // client in any client format — the Claude/Gemini projections rebuild
+      // usage from prompt/completion tokens and would otherwise drop them (and
+      // full format-filtering here would zero Claude's input/output tokens).
+      // Accounting above already consumed the raw usage; strip only the
+      // provider-only keys on a clone used for the client-facing projection.
+      let clientUsage = parsed.usage;
+      if (clientUsage) {
+        const { kiro_credits, kiro_credit_unit, ...rest } = clientUsage;
+        clientUsage = rest;
+      }
+      const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
+      const finalResp = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
+      logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
 
       await markSuccess();
       return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
-      console.error(`[ChatCore] Responses API SSE→JSON failed: ${err?.name || "Error"}`);
-      return {
-        ...createErrorResult(err?.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY, err?.name === "AbortError" ? "Request aborted" : "Failed to convert streaming response to JSON"),
-        quotaTerminalReason: err?.name === "AbortError"
-          ? "abort"
-          : err?.name === "TimeoutError" ? "timeout" : "stream_error",
-      };
-    }
-  }
-
-    // Standard Chat Completions SSE path
-    try {
-    const sseText = await readBodyWithTimeout(providerResponse, {
-      signal,
-      maxBytes: MAX_PROVIDER_BODY_BYTES,
-      timeoutMs: responseBodyTimeoutMs,
-    });
-    const terminalFormat = [FORMATS.KIRO, FORMATS.COMMANDCODE, FORMATS.CURSOR].includes(targetFormat)
-      ? targetFormat
-      : FORMATS.OPENAI;
-    let parsed = parseSSEToOpenAIResponse(sseText, model, {
-      format: terminalFormat,
-      providerBody: finalBody || translatedBody,
-    });
-    if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
-
-    const inlineThinking = normalizeInlineThinkingResponse(parsed, { provider, model, targetFormat });
-    parsed = inlineThinking.responseBody;
-
-    const usage = parsed.usage || {};
-    appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
-    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
-
-    const totalLatency = Date.now() - requestStartTime;
-    saveRequestDetail(buildRequestDetail({
-      ...ctx,
-      latency: { ttft: totalLatency, total: totalLatency },
-      tokens: usage,
-      response: {
-        content: parsed.choices?.[0]?.message?.content || null,
-        thinking: parsed.choices?.[0]?.message?.reasoning_content || null,
-        finish_reason: parsed.choices?.[0]?.finish_reason || "unknown"
-      },
-      status: "success"
-    }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
-
-    // OpenAI reasoning is preserved unless the client or deployment explicitly opts out.
-    const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-    if (sourceFormat !== FORMATS.CLAUDE) {
-      applyReasoningVisibility(parsed, clientRawRequest);
-    }
-
-    // Provider-only metering fields (e.g. Kiro credits) must not reach the
-    // client in any client format — the Claude/Gemini projections rebuild
-    // usage from prompt/completion tokens and would otherwise drop them (and
-    // full format-filtering here would zero Claude's input/output tokens).
-    // Accounting above already consumed the raw usage; strip only the
-    // provider-only keys on a clone used for the client-facing projection.
-    let clientUsage = parsed.usage;
-    if (clientUsage) {
-      const { kiro_credits, kiro_credit_unit, ...rest } = clientUsage;
-      clientUsage = rest;
-    }
-    const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
-    const finalResp = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
-    logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
-
-    await markSuccess();
-    return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
-    } catch (err) {
       console.error(`[ChatCore] Chat Completions SSE→JSON failed: ${err?.name || "Error"}`);
-      const status = err?.name === "AbortError"
-        ? 499
-        : err instanceof BodyReadTimeoutError ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
+      const status = err?.name === "AbortError" ?
+      499 :
+      err instanceof BodyReadTimeoutError ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
       return {
         ...createErrorResult(status, err?.name === "AbortError" ? "Request aborted" : err instanceof BodyReadTimeoutError ? "Provider response body timed out" : "Failed to convert streaming response to JSON"),
-        quotaTerminalReason: err?.name === "AbortError"
-          ? "abort"
-          : err instanceof BodyReadTimeoutError ? "timeout" : "stream_error",
+        quotaTerminalReason: err?.name === "AbortError" ?
+        "abort" :
+        err instanceof BodyReadTimeoutError ? "timeout" : "stream_error"
       };
     }
   } finally {

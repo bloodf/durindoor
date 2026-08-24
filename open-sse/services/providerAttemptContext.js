@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { QuotaDispatchUnavailableError } from "./quota/dispatch.js";
+import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 
 const providerAttemptStorage = new AsyncLocalStorage();
 const quotaBearingStorage = new AsyncLocalStorage();
@@ -8,12 +9,12 @@ const targetsByTicket = new WeakMap();
 
 /** Run one executor invocation with a request-local physical-dispatch clock. */
 export function runWithProviderAttemptContext(onProviderAttempt, callback, { beginQuotaDispatch = null } = {}) {
-  if (typeof onProviderAttempt !== "function" && typeof beginQuotaDispatch !== "function") return callback();
+  if (!isFunction(onProviderAttempt) && !isFunction(beginQuotaDispatch)) return callback();
   return providerAttemptStorage.run({
-    onProviderAttempt: typeof onProviderAttempt === "function" ? onProviderAttempt : () => Date.now(),
-    beginQuotaDispatch: typeof beginQuotaDispatch === "function" ? beginQuotaDispatch : null,
+    onProviderAttempt: isFunction(onProviderAttempt) ? onProviderAttempt : () => Date.now(),
+    beginQuotaDispatch: isFunction(beginQuotaDispatch) ? beginQuotaDispatch : null,
     prepared: false,
-    latest: null,
+    latest: null
   }, callback);
 }
 
@@ -64,9 +65,9 @@ export function isQuotaBearingProviderRequest() {
 
 function transportFailureReason(error) {
   if (error?.name === "AbortError") return "abort";
-  return String(error?.message || "").toLowerCase().includes("timeout")
-    ? "timeout"
-    : "transport_error";
+  return String(error?.message || "").toLowerCase().includes("timeout") ?
+  "timeout" :
+  "transport_error";
 }
 
 /** Wrap exactly one physical transport send. */
@@ -79,7 +80,7 @@ export async function runProviderAttemptDispatch(callback) {
     try {
       ticket = await state.beginQuotaDispatch();
     } catch (error) {
-      if (error && typeof error === "object" && Number.isSafeInteger(attemptStartedAt)) {
+      if (error && isObject(error) && Number.isSafeInteger(attemptStartedAt)) {
         error.providerAttemptStartedAt = attemptStartedAt;
       }
       throw error;
@@ -87,10 +88,10 @@ export async function runProviderAttemptDispatch(callback) {
   }
   try {
     const result = await callback();
-    if (ticket?.tracked && result && (typeof result === "object" || typeof result === "function")) {
+    if (ticket?.tracked && result && (isObject(result) || isFunction(result))) {
       const targets = [result];
       ticketByTarget.set(result, ticket);
-      if (result.body && (typeof result.body === "object" || typeof result.body === "function")) {
+      if (result.body && (isObject(result.body) || isFunction(result.body))) {
         ticketByTarget.set(result.body, ticket);
         targets.push(result.body);
       }
@@ -103,7 +104,7 @@ export async function runProviderAttemptDispatch(callback) {
     } catch {
       throw new QuotaDispatchUnavailableError("reservation_error");
     }
-    if (error && typeof error === "object" && Number.isSafeInteger(attemptStartedAt)) {
+    if (error && isObject(error) && Number.isSafeInteger(attemptStartedAt)) {
       error.providerAttemptStartedAt = attemptStartedAt;
     }
     throw error;
@@ -113,9 +114,9 @@ export async function runProviderAttemptDispatch(callback) {
 /** Settle the ticket bound to a discarded response/body before retry/fallback. */
 export async function settleProviderAttemptDispatch(target, {
   success = false,
-  reason = success ? "success" : "fallback",
+  reason = success ? "success" : "fallback"
 } = {}) {
-  if (!target || (typeof target !== "object" && typeof target !== "function")) return { changed: false };
+  if (!target || !isObject(target) && !isFunction(target)) return { changed: false };
   const ticket = ticketByTarget.get(target);
   if (!ticket) return { changed: false };
   for (const item of targetsByTicket.get(ticket) || [target]) ticketByTarget.delete(item);
@@ -134,15 +135,15 @@ export async function settleProviderAttemptDispatch(target, {
  */
 export function transferProviderAttemptDispatch(from, to) {
   if (!from || !to) return;
-  const fromIsObject = typeof from === "object" || typeof from === "function";
-  const toIsObject = typeof to === "object" || typeof to === "function";
+  const fromIsObject = isObject(from) || isFunction(from);
+  const toIsObject = isObject(to) || isFunction(to);
   if (!fromIsObject || !toIsObject) return;
   const ticket = ticketByTarget.get(from) || (from.body ? ticketByTarget.get(from.body) : null);
   if (!ticket) return;
   for (const item of targetsByTicket.get(ticket) || []) ticketByTarget.delete(item);
   const targets = [to];
   ticketByTarget.set(to, ticket);
-  if (to.body && (typeof to.body === "object" || typeof to.body === "function")) {
+  if (to.body && (isObject(to.body) || isFunction(to.body))) {
     ticketByTarget.set(to.body, ticket);
     targets.push(to.body);
   }

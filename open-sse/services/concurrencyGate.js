@@ -14,6 +14,7 @@
  * scaled horizontally the gate would need to be backed by a shared store
  * (Redis, SQLite), but for the typical 9router deployment this is sufficient.
  */
+import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
 
 /** @type {Map<string, {current: number, queue: Array<{resolve, reject, timer}>}>} */
 const gates = new Map();
@@ -48,9 +49,9 @@ function getGate(provider) {
  * @returns {number} 0 = no limit, otherwise the max concurrent slots
  */
 export function getConcurrencyLimit(provider, limitsMap) {
-  if (!limitsMap || typeof limitsMap !== "object") return 0;
+  if (!limitsMap || !isObject(limitsMap)) return 0;
   const limit = limitsMap[provider];
-  if (typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0) return 0;
+  if (!isNumber(limit) || !Number.isFinite(limit) || limit <= 0) return 0;
   return Math.floor(limit);
 }
 

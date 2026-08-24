@@ -2,8 +2,8 @@ import {
   getProviderConnections,
   getProviderConnectionById,
   updateProviderConnection,
-  getProviderNodeById,
-} from "@/models";
+  getProviderNodeById } from
+"@/models";
 import { buildModelsList, LLM_KIND } from "@/app/api/v1/models/buildModelsList";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { VALID_USAGE_STATS_PERIODS } from "@/lib/usagePeriods.js";
@@ -11,11 +11,12 @@ import {
   AI_PROVIDERS,
   isOpenAICompatibleProvider,
   isAnthropicCompatibleProvider,
-  isCustomEmbeddingProvider,
-} from "@/shared/constants/providers";
+  isCustomEmbeddingProvider } from
+"@/shared/constants/providers";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 import { sanitizeProviderConnectionForClient } from "@/lib/providers/sanitizeProviderConnectionForClient.js";
 import { getUsageStats, getTokenSaverStats } from "@/lib/usageDb";
+import { isBoolean, isString } from "../../../shared/utils/typeChecks.js";
 
 function sanitizeConnection(c) {
   const safe = sanitizeProviderConnectionForClient(c);
@@ -29,13 +30,13 @@ function sanitizeConnection(c) {
 }
 
 async function isValidProviderId(providerId) {
-  if (typeof providerId !== "string" || providerId.length === 0) return false;
+  if (!isString(providerId) || providerId.length === 0) return false;
   if (AI_PROVIDERS[providerId] != null) return true;
   if (
-    isOpenAICompatibleProvider(providerId) ||
-    isAnthropicCompatibleProvider(providerId) ||
-    isCustomEmbeddingProvider(providerId)
-  ) {
+  isOpenAICompatibleProvider(providerId) ||
+  isAnthropicCompatibleProvider(providerId) ||
+  isCustomEmbeddingProvider(providerId))
+  {
     const node = await getProviderNodeById(providerId);
     return node != null;
   }
@@ -43,7 +44,7 @@ async function isValidProviderId(providerId) {
 }
 
 function assertString(value, field) {
-  if (typeof value !== "string" || value.length === 0) {
+  if (!isString(value) || value.length === 0) {
     const err = new Error(`Invalid ${field}: expected non-empty string`);
     err.status = 400;
     throw err;
@@ -51,7 +52,7 @@ function assertString(value, field) {
 }
 
 function assertBoolean(value, field) {
-  if (typeof value !== "boolean") {
+  if (!isBoolean(value)) {
     const err = new Error(`Invalid ${field}: expected boolean`);
     err.status = 400;
     throw err;
@@ -76,10 +77,10 @@ const TOOLS = {
         alias: p.alias,
         name: p.name || p.alias,
         category: p.category,
-        authType: p.authType,
+        authType: p.authType
       }));
       return { providers };
-    },
+    }
   },
 
   list_connections: {
@@ -88,7 +89,7 @@ const TOOLS = {
     handler: async () => {
       const connections = await getProviderConnections();
       return { connections: connections.map(sanitizeConnection) };
-    },
+    }
   },
 
   toggle_connection_active: {
@@ -97,9 +98,9 @@ const TOOLS = {
       type: "object",
       properties: {
         connectionId: { type: "string" },
-        isActive: { type: "boolean" },
+        isActive: { type: "boolean" }
       },
-      required: ["connectionId", "isActive"],
+      required: ["connectionId", "isActive"]
     },
     handler: async (args) => {
       assertString(args.connectionId, "connectionId");
@@ -115,7 +116,7 @@ const TOOLS = {
         notifyQuotaAutoPingSettingChanged(existing.provider, args.connectionId, false);
       }
       return { connection: sanitizeConnection(updated) };
-    },
+    }
   },
 
   toggle_provider_active: {
@@ -124,9 +125,9 @@ const TOOLS = {
       type: "object",
       properties: {
         providerId: { type: "string" },
-        isActive: { type: "boolean" },
+        isActive: { type: "boolean" }
       },
-      required: ["providerId", "isActive"],
+      required: ["providerId", "isActive"]
     },
     handler: async (args) => {
       assertString(args.providerId, "providerId");
@@ -151,7 +152,7 @@ const TOOLS = {
         results.push(sanitizeConnection(updated));
       }
       return { connections: results };
-    },
+    }
   },
 
   usage_stats: {
@@ -159,16 +160,16 @@ const TOOLS = {
     inputSchema: {
       type: "object",
       properties: {
-        period: { type: "string", enum: [...VALID_USAGE_STATS_PERIODS] },
+        period: { type: "string", enum: [...VALID_USAGE_STATS_PERIODS] }
       },
-      required: ["period"],
+      required: ["period"]
     },
     handler: async (args) => {
       assertString(args.period, "period");
       assertValidPeriod(args.period);
       const stats = await getUsageStats(args.period);
       return { stats };
-    },
+    }
   },
 
   token_saver_stats: {
@@ -176,16 +177,16 @@ const TOOLS = {
     inputSchema: {
       type: "object",
       properties: {
-        period: { type: "string", enum: [...VALID_USAGE_STATS_PERIODS] },
+        period: { type: "string", enum: [...VALID_USAGE_STATS_PERIODS] }
       },
-      required: ["period"],
+      required: ["period"]
     },
     handler: async (args) => {
       assertString(args.period, "period");
       assertValidPeriod(args.period);
       const stats = await getTokenSaverStats(args.period);
       return { stats };
-    },
+    }
   },
 
   model_list: {
@@ -194,15 +195,15 @@ const TOOLS = {
     handler: async () => {
       const models = await buildModelsList([LLM_KIND], getProviderValidationGuard());
       return { models };
-    },
-  },
+    }
+  }
 };
 
 export function listTools() {
   return Object.entries(TOOLS).map(([name, tool]) => ({
     name,
     description: tool.description,
-    inputSchema: tool.inputSchema,
+    inputSchema: tool.inputSchema
   }));
 }
 

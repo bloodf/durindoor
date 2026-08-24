@@ -12,6 +12,7 @@ import { resolveProviderId, isLocalOllamaProvider, getProviderAlias } from "@/sh
  * @param {object[]} connections - active provider connections from `/api/providers`.
  * @returns {object[]} unique provider descriptor objects for local Ollama entries.
  */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export function getLocalEmbeddingProviders(models, connections) {
   const ownedByToProvider = new Map();
   for (const conn of connections) {
@@ -23,14 +24,14 @@ export function getLocalEmbeddingProviders(models, connections) {
     if (alias) ownedByToProvider.set(alias, providerId);
 
     const prefix = conn.providerSpecificData?.prefix;
-    if (typeof prefix === "string" && prefix.trim() !== "") {
+    if (isString(prefix) && prefix.trim() !== "") {
       ownedByToProvider.set(prefix.trim(), providerId);
     }
   }
 
   const byProvider = new Map();
   for (const m of models || []) {
-    const ownedBy = typeof m.owned_by === "string" ? m.owned_by : "";
+    const ownedBy = isString(m.owned_by) ? m.owned_by : "";
     if (!ownedBy) continue;
 
     let providerId = resolveProviderId(ownedBy);
@@ -44,7 +45,7 @@ export function getLocalEmbeddingProviders(models, connections) {
         id: providerId,
         name: "Ollama Local",
         color: "#ffffffff",
-        textIcon: "OL",
+        textIcon: "OL"
       });
     }
   }

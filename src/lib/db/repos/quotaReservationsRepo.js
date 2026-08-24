@@ -4,16 +4,17 @@ import {
   canonicalizeQuotaNow,
   normalizeQuotaIdentifier,
   normalizeQuotaIdentity,
-  quotaIdentityKey,
-} from "../../../shared/utils/quotaSnapshot.js";
+  quotaIdentityKey } from
+"../../../shared/utils/quotaSnapshot.js";
 import { QUOTA_SELECTION_DEFAULTS, resolveQuotaLeaseMs } from "../../../../open-sse/config/quotaSelection.js";
+import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 const TERMINAL_REASONS = new Set([
-  "success", "capacity_race", "pre_dispatch", "upstream_error",
-  "transport_error", "abort", "timeout", "stream_error", "stream_cancel",
-  "malformed_terminal", "fallback", "lease_expired", "snapshot_superseded",
-  "shutdown",
-]);
+"success", "capacity_race", "pre_dispatch", "upstream_error",
+"transport_error", "abort", "timeout", "stream_error", "stream_cancel",
+"malformed_terminal", "fallback", "lease_expired", "snapshot_superseded",
+"shutdown"]
+);
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 
 async function resolveAdapter(adapter = null) {
@@ -43,7 +44,7 @@ function iso(value = Date.now()) {
 }
 
 function validateHash(value, label) {
-  if (typeof value !== "string" || !HASH_PATTERN.test(value)) {
+  if (!isString(value) || !HASH_PATTERN.test(value)) {
     throw new QuotaReservationError(`${label} must be a SHA-256 hex digest`, "INVALID_QUOTA_RESERVATION");
   }
   return value;
@@ -58,7 +59,7 @@ function normalizeReason(reason, fallback = "pre_dispatch") {
 }
 
 function normalizeItem(value, connectionId, provider) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!value || !isObject(value) || Array.isArray(value)) {
     throw new QuotaReservationError("Reservation item must be an object", "INVALID_QUOTA_RESERVATION");
   }
   const identity = normalizeQuotaIdentity({
@@ -66,24 +67,24 @@ function normalizeItem(value, connectionId, provider) {
     provider,
     accountKey: value.accountKey,
     resourceKey: value.resourceKey,
-    dimensionKey: value.dimensionKey,
+    dimensionKey: value.dimensionKey
   }, { allowCanonicalSentinels: true });
   const requiredAmount = value.requiredAmount ?? 1;
-  if (typeof requiredAmount !== "number" || !Number.isFinite(requiredAmount) || requiredAmount <= 0 || requiredAmount > Number.MAX_SAFE_INTEGER) {
+  if (!isNumber(requiredAmount) || !Number.isFinite(requiredAmount) || requiredAmount <= 0 || requiredAmount > Number.MAX_SAFE_INTEGER) {
     throw new QuotaReservationError("Reservation amount must be a finite positive number", "INVALID_QUOTA_RESERVATION");
   }
   const routingFloorEnabled = value.routingFloorEnabled === true;
-  const routingFloorRatio = typeof value.routingFloorRatio === "number"
-    && Number.isFinite(value.routingFloorRatio)
-    && value.routingFloorRatio >= 0
-    && value.routingFloorRatio <= 1
-    ? value.routingFloorRatio
-    : QUOTA_SELECTION_DEFAULTS.routingFloorRatio;
+  const routingFloorRatio = isNumber(value.routingFloorRatio) &&
+  Number.isFinite(value.routingFloorRatio) &&
+  value.routingFloorRatio >= 0 &&
+  value.routingFloorRatio <= 1 ?
+  value.routingFloorRatio :
+  QUOTA_SELECTION_DEFAULTS.routingFloorRatio;
   return { ...identity, requiredAmount, routingFloorEnabled, routingFloorRatio };
 }
 
 function normalizeAcquire(value, now) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!value || !isObject(value) || Array.isArray(value)) {
     throw new QuotaReservationError("Reservation request must be an object", "INVALID_QUOTA_RESERVATION");
   }
   const connectionId = normalizeQuotaIdentifier(value.connectionId, "reservation.connectionId");
@@ -113,7 +114,7 @@ function normalizeAcquire(value, now) {
     alternatives,
     leaseMs,
     acquiredAt,
-    leaseExpiresAt: iso(Date.parse(acquiredAt) + leaseMs),
+    leaseExpiresAt: iso(Date.parse(acquiredAt) + leaseMs)
   };
 }
 
@@ -127,13 +128,13 @@ function reapExpiredSync(db, nowIso) {
     `UPDATE quotaReservations
      SET state='released', terminalAt=?, terminalReason='lease_expired'
      WHERE state='active' AND dispatchedAt IS NULL AND leaseExpiresAt <= ?`,
-    [nowIso, nowIso],
+    [nowIso, nowIso]
   ).changes || 0;
   const dispatched = db.run(
     `UPDATE quotaReservations
      SET state='abandoned', terminalAt=?, terminalReason='lease_expired'
      WHERE state='active' AND dispatchedAt IS NOT NULL AND leaseExpiresAt <= ?`,
-    [nowIso, nowIso],
+    [nowIso, nowIso]
   ).changes || 0;
   return { released: undispatched, abandoned: dispatched };
 }
@@ -164,7 +165,7 @@ function pruneTerminalSync(db, nowIso) {
          )
        )
      )`,
-    [retentionCutoff, nowIso, nowIso, nowIso],
+    [retentionCutoff, nowIso, nowIso, nowIso]
   ).changes || 0;
 }
 
@@ -179,20 +180,20 @@ function currentSnapshot(db, item, nowIso) {
        AND s.resourceKey=? AND s.dimensionKey=?
        AND s.observedAt <= ? AND s.staleAt > ?`,
     [
-      item.connectionId, item.provider, item.accountKey, item.resourceKey,
-      item.dimensionKey, nowIso, nowIso,
-    ],
+    item.connectionId, item.provider, item.accountKey, item.resourceKey,
+    item.dimensionKey, nowIso, nowIso]
+
   ) || null;
 }
 
 function requestCapacityState(snapshot) {
   if (!snapshot) return "untracked";
   const namespace = String(snapshot?.dimensionKey || "").split(":", 1)[0];
-  if (namespace !== "requests"
-      || (snapshot?.unit != null && snapshot.unit !== "requests")
-      || snapshot.limitKind !== "bounded"
-      || !Number.isFinite(snapshot.limitValue)
-      || !Number.isFinite(snapshot.remainingValue)) {
+  if (namespace !== "requests" ||
+  snapshot?.unit != null && snapshot.unit !== "requests" ||
+  snapshot.limitKind !== "bounded" ||
+  !Number.isFinite(snapshot.limitValue) ||
+  !Number.isFinite(snapshot.remainingValue)) {
     return "untracked";
   }
   if (["exhausted", "cooldown"].includes(snapshot.state)) return "blocked";
@@ -219,12 +220,12 @@ function activeDebit(db, item, snapshot, nowIso) {
      WHERE r.connectionId=? AND i.accountKey=? AND i.resourceKey=?
        AND i.dimensionKey=?`,
     [
-      nowIso,
-      snapshot.observedAt, nowIso,
-      snapshot.observedAt, snapshot.resetAt, snapshot.resetAt, nowIso,
-      nowIso, item.connectionId,
-      item.accountKey, item.resourceKey, item.dimensionKey,
-    ],
+    nowIso,
+    snapshot.observedAt, nowIso,
+    snapshot.observedAt, snapshot.resetAt, snapshot.resetAt, nowIso,
+    nowIso, item.connectionId,
+    item.accountKey, item.resourceKey, item.dimensionKey]
+
   );
   return { debit: Number(row?.debit) || 0, pressure: Number(row?.pressure) || 0 };
 }
@@ -243,11 +244,11 @@ function evaluateBundle(db, items, nowIso) {
     const { debit, pressure } = activeDebit(db, item, snapshot, nowIso);
     const effectiveRemaining = Math.max(0, snapshot.remainingValue - debit);
     if (effectiveRemaining < item.requiredAmount) return { eligible: false, reason: "capacity_exhausted" };
-    const effectiveRatio = snapshot.limitValue > 0
-      ? effectiveRemaining / snapshot.limitValue
-      : 0;
-    if (item.routingFloorEnabled
-        && effectiveRatio <= item.routingFloorRatio + QUOTA_SELECTION_DEFAULTS.routingFloorEpsilon) {
+    const effectiveRatio = snapshot.limitValue > 0 ?
+    effectiveRemaining / snapshot.limitValue :
+    0;
+    if (item.routingFloorEnabled &&
+    effectiveRatio <= item.routingFloorRatio + QUOTA_SELECTION_DEFAULTS.routingFloorEpsilon) {
       return { eligible: false, reason: "below_routing_floor" };
     }
     evaluated.push({
@@ -257,7 +258,7 @@ function evaluateBundle(db, items, nowIso) {
       basisResetAt: snapshot.resetAt || null,
       effectiveRemaining,
       effectiveRatio,
-      pressure,
+      pressure
     });
   }
   // Preserve every still-fresh bounded member of an all-required bundle. A
@@ -269,18 +270,18 @@ function evaluateBundle(db, items, nowIso) {
     items: evaluated,
     effectiveRatio: Math.min(...evaluated.map((item) => item.effectiveRatio)),
     pressure: evaluated.reduce((sum, item) => sum + item.pressure, 0),
-    stableKey: JSON.stringify(evaluated.map((item) => [item.accountKey, item.resourceKey, item.dimensionKey])),
+    stableKey: JSON.stringify(evaluated.map((item) => [item.accountKey, item.resourceKey, item.dimensionKey]))
   };
 }
 
 function chooseBundle(db, alternatives, nowIso) {
   const evaluated = alternatives.map((items) => evaluateBundle(db, items, nowIso));
-  const selected = evaluated
-    .filter((candidate) => candidate?.eligible)
-    .sort((left, right) => (
-      right.effectiveRatio - left.effectiveRatio
-      || left.stableKey.localeCompare(right.stableKey)
-    ))[0] || null;
+  const selected = evaluated.
+  filter((candidate) => candidate?.eligible).
+  sort((left, right) =>
+  right.effectiveRatio - left.effectiveRatio ||
+  left.stableKey.localeCompare(right.stableKey)
+  )[0] || null;
   if (selected) return { selected, reason: null };
   return {
     selected: null,
@@ -289,11 +290,11 @@ function chooseBundle(db, alternatives, nowIso) {
     // the established missing/stale fail-open contract instead of fabricating
     // local exhaustion. Definitive failures remain fail-closed when every
     // alternative is still trackable.
-    reason: evaluated.some((candidate) => candidate?.reason === "untracked")
-      ? "untracked"
-      : evaluated.some((candidate) => candidate?.reason === "below_routing_floor")
-        ? "below_routing_floor"
-        : "capacity_exhausted",
+    reason: evaluated.some((candidate) => candidate?.reason === "untracked") ?
+    "untracked" :
+    evaluated.some((candidate) => candidate?.reason === "below_routing_floor") ?
+    "below_routing_floor" :
+    "capacity_exhausted"
   };
 }
 
@@ -332,10 +333,10 @@ export function acquireQuotaReservationSync(db, value, { now = Date.now() } = {}
         lastHeartbeatAt, terminalReason
       ) VALUES(?, ?, ?, ?, 'active', ?, ?, NULL, NULL, ?, ?, NULL)`,
       [
-        request.id, request.connectionId, request.provider, request.routeKeyHash,
-        request.ownerEpoch, request.acquiredAt, request.leaseExpiresAt,
-        request.acquiredAt,
-      ],
+      request.id, request.connectionId, request.provider, request.routeKeyHash,
+      request.ownerEpoch, request.acquiredAt, request.leaseExpiresAt,
+      request.acquiredAt]
+
     );
     for (const item of selected.items) {
       db.run(
@@ -344,9 +345,9 @@ export function acquireQuotaReservationSync(db, value, { now = Date.now() } = {}
           reservedAmount, committedAmount, basisObservedAt, basisResetAt
         ) VALUES(?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
         [
-          request.id, item.accountKey, item.resourceKey, item.dimensionKey,
-          item.unit, item.requiredAmount, item.basisObservedAt, item.basisResetAt,
-        ],
+        request.id, item.accountKey, item.resourceKey, item.dimensionKey,
+        item.unit, item.requiredAmount, item.basisObservedAt, item.basisResetAt]
+
       );
     }
     result = {
@@ -358,8 +359,8 @@ export function acquireQuotaReservationSync(db, value, { now = Date.now() } = {}
         resourceKey: item.resourceKey,
         dimensionKey: item.dimensionKey,
         reservedAmount: item.requiredAmount,
-        basisObservedAt: item.basisObservedAt,
-      })),
+        basisObservedAt: item.basisObservedAt
+      }))
     };
   });
   return result || { acquired: false, reason: "capacity_exhausted" };
@@ -383,7 +384,7 @@ function mutateActiveSync(db, id, ownerEpoch, nowIso, update, params, extraWhere
     changes = db.run(
       `UPDATE quotaReservations SET ${update}
        WHERE id=? AND ownerEpoch=? AND state='active' AND leaseExpiresAt > ? ${extraWhere}`,
-      [...params, id, ownerEpoch, nowIso],
+      [...params, id, ownerEpoch, nowIso]
     ).changes || 0;
   });
   return { changed: changes === 1, ...reservationState(db, id) };
@@ -415,7 +416,7 @@ export async function commitQuotaReservation(id, { ownerEpoch, now = Date.now(),
        SET state='committed', terminalAt=?, terminalReason='success', lastHeartbeatAt=?
        WHERE id=? AND ownerEpoch=? AND state='active' AND leaseExpiresAt > ?
          AND dispatchedAt IS NOT NULL`,
-      [timestamp, timestamp, id, ownerEpoch, timestamp],
+      [timestamp, timestamp, id, ownerEpoch, timestamp]
     ).changes || 0;
     if (changes === 1) {
       // Batch 4 accounts one physical request dispatch. Token/cost/modal amounts are
@@ -423,7 +424,7 @@ export async function commitQuotaReservation(id, { ownerEpoch, now = Date.now(),
       db.run(
         `UPDATE quotaReservationItems SET committedAmount=reservedAmount
          WHERE reservationId=? AND committedAmount IS NULL`,
-        [id],
+        [id]
       );
     }
   });
@@ -439,7 +440,7 @@ export async function releaseQuotaReservation(id, reason = "pre_dispatch", { own
     ownerEpoch,
     timestamp,
     "state='released', terminalAt=?, terminalReason=?, lastHeartbeatAt=?",
-    [timestamp, normalizeReason(reason), timestamp],
+    [timestamp, normalizeReason(reason), timestamp]
   );
 }
 
@@ -463,7 +464,7 @@ export async function getQuotaReservationPressure({ provider, connectionIds = []
   const timestamp = iso(now);
   const where = [];
   const params = [timestamp];
-  if (normalizedProvider) { where.push("provider=?"); params.push(normalizedProvider); }
+  if (normalizedProvider) {where.push("provider=?");params.push(normalizedProvider);}
   if (ids.length > 0) {
     where.push(`connectionId IN (${ids.map(() => "?").join(",")})`);
     params.push(...ids);
@@ -475,17 +476,17 @@ export async function getQuotaReservationPressure({ provider, connectionIds = []
      FROM quotaReservations
      WHERE ${where.join(" AND ")}
      GROUP BY connectionId`,
-    params,
+    params
   );
   const result = new Map(rows.map((row) => [row.connectionId, {
     activeCount: Number(row.activeCount) || 0,
     lastSelectedAt: row.lastSelectedAt || null,
-    debits: new Map(),
+    debits: new Map()
   }]));
 
   const debitWhere = [];
   const debitParams = [timestamp, timestamp, timestamp, timestamp, timestamp];
-  if (normalizedProvider) { debitWhere.push("r.provider=?"); debitParams.push(normalizedProvider); }
+  if (normalizedProvider) {debitWhere.push("r.provider=?");debitParams.push(normalizedProvider);}
   if (ids.length > 0) {
     debitWhere.push(`r.connectionId IN (${ids.map(() => "?").join(",")})`);
     debitParams.push(...ids);
@@ -512,7 +513,7 @@ export async function getQuotaReservationPressure({ provider, connectionIds = []
      WHERE s.observedAt <= ? AND s.staleAt > ?
        AND ${debitWhere.join(" AND ")}
      GROUP BY r.connectionId, r.provider, i.accountKey, i.resourceKey, i.dimensionKey`,
-    debitParams,
+    debitParams
   );
   for (const row of debitRows) {
     const debit = Number(row.debit) || 0;
@@ -520,14 +521,14 @@ export async function getQuotaReservationPressure({ provider, connectionIds = []
     const state = result.get(row.connectionId) || {
       activeCount: 0,
       lastSelectedAt: null,
-      debits: new Map(),
+      debits: new Map()
     };
     state.debits.set(quotaIdentityKey({
       connectionId: row.connectionId,
       provider: row.provider,
       accountKey: row.accountKey,
       resourceKey: row.resourceKey,
-      dimensionKey: row.dimensionKey,
+      dimensionKey: row.dimensionKey
     }), debit);
     result.set(row.connectionId, state);
   }
@@ -538,7 +539,7 @@ export async function hasActiveDispatchedQuotaReservations({ adapter = null } = 
   const db = await resolveAdapter(adapter);
   return Boolean(db.get(
     `SELECT 1 AS present FROM quotaReservations
-     WHERE state='active' AND dispatchedAt IS NOT NULL LIMIT 1`,
+     WHERE state='active' AND dispatchedAt IS NOT NULL LIMIT 1`
   ));
 }
 
@@ -550,7 +551,7 @@ export function assertNoActiveQuotaReservationsSync(db, { now = Date.now() } = {
   const active = db.get(
     `SELECT 1 AS present FROM quotaReservations
      WHERE state='active' AND leaseExpiresAt > ? LIMIT 1`,
-    [timestamp],
+    [timestamp]
   );
   if (active) throw new QuotaReservationError("Database operation is unavailable while provider requests are active", "ACTIVE_QUOTA_RESERVATIONS");
 }
@@ -559,13 +560,13 @@ export function assertNoActiveQuotaReservationsSync(db, { now = Date.now() } = {
 export function assertNoActiveQuotaReservationsForTargetSync(db, {
   connectionIds = [],
   provider = null,
-  now = Date.now(),
+  now = Date.now()
 } = {}) {
   const timestamp = iso(now);
   const ids = [...new Set(connectionIds.map((id) => normalizeQuotaIdentifier(id, "deletion.connectionId")))].slice(0, 1024);
-  const normalizedProvider = provider == null
-    ? null
-    : normalizeQuotaIdentifier(provider, "deletion.provider");
+  const normalizedProvider = provider == null ?
+  null :
+  normalizeQuotaIdentifier(provider, "deletion.provider");
   if (ids.length === 0 && !normalizedProvider) {
     throw new QuotaReservationError("Connection deletion guard requires a target", "INVALID_QUOTA_RESERVATION");
   }
@@ -573,7 +574,7 @@ export function assertNoActiveQuotaReservationsForTargetSync(db, {
   reapExpiredSync(db, timestamp);
   const where = ["state='active'", "leaseExpiresAt > ?"];
   const params = [timestamp];
-  if (normalizedProvider) { where.push("provider=?"); params.push(normalizedProvider); }
+  if (normalizedProvider) {where.push("provider=?");params.push(normalizedProvider);}
   if (ids.length > 0) {
     where.push(`connectionId IN (${ids.map(() => "?").join(",")})`);
     params.push(...ids);
@@ -581,7 +582,7 @@ export function assertNoActiveQuotaReservationsForTargetSync(db, {
   if (db.get(`SELECT 1 AS present FROM quotaReservations WHERE ${where.join(" AND ")} LIMIT 1`, params)) {
     throw new QuotaReservationError(
       "Provider connection cannot be deleted while a request is active",
-      "ACTIVE_QUOTA_RESERVATIONS",
+      "ACTIVE_QUOTA_RESERVATIONS"
     );
   }
 }

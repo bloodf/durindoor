@@ -1,21 +1,22 @@
 import { getExecutor } from "../executors/index.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && isObject(value) && !Array.isArray(value);
 }
 
 function countValueChars(value) {
   if (value == null) return 0;
-  if (typeof value === "string") return value.length;
-  if (typeof value === "number" || typeof value === "boolean") {
+  if (isString(value)) return value.length;
+  if (isNumber(value) || isBoolean(value)) {
     return String(value).length;
   }
   if (Array.isArray(value)) {
     return value.reduce((total, item) => total + countValueChars(item), 0);
   }
-  if (typeof value === "object") {
+  if (isObject(value)) {
     return Object.entries(value).reduce((total, [key, item]) => {
       return total + key.length + countValueChars(item);
     }, 0);
@@ -25,8 +26,8 @@ function countValueChars(value) {
 
 function countContentBlockChars(block) {
   if (block == null) return 0;
-  if (typeof block === "string") return block.length;
-  if (typeof block !== "object") return countValueChars(block);
+  if (isString(block)) return block.length;
+  if (!isObject(block)) return countValueChars(block);
 
   switch (block.type) {
     case "text":
@@ -43,10 +44,10 @@ function countContentBlockChars(block) {
 }
 
 function countMessageChars(message) {
-  if (!message || typeof message !== "object") return 0;
+  if (!message || !isObject(message)) return 0;
   const content = message.content;
 
-  if (typeof content === "string") return content.length;
+  if (isString(content)) return content.length;
   if (Array.isArray(content)) {
     return content.reduce((total, block) => total + countContentBlockChars(block), 0);
   }
@@ -59,7 +60,7 @@ function countMessageChars(message) {
 // the provider isn't Claude-compatible (no /messages baseUrl).
 export function deriveCountTokensUrl(cfg) {
   const rec = isRecord(cfg) ? cfg : undefined;
-  const base = typeof rec?.baseUrl === "string" ? rec?.baseUrl : undefined;
+  const base = isString(rec?.baseUrl) ? rec?.baseUrl : undefined;
   const fmt = rec?.format;
   if (base && (fmt === "claude" || /\/messages$/.test(base))) {
     return /\/messages$/.test(base) ? `${base}/count_tokens` : `${base}/messages/count_tokens`;
@@ -75,10 +76,10 @@ export function estimateTokens(body) {
   const b = isRecord(body) ? body : {};
   const messages = Array.isArray(b.messages) ? b.messages : [];
   let totalChars = 0;
-  if (typeof b.system === "string") totalChars += b.system.length;
-  else if (Array.isArray(b.system)) {
+  if (isString(b.system)) totalChars += b.system.length;else
+  if (Array.isArray(b.system)) {
     for (const block of b.system) {
-      if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
+      if (isRecord(block) && block.type === "text" && isString(block.text)) {
         totalChars += block.text.length;
       }
     }
@@ -86,22 +87,22 @@ export function estimateTokens(body) {
   if (Array.isArray(b.tools)) totalChars += JSON.stringify(b.tools).length;
   for (const msg of messages) {
     if (!isRecord(msg)) continue;
-    if (typeof msg.content === "string") {
+    if (isString(msg.content)) {
       totalChars += msg.content.length;
     } else if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
         if (!isRecord(part)) continue;
-        if (part.type === "text" && typeof part.text === "string") totalChars += part.text.length;
-        else if (part.type === "tool_use") {
+        if (part.type === "text" && isString(part.text)) totalChars += part.text.length;else
+        if (part.type === "tool_use") {
           totalChars += (part.name || "").length + JSON.stringify(part.input ?? {}).length;
         } else if (part.type === "tool_result") {
-          if (typeof part.content === "string") totalChars += part.content.length;
-          else if (Array.isArray(part.content)) {
+          if (isString(part.content)) totalChars += part.content.length;else
+          if (Array.isArray(part.content)) {
             for (const c of part.content) {
               if (isRecord(c) && c.type === "text" && c.text) totalChars += c.text.length;
             }
           }
-        } else if (part.type === "thinking" && typeof part.thinking === "string") {
+        } else if (part.type === "thinking" && isString(part.thinking)) {
           totalChars += part.thinking.length;
         }
       }
@@ -133,8 +134,8 @@ export async function countInputTokens({ body, modelInfo, credentials = null, lo
       // An already-translated body carries the provider-facing model id
       // (upstreamModelId). Overwriting it with the catalog alias would make
       // the upstream reject the count and silently degrade to the estimate.
-      body: JSON.stringify(typeof body?.model === "string" && body.model ? body : { ...body, model }),
-      ...(signal ? { signal } : {}),
+      body: JSON.stringify(isString(body?.model) && body.model ? body : { ...body, model }),
+      ...(signal ? { signal } : null)
     });
     if (res.ok) {
       const json = await res.json();
@@ -165,7 +166,7 @@ export async function handleCountTokensCore({
   body,
   modelInfo,
   credentials = null,
-  log = null,
+  log = null
 }) {
   const { provider, model } = modelInfo;
   if (deriveCountTokensUrl(PROVIDERS[provider])) {
@@ -175,6 +176,6 @@ export async function handleCountTokensCore({
   return {
     success: true,
     status: 200,
-    response: Response.json(approximate ? { input_tokens: tokens, approximate: true } : { input_tokens: tokens }),
+    response: Response.json(approximate ? { input_tokens: tokens, approximate: true } : { input_tokens: tokens })
   };
 }

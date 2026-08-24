@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 
 import { guardedProbeFetch } from "../utils/outboundUrlGuard.js";
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -8,14 +9,14 @@ const MAX_SANE_TOKEN_LIMIT = 16_777_216;
 // 2^24 tokens is far above current catalogs while bounding corrupted metadata.
 const CONTAINERS = ["limits", "meta"];
 const CONTEXT_KEYS = [
-  "context_length",
-  "context_window",
-  "max_context_length",
-  "max_model_len",
-  "max_input_tokens",
-  "contextLength",
-  "contextWindow",
-];
+"context_length",
+"context_window",
+"max_context_length",
+"max_model_len",
+"max_input_tokens",
+"contextLength",
+"contextWindow"];
+
 const OUTPUT_KEYS = ["max_output_tokens", "max_completion_tokens", "max_tokens", "maxOutputTokens", "maxOutput"];
 
 
@@ -44,7 +45,7 @@ function cacheModelLimits(provider, connection, models, expiresAt) {
     const id = modelId(model);
     const limits = model?.capabilities;
     const key = modelLimitsKey(provider, connection, id);
-    if (!key || !limits || typeof limits !== "object" || !Object.keys(limits).length) continue;
+    if (!key || !limits || !isObject(limits) || !Object.keys(limits).length) continue;
     modelLimitsCache.set(key, { expiresAt, limits });
   }
 }
@@ -70,10 +71,10 @@ function cacheKey(endpoint, token) {
 }
 
 function modelId(model) {
-  if (!model || typeof model !== "object" || Array.isArray(model)) return "";
-  return [model.id, model.name, model.model]
-    .find((value) => typeof value === "string" && value.trim() !== "")
-    ?.trim() || "";
+  if (!model || !isObject(model) || Array.isArray(model)) return "";
+  return [model.id, model.name, model.model].
+  find((value) => isString(value) && value.trim() !== "")?.
+  trim() || "";
 }
 
 /**
@@ -84,15 +85,15 @@ function modelId(model) {
 export async function resolveLiveOpenAIModels(connection, options = {}) {
   const token = options.token || connection?.apiKey || connection?.accessToken;
   const psd = connection?.providerSpecificData;
-  const baseUrl = typeof psd?.baseUrl === "string" ? psd.baseUrl.trim().replace(/\/$/, "") : "";
-  const derivedEndpoint = options.anthropic
-    ? (baseUrl.match(/\/messages(?:\/models)?$/)
-        ? baseUrl.replace(/\/messages(?:\/models)?$/, "/models")
-        : (baseUrl ? `${baseUrl}/models` : ""))
-    : (baseUrl ? `${baseUrl}/models` : "");
-  const endpoint = typeof options.endpoint === "string" && options.endpoint.trim()
-    ? options.endpoint.trim()
-    : derivedEndpoint;
+  const baseUrl = isString(psd?.baseUrl) ? psd.baseUrl.trim().replace(/\/$/, "") : "";
+  const derivedEndpoint = options.anthropic ?
+  baseUrl.match(/\/messages(?:\/models)?$/) ?
+  baseUrl.replace(/\/messages(?:\/models)?$/, "/models") :
+  baseUrl ? `${baseUrl}/models` : "" :
+  baseUrl ? `${baseUrl}/models` : "";
+  const endpoint = isString(options.endpoint) && options.endpoint.trim() ?
+  options.endpoint.trim() :
+  derivedEndpoint;
   if (!token || !endpoint) return null;
   const key = cacheKey(endpoint, `${token}:${options.cacheVariant || options.anthropic === true}:${JSON.stringify(options.modelAliases || {})}`);
   const now = Date.now();
@@ -117,9 +118,9 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
     };
     try {
       let transport = (url, init) => globalThis.fetch(url, init);
-      if (options.proxyOptions?.connectionProxyEnabled === true
-        || options.proxyOptions?.vercelRelayUrl
-        || options.proxyOptions?.disableEnvProxy === true) {
+      if (options.proxyOptions?.connectionProxyEnabled === true ||
+      options.proxyOptions?.vercelRelayUrl ||
+      options.proxyOptions?.disableEnvProxy === true) {
         /** Load the global-patching proxy transport only for active proxied discovery. */
         const { proxyAwareFetch } = await import("../utils/proxyFetch.js");
         transport = (url, init) => proxyAwareFetch(url, init, options.proxyOptions);
@@ -129,34 +130,34 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
         Authorization: `Bearer ${token}`,
         ...(options.anthropic ? {
           "x-api-key": token,
-          "anthropic-version": "2023-06-01",
-        } : {}),
+          "anthropic-version": "2023-06-01"
+        } : null)
       };
       const response = await guardedProbeFetch(endpoint, {
         method: "GET",
         headers,
         cache: "no-store",
-        signal: controller.signal,
+        signal: controller.signal
       }, options.guard, transport);
       if (!response.ok) return cacheMiss();
       const body = await response.json();
-      const raw = typeof options.selectModels === "function"
-        ? options.selectModels(body)
-        : (Array.isArray(body) ? body : (body?.data ?? body?.models ?? body?.results));
+      const raw = isFunction(options.selectModels) ?
+      options.selectModels(body) :
+      Array.isArray(body) ? body : body?.data ?? body?.models ?? body?.results;
       if (!Array.isArray(raw)) return cacheMiss();
-      const aliases = options.modelAliases && typeof options.modelAliases === "object"
-        ? options.modelAliases
-        : {};
+      const aliases = options.modelAliases && isObject(options.modelAliases) ?
+      options.modelAliases :
+      {};
       const models = raw.flatMap((entry) => {
-        if (typeof options.normalizeModel === "function") {
+        if (isFunction(options.normalizeModel)) {
           const normalized = options.normalizeModel(entry);
-          return normalized && typeof normalized === "object" ? [normalized] : [];
+          return normalized && isObject(normalized) ? [normalized] : [];
         }
         const upstreamId = modelId(entry);
         if (!upstreamId) return [];
         const id = aliases[upstreamId] || upstreamId;
         const limits = extractLiveModelLimits(entry);
-        return [{ id, ...(Object.keys(limits).length ? { capabilities: limits } : {}) }];
+        return [{ id, ...(Object.keys(limits).length ? { capabilities: limits } : null) }];
       });
       if (!models.length) return cacheMiss();
       const expiresAt = Date.now() + CACHE_TTL_MS;
@@ -180,25 +181,25 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
 
 function anthropicCapabilities(entry) {
   const published = entry?.capabilities;
-  if (!published || typeof published !== "object" || Array.isArray(published)) return {};
+  if (!published || !isObject(published) || Array.isArray(published)) return {};
   const thinking = published.thinking;
-  const types = thinking && typeof thinking === "object" && !Array.isArray(thinking)
-    ? thinking.types
-    : null;
-  const supported = (value) => value === true || (
-    value && typeof value === "object" && !Array.isArray(value) && value.supported === true
-  );
+  const types = thinking && isObject(thinking) && !Array.isArray(thinking) ?
+  thinking.types :
+  null;
+  const supported = (value) => value === true ||
+  value && isObject(value) && !Array.isArray(value) && value.supported === true;
+
   const enabled = supported(types?.enabled);
   const adaptive = supported(types?.adaptive);
   const reasoning = Boolean(supported(thinking) || thinking?.supported === true || enabled || adaptive);
   return {
-    ...(published.image_input !== undefined ? { vision: supported(published.image_input) } : {}),
-    ...(published.pdf_input !== undefined ? { pdf: supported(published.pdf_input) } : {}),
+    ...(published.image_input !== undefined ? { vision: supported(published.image_input) } : null),
+    ...(published.pdf_input !== undefined ? { pdf: supported(published.pdf_input) } : null),
     ...(thinking !== undefined ? {
       reasoning,
       thinkingCanDisable: reasoning ? enabled : true,
-      thinkingFormat: reasoning ? (adaptive ? "claude-adaptive" : "claude-budget") : null,
-    } : {}),
+      thinkingFormat: reasoning ? adaptive ? "claude-adaptive" : "claude-budget" : null
+    } : null)
   };
 }
 
@@ -219,19 +220,19 @@ export function resolveLiveAnthropicModels(connection, options = {}) {
     headers: {
       "Content-Type": "application/json",
       "anthropic-version": "2023-06-01",
-      ...(oauthToken
-        ? { Authorization: `Bearer ${oauthToken}` }
-        : { "x-api-key": apiKey }),
+      ...(oauthToken ?
+      { Authorization: `Bearer ${oauthToken}` } :
+      { "x-api-key": apiKey })
     },
     normalizeModel: (entry) => {
       const id = modelId(entry);
       if (!id) return null;
       const capabilities = {
         ...extractLiveModelLimits(entry),
-        ...anthropicCapabilities(entry),
+        ...anthropicCapabilities(entry)
       };
-      return { id, ...(Object.keys(capabilities).length ? { capabilities } : {}) };
-    },
+      return { id, ...(Object.keys(capabilities).length ? { capabilities } : null) };
+    }
   });
 }
 
@@ -239,7 +240,7 @@ export function resolveLiveAnthropicModels(connection, options = {}) {
 export function resolveLiveCloudflareModels(connection, options = {}) {
   const accountId = connection?.providerSpecificData?.accountId;
   const token = connection?.apiKey || connection?.accessToken;
-  if (typeof accountId !== "string" || !accountId.trim() || !token) return Promise.resolve(null);
+  if (!isString(accountId) || !accountId.trim() || !token) return Promise.resolve(null);
   return resolveLiveOpenAIModels(connection, {
     ...options,
     token,
@@ -247,18 +248,18 @@ export function resolveLiveCloudflareModels(connection, options = {}) {
     cacheVariant: "cloudflare-search-v1",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${token}`
     },
     selectModels: (body) => body?.result,
     normalizeModel: (entry) => {
       const id = modelId(entry);
       if (!id) return null;
-      const property = Array.isArray(entry?.properties)
-        ? entry.properties.find((item) => item?.property_id === "context_window")
-        : null;
+      const property = Array.isArray(entry?.properties) ?
+      entry.properties.find((item) => item?.property_id === "context_window") :
+      null;
       const capabilities = extractLiveModelLimits({ context_window: property?.value });
-      return { id, ...(capabilities.contextWindow ? { capabilities } : {}) };
-    },
+      return { id, ...(capabilities.contextWindow ? { capabilities } : null) };
+    }
   });
 }
 
@@ -273,12 +274,12 @@ export function resolveLiveModelIds(connection, endpoint, options = {}) {
     cacheVariant: `ids:${endpoint}`,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${token}`
     },
     normalizeModel: (entry) => {
       const id = modelId(entry);
       return id ? { id } : null;
-    },
+    }
   });
 }
 /**
@@ -296,10 +297,10 @@ export function clearLiveModelLimitsCache() {
   inFlight.clear();
 }
 function readLimit(source, keys) {
-  if (!source || typeof source !== "object" || Array.isArray(source)) return undefined;
+  if (!source || !isObject(source) || Array.isArray(source)) return undefined;
   for (const key of keys) {
     const raw = source[key];
-    if (typeof raw !== "number" && !(typeof raw === "string" && raw.trim() !== "")) continue;
+    if (!isNumber(raw) && !(isString(raw) && raw.trim() !== "")) continue;
     const value = Number(raw);
     if (Number.isSafeInteger(value) && value > 0 && value <= MAX_SANE_TOKEN_LIMIT) return value;
   }
@@ -312,12 +313,12 @@ function readLimit(source, keys) {
  * Invalid candidates are skipped so a later valid alias can still be used.
  */
 export function extractLiveModelLimits(model) {
-  if (!model || typeof model !== "object" || Array.isArray(model)) return {};
+  if (!model || !isObject(model) || Array.isArray(model)) return {};
   const sources = [...CONTAINERS.map((key) => model[key]), model];
   const contextWindow = sources.map((source) => readLimit(source, CONTEXT_KEYS)).find(Boolean);
   const maxOutput = sources.map((source) => readLimit(source, OUTPUT_KEYS)).find(Boolean);
   return {
-    ...(contextWindow ? { contextWindow } : {}),
-    ...(maxOutput ? { maxOutput } : {}),
+    ...(contextWindow ? { contextWindow } : null),
+    ...(maxOutput ? { maxOutput } : null)
   };
 }

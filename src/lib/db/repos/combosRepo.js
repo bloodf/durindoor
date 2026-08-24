@@ -6,17 +6,18 @@ import { validateComboInvariant } from "@/lib/combos/invariants.js";
 // Extract the persisted invariant shape from a combo payload. Accepts the
 // fields under `invariant` or as top-level `allowedProviders` /
 // `allowedModelFamilies`. Returns null when no constraint is declared.
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 function normalizeInvariant(data) {
   const src =
-    data.invariant && typeof data.invariant === "object" && !Array.isArray(data.invariant)
-      ? data.invariant
-      : data;
-  const allowedProviders = Array.isArray(src.allowedProviders)
-    ? src.allowedProviders.filter((v) => typeof v === "string")
-    : [];
-  const allowedModelFamilies = Array.isArray(src.allowedModelFamilies)
-    ? src.allowedModelFamilies.filter((v) => typeof v === "string")
-    : [];
+  data.invariant && isObject(data.invariant) && !Array.isArray(data.invariant) ?
+  data.invariant :
+  data;
+  const allowedProviders = Array.isArray(src.allowedProviders) ?
+  src.allowedProviders.filter((v) => isString(v)) :
+  [];
+  const allowedModelFamilies = Array.isArray(src.allowedModelFamilies) ?
+  src.allowedModelFamilies.filter((v) => isString(v)) :
+  [];
   if (allowedProviders.length === 0 && allowedModelFamilies.length === 0) return null;
   return { allowedProviders, allowedModelFamilies };
 }
@@ -30,7 +31,7 @@ function rowToCombo(row) {
     models: parseJson(row.models, []),
     invariant: row.invariant ? parseJson(row.invariant, null) : null,
     createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    updatedAt: row.updatedAt
   };
 }
 
@@ -61,7 +62,7 @@ export async function getComboForModel(name) {
   if (!row) {
     row = db.get(
       `SELECT * FROM combos WHERE name = ? COLLATE NOCASE ORDER BY createdAt ASC, id ASC LIMIT 1`,
-      [name],
+      [name]
     );
   }
   return rowToCombo(row);
@@ -78,7 +79,7 @@ export async function createCombo(data) {
     models: data.models || [],
     invariant,
     createdAt: now,
-    updatedAt: now,
+    updatedAt: now
   };
   // Reject a violating combo before the write so nothing is persisted.
   validateComboInvariant({ ...combo, ...(invariant || {}) });

@@ -8,18 +8,19 @@ import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
 
 const HOISTABLE_SYSTEM_BLOCKS = new Set([CLAUDE_BLOCK.TEXT]);
 const USER_SYSTEM_FOLDABLE_BLOCKS = new Set([
-  CLAUDE_BLOCK.TEXT,
-  CLAUDE_BLOCK.IMAGE,
-  CLAUDE_BLOCK.DOCUMENT,
-  CLAUDE_BLOCK.TOOL_RESULT,
-  CLAUDE_BLOCK.SEARCH_RESULT,
-]);
+CLAUDE_BLOCK.TEXT,
+CLAUDE_BLOCK.IMAGE,
+CLAUDE_BLOCK.DOCUMENT,
+CLAUDE_BLOCK.TOOL_RESULT,
+CLAUDE_BLOCK.SEARCH_RESULT]
+);
 
 // Put a 5m breakpoint on the last cache-eligible block of a message.
 // thinking/redacted_thinking blocks do not accept cache_control.
@@ -27,7 +28,7 @@ function markLastCacheableBlock(msg) {
   if (!Array.isArray(msg?.content)) return false;
   for (let i = msg.content.length - 1; i >= 0; i--) {
     const block = msg.content[i];
-    if (typeof block !== "object" || block === null) continue;
+    if (!isObject(block) || block === null) continue;
     if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) continue;
     block.cache_control = { ...CACHE_CONTROL_5M };
     return true;
@@ -37,22 +38,22 @@ function markLastCacheableBlock(msg) {
 
 // Re-anchor cache breakpoints on a Claude passthrough body after transformations.
 export function anchorClaudeCache(body) {
-  if (!body || typeof body !== "object") return body;
+  if (!body || !isObject(body)) return body;
 
   if (Array.isArray(body.system)) {
     const last = body.system.length - 1;
     body.system.forEach((block, i) => {
-      if (typeof block !== "object" || block === null) return;
-      if (i === last) block.cache_control = { ...CACHE_CONTROL_1H };
-      else delete block.cache_control;
+      if (!isObject(block) || block === null) return;
+      if (i === last) block.cache_control = { ...CACHE_CONTROL_1H };else
+      delete block.cache_control;
     });
   }
 
   if (Array.isArray(body.tools)) {
     const last = body.tools.length - 1;
     body.tools.forEach((tool, i) => {
-      if (i === last) tool.cache_control = { ...CACHE_CONTROL_1H };
-      else delete tool.cache_control;
+      if (i === last) tool.cache_control = { ...CACHE_CONTROL_1H };else
+      delete tool.cache_control;
     });
   }
 
@@ -61,11 +62,11 @@ export function anchorClaudeCache(body) {
     for (let i = body.messages.length - 1; i >= 0; i--) {
       const msg = body.messages[i];
       delete msg.cache_control;
-      if (typeof msg.content === "string") {
+      if (isString(msg.content)) {
         msg.content = msg.content ? [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }] : [];
       }
       if (!Array.isArray(msg.content)) continue;
-      for (const block of msg.content) { if (block && typeof block === "object") delete block.cache_control; }
+      for (const block of msg.content) {if (block && isObject(block)) delete block.cache_control;}
       if (anchored || msg.role !== ROLE.ASSISTANT) continue;
       anchored = markLastCacheableBlock(msg);
     }
@@ -81,16 +82,16 @@ export function anchorClaudeCache(body) {
 
 // Check if message has valid non-empty content
 export function hasValidContent(msg) {
-  if (typeof msg.content === "string" && msg.content.trim()) return true;
+  if (isString(msg.content) && msg.content.trim()) return true;
   if (Array.isArray(msg.content)) {
-    return msg.content.some(block =>
-      (block.type === CLAUDE_BLOCK.TEXT && block.text?.trim()) ||
-      block.type === CLAUDE_BLOCK.TOOL_USE ||
-      block.type === CLAUDE_BLOCK.TOOL_RESULT ||
-      block.type === CLAUDE_BLOCK.IMAGE ||
-      block.type === CLAUDE_BLOCK.DOCUMENT ||
-      block.type === CLAUDE_BLOCK.THINKING ||
-      block.type === CLAUDE_BLOCK.REDACTED_THINKING
+    return msg.content.some((block) =>
+    block.type === CLAUDE_BLOCK.TEXT && block.text?.trim() ||
+    block.type === CLAUDE_BLOCK.TOOL_USE ||
+    block.type === CLAUDE_BLOCK.TOOL_RESULT ||
+    block.type === CLAUDE_BLOCK.IMAGE ||
+    block.type === CLAUDE_BLOCK.DOCUMENT ||
+    block.type === CLAUDE_BLOCK.THINKING ||
+    block.type === CLAUDE_BLOCK.REDACTED_THINKING
     );
   }
   return false;
@@ -105,7 +106,7 @@ export function fixToolUseOrdering(messages) {
   // Pass 1: Fix assistant messages with tool_use - remove text after tool_use
   for (const msg of messages) {
     if (msg.role === ROLE.ASSISTANT && Array.isArray(msg.content)) {
-      const hasToolUse = msg.content.some(b => b.type === CLAUDE_BLOCK.TOOL_USE);
+      const hasToolUse = msg.content.some((b) => b.type === CLAUDE_BLOCK.TOOL_USE);
       if (hasToolUse) {
         // Keep only: thinking blocks + tool_use blocks (remove text blocks after tool_use)
         const newContent = [];
@@ -141,8 +142,8 @@ export function fixToolUseOrdering(messages) {
       const msgContent = Array.isArray(msg.content) ? msg.content : [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }];
 
       // Put tool_result first, then other content
-      const toolResults = [...lastContent.filter(b => b.type === CLAUDE_BLOCK.TOOL_RESULT), ...msgContent.filter(b => b.type === CLAUDE_BLOCK.TOOL_RESULT)];
-      const otherContent = [...lastContent.filter(b => b.type !== CLAUDE_BLOCK.TOOL_RESULT), ...msgContent.filter(b => b.type !== CLAUDE_BLOCK.TOOL_RESULT)];
+      const toolResults = [...lastContent.filter((b) => b.type === CLAUDE_BLOCK.TOOL_RESULT), ...msgContent.filter((b) => b.type === CLAUDE_BLOCK.TOOL_RESULT)];
+      const otherContent = [...lastContent.filter((b) => b.type !== CLAUDE_BLOCK.TOOL_RESULT), ...msgContent.filter((b) => b.type !== CLAUDE_BLOCK.TOOL_RESULT)];
 
       last.content = [...toolResults, ...otherContent];
     } else {
@@ -162,11 +163,11 @@ export function fixToolUseOrdering(messages) {
 
     const previous = merged[i - 1];
     const validIds = new Set(
-      previous?.role === ROLE.ASSISTANT && Array.isArray(previous.content)
-        ? previous.content
-          .filter((block) => block.type === CLAUDE_BLOCK.TOOL_USE && block.id)
-          .map((block) => block.id)
-        : []
+      previous?.role === ROLE.ASSISTANT && Array.isArray(previous.content) ?
+      previous.content.
+      filter((block) => block.type === CLAUDE_BLOCK.TOOL_USE && block.id).
+      map((block) => block.id) :
+      []
     );
     const pairedById = new Map();
     const otherContent = [];
@@ -180,18 +181,18 @@ export function fixToolUseOrdering(messages) {
         pairedById.set(block.tool_use_id, block);
         continue;
       }
-      const serialized = typeof block.content === "string"
-        ? block.content
-        : JSON.stringify(block.content ?? "");
+      const serialized = isString(block.content) ?
+      block.content :
+      JSON.stringify(block.content ?? "");
       otherContent.push({
         type: CLAUDE_BLOCK.TEXT,
-        text: `[Unpaired tool result ${block.tool_use_id || "unknown"}]\n${serialized ?? ""}`,
+        text: `[Unpaired tool result ${block.tool_use_id || "unknown"}]\n${serialized ?? ""}`
       });
     }
 
     if (pairedById.size === 0 && msg.content.every((b) => b.type !== CLAUDE_BLOCK.TOOL_RESULT)) continue;
     const pairedResults = [...validIds].map((id) =>
-      pairedById.get(id) || { type: CLAUDE_BLOCK.TOOL_RESULT, tool_use_id: id, content: "" }
+    pairedById.get(id) || { type: CLAUDE_BLOCK.TOOL_RESULT, tool_use_id: id, content: "" }
     );
     msg.content = [...pairedResults, ...otherContent];
   }
@@ -218,7 +219,7 @@ function normalizeClaudeServerToolModels(tools) {
   if (!Array.isArray(tools)) return;
 
   for (const tool of tools) {
-    if (!tool || typeof tool !== "object" || typeof tool.model !== "string") continue;
+    if (!tool || !isObject(tool) || !isString(tool.model)) continue;
     const prefix = CLAUDE_PROVIDER_MODEL_PREFIXES.find((candidate) => tool.model.startsWith(candidate));
     if (prefix) tool.model = tool.model.slice(prefix.length);
   }
@@ -231,7 +232,7 @@ function handlesThinkingBlocks(provider) {
 function buildThinkingPlaceholder(provider) {
   const block = {
     type: CLAUDE_BLOCK.THINKING,
-    thinking: ".",
+    thinking: "."
   };
 
   // DeepSeek's Anthropic-compatible endpoint requires a thinking block in
@@ -249,19 +250,19 @@ function buildThinkingPlaceholder(provider) {
  * passthrough so neither path can send `budget_tokens >= max_tokens`.
  */
 export function reconcileClaudeThinkingBudget(body, provider = "claude", customMaxOutput = null) {
-  if (!body || typeof body !== "object" || !body.max_tokens) return body;
+  if (!body || !isObject(body) || !body.max_tokens) return body;
 
   // Custom-model maxOutput overrides the static catalog ceiling; the thinking
   // budget is then fitted inside the already-clamped cap.
-  const ceiling = (Number.isFinite(customMaxOutput) && customMaxOutput > 0 ? customMaxOutput : null)
-    ?? (getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS);
+  const ceiling = (Number.isFinite(customMaxOutput) && customMaxOutput > 0 ? customMaxOutput : null) ?? (
+  getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS);
   if (body.max_tokens > ceiling) body.max_tokens = ceiling;
 
   if (
-    body.thinking?.type === "enabled"
-    && body.thinking.budget_tokens
-    && body.thinking.budget_tokens >= body.max_tokens
-  ) {
+  body.thinking?.type === "enabled" &&
+  body.thinking.budget_tokens &&
+  body.thinking.budget_tokens >= body.max_tokens)
+  {
     body.max_tokens = Math.min(body.thinking.budget_tokens + 1024, ceiling);
     if (body.thinking.budget_tokens >= body.max_tokens) {
       // Anthropic requires budget_tokens strictly below max_tokens. The 1024
@@ -286,7 +287,7 @@ export function reconcileClaudeThinkingBudget(body, provider = "claude", customM
 // 2. output_config.effort → unsupported on Haiku
 // 3. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
 export function normalizeClaudePassthrough(body, model = "", provider = "claude", customMaxOutput = null, options = null) {
-  if (!body || typeof body !== "object") return body;
+  if (!body || !isObject(body)) return body;
 
   // 1. Downgrade adaptive thinking for models that don't support it
   if (body.thinking?.type === "adaptive" && ADAPTIVE_THINKING_UNSUPPORTED.test(model)) {
@@ -305,11 +306,11 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
     const foldSystemTurns = options?.foldSystemTurns === true;
     for (const msg of body.messages) {
       if (msg.role === ROLE.SYSTEM) {
-        const blocks = Array.isArray(msg.content)
-          ? msg.content
-          : (typeof msg.content === "string" && msg.content
-            ? [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }]
-            : []);
+        const blocks = Array.isArray(msg.content) ?
+        msg.content :
+        isString(msg.content) && msg.content ?
+        [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }] :
+        [];
         if (!foldSystemTurns) {
           messages.push(msg);
           continue;
@@ -318,32 +319,32 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
         continue;
       }
       if (foldSystemTurns && buffered.length && msg.role === ROLE.USER) {
-        const existing = Array.isArray(msg.content)
-          ? msg.content
-          : (typeof msg.content === "string" && msg.content
-            ? [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }]
-            : []);
+        const existing = Array.isArray(msg.content) ?
+        msg.content :
+        isString(msg.content) && msg.content ?
+        [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }] :
+        [];
         msg.content = [...existing, ...buffered];
         buffered.length = 0;
       }
       messages.push(msg);
     }
     if (!foldSystemTurns) {
-      const hoisted = messages
-        .filter((m) => m.role === ROLE.SYSTEM)
-        .flatMap((m) => Array.isArray(m.content)
-          ? m.content
-          : (typeof m.content === "string" && m.content
-            ? [{ type: CLAUDE_BLOCK.TEXT, text: m.content }]
-            : []))
-        .filter((block) => HOISTABLE_SYSTEM_BLOCKS.has(block?.type));
+      const hoisted = messages.
+      filter((m) => m.role === ROLE.SYSTEM).
+      flatMap((m) => Array.isArray(m.content) ?
+      m.content :
+      isString(m.content) && m.content ?
+      [{ type: CLAUDE_BLOCK.TEXT, text: m.content }] :
+      []).
+      filter((block) => HOISTABLE_SYSTEM_BLOCKS.has(block?.type));
       body.messages = messages.filter((m) => m.role !== ROLE.SYSTEM);
       if (hoisted.length) {
-        const existing = Array.isArray(body.system)
-          ? body.system
-          : (typeof body.system === "string" && body.system
-            ? [{ type: CLAUDE_BLOCK.TEXT, text: body.system }]
-            : []);
+        const existing = Array.isArray(body.system) ?
+        body.system :
+        isString(body.system) && body.system ?
+        [{ type: CLAUDE_BLOCK.TEXT, text: body.system }] :
+        [];
         body.system = [...existing, ...hoisted];
       }
     } else {
@@ -400,9 +401,9 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
 // - Fix tool_use/tool_result ordering
 // - Apply cloaking (billing header + fake user ID) for OAuth tokens
 export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null, customMaxOutput = null) {
-  const dropsClaudeCacheControl = PROVIDERS[provider]?.quirks?.dropClaudeCacheControl
-    || provider === "ollama"
-    || provider === "ollama-local";
+  const dropsClaudeCacheControl = PROVIDERS[provider]?.quirks?.dropClaudeCacheControl ||
+  provider === "ollama" ||
+  provider === "ollama-local";
   const allowCacheControl = !dropsClaudeCacheControl;
   // quirk: MiniMax's Claude-compatible endpoint rejects Anthropic's output_config (400 invalid params)
   if (PROVIDERS[provider]?.quirks?.dropOutputConfig) {
@@ -533,19 +534,19 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     // Strip built-in tools (e.g. web_search_20250305) and normalize to Anthropic-native shape
     // (drop `type` field, fold `function.{name,description,parameters}`) for non-Anthropic providers
     if (provider !== "claude") {
-      body.tools = body.tools
-        .filter(tool => !tool.type || tool.type === "function")
-        .map(tool => {
-          if (tool.function) {
-            return {
-              name: tool.function.name,
-              description: tool.function.description,
-              input_schema: tool.function.parameters,
-            };
-          }
-          const { type, ...rest } = tool;
-          return rest;
-        });
+      body.tools = body.tools.
+      filter((tool) => !tool.type || tool.type === "function").
+      map((tool) => {
+        if (tool.function) {
+          return {
+            name: tool.function.name,
+            description: tool.function.description,
+            input_schema: tool.function.parameters
+          };
+        }
+        const { type, ...rest } = tool;
+        return rest;
+      });
     }
 
     body.tools = body.tools.map((tool, i) => {

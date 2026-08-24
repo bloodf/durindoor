@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { normalizeQuotaIdentifier } from "../../../src/shared/utils/quotaSnapshot.js";
+import { isBoolean, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const METADATA_TEXT_MAX = 128;
 const UNSAFE_TEXT = /(?:[\u0000-\u001f\u007f]|[a-z][a-z0-9+.-]*:\/\/|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|bearer\s+|authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|cookie|secret)/i;
 
 export function asRecord(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  return value && isObject(value) && !Array.isArray(value) ? value : null;
 }
 
 export function asArray(value) {
@@ -13,8 +14,8 @@ export function asArray(value) {
 }
 
 export function finiteQuotaNumber(value, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
-  if (typeof value === "string" && value.trim()) value = Number(value);
-  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) return null;
+  if (isString(value) && value.trim()) value = Number(value);
+  if (!isNumber(value) || !Number.isFinite(value) || value < min || value > max) return null;
   return value;
 }
 
@@ -40,12 +41,12 @@ export function parseQuotaTimestamp(value, { now = Date.now(), relativeMs = fals
     timestamp = now + duration;
   } else if (value instanceof Date) {
     timestamp = value.getTime();
-  } else if (typeof value === "number") {
+  } else if (isNumber(value)) {
     timestamp = value < 1e12 ? value * 1000 : value;
-  } else if (typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim())) {
+  } else if (isString(value) && /^\d+(?:\.\d+)?$/.test(value.trim())) {
     const numeric = Number(value);
     timestamp = numeric < 1e12 ? numeric * 1000 : numeric;
-  } else if (typeof value === "string") {
+  } else if (isString(value)) {
     timestamp = new Date(value).getTime();
   }
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
@@ -57,12 +58,12 @@ export function parseQuotaTimestamp(value, { now = Date.now(), relativeMs = fals
 }
 
 function hashedKey(namespace, raw) {
-  const digest = createHash("sha256")
-    .update(namespace)
-    .update("\0")
-    .update(String(raw))
-    .digest("hex")
-    .slice(0, 32);
+  const digest = createHash("sha256").
+  update(namespace).
+  update("\0").
+  update(String(raw)).
+  digest("hex").
+  slice(0, 32);
   return `${namespace}:h-${digest}`;
 }
 
@@ -76,17 +77,17 @@ export function quotaScopedKey(namespace, raw, { privateValue = false, fallback 
         requireNamespace: true,
         // The Batch-1 quota contract explicitly reserves this otherwise
         // security-sensitive word as a public quota-window dimension.
-        allowedNestedSegments: ["requests", "tokens"].includes(namespace) ? ["session"] : [],
+        allowedNestedSegments: ["requests", "tokens"].includes(namespace) ? ["session"] : []
       });
     } catch {
+
       // Hash below; provider values are never reflected in validation errors.
-    }
-  }
+    }}
   return hashedKey(namespace, value);
 }
 
 function safeMetadataText(value) {
-  if (typeof value !== "string") return null;
+  if (!isString(value)) return null;
   const text = value.trim();
   if (!text || text.length > METADATA_TEXT_MAX || UNSAFE_TEXT.test(text)) return null;
   const opaque = text.length >= 48 && /^[A-Za-z0-9._~+/-]+$/.test(text);
@@ -99,7 +100,7 @@ export function quotaMetadata({ displayName, plan, recurring, windowSeconds } = 
   const safePlan = safeMetadataText(plan);
   if (safeDisplayName) metadata.displayName = safeDisplayName;
   if (safePlan) metadata.plan = safePlan;
-  if (typeof recurring === "boolean") metadata.recurring = recurring;
+  if (isBoolean(recurring)) metadata.recurring = recurring;
   if (Number.isSafeInteger(windowSeconds) && windowSeconds >= 0) metadata.windowSeconds = windowSeconds;
   return metadata;
 }
@@ -136,9 +137,9 @@ export function quotaRow({
   resetAt = null,
   cooldownUntil = null,
   exhausted = false,
-  metadata = {},
+  metadata = {}
 } = {}) {
-  if (typeof dimensionKey !== "string" || !dimensionKey) return null;
+  if (!isString(dimensionKey) || !dimensionKey) return null;
   if (!new Set(["bounded", "unlimited", "unknown"]).has(limitKind)) return null;
 
   limit = limit === null ? null : finiteQuotaNumber(limit);
@@ -157,9 +158,9 @@ export function quotaRow({
     if (remainingRatio === null && remaining !== null) remainingRatio = limit === 0 ? 0 : remaining / limit;
   }
 
-  const state = limitKind === "unlimited" && !cooldownUntil && exhausted !== true
-    ? "available"
-    : deriveState({ exhausted, cooldownUntil, remaining, remainingRatio, limit });
+  const state = limitKind === "unlimited" && !cooldownUntil && exhausted !== true ?
+  "available" :
+  deriveState({ exhausted, cooldownUntil, remaining, remainingRatio, limit });
   return {
     accountKey,
     resourceKey,
@@ -168,7 +169,7 @@ export function quotaRow({
     amounts: { limitKind, limit, used, remaining, remainingRatio, unit },
     resetAt,
     cooldownUntil,
-    metadata,
+    metadata
   };
 }
 

@@ -9,9 +9,10 @@ import {
   mergeUpstreamExtraHeaders,
   readTextStream,
   sanitizeErrorMessage,
-  stripCookieInputPrefix,
-} from "./websession-utils.js";
+  stripCookieInputPrefix } from
+"./websession-utils.js";
 import yuanbaoWebRegistry from "../providers/registry/yuanbao-web.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const YUANBAO_BASE = "https://yuanbao.tencent.com";
 const CREATE_URL = `${YUANBAO_BASE}/api/user/agent/conversation/create`;
@@ -19,7 +20,7 @@ const CHAT_URL = `${YUANBAO_BASE}/api/chat`;
 const DEFAULT_AGENT_ID = "naQivTmsDa";
 const DEFAULT_MODEL = yuanbaoWebRegistry.models?.[0]?.id || "deepseek-v3";
 const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
 const MODEL_MAP = {
   "deepseek-v3": { chatModelId: "deep_seek_v3" },
@@ -29,11 +30,11 @@ const MODEL_MAP = {
   hunyuan: { chatModelId: "hunyuan_gpt_175B_0404" },
   "hunyuan-t1": { chatModelId: "hunyuan_t1" },
   "hunyuan-search": { chatModelId: "hunyuan_gpt_175B_0404", supportFunctions: ["supportInternetSearch"] },
-  "hunyuan-t1-search": { chatModelId: "hunyuan_t1", supportFunctions: ["supportInternetSearch"] },
+  "hunyuan-t1-search": { chatModelId: "hunyuan_t1", supportFunctions: ["supportInternetSearch"] }
 };
 
 function isEncryptedCredentialBlob(value) {
-  return typeof value === "string" && value.trim().startsWith("enc:v1:");
+  return isString(value) && value.trim().startsWith("enc:v1:");
 }
 
 function buildPrompt(messages) {
@@ -99,7 +100,7 @@ function transformYuanbaoStream(upstream, model, id, created, signal, log) {
         if (event.type === "think" && event.content) {
           ensureRole();
           emit({ reasoning_content: event.content });
-        } else if (event.type === "text" && typeof event.msg === "string" && event.msg) {
+        } else if (event.type === "text" && isString(event.msg) && event.msg) {
           ensureRole();
           emit({ content: event.msg });
         }
@@ -131,7 +132,7 @@ function transformYuanbaoStream(upstream, model, id, created, signal, log) {
         }
         reader.releaseLock();
       }
-    },
+    }
   });
 }
 
@@ -142,8 +143,8 @@ async function collectYuanbaoResponse(upstream, signal) {
   for (const line of text.split(/\r?\n/)) {
     const event = parseYuanbaoDataLine(line);
     if (!event) continue;
-    if (event.type === "think" && event.content) reasoning += event.content;
-    else if (event.type === "text" && typeof event.msg === "string") content += event.msg;
+    if (event.type === "think" && event.content) reasoning += event.content;else
+    if (event.type === "text" && isString(event.msg)) content += event.msg;
   }
   return { content, reasoning };
 }
@@ -178,7 +179,7 @@ export class YuanbaoWebExecutor extends BaseExecutor {
     const baseHeaders = { Cookie: cookie, "User-Agent": USER_AGENT, Origin: YUANBAO_BASE, Referer: `${YUANBAO_BASE}/chat/${DEFAULT_AGENT_ID}`, "X-Agentid": DEFAULT_AGENT_ID };
     let conversationId;
     try {
-            const createRes = await fetchWithTimeout(CREATE_URL, { method: "POST", headers: { ...baseHeaders, "Content-Type": "application/json" }, body: JSON.stringify({ agentId: DEFAULT_AGENT_ID }), signal }, { proxyOptions });
+      const createRes = await fetchWithTimeout(CREATE_URL, { method: "POST", headers: { ...baseHeaders, "Content-Type": "application/json" }, body: JSON.stringify({ agentId: DEFAULT_AGENT_ID }), signal }, { proxyOptions });
       if (!createRes.ok) {
         const upstreamError = await readUpstreamErrorDetails(createRes);
         let message = createRes.status === 401 || createRes.status === 403 ? "Yuanbao auth failed; hy_user/hy_token may be expired." : createRes.status === 429 ? "Yuanbao rate limited. Wait and retry." : `Yuanbao conversation creation failed (HTTP ${createRes.status})`;
@@ -204,7 +205,7 @@ export class YuanbaoWebExecutor extends BaseExecutor {
       agentId: DEFAULT_AGENT_ID,
       supportHint: 1,
       version: "v2",
-      chatModelId: modelSpec.chatModelId,
+      chatModelId: modelSpec.chatModelId
     };
     if (modelSpec.supportFunctions) chatBody.supportFunctions = modelSpec.supportFunctions;
     const chatHeaders = { ...baseHeaders, "Content-Type": "application/json", Accept: "text/event-stream" };
@@ -212,7 +213,7 @@ export class YuanbaoWebExecutor extends BaseExecutor {
 
     let upstreamResponse;
     try {
-            upstreamResponse = await fetchWithTimeout(messageUrl, { method: "POST", headers: chatHeaders, body: JSON.stringify(chatBody), signal }, { proxyOptions });
+      upstreamResponse = await fetchWithTimeout(messageUrl, { method: "POST", headers: chatHeaders, body: JSON.stringify(chatBody), signal }, { proxyOptions });
     } catch (err) {
       log?.error?.("YUANBAO-WEB", `Message send failed: ${err?.message || err}`);
       return { response: errorJson(502, `Yuanbao connection failed: ${err?.message || err}`), url: messageUrl, headers: chatHeaders, transformedBody: chatBody };
@@ -242,11 +243,11 @@ export class YuanbaoWebExecutor extends BaseExecutor {
         created,
         model: resolvedModel,
         choices: [{ index: 0, message: messagePayload, finish_reason: "stop" }],
-        usage: { prompt_tokens: estimateTokens(prompt), completion_tokens: estimateTokens(content + reasoning), total_tokens: estimateTokens(prompt) + estimateTokens(content + reasoning) },
+        usage: { prompt_tokens: estimateTokens(prompt), completion_tokens: estimateTokens(content + reasoning), total_tokens: estimateTokens(prompt) + estimateTokens(content + reasoning) }
       }),
       url: messageUrl,
       headers: chatHeaders,
-      transformedBody: chatBody,
+      transformedBody: chatBody
     };
   }
 }

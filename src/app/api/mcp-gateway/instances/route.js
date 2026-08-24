@@ -4,6 +4,7 @@ import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { sanitizeInstanceHeaders } from "@/lib/mcp/gateway/instanceHeaders";
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +16,13 @@ const VALID_TRANSPORTS = new Set(["http", "sse", "stdio"]);
 function stripSecrets(inst) {
   if (!inst) return inst;
   const { headers: _h, env: _e, oauthTokens: _o, providerConnectionId: _p, ...out } = inst;
-  void _h; void _e; void _p;
+  void _h;void _e;void _p;
   out.oauthStatus = deriveOauthStatus(!!inst.oauth, _o);
   out.oauthClientConfigured = !!(_o && _o.client && _o.client.clientId);
   // Expose only whether a connection is referenced, never the id (which is
   // an internal foreign key and could be probed by an unauthenticated UI
   // surface for enumeration).
-  out.hasProviderConnection = typeof inst.providerConnectionId === "string" && inst.providerConnectionId.length > 0;
+  out.hasProviderConnection = isString(inst.providerConnectionId) && inst.providerConnectionId.length > 0;
   return out;
 }
 
@@ -118,10 +119,10 @@ export async function POST(request) {
     const inst = await createInstance(body);
     return NextResponse.json({ instance: stripSecrets(inst) }, { status: 201 });
   } catch (e) {
-    const err = e && typeof e === "object" ? e : {};
+    const err = e && isObject(e) ? e : {};
     if (err?.code === "DUPLICATE_SLUG" || /already exists/i.test(err.message || "")) {
       return NextResponse.json({ error: err.message || "slug already exists" }, { status: 409 });
     }
     return NextResponse.json({ error: err.message || String(e) }, { status: 500 });
   }
- }
+}

@@ -30,22 +30,23 @@ import { parseRateLimitEvidence } from "../utils/error.js";
  * them as markers here.
  *
  */
+import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 
 const AGENTROUTER_RULES = [
-  {
-    id: "agentrouter-quota-misstatus",
-    fromStatuses: new Set([403, 400]),
-    toStatus: HTTP_STATUS.RATE_LIMITED,
-    textMarkers: ["额度不足"],
-    excludeMarkers: ["无权访问"],
-    defaultRetryAfterMs: 60_000,
-  },
-];
+{
+  id: "agentrouter-quota-misstatus",
+  fromStatuses: new Set([403, 400]),
+  toStatus: HTTP_STATUS.RATE_LIMITED,
+  textMarkers: ["额度不足"],
+  excludeMarkers: ["无权访问"],
+  defaultRetryAfterMs: 60_000
+}];
+
 
 /** Provider id (lowercase) → ordered rules; first match wins. */
 export const statusRestatementRegistry = new Map([
-  ["agentrouter", AGENTROUTER_RULES],
-]);
+["agentrouter", AGENTROUTER_RULES]]
+);
 
 function matchesAgentrouterQuotaEnvelope(body) {
   const { message, type, code } = inspectProviderErrorEnvelope(body);
@@ -57,9 +58,9 @@ function matchesAgentrouterQuotaEnvelope(body) {
 
 /** Parse bounded rate-limit timing after a status rule changes a response to 429. */
 export function parseRestatedRateLimitEvidence({ status, headers, body, now = Date.now() }) {
-  let bodyText = typeof body === "string" ? body : "";
+  let bodyText = isString(body) ? body : "";
   if (!bodyText && body !== null && body !== undefined) {
-    try { bodyText = JSON.stringify(body); } catch { /* keep empty bounded input */ }
+    try {bodyText = JSON.stringify(body);} catch {/* keep empty bounded input */}
   }
   return parseRateLimitEvidence({ status, headers, bodyText, now });
 }
@@ -83,7 +84,7 @@ export function applyStatusRestatement(input) {
     status: input.status,
     retryAfterMs: input.retryAfterMs ?? null,
     ruleId: null,
-    fromStatus: input.status,
+    fromStatus: input.status
   };
   if (!input.provider) return passthrough;
   const rules = statusRestatementRegistry.get(input.provider.toLowerCase());
@@ -93,12 +94,12 @@ export function applyStatusRestatement(input) {
     if (!rule.fromStatuses.has(input.status)) continue;
     if (!matchesAgentrouterQuotaEnvelope(input.body)) continue;
     const upstreamRetryAfterMs =
-      typeof input.retryAfterMs === "number" && input.retryAfterMs > 0 ? input.retryAfterMs : null;
+    isNumber(input.retryAfterMs) && input.retryAfterMs > 0 ? input.retryAfterMs : null;
     return {
       status: rule.toStatus,
       retryAfterMs: upstreamRetryAfterMs ?? rule.defaultRetryAfterMs ?? null,
       ruleId: rule.id,
-      fromStatus: input.status,
+      fromStatus: input.status
     };
   }
   return passthrough;

@@ -1,11 +1,12 @@
 // Boundary-parser guards for JSON-RPC / MCP payloads.
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 /**
  * @param {unknown} x
  * @returns {x is Record<string, unknown>}
  */
 export function isRecord(x) {
-  return typeof x === "object" && x !== null && !Array.isArray(x);
+  return isObject(x) && x !== null && !Array.isArray(x);
 }
 
 /**
@@ -15,7 +16,7 @@ export function isRecord(x) {
 export function isJsonRpcRequest(x) {
   if (!isRecord(x)) return false;
   if (x.jsonrpc !== "2.0") return false;
-  return typeof x.method === "string";
+  return isString(x.method);
 }
 
 /**

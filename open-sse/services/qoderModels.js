@@ -17,8 +17,9 @@ import { createHash } from "crypto";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { buildCosyHeaders } from "../shared/qoder/cosy.js";
 import {
-  QODER_MODEL_LIST_URL,
-} from "../shared/qoder/constants.js";
+  QODER_MODEL_LIST_URL } from
+"../shared/qoder/constants.js";
+import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1h, same as the Kiro catalog
@@ -54,7 +55,7 @@ function cosyCredsFromConnection(credentials) {
     authToken: credentials.accessToken,
     name: credentials.displayName || "",
     email: credentials.email || "",
-    machineId: psd.machineId || "",
+    machineId: psd.machineId || ""
   };
 }
 
@@ -71,7 +72,7 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
   const headers = {
     Accept: "application/json",
     "Accept-Encoding": "identity",
-    ...buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds),
+    ...buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds)
   };
 
   const controller = new AbortController();
@@ -80,7 +81,7 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
   let response;
   try {
     timer = setTimeout(() => controller.abort("timeout"), FETCH_TIMEOUT_MS);
-    if (signal && typeof signal.addEventListener === "function") {
+    if (signal && isFunction(signal.addEventListener)) {
       // If the parent signal already aborted before we got here, the
       // 'abort' event has already fired and addEventListener won't
       // re-trigger it. Propagate the cancellation immediately.
@@ -96,9 +97,9 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
       {
         method: "GET",
         headers,
-        signal: controller.signal,
+        signal: controller.signal
       },
-      proxyOptions,
+      proxyOptions
     );
   } finally {
     if (timer) clearTimeout(timer);
@@ -113,7 +114,7 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
   const models = [];
   const rawConfigs = new Map();
   for (const entry of body.chat) {
-    if (!entry || typeof entry !== "object") continue;
+    if (!entry || !isObject(entry)) continue;
     const key = entry.key;
     if (!key) continue;
 
@@ -131,7 +132,7 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
       isVL: !!entry.is_vl,
       isReasoning: !!entry.is_reasoning,
       maxOutputTokens: Number(entry.max_output_tokens) || 0,
-      description: entry.description || "",
+      description: entry.description || ""
     });
   }
 
@@ -141,18 +142,18 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
   // defaults — but never touch an upstream-provided cmodel.
   if (!rawConfigs.has("cmodel")) {
     const fallbackConfig = body.chat.find((entry) => entry && entry.key && rawConfigs.has(entry.key)) || null;
-    const cmodelConfig = fallbackConfig
-      ? { ...fallbackConfig, key: "cmodel", display_name: "Cantus" }
-      : {
-          key: "cmodel",
-          enable: true,
-          display_name: "Cantus",
-          max_input_tokens: 131072,
-          max_output_tokens: 64000,
-          is_vl: false,
-          is_reasoning: false,
-          description: "Qoder Cantus (C-model)",
-        };
+    const cmodelConfig = fallbackConfig ?
+    { ...fallbackConfig, key: "cmodel", display_name: "Cantus" } :
+    {
+      key: "cmodel",
+      enable: true,
+      display_name: "Cantus",
+      max_input_tokens: 131072,
+      max_output_tokens: 64000,
+      is_vl: false,
+      is_reasoning: false,
+      description: "Qoder Cantus (C-model)"
+    };
     rawConfigs.set("cmodel", cmodelConfig);
     models.push({
       id: "cmodel",
@@ -161,7 +162,7 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
       isVL: !!cmodelConfig.is_vl,
       isReasoning: !!cmodelConfig.is_reasoning,
       maxOutputTokens: Number(cmodelConfig.max_output_tokens) || 0,
-      description: cmodelConfig.description || "",
+      description: cmodelConfig.description || ""
     });
   }
 
@@ -216,7 +217,7 @@ export async function resolveQoderModels(credentials, options = {}) {
       expiresAt: Date.now() + CACHE_TTL_MS,
       models: fetched.models,
       rawConfigs: fetched.rawConfigs,
-      fetched: true,
+      fetched: true
     };
     catalogCache.set(key, entry);
     return entry;

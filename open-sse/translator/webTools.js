@@ -1,11 +1,12 @@
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 function toRecord(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  return value && isObject(value) && !Array.isArray(value) ? value : null;
 }
 
 function normalizeToolName(name) {
-  return String(name || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+  return String(name || "").
+  toLowerCase().
+  replace(/[^a-z0-9]/g, "");
 }
 
 function getRequestedToolNames(tools) {
@@ -14,7 +15,7 @@ function getRequestedToolNames(tools) {
   const seen = new Set();
   for (const tool of tools) {
     const fn = toRecord(toRecord(tool)?.function);
-    const name = typeof fn?.name === "string" ? fn.name.trim() : "";
+    const name = isString(fn?.name) ? fn.name.trim() : "";
     if (!name || seen.has(name)) continue;
     seen.add(name);
     names.push({ original: name, normalized: normalizeToolName(name) });
@@ -23,31 +24,31 @@ function getRequestedToolNames(tools) {
 }
 
 function stripCodeFence(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^```(?:json|javascript|js|python)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
+  return String(value || "").
+  trim().
+  replace(/^```(?:json|javascript|js|python)?\s*/i, "").
+  replace(/\s*```$/i, "").
+  trim();
 }
 
 function parseLooseJsonObject(raw) {
   const trimmed = stripCodeFence(raw);
   const candidates = [
-    trimmed,
-    trimmed
-      .replace(/\bTrue\b/g, "true")
-      .replace(/\bFalse\b/g, "false")
-      .replace(/\bNone\b/g, "null")
-      .replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_-]*)(\s*:)/g, '$1"$2"$3')
-      .replace(/,\s*([}\]])/g, "$1"),
-  ];
+  trimmed,
+  trimmed.
+  replace(/\bTrue\b/g, "true").
+  replace(/\bFalse\b/g, "false").
+  replace(/\bNone\b/g, "null").
+  replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_-]*)(\s*:)/g, '$1"$2"$3').
+  replace(/,\s*([}\]])/g, "$1")];
+
   for (const candidate of candidates) {
     try {
       return toRecord(JSON.parse(candidate));
     } catch {
+
       // Try the next normalized candidate.
-    }
-  }
+    }}
   return null;
 }
 
@@ -57,7 +58,7 @@ function serializeToolsToPrompt(tools) {
   for (const tool of tools) {
     const fn = toRecord(toRecord(tool)?.function);
     if (!fn?.name) continue;
-    const desc = typeof fn.description === "string" && fn.description ? fn.description : "";
+    const desc = isString(fn.description) && fn.description ? fn.description : "";
     let params = "";
     try {
       params = fn.parameters ? JSON.stringify(fn.parameters) : "";
@@ -70,13 +71,13 @@ function serializeToolsToPrompt(tools) {
   }
   if (lines.length === 0) return "";
   return [
-    "You can call tools. To call a tool, reply with a single line containing a <tool> block",
-    'with JSON: <tool>{"name": "<tool_name>", "arguments": { ... }}</tool>',
-    "Only emit the <tool> block when you actually want to call a tool; otherwise answer normally.",
-    "",
-    "Available tools:",
-    ...lines,
-  ].join("\n");
+  "You can call tools. To call a tool, reply with a single line containing a <tool> block",
+  'with JSON: <tool>{"name": "<tool_name>", "arguments": { ... }}</tool>',
+  "Only emit the <tool> block when you actually want to call a tool; otherwise answer normally.",
+  "",
+  "Available tools:",
+  ...lines].
+  join("\n");
 }
 
 function resolveRequestedToolName(emitted, requestedTools) {
@@ -98,7 +99,7 @@ function stripRanges(text, ranges) {
 
 function toArgumentsString(value) {
   if (value === undefined) return "{}";
-  if (typeof value === "string") {
+  if (isString(value)) {
     const parsed = parseLooseJsonObject(value);
     return parsed ? JSON.stringify(parsed) : value;
   }
@@ -117,9 +118,9 @@ export function prepareToolMessages(bodyObj, messages) {
     hasTools: true,
     requestedTools,
     effectiveMessages: [
-      { role: "system", content: serializeToolsToPrompt(requestedTools) },
-      ...messages,
-    ],
+    { role: "system", content: serializeToolsToPrompt(requestedTools) },
+    ...messages]
+
   };
 }
 
@@ -132,13 +133,13 @@ export function parseToolCallsFromText(text, idSeed = "call", requestedTools) {
   let match;
   while ((match = blockRe.exec(content)) !== null) {
     const parsed = parseLooseJsonObject(match[1]);
-    const emitted = typeof parsed?.name === "string" ? parsed.name : parsed?.command;
+    const emitted = isString(parsed?.name) ? parsed.name : parsed?.command;
     const name = resolveRequestedToolName(emitted, requestedToolNames);
     if (!name) continue;
     toolCalls.push({
       id: `${idSeed}_${toolCalls.length}`,
       type: "function",
-      function: { name, arguments: toArgumentsString(parsed.arguments) },
+      function: { name, arguments: toArgumentsString(parsed.arguments) }
     });
     acceptedRanges.push({ start: match.index, end: blockRe.lastIndex });
   }
@@ -151,6 +152,6 @@ export function buildToolAwareResult(rawContent, requestedTools, idSeed = "call"
   return {
     content,
     toolCalls,
-    finishReason: toolCalls ? "tool_calls" : "stop",
+    finishReason: toolCalls ? "tool_calls" : "stop"
   };
 }

@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 
 import { OAUTH_TIMEOUT } from "@/lib/oauth/constants/oauth.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const flows = new Map();
 const stateAliases = new Map();
@@ -14,7 +15,7 @@ function cloneAndFreeze(value) {
   const seen = new WeakSet();
 
   function freeze(current) {
-    if (!current || typeof current !== "object" || seen.has(current)) return current;
+    if (!current || !isObject(current) || seen.has(current)) return current;
     seen.add(current);
     for (const nested of Object.values(current)) freeze(nested);
     return Object.freeze(current);
@@ -24,13 +25,13 @@ function cloneAndFreeze(value) {
 }
 
 function normalizeRequiredString(value, label) {
-  const normalized = typeof value === "string" ? value.trim() : "";
+  const normalized = isString(value) ? value.trim() : "";
   if (!normalized) throw new TypeError(`${label} is required`);
   return normalized;
 }
 
 function normalizeOptionalString(value) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  return isString(value) && value.trim() ? value.trim() : null;
 }
 
 function randomOpaqueId() {
@@ -65,16 +66,16 @@ function publicDescriptor(record) {
     kind: record.kind,
     status: record.status,
     createdAt: record.createdAt,
-    expiresAt: record.expiresAt,
+    expiresAt: record.expiresAt
   });
 }
 
 function resolveRecord(selector, providerArgument = null) {
   sweepExpired();
 
-  const normalized = typeof selector === "string"
-    ? { flowId: selector, provider: providerArgument }
-    : (selector || {});
+  const normalized = isString(selector) ?
+  { flowId: selector, provider: providerArgument } :
+  selector || {};
   const flowId = normalizeOptionalString(normalized.flowId ?? normalized.id);
   const state = normalizeOptionalString(normalized.state);
   const provider = normalizeOptionalString(normalized.provider ?? providerArgument);
@@ -84,7 +85,7 @@ function resolveRecord(selector, providerArgument = null) {
   if (flowId && idFromState && flowId !== idFromState) return null;
 
   const record = flows.get(flowId || idFromState);
-  if (!record || (state && record.state !== state) || (provider && record.provider !== provider)) {
+  if (!record || state && record.state !== state || provider && record.provider !== provider) {
     return null;
   }
   return record;
@@ -100,16 +101,16 @@ export function createOAuthFlow({
   kind = "authorization",
   payload = {},
   ttlMs = OAUTH_TIMEOUT,
-  intent = null,
+  intent = null
 }) {
   sweepExpired();
   const normalizedProvider = normalizeRequiredString(provider, "provider");
   const intentKey = intent?.ownerId ? `${normalizedProvider}:${intent.ownerId}` : null;
   if (
-    intent &&
-    (intent.provider !== normalizedProvider ||
-      providerIntentGenerations.get(intentKey) !== intent.generation)
-  ) {
+  intent && (
+  intent.provider !== normalizedProvider ||
+  providerIntentGenerations.get(intentKey) !== intent.generation))
+  {
     throw new Error("OAuth flow was superseded before initialization completed");
   }
   const normalizedState = normalizeOptionalString(state);
@@ -119,9 +120,9 @@ export function createOAuthFlow({
   }
 
   const requestedTtl = Number(ttlMs);
-  const boundedTtl = Number.isFinite(requestedTtl) && requestedTtl > 0
-    ? Math.min(requestedTtl, OAUTH_TIMEOUT)
-    : OAUTH_TIMEOUT;
+  const boundedTtl = Number.isFinite(requestedTtl) && requestedTtl > 0 ?
+  Math.min(requestedTtl, OAUTH_TIMEOUT) :
+  OAUTH_TIMEOUT;
   const createdAt = Date.now();
   const record = {
     flowId: randomOpaqueId(),
@@ -133,7 +134,7 @@ export function createOAuthFlow({
     claimToken: null,
     payload: cloneAndFreeze(payload || {}),
     createdAt,
-    expiresAt: createdAt + boundedTtl,
+    expiresAt: createdAt + boundedTtl
   };
 
   flows.set(record.flowId, record);
@@ -176,7 +177,7 @@ export function claimOAuthFlow(selector, provider = null) {
   return Object.freeze({
     ...publicDescriptor(record),
     claimToken: record.claimToken,
-    payload: record.payload,
+    payload: record.payload
   });
 }
 
@@ -188,7 +189,7 @@ export function isOAuthFlowClaimActive(claim) {
   return Boolean(
     record &&
     record.status === "claimed" &&
-    record.claimToken === claim.claimToken,
+    record.claimToken === claim.claimToken
   );
 }
 
@@ -207,7 +208,7 @@ export function releaseOAuthFlow(claim) {
   if (!claim?.flowId || !claim?.claimToken) return false;
   const record = flows.get(claim.flowId);
   if (!record || record.kind !== "device" || record.status !== "claimed" ||
-      record.claimToken !== claim.claimToken || record.expiresAt <= Date.now()) {
+  record.claimToken !== claim.claimToken || record.expiresAt <= Date.now()) {
     if (record?.expiresAt <= Date.now()) deleteRecord(record);
     return false;
   }

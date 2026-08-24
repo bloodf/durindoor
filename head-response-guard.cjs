@@ -27,7 +27,7 @@
 /**
  * @param {import("http").IncomingMessage} req
  * @returns {boolean} true when the request method is HEAD (case-insensitive).
- */
+ */const { isFunction } = require("./src/shared/utils/typeChecks.cjs");
 function isHeadRequest(req) {
   return String(req?.method || "GET").toUpperCase() === "HEAD";
 }
@@ -45,8 +45,8 @@ function applyHeadResponseGuard(req, res) {
   const origEnd = res.end;
   res.write = function (_chunk, _enc, cb) {
     // Accept (chunk, cb) and (chunk, enc, cb) arities; signal success.
-    const callback = typeof _enc === "function" ? _enc : cb;
-    if (typeof callback === "function") callback();
+    const callback = isFunction(_enc) ? _enc : cb;
+    if (isFunction(callback)) callback();
     return true;
   };
   res.end = function (_chunk, _enc, cb) {
@@ -55,9 +55,9 @@ function applyHeadResponseGuard(req, res) {
     // after the stream fully closes — never swallow it (a swallowed
     // callback can hang async handlers awaiting `end`). Body chunks
     // are dropped; status + headers set by the handler are kept.
-    const callback = typeof _chunk === "function"
-      ? _chunk
-      : (typeof _enc === "function" ? _enc : cb);
+    const callback = isFunction(_chunk) ?
+    _chunk :
+    isFunction(_enc) ? _enc : cb;
     return origEnd.call(res, callback);
   };
 }

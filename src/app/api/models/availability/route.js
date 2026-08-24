@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
-  updateProviderConnection,
-} from "@/lib/localDb";
+  updateProviderConnection } from
+"@/lib/localDb";
 
 const MODEL_LOCK_PREFIX = "modelLock_";
 
 function getActiveModelLocks(connection) {
   const now = Date.now();
-  return Object.entries(connection)
-    .filter(([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) && value)
-    .map(([key, value]) => ({
-      key,
-      model: key.slice(MODEL_LOCK_PREFIX.length) || "__all",
-      until: value,
-      active: new Date(value).getTime() > now,
-    }))
-    .filter((lock) => lock.active);
+  return Object.entries(connection).
+  filter(([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) && value).
+  map(([key, value]) => ({
+    key,
+    model: key.slice(MODEL_LOCK_PREFIX.length) || "__all",
+    until: value,
+    active: new Date(value).getTime() > now
+  })).
+  filter((lock) => lock.active);
 }
 
 export async function GET() {
@@ -34,7 +34,7 @@ export async function GET() {
           until: lock.until,
           connectionId: connection.id,
           connectionName: connection.name || connection.email || connection.id,
-          lastError: connection.lastError || null,
+          lastError: connection.lastError || null
         });
       }
 
@@ -45,20 +45,20 @@ export async function GET() {
           status: "unavailable",
           connectionId: connection.id,
           connectionName: connection.name || connection.email || connection.id,
-          lastError: connection.lastError || null,
+          lastError: connection.lastError || null
         });
       }
     }
 
     return NextResponse.json({
       models,
-      unavailableCount: models.length,
+      unavailableCount: models.length
     });
   } catch (error) {
     console.error("[API] Failed to get model availability:", error);
     return NextResponse.json(
       { error: "Failed to fetch model availability" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -75,21 +75,21 @@ export async function POST(request) {
     const lockKey = `${MODEL_LOCK_PREFIX}${model}`;
 
     await Promise.all(
-      connections
-        .filter((connection) => connection[lockKey])
-        .map((connection) =>
-          updateProviderConnection(connection.id, {
-            [lockKey]: null,
-            ...(connection.testStatus === "unavailable"
-              ? {
-                  testStatus: "active",
-                  lastError: null,
-                  lastErrorAt: null,
-                  backoffLevel: 0,
-                }
-              : {}),
-          }),
-        ),
+      connections.
+      filter((connection) => connection[lockKey]).
+      map((connection) =>
+      updateProviderConnection(connection.id, {
+        [lockKey]: null,
+        ...(connection.testStatus === "unavailable" ?
+        {
+          testStatus: "active",
+          lastError: null,
+          lastErrorAt: null,
+          backoffLevel: 0
+        } : null)
+
+      })
+      )
     );
 
     return NextResponse.json({ ok: true });
@@ -97,7 +97,7 @@ export async function POST(request) {
     console.error("[API] Failed to clear model cooldown:", error);
     return NextResponse.json(
       { error: "Failed to clear cooldown" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

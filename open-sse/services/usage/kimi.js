@@ -11,6 +11,7 @@
 
 import { parseResetTime, toFiniteNumber, fetchTextWithTimeout } from "./shared.js";
 import { buildKimiHeaders } from "../../config/appConstants.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const USAGE_URL = "https://api.kimi.com/coding/v1/usages";
 
@@ -18,7 +19,7 @@ const PLAN_LEVELS = {
   LEVEL_BASIC: "Moderato",
   LEVEL_INTERMEDIATE: "Allegretto",
   LEVEL_ADVANCED: "Allegro",
-  LEVEL_STANDARD: "Vivace",
+  LEVEL_STANDARD: "Vivace"
 };
 
 function getKimiPlanName(level) {
@@ -34,17 +35,17 @@ export function formatKimiUsageError(status, responseText) {
   try {
     parsed = JSON.parse(responseText || "");
   } catch {
-    /* plain text */
-  }
+
+    /* plain text */}
 
   const detail0 = Array.isArray(parsed?.details) ? parsed.details[0] : null;
   const debug = detail0?.debug || parsed?.debug || null;
   const reason = debug?.reason || parsed?.reason || "";
   const localized =
-    debug?.localizedMessage?.message ||
-    detail0?.localizedMessage?.message ||
-    parsed?.message ||
-    "";
+  debug?.localizedMessage?.message ||
+  detail0?.localizedMessage?.message ||
+  parsed?.message ||
+  "";
 
   if (status === 401) {
     return "Kimi authentication expired. Please re-authorize.";
@@ -53,22 +54,22 @@ export function formatKimiUsageError(status, responseText) {
   // Live OAuth token without Kimi Code usage entitlement returns 403
   // REASON_FEATURE_NO_PERMISSION — not an expired session.
   if (
-    status === 403 &&
-    (reason === "REASON_FEATURE_NO_PERMISSION" ||
-      /permission_denied|do not have permission|subscribe/i.test(
-        `${parsed?.code || ""} ${localized} ${responseText || ""}`,
-      ))
-  ) {
+  status === 403 && (
+  reason === "REASON_FEATURE_NO_PERMISSION" ||
+  /permission_denied|do not have permission|subscribe/i.test(
+    `${parsed?.code || ""} ${localized} ${responseText || ""}`
+  )))
+  {
     return (
       localized ||
-      "Kimi connected, but this account has no permission to view usage. Subscribe to Kimi Code to access quota."
-    );
+      "Kimi connected, but this account has no permission to view usage. Subscribe to Kimi Code to access quota.");
+
   }
 
   const snippet = (localized || responseText || "").slice(0, 100);
-  return snippet
-    ? `Kimi Coding connected. API Error ${status}: ${snippet}`
-    : `Kimi Coding connected. API Error ${status}`;
+  return snippet ?
+  `Kimi Coding connected. API Error ${status}: ${snippet}` :
+  `Kimi Coding connected. API Error ${status}`;
 }
 
 function makeQuota({ used, total, remaining, resetAt }) {
@@ -78,9 +79,9 @@ function makeQuota({ used, total, remaining, resetAt }) {
   // on the quota object — QuotaTable treats it as a 0–100 percentage.
   let remainingPct;
   if (safeTotal > 0 && remaining != null && Number.isFinite(Number(remaining))) {
-    remainingPct = (Math.max(0, Number(remaining)) / safeTotal) * 100;
+    remainingPct = Math.max(0, Number(remaining)) / safeTotal * 100;
   } else if (safeTotal > 0) {
-    remainingPct = (Math.max(0, safeTotal - safeUsed) / safeTotal) * 100;
+    remainingPct = Math.max(0, safeTotal - safeUsed) / safeTotal * 100;
   } else {
     remainingPct = 0;
   }
@@ -89,7 +90,7 @@ function makeQuota({ used, total, remaining, resetAt }) {
     total: safeTotal,
     remainingPercentage: remainingPct,
     resetAt: resetAt || null,
-    unlimited: false,
+    unlimited: false
   };
 }
 
@@ -100,24 +101,24 @@ function makeQuota({ used, total, remaining, resetAt }) {
  * @param {object|null} providerSpecificData
  */
 export async function getKimiUsage(
-  accessToken = null,
-  apiKey = null,
-  proxyOptions = null,
-  providerSpecificData = null,
-) {
-  const useApiKey = typeof apiKey === "string" && apiKey.length > 0;
-  const useOAuth = !useApiKey && typeof accessToken === "string" && accessToken.length > 0;
+accessToken = null,
+apiKey = null,
+proxyOptions = null,
+providerSpecificData = null)
+{
+  const useApiKey = isString(apiKey) && apiKey.length > 0;
+  const useOAuth = !useApiKey && isString(accessToken) && accessToken.length > 0;
 
   if (!useApiKey && !useOAuth) {
     return { message: "Kimi access token or API key not available." };
   }
 
-  const authHeaders = useApiKey
-    ? { "x-api-key": apiKey }
-    : {
-        Authorization: `Bearer ${accessToken}`,
-        ...buildKimiHeaders(providerSpecificData?.deviceId),
-      };
+  const authHeaders = useApiKey ?
+  { "x-api-key": apiKey } :
+  {
+    Authorization: `Bearer ${accessToken}`,
+    ...buildKimiHeaders(providerSpecificData?.deviceId)
+  };
 
   try {
     const { response, text: responseText } = await fetchTextWithTimeout(
@@ -127,17 +128,17 @@ export async function getKimiUsage(
         headers: {
           ...authHeaders,
           "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+          Accept: "application/json"
+        }
       },
       10000,
-      proxyOptions,
+      proxyOptions
     );
 
     if (!response.ok) {
       return {
         plan: "Kimi Coding",
-        message: formatKimiUsageError(response.status, responseText),
+        message: formatKimiUsageError(response.status, responseText)
       };
     }
 
@@ -147,35 +148,35 @@ export async function getKimiUsage(
     } catch {
       return {
         plan: "Kimi Coding",
-        message: "Kimi Coding connected. Invalid JSON response from API.",
+        message: "Kimi Coding connected. Invalid JSON response from API."
       };
     }
 
     const quotas = {};
-    const usageObj = data?.usage && typeof data.usage === "object" ? data.usage : {};
+    const usageObj = data?.usage && isObject(data.usage) ? data.usage : {};
     const usageLimit = toFiniteNumber(usageObj.limit ?? usageObj.Limit, 0);
     const usageUsed = toFiniteNumber(usageObj.used ?? usageObj.Used, 0);
     const usageRemainingRaw = usageObj.remaining ?? usageObj.Remaining;
     const usageRemaining =
-      usageRemainingRaw != null && usageRemainingRaw !== ""
-        ? toFiniteNumber(usageRemainingRaw, NaN)
-        : NaN;
+    usageRemainingRaw != null && usageRemainingRaw !== "" ?
+    toFiniteNumber(usageRemainingRaw, NaN) :
+    NaN;
     const usageResetTime =
-      usageObj.resetTime || usageObj.ResetTime || usageObj.reset_at || usageObj.resetAt;
+    usageObj.resetTime || usageObj.ResetTime || usageObj.reset_at || usageObj.resetAt;
 
     if (usageLimit > 0) {
       quotas.Weekly = makeQuota({
         used: usageUsed,
         total: usageLimit,
         remaining: Number.isFinite(usageRemaining) ? usageRemaining : null,
-        resetAt: parseResetTime(usageResetTime),
+        resetAt: parseResetTime(usageResetTime)
       });
     }
 
     const limitsArray = Array.isArray(data?.limits) ? data.limits : [];
     for (const item of limitsArray) {
-      if (!item || typeof item !== "object") continue;
-      const detail = item.detail && typeof item.detail === "object" ? item.detail : {};
+      if (!item || !isObject(item)) continue;
+      const detail = item.detail && isObject(item.detail) ? item.detail : {};
       const limit = toFiniteNumber(detail.limit ?? detail.Limit, 0);
       const remaining = toFiniteNumber(detail.remaining ?? detail.Remaining, NaN);
       const resetTime = detail.resetTime || detail.reset_at || detail.resetAt;
@@ -185,7 +186,7 @@ export async function getKimiUsage(
           used: Math.max(0, limit - rem),
           total: limit,
           remaining: rem,
-          resetAt: parseResetTime(resetTime),
+          resetAt: parseResetTime(resetTime)
         });
       }
     }
@@ -199,11 +200,11 @@ export async function getKimiUsage(
 
     return {
       plan: planName,
-      message: "Kimi Coding connected. Usage tracked per request.",
+      message: "Kimi Coding connected. Usage tracked per request."
     };
   } catch (error) {
     return {
-      message: `Kimi Coding connected. Unable to fetch usage: ${error.message}`,
+      message: `Kimi Coding connected. Unable to fetch usage: ${error.message}`
     };
   }
 }

@@ -10,9 +10,10 @@ import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/provi
  * @param {unknown} errorText - Upstream error body
  * @returns {boolean} Whether the request should be replayed in place
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export function isRequestReplayBufferError(status, errorText) {
   if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
-  const message = typeof errorText === "string" ? errorText : JSON.stringify(errorText || "");
+  const message = isString(errorText) ? errorText : JSON.stringify(errorText || "");
   return message.toLowerCase().includes(REQUEST_REPLAY_BUFFER_ERROR);
 }
 
@@ -45,9 +46,9 @@ export function getQuotaCooldown(backoffLevel = 0) {
  *   ordinary cooldown.
  */
 export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null) {
-  const normalizedText = errorText
-    ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText))
-    : "";
+  const normalizedText = errorText ?
+  isString(errorText) ? errorText : JSON.stringify(errorText) :
+  "";
   const lowerError = normalizedText.toLowerCase();
 
   if (isRequestReplayBufferError(status, errorText)) {
@@ -75,8 +76,8 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   // Codex invalid_encrypted_content is a stale-reasoning request issue recovered
   // in-place by the Codex executor; switching accounts will not fix it (#2667).
   const invalidEncryptedContent = lowerError.includes("invalid_encrypted_content") ||
-    (lowerError.includes("encrypted content") &&
-      (lowerError.includes("could not be verified") || lowerError.includes("could not be decrypted or parsed")));
+  lowerError.includes("encrypted content") && (
+  lowerError.includes("could not be verified") || lowerError.includes("could not be decrypted or parsed"));
   if (Number(status) === 400 && invalidEncryptedContent) {
     return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
@@ -103,7 +104,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
       shouldFallback: true,
       cooldownMs: providerRule.cooldownMs,
       newBackoffLevel: 0,
-      scope: providerRule.scope ?? null,
+      scope: providerRule.scope ?? null
     };
   }
 
@@ -132,7 +133,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
           cooldownMs: Math.max(0, clampedReset - now),
           newBackoffLevel: 0,
           rateLimitEvidence: evidence,
-          scope: null,
+          scope: null
         };
       }
       const fallback = checkFallbackErrorByRules(status, lowerError, backoffLevel);
@@ -179,29 +180,29 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
  * this request and must not write cooldown state to DB.
  */
 export function isAntigravityCapacityError(status, errorText = "") {
-  const text = typeof errorText === "string" ? errorText : JSON.stringify(errorText || "");
+  const text = isString(errorText) ? errorText : JSON.stringify(errorText || "");
   return Number(status) === 503 && (
-    /MODEL_CAPACITY_EXHAUSTED/i.test(text) ||
-    /No capacity available for model/i.test(text)
-  );
+  /MODEL_CAPACITY_EXHAUSTED/i.test(text) ||
+  /No capacity available for model/i.test(text));
+
 }
 
 const CLOUD_CODE_ACCOUNT_DISABLED_403_PATTERNS = [
-  /disabled in this account/i,
-  /account[^.:\n]*(?:disabled|deactivated|suspended|banned|terminated|closed)/i,
-  /verify your account/i,
-  /violation of (?:the )?terms/i,
-  /terms of service/i,
-];
+/disabled in this account/i,
+/account[^.:\n]*(?:disabled|deactivated|suspended|banned|terminated|closed)/i,
+/verify your account/i,
+/violation of (?:the )?terms/i,
+/terms of service/i];
+
 
 const CLOUD_CODE_PROJECT_403_PATTERNS = [
-  /has not been used in project/i,
-  /accessNotConfigured/i,
-  /cloud ai companion api/i,
-  /cloudcode-pa\.googleapis\.com/i,
-  /api has not been (?:used|enabled)/i,
-  /SERVICE_DISABLED/,
-];
+/has not been used in project/i,
+/accessNotConfigured/i,
+/cloud ai companion api/i,
+/cloudcode-pa\.googleapis\.com/i,
+/api has not been (?:used|enabled)/i,
+/SERVICE_DISABLED/];
+
 
 /**
  * Cloud Code / Antigravity 403s are recoverable only when the error identifies
@@ -213,15 +214,15 @@ export function isRecoverableCloudCodeProject403(provider, status, errorText = "
   if (Number(status) !== 403) return false;
   const p = String(provider || "").toLowerCase();
   const isCloudCodeProvider =
-    p === "antigravity" ||
-    p === "gemini-cli" ||
-    p.includes("cloudcode") ||
-    p.includes("cloud-code");
-  const text = typeof errorText === "string" ? errorText : JSON.stringify(errorText || "");
+  p === "antigravity" ||
+  p === "gemini-cli" ||
+  p.includes("cloudcode") ||
+  p.includes("cloud-code");
+  const text = isString(errorText) ? errorText : JSON.stringify(errorText || "");
   if (CLOUD_CODE_ACCOUNT_DISABLED_403_PATTERNS.some((pattern) => pattern.test(text))) return false;
 
   const hasProjectMarker = CLOUD_CODE_PROJECT_403_PATTERNS.some((pattern) => pattern.test(text)) ||
-    (/PERMISSION_DENIED/.test(text) && /\b(project|api|cloud ai companion|cloudcode-pa)\b/i.test(text));
+  /PERMISSION_DENIED/.test(text) && /\b(project|api|cloud ai companion|cloudcode-pa)\b/i.test(text);
 
   return isCloudCodeProvider && hasProjectMarker;
 }
@@ -270,7 +271,7 @@ export function formatRetryAfter(rateLimitedUntil, now = Date.now()) {
   if (diffMs <= 0) return "reset after 0s";
   const totalSec = Math.ceil(diffMs / 1000);
   const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
+  const m = Math.floor(totalSec % 3600 / 60);
   const s = totalSec % 60;
   const parts = [];
   if (h > 0) parts.push(`${h}h`);
@@ -304,9 +305,9 @@ export function isModelLockActive(connection, model) {
 /** Return the later applicable exact/account lock for one requested model. */
 export function getActiveModelLockUntil(connection, model, now = Date.now()) {
   if (!connection) return null;
-  const candidates = [connection[getModelLockKey(model)], connection[MODEL_LOCK_ALL]]
-    .map((value) => ({ value, timestamp: new Date(value || "").getTime() }))
-    .filter((entry) => Number.isFinite(entry.timestamp) && entry.timestamp > now);
+  const candidates = [connection[getModelLockKey(model)], connection[MODEL_LOCK_ALL]].
+  map((value) => ({ value, timestamp: new Date(value || "").getTime() })).
+  filter((entry) => Number.isFinite(entry.timestamp) && entry.timestamp > now);
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => b.timestamp - a.timestamp);
   return new Date(candidates[0].timestamp).toISOString();
@@ -380,7 +381,7 @@ export function buildClearModelLocksUpdate(connection) {
  */
 export function filterAvailableAccounts(accounts, excludeId = null) {
   const now = Date.now();
-  return accounts.filter(acc => {
+  return accounts.filter((acc) => {
     if (excludeId && acc.id === excludeId) return false;
     if (acc.rateLimitedUntil) {
       const until = new Date(acc.rateLimitedUntil).getTime();
@@ -438,6 +439,6 @@ export function applyErrorState(account, status, errorText, provider = null, hea
     backoffLevel: newBackoffLevel ?? backoffLevel,
     lastError: { status, message: errorText, timestamp: new Date().toISOString() },
     status: "error",
-    ...(scope ? { providerErrorScope: scope } : {}),
+    ...(scope ? { providerErrorScope: scope } : null)
   };
 }

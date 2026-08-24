@@ -10,17 +10,18 @@ import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { isInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.js";
 
 // Create log directory for responses (Node.js only)
+import { isFunction, isObject, isUndefined } from "../../src/shared/utils/typeChecks.js";
 export function createResponsesLogger(model, logsDir = null) {
   // Skip logging in worker environment (no fs)
-  if (typeof fs.mkdirSync !== "function") {
+  if (!isFunction(fs.mkdirSync)) {
     return null;
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15);
   const uniqueId = Math.random().toString(36).slice(2, 8);
-  const baseDir = logsDir || (typeof process !== "undefined" ? process.cwd() : ".");
+  const baseDir = logsDir || (!isUndefined(globalThis.process) ? process.cwd() : ".");
   const logDir = path.join(baseDir, "logs", `responses_${model}_${timestamp}_${uniqueId}`);
-  
+
   try {
     fs.mkdirSync(logDir, { recursive: true });
   } catch {
@@ -86,7 +87,7 @@ export function createResponsesApiTransformStream(logger = null) {
 
   const encoder = new TextEncoder();
   const nextSeq = () => ++state.seq;
-  
+
   const emit = (controller, eventType, data) => {
     data.sequence_number = nextSeq();
     const output = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -100,7 +101,7 @@ export function createResponsesApiTransformStream(logger = null) {
       const outputIndex = state.nextOutputIndex++;
       state.reasoningId = `rs_${state.responseId}_${idx}`;
       state.reasoningIndex = outputIndex;
-      
+
       emit(controller, "response.output_item.added", {
         type: "response.output_item.added",
         output_index: outputIndex,
@@ -137,7 +138,7 @@ export function createResponsesApiTransformStream(logger = null) {
   const closeReasoning = (controller) => {
     if (state.reasoningId && !state.reasoningDone) {
       state.reasoningDone = true;
-      
+
       emit(controller, "response.reasoning_summary_text.done", {
         type: "response.reasoning_summary_text.done",
         item_id: state.reasoningId,
@@ -208,7 +209,7 @@ export function createResponsesApiTransformStream(logger = null) {
     if (callId && !state.funcItemDone[idx]) {
       const args = state.funcArgsBuf[idx] || "{}";
       const outputIndex = state.funcOutputIndexes[idx];
-      
+
       emit(controller, "response.function_call_arguments.done", {
         type: "response.function_call_arguments.done",
         item_id: `fc_${callId}`,
@@ -246,7 +247,7 @@ export function createResponsesApiTransformStream(logger = null) {
           status: "completed",
           background: false,
           error: null,
-          usage,
+          usage
         }
       });
     }
@@ -277,14 +278,14 @@ export function createResponsesApiTransformStream(logger = null) {
           continue;
         }
 
-        if (parsed.usage && typeof parsed.usage === "object") state.usage = parsed.usage;
+        if (parsed.usage && isObject(parsed.usage)) state.usage = parsed.usage;
         if (!parsed.choices?.length) {
           // Complete only when usage actually arrived — a bare empty-choices chunk
           // must not trigger the deferred completion early.
           if (state.awaitingTrailingUsage && !state.completedSent && state.usage) sendCompleted(controller);
           continue;
         }
-        
+
         const choice = parsed.choices[0];
         const idx = choice.index || 0;
         const delta = choice.delta || {};
@@ -293,7 +294,7 @@ export function createResponsesApiTransformStream(logger = null) {
         if (!state.started) {
           state.started = true;
           state.responseId = parsed.id ? `resp_${parsed.id}` : state.responseId;
-          
+
           emit(controller, "response.created", {
             type: "response.created",
             response: {
@@ -338,7 +339,7 @@ export function createResponsesApiTransformStream(logger = null) {
             const parts = content.split("</think>");
             const thinkPart = parts[0];
             const textPart = parts.slice(1).join("</think>");
-            
+
             if (thinkPart) emitReasoningDelta(controller, thinkPart);
             closeReasoning(controller);
             state.inThinking = false;
@@ -460,4 +461,3 @@ export function createResponsesApiTransformStream(logger = null) {
     }
   });
 }
-

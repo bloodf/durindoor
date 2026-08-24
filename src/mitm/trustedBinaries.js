@@ -1,3 +1,4 @@
+const { isNumber } = require("../shared/utils/typeChecks.cjs");
 const fs = require("fs");
 const path = require("path");
 
@@ -14,18 +15,18 @@ const UNIX_CANDIDATES = Object.freeze({
   ps: ["/bin/ps", "/usr/bin/ps"],
   kill: ["/bin/kill", "/usr/bin/kill"],
   launchctl: ["/bin/launchctl"],
-  security: ["/usr/bin/security"],
+  security: ["/usr/bin/security"]
 });
 
 function isTrustedUnixFile(filePath, { fsImpl = fs } = {}) {
   try {
     const linkStat = fsImpl.lstatSync(filePath);
     if (!linkStat.isFile() && !linkStat.isSymbolicLink?.()) return false;
-    if (typeof linkStat.uid === "number" && linkStat.uid !== 0) return false;
+    if (isNumber(linkStat.uid) && linkStat.uid !== 0) return false;
     const resolved = fsImpl.realpathSync(filePath);
     const stat = fsImpl.statSync(resolved);
     if (!stat.isFile()) return false;
-    if (typeof stat.uid === "number" && stat.uid !== 0) return false;
+    if (isNumber(stat.uid) && stat.uid !== 0) return false;
     if ((stat.mode & 0o022) !== 0) return false;
     fsImpl.accessSync(filePath, fs.constants.X_OK);
     return true;
@@ -37,7 +38,7 @@ function isTrustedUnixFile(filePath, { fsImpl = fs } = {}) {
 function resolveTrustedUnixBinary(name, {
   candidates = UNIX_CANDIDATES[name] || [],
   fsImpl = fs,
-  required = true,
+  required = true
 } = {}) {
   const match = candidates.find((candidate) => isTrustedUnixFile(candidate, { fsImpl }));
   if (match) return fsImpl.realpathSync(match);
@@ -48,7 +49,7 @@ function resolveTrustedUnixBinary(name, {
 function resolveWindowsSystemBinary(name, {
   fsImpl = fs,
   verify = process.platform === "win32",
-  systemRoot = WINDOWS_SYSTEM_ROOT,
+  systemRoot = WINDOWS_SYSTEM_ROOT
 } = {}) {
   if (!/^[A-Za-z0-9_.-]+\.exe$/i.test(String(name || ""))) {
     throw new Error("Unsafe Windows system binary name");
@@ -79,7 +80,7 @@ function buildMinimalWindowsEnv(env = process.env) {
     PSModulePath: modules,
     TEMP: env.TEMP,
     TMP: env.TMP,
-    USERPROFILE: env.USERPROFILE,
+    USERPROFILE: env.USERPROFILE
   }).filter(([, value]) => value));
 }
 
@@ -90,5 +91,5 @@ module.exports = {
   UNIX_CANDIDATES,
   isTrustedUnixFile,
   resolveTrustedUnixBinary,
-  resolveWindowsSystemBinary,
+  resolveWindowsSystemBinary
 };

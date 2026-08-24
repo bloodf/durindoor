@@ -10,6 +10,7 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
 // Previously "proxy_" was used but this is a detectable fingerprint difference.
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
 // Convert OpenAI request to Claude format
@@ -22,8 +23,8 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
   // Custom-model overrides (translationContext.modelCapabilities.maxOutput)
   // take precedence over the static catalog ceiling.
   const customCeiling = translationContext?.modelCapabilities?.maxOutput;
-  const modelCeiling = (Number.isFinite(customCeiling) && customCeiling > 0 ? customCeiling : undefined)
-    ?? (getCapabilitiesForModel(translationContext?.provider ?? null, model).maxOutput || undefined);
+  const modelCeiling = (Number.isFinite(customCeiling) && customCeiling > 0 ? customCeiling : undefined) ?? (
+  getCapabilitiesForModel(translationContext?.provider ?? null, model).maxOutput || undefined);
   const result = {
     model: model,
     // Honor OpenAI's newer max_completion_tokens cap when max_tokens is absent —
@@ -55,12 +56,12 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     // Extract system messages
     for (const msg of body.messages) {
       if (msg.role === ROLE.SYSTEM) {
-        systemParts.push(typeof msg.content === "string" ? msg.content : extractTextContent(msg.content, "\n"));
+        systemParts.push(isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n"));
       }
     }
 
     // Filter out system messages for separate processing
-    const nonSystemMessages = body.messages.filter(m => m.role !== ROLE.SYSTEM);
+    const nonSystemMessages = body.messages.filter((m) => m.role !== ROLE.SYSTEM);
 
     // Process messages with merging logic
     // CRITICAL: tool_result must be in separate message immediately after tool_use
@@ -75,15 +76,15 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     };
 
     for (const msg of nonSystemMessages) {
-      const newRole = (msg.role === ROLE.USER || msg.role === ROLE.TOOL) ? ROLE.USER : ROLE.ASSISTANT;
+      const newRole = msg.role === ROLE.USER || msg.role === ROLE.TOOL ? ROLE.USER : ROLE.ASSISTANT;
       const blocks = getContentBlocksFromMessage(msg, toolNameMap);
-      const hasToolUse = blocks.some(b => b.type === CLAUDE_BLOCK.TOOL_USE);
-      const hasToolResult = blocks.some(b => b.type === CLAUDE_BLOCK.TOOL_RESULT);
+      const hasToolUse = blocks.some((b) => b.type === CLAUDE_BLOCK.TOOL_USE);
+      const hasToolResult = blocks.some((b) => b.type === CLAUDE_BLOCK.TOOL_RESULT);
 
       // Separate tool_result from other content
       if (hasToolResult) {
-        const toolResultBlocks = blocks.filter(b => b.type === CLAUDE_BLOCK.TOOL_RESULT);
-        const otherBlocks = blocks.filter(b => b.type !== CLAUDE_BLOCK.TOOL_RESULT);
+        const toolResultBlocks = blocks.filter((b) => b.type === CLAUDE_BLOCK.TOOL_RESULT);
+        const otherBlocks = blocks.filter((b) => b.type !== CLAUDE_BLOCK.TOOL_RESULT);
 
         flushCurrentMessage();
 
@@ -151,9 +152,9 @@ Respond ONLY with the JSON object, no other text.`);
   if (systemParts.length > 0) {
     const systemText = systemParts.join("\n");
     result.system = [
-      claudeCodePrompt,
-      { type: CLAUDE_BLOCK.TEXT, text: systemText, cache_control: { type: "ephemeral", ttl: "1h" } }
-    ];
+    claudeCodePrompt,
+    { type: CLAUDE_BLOCK.TEXT, text: systemText, cache_control: { type: "ephemeral", ttl: "1h" } }];
+
   } else {
     result.system = [claudeCodePrompt];
   }
@@ -229,7 +230,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       content: msg.content
     });
   } else if (msg.role === ROLE.USER) {
-    if (typeof msg.content === "string") {
+    if (isString(msg.content)) {
       if (msg.content) {
         blocks.push({ type: CLAUDE_BLOCK.TEXT, text: msg.content });
       }
@@ -281,15 +282,15 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     const stashedRedacted = msg[CLAUDE_REDACTED_THINKING_BLOCKS];
     if (Array.isArray(stashedRedacted)) {
       for (const block of stashedRedacted) {
-        if (block?.type === CLAUDE_BLOCK.REDACTED_THINKING && typeof block.data === "string") {
+        if (block?.type === CLAUDE_BLOCK.REDACTED_THINKING && isString(block.data)) {
           blocks.push({ type: CLAUDE_BLOCK.REDACTED_THINKING, data: block.data });
         }
       }
     }
     // OpenAI assistant reasoning_content → Claude thinking block. Prepend so it
     // precedes the text/tool_use blocks (Claude requires thinking first).
-    const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some(part => part.type === CLAUDE_BLOCK.THINKING);
-    if (typeof msg.reasoning_content === "string" && msg.reasoning_content && !hasThinkingBlock) {
+    const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some((part) => part.type === CLAUDE_BLOCK.THINKING);
+    if (isString(msg.reasoning_content) && msg.reasoning_content && !hasThinkingBlock) {
       blocks.push({ type: CLAUDE_BLOCK.THINKING, thinking: msg.reasoning_content });
     }
     if (Array.isArray(msg.content)) {
@@ -306,7 +307,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
         }
       }
     } else if (msg.content) {
-      const text = typeof msg.content === "string" ? msg.content : extractTextContent(msg.content, "\n");
+      const text = isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n");
       if (text) {
         blocks.push({ type: CLAUDE_BLOCK.TEXT, text });
       }
@@ -341,7 +342,7 @@ function convertOpenAIToolChoice(choice) {
   if (!choice) return { type: "auto" };
 
   // OpenAI string forms: "auto" | "none" | "required"
-  if (typeof choice === "string") {
+  if (isString(choice)) {
     if (choice === "required") return { type: "any" };
     // OpenAI "none" = caller explicitly disabled tools — map to Anthropic's
     // { type: "none" } (in CLAUDE_TOOL_CHOICE_TYPES) so a no-tools turn is never
@@ -350,7 +351,7 @@ function convertOpenAIToolChoice(choice) {
     return { type: "auto" }; // "auto" or anything unexpected
   }
 
-  if (typeof choice === "object") {
+  if (isObject(choice)) {
     // OpenAI forced tool: { type: "function", function: { name } }.
     // Checked before the native pass-through below, because the OpenAI shape
     // also carries a `.type` ("function") that Claude rejects.
@@ -373,8 +374,8 @@ function openaiToClaudeRequestForAntigravity(model, body, stream) {
 
   // Remove Claude Code system prompt, keep only user's system messages
   if (result.system && Array.isArray(result.system)) {
-    result.system = result.system.filter(block =>
-      !block.text || !block.text.includes("You are Claude Code")
+    result.system = result.system.filter((block) =>
+    !block.text || !block.text.includes("You are Claude Code")
     );
     if (result.system.length === 0) {
       delete result.system;
@@ -383,7 +384,7 @@ function openaiToClaudeRequestForAntigravity(model, body, stream) {
 
   // Strip prefix from tool names for Antigravity (doesn't use Claude OAuth)
   if (result.tools && Array.isArray(result.tools)) {
-    result.tools = result.tools.map(tool => {
+    result.tools = result.tools.map((tool) => {
       if (tool.name && tool.name.startsWith(CLAUDE_OAUTH_TOOL_PREFIX)) {
         return {
           ...tool,
@@ -396,12 +397,12 @@ function openaiToClaudeRequestForAntigravity(model, body, stream) {
 
   // Strip prefix from tool_use in messages
   if (result.messages && Array.isArray(result.messages)) {
-    result.messages = result.messages.map(msg => {
+    result.messages = result.messages.map((msg) => {
       if (!msg.content || !Array.isArray(msg.content)) {
         return msg;
       }
 
-      const updatedContent = msg.content.map(block => {
+      const updatedContent = msg.content.map((block) => {
         if (block.type === CLAUDE_BLOCK.TOOL_USE && block.name && block.name.startsWith(CLAUDE_OAUTH_TOOL_PREFIX)) {
           return {
             ...block,
@@ -418,9 +419,9 @@ function openaiToClaudeRequestForAntigravity(model, body, stream) {
     // message ("This model does not support assistant message prefill"). Strip any
     // trailing assistant turn so the conversation always ends with a user message.
     while (
-      result.messages.length > 0 &&
-      result.messages[result.messages.length - 1].role === ROLE.ASSISTANT
-    ) {
+    result.messages.length > 0 &&
+    result.messages[result.messages.length - 1].role === ROLE.ASSISTANT)
+    {
       result.messages.pop();
     }
   }
@@ -433,4 +434,3 @@ export { openaiToClaudeRequestForAntigravity };
 
 // Register
 register(FORMATS.OPENAI, FORMATS.CLAUDE, openaiToClaudeRequest, null);
-

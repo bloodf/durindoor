@@ -8,6 +8,7 @@ import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -18,22 +19,22 @@ export const parseOpenAIStyleModels = (data) => {
 
 export const parseGeminiCliModels = (data) => {
   if (Array.isArray(data?.models)) {
-    return data.models
-      .map((item) => {
-        const id = item?.id || item?.model || item?.name;
-        if (!id) return null;
-        return { id, name: item?.displayName || item?.name || id };
-      })
-      .filter(Boolean);
+    return data.models.
+    map((item) => {
+      const id = item?.id || item?.model || item?.name;
+      if (!id) return null;
+      return { id, name: item?.displayName || item?.name || id };
+    }).
+    filter(Boolean);
   }
 
-  if (data?.models && typeof data.models === "object") {
-    return Object.entries(data.models)
-      .filter(([, info]) => !info?.isInternal)
-      .map(([id, info]) => ({
-        id,
-        name: info?.displayName || info?.name || id,
-      }));
+  if (data?.models && isObject(data.models)) {
+    return Object.entries(data.models).
+    filter(([, info]) => !info?.isInternal).
+    map(([id, info]) => ({
+      id,
+      name: info?.displayName || info?.name || id
+    }));
   }
 
   return [];
@@ -47,15 +48,15 @@ export const appendCodexReviewModels = (models) => models.flatMap((model) => {
   const isChatModel = (model?.type || "llm") !== "image" && !id.toLowerCase().includes("embed");
   if (!isChatModel || id.endsWith("-review")) return [normalized];
   return [
-    normalized,
-    {
-      ...normalized,
-      id: `${id}-review`,
-      name: `${name} Review`,
-      upstreamModelId: id,
-      quotaFamily: "review",
-    },
-  ];
+  normalized,
+  {
+    ...normalized,
+    id: `${id}-review`,
+    name: `${name} Review`,
+    upstreamModelId: id,
+    quotaFamily: "review"
+  }];
+
 });
 
 export const parseCodexModels = (data) => appendCodexReviewModels(parseOpenAIStyleModels(data));
@@ -72,7 +73,7 @@ export const createOpenAIModelsConfig = (url) => ({
 export const resolveQwenModelsUrl = (connection) => {
   const fallback = "https://portal.qwen.ai/v1/models";
   const raw = connection?.providerSpecificData?.resourceUrl;
-  if (!raw || typeof raw !== "string") return fallback;
+  if (!raw || !isString(raw)) return fallback;
   const value = raw.trim();
   if (!value) return fallback;
   if (value.startsWith("http://") || value.startsWith("https://")) {
@@ -82,51 +83,51 @@ export const resolveQwenModelsUrl = (connection) => {
 };
 
 export const getStaticProviderModels = (providerId) =>
-  getModelsByProviderId(providerId).map((model) => ({
-    ...model,
-    id: model.id,
-    name: model.name || model.id,
-  }));
+getModelsByProviderId(providerId).map((model) => ({
+  ...model,
+  id: model.id,
+  name: model.name || model.id
+}));
 
 export const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) =>
-  async (connection, proxyOptions = null) => {
-    const { accessToken, refreshToken } = connection;
-    if (!accessToken) {
-      return { error: "No valid token found", status: 401 };
+async (connection, proxyOptions = null) => {
+  const { accessToken, refreshToken } = connection;
+  if (!accessToken) {
+    return { error: "No valid token found", status: 401 };
+  }
+  let warning;
+  try {
+    let response = await fetchFn(accessToken, connection, proxyOptions);
+    if (!response.ok && (response.status === 401 || response.status === 403) && refreshToken) {
+      const refreshed = await refreshFn(connection, proxyOptions);
+      if (refreshed?.accessToken) {
+        await updateProviderCredentials(connection.id, {
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken || refreshToken,
+          expiresIn: refreshed.expiresIn
+        });
+        connection.accessToken = refreshed.accessToken;
+        if (refreshed.refreshToken) connection.refreshToken = refreshed.refreshToken;
+        response = await fetchFn(refreshed.accessToken, connection, proxyOptions);
+      }
     }
-    let warning;
-    try {
-      let response = await fetchFn(accessToken, connection, proxyOptions);
-      if (!response.ok && (response.status === 401 || response.status === 403) && refreshToken) {
-        const refreshed = await refreshFn(connection, proxyOptions);
-        if (refreshed?.accessToken) {
-          await updateProviderCredentials(connection.id, {
-            accessToken: refreshed.accessToken,
-            refreshToken: refreshed.refreshToken || refreshToken,
-            expiresIn: refreshed.expiresIn,
-          });
-          connection.accessToken = refreshed.accessToken;
-          if (refreshed.refreshToken) connection.refreshToken = refreshed.refreshToken;
-          response = await fetchFn(refreshed.accessToken, connection, proxyOptions);
-        }
-      }
-      if (response.ok) {
-        const data = await response.json();
-        const models = parseFn(data);
-        if (models.length > 0) return { models };
-      } else {
-        const errorText = await response.text();
-        const safeError = sanitizeErrorMessage(errorText);
-        warning = `${errorLabel}: ${response.status} ${safeError}`;
-        console.log(`${errorLabel} (falling back to static):`, safeError);
-      }
-    } catch (error) {
-      const safeError = sanitizeErrorMessage(error?.message);
-      warning = `${errorLabel}: ${safeError}`;
+    if (response.ok) {
+      const data = await response.json();
+      const models = parseFn(data);
+      if (models.length > 0) return { models };
+    } else {
+      const errorText = await response.text();
+      const safeError = sanitizeErrorMessage(errorText);
+      warning = `${errorLabel}: ${response.status} ${safeError}`;
       console.log(`${errorLabel} (falling back to static):`, safeError);
     }
-    return { models: [], warning };
-  };
+  } catch (error) {
+    const safeError = sanitizeErrorMessage(error?.message);
+    warning = `${errorLabel}: ${safeError}`;
+    console.log(`${errorLabel} (falling back to static):`, safeError);
+  }
+  return { models: [], warning };
+};
 
 export const PROVIDER_MODELS_CONFIG = {
   claude: {
@@ -166,25 +167,25 @@ export const PROVIDER_MODELS_CONFIG = {
       const jwt = extractKimiJwt(token);
       return {
         ...KIMI_WEB_DISCOVERY_HEADERS,
-        ...(jwt
-          ? {
-              Authorization: `Bearer ${jwt}`,
-              Cookie: `kimi-auth=${jwt}`,
-            }
-          : {}),
+        ...(jwt ?
+        {
+          Authorization: `Bearer ${jwt}`,
+          Cookie: `kimi-auth=${jwt}`
+        } : null)
+
       };
     },
     parseResponse: (data) => {
       const allowed = new Set(["k2d6", "k2d6-thinking"]);
       const list = data?.availableModels || [];
-      return list
-        .filter((m) => m.key && allowed.has(m.key))
-        .map((m) => ({
-          id: m.key,
-          name: m.displayName || m.key,
-          supportsReasoning: m.thinking === true,
-        }));
-    },
+      return list.
+      filter((m) => m.key && allowed.has(m.key)).
+      map((m) => ({
+        id: m.key,
+        name: m.displayName || m.key,
+        supportsReasoning: m.thinking === true
+      }));
+    }
   },
   codex: {
     url: "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0",
@@ -208,7 +209,7 @@ export const PROVIDER_MODELS_CONFIG = {
       const result = await resolveCopilotModels({
         accessToken: connection.accessToken,
         refreshToken: connection.refreshToken,
-        providerSpecificData: connection.providerSpecificData || {},
+        providerSpecificData: connection.providerSpecificData || {}
       }, {
         forceRefresh: true,
         includeMetadata: true,
@@ -218,16 +219,16 @@ export const PROVIDER_MODELS_CONFIG = {
           await updateProviderCredentials(connection.id, {
             copilotToken: refreshed.copilotToken,
             copilotTokenExpiresAt: refreshed.copilotTokenExpiresAt,
-            existingProviderSpecificData: connection.providerSpecificData || {},
+            existingProviderSpecificData: connection.providerSpecificData || {}
           });
-        },
+        }
       });
       if (result?.models?.length) return { models: result.models };
       return {
         models: [],
-        warning: "GitHub Copilot returned no live models.",
+        warning: "GitHub Copilot returned no live models."
       };
-    },
+    }
   },
   openai: createOpenAIModelsConfig("https://api.openai.com/v1/models"),
   openrouter: createOpenAIModelsConfig("https://openrouter.ai/api/v1/models"),
@@ -285,14 +286,14 @@ export const PROVIDER_MODELS_CONFIG = {
       const result = await resolveKimchiModels({
         accessToken: connection.accessToken,
         apiKey: connection.apiKey,
-        providerSpecificData: connection.providerSpecificData || {},
+        providerSpecificData: connection.providerSpecificData || {}
       }, { forceRefresh: true, log: console, proxyOptions });
       if (result?.models?.length) {
         return { models: result.models };
       }
       return {
         models: getStaticProviderModels("kimchi"),
-        warning: "Kimchi returned no live models; falling back to static catalog.",
+        warning: "Kimchi returned no live models; falling back to static catalog."
       };
     }
   },
@@ -313,7 +314,7 @@ export const PROVIDER_MODELS_CONFIG = {
               await updateProviderCredentials(connection.id, {
                 accessToken: refreshed.accessToken,
                 refreshToken: refreshed.refreshToken || connection.refreshToken,
-                expiresIn: refreshed.expiresIn,
+                expiresIn: refreshed.expiresIn
               });
               connection.accessToken = refreshed.accessToken;
               if (refreshed.refreshToken) connection.refreshToken = refreshed.refreshToken;
@@ -349,7 +350,7 @@ export const PROVIDER_MODELS_CONFIG = {
         refreshToken: connection.refreshToken,
         email: connection.email,
         displayName: connection.displayName,
-        providerSpecificData: connection.providerSpecificData || {},
+        providerSpecificData: connection.providerSpecificData || {}
       };
       let warning;
       try {
@@ -363,8 +364,8 @@ export const PROVIDER_MODELS_CONFIG = {
               isVL: m.isVL,
               isReasoning: m.isReasoning,
               maxOutputTokens: m.maxOutputTokens,
-              description: m.description,
-            })),
+              description: m.description
+            }))
           };
         }
         warning = "Qoder returned no models; falling back to static catalog.";
@@ -374,7 +375,7 @@ export const PROVIDER_MODELS_CONFIG = {
         console.log("Failed to fetch Qoder models dynamically, falling back to static:", safeError);
       }
       return { models: [], warning };
-    },
+    }
   },
   "gemini-cli": {
     customResolver: buildOAuthResolver({

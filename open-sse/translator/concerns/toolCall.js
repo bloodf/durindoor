@@ -18,20 +18,21 @@ import { CLAUDE_BLOCK, ROLE } from "../schema/index.js";
  *
  * @returns {Map<string,string>} alias → original name, for the response path.
  */
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 export function normalizeOpenAIToolNames(body, maxLength = 64) {
   const aliases = new Map();
-  if (!body || typeof body !== "object") return aliases;
+  if (!body || !isObject(body)) return aliases;
   const memo = new Map();
 
   const alias = (name) => {
-    if (!name || typeof name !== "string") return name;
+    if (!name || !isString(name)) return name;
     if (memo.has(name)) return memo.get(name);
 
     const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_");
     const changed = safe !== name || safe.length > maxLength;
-    const shortened = changed
-      ? `${safe.slice(0, maxLength - 13)}_${createHash("sha256").update(name).digest("hex").slice(0, 12)}`
-      : safe;
+    const shortened = changed ?
+    `${safe.slice(0, maxLength - 13)}_${createHash("sha256").update(name).digest("hex").slice(0, 12)}` :
+    safe;
 
     if (shortened !== name) aliases.set(shortened, name);
     memo.set(name, shortened);
@@ -41,18 +42,18 @@ export function normalizeOpenAIToolNames(body, maxLength = 64) {
   if (Array.isArray(body.tools)) {
     for (const tool of body.tools) {
       if (tool?.function?.name) tool.function.name = alias(tool.function.name);
-      if (typeof tool?.name === "string") tool.name = alias(tool.name);
+      if (isString(tool?.name)) tool.name = alias(tool.name);
     }
   }
 
   if (body.tool_choice) {
     if (body.tool_choice.function?.name) body.tool_choice.function.name = alias(body.tool_choice.function.name);
-    if (typeof body.tool_choice.name === "string") body.tool_choice.name = alias(body.tool_choice.name);
+    if (isString(body.tool_choice.name)) body.tool_choice.name = alias(body.tool_choice.name);
   }
 
   if (Array.isArray(body.messages)) {
     for (const message of body.messages) {
-      if (!message || typeof message !== "object") continue;
+      if (!message || !isObject(message)) continue;
       if (Array.isArray(message.tool_calls)) {
         for (const call of message.tool_calls) {
           if (call?.function?.name) call.function.name = alias(call.function.name);
@@ -107,7 +108,7 @@ export function restoreOpenAIToolNames(body, aliases) {
   // passthrough path where the upstream Anthropic-compatible provider sends
   // `read` / `bash` / etc. instead of `Read` / `Bash`.
   const block = body?.content_block;
-  if (block && typeof block === "object" && block.type === "tool_use" && typeof block.name === "string") {
+  if (block && isObject(block) && block.type === "tool_use" && isString(block.name)) {
     const normalized = normalizeClaudeToolName(block.name, aliases instanceof Map ? aliases : null);
     if (normalized !== block.name) {
       body.content_block = { ...block, name: normalized };
@@ -133,15 +134,15 @@ export function generateToolCallId(msgIndex = 0, tcIndex = 0, toolName = "") {
 
 // Sanitize ID to match Anthropic pattern: keep only alphanumeric, underscore, hyphen
 function sanitizeToolId(id) {
-  if (!id || typeof id !== "string") return null;
+  if (!id || !isString(id)) return null;
   const sanitized = id.replace(/[^a-zA-Z0-9_-]/g, "");
   return sanitized.length > 0 ? sanitized : null;
 }
 
 function normalizeToolId(id) {
-  return typeof id === "string" && id
-    ? (TOOL_ID_PATTERN.test(id) ? id : sanitizeToolId(id))
-    : null;
+  return isString(id) && id ?
+  TOOL_ID_PATTERN.test(id) ? id : sanitizeToolId(id) :
+  null;
 }
 
 function reservePendingToolId(rawId, pendingIds) {
@@ -182,10 +183,10 @@ export function ensureToolCallIds(body) {
           tc.type = "function";
         }
         /** Normalize empty and structured arguments for decolua/9router#3310. */
-        if (tc.function && typeof tc.function === "object") {
+        if (tc.function && isObject(tc.function)) {
           if (tc.function.arguments == null || tc.function.arguments === "") {
             tc.function.arguments = "{}";
-          } else if (typeof tc.function.arguments !== "string") {
+          } else if (!isString(tc.function.arguments)) {
             tc.function.arguments = JSON.stringify(tc.function.arguments);
           }
         }
@@ -300,9 +301,9 @@ export function hasToolResults(msg, toolCallIds) {
 export function fixMissingToolResponses(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
 
-  const isClaudeFormat = Boolean(body.system) || body.messages.some(message =>
-    Array.isArray(message?.content)
-    && message.content.some(block => block?.type === CLAUDE_BLOCK.TOOL_USE || block?.type === CLAUDE_BLOCK.TOOL_RESULT)
+  const isClaudeFormat = Boolean(body.system) || body.messages.some((message) =>
+  Array.isArray(message?.content) &&
+  message.content.some((block) => block?.type === CLAUDE_BLOCK.TOOL_USE || block?.type === CLAUDE_BLOCK.TOOL_RESULT)
   );
   const newMessages = [];
 
@@ -313,23 +314,23 @@ export function fixMissingToolResponses(body) {
     newMessages.push(msg);
 
     const toolCallIds = getToolCallIds(msg);
-    if (toolCallIds.length === 0 || (nextMsg && hasToolResults(nextMsg, toolCallIds))) continue;
+    if (toolCallIds.length === 0 || nextMsg && hasToolResults(nextMsg, toolCallIds)) continue;
 
     for (const id of toolCallIds) {
-      newMessages.push(isClaudeFormat
-        ? {
-          role: ROLE.USER,
-          content: [{
-            type: CLAUDE_BLOCK.TOOL_RESULT,
-            tool_use_id: id,
-            content: "[No response received]"
-          }]
-        }
-        : {
-          role: ROLE.TOOL,
-          tool_call_id: id,
+      newMessages.push(isClaudeFormat ?
+      {
+        role: ROLE.USER,
+        content: [{
+          type: CLAUDE_BLOCK.TOOL_RESULT,
+          tool_use_id: id,
           content: "[No response received]"
-        });
+        }]
+      } :
+      {
+        role: ROLE.TOOL,
+        tool_call_id: id,
+        content: "[No response received]"
+      });
     }
   }
 
@@ -377,7 +378,7 @@ export function stripOrphanedToolResults(body) {
 
     // Remove orphaned role:"tool" messages (OpenAI).
     const beforeMsgs = body.messages.length;
-    body.messages = body.messages.filter(msg => {
+    body.messages = body.messages.filter((msg) => {
       if (msg.role === "tool" && msg.tool_call_id) {
         return liveIds.has(msg.tool_call_id);
       }
@@ -389,7 +390,7 @@ export function stripOrphanedToolResults(body) {
     for (const msg of body.messages) {
       if (msg.role === "user" && Array.isArray(msg.content)) {
         const beforeBlocks = msg.content.length;
-        msg.content = msg.content.filter(block => {
+        msg.content = msg.content.filter((block) => {
           if (block.type === "tool_result" && block.tool_use_id) {
             return liveIds.has(block.tool_use_id);
           }
@@ -401,7 +402,7 @@ export function stripOrphanedToolResults(body) {
     // Drop user messages whose content array became empty after stripping
     // orphaned tool_result blocks — strict APIs (Anthropic) reject empty content.
     const beforeDrop = body.messages.length;
-    body.messages = body.messages.filter(msg => {
+    body.messages = body.messages.filter((msg) => {
       if (msg.role === "user" && Array.isArray(msg.content) && msg.content.length === 0) {
         return false;
       }
@@ -416,9 +417,9 @@ export function stripOrphanedToolResults(body) {
     for (const item of body.input) {
       if (item.type === "function_call" && item.call_id) liveIds.add(item.call_id);
     }
-    if (liveIds.size > 0 || body.input.some(i => i.type === "function_call_output")) {
+    if (liveIds.size > 0 || body.input.some((i) => i.type === "function_call_output")) {
       const before = body.input.length;
-      body.input = body.input.filter(item => {
+      body.input = body.input.filter((item) => {
         if (item.type === "function_call_output" && item.call_id) {
           return liveIds.has(item.call_id);
         }
@@ -440,11 +441,11 @@ export function stripOrphanedToolResults(body) {
         if (key) liveIds.add(key);
       }
     }
-    if (liveIds.size > 0 || body.contents.some(t => Array.isArray(t.parts) && t.parts.some(p => p.functionResponse))) {
+    if (liveIds.size > 0 || body.contents.some((t) => Array.isArray(t.parts) && t.parts.some((p) => p.functionResponse))) {
       for (const turn of body.contents) {
         if (!Array.isArray(turn.parts)) continue;
         const before = turn.parts.length;
-        turn.parts = turn.parts.filter(part => {
+        turn.parts = turn.parts.filter((part) => {
           if (!part.functionResponse) return true;
           const key = part.functionResponse.id ?? part.functionResponse.name;
           return key ? liveIds.has(key) : true;
@@ -460,13 +461,13 @@ export function stripOrphanedToolResults(body) {
 // Extract text content from a tool_result block (Claude-shaped) or tool message (OpenAI-shaped).
 // Returns "" when there is no text (e.g. image-only tool_result).
 function extractToolResultText(content) {
-  if (typeof content === "string") return content.trim();
+  if (isString(content)) return content.trim();
   if (!Array.isArray(content)) return "";
-  return content
-    .filter(block => block?.type === "text" && typeof block.text === "string")
-    .map(block => block.text)
-    .join("\n")
-    .trim();
+  return content.
+  filter((block) => block?.type === "text" && isString(block.text)).
+  map((block) => block.text).
+  join("\n").
+  trim();
 }
 
 // Merge consecutive same-role user messages so downstream translators that don't
@@ -480,8 +481,8 @@ function mergeConsecutiveUserMessages(messages) {
   const merged = [];
   for (const msg of messages) {
     const last = merged[merged.length - 1];
-    if (last && last.role === "user" && msg.role === "user"
-        && typeof last.content === "string" && typeof msg.content === "string") {
+    if (last && last.role === "user" && msg.role === "user" && isString(
+      last.content) && isString(msg.content)) {
       merged[merged.length - 1] = { ...last, content: `${last.content}\n${msg.content}` };
     } else {
       merged.push(msg);
@@ -522,7 +523,7 @@ function mergeConsecutiveUserMessages(messages) {
  * @returns {object} the same body reference
  */
 export function salvageOrphanedToolResults(body) {
-  if (!body || typeof body !== "object") return body;
+  if (!body || !isObject(body)) return body;
 
   try {
     let changed = false;
@@ -536,12 +537,12 @@ export function salvageOrphanedToolResults(body) {
         if (msg.role !== "assistant") continue;
         if (Array.isArray(msg.tool_calls)) {
           for (const tc of msg.tool_calls) {
-            if (typeof tc?.id === "string") knownCallIds.add(tc.id);
+            if (isString(tc?.id)) knownCallIds.add(tc.id);
           }
         }
         if (Array.isArray(msg.content)) {
           for (const block of msg.content) {
-            if (block?.type === "tool_use" && typeof block.id === "string") {
+            if (block?.type === "tool_use" && isString(block.id)) {
               knownCallIds.add(block.id);
             }
           }
@@ -571,7 +572,7 @@ export function salvageOrphanedToolResults(body) {
               rebuiltContent.push(block);
               continue;
             }
-            if (typeof block.tool_use_id === "string" && knownCallIds.has(block.tool_use_id)) {
+            if (isString(block.tool_use_id) && knownCallIds.has(block.tool_use_id)) {
               rebuiltContent.push(block);
               continue;
             }
@@ -614,10 +615,10 @@ export function salvageOrphanedToolResults(body) {
       // set, every response would look orphaned and be dropped. Preserving them
       // here keeps that standalone tool output visible (matches the previous
       // per-format skip for gemini/gemini-cli/antigravity/vertex).
-      if (knownFnIds.size > 0 && body.contents.some(t => Array.isArray(t.parts) && t.parts.some(p => p.functionResponse))) {
+      if (knownFnIds.size > 0 && body.contents.some((t) => Array.isArray(t.parts) && t.parts.some((p) => p.functionResponse))) {
         const salvagedContents = [];
         for (const turn of body.contents) {
-          if (!Array.isArray(turn.parts) || !turn.parts.some(p => p.functionResponse)) {
+          if (!Array.isArray(turn.parts) || !turn.parts.some((p) => p.functionResponse)) {
             salvagedContents.push(turn);
             continue;
           }
@@ -636,7 +637,7 @@ export function salvageOrphanedToolResults(body) {
             orphanCount++;
             const resp = part.functionResponse.response;
             const raw = resp?.result ?? resp;
-            const text = typeof raw === "string" ? raw.trim() : (raw ? JSON.stringify(raw).trim() : "");
+            const text = isString(raw) ? raw.trim() : raw ? JSON.stringify(raw).trim() : "";
             if (text) rebuiltParts.push({ text: `[Tool result: ${text}]` });
           }
           if (orphanCount > 0) {
@@ -666,7 +667,7 @@ export function salvageOrphanedToolResults(body) {
  * Ported from decolua/9router#3116.
  */
 export function nvidiaToolCallId(id) {
-  if (!id || typeof id !== "string") return id;
+  if (!id || !isString(id)) return id;
   // Already a compact id — leave it alone so repeated passes are stable.
   if (/^[a-zA-Z0-9]{9}$/.test(id)) return id;
   return createHash("sha256").update(id).digest("hex").slice(0, 9);
@@ -683,7 +684,7 @@ export function normalizeNvidiaToolCallIds(body) {
     if (msg?.tool_call_id) msg.tool_call_id = nvidiaToolCallId(msg.tool_call_id);
     if (Array.isArray(msg?.content)) {
       for (const block of msg.content) {
-        if (!block || typeof block !== "object") continue;
+        if (!block || !isObject(block)) continue;
         if ((block.type === "tool_use" || block.type === "tool_result") && block.id) {
           block.id = nvidiaToolCallId(block.id);
         }

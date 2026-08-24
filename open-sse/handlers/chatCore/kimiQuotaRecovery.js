@@ -3,15 +3,16 @@
  * weekly subscription and a temporary request window. The latter must stay
  * recoverable, otherwise a healthy subscription is marked terminal.
  */
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function asRecord(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  return value && isObject(value) && !Array.isArray(value) ? value : null;
 }
 
 function remaining(value) {
   if (!value) return null;
   const candidate = value.remaining ?? value.remainingPercentage;
-  const parsed = typeof candidate === "number" ? candidate : Number(candidate);
+  const parsed = isNumber(candidate) ? candidate : Number(candidate);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -28,16 +29,16 @@ export function getKimiTemporaryRateLimitResetAt(usage, nowMs = Date.now()) {
   const weekly = asRecord(quotas?.Weekly);
   const rateLimitRemaining = remaining(rateLimit);
   const weeklyRemaining = remaining(weekly);
-  const resetAt = typeof rateLimit?.resetAt === "string" ? rateLimit.resetAt : null;
+  const resetAt = isString(rateLimit?.resetAt) ? rateLimit.resetAt : null;
   const resetMs = resetAt ? new Date(resetAt).getTime() : NaN;
 
   if (
-    rateLimitRemaining !== 0 ||
-    weeklyRemaining === null ||
-    weeklyRemaining <= 0 ||
-    !Number.isFinite(resetMs) ||
-    resetMs <= nowMs
-  ) {
+  rateLimitRemaining !== 0 ||
+  weeklyRemaining === null ||
+  weeklyRemaining <= 0 ||
+  !Number.isFinite(resetMs) ||
+  resetMs <= nowMs)
+  {
     return null;
   }
 

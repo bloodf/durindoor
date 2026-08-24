@@ -1,10 +1,11 @@
 import { FORMATS } from "../formats.js";
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function parseArgs(value) {
   if (!value) return {};
-  if (typeof value === "object") return value;
+  if (isObject(value)) return value;
   try {
     return JSON.parse(value);
   } catch {
@@ -27,9 +28,9 @@ function getToolCalls(completion) {
 
 function openAIToGeminiFinish(reason) {
   switch (reason) {
-    case OPENAI_FINISH.LENGTH: return GEMINI_FINISH.MAX_TOKENS;
-    case OPENAI_FINISH.CONTENT_FILTER: return GEMINI_FINISH.SAFETY;
-    default: return GEMINI_FINISH.STOP;
+    case OPENAI_FINISH.LENGTH:return GEMINI_FINISH.MAX_TOKENS;
+    case OPENAI_FINISH.CONTENT_FILTER:return GEMINI_FINISH.SAFETY;
+    default:return GEMINI_FINISH.STOP;
   }
 }
 
@@ -41,7 +42,7 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
 
   const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
   if (reasoning && !claudeCompat) content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoning });
-  if (typeof message.content === "string" && message.content.length > 0) {
+  if (isString(message.content) && message.content.length > 0) {
     content.push({ type: CLAUDE_BLOCK.TEXT, text: message.content });
   }
   for (const toolCall of getToolCalls(completion)) {
@@ -50,7 +51,7 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
       type: CLAUDE_BLOCK.TOOL_USE,
       id: toolCall.id || `toolu_${Date.now()}_${content.length}`,
       name: fn.name || toolCall.name || "",
-      input: parseArgs(fn.arguments || toolCall.arguments),
+      input: parseArgs(fn.arguments || toolCall.arguments)
     });
   }
   if (content.length === 0) content.push({ type: CLAUDE_BLOCK.TEXT, text: "" });
@@ -67,8 +68,8 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
     stop_sequence: null,
     usage: {
       input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
-      output_tokens: (usage.completion_tokens || usage.output_tokens || 0) + (usage.completion_tokens_details?.reasoning_tokens || 0),
-    },
+      output_tokens: (usage.completion_tokens || usage.output_tokens || 0) + (usage.completion_tokens_details?.reasoning_tokens || 0)
+    }
   };
 }
 
@@ -79,7 +80,7 @@ function openAICompletionToGeminiResponse(completion) {
   const parts = [];
   const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
   if (reasoning) parts.push({ text: reasoning, thought: true });
-  if (typeof message.content === "string" && message.content.length > 0) {
+  if (isString(message.content) && message.content.length > 0) {
     parts.push({ text: message.content });
   }
   for (const toolCall of getToolCalls(completion)) {
@@ -87,7 +88,7 @@ function openAICompletionToGeminiResponse(completion) {
     parts.push({
       functionCall: {
         name: fn.name || toolCall.name || "",
-        args: parseArgs(fn.arguments || toolCall.arguments),
+        args: parseArgs(fn.arguments || toolCall.arguments)
       }
     });
   }
@@ -103,7 +104,7 @@ function openAICompletionToGeminiResponse(completion) {
       usageMetadata: {
         promptTokenCount: usage.prompt_tokens || usage.input_tokens || 0,
         candidatesTokenCount: usage.completion_tokens || usage.output_tokens || 0,
-        totalTokenCount: usage.total_tokens || ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0)),
+        totalTokenCount: usage.total_tokens || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0)
       },
       modelVersion: completion.model || "unknown",
       responseId: completion.id || `resp_${Date.now()}`
@@ -117,7 +118,7 @@ function openAICompletionToOllama(completion) {
   const message = getMessage(completion);
   const ollamaMessage = {
     role: "assistant",
-    content: typeof message.content === "string" ? message.content : "",
+    content: isString(message.content) ? message.content : ""
   };
   if (message.reasoning_content) ollamaMessage.thinking = message.reasoning_content;
   const toolCalls = getToolCalls(completion).map((toolCall) => {
@@ -126,7 +127,7 @@ function openAICompletionToOllama(completion) {
       id: toolCall.id,
       function: {
         name: fn.name || toolCall.name || "",
-        arguments: parseArgs(fn.arguments || toolCall.arguments),
+        arguments: parseArgs(fn.arguments || toolCall.arguments)
       }
     };
   });
@@ -140,35 +141,35 @@ function openAICompletionToOllama(completion) {
     done: true,
     done_reason: choice.finish_reason || "stop",
     prompt_eval_count: usage.prompt_tokens || usage.input_tokens || 0,
-    eval_count: usage.completion_tokens || usage.output_tokens || 0,
+    eval_count: usage.completion_tokens || usage.output_tokens || 0
   };
 }
 
 export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
   const output = Array.isArray(responseBody?.output) ? responseBody.output : [];
-  const reasoningText = output
-    .filter(item => item?.type === "reasoning")
-    .flatMap(item => Array.isArray(item.summary) ? item.summary : [])
-    .map(part => part?.text || "")
-    .join("");
-  const messages = output.filter(item => item?.type === "message");
-  const msgItem = [...messages].reverse().find(item => {
+  const reasoningText = output.
+  filter((item) => item?.type === "reasoning").
+  flatMap((item) => Array.isArray(item.summary) ? item.summary : []).
+  map((part) => part?.text || "").
+  join("");
+  const messages = output.filter((item) => item?.type === "message");
+  const msgItem = [...messages].reverse().find((item) => {
     const content = Array.isArray(item.content) ? item.content : [];
-    return content.some(part => typeof part.text === "string" && part.text.length > 0);
+    return content.some((part) => isString(part.text) && part.text.length > 0);
   }) || messages[messages.length - 1] || null;
-  const textContent = (Array.isArray(msgItem?.content) ? msgItem.content : [])
-    .map(part => part.type === "output_text" || typeof part.text === "string" ? part.text || "" : "")
-    .join("");
-  const toolCalls = output
-    .filter(item => item?.type === "function_call")
-    .map((item, idx) => ({
-      id: item.call_id || `call_${item.name || "tool"}_${idx}`,
-      type: "function",
-      function: {
-        name: item.name || "",
-        arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments || {}),
-      },
-    }));
+  const textContent = (Array.isArray(msgItem?.content) ? msgItem.content : []).
+  map((part) => part.type === "output_text" || isString(part.text) ? part.text || "" : "").
+  join("");
+  const toolCalls = output.
+  filter((item) => item?.type === "function_call").
+  map((item, idx) => ({
+    id: item.call_id || `call_${item.name || "tool"}_${idx}`,
+    type: "function",
+    function: {
+      name: item.name || "",
+      arguments: isString(item.arguments) ? item.arguments : JSON.stringify(item.arguments || {})
+    }
+  }));
 
   const usage = responseBody?.usage || {};
   const inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
@@ -176,21 +177,21 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
   const cachedTokens = usage.cache_read_input_tokens || usage.cached_tokens || 0;
   const cacheCreationTokens = usage.cache_creation_input_tokens || 0;
   const promptTokens = inputTokens + cachedTokens + cacheCreationTokens;
-  const promptTokenDetails = cachedTokens || cacheCreationTokens
-    ? {
-        ...(cachedTokens ? { cached_tokens: cachedTokens } : {}),
-        ...(cacheCreationTokens ? { cache_creation_tokens: cacheCreationTokens } : {}),
-      }
-    : undefined;
+  const promptTokenDetails = cachedTokens || cacheCreationTokens ?
+  {
+    ...(cachedTokens ? { cached_tokens: cachedTokens } : null),
+    ...(cacheCreationTokens ? { cache_creation_tokens: cacheCreationTokens } : null)
+  } :
+  undefined;
   const message = {
     role: "assistant",
-    content: textContent || (toolCalls.length > 0 ? null : ""),
+    content: textContent || (toolCalls.length > 0 ? null : "")
   };
   if (reasoningText) message.reasoning_content = reasoningText;
   if (toolCalls.length > 0) message.tool_calls = toolCalls;
 
   const responseDone = responseBody?.status === "completed" || responseBody?.status === "done";
-  const finishReason = toolCalls.length > 0 ? "tool_calls" : (responseDone ? "stop" : (responseBody?.status || "stop"));
+  const finishReason = toolCalls.length > 0 ? "tool_calls" : responseDone ? "stop" : responseBody?.status || "stop";
   return {
     id: responseBody?.id || `chatcmpl-${Date.now()}`,
     object: "chat.completion",
@@ -199,10 +200,10 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
     choices: [{ index: 0, message, finish_reason: finishReason }],
     usage: {
       prompt_tokens: promptTokens,
-      ...(promptTokenDetails ? { prompt_tokens_details: promptTokenDetails } : {}),
+      ...(promptTokenDetails ? { prompt_tokens_details: promptTokenDetails } : null),
       completion_tokens: outputTokens,
-      total_tokens: usage.total_tokens || (promptTokens + outputTokens),
-    },
+      total_tokens: usage.total_tokens || promptTokens + outputTokens
+    }
   };
 }
 
@@ -211,9 +212,9 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
  * Consumers normalize request metadata to a Set before this projection (#3373).
  */
 function openAICompletionToResponsesOutput(completion, { customToolNames = new Set() } = {}) {
-  const customToolNameSet = customToolNames instanceof Set
-    ? customToolNames
-    : new Set(customToolNames || []);
+  const customToolNameSet = customToolNames instanceof Set ?
+  customToolNames :
+  new Set(customToolNames || []);
   if (!completion?.choices?.[0]) return completion;
   const message = getMessage(completion);
   const usage = completion.usage || {};
@@ -225,18 +226,18 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
     output.push({
       type: "reasoning",
       id: `rs_${completion.id || Date.now()}_${idx}`,
-      summary: [{ type: "summary_text", text: reasoning }],
+      summary: [{ type: "summary_text", text: reasoning }]
     });
     idx++;
   }
 
-  const text = typeof message.content === "string" ? message.content : "";
+  const text = isString(message.content) ? message.content : "";
   if (text) {
     output.push({
       type: "message",
       id: `msg_${completion.id || Date.now()}_${idx}`,
       role: "assistant",
-      content: [{ type: "output_text", text, annotations: [], logprobs: [] }],
+      content: [{ type: "output_text", text, annotations: [], logprobs: [] }]
     });
     idx++;
   }
@@ -247,27 +248,27 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
       const fn = toolCall.function || {};
       const name = fn.name || toolCall.name || "";
       const callId = toolCall.id || `call_${name || "tool"}_${idx}`;
-      const argumentsText = typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments || {});
+      const argumentsText = isString(fn.arguments) ? fn.arguments : JSON.stringify(fn.arguments || {});
       const custom = customToolNameSet.has(name);
       let input = argumentsText;
       if (custom) {
         try {
           const parsed = JSON.parse(argumentsText);
-          if (typeof parsed?.input === "string") input = parsed.input;
-        } catch { /* custom input is already raw */ }
+          if (isString(parsed?.input)) input = parsed.input;
+        } catch {/* custom input is already raw */}
       }
       output.push(custom ? {
         type: RESPONSES_ITEM.CUSTOM_TOOL_CALL,
         id: `ctc_${callId}`,
         call_id: callId,
         name,
-        input,
+        input
       } : {
         type: RESPONSES_ITEM.FUNCTION_CALL,
         id: `fc_${callId}`,
         call_id: callId,
         name,
-        arguments: argumentsText,
+        arguments: argumentsText
       });
       idx++;
     }
@@ -276,7 +277,7 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
       type: "message",
       id: `msg_${completion.id || Date.now()}_${idx}`,
       role: "assistant",
-      content: [{ type: "output_text", text: "", annotations: [], logprobs: [] }],
+      content: [{ type: "output_text", text: "", annotations: [], logprobs: [] }]
     });
   }
 
@@ -291,8 +292,8 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
     usage: {
       input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
       output_tokens: usage.completion_tokens || usage.output_tokens || 0,
-      total_tokens: usage.total_tokens || ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0)),
-    },
+      total_tokens: usage.total_tokens || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0)
+    }
   };
 }
 

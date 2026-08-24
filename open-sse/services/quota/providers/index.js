@@ -11,13 +11,13 @@ import {
   fetchGlmQuota,
   fetchKimiQuota,
   fetchMiniMaxQuota,
-  fetchQoderQuota,
-} from "./codingPlans.js";
+  fetchQoderQuota } from
+"./codingPlans.js";
 import {
   fetchCrofQuota,
   fetchDeepSeekQuota,
-  fetchVercelQuota,
-} from "./balances.js";
+  fetchVercelQuota } from
+"./balances.js";
 
 export const PROVIDER_QUOTA_ADAPTERS = Object.freeze({
   google: fetchGoogleQuota,
@@ -34,11 +34,11 @@ export const PROVIDER_QUOTA_ADAPTERS = Object.freeze({
   qoder: fetchQoderQuota,
   vercel: fetchVercelQuota,
   crof: fetchCrofQuota,
-  deepseek: fetchDeepSeekQuota,
+  deepseek: fetchDeepSeekQuota
 });
 
 const PROVIDER_QUOTA_CONNECTION_ELIGIBILITY = Object.freeze({
-  kiro: isKiroQuotaConnectionEligible,
+  kiro: isKiroQuotaConnectionEligible
 });
 
 export function getProviderQuotaAdapter(provider) {
@@ -49,6 +49,6 @@ export function getProviderQuotaAdapter(provider) {
   return {
     config,
     fetchQuota,
-    ...(isConnectionEligible ? { isConnectionEligible } : {}),
+    ...(isConnectionEligible ? { isConnectionEligible } : null)
   };
 }

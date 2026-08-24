@@ -3,11 +3,12 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input, OAuthModal } from "@/shared/components";
+import { isBrowser } from "../utils/typeChecks.js";
 
 const GITLAB_COM = "https://gitlab.com";
 
 function getRedirectUri() {
-  if (typeof window === "undefined") return "http://localhost/callback";
+  if (!isBrowser()) return "http://localhost/callback";
   const port = window.location.port || (window.location.protocol === "https:" ? "443" : "80");
   return `http://localhost:${port}/callback`;
 }
@@ -25,7 +26,7 @@ export default function GitLabAuthModal({
   onSuccess,
   onClose,
   proxyPools = [],
-  proxyPoolsReady = false,
+  proxyPoolsReady = false
 }) {
   const providerId = provider || "gitlab";
   const [mode, setMode] = useState(null); // null | "oauth" | "pat"
@@ -76,7 +77,7 @@ export default function GitLabAuthModal({
       const res = await fetch("/api/oauth/gitlab/pat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: providerId, token: pat.trim(), baseUrl: baseUrl.trim() || GITLAB_COM }),
+        body: JSON.stringify({ provider: providerId, token: pat.trim(), baseUrl: baseUrl.trim() || GITLAB_COM })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Authentication failed");
@@ -101,26 +102,26 @@ export default function GitLabAuthModal({
         oauthMeta={oauthMeta}
         proxyPools={proxyPools}
         proxyPoolsReady={proxyPoolsReady}
-        onSuccess={() => { onSuccess?.(); handleClose(); }}
-        onClose={() => { setShowOAuth(false); setOauthMeta(null); }}
-      />
-    );
+        onSuccess={() => {onSuccess?.();handleClose();}}
+        onClose={() => {setShowOAuth(false);setOauthMeta(null);}} />);
+
+
   }
 
   return (
     <Modal isOpen={isOpen} title="Connect GitLab Duo" onClose={handleClose} size="lg">
       <div className="flex flex-col gap-4">
         {/* Mode selection */}
-        {!mode && (
-          <>
+        {!mode &&
+        <>
             <p className="text-sm text-text-muted">
               Choose how to authenticate with GitLab Duo:
             </p>
             <div className="grid grid-cols-2 gap-3">
               <button
-                onClick={() => setMode("oauth")}
-                className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
-              >
+              onClick={() => setMode("oauth")}
+              className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left">
+              
                 <span className="material-symbols-outlined text-2xl text-primary">lock_open</span>
                 <div>
                   <p className="text-sm font-medium">OAuth App</p>
@@ -128,9 +129,9 @@ export default function GitLabAuthModal({
                 </div>
               </button>
               <button
-                onClick={() => setMode("pat")}
-                className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
-              >
+              onClick={() => setMode("pat")}
+              className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left">
+              
                 <span className="material-symbols-outlined text-2xl text-primary">key</span>
                 <div>
                   <p className="text-sm font-medium">Personal Access Token</p>
@@ -139,11 +140,11 @@ export default function GitLabAuthModal({
               </button>
             </div>
           </>
-        )}
+        }
 
         {/* OAuth mode */}
-        {mode === "oauth" && (
-          <>
+        {mode === "oauth" &&
+        <>
             <p className="text-xs text-text-muted">
               Create an OAuth app at{" "}
               <a href={`${baseUrl.trim() || GITLAB_COM}/-/profile/applications`} target="_blank" rel="noreferrer" className="text-primary underline">
@@ -160,16 +161,16 @@ export default function GitLabAuthModal({
               <Button onClick={handleOAuthStart} fullWidth disabled={!clientId.trim()}>
                 Authorize
               </Button>
-              <Button onClick={() => { setMode(null); setError(null); }} variant="ghost" fullWidth>
+              <Button onClick={() => {setMode(null);setError(null);}} variant="ghost" fullWidth>
                 Back
               </Button>
             </div>
           </>
-        )}
+        }
 
         {/* PAT mode */}
-        {mode === "pat" && (
-          <>
+        {mode === "pat" &&
+        <>
             <p className="text-xs text-text-muted">
               Create a PAT at{" "}
               <a href={`${baseUrl.trim() || GITLAB_COM}/-/user_settings/personal_access_tokens`} target="_blank" rel="noreferrer" className="text-primary underline">
@@ -186,27 +187,27 @@ export default function GitLabAuthModal({
               <Button onClick={handlePATSubmit} fullWidth disabled={!pat.trim() || loading} loading={loading}>
                 Connect
               </Button>
-              <Button onClick={() => { setMode(null); setError(null); }} variant="ghost" fullWidth>
+              <Button onClick={() => {setMode(null);setError(null);}} variant="ghost" fullWidth>
                 Back
               </Button>
             </div>
           </>
-        )}
+        }
       </div>
-    </Modal>
-  );
+    </Modal>);
+
 }
 
 GitLabAuthModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   provider: PropTypes.string,
-  providerInfo: PropTypes.shape({ name: PropTypes.string }),
+  providerInfo: PropTypes['shape']({ name: PropTypes.string }),
   onSuccess: PropTypes.func,
   onClose: PropTypes.func.isRequired,
-  proxyPools: PropTypes.arrayOf(PropTypes.shape({
+  proxyPools: PropTypes.arrayOf(PropTypes['shape']({
     id: PropTypes.string,
     name: PropTypes.string,
-    isActive: PropTypes.bool,
+    isActive: PropTypes.bool
   })),
-  proxyPoolsReady: PropTypes.bool,
+  proxyPoolsReady: PropTypes.bool
 };

@@ -8,6 +8,7 @@ import { prepareMinimaxVideoRequest, normalizeMinimaxVideoResponse } from "./vid
 
 // Upstream fetch deadline for video job submission/polling (the job itself is
 // async upstream — this only bounds the HTTP round-trip, not video rendering).
+import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
 const VIDEO_FETCH_TIMEOUT_MS = Number(process.env.VIDEO_FETCH_TIMEOUT_MS || 120000);
 
 // POST /videos/* creates a billable upstream job. A network error after the
@@ -26,7 +27,7 @@ export function sanitizeSecrets(text, credentials = null) {
   let out = String(text).replace(/Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [redacted]");
   for (const key of ["accessToken", "refreshToken", "apiKey"]) {
     const secret = credentials?.[key];
-    if (typeof secret === "string" && secret.length >= 8) {
+    if (isString(secret) && secret.length >= 8) {
       out = out.split(secret).join("[redacted]");
     }
   }
@@ -45,7 +46,7 @@ function prepareRequest(config, options) {
     method,
     url: buildUpstreamUrl(config, options.action, options.requestId),
     body: method === "POST" ? options.rawBody : undefined,
-    contentType: method === "POST" ? options.contentType : null,
+    contentType: method === "POST" ? options.contentType : null
   };
 }
 
@@ -58,8 +59,8 @@ function buildHeaders({ token, contentType, idempotencyKey }) {
 }
 
 function combineSignals(signal, timeoutMs) {
-  const timeoutSignal = typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(timeoutMs) : null;
-  if (signal && timeoutSignal && typeof AbortSignal.any === "function") {
+  const timeoutSignal = isFunction(AbortSignal?.timeout) ? AbortSignal.timeout(timeoutMs) : null;
+  if (signal && timeoutSignal && isFunction(AbortSignal.any)) {
     return AbortSignal.any([signal, timeoutSignal]);
   }
   return signal || timeoutSignal || undefined;
@@ -100,7 +101,7 @@ export async function handleVideoProxyCore({
   signal,
   timeoutMs = VIDEO_FETCH_TIMEOUT_MS,
   log,
-  onCredentialsRefreshed,
+  onCredentialsRefreshed
 }) {
   const config = getVideoConfig(provider);
   if (!config) {
@@ -117,12 +118,12 @@ export async function handleVideoProxyCore({
   const proxyOptions = resolveCredentialProxyOptions(credentials);
 
   const doFetch = (token) =>
-    proxyAwareFetch(url, {
-      method,
-      headers: buildHeaders({ token, contentType: request.contentType, idempotencyKey: method === "POST" ? idempotencyKey : null }),
-      body: request.body,
-      signal: fetchSignal,
-    }, proxyOptions);
+  proxyAwareFetch(url, {
+    method,
+    headers: buildHeaders({ token, contentType: request.contentType, idempotencyKey: method === "POST" ? idempotencyKey : null }),
+    body: request.body,
+    signal: fetchSignal
+  }, proxyOptions);
 
   let upstream;
   try {
@@ -137,9 +138,9 @@ export async function handleVideoProxyCore({
 
   // 401/403 → refresh once → retry once (OAuth accounts only; API keys can't refresh)
   if (
-    (upstream.status === HTTP_STATUS.UNAUTHORIZED || upstream.status === HTTP_STATUS.FORBIDDEN) &&
-    credentials?.refreshToken
-  ) {
+  (upstream.status === HTTP_STATUS.UNAUTHORIZED || upstream.status === HTTP_STATUS.FORBIDDEN) &&
+  credentials?.refreshToken)
+  {
     let refreshed = null;
     try {
       refreshed = await refreshTokenByProvider(provider, credentials, log, proxyOptions);
@@ -152,7 +153,7 @@ export async function handleVideoProxyCore({
       if (onCredentialsRefreshed) await onCredentialsRefreshed(refreshed);
       try {
         await upstream.body?.cancel?.();
-      } catch { /* noop */ }
+      } catch {/* noop */}
       try {
         upstream = await doFetch(credentials.accessToken || credentials.apiKey);
       } catch (error) {
@@ -182,8 +183,8 @@ export async function handleVideoProxyCore({
       status: upstream.status,
       headers: {
         "Content-Type": upstream.headers.get("content-type") || "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    }),
+        "Access-Control-Allow-Origin": "*"
+      }
+    })
   };
 }

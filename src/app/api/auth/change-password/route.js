@@ -6,22 +6,23 @@ import { getClientIp } from "@/lib/auth/loginLimiter";
 import {
   invalidateDefaultPasswordCache,
   setDashboardAuthCookie,
-  validateDashboardPassword,
-} from "@/lib/auth/dashboardSession";
+  validateDashboardPassword } from
+"@/lib/auth/dashboardSession";
 import {
   commitPasswordChangeProof,
   releasePasswordChangeProof,
   reservePasswordChangeProof,
-  resetPasswordChangeProofs,
-} from "@/lib/auth/passwordChangeProof";
+  resetPasswordChangeProofs } from
+"@/lib/auth/passwordChangeProof";
 import { PasswordEpochMismatchError, getSettings, updateSettingsWithPasswordEpoch } from "@/lib/localDb";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
   try {
     const { proof, newPassword } = await request.json().catch(() => ({}));
-    if (typeof proof !== "string" || !proof) return NextResponse.json({ error: "Missing password-change proof" }, { status: 403 });
+    if (!isString(proof) || !proof) return NextResponse.json({ error: "Missing password-change proof" }, { status: 403 });
     const validation = validateDashboardPassword(newPassword);
     if (validation) return NextResponse.json({ error: validation }, { status: 400 });
 

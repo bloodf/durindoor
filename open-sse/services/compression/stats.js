@@ -2,8 +2,9 @@ import {
   DEFAULT_COMPRESSION_CONFIG,
   DEFAULT_CAVEMAN_CONFIG,
   DEFAULT_RTK_CONFIG,
-  DEFAULT_COMPRESSION_LANGUAGE_CONFIG,
-} from "./types.js";
+  DEFAULT_COMPRESSION_LANGUAGE_CONFIG } from
+"./types.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CHARS_PER_TOKEN = 4;
 const BASE64_IMAGE_DATA_URI_PREFIX = "data:image/";
@@ -46,9 +47,9 @@ function countTextChars(text) {
     let subtypeEnd = cursor + BASE64_IMAGE_DATA_URI_PREFIX.length;
     while (subtypeEnd < text.length && isImageSubtypeChar(text[subtypeEnd])) subtypeEnd++;
     if (
-      subtypeEnd === cursor + BASE64_IMAGE_DATA_URI_PREFIX.length ||
-      !matchesAsciiInsensitive(text, subtypeEnd, ";base64,")
-    ) {
+    subtypeEnd === cursor + BASE64_IMAGE_DATA_URI_PREFIX.length ||
+    !matchesAsciiInsensitive(text, subtypeEnd, ";base64,"))
+    {
       textChars++;
       cursor++;
       continue;
@@ -70,7 +71,7 @@ function countTextChars(text) {
 
 export function estimateCompressionTokens(text) {
   if (!text) return 0;
-  const str = typeof text === "string" ? text : JSON.stringify(text);
+  const str = isString(text) ? text : JSON.stringify(text);
   if (!str) return 0;
   if (str.length > MAX_EXACT_TOKEN_COUNT_CHARS) {
     return Math.ceil(str.length / 4);
@@ -79,19 +80,19 @@ export function estimateCompressionTokens(text) {
 }
 
 export function createCompressionStats(
-  originalBody,
-  compressedBody,
-  mode,
-  techniquesUsed,
-  rulesApplied,
-  durationMs,
-) {
+originalBody,
+compressedBody,
+mode,
+techniquesUsed,
+rulesApplied,
+durationMs)
+{
   const originalTokens = estimateCompressionTokens(originalBody);
   const compressedTokens = estimateCompressionTokens(compressedBody);
   const savingsPercent =
-    originalTokens > 0
-      ? Math.round(((originalTokens - compressedTokens) / originalTokens) * 10000) / 100
-      : 0;
+  originalTokens > 0 ?
+  Math.round((originalTokens - compressedTokens) / originalTokens * 10000) / 100 :
+  0;
   return {
     originalTokens,
     compressedTokens,
@@ -99,8 +100,8 @@ export function createCompressionStats(
     techniquesUsed,
     mode,
     timestamp: Date.now(),
-    ...(rulesApplied && rulesApplied.length > 0 ? { rulesApplied } : {}),
-    ...(durationMs !== undefined ? { durationMs } : {}),
+    ...(rulesApplied && rulesApplied.length > 0 ? { rulesApplied } : null),
+    ...(durationMs !== undefined ? { durationMs } : null)
   };
 }
 
@@ -114,6 +115,6 @@ export function getDefaultCompressionConfig() {
     ...DEFAULT_COMPRESSION_CONFIG,
     cavemanConfig: { ...DEFAULT_CAVEMAN_CONFIG },
     rtkConfig: { ...DEFAULT_RTK_CONFIG },
-    languageConfig: { ...DEFAULT_COMPRESSION_LANGUAGE_CONFIG },
+    languageConfig: { ...DEFAULT_COMPRESSION_LANGUAGE_CONFIG }
   };
 }

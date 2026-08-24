@@ -7,6 +7,7 @@
  * @param {object} config            reserves / margin / pct / absoluteBudget
  * @returns {number} the maximum prompt-token target the compressed request should fit within
  */
+import { isNumber } from "../../../../src/shared/utils/typeChecks.js";
 export function computeTarget(policy, modelContextLimit, requestMaxTokens, config) {
   if (policy === "absolute") {
     return Math.max(0, Math.floor(config.absoluteBudget));
@@ -17,8 +18,8 @@ export function computeTarget(policy, modelContextLimit, requestMaxTokens, confi
   }
   // reserve-output (default): limit − output reservation − safety margin.
   const reserve =
-    typeof requestMaxTokens === "number" && requestMaxTokens > 0
-      ? requestMaxTokens
-      : config.outputReserve;
+  isNumber(requestMaxTokens) && requestMaxTokens > 0 ?
+  requestMaxTokens :
+  config.outputReserve;
   return Math.max(0, Math.floor(modelContextLimit - reserve - config.safetyMargin));
 }

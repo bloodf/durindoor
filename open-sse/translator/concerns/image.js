@@ -1,4 +1,5 @@
 // Build a base64 data URI from mime + base64 payload
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function encodeDataUri(mimeType, base64) {
   return `data:${mimeType};base64,${base64}`;
 }
@@ -7,7 +8,7 @@ export function encodeDataUri(mimeType, base64) {
 // [\s\S] tolerates newlines inside the base64 payload.
 const DATA_URI_RE = /^data:([^;]+);base64,([\s\S]+)$/;
 export function parseDataUri(url) {
-  if (typeof url !== "string") return null;
+  if (!isString(url)) return null;
   const m = url.match(DATA_URI_RE);
   return m ? { mimeType: m[1], base64: m[2] } : null;
 }
@@ -53,7 +54,7 @@ function detectImageMime(buf) {
     if (buf.length < offset + sig.length) continue;
     let match = true;
     for (let i = 0; i < sig.length; i++) {
-      if (buf[offset + i] !== sig[i]) { match = false; break; }
+      if (buf[offset + i] !== sig[i]) {match = false;break;}
     }
     if (!match) continue;
     // WEBP: RIFF....WEBP — bytes 8..11 must be "WEBP".
@@ -75,12 +76,12 @@ function detectImageMime(buf) {
  */
 export async function fetchImageAsBase64(imageUrl, options = {}) {
   const { signal, timeoutMs = FETCH_TIMEOUT_MS, maxBytes = MAX_IMAGE_BYTES } = options;
-  if (!imageUrl || (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://"))) {
+  if (!imageUrl || !imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
     return null;
   }
 
   let url;
-  try { url = new URL(imageUrl); } catch { return null; }
+  try {url = new URL(imageUrl);} catch {return null;}
   const pinnedIps = await resolvePinnedIps(url.hostname);
   if (!pinnedIps) return null;
 
@@ -90,7 +91,7 @@ export async function fetchImageAsBase64(imageUrl, options = {}) {
 
   // Pin connect to the validated IP so no second DNS resolution can rebind (TOCTOU fix).
   const dispatcher = new Agent({
-    connect: { lookup: (_h, _o, cb) => cb(null, [{ address: pinnedIps[0].address, family: pinnedIps[0].family }]) },
+    connect: { lookup: (_h, _o, cb) => cb(null, [{ address: pinnedIps[0].address, family: pinnedIps[0].family }]) }
   });
 
   try {
@@ -106,7 +107,14 @@ export async function fetchImageAsBase64(imageUrl, options = {}) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.length;
-      if (total > maxBytes) { try { await reader.cancel(); } catch { /* ignore */ } return null; }
+      if (total > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        return null;
+      }
       chunks.push(value);
     }
 

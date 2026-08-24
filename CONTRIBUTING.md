@@ -23,6 +23,7 @@ Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
 ## Useful links
 
 - [Detailed contributor guide](docs/development/contributing.md)
+- [Anti-slop (oxlint) gate](docs/development/anti-slop.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security policy](.github/SECURITY.md)
 

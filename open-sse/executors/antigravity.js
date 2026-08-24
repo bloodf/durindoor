@@ -12,6 +12,7 @@ import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignatur
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 function sanitizeFunctionName(name) {
   if (!name) return "_unknown";
   let s = name.replace(/[^a-zA-Z0-9_.:\-]/g, "_");
@@ -26,35 +27,35 @@ const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 64000;
 const ANTIGRAVITY_IDE_REQUEST_ID_RE = /^agent\/[^/]+\/\d+\/[^/]+\/\d+$/;
 
 const ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS = [
-  /high\s+traffic/i,
-  /agent\s+(execution\s+)?terminated\s+due\s+to\s+error/i,
-  /capacity/i,
-  /temporarily\s+unavailable/i,
-  /timeout/i,
-  /stream\s+(ended|closed|terminated|interrupted)/i,
-  /empty\s+response/i,
-];
+/high\s+traffic/i,
+/agent\s+(execution\s+)?terminated\s+due\s+to\s+error/i,
+/capacity/i,
+/temporarily\s+unavailable/i,
+/timeout/i,
+/stream\s+(ended|closed|terminated|interrupted)/i,
+/empty\s+response/i];
+
 
 const ANTIGRAVITY_TRANSIENT_STATUSES = new Set([
-  HTTP_STATUS.SERVER_ERROR,
-  HTTP_STATUS.BAD_GATEWAY,
-  HTTP_STATUS.SERVICE_UNAVAILABLE,
-  HTTP_STATUS.GATEWAY_TIMEOUT,
-]);
+HTTP_STATUS.SERVER_ERROR,
+HTTP_STATUS.BAD_GATEWAY,
+HTTP_STATUS.SERVICE_UNAVAILABLE,
+HTTP_STATUS.GATEWAY_TIMEOUT]
+);
 
 // Fields Google generateContent rejects (Claude/OpenAI/Qwen thinking fields set at body root by thinkingUnified.js)
 const ANTIGRAVITY_REQUEST_BLACKLIST = [
-  "output_config",
-  "thinking",
-  "reasoning_effort",
-  "reasoning",
-  "enable_thinking",
-  "thinking_budget",
-  "thinkingConfig",
-];
+"output_config",
+"thinking",
+"reasoning_effort",
+"reasoning",
+"enable_thinking",
+"thinking_budget",
+"thinkingConfig"];
+
 
 // Strip blacklisted fields from an object (used for both body.request and top-level body)
-const stripBlacklisted = obj => {
+const stripBlacklisted = (obj) => {
   for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete obj[key];
 };
 
@@ -65,16 +66,16 @@ const MAX_TOOL_DESC_CHARS = 200;
 const MAX_SCHEMA_DESC_CHARS = 150;
 
 function compressToolSchema(schema, depth) {
-  if (!schema || typeof schema !== "object") return schema;
+  if (!schema || !isObject(schema)) return schema;
 
   if (depth >= MAX_SCHEMA_DEPTH) {
     if (schema.type === "object" && schema.properties) {
       const propNames = Object.keys(schema.properties);
       return {
         type: "string",
-        description: schema.description
-          ? `${schema.description} (JSON object with: ${propNames.join(", ")})`
-          : `JSON object with properties: ${propNames.join(", ")}`,
+        description: schema.description ?
+        `${schema.description} (JSON object with: ${propNames.join(", ")})` :
+        `JSON object with properties: ${propNames.join(", ")}`
       };
     }
     if (schema.type === "array" && schema.items) {
@@ -114,14 +115,14 @@ function normalizeFilteredContents(contents) {
   for (const content of contents || []) {
     if (!content?.role || !Array.isArray(content.parts) || content.parts.length === 0) continue;
     const previous = normalized.at(-1);
-    if (previous?.role === content.role) previous.parts.push(...content.parts);
-    else normalized.push({ ...content, parts: [...content.parts] });
+    if (previous?.role === content.role) previous.parts.push(...content.parts);else
+    normalized.push({ ...content, parts: [...content.parts] });
   }
   return normalized;
 }
 
 function filterThoughtParts(parts) {
-  return parts?.filter(part => {
+  return parts?.filter((part) => {
     if (part.thought && !part.functionCall) return false;
     if (part.thoughtSignature && !part.functionCall && !part.text) return false;
     return true;
@@ -129,15 +130,15 @@ function filterThoughtParts(parts) {
 }
 // Image generation model name patterns
 const IMAGE_MODEL_PATTERNS = [
-  /image/i,
-  /imagen/i,
-  /image-generation/i,
-];
+/image/i,
+/imagen/i,
+/image-generation/i];
+
 
 // Detect if a model is an image generation model
 function isImageModel(model) {
   if (!model) return false;
-  return IMAGE_MODEL_PATTERNS.some(p => p.test(model));
+  return IMAGE_MODEL_PATTERNS.some((p) => p.test(model));
 }
 
 // Parse aspect ratio / resolution from model name suffixes
@@ -155,7 +156,7 @@ function parseImageConfig(model) {
       // Resolution like 1024x768 — derive aspect ratio
       const gcd = (a, b) => b ? gcd(b, a % b) : a;
       const d = gcd(w, h);
-      config.aspectRatio = `${w/d}:${h/d}`;
+      config.aspectRatio = `${w / d}:${h / d}`;
     }
   }
   return config;
@@ -163,8 +164,8 @@ function parseImageConfig(model) {
 
 function uuidFromSeed(seed) {
   const bytes = crypto.createHash("sha256").update(String(seed || "antigravity")).digest().subarray(0, 16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  bytes[6] = bytes[6] & 0x0f | 0x50;
+  bytes[8] = bytes[8] & 0x3f | 0x80;
   const hex = bytes.toString("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
@@ -187,16 +188,16 @@ export class AntigravityExecutor extends BaseExecutor {
     super(provider, PROVIDERS[provider] || PROVIDERS.antigravity);
   }
   async execute(options) {
-    const filteredContents = options.body?.request?.contents?.map(content => ({
+    const filteredContents = options.body?.request?.contents?.map((content) => ({
       ...content,
-      parts: filterThoughtParts(content?.parts),
+      parts: filterThoughtParts(content?.parts)
     }));
     if (!isImageModel(options.model) && normalizeFilteredContents(filteredContents).length === 0) {
       return {
         response: errorResponse(HTTP_STATUS.BAD_REQUEST, "Antigravity request has no contents after thought filtering"),
         url: "",
         headers: {},
-        transformedBody: null,
+        transformedBody: null
       };
     }
     return super.execute(options);
@@ -206,7 +207,7 @@ export class AntigravityExecutor extends BaseExecutor {
     const baseUrl = baseUrls[urlIndex] || baseUrls[0];
     // Image generation MUST use non-streaming generateContent
     const forceNonStream = isImageModel(model);
-    const action = (stream && !forceNonStream) ? "streamGenerateContent?alt=sse" : "generateContent";
+    const action = stream && !forceNonStream ? "streamGenerateContent?alt=sse" : "generateContent";
     return `${baseUrl}/v1internal:${action}`;
   }
 
@@ -216,7 +217,7 @@ export class AntigravityExecutor extends BaseExecutor {
     return {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${credentials.accessToken}`,
-      "User-Agent": this.config.headers?.["User-Agent"] || ANTIGRAVITY_HEADERS["User-Agent"],
+      "User-Agent": this.config.headers?.["User-Agent"] || ANTIGRAVITY_HEADERS["User-Agent"]
     };
   }
 
@@ -237,7 +238,7 @@ export class AntigravityExecutor extends BaseExecutor {
       const contents = [];
       const srcContents = body.request?.contents || body.contents || [];
       for (const c of srcContents) {
-        const validParts = (c.parts || []).filter(p => p.text !== undefined || p.inlineData !== undefined);
+        const validParts = (c.parts || []).filter((p) => p.text !== undefined || p.inlineData !== undefined);
         if (validParts.length > 0) {
           contents.push({ role: c.role || "user", parts: validParts });
         }
@@ -247,7 +248,7 @@ export class AntigravityExecutor extends BaseExecutor {
         headers: credentials?.rawHeaders,
         body,
         connectionId: credentials?.email || credentials?.connectionId,
-        scope: "antigravity",
+        scope: "antigravity"
       });
 
       this._lastSessionId = sessionId;
@@ -258,9 +259,9 @@ export class AntigravityExecutor extends BaseExecutor {
           topP: 0.95,
           topK: 40,
           maxOutputTokens: 8192,
-          imageConfig,
+          imageConfig
         },
-        sessionId,
+        sessionId
         // No tools, no systemInstruction, no safetySettings for image gen
       };
 
@@ -270,7 +271,7 @@ export class AntigravityExecutor extends BaseExecutor {
         userAgent: "antigravity",
         requestType: "image_gen",
         requestId: buildIdeRequestId({ body, request, credentials, model: cleanModel, requestType: "image_gen" }),
-        request,
+        request
       };
     }
 
@@ -280,10 +281,10 @@ export class AntigravityExecutor extends BaseExecutor {
      * Normalize only turns emptied by thought filtering; Antigravity rejects empty parts and adjacent roles.
      * Ported from upstream decolua/9router#3366 without importing translator continuation policy.
      */
-    const contents = normalizeFilteredContents(body.request?.contents?.map(c => {
+    const contents = normalizeFilteredContents(body.request?.contents?.map((c) => {
       let role = c.role;
       // functionResponse must be role "user" for Claude models
-      if (c.parts?.some(p => p.functionResponse)) {
+      if (c.parts?.some((p) => p.functionResponse)) {
         role = "user";
       }
       // Strip thought-only parts, keep thoughtSignature on functionCall parts (Gemini 3+ requires it)
@@ -291,15 +292,15 @@ export class AntigravityExecutor extends BaseExecutor {
       // Gemini 3+ rejects functionCall parts without thoughtSignature. Clients (Claude Code, IDE)
       // don't persist thoughtSignature in their history, so backfill the default signature on any
       // functionCall part that arrives without one.
-      const needsBackfill = parts?.some(p => p.functionCall && !p.thoughtSignature) ?? false;
+      const needsBackfill = parts?.some((p) => p.functionCall && !p.thoughtSignature) ?? false;
       if (role !== c.role || parts?.length !== c.parts?.length || needsBackfill) {
         return {
           ...c, role,
-          parts: needsBackfill
-            ? parts.map(p => (p.functionCall && !p.thoughtSignature)
-                ? { ...p, thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE }
-                : p)
-            : parts,
+          parts: needsBackfill ?
+          parts.map((p) => p.functionCall && !p.thoughtSignature ?
+          { ...p, thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE } :
+          p) :
+          parts
         };
       }
       return c;
@@ -319,19 +320,19 @@ export class AntigravityExecutor extends BaseExecutor {
           seenToolNames.add(name);
           let cleanedParams;
           try {
-            cleanedParams = fn.parameters
-              ? cleanJSONSchemaForAntigravity(structuredClone(fn.parameters))
-              : { type: "object", properties: { reason: { type: "string", description: "Brief explanation" } }, required: ["reason"] };
+            cleanedParams = fn.parameters ?
+            cleanJSONSchemaForAntigravity(structuredClone(fn.parameters)) :
+            { type: "object", properties: { reason: { type: "string", description: "Brief explanation" } }, required: ["reason"] };
           } catch (schemaErr) {
             console.warn(`[9Router] Schema conversion failed for tool "${name}": ${schemaErr.message}. Using fallback schema.`);
             const safeProperties = Object.fromEntries(
-              Object.entries(fn.parameters?.properties || {}).map(([key, value]) => [key, { type: typeof value?.type === "string" ? value.type : "string", description: value?.description || "" }])
+              Object.entries(fn.parameters?.properties || {}).map(([key, value]) => [key, { type: isString(value?.type) ? value.type : "string", description: value?.description || "" }])
             );
             if (Object.keys(safeProperties).length === 0) safeProperties.reason = { type: "string", description: "Brief explanation" };
             cleanedParams = {
               type: "object",
               properties: safeProperties,
-              required: (fn.parameters?.required || []).filter(required => safeProperties[required]),
+              required: (fn.parameters?.required || []).filter((required) => safeProperties[required])
             };
           }
           cleanedParams = compressToolSchema(cleanedParams, 0);
@@ -339,7 +340,7 @@ export class AntigravityExecutor extends BaseExecutor {
             ...fn,
             name,
             description: fn.description ? fn.description.substring(0, MAX_TOOL_DESC_CHARS) : "",
-            parameters: cleanedParams,
+            parameters: cleanedParams
           });
         }
       }
@@ -373,7 +374,7 @@ export class AntigravityExecutor extends BaseExecutor {
     if (requestWithoutTools.systemInstruction?.parts) {
       const competitiveMarker = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
       for (const part of requestWithoutTools.systemInstruction.parts) {
-        if (typeof part.text === "string" && part.text.includes(competitiveMarker)) {
+        if (isString(part.text) && part.text.includes(competitiveMarker)) {
           part.text = part.text.split(competitiveMarker).join("");
         }
       }
@@ -396,17 +397,17 @@ export class AntigravityExecutor extends BaseExecutor {
     // Large system prompts exhaust the systemInstruction limit; preserve them in user content.
     const sysInstr = transformedRequest.systemInstruction;
     if (sysInstr) {
-      const sysText = sysInstr.parts?.map(part => part.text || "").join("") || "";
+      const sysText = sysInstr.parts?.map((part) => part.text || "").join("") || "";
       if (sysText.length > SYSTEM_INSTRUCTION_CHAR_LIMIT) {
         const requestContents = transformedRequest.contents || [];
-        const firstUserIndex = requestContents.findIndex(content => content.role === "user");
+        const firstUserIndex = requestContents.findIndex((content) => content.role === "user");
         if (firstUserIndex >= 0) {
           const firstUser = requestContents[firstUserIndex];
-          const existingText = firstUser.parts?.filter(part => part.text !== undefined).map(part => part.text).join("") || "";
-          const otherParts = firstUser.parts?.filter(part => part.text === undefined) || [];
+          const existingText = firstUser.parts?.filter((part) => part.text !== undefined).map((part) => part.text).join("") || "";
+          const otherParts = firstUser.parts?.filter((part) => part.text === undefined) || [];
           requestContents[firstUserIndex] = {
             ...firstUser,
-            parts: [{ text: `[System Instructions]\n${sysText}\n\n[User Message]\n${existingText}` }, ...otherParts],
+            parts: [{ text: `[System Instructions]\n${sysText}\n\n[User Message]\n${existingText}` }, ...otherParts]
           };
         } else {
           requestContents.unshift({ role: "user", parts: [{ text: sysText }] });
@@ -509,7 +510,7 @@ export class AntigravityExecutor extends BaseExecutor {
   // Parse retry time from Antigravity error message body
   // Format: "Your quota will reset after 2h7m23s" or "1h30m" or "45m" or "30s"
   parseRetryFromErrorMessage(errorMessage) {
-    if (!errorMessage || typeof errorMessage !== "string") return null;
+    if (!errorMessage || !isString(errorMessage)) return null;
 
     const match = errorMessage.match(/reset after (\d+h)?(\d+m)?(\d+s)?/i);
     if (!match) return null;
@@ -524,17 +525,17 @@ export class AntigravityExecutor extends BaseExecutor {
 
   extractErrorMessage(errorJson, bodyText = "") {
     return [
-      errorJson?.error?.message,
-      errorJson?.message,
-      errorJson?.error,
-      bodyText,
-    ].filter(Boolean).map(v => typeof v === "string" ? v : JSON.stringify(v)).join("\n");
+    errorJson?.error?.message,
+    errorJson?.message,
+    errorJson?.error,
+    bodyText].
+    filter(Boolean).map((v) => isString(v) ? v : JSON.stringify(v)).join("\n");
   }
 
   isTransientAntigravityError(status, message) {
     if (status === HTTP_STATUS.RATE_LIMITED) return true;
     if (ANTIGRAVITY_TRANSIENT_STATUSES.has(status)) return true;
-    return ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS.some(pattern => pattern.test(message || ""));
+    return ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS.some((pattern) => pattern.test(message || ""));
   }
 
   // Hook called by BaseExecutor.tryRetry: derive delay from Retry-After (header → body),
@@ -564,10 +565,10 @@ export class AntigravityExecutor extends BaseExecutor {
 
     if (!this.isTransientAntigravityError(response.status, errorMessage)) return false;
 
-    const cap = response.status === HTTP_STATUS.RATE_LIMITED
-      ? MAX_RETRY_AFTER_MS
-      : ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
-    return Math.min(1000 * (2 ** attempt), cap); // exponential backoff
+    const cap = response.status === HTTP_STATUS.RATE_LIMITED ?
+    MAX_RETRY_AFTER_MS :
+    ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS;
+    return Math.min(1000 * 2 ** attempt, cap); // exponential backoff
   }
 
   /**
@@ -585,7 +586,7 @@ export class AntigravityExecutor extends BaseExecutor {
     const isCopilot = clientTool === "github-copilot";
     const toolNameMap = new Map();
     const clientDeclarations = [];
-    const decoyNames = new Set(AG_DECOY_TOOLS.map(tool => tool.name));
+    const decoyNames = new Set(AG_DECOY_TOOLS.map((tool) => tool.name));
 
     // First: collect renamed client tools
     for (const toolGroup of tools) {
@@ -625,10 +626,10 @@ export class AntigravityExecutor extends BaseExecutor {
     }
 
     // Rename tool names in conversation history (contents)
-    const cloakedContents = body.request?.contents?.map(msg => {
+    const cloakedContents = body.request?.contents?.map((msg) => {
       if (!msg.parts) return msg;
-      
-      const cloakedParts = msg.parts.map(part => {
+
+      const cloakedParts = msg.parts.map((part) => {
         // Rename functionCall.name
         if (part.functionCall && !AG_DEFAULT_TOOLS.has(part.functionCall.name)) {
           return {
@@ -639,7 +640,7 @@ export class AntigravityExecutor extends BaseExecutor {
             }
           };
         }
-        
+
         // Rename functionResponse.name
         if (part.functionResponse && !AG_DEFAULT_TOOLS.has(part.functionResponse.name)) {
           return {
@@ -650,10 +651,10 @@ export class AntigravityExecutor extends BaseExecutor {
             }
           };
         }
-        
+
         return part;
       });
-      
+
       return { ...msg, parts: cloakedParts };
     });
 
@@ -700,7 +701,7 @@ export class AntigravityExecutor extends BaseExecutor {
             return {
               status: 429,
               message: errorJson?.error?.message || bodyText,
-              resetsAtMs: ms,
+              resetsAtMs: ms
             };
           }
         }
@@ -717,127 +718,127 @@ export class AntigravityExecutor extends BaseExecutor {
               return {
                 status: 429,
                 message: errorJson?.error?.message || bodyText,
-                resetsAtMs: Date.now() + delayMs,
+                resetsAtMs: Date.now() + delayMs
               };
             }
           }
         }
       }
     } catch {
+
       // fall through to base
     }
-
     return super.parseError(response, bodyText);
   }
 }
 
 // AG decoy tools — same names as AG native defaults, redirect to _ide suffixed tools
 const AG_DECOY_TOOLS = [
-  {
-    name: "browser_subagent",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "command_status",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "find_by_name",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "generate_image",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "grep_search",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "list_dir",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "list_resources",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "mcp_sequential-thinking_sequentialthinking",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "multi_replace_file_content",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "notify_user",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "read_resource",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "read_terminal",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "read_url_content",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "replace_file_content",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "run_command",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "search_web",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "send_command_input",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "task_boundary",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "view_content_chunk",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "view_file",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  },
-  {
-    name: "write_to_file",
-    description: "This tool is currently unavailable.",
-    parameters: { type: "OBJECT", properties: {}, required: [] }
-  }
-];
+{
+  name: "browser_subagent",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "command_status",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "find_by_name",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "generate_image",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "grep_search",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "list_dir",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "list_resources",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "mcp_sequential-thinking_sequentialthinking",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "multi_replace_file_content",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "notify_user",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "read_resource",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "read_terminal",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "read_url_content",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "replace_file_content",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "run_command",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "search_web",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "send_command_input",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "task_boundary",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "view_content_chunk",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "view_file",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+},
+{
+  name: "write_to_file",
+  description: "This tool is currently unavailable.",
+  parameters: { type: "OBJECT", properties: {}, required: [] }
+}];
+
 
 export default AntigravityExecutor;

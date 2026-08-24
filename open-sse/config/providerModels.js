@@ -4,6 +4,7 @@ import { PROVIDER_MODELS } from "../providers/index.js";
 import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 export { PROVIDER_MODELS };
 
@@ -34,12 +35,12 @@ const DOT_VERSION_PROVIDERS = new Set(["kr", "kiro"]);
 function findModel(models, modelId, aliasOrId) {
   if (!models) return undefined;
   const { cleanModel } = parseSuffix(modelId);
-  const found = models.find(m => m.id === cleanModel);
+  const found = models.find((m) => m.id === cleanModel);
   if (found) return found;
   if (!DOT_VERSION_PROVIDERS.has(aliasOrId)) return undefined;
   const normalized = normalizeModelId(cleanModel);
   if (normalized === cleanModel) return undefined;
-  return models.find(m => m.id === normalized);
+  return models.find((m) => m.id === normalized);
 }
 
 export function isValidModel(aliasOrId, modelId, passthroughProviders = new Set()) {
@@ -57,7 +58,7 @@ export function findModelName(aliasOrId, modelId) {
 }
 
 function getOpenCodeZenPassthroughTargetFormat(modelId) {
-  if (typeof modelId !== "string") return null;
+  if (!isString(modelId)) return null;
   if (modelId.startsWith("claude-")) return "claude";
   if (/^gpt-5(?:[.-]|$)/.test(modelId)) return "openai-responses";
   return null;
@@ -111,7 +112,7 @@ export function getModelUpstreamId(aliasOrId, modelId) {
   const found = findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId);
   if (found?.upstreamModelId) return found.upstreamModelId;
   if (found?.id) return found.id;
-  if (aliasOrId === "cx" && typeof baseId === "string" && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
+  if (aliasOrId === "cx" && isString(baseId) && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
     return baseId.slice(0, -CODEX_REVIEW_SUFFIX.length);
   }
   return baseId;
@@ -131,11 +132,11 @@ export function getModelQuotaFamily(aliasOrId, modelId) {
 // Short aliases are derived from the full registry, including transportless media
 // providers, so provider-id lookups can still reach PROVIDER_MODELS alias keys.
 export const OAUTH_ALIASES = Object.fromEntries(
-  REGISTRY.filter(r => r.alias && r.alias !== r.id).map(r => [r.id, r.alias])
+  REGISTRY.filter((r) => r.alias && r.alias !== r.id).map((r) => [r.id, r.alias])
 );
 
 export const PROVIDER_ID_TO_ALIAS = Object.fromEntries(
-  REGISTRY.map(r => [r.id, r.alias || r.id])
+  REGISTRY.map((r) => [r.id, r.alias || r.id])
 );
 
 export function getModelsByProviderId(providerId) {

@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getKimchiUserAgent } from "../utils/kimchiUserAgent.js";
 import { extractLiveModelLimits } from "./liveModelLimits.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const KIMCHI_API = "https://llm.kimchi.dev";
 
@@ -16,7 +17,7 @@ const catalogCache = new Map();
 const metadataByModelId = new Map();
 
 function normalizeKimchiEndpoint(endpoint) {
-  const raw = typeof endpoint === "string" ? endpoint.trim() : "";
+  const raw = isString(endpoint) ? endpoint.trim() : "";
   return (raw || KIMCHI_API).replace(/\/+$/, "");
 }
 
@@ -26,37 +27,37 @@ export function buildKimchiModelsUrl(endpoint) {
 
 function readToken(credentials) {
   return (
-    credentials?.accessToken
-    || credentials?.apiKey
-    || credentials?.providerSpecificData?.apiKey
-    || null
-  );
+    credentials?.accessToken ||
+    credentials?.apiKey ||
+    credentials?.providerSpecificData?.apiKey ||
+    null);
+
 }
 
 function cacheKey(credentials, endpoint) {
   const psd = credentials?.providerSpecificData || {};
   const seed = psd.userId || psd.username || credentials?.refreshToken || readToken(credentials) || "anonymous";
-  return createHash("sha256")
-    .update(`kimchi:${normalizeKimchiEndpoint(endpoint)}:${seed}`)
-    .digest("hex");
+  return createHash("sha256").
+  update(`kimchi:${normalizeKimchiEndpoint(endpoint)}:${seed}`).
+  digest("hex");
 }
 
 function toModelKind(inputModalities) {
-  return Array.isArray(inputModalities) && inputModalities.includes("image")
-    ? "imageToText"
-    : "llm";
+  return Array.isArray(inputModalities) && inputModalities.includes("image") ?
+  "imageToText" :
+  "llm";
 }
 
 export function normalizeKimchiModel(item) {
-  if (!item || typeof item !== "object") return null;
+  if (!item || !isObject(item)) return null;
   const id = item.slug || item.id || item.model || item.name;
-  if (typeof id !== "string" || id.trim() === "") return null;
+  if (!isString(id) || id.trim() === "") return null;
 
-  const inputModalities = Array.isArray(item.input_modalities)
-    ? item.input_modalities.filter((value) => value === "text" || value === "image")
-    : [];
+  const inputModalities = Array.isArray(item.input_modalities) ?
+  item.input_modalities.filter((value) => value === "text" || value === "image") :
+  [];
   const { contextWindow: contextLength, maxOutput: maxOutputTokens } = extractLiveModelLimits(item);
-  const upstreamProvider = typeof item.provider === "string" ? item.provider : "";
+  const upstreamProvider = isString(item.provider) ? item.provider : "";
   const reasoning = item.reasoning === true;
   const kind = toModelKind(inputModalities);
 
@@ -73,12 +74,12 @@ export function normalizeKimchiModel(item) {
     capabilities: {
       vision: inputModalities.includes("image"),
       reasoning,
-      ...(contextLength ? { contextWindow: contextLength } : {}),
-      ...(maxOutputTokens ? { maxOutput: maxOutputTokens } : {}),
-      ...(upstreamProvider ? { upstreamProvider } : {}),
+      ...(contextLength ? { contextWindow: contextLength } : null),
+      ...(maxOutputTokens ? { maxOutput: maxOutputTokens } : null),
+      ...(upstreamProvider ? { upstreamProvider } : null)
     },
-    ...(contextLength ? { contextLength } : {}),
-    ...(maxOutputTokens ? { maxOutputTokens } : {}),
+    ...(contextLength ? { contextLength } : null),
+    ...(maxOutputTokens ? { maxOutputTokens } : null)
   };
 
   if (upstreamProvider === "anthropic") {
@@ -97,7 +98,7 @@ function rememberModels(models) {
 }
 
 export function getCachedKimchiModelMetadata(modelId) {
-  if (typeof modelId !== "string" || modelId.trim() === "") return null;
+  if (!isString(modelId) || modelId.trim() === "") return null;
   const raw = modelId.includes("/") ? modelId.split("/").pop() : modelId;
   return metadataByModelId.get(raw) || metadataByModelId.get(raw.toLowerCase()) || null;
 }
@@ -106,9 +107,9 @@ async function fetchKimchiCatalogRaw(token, endpoint, options = {}) {
   const url = buildKimchiModelsUrl(endpoint);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(new Error("Kimchi models fetch timeout")), FETCH_TIMEOUT_MS);
-  const signal = options.signal
-    ? AbortSignal.any([options.signal, controller.signal])
-    : controller.signal;
+  const signal = options.signal ?
+  AbortSignal.any([options.signal, controller.signal]) :
+  controller.signal;
 
   try {
     const response = await proxyAwareFetch(url, {
@@ -116,10 +117,10 @@ async function fetchKimchiCatalogRaw(token, endpoint, options = {}) {
       headers: {
         "Accept": "application/json",
         "Authorization": `Bearer ${token}`,
-        "User-Agent": getKimchiUserAgent(),
+        "User-Agent": getKimchiUserAgent()
       },
       cache: "no-store",
-      signal,
+      signal
     }, options.proxyOptions || null);
 
     if (!response.ok) {
@@ -163,7 +164,7 @@ export async function resolveKimchiModels(credentials, options = {}) {
   const entry = {
     expiresAt: Date.now() + CACHE_TTL_MS,
     models,
-    rawModels,
+    rawModels
   };
   catalogCache.set(key, entry);
   return entry;

@@ -22,15 +22,16 @@ import {
   resolveKiroRegion as resolveKiroRegionFromCredentials,
   alignProfileArnRegion,
   KIRO_DEFAULT_REGION,
-  normalizeKiroRegion,
-} from "./kiroRegions.js";
+  normalizeKiroRegion } from
+"./kiroRegions.js";
 
 /** Instruction appended to the retried Kiro turn after wrapper validation fails. */
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export const KIRO_TOOL_CALL_REPAIR_INSTRUCTION = [
-  "Retry the previous response because its Kiro tool_call wrapper was malformed.",
-  "The tool_call input must be an object with a non-empty string name and an arguments field.",
-  "Do not emit a tool_call wrapper without input.name and input.arguments.",
-].join(" ");
+"Retry the previous response because its Kiro tool_call wrapper was malformed.",
+"The tool_call input must be an object with a non-empty string name and an arguments field.",
+"Do not emit a tool_call wrapper without input.name and input.arguments."].
+join(" ");
 
 // Per-turn repair ceiling. The validator error from the retry is final.
 export const KIRO_MAX_TOOL_CALL_REPAIR_ATTEMPTS = 1;
@@ -44,11 +45,11 @@ export const KIRO_MAX_TOOL_CALL_WRAPPER_BYTES = 256 * 1024;
 // through, trimmed) or an object (delegates to the new function), and
 // returns the default region on null/undefined/empty.
 export function resolveKiroRegion(arg) {
-  if (typeof arg === "string") {
+  if (isString(arg)) {
     const t = arg.trim();
     return normalizeKiroRegion(t || KIRO_DEFAULT_REGION);
   }
-  if (arg && typeof arg === "object") {
+  if (arg && isObject(arg)) {
     return resolveKiroRegionFromCredentials(arg);
   }
   return KIRO_DEFAULT_REGION;
@@ -62,40 +63,40 @@ export {
   buildKiroProfileEndpoint,
   buildKiroOidcEndpoint,
   regionFromProfileArn,
-  KIRO_DEFAULT_REGION,
-} from "./kiroRegions.js";
+  KIRO_DEFAULT_REGION } from
+"./kiroRegions.js";
 
 export const KIRO_AGENTIC_SUFFIX = "-agentic";
 export const KIRO_THINKING_SUFFIX = "-thinking";
 
 export const KIRO_UNSUPPORTED_SCHEMA_KEYS = new Set([
-  "additionalProperties",
-  "anyOf",
-  "oneOf",
-  "allOf",
-  "not",
-  "$schema",
-  "$id",
-  "$ref",
-  "$defs",
-  "definitions",
-  "if",
-  "then",
-  "else",
-  "unevaluatedProperties",
-  "unevaluatedItems",
-  "contentEncoding",
-  "contentMediaType",
-]);
+"additionalProperties",
+"anyOf",
+"oneOf",
+"allOf",
+"not",
+"$schema",
+"$id",
+"$ref",
+"$defs",
+"definitions",
+"if",
+"then",
+"else",
+"unevaluatedProperties",
+"unevaluatedItems",
+"contentEncoding",
+"contentMediaType"]
+);
 
 function cleanKiroSchemaValue(value) {
   if (Array.isArray(value)) return value.map(cleanKiroSchemaValue);
-  if (!value || typeof value !== "object") return value;
+  if (!value || !isObject(value)) return value;
 
   const cleaned = {};
   for (const [key, child] of Object.entries(value)) {
-    if ((key === "properties" || key === "patternProperties")
-      && child && typeof child === "object" && !Array.isArray(child)) {
+    if ((key === "properties" || key === "patternProperties") &&
+    child && isObject(child) && !Array.isArray(child)) {
       cleaned[key] = Object.fromEntries(
         Object.entries(child).map(([name, schema]) => [name, cleanKiroSchemaValue(schema)])
       );
@@ -112,18 +113,18 @@ function cleanKiroSchemaValue(value) {
  * schema keywords are removed recursively without treating property names as keywords.
  */
 export function normalizeKiroToolSchema(schema) {
-  const source = schema && typeof schema === "object"
-    ? structuredClone(schema)
-    : {};
+  const source = schema && isObject(schema) ?
+  structuredClone(schema) :
+  {};
   const rootBranches = ["allOf", "oneOf", "anyOf"].map((keyword) => [
-    keyword,
-    Array.isArray(source[keyword]) ? source[keyword] : [],
-  ]);
+  keyword,
+  Array.isArray(source[keyword]) ? source[keyword] : []]
+  );
   for (const [keyword] of rootBranches) delete source[keyword];
 
   const cleaned = cleanKiroSchemaValue(source);
   cleaned.type = "object";
-  if (!cleaned.properties || typeof cleaned.properties !== "object" || Array.isArray(cleaned.properties)) {
+  if (!cleaned.properties || !isObject(cleaned.properties) || Array.isArray(cleaned.properties)) {
     cleaned.properties = {};
   }
 
@@ -152,7 +153,7 @@ export function normalizeKiroToolSchema(schema) {
   }
 
   cleaned.required = [...required].filter(
-    (name) => typeof name === "string" && Object.hasOwn(cleaned.properties, name)
+    (name) => isString(name) && Object.hasOwn(cleaned.properties, name)
   );
   return cleaned;
 }
@@ -162,7 +163,7 @@ export function normalizeKiroToolSchema(schema) {
 // (Google/GitHub) sign-ins map to different shared profiles.
 export const KIRO_DEFAULT_PROFILE_ARNS = {
   "builder-id": "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
-  social: "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
+  social: "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"
 };
 
 // Back-compat single default (Builder ID).
@@ -205,9 +206,9 @@ export function resolveKiroControlPlaneHost(region) {
   // This host carries bearer/API-key credentials. Never interpolate an
   // untrusted stored region without the same validation as the data plane.
   assertValidAwsRegion(r);
-  return r === KIRO_DEFAULT_REGION
-    ? "https://codewhisperer.us-east-1.amazonaws.com"
-    : `https://q.${r}.amazonaws.com`;
+  return r === KIRO_DEFAULT_REGION ?
+  "https://codewhisperer.us-east-1.amazonaws.com" :
+  `https://q.${r}.amazonaws.com`;
 }
 
 /**
@@ -324,14 +325,14 @@ export function resolveKiroThinkingBudget(body, headers, model, intent = null) {
 
   if (headers) {
     const beta = pickHeader(headers, "anthropic-beta");
-    if (typeof beta === "string" && beta.toLowerCase().includes("interleaved-thinking")) {
+    if (isString(beta) && beta.toLowerCase().includes("interleaved-thinking")) {
       return KIRO_THINKING_BUDGET_DEFAULT;
     }
   }
 
   if (containsThinkingModeTag(body)) return KIRO_THINKING_BUDGET_DEFAULT;
 
-  if (typeof model === "string" && model) {
+  if (isString(model) && model) {
     const hasOpaqueSuffix = /\([^()]+\)\s*$/.test(model) && !parsedModel.override;
     if (!hasOpaqueSuffix) {
       const m = parsedModel.cleanModel.toLowerCase();
@@ -364,7 +365,7 @@ export function isThinkingEnabled(body, headers, model, intent = null) {
  * @returns {boolean}
  */
 export function isAgenticModel(model) {
-  return typeof model === "string" && model.endsWith(KIRO_AGENTIC_SUFFIX);
+  return isString(model) && model.endsWith(KIRO_AGENTIC_SUFFIX);
 }
 
 /**
@@ -391,7 +392,7 @@ export function stripAgenticSuffix(model) {
  * @returns {boolean}
  */
 export function isThinkingModel(model) {
-  return typeof model === "string" && model.endsWith(KIRO_THINKING_SUFFIX);
+  return isString(model) && model.endsWith(KIRO_THINKING_SUFFIX);
 }
 
 /**
@@ -449,7 +450,7 @@ export function buildThinkingSystemPrefix(budget = KIRO_THINKING_BUDGET_DEFAULT)
 
 function pickHeader(headers, name) {
   if (!headers) return undefined;
-  if (typeof headers.get === "function") {
+  if (isFunction(headers.get)) {
     return headers.get(name);
   }
   const lower = name.toLowerCase();
@@ -467,22 +468,22 @@ function containsThinkingModeTag(body) {
     if (!msg) continue;
     if (msg.role !== "system" && msg.role !== "user") continue;
     const content = msg.content;
-    if (typeof content === "string") {
+    if (isString(content)) {
       if (containsTagInText(content)) return true;
     } else if (Array.isArray(content)) {
       for (const part of content) {
         const text = part?.text;
-        if (typeof text === "string" && containsTagInText(text)) return true;
+        if (isString(text) && containsTagInText(text)) return true;
       }
     }
   }
-  if (typeof body?.system === "string" && containsTagInText(body.system)) return true;
+  if (isString(body?.system) && containsTagInText(body.system)) return true;
   return false;
 }
 
 function containsTagInText(text) {
   if (!text) return false;
   if (!text.includes("<thinking_mode>")) return false;
-  return text.includes("<thinking_mode>enabled</thinking_mode>")
-    || text.includes("<thinking_mode>interleaved</thinking_mode>");
+  return text.includes("<thinking_mode>enabled</thinking_mode>") ||
+  text.includes("<thinking_mode>interleaved</thinking_mode>");
 }

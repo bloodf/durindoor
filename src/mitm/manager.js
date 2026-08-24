@@ -1,3 +1,4 @@
+const { isNumber, isString } = require("../shared/utils/typeChecks.cjs");
 const { execFile, execFileSync, spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -15,7 +16,7 @@ const {
   checkAllDNSStatus,
   TOOL_HOSTS,
   isSudoAvailable,
-  isSudoPasswordRequired,
+  isSudoPasswordRequired
 } = require("./dns/dnsConfig");
 const { isAdmin } = require("./winElevated.js");
 
@@ -30,7 +31,7 @@ const {
   readFileSnapshot,
   releaseSocketLock,
   replaceFileIfUnchanged,
-  removeFileIfUnchanged,
+  removeFileIfUnchanged
 } = require("./startLock");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { log, err } = require("./logger");
@@ -39,14 +40,14 @@ const {
   FIXED_UNIX_PATH,
   buildMinimalWindowsEnv,
   resolveTrustedUnixBinary,
-  resolveWindowsSystemBinary,
+  resolveWindowsSystemBinary
 } = require("./trustedBinaries");
 const {
   buildLinuxRedirect,
   buildMacRedirect,
   buildWindowsRedirect,
   requireNumericUid,
-  requireWindowsSid,
+  requireWindowsSid
 } = require("./portRedirect");
 const { publishLaunchAuthorization } = require("./launchGate");
 const { ensureWindowsPrivateDirectorySync } = require("./windowsAcl");
@@ -71,11 +72,11 @@ async function resolveMitmRouterBaseUrl() {
 const MITM_PORT = 443;
 const MITM_INTERNAL_PORT = IS_WIN ? MITM_PORT : MITM_NODE_PORT;
 const PID_FILE = path.join(MITM_DIR, ".mitm.pid");
-const GLOBAL_MITM_STATE_DIR = process.env.NODE_ENV !== "production" && process.env.MITM_GLOBAL_STATE_DIR
-  ? path.resolve(process.env.MITM_GLOBAL_STATE_DIR)
-  : process.platform === "win32"
-    ? path.win32.join(os.userInfo().homedir, "AppData", "Local", "DurinDoor", "mitm-state")
-    : path.join(os.userInfo().homedir, ".durindoor-mitm-state");
+const GLOBAL_MITM_STATE_DIR = process.env.NODE_ENV !== "production" && process.env.MITM_GLOBAL_STATE_DIR ?
+path.resolve(process.env.MITM_GLOBAL_STATE_DIR) :
+process.platform === "win32" ?
+path.win32.join(os.userInfo().homedir, "AppData", "Local", "DurinDoor", "mitm-state") :
+path.join(os.userInfo().homedir, ".durindoor-mitm-state");
 const REDIRECT_JOURNAL_FILE = path.join(GLOBAL_MITM_STATE_DIR, "redirect.json");
 
 const MITM_MAX_RESTARTS = 5;
@@ -130,21 +131,21 @@ function getProcessUsingPort443() {
     if (IS_WIN) {
       const powershell = resolveWindowsSystemBinary("powershell.exe");
       const pidStr = execFileSync(powershell, ["-NoProfile", "-NonInteractive", "-Command",
-        "$c = Get-NetTCPConnection -LocalPort 443 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $c.OwningProcess } else { 0 }"], {
-        encoding: "utf8", windowsHide: true, timeout: 5000, env: buildMinimalWindowsEnv(),
+      "$c = Get-NetTCPConnection -LocalPort 443 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $c.OwningProcess } else { 0 }"], {
+        encoding: "utf8", windowsHide: true, timeout: 5000, env: buildMinimalWindowsEnv()
       }).trim();
       const pid = parseInt(pidStr, 10);
       if (pid && pid > 4) {
         const tasklistResult = execFileSync(resolveWindowsSystemBinary("tasklist.exe"),
-          ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
-          { encoding: "utf8", windowsHide: true, timeout: 5000, env: buildMinimalWindowsEnv() });
+        ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
+        { encoding: "utf8", windowsHide: true, timeout: 5000, env: buildMinimalWindowsEnv() });
         const processMatch = tasklistResult.match(/"([^"]+)"/);
         if (processMatch) return processMatch[1].replace(".exe", "");
       }
     } else {
       const result = execFileSync(resolveTrustedUnixBinary("lsof"), ["-nP", "-iTCP:443", "-sTCP:LISTEN"], {
         encoding: "utf8", windowsHide: true, timeout: 5000,
-        env: { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" },
+        env: { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" }
       });
       const lines = result.trim().split("\n");
       if (lines.length > 1) return lines[1].split(/\s+/)[0];
@@ -164,17 +165,17 @@ let serverProcessStart = null;
 let serverRedirectOwned = false;
 let serverLaunchGatePath = null;
 
-function getCachedPassword() { return globalThis.__mitmSudoPassword || null; }
-function setCachedPassword(pwd) { globalThis.__mitmSudoPassword = pwd; }
+function getCachedPassword() {return globalThis.__mitmSudoPassword || null;}
+function setCachedPassword(pwd) {globalThis.__mitmSudoPassword = pwd;}
 
 function hasMitmCleanupState() {
   const dnsStatus = checkAllDNSStatus();
   return Boolean(
-    serverProcess
-    || serverRedirectOwned
-    || fs.existsSync(PID_FILE)
-    || fs.existsSync(REDIRECT_JOURNAL_FILE)
-    || Object.values(dnsStatus).some(Boolean)
+    serverProcess ||
+    serverRedirectOwned ||
+    fs.existsSync(PID_FILE) ||
+    fs.existsSync(REDIRECT_JOURNAL_FILE) ||
+    Object.values(dnsStatus).some(Boolean)
   );
 }
 
@@ -201,11 +202,11 @@ function parsePidRecord(raw) {
     if (parsed?.version !== 1) return null;
     if (!Number.isSafeInteger(parsed?.pid) || parsed.pid <= 0) return null;
     if (!Number.isSafeInteger(parsed?.launcherPid) || parsed.launcherPid <= 0) return null;
-    if (typeof parsed?.nonce !== "string" || !/^[a-f0-9]{48}$/.test(parsed.nonce)) return null;
+    if (!isString(parsed?.nonce) || !/^[a-f0-9]{48}$/.test(parsed.nonce)) return null;
     if (parsed.state !== "starting" && parsed.state !== "running") return null;
-    if (typeof parsed.launcherStart !== "string" || parsed.launcherStart.length < 3 || parsed.launcherStart.length > 200) return null;
-    if (parsed.processStart != null
-      && (typeof parsed.processStart !== "string" || parsed.processStart.length < 3 || parsed.processStart.length > 200)) return null;
+    if (!isString(parsed.launcherStart) || parsed.launcherStart.length < 3 || parsed.launcherStart.length > 200) return null;
+    if (parsed.processStart != null && (
+    !isString(parsed.processStart) || parsed.processStart.length < 3 || parsed.processStart.length > 200)) return null;
     return {
       version: 1,
       pid: parsed.pid,
@@ -213,7 +214,7 @@ function parsePidRecord(raw) {
       nonce: parsed.nonce,
       state: parsed.state,
       launcherStart: parsed.launcherStart,
-      processStart: parsed.processStart || (parsed.pid === parsed.launcherPid ? parsed.launcherStart : null),
+      processStart: parsed.processStart || (parsed.pid === parsed.launcherPid ? parsed.launcherStart : null)
     };
   } catch {
     return null;
@@ -228,7 +229,7 @@ function serializePidRecord(record) {
     nonce: record.nonce,
     state: record.state,
     launcherStart: record.launcherStart,
-    processStart: record.processStart || (record.pid === record.launcherPid ? record.launcherStart : null),
+    processStart: record.processStart || (record.pid === record.launcherPid ? record.launcherStart : null)
   })}\n`;
 }
 
@@ -286,9 +287,9 @@ function replacePidFileIfMatches(expectedRecord, nextRecord) {
     return true;
   } finally {
     if (fd !== undefined) {
-      try { fs.closeSync(fd); } catch { /* preserve the publication result */ }
+      try {fs.closeSync(fd);} catch {/* preserve the publication result */}
     }
-    try { fs.unlinkSync(tempPath); } catch { /* published or absent */ }
+    try {fs.unlinkSync(tempPath);} catch {/* published or absent */}
   }
 }
 
@@ -307,9 +308,9 @@ function writeInitialPidRecord(record) {
 }
 
 function currentRedirectOwner() {
-  return IS_WIN
-    ? { kind: "sid", value: requireWindowsSid() }
-    : { kind: "uid", value: String(requireNumericUid()) };
+  return IS_WIN ?
+  { kind: "sid", value: requireWindowsSid() } :
+  { kind: "uid", value: String(requireNumericUid()) };
 }
 
 function parseRedirectJournal(raw) {
@@ -318,7 +319,7 @@ function parseRedirectJournal(raw) {
     if (value?.version !== 1) return null;
     if (!["installing", "installed", "uncertain"].includes(value.state)) return null;
     if (value.ownerKind !== "uid" && value.ownerKind !== "sid") return null;
-    if (typeof value.ownerValue !== "string" || value.ownerValue.length < 1 || value.ownerValue.length > 200) return null;
+    if (!isString(value.ownerValue) || value.ownerValue.length < 1 || value.ownerValue.length > 200) return null;
     if (!/^[a-f0-9]{48}$/.test(value.nonce || "")) return null;
     if (value.publicPort !== MITM_PORT || value.internalPort !== MITM_INTERNAL_PORT) return null;
     return value;
@@ -352,7 +353,7 @@ function createRedirectJournal() {
   }
   if (process.platform !== "win32") {
     const uid = requireNumericUid();
-    if (typeof directoryStat.uid === "number" && directoryStat.uid !== uid) {
+    if (isNumber(directoryStat.uid) && directoryStat.uid !== uid) {
       throw new Error("Global MITM state directory belongs to a different user");
     }
     fs.chmodSync(GLOBAL_MITM_STATE_DIR, 0o700);
@@ -367,7 +368,7 @@ function createRedirectJournal() {
     ownerValue: owner.value,
     publicPort: MITM_PORT,
     internalPort: MITM_INTERNAL_PORT,
-    nonce: crypto.randomBytes(24).toString("hex"),
+    nonce: crypto.randomBytes(24).toString("hex")
   };
   const fd = fs.openSync(REDIRECT_JOURNAL_FILE, "wx", 0o600);
   try {
@@ -396,19 +397,19 @@ function replaceRedirectJournalIfMatches(expectedRecord, nextRecord) {
     fsyncParentDirectory(REDIRECT_JOURNAL_FILE);
     return true;
   } finally {
-    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* preserve result */ }
-    try { fs.unlinkSync(tempPath); } catch { /* published or absent */ }
+    if (fd !== undefined) try {fs.closeSync(fd);} catch {/* preserve result */}
+    try {fs.unlinkSync(tempPath);} catch {/* published or absent */}
   }
 }
 
 function removeRedirectJournalSnapshot(snapshot, record) {
-  const removed = record
-    ? (() => {
-      const current = readRedirectJournal();
-      if (!current.record || current.record.nonce !== record.nonce) return false;
-      return removeFileIfUnchanged(REDIRECT_JOURNAL_FILE, current.snapshot);
-    })()
-    : removeFileIfUnchanged(REDIRECT_JOURNAL_FILE, snapshot);
+  const removed = record ?
+  (() => {
+    const current = readRedirectJournal();
+    if (!current.record || current.record.nonce !== record.nonce) return false;
+    return removeFileIfUnchanged(REDIRECT_JOURNAL_FILE, current.snapshot);
+  })() :
+  removeFileIfUnchanged(REDIRECT_JOURNAL_FILE, snapshot);
   if (removed) fsyncParentDirectory(REDIRECT_JOURNAL_FILE);
   return removed;
 }
@@ -419,7 +420,7 @@ const startGate = createStartGate({
   onCleanupError: async (error) => {
     err(`[MITM] Failed to release startup lock: ${error.message}`);
     await rollbackLaunchedInstance({ sudoPassword: getCachedPassword() });
-  },
+  }
 });
 
 function execFileCommand(command, args, { timeout = 5000, env } = {}) {
@@ -458,20 +459,20 @@ async function killProcess(pid, force = false, sudoPassword = null, expectedStar
       if (force) args.push("/F");
       await execFileCommand(resolveWindowsSystemBinary("taskkill.exe"), args, {
         timeout: 5000,
-        env: buildMinimalWindowsEnv(),
+        env: buildMinimalWindowsEnv()
       });
     } else {
       const sig = force ? "SIGKILL" : "SIGTERM";
       const pkill = resolveTrustedUnixBinary("pkill", {
         candidates: ["/usr/bin/pkill", "/bin/pkill"],
-        required: false,
+        required: false
       });
       if (pkill) {
         try {
           assertIdentity();
           await execFileCommand(pkill, [`-${sig}`, "-P", String(pid)], {
             timeout: 3000,
-            env: { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" },
+            env: { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" }
           });
         } catch (error) {
           if (error.code === "MITM_PROCESS_IDENTITY_CHANGED") throw error;
@@ -479,7 +480,7 @@ async function killProcess(pid, force = false, sudoPassword = null, expectedStar
         }
       }
       assertIdentity();
-      try { process.kill(pid, sig); }
+      try {process.kill(pid, sig);}
       catch (error) {
         if (error.code === "EPERM" || error.code === "EACCES") {
           throw new Error(`Refusing to elevate termination for unprivileged MITM process ${pid}`);
@@ -506,10 +507,10 @@ async function rollbackLaunchedInstance({
   redirectOwned = serverRedirectOwned,
   launchGatePath = serverLaunchGatePath,
   launcherStart = serverLauncherStart,
-  actualStart = serverProcessStart,
+  actualStart = serverProcessStart
 } = {}) {
   if (launchGatePath) {
-    try { fs.unlinkSync(launchGatePath); } catch { /* consumed or absent */ }
+    try {fs.unlinkSync(launchGatePath);} catch {/* consumed or absent */}
   }
   const ownedProcesses = [];
   if (Number.isSafeInteger(actualPid) && actualPid > 0) {
@@ -520,7 +521,7 @@ async function rollbackLaunchedInstance({
   }
   if (launchedProcess && !launchedProcess.killed) {
     if (!launcherStart || getProcessStartIdentity(launchedProcess.pid) === launcherStart) {
-      try { launchedProcess.kill("SIGKILL"); } catch { /* verified below */ }
+      try {launchedProcess.kill("SIGKILL");} catch {/* verified below */}
     }
   }
   for (const owned of ownedProcesses) {
@@ -534,7 +535,7 @@ async function rollbackLaunchedInstance({
     await removePortRedirect(sudoPassword);
   }
   for (const owned of ownedProcesses) {
-    try { removePidFileIfMatches({ pid: owned.pid, nonce }); } catch { /* preserve rollback progress */ }
+    try {removePidFileIfMatches({ pid: owned.pid, nonce });} catch {/* preserve rollback progress */}
   }
 
   if (nonce == null || serverInstanceNonce === nonce || serverProcess === launchedProcess) {
@@ -643,8 +644,8 @@ async function restoreToolDNS(sudoPassword) {
         if (enabled) {
           await adoptLegacyDNSEntries(tool, password);
           await addDNSEntry(tool, password);
-        }
-        else await removeDNSEntry(tool, password);
+        } else
+        await removeDNSEntry(tool, password);
       } catch (e) {
         err(`DNS ${tool}: restore failed — ${e.message}`);
       }
@@ -669,29 +670,29 @@ function checkLoopbackPortFree(port) {
   return new Promise((resolve) => {
     const tester = net.createServer();
     tester.once("error", (err) => {
-      if (err.code === "EADDRINUSE") resolve("in-use");
-      else resolve("no-permission");
+      if (err.code === "EADDRINUSE") resolve("in-use");else
+      resolve("no-permission");
     });
-    tester.once("listening", () => { tester.close(() => resolve("free")); });
+    tester.once("listening", () => {tester.close(() => resolve("free"));});
     tester.listen(port, "127.0.0.1");
   });
 }
 
-function checkPort443Free() { return checkLoopbackPortFree(MITM_PORT); }
+function checkPort443Free() {return checkLoopbackPortFree(MITM_PORT);}
 
 function getPort443Owner(sudoPassword) {
   return new Promise((resolve) => {
     if (IS_WIN) {
       const powershell = resolveWindowsSystemBinary("powershell.exe");
       execFile(powershell, ["-NoProfile", "-NonInteractive", "-Command",
-        "$c = Get-NetTCPConnection -LocalPort 443 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $c.OwningProcess } else { 0 }"], {
-        windowsHide: true, timeout: 5000, encoding: "utf8", env: buildMinimalWindowsEnv(),
+      "$c = Get-NetTCPConnection -LocalPort 443 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $c.OwningProcess } else { 0 }"], {
+        windowsHide: true, timeout: 5000, encoding: "utf8", env: buildMinimalWindowsEnv()
       }, (err, stdout) => {
         if (err) return resolve(null);
         const pid = parseInt(stdout.trim(), 10);
         if (!pid || pid <= 4) return resolve(null);
         execFile(resolveWindowsSystemBinary("tasklist.exe"), ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], {
-          windowsHide: true, timeout: 5000, encoding: "utf8", env: buildMinimalWindowsEnv(),
+          windowsHide: true, timeout: 5000, encoding: "utf8", env: buildMinimalWindowsEnv()
         }, (e2, out2) => {
           const m = out2?.match(/"([^"]+)"/);
           const startIdentity = getProcessStartIdentity(pid);
@@ -701,20 +702,20 @@ function getPort443Owner(sudoPassword) {
     } else {
       // Only find process actually LISTENING on TCP port 443
       let lsof;
-      try { lsof = resolveTrustedUnixBinary("lsof"); } catch { resolve(null); return; }
+      try {lsof = resolveTrustedUnixBinary("lsof");} catch {resolve(null);return;}
       execFile(lsof, ["-nP", "-iTCP:443", "-sTCP:LISTEN", "-t"], {
         windowsHide: true, timeout: 5000, encoding: "utf8",
-        env: { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" },
+        env: { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" }
       }, (err, stdout) => {
         if (err || !stdout?.trim()) return resolve(null);
         const pid = parseInt(stdout.trim().split("\n")[0], 10);
         if (!pid || isNaN(pid)) return resolve(null);
         execFile(resolveTrustedUnixBinary("ps"), ["-p", String(pid), "-o", "comm="], {
           windowsHide: true, timeout: 5000, encoding: "utf8",
-          env: { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" },
+          env: { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" }
         }, (e2, out2) => {
           const startIdentity = getProcessStartIdentity(pid);
-          resolve(startIdentity ? { pid, name: (out2?.trim() || "unknown"), startIdentity } : null);
+          resolve(startIdentity ? { pid, name: out2?.trim() || "unknown", startIdentity } : null);
         });
       });
     }
@@ -758,12 +759,12 @@ async function killLeftoverMitm(sudoPassword, { preserveRedirectForRestart = mit
   const health = await pollMitmHealth(1500, MITM_INTERNAL_PORT, record.nonce);
   const healthPid = Number.isSafeInteger(health?.pid) && health.pid > 0 ? health.pid : null;
   const healthMatches = record.state === "starting" ? healthPid != null : healthPid === record.pid;
-  const launcherMatches = isProcessAlive(record.launcherPid)
-    && getProcessStartIdentity(record.launcherPid) === record.launcherStart;
+  const launcherMatches = isProcessAlive(record.launcherPid) &&
+  getProcessStartIdentity(record.launcherPid) === record.launcherStart;
 
   if (healthMatches) {
-    const processStart = record.processStart
-      || await bindAuthenticatedProcessIdentity(healthPid, record.nonce, MITM_INTERNAL_PORT);
+    const processStart = record.processStart || (
+    await bindAuthenticatedProcessIdentity(healthPid, record.nonce, MITM_INTERNAL_PORT));
     if (!processStart || getProcessStartIdentity(healthPid) !== processStart) {
       throw new Error(`MITM process ${healthPid} start identity could not be authenticated`);
     }
@@ -817,8 +818,8 @@ function pollMitmHealth(timeoutMs, port = MITM_PORT, expectedNonce = null) {
         if (attemptComplete || settled) return;
         attemptComplete = true;
         if (wallTimer) clearTimeout(wallTimer);
-        if (Date.now() < deadline) setTimeout(check, Math.min(100, Math.max(1, deadline - Date.now())));
-        else finish(null);
+        if (Date.now() < deadline) setTimeout(check, Math.min(100, Math.max(1, deadline - Date.now())));else
+        finish(null);
       };
       const req = https.request(
         {
@@ -827,7 +828,7 @@ function pollMitmHealth(timeoutMs, port = MITM_PORT, expectedNonce = null) {
           path: "/_mitm_health",
           method: "GET",
           rejectUnauthorized: false,
-          headers: challenge ? { "x-durindoor-mitm-challenge": challenge } : {},
+          headers: challenge ? { "x-durindoor-mitm-challenge": challenge } : {}
         },
         (res) => {
           let body = "";
@@ -846,10 +847,10 @@ function pollMitmHealth(timeoutMs, port = MITM_PORT, expectedNonce = null) {
                 const expectedProof = crypto.createHmac("sha256", expectedNonce).update(challenge).digest("hex");
                 proofMatches = crypto.timingSafeEqual(Buffer.from(json.proof), Buffer.from(expectedProof));
               }
-              finish(json.ok === true && proofMatches
-                ? { ok: true, pid: json.pid || null }
-                : null);
-            } catch { finish(null); }
+              finish(json.ok === true && proofMatches ?
+              { ok: true, pid: json.pid || null } :
+              null);
+            } catch {finish(null);}
           });
           res.on("error", retry);
         }
@@ -889,12 +890,12 @@ async function getMitmStatus() {
       const { record } = readPidRecord();
       if (record?.nonce && (record.state === "starting" || isProcessAlive(record.pid))) {
         const directHealth = await pollMitmHealth(1500, MITM_INTERNAL_PORT, record.nonce);
-        const directMatches = record.state === "starting"
-          ? Number.isSafeInteger(directHealth?.pid) && directHealth.pid > 0
-          : directHealth?.pid === record.pid;
-        const publicHealth = directMatches
-          ? await pollMitmHealth(1500, MITM_PORT, record.nonce)
-          : null;
+        const directMatches = record.state === "starting" ?
+        Number.isSafeInteger(directHealth?.pid) && directHealth.pid > 0 :
+        directHealth?.pid === record.pid;
+        const publicHealth = directMatches ?
+        await pollMitmHealth(1500, MITM_PORT, record.nonce) :
+        null;
         if (directMatches && publicHealth?.pid === directHealth.pid) {
           running = true;
           pid = directHealth.pid;
@@ -907,7 +908,7 @@ async function getMitmStatus() {
         }
       }
     }
-  } catch { /* status is fail-closed */ }
+  } catch {/* status is fail-closed */}
 
   const dnsStatus = checkAllDNSStatus();
   const rootCACertPath = path.join(MITM_DIR, "rootCA.crt");
@@ -929,8 +930,8 @@ async function scheduleMitmRestart(apiKey) {
 
   if (mitmRestartCount >= MITM_MAX_RESTARTS) {
     err("Max restart attempts reached. Giving up.");
-    try { await cleanupRestartTerminalState("restart attempts exhausted"); }
-    catch (error) { err(`Terminal restart cleanup failed; ownership state was retained: ${error.message}`); }
+    try {await cleanupRestartTerminalState("restart attempts exhausted");}
+    catch (error) {err(`Terminal restart cleanup failed; ownership state was retained: ${error.message}`);}
     mitmIsRestarting = false;
     return;
   }
@@ -992,16 +993,16 @@ async function cleanupRestartTerminalState(reason) {
 async function killPort443Owner(owner, sudoPassword) {
   if (!owner || !owner.pid) return;
   const currentOwner = await getPort443Owner(sudoPassword);
-  if (!currentOwner
-    || currentOwner.pid !== owner.pid
-    || currentOwner.startIdentity !== owner.startIdentity) {
+  if (!currentOwner ||
+  currentOwner.pid !== owner.pid ||
+  currentOwner.startIdentity !== owner.startIdentity) {
     const error = new Error("Port 443 ownership changed before the approved process could be stopped.");
     error.code = "PORT_443_BUSY";
     error.portOwner = currentOwner || null;
     throw error;
   }
   await killProcess(owner.pid, true, sudoPassword, owner.startIdentity);
-  await new Promise(r => setTimeout(r, 800));
+  await new Promise((r) => setTimeout(r, 800));
   if (isProcessAlive(owner.pid)) throw new Error(`Approved port owner ${owner.pid} remained alive after termination`);
 }
 
@@ -1010,8 +1011,8 @@ async function cleanupPendingTrustRotations(sudoPassword, { replacementTrusted =
     throw new Error("Refusing to remove previous Root CA trust before replacement trust is verified");
   }
   if (!fs.existsSync(MITM_DIR)) return;
-  const pending = fs.readdirSync(MITM_DIR)
-    .filter((name) => /^\.rootCA\.previous\.[a-f0-9.]+\.crt$/.test(name));
+  const pending = fs.readdirSync(MITM_DIR).
+  filter((name) => /^\.rootCA\.previous\.[a-f0-9.]+\.crt$/.test(name));
   for (const name of pending) {
     const certPath = path.join(MITM_DIR, name);
     const stat = fs.lstatSync(certPath);
@@ -1033,9 +1034,9 @@ function publishTrustRotationJournal(sourcePath, journalPath) {
   let journalFd;
   try {
     const openedStat = fs.fstatSync(sourceFd);
-    if (!openedStat.isFile()
-      || String(openedStat.dev) !== String(sourceStat.dev)
-      || String(openedStat.ino) !== String(sourceStat.ino)) {
+    if (!openedStat.isFile() ||
+    String(openedStat.dev) !== String(sourceStat.dev) ||
+    String(openedStat.ino) !== String(sourceStat.ino)) {
       throw new Error("Root CA certificate changed while journaling trust rotation");
     }
     const bytes = fs.readFileSync(sourceFd);
@@ -1047,8 +1048,8 @@ function publishTrustRotationJournal(sourcePath, journalPath) {
     if (process.platform !== "win32") fs.chmodSync(journalPath, 0o600);
     fsyncParentDirectory(journalPath);
   } catch (error) {
-    if (journalFd !== undefined) try { fs.closeSync(journalFd); } catch { /* preserve error */ }
-    try { fs.unlinkSync(journalPath); } catch { /* absent or cleanup failure */ }
+    if (journalFd !== undefined) try {fs.closeSync(journalFd);} catch {/* preserve error */}
+    try {fs.unlinkSync(journalPath);} catch {/* absent or cleanup failure */}
     throw error;
   } finally {
     fs.closeSync(sourceFd);
@@ -1068,15 +1069,15 @@ async function mutatePortRedirect(action, sudoPassword, { allowExisting = true }
   }
   const { execWithPassword } = require("./dns/dnsConfig");
   const uid = requireNumericUid();
-  const redirect = IS_MAC
-    ? buildMacRedirect({ uid, publicPort: MITM_PORT, internalPort: MITM_NODE_PORT, allowExisting })
-    : buildLinuxRedirect({ uid, publicPort: MITM_PORT, internalPort: MITM_NODE_PORT, allowExisting });
+  const redirect = IS_MAC ?
+  buildMacRedirect({ uid, publicPort: MITM_PORT, internalPort: MITM_NODE_PORT, allowExisting }) :
+  buildLinuxRedirect({ uid, publicPort: MITM_PORT, internalPort: MITM_NODE_PORT, allowExisting });
   // The diagnostic operation tag is ignored by the production executor but
   // lets platform-neutral tests inject install and rollback outcomes without
   // guessing from shell text that legitimately contains its own cleanup trap.
   await execWithPassword(redirect[action], sudoPassword || "", {
     operation: action,
-    scope: "mitm-port-redirect",
+    scope: "mitm-port-redirect"
   });
 }
 
@@ -1143,8 +1144,8 @@ async function installPortRedirect(sudoPassword) {
       if (mutationDispatched) await mutatePortRedirect("remove", sudoPassword);
       if ((mutationDispatched || createdJournal) && journal) {
         const current = readRedirectJournal();
-        if (current.record?.nonce === journal.nonce
-          && !removeRedirectJournalSnapshot(current.snapshot, current.record)) {
+        if (current.record?.nonce === journal.nonce &&
+        !removeRedirectJournalSnapshot(current.snapshot, current.record)) {
           throw new Error("MITM redirect journal changed during failed-install cleanup");
         }
       }
@@ -1191,495 +1192,495 @@ async function removePortRedirect(sudoPassword) {
 
 async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
   return startGate.run(async () => {
-  // The full proxy and all user-owned files must stay unprivileged. Refuse an
-  // elevated parent before reading or mutating PID, CA, trust, DNS, redirect,
-  // or process state.
-  if (isAdmin()) {
-    const error = new Error("Refusing to run the full MITM proxy with an elevated parent; start DurinDoor as a standard user");
-    error.code = "MITM_ELEVATED_PARENT_UNSAFE";
-    throw error;
-  }
+    // The full proxy and all user-owned files must stay unprivileged. Refuse an
+    // elevated parent before reading or mutating PID, CA, trust, DNS, redirect,
+    // or process state.
+    if (isAdmin()) {
+      const error = new Error("Refusing to run the full MITM proxy with an elevated parent; start DurinDoor as a standard user");
+      error.code = "MITM_ELEVATED_PARENT_UNSAFE";
+      throw error;
+    }
 
-  if (!serverProcess || serverProcess.killed) {
-    try {
-      if (fs.existsSync(PID_FILE)) {
-        const { snapshot, record } = readPidRecord();
-        if (record?.nonce) {
-          const health = await pollMitmHealth(1500, MITM_INTERNAL_PORT, record.nonce);
-          const runningMatches = record.state === "running" && health?.pid === record.pid;
-          const startingMatches = record.state === "starting"
-            && Number.isSafeInteger(health?.pid)
-            && health.pid > 0;
-          if (runningMatches || startingMatches) {
-            const reusableRecord = startingMatches
-              ? {
+    if (!serverProcess || serverProcess.killed) {
+      try {
+        if (fs.existsSync(PID_FILE)) {
+          const { snapshot, record } = readPidRecord();
+          if (record?.nonce) {
+            const health = await pollMitmHealth(1500, MITM_INTERNAL_PORT, record.nonce);
+            const runningMatches = record.state === "running" && health?.pid === record.pid;
+            const startingMatches = record.state === "starting" &&
+            Number.isSafeInteger(health?.pid) &&
+            health.pid > 0;
+            if (runningMatches || startingMatches) {
+              const reusableRecord = startingMatches ?
+              {
                 ...record,
                 pid: health.pid,
                 state: "running",
                 // A bootstrap manager and its serving child can have distinct
                 // PIDs. Never carry the launcher's identity onto that child.
-                processStart: health.pid === record.pid ? record.processStart : null,
+                processStart: health.pid === record.pid ? record.processStart : null
+              } :
+              record;
+              const reusableProcessStart = reusableRecord.processStart || (
+              await bindAuthenticatedProcessIdentity(reusableRecord.pid, reusableRecord.nonce, MITM_INTERNAL_PORT));
+              if (!reusableProcessStart ||
+              getProcessStartIdentity(reusableRecord.pid) !== reusableProcessStart) {
+                throw new Error("Existing MITM process start identity could not be authenticated");
               }
-              : record;
-            const reusableProcessStart = reusableRecord.processStart
-              || await bindAuthenticatedProcessIdentity(reusableRecord.pid, reusableRecord.nonce, MITM_INTERNAL_PORT);
-            if (!reusableProcessStart
-              || getProcessStartIdentity(reusableRecord.pid) !== reusableProcessStart) {
-              throw new Error("Existing MITM process start identity could not be authenticated");
-            }
-            reusableRecord.processStart = reusableProcessStart;
-            if (startingMatches && !replacePidFileIfMatches(record, reusableRecord)) {
-              throw new Error("Recovered MITM server PID could not be recorded safely");
-            }
-            let installedHere = false;
-            try {
-              if (!serverRedirectOwned) {
-                await installPortRedirect(sudoPassword);
-                installedHere = true;
+              reusableRecord.processStart = reusableProcessStart;
+              if (startingMatches && !replacePidFileIfMatches(record, reusableRecord)) {
+                throw new Error("Recovered MITM server PID could not be recorded safely");
               }
-              const publicHealth = await pollMitmHealth(1500, MITM_PORT, reusableRecord.nonce);
-              if (publicHealth?.pid !== reusableRecord.pid) {
-                const error = new Error("Existing MITM process is healthy, but its authenticated public-port redirect is not");
-                error.code = "MITM_REDIRECT_UNHEALTHY";
+              let installedHere = false;
+              try {
+                if (!serverRedirectOwned) {
+                  await installPortRedirect(sudoPassword);
+                  installedHere = true;
+                }
+                const publicHealth = await pollMitmHealth(1500, MITM_PORT, reusableRecord.nonce);
+                if (publicHealth?.pid !== reusableRecord.pid) {
+                  const error = new Error("Existing MITM process is healthy, but its authenticated public-port redirect is not");
+                  error.code = "MITM_REDIRECT_UNHEALTHY";
+                  throw error;
+                }
+              } catch (error) {
+                if (installedHere) {
+                  try {await removePortRedirect(sudoPassword);}
+                  catch (cleanupError) {error.cleanupError = cleanupError;}
+                }
                 throw error;
               }
-            } catch (error) {
-              if (installedHere) {
-                try { await removePortRedirect(sudoPassword); }
-                catch (cleanupError) { error.cleanupError = cleanupError; }
+              serverPid = reusableRecord.pid;
+              serverLauncherPid = reusableRecord.launcherPid;
+              serverInstanceNonce = reusableRecord.nonce;
+              serverLauncherStart = reusableRecord.launcherStart;
+              serverProcessStart = reusableProcessStart;
+              serverRedirectOwned = true;
+              log(`♻️ Reusing existing process (PID: ${reusableRecord.pid})`);
+              try {
+                await saveMitmSettings(true);
+              } catch (error) {
+                await throwAfterRollback(error, {
+                  actualPid: reusableRecord.pid,
+                  launcherPid: reusableRecord.launcherPid,
+                  nonce: reusableRecord.nonce,
+                  sudoPassword,
+                  redirectOwned: true
+                });
               }
-              throw error;
+              if (sudoPassword) setCachedPassword(sudoPassword);
+              return { running: true, pid: reusableRecord.pid };
             }
-            serverPid = reusableRecord.pid;
-            serverLauncherPid = reusableRecord.launcherPid;
-            serverInstanceNonce = reusableRecord.nonce;
-            serverLauncherStart = reusableRecord.launcherStart;
-            serverProcessStart = reusableProcessStart;
-            serverRedirectOwned = true;
-            log(`♻️ Reusing existing process (PID: ${reusableRecord.pid})`);
-            try {
-              await saveMitmSettings(true);
-            } catch (error) {
-              await throwAfterRollback(error, {
-                actualPid: reusableRecord.pid,
-                launcherPid: reusableRecord.launcherPid,
-                nonce: reusableRecord.nonce,
-                sudoPassword,
-                redirectOwned: true,
-              });
-            }
-            if (sudoPassword) setCachedPassword(sudoPassword);
-            return { running: true, pid: reusableRecord.pid };
+            log(`[MITM] Refusing to reuse unverified PID ${record.pid}`);
+          } else if (record?.version === 0 && isProcessAlive(record.pid)) {
+            const error = new Error(`Legacy MITM PID ${record.pid} has no nonce/start identity and cannot be adopted safely`);
+            error.code = "MITM_OWNERSHIP_UNVERIFIED";
+            throw error;
           }
-          log(`[MITM] Refusing to reuse unverified PID ${record.pid}`);
-        } else if (record?.version === 0 && isProcessAlive(record.pid)) {
-          const error = new Error(`Legacy MITM PID ${record.pid} has no nonce/start identity and cannot be adopted safely`);
-          error.code = "MITM_OWNERSHIP_UNVERIFIED";
-          throw error;
         }
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
       }
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
     }
-  }
 
-  if (serverProcess && !serverProcess.killed) {
-    throw new Error("MITM server is already running");
-  }
+    if (serverProcess && !serverProcess.killed) {
+      throw new Error("MITM server is already running");
+    }
 
-  if (!IS_WIN) {
-    const internalPortStatus = await checkLoopbackPortFree(MITM_INTERNAL_PORT);
-    if (internalPortStatus !== "free") {
-      const error = new Error(`Internal MITM port ${MITM_INTERNAL_PORT} is already in use; refusing cross-DATA_DIR redirect adoption`);
+    if (!IS_WIN) {
+      const internalPortStatus = await checkLoopbackPortFree(MITM_INTERNAL_PORT);
+      if (internalPortStatus !== "free") {
+        const error = new Error(`Internal MITM port ${MITM_INTERNAL_PORT} is already in use; refusing cross-DATA_DIR redirect adoption`);
+        error.code = "MITM_INTERNAL_PORT_BUSY";
+        throw error;
+      }
+    } else {
+      const incumbentStatus = await checkPort443Free();
+      const hasRecoveryEvidence = fs.existsSync(PID_FILE) ||
+      fs.existsSync(REDIRECT_JOURNAL_FILE) ||
+      Object.values(checkAllDNSStatus()).some(Boolean);
+      if (incumbentStatus === "in-use" && hasRecoveryEvidence) {
+        const error = new Error("Port 443 is already occupied by an incumbent process; refusing stale cross-DATA_DIR cleanup");
+        error.code = "PORT_443_BUSY";
+        throw error;
+      }
+    }
+
+    // Only reconcile stale local journals after proving that no incumbent proxy
+    // from another DATA_DIR is listening on the per-user global transport.
+    await killLeftoverMitm(sudoPassword);
+
+    if (!IS_WIN && (await checkLoopbackPortFree(MITM_INTERNAL_PORT)) !== "free") {
+      const error = new Error(`Internal MITM port ${MITM_INTERNAL_PORT} became busy during startup`);
       error.code = "MITM_INTERNAL_PORT_BUSY";
       throw error;
     }
-  } else {
-    const incumbentStatus = await checkPort443Free();
-    const hasRecoveryEvidence = fs.existsSync(PID_FILE)
-      || fs.existsSync(REDIRECT_JOURNAL_FILE)
-      || Object.values(checkAllDNSStatus()).some(Boolean);
-    if (incumbentStatus === "in-use" && hasRecoveryEvidence) {
-      const error = new Error("Port 443 is already occupied by an incumbent process; refusing stale cross-DATA_DIR cleanup");
-      error.code = "PORT_443_BUSY";
-      throw error;
-    }
-  }
 
-  // Only reconcile stale local journals after proving that no incumbent proxy
-  // from another DATA_DIR is listening on the per-user global transport.
-  await killLeftoverMitm(sudoPassword);
-
-  if (!IS_WIN && await checkLoopbackPortFree(MITM_INTERNAL_PORT) !== "free") {
-    const error = new Error(`Internal MITM port ${MITM_INTERNAL_PORT} became busy during startup`);
-    error.code = "MITM_INTERNAL_PORT_BUSY";
-    throw error;
-  }
-
-  const portStatus = await checkPort443Free();
-  if (portStatus === "in-use" || portStatus === "no-permission") {
-    const owner = await getPort443Owner(sudoPassword);
-    if (owner) {
-      const shortName = owner.name.includes("/")
-        ? owner.name.split("/").filter(Boolean).pop()
-        : owner.name;
-      if (forceKillPort443) {
-        log(`Killing process on port 443 (PID ${owner.pid}, name=${shortName})...`);
-        await killPort443Owner(owner, sudoPassword);
-      } else {
-        const e = new Error(`Port 443 is already in use by "${shortName}" (PID ${owner.pid}).`);
-        e.code = "PORT_443_BUSY";
-        e.portOwner = { pid: owner.pid, name: shortName };
-        throw e;
-      }
-    } else if (portStatus === "in-use") {
-      const error = new Error("Port 443 is in use, but its process identity could not be verified safely");
-      error.code = "PORT_443_BUSY";
-      error.portOwner = null;
-      throw error;
-    }
-  }
-
-  // Step 1: Generate Root CA if missing, invalid, mismatched, or expiring.
-  const rootCACertPath = path.join(MITM_DIR, "rootCA.crt");
-  const generatedRootCA = await withRootCALock(async () => {
-    const oldCertExists = fs.existsSync(rootCACertPath);
-    const needsReplacement = !hasValidRootCA();
-    let previousCertPath = null;
-    let replacementPublished = false;
-    try {
-      let oldCertIsTrustable = false;
-      if (needsReplacement && oldCertExists) {
-        try {
-          assertDurinDoorRootCertificate(rootCACertPath);
-          oldCertIsTrustable = true;
-        } catch (error) {
-          log(`🔐 Cert: invalid prior certificate will be replaced without trust cleanup (${error.message})`);
+    const portStatus = await checkPort443Free();
+    if (portStatus === "in-use" || portStatus === "no-permission") {
+      const owner = await getPort443Owner(sudoPassword);
+      if (owner) {
+        const shortName = owner.name.includes("/") ?
+        owner.name.split("/").filter(Boolean).pop() :
+        owner.name;
+        if (forceKillPort443) {
+          log(`Killing process on port 443 (PID ${owner.pid}, name=${shortName})...`);
+          await killPort443Owner(owner, sudoPassword);
+        } else {
+          const e = new Error(`Port 443 is already in use by "${shortName}" (PID ${owner.pid}).`);
+          e.code = "PORT_443_BUSY";
+          e.portOwner = { pid: owner.pid, name: shortName };
+          throw e;
         }
-      }
-      if (needsReplacement && oldCertIsTrustable) {
-        // Preserve the old certificate until the replacement pair is fully
-        // published. A generation failure must not remove the usable trust
-        // registration for the pair that rootCA.js restores on disk.
-        previousCertPath = path.join(
-          MITM_DIR,
-          `.rootCA.previous.${process.pid}.${crypto.randomBytes(8).toString("hex")}.crt`,
-        );
-        publishTrustRotationJournal(rootCACertPath, previousCertPath);
-      }
-
-      let generated;
-      try {
-        generated = ensureRootCASync();
-        replacementPublished = generated;
-      } catch (error) {
-        replacementPublished = error?.rootCAPublished === true;
+      } else if (portStatus === "in-use") {
+        const error = new Error("Port 443 is in use, but its process identity could not be verified safely");
+        error.code = "PORT_443_BUSY";
+        error.portOwner = null;
         throw error;
       }
-      return generated;
-    } finally {
-      if (previousCertPath && !replacementPublished) {
-        try { fs.unlinkSync(previousCertPath); } catch { /* public cert cleanup is best effort */ }
-      }
     }
-  });
-  if (generatedRootCA) log("🔐 Generated Root CA");
 
-  // Step 1.5: Auto-install Root CA if not trusted yet
-  const { checkCertInstalled } = require("./cert/install");
-  let rootCATrusted = await checkCertInstalled(rootCACertPath);
-  const linuxNoSystemTrust = !IS_WIN && !IS_MAC && !isSudoAvailable();
-  if (!rootCATrusted) {
-    log("🔐 Cert: not trusted → installing...");
-    const password = await getInMemoryPassword(sudoPassword);
-    if (linuxNoSystemTrust) {
-      await installCert(null, rootCACertPath);
-      rootCATrusted = await checkCertInstalled(rootCACertPath);
-      if (!rootCATrusted) {
-        log(`🔐 Cert: no verifiable local trust store (no sudo). Install ${rootCACertPath} as a trusted CA on machines that use this proxy.`);
+    // Step 1: Generate Root CA if missing, invalid, mismatched, or expiring.
+    const rootCACertPath = path.join(MITM_DIR, "rootCA.crt");
+    const generatedRootCA = await withRootCALock(async () => {
+      const oldCertExists = fs.existsSync(rootCACertPath);
+      const needsReplacement = !hasValidRootCA();
+      let previousCertPath = null;
+      let replacementPublished = false;
+      try {
+        let oldCertIsTrustable = false;
+        if (needsReplacement && oldCertExists) {
+          try {
+            assertDurinDoorRootCertificate(rootCACertPath);
+            oldCertIsTrustable = true;
+          } catch (error) {
+            log(`🔐 Cert: invalid prior certificate will be replaced without trust cleanup (${error.message})`);
+          }
+        }
+        if (needsReplacement && oldCertIsTrustable) {
+          // Preserve the old certificate until the replacement pair is fully
+          // published. A generation failure must not remove the usable trust
+          // registration for the pair that rootCA.js restores on disk.
+          previousCertPath = path.join(
+            MITM_DIR,
+            `.rootCA.previous.${process.pid}.${crypto.randomBytes(8).toString("hex")}.crt`
+          );
+          publishTrustRotationJournal(rootCACertPath, previousCertPath);
+        }
+
+        let generated;
+        try {
+          generated = ensureRootCASync();
+          replacementPublished = generated;
+        } catch (error) {
+          replacementPublished = error?.rootCAPublished === true;
+          throw error;
+        }
+        return generated;
+      } finally {
+        if (previousCertPath && !replacementPublished) {
+          try {fs.unlinkSync(previousCertPath);} catch {/* public cert cleanup is best effort */}
+        }
+      }
+    });
+    if (generatedRootCA) log("🔐 Generated Root CA");
+
+    // Step 1.5: Auto-install Root CA if not trusted yet
+    const { checkCertInstalled } = require("./cert/install");
+    let rootCATrusted = await checkCertInstalled(rootCACertPath);
+    const linuxNoSystemTrust = !IS_WIN && !IS_MAC && !isSudoAvailable();
+    if (!rootCATrusted) {
+      log("🔐 Cert: not trusted → installing...");
+      const password = await getInMemoryPassword(sudoPassword);
+      if (linuxNoSystemTrust) {
+        await installCert(null, rootCACertPath);
+        rootCATrusted = await checkCertInstalled(rootCACertPath);
+        if (!rootCATrusted) {
+          log(`🔐 Cert: no verifiable local trust store (no sudo). Install ${rootCACertPath} as a trusted CA on machines that use this proxy.`);
+        }
+      } else {
+        if (!password && isSudoPasswordRequired()) {
+          throw new Error("Sudo password required to install Root CA certificate");
+        }
+        try {
+          await installCert(password, rootCACertPath);
+          rootCATrusted = await checkCertInstalled(rootCACertPath);
+          if (!rootCATrusted) throw new Error("replacement trust could not be verified after installation");
+          log("🔐 Cert: ✅ trusted");
+        } catch (e) {
+          throw new Error(`Failed to trust certificate: ${e.message}`);
+        }
       }
     } else {
-      if (!password && isSudoPasswordRequired()) {
-        throw new Error("Sudo password required to install Root CA certificate");
-      }
-      try {
-        await installCert(password, rootCACertPath);
-        rootCATrusted = await checkCertInstalled(rootCACertPath);
-        if (!rootCATrusted) throw new Error("replacement trust could not be verified after installation");
-        log("🔐 Cert: ✅ trusted");
-      } catch (e) {
-        throw new Error(`Failed to trust certificate: ${e.message}`);
-      }
+      log("🔐 Cert: already trusted ✅");
     }
-  } else {
-    log("🔐 Cert: already trusted ✅");
-  }
 
-  // Only after the replacement certificate is demonstrably trusted may the
-  // previous trust entry and its exact-certificate journal be removed. A UAC,
-  // sudo, or verification failure leaves the old trust available for retry.
-  if (rootCATrusted) {
-    await withRootCALock(() => cleanupPendingTrustRotations(sudoPassword, {
-      replacementTrusted: true,
-    }));
-  }
+    // Only after the replacement certificate is demonstrably trusted may the
+    // previous trust entry and its exact-certificate journal be removed. A UAC,
+    // sudo, or verification failure leaves the old trust available for retry.
+    if (rootCATrusted) {
+      await withRootCALock(() => cleanupPendingTrustRotations(sudoPassword, {
+        replacementTrusted: true
+      }));
+    }
 
-  // Step 2: spawn the full proxy as the standard user after narrow system
-  // configuration has succeeded.
-  const effectiveServerPath = resolveBundledServerPath();
-  if (!effectiveServerPath || !fs.existsSync(effectiveServerPath)) {
-    throw new Error(`MITM server.js not found at ${effectiveServerPath}. Reinstall DurinDoor.`);
-  }
-  const mitmRouterBase = await resolveMitmRouterBaseUrl();
-  const instanceNonce = crypto.randomBytes(24).toString("hex");
-  serverLaunchGatePath = path.join(MITM_DIR, `.launch.${instanceNonce}.gate`);
-  let startError = null;
-  let spawnFailure = null;
-  const trackSpawn = (child) => {
-    child?.once("error", (error) => {
-      spawnFailure = error;
-      startError = error.message;
-      err(`[MITM] Server process error: ${error.message}`);
-    });
-    return child;
-  };
-  log(`🚀 Starting server... (router: ${mitmRouterBase})`);
-  if (!serverRedirectOwned) {
-    await installPortRedirect(sudoPassword);
-    serverRedirectOwned = true;
-  }
-  const trustedChildPlatformEnv = IS_WIN
-    ? buildMinimalWindowsEnv()
-    : { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" };
-  const childEnv = Object.fromEntries(Object.entries({
-    ...trustedChildPlatformEnv,
-    HOME: os.homedir(),
-    DATA_DIR,
-    TMPDIR: process.env.TMPDIR,
-    TEMP: process.env.TEMP,
-    TMP: process.env.TMP,
-    ROUTER_API_KEY: apiKey,
-    NODE_ENV: "production",
-    MITM_ROUTER_BASE: mitmRouterBase,
-    MITM_INSTANCE_NONCE: instanceNonce,
-    MITM_LAUNCH_GATE_FILE: serverLaunchGatePath,
-    MITM_MANAGER_PID: String(process.pid),
-    MITM_CA_PREPARED: "1",
-    MITM_LISTEN_PORT: String(MITM_INTERNAL_PORT),
-  }).filter(([, value]) => value != null));
-  try {
-    serverProcess = trackSpawn(spawn(process.execPath, [effectiveServerPath, MITM_ENTRY_ARG], {
-      detached: false,
-      windowsHide: true,
-      cwd: os.tmpdir(),
-      stdio: ["ignore", "pipe", "pipe"],
-      env: childEnv,
-    }));
-  } catch (error) {
+    // Step 2: spawn the full proxy as the standard user after narrow system
+    // configuration has succeeded.
+    const effectiveServerPath = resolveBundledServerPath();
+    if (!effectiveServerPath || !fs.existsSync(effectiveServerPath)) {
+      throw new Error(`MITM server.js not found at ${effectiveServerPath}. Reinstall DurinDoor.`);
+    }
+    const mitmRouterBase = await resolveMitmRouterBaseUrl();
+    const instanceNonce = crypto.randomBytes(24).toString("hex");
+    serverLaunchGatePath = path.join(MITM_DIR, `.launch.${instanceNonce}.gate`);
+    let startError = null;
+    let spawnFailure = null;
+    const trackSpawn = (child) => {
+      child?.once("error", (error) => {
+        spawnFailure = error;
+        startError = error.message;
+        err(`[MITM] Server process error: ${error.message}`);
+      });
+      return child;
+    };
+    log(`🚀 Starting server... (router: ${mitmRouterBase})`);
+    if (!serverRedirectOwned) {
+      await installPortRedirect(sudoPassword);
+      serverRedirectOwned = true;
+    }
+    const trustedChildPlatformEnv = IS_WIN ?
+    buildMinimalWindowsEnv() :
+    { PATH: FIXED_UNIX_PATH, LANG: "C", LC_ALL: "C" };
+    const childEnv = Object.fromEntries(Object.entries({
+      ...trustedChildPlatformEnv,
+      HOME: os.homedir(),
+      DATA_DIR,
+      TMPDIR: process.env.TMPDIR,
+      TEMP: process.env.TEMP,
+      TMP: process.env.TMP,
+      ROUTER_API_KEY: apiKey,
+      NODE_ENV: "production",
+      MITM_ROUTER_BASE: mitmRouterBase,
+      MITM_INSTANCE_NONCE: instanceNonce,
+      MITM_LAUNCH_GATE_FILE: serverLaunchGatePath,
+      MITM_MANAGER_PID: String(process.pid),
+      MITM_CA_PREPARED: "1",
+      MITM_LISTEN_PORT: String(MITM_INTERNAL_PORT)
+    }).filter(([, value]) => value != null));
     try {
-      await removePortRedirect(sudoPassword);
-      serverRedirectOwned = false;
-    } catch (cleanupError) {
-      error.cleanupError = cleanupError;
+      serverProcess = trackSpawn(spawn(process.execPath, [effectiveServerPath, MITM_ENTRY_ARG], {
+        detached: false,
+        windowsHide: true,
+        cwd: os.tmpdir(),
+        stdio: ["ignore", "pipe", "pipe"],
+        env: childEnv
+      }));
+    } catch (error) {
+      try {
+        await removePortRedirect(sudoPassword);
+        serverRedirectOwned = false;
+      } catch (cleanupError) {
+        error.cleanupError = cleanupError;
+      }
+      throw error;
     }
-    throw error;
-  }
 
-  const launchedProcess = serverProcess;
-  let startupComplete = false;
-  let exitedDuringStartup = false;
+    const launchedProcess = serverProcess;
+    let startupComplete = false;
+    let exitedDuringStartup = false;
 
-  if (!launchedProcess?.pid) {
-    await throwAfterRollback(
-      new Error("MITM server process failed to spawn"),
-      { launchedProcess, nonce: instanceNonce, sudoPassword },
-    );
-  }
-
-  const launcherPid = launchedProcess.pid;
-  const launcherStart = getProcessStartIdentity(launcherPid);
-  if (!launcherStart) {
-    await throwAfterRollback(
-      new Error("MITM launcher process identity could not be established safely"),
-      { launchedProcess, launcherPid, nonce: instanceNonce, sudoPassword },
-    );
-  }
-  const startingRecord = {
-    pid: launcherPid,
-    launcherPid,
-    nonce: instanceNonce,
-    state: "starting",
-    launcherStart,
-    processStart: launcherStart,
-  };
-  serverPid = launcherPid;
-  serverLauncherPid = launcherPid;
-  serverInstanceNonce = instanceNonce;
-  serverLauncherStart = launcherStart;
-  serverProcessStart = launcherStart;
-  try {
-    writeInitialPidRecord(startingRecord);
-    publishLaunchAuthorization(serverLaunchGatePath, instanceNonce);
-  } catch (error) {
-    await throwAfterRollback(error, { launchedProcess, launcherPid, nonce: instanceNonce, sudoPassword });
-  }
-  mitmLastStartTime = Date.now();
-
-  if (serverProcess) {
-    launchedProcess.stdout?.on("data", (data) => {
-      // server.js already formats its own logs — print as-is
-      process.stdout.write(data);
-    });
-    launchedProcess.stderr?.on("data", (data) => {
-      const msg = data.toString().trim();
-      // Mac/Linux: filter sudo password prompt noise
-      if (msg && (IS_WIN || (!msg.includes("Password:") && !msg.includes("password for")))) {
-        err(msg);
-        startError = msg;
-      }
-      // Detect wrong/missing password — clear cache and stop retry loop
-      if (!IS_WIN && (msg.includes("incorrect password") || msg.includes("no password was provided"))) {
-        setCachedPassword(null);
-        void clearEncryptedPassword().catch((error) => {
-          err(`[MITM] Legacy sudo credential purge failed: ${error.message}`);
-        });
-        mitmIsRestarting = true; // prevent scheduleMitmRestart from firing
-      }
-    });
-    launchedProcess.on("exit", (code) => {
-      if (!startupComplete) {
-        exitedDuringStartup = true;
-        startError ||= `Server exited during startup (code: ${code})`;
-        return;
-      }
-      if (serverProcess !== launchedProcess || serverInstanceNonce !== instanceNonce) return;
-      log(`Server exited (code: ${code})`);
-      serverProcess = null;
-      serverPid = null;
-      serverLauncherPid = null;
-      serverInstanceNonce = null;
-      serverLauncherStart = null;
-      serverProcessStart = null;
-      if (!mitmIsRestarting) {
-        // Every unrequested exit, including code 0, is unexpected. Keep the
-        // durable PID/redirect journals and use the bounded restart policy;
-        // terminal exhaustion performs verified cleanup and disables state.
-        void scheduleMitmRestart(apiKey);
-      }
-    });
-  }
-
-  const health = await pollMitmHealth(8000, MITM_INTERNAL_PORT, instanceNonce);
-  const authenticatedProcessStart = Number.isSafeInteger(health?.pid) && health.pid > 0
-    ? await bindAuthenticatedProcessIdentity(health.pid, instanceNonce, MITM_INTERNAL_PORT)
-    : null;
-  const publicHealth = health
-    ? await pollMitmHealth(3000, MITM_PORT, instanceNonce)
-    : null;
-  const launchEnded = exitedDuringStartup
-    || launchedProcess.exitCode != null
-    || launchedProcess.signalCode != null;
-  if (!health
-    || spawnFailure
-    || launchEnded
-    || publicHealth?.pid !== health?.pid
-    || serverProcess !== launchedProcess
-    || !Number.isSafeInteger(health.pid)
-    || health.pid <= 0
-    || !authenticatedProcessStart) {
-    const processUsing443 = getProcessUsingPort443();
-    const portInfo = processUsing443 ? ` Port 443 already in use by ${processUsing443}.` : "";
-    const reason = startError || `Check the local ${MITM_PORT}→${MITM_INTERNAL_PORT} redirect/isolation and port access.${portInfo}`;
-    await throwAfterRollback(
-      new Error(`MITM server failed to start. ${reason}`),
-      {
-        launchedProcess,
-        launcherPid,
-        actualPid: health?.pid || null,
-        nonce: instanceNonce,
-        sudoPassword,
-        launcherStart,
-        actualStart: authenticatedProcessStart
-          || (health?.pid === launcherPid ? launcherStart : null),
-      },
-    );
-  }
-
-  const runningRecord = {
-    pid: health.pid,
-    launcherPid,
-    nonce: instanceNonce,
-    state: "running",
-    launcherStart,
-    processStart: null,
-  };
-  runningRecord.processStart = authenticatedProcessStart;
-  try {
-    if (!replacePidFileIfMatches(startingRecord, runningRecord)) {
-      throw new Error("MITM server health PID could not be recorded safely");
+    if (!launchedProcess?.pid) {
+      await throwAfterRollback(
+        new Error("MITM server process failed to spawn"),
+        { launchedProcess, nonce: instanceNonce, sudoPassword }
+      );
     }
-  } catch (error) {
-    await throwAfterRollback(error, {
-      launchedProcess,
+
+    const launcherPid = launchedProcess.pid;
+    const launcherStart = getProcessStartIdentity(launcherPid);
+    if (!launcherStart) {
+      await throwAfterRollback(
+        new Error("MITM launcher process identity could not be established safely"),
+        { launchedProcess, launcherPid, nonce: instanceNonce, sudoPassword }
+      );
+    }
+    const startingRecord = {
+      pid: launcherPid,
       launcherPid,
-      actualPid: health.pid,
       nonce: instanceNonce,
-      sudoPassword,
+      state: "starting",
       launcherStart,
-      actualStart: authenticatedProcessStart,
-    });
-  }
-  serverPid = health.pid;
-  serverLauncherPid = launcherPid;
-  serverInstanceNonce = instanceNonce;
-  serverLauncherStart = launcherStart;
-  serverProcessStart = authenticatedProcessStart;
-  try {
-    const launchSnapshot = readFileSnapshot(serverLaunchGatePath);
-    if (launchSnapshot.raw !== `${instanceNonce}\n`
-      || !removeFileIfUnchanged(serverLaunchGatePath, launchSnapshot)) {
-      throw new Error("MITM launch authorization was not consumed safely");
+      processStart: launcherStart
+    };
+    serverPid = launcherPid;
+    serverLauncherPid = launcherPid;
+    serverInstanceNonce = instanceNonce;
+    serverLauncherStart = launcherStart;
+    serverProcessStart = launcherStart;
+    try {
+      writeInitialPidRecord(startingRecord);
+      publishLaunchAuthorization(serverLaunchGatePath, instanceNonce);
+    } catch (error) {
+      await throwAfterRollback(error, { launchedProcess, launcherPid, nonce: instanceNonce, sudoPassword });
     }
-  } catch (error) {
-    if (error.code !== "ENOENT") {
+    mitmLastStartTime = Date.now();
+
+    if (serverProcess) {
+      launchedProcess.stdout?.on("data", (data) => {
+        // server.js already formats its own logs — print as-is
+        process.stdout.write(data);
+      });
+      launchedProcess.stderr?.on("data", (data) => {
+        const msg = data.toString().trim();
+        // Mac/Linux: filter sudo password prompt noise
+        if (msg && (IS_WIN || !msg.includes("Password:") && !msg.includes("password for"))) {
+          err(msg);
+          startError = msg;
+        }
+        // Detect wrong/missing password — clear cache and stop retry loop
+        if (!IS_WIN && (msg.includes("incorrect password") || msg.includes("no password was provided"))) {
+          setCachedPassword(null);
+          void clearEncryptedPassword().catch((error) => {
+            err(`[MITM] Legacy sudo credential purge failed: ${error.message}`);
+          });
+          mitmIsRestarting = true; // prevent scheduleMitmRestart from firing
+        }
+      });
+      launchedProcess.on("exit", (code) => {
+        if (!startupComplete) {
+          exitedDuringStartup = true;
+          startError ||= `Server exited during startup (code: ${code})`;
+          return;
+        }
+        if (serverProcess !== launchedProcess || serverInstanceNonce !== instanceNonce) return;
+        log(`Server exited (code: ${code})`);
+        serverProcess = null;
+        serverPid = null;
+        serverLauncherPid = null;
+        serverInstanceNonce = null;
+        serverLauncherStart = null;
+        serverProcessStart = null;
+        if (!mitmIsRestarting) {
+          // Every unrequested exit, including code 0, is unexpected. Keep the
+          // durable PID/redirect journals and use the bounded restart policy;
+          // terminal exhaustion performs verified cleanup and disables state.
+          void scheduleMitmRestart(apiKey);
+        }
+      });
+    }
+
+    const health = await pollMitmHealth(8000, MITM_INTERNAL_PORT, instanceNonce);
+    const authenticatedProcessStart = Number.isSafeInteger(health?.pid) && health.pid > 0 ?
+    await bindAuthenticatedProcessIdentity(health.pid, instanceNonce, MITM_INTERNAL_PORT) :
+    null;
+    const publicHealth = health ?
+    await pollMitmHealth(3000, MITM_PORT, instanceNonce) :
+    null;
+    const launchEnded = exitedDuringStartup ||
+    launchedProcess.exitCode != null ||
+    launchedProcess.signalCode != null;
+    if (!health ||
+    spawnFailure ||
+    launchEnded ||
+    publicHealth?.pid !== health?.pid ||
+    serverProcess !== launchedProcess ||
+    !Number.isSafeInteger(health.pid) ||
+    health.pid <= 0 ||
+    !authenticatedProcessStart) {
+      const processUsing443 = getProcessUsingPort443();
+      const portInfo = processUsing443 ? ` Port 443 already in use by ${processUsing443}.` : "";
+      const reason = startError || `Check the local ${MITM_PORT}→${MITM_INTERNAL_PORT} redirect/isolation and port access.${portInfo}`;
+      await throwAfterRollback(
+        new Error(`MITM server failed to start. ${reason}`),
+        {
+          launchedProcess,
+          launcherPid,
+          actualPid: health?.pid || null,
+          nonce: instanceNonce,
+          sudoPassword,
+          launcherStart,
+          actualStart: authenticatedProcessStart || (
+          health?.pid === launcherPid ? launcherStart : null)
+        }
+      );
+    }
+
+    const runningRecord = {
+      pid: health.pid,
+      launcherPid,
+      nonce: instanceNonce,
+      state: "running",
+      launcherStart,
+      processStart: null
+    };
+    runningRecord.processStart = authenticatedProcessStart;
+    try {
+      if (!replacePidFileIfMatches(startingRecord, runningRecord)) {
+        throw new Error("MITM server health PID could not be recorded safely");
+      }
+    } catch (error) {
       await throwAfterRollback(error, {
         launchedProcess,
         launcherPid,
         actualPid: health.pid,
         nonce: instanceNonce,
         sudoPassword,
-        redirectOwned: true,
+        launcherStart,
+        actualStart: authenticatedProcessStart
       });
     }
-  }
-  serverLaunchGatePath = null;
-  startupComplete = true;
+    serverPid = health.pid;
+    serverLauncherPid = launcherPid;
+    serverInstanceNonce = instanceNonce;
+    serverLauncherStart = launcherStart;
+    serverProcessStart = authenticatedProcessStart;
+    try {
+      const launchSnapshot = readFileSnapshot(serverLaunchGatePath);
+      if (launchSnapshot.raw !== `${instanceNonce}\n` ||
+      !removeFileIfUnchanged(serverLaunchGatePath, launchSnapshot)) {
+        throw new Error("MITM launch authorization was not consumed safely");
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        await throwAfterRollback(error, {
+          launchedProcess,
+          launcherPid,
+          actualPid: health.pid,
+          nonce: instanceNonce,
+          sudoPassword,
+          redirectOwned: true
+        });
+      }
+    }
+    serverLaunchGatePath = null;
+    startupComplete = true;
 
-  if (_updateSettings) await _updateSettings({ mitmCertInstalled: true }).catch(() => { });
+    if (_updateSettings) await _updateSettings({ mitmCertInstalled: true }).catch(() => {});
 
-  log(`✅ Server healthy (PID: ${serverPid || health.pid})`);
+    log(`✅ Server healthy (PID: ${serverPid || health.pid})`);
 
-  // Log DNS status per tool
-  const dnsStatus = checkAllDNSStatus();
-  for (const [tool, active] of Object.entries(dnsStatus)) {
-    log(`🌐 DNS ${tool}: ${active ? "✅ active" : "❌ inactive"}`);
-  }
+    // Log DNS status per tool
+    const dnsStatus = checkAllDNSStatus();
+    for (const [tool, active] of Object.entries(dnsStatus)) {
+      log(`🌐 DNS ${tool}: ${active ? "✅ active" : "❌ inactive"}`);
+    }
 
-  try {
-    await saveMitmSettings(true);
-  } catch (error) {
-    await throwAfterRollback(error, {
-      launchedProcess,
-      launcherPid,
-      actualPid: health.pid,
-      nonce: instanceNonce,
-      sudoPassword,
-      redirectOwned: true,
-    });
-  }
-  if (sudoPassword) setCachedPassword(sudoPassword);
+    try {
+      await saveMitmSettings(true);
+    } catch (error) {
+      await throwAfterRollback(error, {
+        launchedProcess,
+        launcherPid,
+        actualPid: health.pid,
+        nonce: instanceNonce,
+        sudoPassword,
+        redirectOwned: true
+      });
+    }
+    if (sudoPassword) setCachedPassword(sudoPassword);
 
-  return { running: true, pid: serverPid };
+    return { running: true, pid: serverPid };
   });
 }
 
@@ -1692,146 +1693,146 @@ async function stopServer(sudoPassword, { preserveDesiredState = false } = {}) {
   mitmRestartCount = 0;
   try {
     return await startGate.runAfterIdle(async () => {
-  log("⏹ Stopping server...");
+      log("⏹ Stopping server...");
 
-  // Kill server process
-  const proc = serverProcess;
-  let record = null;
-  let persistedSnapshot = null;
-  try { ({ record, snapshot: persistedSnapshot } = readPidRecord()); }
-  catch (error) { if (error.code !== "ENOENT") throw error; }
-  const persistedRecord = record;
-  const localRecord = serverInstanceNonce && serverPid
-    ? {
-      version: 1,
-      pid: serverPid,
-      launcherPid: serverLauncherPid || serverPid,
-      nonce: serverInstanceNonce,
-      state: "running",
-      launcherStart: serverLauncherStart,
-      processStart: serverProcessStart,
-    }
-    : null;
-  let candidate = localRecord || record;
-  let verified = false;
-  let targetPid = candidate?.pid || null;
-  let targetStart = candidate?.processStart
-    || (candidate?.pid === candidate?.launcherPid ? candidate?.launcherStart : null);
-  let forceOwnedLauncher = false;
-  const locallyOwnedLauncher = Boolean(
-    localRecord
-    && proc?.pid === localRecord.launcherPid
-    && getProcessStartIdentity(localRecord.launcherPid) === localRecord.launcherStart,
-  );
+      // Kill server process
+      const proc = serverProcess;
+      let record = null;
+      let persistedSnapshot = null;
+      try {({ record, snapshot: persistedSnapshot } = readPidRecord());}
+      catch (error) {if (error.code !== "ENOENT") throw error;}
+      const persistedRecord = record;
+      const localRecord = serverInstanceNonce && serverPid ?
+      {
+        version: 1,
+        pid: serverPid,
+        launcherPid: serverLauncherPid || serverPid,
+        nonce: serverInstanceNonce,
+        state: "running",
+        launcherStart: serverLauncherStart,
+        processStart: serverProcessStart
+      } :
+      null;
+      let candidate = localRecord || record;
+      let verified = false;
+      let targetPid = candidate?.pid || null;
+      let targetStart = candidate?.processStart || (
+      candidate?.pid === candidate?.launcherPid ? candidate?.launcherStart : null);
+      let forceOwnedLauncher = false;
+      const locallyOwnedLauncher = Boolean(
+        localRecord &&
+        proc?.pid === localRecord.launcherPid &&
+        getProcessStartIdentity(localRecord.launcherPid) === localRecord.launcherStart
+      );
 
-  const candidateHasLiveProcess = candidate
-    && (isProcessAlive(candidate.pid) || isProcessAlive(candidate.launcherPid));
-  if (candidate && (candidate.state !== "starting" ? isProcessAlive(candidate.pid) : candidateHasLiveProcess)) {
-    if (candidate.version === 0) {
-      const error = new Error("Live legacy PID metadata cannot authenticate process ownership safely");
-      error.code = "MITM_OWNERSHIP_UNVERIFIED";
-      throw error;
-    }
-    const healthPort = candidate.version === 0 ? MITM_PORT : MITM_INTERNAL_PORT;
-    const health = await pollMitmHealth(1500, healthPort, candidate.nonce || null);
-    const healthPid = Number.isSafeInteger(health?.pid) && health.pid > 0 ? health.pid : null;
-    verified = candidate.state === "starting"
-      ? healthPid != null
-      : healthPid === candidate.pid;
-    if (verified && candidate.state === "starting") {
-      targetPid = healthPid;
-      if (healthPid !== candidate.pid) targetStart = null;
-    }
-    if (verified && !targetStart) {
-      targetStart = await bindAuthenticatedProcessIdentity(targetPid, candidate.nonce, healthPort);
-      if (!targetStart) verified = false;
-    }
-    if (!verified) log(`[MITM] Refusing to stop unverified PID ${candidate.pid}`);
-  } else if (candidate) {
-    // A dead running, starting, or legacy PID is stale metadata, not an owned
-    // process to kill. Privileged current-user state is still cleaned below.
-    verified = true;
-    targetPid = null;
-  }
+      const candidateHasLiveProcess = candidate && (
+      isProcessAlive(candidate.pid) || isProcessAlive(candidate.launcherPid));
+      if (candidate && (candidate.state !== "starting" ? isProcessAlive(candidate.pid) : candidateHasLiveProcess)) {
+        if (candidate.version === 0) {
+          const error = new Error("Live legacy PID metadata cannot authenticate process ownership safely");
+          error.code = "MITM_OWNERSHIP_UNVERIFIED";
+          throw error;
+        }
+        const healthPort = candidate.version === 0 ? MITM_PORT : MITM_INTERNAL_PORT;
+        const health = await pollMitmHealth(1500, healthPort, candidate.nonce || null);
+        const healthPid = Number.isSafeInteger(health?.pid) && health.pid > 0 ? health.pid : null;
+        verified = candidate.state === "starting" ?
+        healthPid != null :
+        healthPid === candidate.pid;
+        if (verified && candidate.state === "starting") {
+          targetPid = healthPid;
+          if (healthPid !== candidate.pid) targetStart = null;
+        }
+        if (verified && !targetStart) {
+          targetStart = await bindAuthenticatedProcessIdentity(targetPid, candidate.nonce, healthPort);
+          if (!targetStart) verified = false;
+        }
+        if (!verified) log(`[MITM] Refusing to stop unverified PID ${candidate.pid}`);
+      } else if (candidate) {
+        // A dead running, starting, or legacy PID is stale metadata, not an owned
+        // process to kill. Privileged current-user state is still cleaned below.
+        verified = true;
+        targetPid = null;
+      }
 
-  if (!verified && locallyOwnedLauncher) {
-    verified = true;
-    targetPid = localRecord.launcherPid;
-    targetStart = localRecord.launcherStart;
-    forceOwnedLauncher = true;
-  }
-  if (candidate && !verified) {
-    const error = new Error("MITM process ownership could not be verified; server metadata was preserved");
-    error.code = "MITM_OWNERSHIP_UNVERIFIED";
-    throw error;
-  }
+      if (!verified && locallyOwnedLauncher) {
+        verified = true;
+        targetPid = localRecord.launcherPid;
+        targetStart = localRecord.launcherStart;
+        forceOwnedLauncher = true;
+      }
+      if (candidate && !verified) {
+        const error = new Error("MITM process ownership could not be verified; server metadata was preserved");
+        error.code = "MITM_OWNERSHIP_UNVERIFIED";
+        throw error;
+      }
 
-  const hasAuthenticatedLiveOwnership = Boolean(candidate?.version === 1 && verified && targetPid);
-  const hasCleanupEvidence = Boolean(
-    persistedSnapshot
-    || serverRedirectOwned
-    || fs.existsSync(REDIRECT_JOURNAL_FILE)
-    || Object.values(checkAllDNSStatus()).some(Boolean)
-  );
-  if (!hasAuthenticatedLiveOwnership && hasCleanupEvidence) {
-    const incumbentStatus = await checkLoopbackPortFree(IS_WIN ? MITM_PORT : MITM_INTERNAL_PORT);
-    if (incumbentStatus !== "free") {
-      const error = new Error("A live MITM transport exists without locally authenticated PID ownership; refusing cross-DATA_DIR cleanup");
-      error.code = "MITM_OWNERSHIP_UNVERIFIED";
-      throw error;
-    }
-  }
+      const hasAuthenticatedLiveOwnership = Boolean(candidate?.version === 1 && verified && targetPid);
+      const hasCleanupEvidence = Boolean(
+        persistedSnapshot ||
+        serverRedirectOwned ||
+        fs.existsSync(REDIRECT_JOURNAL_FILE) ||
+        Object.values(checkAllDNSStatus()).some(Boolean)
+      );
+      if (!hasAuthenticatedLiveOwnership && hasCleanupEvidence) {
+        const incumbentStatus = await checkLoopbackPortFree(IS_WIN ? MITM_PORT : MITM_INTERNAL_PORT);
+        if (incumbentStatus !== "free") {
+          const error = new Error("A live MITM transport exists without locally authenticated PID ownership; refusing cross-DATA_DIR cleanup");
+          error.code = "MITM_OWNERSHIP_UNVERIFIED";
+          throw error;
+        }
+      }
 
-  // Disable durable desired state before privileged cleanup. If this write
-  // fails, leave the process, hosts, redirect, and metadata untouched so the
-  // caller can retry without a surprise auto-start on the next launch.
-  if (!preserveDesiredState) await saveMitmSettings(false);
+      // Disable durable desired state before privileged cleanup. If this write
+      // fails, leave the process, hosts, redirect, and metadata untouched so the
+      // caller can retry without a surprise auto-start on the next launch.
+      if (!preserveDesiredState) await saveMitmSettings(false);
 
-  // Restore global name resolution before taking the proxy away. If hosts
-  // cleanup is denied or cancelled, leave the verified process and all
-  // ownership metadata intact so the operator can retry safely.
-  await removeAllDNSEntries(sudoPassword || getCachedPassword());
+      // Restore global name resolution before taking the proxy away. If hosts
+      // cleanup is denied or cancelled, leave the verified process and all
+      // ownership metadata intact so the operator can retry safely.
+      await removeAllDNSEntries(sudoPassword || getCachedPassword());
 
-  if (verified && targetPid && isProcessAlive(targetPid)) {
-    if (!targetStart) throw new Error(`Missing authenticated process-start identity for MITM PID ${targetPid}`);
-    log(`Killing server (PID: ${targetPid})...`);
-    if (forceOwnedLauncher) {
-      await killProcess(targetPid, true, sudoPassword, targetStart);
-    } else {
-      await killProcess(targetPid, false, sudoPassword, targetStart);
-      await new Promise(r => setTimeout(r, 1000));
-      if (isProcessAlive(targetPid)) await killProcess(targetPid, true, sudoPassword, targetStart);
-    }
-  }
-  if (verified
-    && candidate?.launcherPid
-    && candidate.launcherPid !== targetPid
-    && isProcessAlive(candidate.launcherPid)
-    && getProcessStartIdentity(candidate.launcherPid) === candidate.launcherStart) {
-    await killProcess(candidate.launcherPid, true, sudoPassword, candidate.launcherStart);
-  }
-  const cleanupRecord = persistedRecord || localRecord;
-  const ownsRedirect = serverRedirectOwned
-    || cleanupRecord?.version === 1
-    || Boolean(persistedSnapshot && !persistedRecord)
-    || fs.existsSync(REDIRECT_JOURNAL_FILE);
-  if (ownsRedirect) await removePortRedirect(sudoPassword || getCachedPassword());
-  if (persistedSnapshot) {
-    const removed = persistedRecord
-      ? removePidFileIfMatches(persistedRecord)
-      : removeFileIfUnchanged(PID_FILE, persistedSnapshot);
-    if (!removed) throw new Error("MITM PID metadata changed during stop cleanup");
-  }
-  serverProcess = null;
-  serverPid = null;
-  serverLauncherPid = null;
-  serverInstanceNonce = null;
-  serverLauncherStart = null;
-  serverProcessStart = null;
-  serverRedirectOwned = false;
-  setCachedPassword(null);
+      if (verified && targetPid && isProcessAlive(targetPid)) {
+        if (!targetStart) throw new Error(`Missing authenticated process-start identity for MITM PID ${targetPid}`);
+        log(`Killing server (PID: ${targetPid})...`);
+        if (forceOwnedLauncher) {
+          await killProcess(targetPid, true, sudoPassword, targetStart);
+        } else {
+          await killProcess(targetPid, false, sudoPassword, targetStart);
+          await new Promise((r) => setTimeout(r, 1000));
+          if (isProcessAlive(targetPid)) await killProcess(targetPid, true, sudoPassword, targetStart);
+        }
+      }
+      if (verified &&
+      candidate?.launcherPid &&
+      candidate.launcherPid !== targetPid &&
+      isProcessAlive(candidate.launcherPid) &&
+      getProcessStartIdentity(candidate.launcherPid) === candidate.launcherStart) {
+        await killProcess(candidate.launcherPid, true, sudoPassword, candidate.launcherStart);
+      }
+      const cleanupRecord = persistedRecord || localRecord;
+      const ownsRedirect = serverRedirectOwned ||
+      cleanupRecord?.version === 1 ||
+      Boolean(persistedSnapshot && !persistedRecord) ||
+      fs.existsSync(REDIRECT_JOURNAL_FILE);
+      if (ownsRedirect) await removePortRedirect(sudoPassword || getCachedPassword());
+      if (persistedSnapshot) {
+        const removed = persistedRecord ?
+        removePidFileIfMatches(persistedRecord) :
+        removeFileIfUnchanged(PID_FILE, persistedSnapshot);
+        if (!removed) throw new Error("MITM PID metadata changed during stop cleanup");
+      }
+      serverProcess = null;
+      serverPid = null;
+      serverLauncherPid = null;
+      serverInstanceNonce = null;
+      serverLauncherStart = null;
+      serverProcessStart = null;
+      serverRedirectOwned = false;
+      setCachedPassword(null);
 
-  return { running: false, pid: null };
+      return { running: false, pid: null };
     });
   } finally {
     mitmIsRestarting = false;
@@ -1850,7 +1851,7 @@ async function enableToolDNS(tool, sudoPassword) {
     try {
       await saveDnsToolState(tool, true);
     } catch (error) {
-      try { await removeDNSEntry(tool, password); } catch (rollbackError) { error.rollbackError = rollbackError; }
+      try {await removeDNSEntry(tool, password);} catch (rollbackError) {error.rollbackError = rollbackError;}
       throw error;
     }
     return { success: true };
@@ -1867,7 +1868,7 @@ async function disableToolDNS(tool, sudoPassword) {
     try {
       await saveDnsToolState(tool, false);
     } catch (error) {
-      try { await addDNSEntry(tool, password); } catch (rollbackError) { error.rollbackError = rollbackError; }
+      try {await addDNSEntry(tool, password);} catch (rollbackError) {error.rollbackError = rollbackError;}
       throw error;
     }
     return { success: true };
@@ -1886,7 +1887,7 @@ async function trustCert(sudoPassword) {
     if (!IS_WIN && !IS_MAC && !isSudoAvailable()) {
       await installCert(null, rootCACertPath);
       const { checkCertInstalled } = require("./cert/install");
-      if (!await checkCertInstalled(rootCACertPath)) {
+      if (!(await checkCertInstalled(rootCACertPath))) {
         log(`🔐 Cert: system trust unavailable and no verifiable NSS database exists. Use file: ${rootCACertPath}`);
       }
       return;
@@ -1921,5 +1922,5 @@ module.exports = {
   hasDnsPrivilege,
   hasMitmCleanupState,
   isAdmin,
-  removeAllDNSEntriesSync,
+  removeAllDNSEntriesSync
 };

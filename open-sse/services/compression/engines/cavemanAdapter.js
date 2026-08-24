@@ -9,32 +9,33 @@
 
 import { cavemanCompress } from "../caveman.js";
 import { adaptBodyForCompression } from "../bodyAdapter.js";
+import { isBoolean, isNumber } from "../../../../src/shared/utils/typeChecks.js";
 
 const CAVEMAN_INTENSITIES = ["lite", "full", "ultra"];
 
 const CAVEMAN_SCHEMA = [
-  {
-    key: "intensity",
-    type: "select",
-    label: "Intensity",
-    defaultValue: "full",
-    options: CAVEMAN_INTENSITIES.map((value) => ({ value, label: value })),
-  },
-  {
-    key: "minMessageLength",
-    type: "number",
-    label: "Minimum message length",
-    defaultValue: 50,
-    min: 0,
-    max: 10000,
-  },
-  {
-    key: "enabled",
-    type: "boolean",
-    label: "Enabled",
-    defaultValue: true,
-  },
-];
+{
+  key: "intensity",
+  type: "select",
+  label: "Intensity",
+  defaultValue: "full",
+  options: CAVEMAN_INTENSITIES.map((value) => ({ value, label: value }))
+},
+{
+  key: "minMessageLength",
+  type: "number",
+  label: "Minimum message length",
+  defaultValue: 50,
+  min: 0,
+  max: 10000
+},
+{
+  key: "enabled",
+  type: "boolean",
+  label: "Enabled",
+  defaultValue: true
+}];
+
 
 function validateCavemanLikeConfig(config) {
   const errors = [];
@@ -42,12 +43,12 @@ function validateCavemanLikeConfig(config) {
     errors.push("intensity must be lite, full, or ultra");
   }
   if (
-    config.minMessageLength !== undefined &&
-    (typeof config.minMessageLength !== "number" || config.minMessageLength < 0)
-  ) {
+  config.minMessageLength !== undefined && (
+  !isNumber(config.minMessageLength) || config.minMessageLength < 0))
+  {
     errors.push("minMessageLength must be a non-negative number");
   }
-  if (config.enabled !== undefined && typeof config.enabled !== "boolean") {
+  if (config.enabled !== undefined && !isBoolean(config.enabled)) {
     errors.push("enabled must be a boolean");
   }
   return { valid: errors.length === 0, errors };
@@ -68,7 +69,7 @@ export const cavemanEngine = {
     inputScope: "messages",
     targetLatencyMs: 1,
     supportsPreview: true,
-    stable: true,
+    stable: true
   },
   apply(body, options) {
     const adapter = adaptBodyForCompression(body);
@@ -80,27 +81,27 @@ export const cavemanEngine = {
     const explicitCavemanConfig = options?.config?.cavemanConfig;
     const explicitStepConfig = options?.stepConfig;
     const explicitEnabled =
-      (explicitCavemanConfig && "enabled" in explicitCavemanConfig) ||
-      (explicitStepConfig && "enabled" in explicitStepConfig);
+    explicitCavemanConfig && "enabled" in explicitCavemanConfig ||
+    explicitStepConfig && "enabled" in explicitStepConfig;
     const enabledDefault = explicitEnabled ? {} : { enabled: true };
     const cavemanConfig = {
       ...enabledDefault,
       ...(explicitCavemanConfig ?? {}),
       ...(explicitStepConfig ?? {}),
-      ...(options?.config?.languageConfig?.enabled
-        ? {
-            language: options.config.languageConfig.defaultLanguage,
-            autoDetectLanguage: options.config.languageConfig.autoDetect,
-            enabledLanguagePacks: options.config.languageConfig.enabledPacks,
-          }
-        : {}),
-      ...(options?.config?.preserveSystemPrompt !== false
-        ? {
-            compressRoles: (options?.config?.cavemanConfig?.compressRoles ?? ["user"]).filter(
-              (role) => role !== "system"
-            ),
-          }
-        : {}),
+      ...(options?.config?.languageConfig?.enabled ?
+      {
+        language: options.config.languageConfig.defaultLanguage,
+        autoDetectLanguage: options.config.languageConfig.autoDetect,
+        enabledLanguagePacks: options.config.languageConfig.enabledPacks
+      } : null),
+
+      ...(options?.config?.preserveSystemPrompt !== false ?
+      {
+        compressRoles: (options?.config?.cavemanConfig?.compressRoles ?? ["user"]).filter(
+          (role) => role !== "system"
+        )
+      } : null)
+
     };
     const result = cavemanCompress(adapter.body, cavemanConfig);
     return adapter.adapted ? { ...result, body: adapter.restore(result.body) } : result;
@@ -113,5 +114,5 @@ export const cavemanEngine = {
   },
   validateConfig(config) {
     return validateCavemanLikeConfig(config);
-  },
+  }
 };

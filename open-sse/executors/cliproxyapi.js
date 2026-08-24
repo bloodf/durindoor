@@ -2,6 +2,7 @@ import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { getProviderPluginManifestHeader } from "../config/providerPluginManifestUrl.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = "8317";
@@ -18,14 +19,14 @@ async function resolveCliproxyapiBaseUrl() {
   try {
     const { getSettings } = await import("@/lib/localDb");
     const settings = await getSettings();
-    if (typeof settings?.cliproxyapi_url === "string" && settings.cliproxyapi_url.trim()) {
+    if (isString(settings?.cliproxyapi_url) && settings.cliproxyapi_url.trim()) {
       cachedUrl = { url: settings.cliproxyapi_url.trim().replace(/\/+$/, ""), ts: Date.now() };
       return cachedUrl.url;
     }
   } catch {
+
     // Environment/default fallback below.
   }
-
   const host = process.env.CLIPROXYAPI_HOST || DEFAULT_HOST;
   const port = process.env.CLIPROXYAPI_PORT || DEFAULT_PORT;
   cachedUrl = { url: `http://${host}:${port}`, ts: Date.now() };
@@ -57,7 +58,7 @@ export class CliproxyapiExecutor extends BaseExecutor {
     super("cliproxyapi", {
       baseUrl: `${baseUrl}/v1/chat/completions`,
       headers: { "Content-Type": "application/json" },
-      noAuth: true,
+      noAuth: true
     });
     this.noAuth = true;
   }
@@ -69,7 +70,7 @@ export class CliproxyapiExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true) {
     const headers = {
       "Content-Type": "application/json",
-      ...getProviderPluginManifestHeader(),
+      ...getProviderPluginManifestHeader()
     };
     const key = credentials?.apiKey || credentials?.accessToken;
     if (key) headers.Authorization = `Bearer ${key}`;
@@ -81,7 +82,7 @@ export class CliproxyapiExecutor extends BaseExecutor {
     const baseUrl = await resolveCliproxyapiBaseUrl();
     const url = `${baseUrl}/v1/chat/completions`;
     const transformedBody =
-      body && typeof body === "object" ? { ...body, model: body.model || model } : body;
+    body && isObject(body) ? { ...body, model: body.model || model } : body;
     const headers = this.buildHeaders(credentials, stream);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("cliproxyapi fetch timeout")), FETCH_CONNECT_TIMEOUT_MS);
@@ -93,7 +94,7 @@ export class CliproxyapiExecutor extends BaseExecutor {
         method: "POST",
         headers,
         body: JSON.stringify(transformedBody),
-        signal: mergedSignal,
+        signal: mergedSignal
       });
       return { response, url, headers, transformedBody };
     } finally {

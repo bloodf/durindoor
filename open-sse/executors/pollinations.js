@@ -7,6 +7,7 @@ import { PROVIDERS } from "../config/providers.js";
  * response formats. Pollinations rejects ordinary prompts when jsonMode is set
  * unconditionally.
  */
+import { isObject } from "../../src/shared/utils/typeChecks.js";
 export class PollinationsExecutor extends BaseExecutor {
   constructor() {
     super("pollinations", PROVIDERS.pollinations || { format: "openai" });
@@ -19,7 +20,7 @@ export class PollinationsExecutor extends BaseExecutor {
 
   buildHeaders(credentials = {}, stream = true) {
     const headers = {
-      "Content-Type": "application/json",
+      "Content-Type": "application/json"
     };
 
     // `getProviderCredentials` uses the synthetic `public` access token to
@@ -33,7 +34,7 @@ export class PollinationsExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream) {
-    if (!body || typeof body !== "object") return body;
+    if (!body || !isObject(body)) return body;
     const transformed = { ...body, model, stream };
     const responseFormatType = transformed.response_format?.type;
     if (responseFormatType === "json_object" || responseFormatType === "json_schema") {

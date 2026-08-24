@@ -1,13 +1,13 @@
 import crypto from "node:crypto";
 import {
-  PROVIDER_QUOTA_DEFAULTS,
-} from "open-sse/config/providerQuota.js";
+  PROVIDER_QUOTA_DEFAULTS } from
+"open-sse/config/providerQuota.js";
 import { getProviderQuotaAdapter } from "open-sse/services/quota/providers/index.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import {
   recordQuotaFetchFailure,
-  replaceProviderQuotaSnapshotsForSource,
-} from "@/lib/db/index.js";
+  replaceProviderQuotaSnapshotsForSource } from
+"@/lib/db/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
 import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
@@ -15,15 +15,16 @@ import {
   canonicalizeQuotaNow,
   normalizeQuotaIdentifier,
   normalizeQuotaSnapshot,
-  quotaIdentityKey,
-} from "@/shared/utils/quotaSnapshot";
+  quotaIdentityKey } from
+"@/shared/utils/quotaSnapshot";
 import {
   QUOTA_FETCH_OUTCOMES,
   QUOTA_MAX_CLOCK_SKEW_MS,
   QUOTA_MAX_FRESHNESS_MS,
   QUOTA_MAX_RETRY_DELAY_MS,
-  QUOTA_MAX_SOURCE_SNAPSHOTS,
-} from "@/shared/constants/quota";
+  QUOTA_MAX_SOURCE_SNAPSHOTS } from
+"@/shared/constants/quota";
+import { isFunction, isObject, isString } from "../utils/typeChecks.js";
 
 const VALID_FETCH_OUTCOMES = new Set(QUOTA_FETCH_OUTCOMES);
 const SUCCESS_RESULT_KEYS = new Set(["attemptedAt", "outcome", "rows", "sourceId"]);
@@ -35,14 +36,14 @@ function abortError(reason = "Provider quota refresh aborted") {
 }
 
 function proxyOptionsFromConfig(config = {}) {
-  config = config && typeof config === "object" ? config : {};
+  config = config && isObject(config) ? config : {};
   return {
     connectionProxyEnabled: config.connectionProxyEnabled === true,
     connectionProxyUrl: config.connectionProxyUrl || "",
     connectionNoProxy: config.connectionNoProxy || "",
     vercelRelayUrl: config.vercelRelayUrl || "",
     strictProxy: config.strictProxy === true,
-    disableEnvProxy: config.disableEnvProxy === true,
+    disableEnvProxy: config.disableEnvProxy === true
   };
 }
 
@@ -55,12 +56,12 @@ function connectionKeys(connection) {
     provider,
     connectionId,
     baseKey: JSON.stringify([provider, connectionId]),
-    cacheKey: JSON.stringify([provider, connectionId, revision]),
+    cacheKey: JSON.stringify([provider, connectionId, revision])
   };
 }
 
 function cloneResult(value) {
-  return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+  return isFunction(structuredClone) ? structuredClone(value) : JSON.parse(JSON.stringify(value));
 }
 
 function hasOnlyKeys(value, allowed) {
@@ -69,13 +70,13 @@ function hasOnlyKeys(value, allowed) {
 
 function normalizedRetryAt(value, attempted) {
   if (value === null || value === undefined) return null;
-  if (typeof value !== "string" || !value.trim() || value.length > 128) return undefined;
+  if (!isString(value) || !value.trim() || value.length > 128) return undefined;
   const timestamp = new Date(value).getTime();
   if (
-    !Number.isFinite(timestamp)
-    || timestamp < attempted.timestamp
-    || timestamp > attempted.timestamp + QUOTA_MAX_RETRY_DELAY_MS
-  ) return undefined;
+  !Number.isFinite(timestamp) ||
+  timestamp < attempted.timestamp ||
+  timestamp > attempted.timestamp + QUOTA_MAX_RETRY_DELAY_MS)
+  return undefined;
   return new Date(timestamp).toISOString();
 }
 
@@ -85,7 +86,7 @@ function composeSnapshot(row, {
   sourceId,
   observedAt,
   freshnessMs,
-  now,
+  now
 }) {
   const observedMs = Date.parse(observedAt);
   const resetMs = row.resetAt ? Date.parse(row.resetAt) : Number.POSITIVE_INFINITY;
@@ -97,7 +98,7 @@ function composeSnapshot(row, {
       provider,
       accountKey: row.accountKey,
       resourceKey: row.resourceKey,
-      dimensionKey: row.dimensionKey,
+      dimensionKey: row.dimensionKey
     },
     state: row.state,
     amounts: row.amounts,
@@ -105,14 +106,14 @@ function composeSnapshot(row, {
       observedAt,
       staleAt: new Date(staleMs).toISOString(),
       resetAt: row.resetAt || null,
-      cooldownUntil: row.cooldownUntil || null,
+      cooldownUntil: row.cooldownUntil || null
     },
     provenance: {
       sourceType: "provider_api",
       sourceId,
       reasonCode: null,
-      metadata: row.metadata || {},
-    },
+      metadata: row.metadata || {}
+    }
   };
   return normalizeQuotaSnapshot(snapshot, { now });
 }
@@ -136,8 +137,8 @@ function subscribe(entry, signal) {
     };
     signal?.addEventListener?.("abort", onAbort, { once: true });
     entry.promise.then(
-      (value) => { if (release()) resolve(cloneResult(value)); },
-      (error) => { if (release()) reject(error); },
+      (value) => {if (release()) resolve(cloneResult(value));},
+      (error) => {if (release()) reject(error);}
     );
   });
 }
@@ -154,7 +155,7 @@ export function createProviderQuotaTracker({
   cacheTtlMs = PROVIDER_QUOTA_DEFAULTS.cacheTtlMs,
   maxCacheEntries = PROVIDER_QUOTA_DEFAULTS.maxCacheEntries,
   timeoutMs = PROVIDER_QUOTA_DEFAULTS.timeoutMs,
-  maxResponseBytes = PROVIDER_QUOTA_DEFAULTS.maxResponseBytes,
+  maxResponseBytes = PROVIDER_QUOTA_DEFAULTS.maxResponseBytes
 } = {}) {
   const cache = new Map();
   const inflight = new Map();
@@ -192,9 +193,9 @@ export function createProviderQuotaTracker({
     return {
       outcome: "superseded",
       sourceId,
-      ...(snapshots === undefined ? {} : { snapshots }),
+      ...(snapshots === undefined ? null : { snapshots }),
       cached: false,
-      persisted,
+      persisted
     };
   }
 
@@ -213,11 +214,11 @@ export function createProviderQuotaTracker({
         outcome: result.outcome,
         attemptedAt: attempted.value,
         retryAt: result.retryAt || null,
-        reasonCode: result.outcome,
+        reasonCode: result.outcome
       }, {
         now: (validationNow || attempted).timestamp,
         signal: controller.signal,
-        shouldCommit: () => isCurrent(keys, generation),
+        shouldCommit: () => isCurrent(keys, generation)
       });
     } catch (error) {
       if (controller.signal.aborted || error?.name === "AbortError") throw abortError(controller.signal.reason || error);
@@ -233,7 +234,7 @@ export function createProviderQuotaTracker({
       sourceId,
       retryAt: result.retryAt || null,
       cached: false,
-      persisted: true,
+      persisted: true
     };
   }
 
@@ -245,7 +246,7 @@ export function createProviderQuotaTracker({
       attempted,
       validationNow,
       generation,
-      controller,
+      controller
     });
     let proxyOptions = null;
     let activeConnection = connection;
@@ -268,13 +269,13 @@ export function createProviderQuotaTracker({
       // genuine expiry is handled by the serialized reactive 401 path. Mirrors
       // the quotaAutoPing.js guard.
       if (
-        connection.authType === "oauth"
-        && credentialRefresher
-        && rotationGroupFor(connection.provider) === null
-      ) {
+      connection.authType === "oauth" &&
+      credentialRefresher &&
+      rotationGroupFor(connection.provider) === null)
+      {
         const refreshed = await credentialRefresher(connection, false, proxyOptions, {
           signal: controller.signal,
-          shouldCommit: () => isCurrent(keys, generation),
+          shouldCommit: () => isCurrent(keys, generation)
         });
         controller.signal.throwIfAborted();
         if (!isCurrent(keys, generation)) return superseded(adapter.config.sourceId);
@@ -288,11 +289,11 @@ export function createProviderQuotaTracker({
     } catch (error) {
       if (controller.signal.aborted || error?.name === "AbortError") throw abortError(controller.signal.reason || error);
       if (
-        error?.code?.includes?.("SUPERSEDED")
-        || error?.code === "PROVIDER_CONNECTION_REVISION_CONFLICT"
-        || error?.code === "PROVIDER_CONNECTION_NOT_FOUND"
-        || !isCurrent(keys, generation)
-      ) {
+      error?.code?.includes?.("SUPERSEDED") ||
+      error?.code === "PROVIDER_CONNECTION_REVISION_CONFLICT" ||
+      error?.code === "PROVIDER_CONNECTION_NOT_FOUND" ||
+      !isCurrent(keys, generation))
+      {
         return superseded(adapter.config.sourceId);
       }
       if (error?.code === "PROVIDER_CREDENTIAL_REFRESH_TIMEOUT" || error?.name === "TimeoutError") {
@@ -318,7 +319,7 @@ export function createProviderQuotaTracker({
         now,
         randomUUID,
         timeoutMs,
-        maxResponseBytes,
+        maxResponseBytes
       });
     } catch (error) {
       if (controller.signal.aborted || error?.name === "AbortError") throw abortError(controller.signal.reason || error);
@@ -328,7 +329,7 @@ export function createProviderQuotaTracker({
     controller.signal.throwIfAborted();
     if (!isCurrent(keys, generation)) return superseded(adapter.config.sourceId);
 
-    if (!result || typeof result !== "object" || Array.isArray(result) || !VALID_FETCH_OUTCOMES.has(result.outcome)) {
+    if (!result || !isObject(result) || Array.isArray(result) || !VALID_FETCH_OUTCOMES.has(result.outcome)) {
       return fail({ outcome: "malformed" }, attemptedClock);
     }
     const resultKeys = result.outcome === "success" ? SUCCESS_RESULT_KEYS : FAILURE_RESULT_KEYS;
@@ -352,10 +353,10 @@ export function createProviderQuotaTracker({
       return fail({ outcome: result.outcome, retryAt }, attempted, completionClock);
     }
     if (
-      result.sourceId !== adapter.config.sourceId
-      || !Array.isArray(result.rows)
-      || result.rows.length > QUOTA_MAX_SOURCE_SNAPSHOTS
-    ) return fail({ outcome: "malformed" }, attempted, completionClock);
+    result.sourceId !== adapter.config.sourceId ||
+    !Array.isArray(result.rows) ||
+    result.rows.length > QUOTA_MAX_SOURCE_SNAPSHOTS)
+    return fail({ outcome: "malformed" }, attempted, completionClock);
 
     // A provider may finish two generations in the same millisecond. Allocate
     // a strictly increasing source clock so the newer generation can always
@@ -371,7 +372,7 @@ export function createProviderQuotaTracker({
 
     const freshnessMs = Math.min(
       Number.isSafeInteger(adapter.config.freshnessMs) ? adapter.config.freshnessMs : PROVIDER_QUOTA_DEFAULTS.freshnessMs,
-      QUOTA_MAX_FRESHNESS_MS,
+      QUOTA_MAX_FRESHNESS_MS
     );
     let snapshots;
     try {
@@ -380,7 +381,7 @@ export function createProviderQuotaTracker({
         sourceId: result.sourceId,
         observedAt: attempted.value,
         freshnessMs,
-        now: completionClock.timestamp,
+        now: completionClock.timestamp
       }));
       const identities = new Set();
       for (const snapshot of snapshots) {
@@ -407,14 +408,14 @@ export function createProviderQuotaTracker({
           provider: keys.provider,
           sourceId: result.sourceId,
           outcome: "success",
-          attemptedAt: attempted.value,
-        },
+          attemptedAt: attempted.value
+        }
       }, {
         now: completionClock.timestamp,
         signal: controller.signal,
         shouldCommit: () => isCurrent(keys, generation),
         returnCommitResult: true,
-        allowCanonicalSentinels: true,
+        allowCanonicalSentinels: true
       });
     } catch (error) {
       if (controller.signal.aborted || error?.name === "AbortError") throw abortError(controller.signal.reason || error);
@@ -425,16 +426,16 @@ export function createProviderQuotaTracker({
     }
     controller.signal.throwIfAborted();
     if (!isCurrent(keys, generation)) return superseded(result.sourceId, true);
-    const persistedSnapshots = commitResult && Array.isArray(commitResult.snapshots)
-      ? commitResult.snapshots
-      : snapshots;
+    const persistedSnapshots = commitResult && Array.isArray(commitResult.snapshots) ?
+    commitResult.snapshots :
+    snapshots;
     if (commitResult?.accepted === false) return superseded(result.sourceId, false, persistedSnapshots);
     const response = {
       outcome: "success",
       sourceId: result.sourceId,
       snapshots: persistedSnapshots,
       cached: false,
-      persisted: true,
+      persisted: true
     };
     const nowMs = now();
     const snapshotExpiry = persistedSnapshots.reduce((earliest, snapshot) => {
@@ -444,7 +445,7 @@ export function createProviderQuotaTracker({
     cache.set(keys.cacheKey, {
       value: response,
       expiresAt: Math.min(nowMs + cacheTtlMs, snapshotExpiry),
-      baseKey: keys.baseKey,
+      baseKey: keys.baseKey
     });
     evictCache(nowMs);
     return response;
@@ -512,7 +513,7 @@ export function createProviderQuotaTracker({
     clear: () => invalidate(),
     getCacheSize: () => cache.size,
     getInflightSize: () => inflight.size,
-    getStateSize: () => generations.size + lastObservationMs.size,
+    getStateSize: () => generations.size + lastObservationMs.size
   };
 }
 

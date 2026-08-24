@@ -9,6 +9,7 @@ import { PROVIDER_OAUTH, PROVIDERS as REGISTRY_PROVIDERS } from "open-sse/provid
  * Get the platform enum value based on the current OS.
  * Matches Antigravity binary's ClientMetadata.Platform enum.
  */
+import { isString } from "../../../shared/utils/typeChecks.js";
 function getOAuthPlatformEnum() {
   const os = platform();
   const architecture = arch();
@@ -47,7 +48,7 @@ export const IFLOW_CONFIG = { ...PROVIDER_OAUTH["iflow"] };
 export const ANTIGRAVITY_CONFIG = {
   ...ANTIGRAVITY_OAUTH_CLIENT,
   ...PROVIDER_OAUTH["antigravity"],
-  loadCodeAssistClientMetadata: JSON.stringify({ ideType: 9, platform: getOAuthPlatformEnum(), pluginType: 2 }),
+  loadCodeAssistClientMetadata: JSON.stringify({ ideType: 9, platform: getOAuthPlatformEnum(), pluginType: 2 })
 };
 
 /**
@@ -72,7 +73,7 @@ export const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
 
 // Reject any region that is not a valid AWS region before interpolating it into a URL
 export function assertValidAwsRegion(region) {
-  if (typeof region !== "string" || !AWS_REGION_PATTERN.test(region)) {
+  if (!isString(region) || !AWS_REGION_PATTERN.test(region)) {
     throw new Error("Invalid region");
   }
   return region;
@@ -85,15 +86,15 @@ export const CURSOR_CONFIG = {
   tokenStoragePaths: {
     linux: "~/.config/Cursor/User/globalStorage/state.vscdb",
     macos: "/Users/<user>/Library/Application Support/Cursor/User/globalStorage/state.vscdb",
-    windows: "%APPDATA%\\Cursor\\User\\globalStorage\\state.vscdb",
-  },
+    windows: "%APPDATA%\\Cursor\\User\\globalStorage\\state.vscdb"
+  }
 };
 
 // Kimi Coding OAuth Configuration (Device Code Flow)
 // clientId uses env override — dynamic, not stored in registry
 export const KIMI_CODING_CONFIG = {
   ...PROVIDER_OAUTH["kimi-coding"],
-  clientId: process.env.KIMI_CODING_OAUTH_CLIENT_ID || REGISTRY_PROVIDERS["kimi-coding"]?.clientId,
+  clientId: process.env.KIMI_CODING_OAUTH_CLIENT_ID || REGISTRY_PROVIDERS["kimi-coding"]?.clientId
 };
 
 // KiloCode OAuth Configuration (Custom Device Auth Flow)
@@ -152,5 +153,5 @@ export const PROVIDERS = {
   WINDSURF: "windsurf",
   CODEBUDDY: "codebuddy-cn",
   KIMCHI: "kimchi",
-  GROK_CLI: "grok-cli",
+  GROK_CLI: "grok-cli"
 };

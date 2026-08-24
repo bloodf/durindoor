@@ -7,9 +7,10 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 
 // Default search model + endpoint derive from registry searchViaChat (single source)
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const searchModel = (id) => PROVIDER_MEDIA[id]?.searchViaChat?.defaultModel;
 const searchEndpoint = (id, model) =>
-  (PROVIDER_MEDIA[id]?.searchViaChat?.endpoint || "").replace("{model}", model || "");
+(PROVIDER_MEDIA[id]?.searchViaChat?.endpoint || "").replace("{model}", model || "");
 
 const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_RESULTS = 10;
@@ -40,8 +41,8 @@ function toResult(c, index, provider, retrievedAt) {
 /** Coerce a citation that might be a raw URL string or an object. */
 function normalizeCitation(c) {
   if (!c) return null;
-  if (typeof c === "string") return { url: c };
-  if (typeof c === "object" && c.url) return c;
+  if (isString(c)) return { url: c };
+  if (isObject(c) && c.url) return c;
   return null;
 }
 
@@ -65,11 +66,11 @@ const CHAT_SEARCH_CONFIG = {
       const parts = candidate?.content?.parts || [];
       const text = parts.map((p) => p?.text || "").filter(Boolean).join("");
       const chunks = candidate?.groundingMetadata?.groundingChunks || [];
-      const citations = chunks
-        .map((ch) => ch?.web)
-        .filter(Boolean)
-        .map((w) => ({ url: w.uri || w.url, title: w.title || "" }))
-        .filter((c) => c.url);
+      const citations = chunks.
+      map((ch) => ch?.web).
+      filter(Boolean).
+      map((w) => ({ url: w.uri || w.url, title: w.title || "" })).
+      filter((c) => c.url);
       const tokens = data?.usageMetadata?.totalTokenCount || 0;
       return { text, citations, tokens };
     }
@@ -96,13 +97,13 @@ const CHAT_SEARCH_CONFIG = {
       const msg = data?.choices?.[0]?.message || {};
       const text = msg.content || "";
       const annotations = Array.isArray(msg.annotations) ? msg.annotations : [];
-      const fromAnn = annotations
-        .map((a) => a?.url_citation)
-        .filter(Boolean)
-        .map((u) => ({ url: u.url, title: u.title || "" }));
-      const fromTop = Array.isArray(data?.citations)
-        ? data.citations.map(normalizeCitation).filter(Boolean)
-        : [];
+      const fromAnn = annotations.
+      map((a) => a?.url_citation).
+      filter(Boolean).
+      map((u) => ({ url: u.url, title: u.title || "" }));
+      const fromTop = Array.isArray(data?.citations) ?
+      data.citations.map(normalizeCitation).filter(Boolean) :
+      [];
       const citations = fromAnn.length ? fromAnn : fromTop;
       const tokens = data?.usage?.total_tokens || 0;
       return { text, citations, tokens };
@@ -128,7 +129,7 @@ const CHAT_SEARCH_CONFIG = {
       for (const item of output) {
         const parts = Array.isArray(item?.content) ? item.content : [];
         for (const p of parts) {
-          if (typeof p?.text === "string") text += p.text;
+          if (isString(p?.text)) text += p.text;
           const anns = Array.isArray(p?.annotations) ? p.annotations : [];
           for (const a of anns) {
             const c = normalizeCitation(a?.url ? a : a?.url_citation);
@@ -154,8 +155,8 @@ const CHAT_SEARCH_CONFIG = {
       model,
       messages: [{ role: "user", content: query }],
       tools: [
-        { type: "builtin_function", function: { name: "$web_search" } }
-      ]
+      { type: "builtin_function", function: { name: "$web_search" } }]
+
     }),
     buildHeaders: (token) => ({
       "Content-Type": "application/json",
@@ -171,15 +172,15 @@ const CHAT_SEARCH_CONFIG = {
         if (!argStr) continue;
         let parsed;
         try {
-          parsed = typeof argStr === "string" ? JSON.parse(argStr) : argStr;
+          parsed = isString(argStr) ? JSON.parse(argStr) : argStr;
         } catch {
           continue;
         }
         const items =
-          parsed?.search_results ||
-          parsed?.results ||
-          parsed?.references ||
-          [];
+        parsed?.search_results ||
+        parsed?.results ||
+        parsed?.references ||
+        [];
         if (Array.isArray(items)) {
           for (const it of items) {
             const url = it?.url || it?.link;
@@ -212,9 +213,9 @@ const CHAT_SEARCH_CONFIG = {
       const msg = data?.choices?.[0]?.message || {};
       const text = msg.content || "";
       const citations = [];
-      const direct = Array.isArray(data?.web_search_results)
-        ? data.web_search_results
-        : [];
+      const direct = Array.isArray(data?.web_search_results) ?
+      data.web_search_results :
+      [];
       for (const it of direct) {
         const url = it?.url || it?.link;
         if (url) {
@@ -232,7 +233,7 @@ const CHAT_SEARCH_CONFIG = {
           if (!argStr) continue;
           let parsed;
           try {
-            parsed = typeof argStr === "string" ? JSON.parse(argStr) : argStr;
+            parsed = isString(argStr) ? JSON.parse(argStr) : argStr;
           } catch {
             continue;
           }
@@ -269,9 +270,9 @@ const CHAT_SEARCH_CONFIG = {
       const msg = data?.choices?.[0]?.message || {};
       const text = msg.content || "";
       const raw = data?.citations || [];
-      const citations = Array.isArray(raw)
-        ? raw.map(normalizeCitation).filter(Boolean)
-        : [];
+      const citations = Array.isArray(raw) ?
+      raw.map(normalizeCitation).filter(Boolean) :
+      [];
       const tokens = data?.usage?.total_tokens || 0;
       return { text, citations, tokens };
     }
@@ -310,7 +311,7 @@ export async function handleChatSearch({
     };
   }
 
-  if (!query || typeof query !== "string") {
+  if (!query || !isString(query)) {
     return { success: false, status: 400, error: "Missing query" };
   }
 
@@ -324,9 +325,9 @@ export async function handleChatSearch({
   }
 
   const limit =
-    Number.isFinite(maxResults) && maxResults > 0
-      ? Math.floor(maxResults)
-      : DEFAULT_MAX_RESULTS;
+  Number.isFinite(maxResults) && maxResults > 0 ?
+  Math.floor(maxResults) :
+  DEFAULT_MAX_RESULTS;
   const useModel = model || searchModel(provider);
   const url = cfg.endpoint(useModel);
   const body = cfg.buildBody(query, useModel);
@@ -374,13 +375,13 @@ export async function handleChatSearch({
 
   if (!resp.ok) {
     const errMsg =
-      data?.error?.message ||
-      data?.error ||
-      data?.message ||
-      `Upstream HTTP ${resp.status}`;
+    data?.error?.message ||
+    data?.error ||
+    data?.message ||
+    `Upstream HTTP ${resp.status}`;
     log?.warn?.(`[chatSearch] upstream error provider=${provider} status=${resp.status}`);
     const safeError = sanitizeErrorMessage(
-      typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg)
+      isString(errMsg) ? errMsg : JSON.stringify(errMsg)
     );
     return {
       success: false,

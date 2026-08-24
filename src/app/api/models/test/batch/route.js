@@ -1,4 +1,5 @@
 import { pingModelByKind } from "../ping";
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 
 const CONCURRENCY_LIMIT = 10;
 
@@ -13,7 +14,7 @@ export async function POST(request) {
     return Response.json({ error: "max 200 models per batch" }, { status: 400 });
   }
   for (const item of models) {
-    if (!item || typeof item.model !== 'string' || !item.model.trim()) {
+    if (!item || !isString(item.model) || !item.model.trim()) {
       return Response.json({ error: "each model must have a non-empty string 'model' field" }, { status: 400 });
     }
   }
@@ -38,16 +39,16 @@ export async function POST(request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           model: first.model,
           kind: first.kind,
-          ...warmupResult,
+          ...warmupResult
         })}\n\n`));
 
         const isProviderLevelError = warmupResult.error && (
-          warmupResult.error.includes('401') ||
-          warmupResult.error.includes('403') ||
-          warmupResult.error.includes('timeout') ||
-          warmupResult.error.includes('ECONNREFUSED') ||
-          warmupResult.error.includes('ENOTFOUND')
-        );
+        warmupResult.error.includes('401') ||
+        warmupResult.error.includes('403') ||
+        warmupResult.error.includes('timeout') ||
+        warmupResult.error.includes('ECONNREFUSED') ||
+        warmupResult.error.includes('ENOTFOUND'));
+
 
         if (isProviderLevelError) {
           for (const item of models.slice(1)) {
@@ -57,7 +58,7 @@ export async function POST(request) {
               kind: item.kind,
               ok: false,
               error: "Skipped: provider unavailable",
-              latencyMs: 0,
+              latencyMs: 0
             })}\n\n`));
           }
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
@@ -96,14 +97,14 @@ export async function POST(request) {
           controller.close();
         } catch {}
       }
-    },
+    }
   });
 
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    },
+      "Connection": "keep-alive"
+    }
   });
 }

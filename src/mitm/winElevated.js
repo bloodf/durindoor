@@ -1,3 +1,4 @@
+const { isFunction } = require("../shared/utils/typeChecks.cjs");
 const { execFile, execFileSync } = require("child_process");
 const { buildMinimalWindowsEnv, resolveWindowsSystemBinary } = require("./trustedBinaries");
 
@@ -15,24 +16,24 @@ function isAdmin({ platform = process.platform, execFileSyncImpl = execFileSync 
         windowsHide: true,
         stdio: "ignore",
         timeout: 5000,
-        env: buildMinimalWindowsEnv(),
+        env: buildMinimalWindowsEnv()
       });
       return true;
     } catch {
       return false;
     }
   }
-  const realUid = typeof process.getuid === "function" ? process.getuid() : null;
-  const effectiveUid = typeof process.geteuid === "function" ? process.geteuid() : realUid;
+  const realUid = isFunction(process.getuid) ? process.getuid() : null;
+  const effectiveUid = isFunction(process.geteuid) ? process.geteuid() : realUid;
   return realUid === 0 || effectiveUid === 0;
 }
 
 function wrapElevatedExecError(error, stderr) {
   const wrapped = new Error(stderr || error.message);
-  if (Number(error?.code) === PRIVILEGED_UNCONFIRMED_EXIT_CODE
-    || error?.code === "ETIMEDOUT"
-    || error?.killed === true
-    || error?.signal) {
+  if (Number(error?.code) === PRIVILEGED_UNCONFIRMED_EXIT_CODE ||
+  error?.code === "ETIMEDOUT" ||
+  error?.killed === true ||
+  error?.signal) {
     wrapped.code = "PRIVILEGED_TERMINATION_UNCONFIRMED";
   }
   return wrapped;
@@ -48,7 +49,7 @@ function quotePs(value) {
 function buildElevatedSupervisorScript(encodedCommand, timeoutMs, {
   powershellPath = resolveWindowsSystemBinary("powershell.exe", { verify: false }),
   taskkillPath = resolveWindowsSystemBinary("taskkill.exe", { verify: false }),
-  startDeadlineMs = null,
+  startDeadlineMs = null
 } = {}) {
   if (!/^[A-Za-z0-9+/=]+$/.test(encodedCommand)) throw new Error("Unsafe encoded PowerShell command");
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300000) {
@@ -97,7 +98,7 @@ function runElevatedPowerShell(script, { commandTimeoutMs = 30000, uacTimeoutMs 
   const supervisor = buildElevatedSupervisorScript(encoded, commandTimeoutMs, {
     powershellPath,
     taskkillPath,
-    startDeadlineMs,
+    startDeadlineMs
   });
   const encodedSupervisor = Buffer.from(supervisor, "utf16le").toString("base64");
   const childEnv = buildMinimalWindowsEnv();
@@ -110,8 +111,8 @@ function runElevatedPowerShell(script, { commandTimeoutMs = 30000, uacTimeoutMs 
         ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodedSupervisor],
         { windowsHide: true, timeout: commandTimeoutMs + 15000, env: childEnv },
         (error, stdout, stderr) => {
-          if (error) reject(wrapElevatedExecError(error, stderr));
-          else resolve(stdout);
+          if (error) reject(wrapElevatedExecError(error, stderr));else
+          resolve(stdout);
         }
       );
     });
@@ -154,5 +155,5 @@ module.exports = {
   runElevatedPowerShell,
   quotePs,
   PRIVILEGED_UNCONFIRMED_EXIT_CODE,
-  wrapElevatedExecError,
+  wrapElevatedExecError
 };

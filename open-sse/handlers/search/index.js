@@ -13,6 +13,7 @@ import { handleChatSearch } from "./chatSearch.js";
 import { resolveCredentialProxyOptions } from "../../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
 const NON_RETRIABLE = new Set([400, 401, 403, 404]);
@@ -32,7 +33,7 @@ function sanitizeHeaders(headers) {
   if (!headers) return headers;
   const out = {};
   for (const [k, v] of Object.entries(headers)) {
-    out[k] = typeof v === "string" ? v.replace(/[^\x00-\xFF]/g, "").trim() : v;
+    out[k] = isString(v) ? v.replace(/[^\x00-\xFF]/g, "").trim() : v;
   }
   return out;
 }
@@ -71,7 +72,7 @@ async function tryDedicatedProvider({
   credentials,
   proxyOptions,
   log,
-  globalStartTime,
+  globalStartTime
 }) {
   const startTime = Date.now();
   const token = credentials?.apiKey || credentials?.accessToken || undefined;
@@ -82,7 +83,7 @@ async function tryDedicatedProvider({
 
   const params = {
     query: body.query,
-    searchType: body.search_type || (providerConfig.searchTypes?.[0] || "web"),
+    searchType: body.search_type || providerConfig.searchTypes?.[0] || "web",
     maxResults: Math.min(body.max_results || providerConfig.defaultMaxResults || 5, providerConfig.maxMaxResults || 100),
     token,
     country: body.country,
@@ -124,7 +125,7 @@ async function tryDedicatedProvider({
       return {
         success: false,
         status: resp.status,
-        error: `${provider.id} returned ${resp.status}: ${safeError}`,
+        error: `${provider.id} returned ${resp.status}: ${safeError}`
       };
     }
     const data = await resp.json();
@@ -153,7 +154,7 @@ async function tryDedicatedProvider({
     return {
       success: false,
       status,
-      error: `${provider.id} ${isTimeout ? "timeout" : "error"}: ${safeError}`,
+      error: `${provider.id} ${isTimeout ? "timeout" : "error"}: ${safeError}`
     };
   }
 }
@@ -208,11 +209,11 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
 
   // 3. Failover within global timeout for retriable errors
   if (
-    !NON_RETRIABLE.has(result.status || 0) &&
-    Date.now() - globalStartTime < GLOBAL_TIMEOUT_MS &&
-    provider.searchViaChat &&
-    providerConfig
-  ) {
+  !NON_RETRIABLE.has(result.status || 0) &&
+  Date.now() - globalStartTime < GLOBAL_TIMEOUT_MS &&
+  provider.searchViaChat &&
+  providerConfig)
+  {
     log?.warn?.("SEARCH", `${provider.id} dedicated failed (${result.status}), falling back to chat-based search`);
     const fallback = await handleChatSearch({
       provider: provider.id,

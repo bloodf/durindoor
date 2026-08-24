@@ -3,6 +3,7 @@ import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 let initialized = false;
 
@@ -74,9 +75,9 @@ function toTextCompletion(body) {
       text: choice?.message?.content ?? "",
       index: choice?.index ?? index,
       logprobs: null,
-      finish_reason: choice?.finish_reason ?? null,
+      finish_reason: choice?.finish_reason ?? null
     })),
-    ...(body?.usage ? { usage: body.usage } : {}),
+    ...(body?.usage ? { usage: body.usage } : null)
   };
 }
 
@@ -91,12 +92,12 @@ function toTextCompletionChunk(chunk) {
   const choices = Array.isArray(chunk?.choices) ? chunk.choices : [];
   const mapped = choices.map((choice, index) => {
     const delta = choice?.delta || {};
-    const text = typeof delta.content === "string" ? delta.content : "";
+    const text = isString(delta.content) ? delta.content : "";
     return {
       text,
       index: choice?.index ?? index,
       logprobs: null,
-      finish_reason: choice?.finish_reason ?? null,
+      finish_reason: choice?.finish_reason ?? null
     };
   });
   return {
@@ -105,7 +106,7 @@ function toTextCompletionChunk(chunk) {
     created: chunk?.created ?? Math.floor(Date.now() / 1000),
     model: chunk?.model,
     choices: mapped,
-    ...(chunk?.usage ? { usage: chunk.usage } : {}),
+    ...(chunk?.usage ? { usage: chunk.usage } : null)
   };
 }
 
@@ -154,7 +155,7 @@ function createCompletionStreamTransform() {
         controller.enqueue(encoder.encode(transformLine(buffer)));
         buffer = "";
       }
-    },
+    }
   });
 }
 
@@ -182,18 +183,18 @@ function cleanResponseHeaders(source) {
  * @returns {{ ok: true, chatBody: object } | { ok: false, message: string }}
  */
 export function adaptLegacyBody(body) {
-  if (!body || typeof body !== "object") {
+  if (!body || !isObject(body)) {
     return { ok: false, message: "Invalid JSON body" };
   }
   const { prompt } = body;
-  if (typeof prompt !== "string" && !Array.isArray(prompt)) {
+  if (!isString(prompt) && !Array.isArray(prompt)) {
     return { ok: false, message: "Missing prompt" };
   }
   if (Array.isArray(prompt) && prompt.length > 1) {
     return { ok: false, message: "multiple prompts not supported" };
   }
   const promptText = Array.isArray(prompt) ? prompt[0] : prompt;
-  if (typeof promptText !== "string") {
+  if (!isString(promptText)) {
     return { ok: false, message: "Invalid prompt" };
   }
   const { prompt: _drop, ...rest } = body;
@@ -201,8 +202,8 @@ export function adaptLegacyBody(body) {
     ok: true,
     chatBody: {
       ...rest,
-      messages: [{ role: "user", content: promptText }],
-    },
+      messages: [{ role: "user", content: promptText }]
+    }
   };
 }
 
@@ -223,7 +224,7 @@ export async function mapCompletionResponse(response) {
     return new Response(stream, {
       status: response.status,
       statusText: response.statusText,
-      headers,
+      headers
     });
   }
 
@@ -237,7 +238,7 @@ export async function mapCompletionResponse(response) {
   return new Response(JSON.stringify(mapped), {
     status: response.status,
     statusText: response.statusText,
-    headers,
+    headers
   });
 }
 
@@ -272,7 +273,7 @@ export async function POST(request) {
     method: request.method,
     headers: chatHeaders,
     body: JSON.stringify(adapted.chatBody),
-    signal: request.signal,
+    signal: request.signal
   });
 
   const response = await handleChat(chatRequest);

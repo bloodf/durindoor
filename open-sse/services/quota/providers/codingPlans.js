@@ -10,8 +10,8 @@ import {
   quotaRow,
   quotaScopedKey,
   ratioQuotaRow,
-  remainingQuotaRow,
-} from "../normalize.js";
+  remainingQuotaRow } from
+"../normalize.js";
 import {
   connectionCredential,
   connectionData,
@@ -19,16 +19,17 @@ import {
   futureResetAt,
   missingCredential,
   providerFailure,
-  providerSuccess,
-} from "../providerHelpers.js";
+  providerSuccess } from
+"../providerHelpers.js";
+import { isBoolean, isString } from "../../../../src/shared/utils/typeChecks.js";
 
 function safePlan(value, fallback = null) {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+  return isString(value) && value.trim() ? value.trim() : fallback;
 }
 
 function stableDeviceId(provider, connection) {
   const existing = connectionData(connection).deviceId;
-  if (typeof existing === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(existing.trim())) return existing.trim();
+  if (isString(existing) && /^[A-Za-z0-9._:-]{1,128}$/.test(existing.trim())) return existing.trim();
   return createHash("sha256").update(provider).update("\0").update(String(connection?.id || "connection")).digest("hex").slice(0, 32);
 }
 
@@ -38,14 +39,14 @@ const KIMI_PLANS = Object.freeze({
   LEVEL_BASIC: "Moderato",
   LEVEL_INTERMEDIATE: "Allegretto",
   LEVEL_ADVANCED: "Allegro",
-  LEVEL_STANDARD: "Vivace",
+  LEVEL_STANDARD: "Vivace"
 });
 
 export function normalizeKimiQuota(payload, { accountKey = null, now = Date.now() } = {}) {
   const data = asRecord(payload);
   if (!data) return null;
   const level = data.user?.membership?.level;
-  const plan = KIMI_PLANS[level] || (typeof level === "string" ? level.replace(/^LEVEL_/, "").toLowerCase() : "Kimi Coding");
+  const plan = KIMI_PLANS[level] || (isString(level) ? level.replace(/^LEVEL_/, "").toLowerCase() : "Kimi Coding");
   const rows = [];
   const hasUsage = Object.hasOwn(data, "usage");
   const usage = asRecord(data.usage);
@@ -63,7 +64,7 @@ export function normalizeKimiQuota(payload, { accountKey = null, now = Date.now(
       remaining,
       unit: "requests",
       resetAt: futureResetAt(parseQuotaTimestamp(usage.resetTime ?? usage.ResetTime ?? usage.reset_at ?? usage.resetAt), now),
-      metadata: quotaMetadata({ plan, windowSeconds: 7 * 24 * 60 * 60 }),
+      metadata: quotaMetadata({ plan, windowSeconds: 7 * 24 * 60 * 60 })
     });
     if (!row) return null;
     rows.push(row);
@@ -84,7 +85,7 @@ export function normalizeKimiQuota(payload, { accountKey = null, now = Date.now(
       remaining,
       unit: "requests",
       resetAt: futureResetAt(parseQuotaTimestamp(detail.resetTime ?? detail.reset_at ?? detail.resetAt), now),
-      metadata: quotaMetadata({ plan }),
+      metadata: quotaMetadata({ plan })
     });
     if (!row) return null;
     rows.push(row);
@@ -104,7 +105,7 @@ export function normalizeKimiQuota(payload, { accountKey = null, now = Date.now(
       dimensionKey: quotaScopedKey("requests", dimension),
       remainingRatio,
       resetAt: futureResetAt(parseQuotaTimestamp(window.resets_at ?? window.resetAt), now),
-      metadata: quotaMetadata({ plan, windowSeconds: dimension === "session" ? 5 * 60 * 60 : 7 * 24 * 60 * 60 }),
+      metadata: quotaMetadata({ plan, windowSeconds: dimension === "session" ? 5 * 60 * 60 : 7 * 24 * 60 * 60 })
     });
     if (!row) return null;
     rows.push(row);
@@ -117,22 +118,22 @@ export async function fetchKimiQuota(context) {
   const apiKey = connectionCredential(connection, "apiKey");
   const accessToken = connectionCredential(connection, "accessToken");
   if (!apiKey && !accessToken) return missingCredential(config);
-  const headers = apiKey
-    ? { "x-api-key": apiKey, Accept: "application/json" }
-    : {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-        "X-Msh-Platform": config.platform,
-        "X-Msh-Version": config.version,
-        "X-Msh-Device-Model": `${process.platform} ${process.arch}`,
-        "X-Msh-Device-Id": stableDeviceId(config.sourceId, connection),
-      };
+  const headers = apiKey ?
+  { "x-api-key": apiKey, Accept: "application/json" } :
+  {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+    "X-Msh-Platform": config.platform,
+    "X-Msh-Version": config.version,
+    "X-Msh-Device-Model": `${process.platform} ${process.arch}`,
+    "X-Msh-Device-Id": stableDeviceId(config.sourceId, connection)
+  };
   const result = await createProviderRequest(context)(config.url, { method: "GET", headers });
   if (!result.ok) return providerFailure(config, result);
   const accountRaw = connectionData(connection).accountId ?? connectionData(connection).userId;
   const rows = normalizeKimiQuota(result.data, {
     accountKey: accountRaw ? quotaScopedKey("account", accountRaw, { privateValue: true }) : null,
-    now: new Date(result.attemptedAt).getTime(),
+    now: new Date(result.attemptedAt).getTime()
   });
   if (rows === null) return providerFailure(config, { outcome: "malformed", attemptedAt: result.attemptedAt });
   return providerSuccess(config, rows, result.attemptedAt);
@@ -145,15 +146,15 @@ function glmTokenDimension(limit) {
   const number = finiteQuotaNumber(limit.number);
   if (unit === 3 && number === 5) return "session";
   if (unit === 6 && number === 1) return "weekly";
-  if ((unit === 4 && number === 7) || (unit === 3 && number >= 24 * 7)) return "weekly";
+  if (unit === 4 && number === 7 || unit === 3 && number >= 24 * 7) return "weekly";
   return null;
 }
 
 function glmTeamIdentity(data) {
   const organizationId = data.glmOrganizationId ?? data.bigmodelOrganization ?? data.glmOrganization;
   const projectId = data.glmProjectId ?? data.bigmodelProject ?? data.glmProject;
-  const organization = typeof organizationId === "string" && organizationId.trim() ? organizationId.trim() : null;
-  const project = typeof projectId === "string" && projectId.trim() ? projectId.trim() : null;
+  const organization = isString(organizationId) && organizationId.trim() ? organizationId.trim() : null;
+  const project = isString(projectId) && projectId.trim() ? projectId.trim() : null;
   const malformed = [organization, project].some((value) => value !== null && !/^[A-Za-z0-9._:-]{1,256}$/.test(value));
   return { organization, project, incomplete: Boolean(organization) !== Boolean(project), malformed };
 }
@@ -161,7 +162,7 @@ function glmTeamIdentity(data) {
 export function normalizeGlmQuota(payload, {
   accountKey = null,
   resourceKey = null,
-  now = Date.now(),
+  now = Date.now()
 } = {}) {
   const body = asRecord(payload);
   const data = asRecord(body?.data);
@@ -187,8 +188,8 @@ export function normalizeGlmQuota(payload, {
         resetAt,
         metadata: quotaMetadata({
           plan,
-          displayName: dimension === "session" ? "5 Hours Quota" : dimension === "weekly" ? "Weekly Quota" : "Tokens",
-        }),
+          displayName: dimension === "session" ? "5 Hours Quota" : dimension === "weekly" ? "Weekly Quota" : "Tokens"
+        })
       });
     } else if (type === "TIME_LIMIT" || type === "TIME_USAGE_LIMIT") {
       const total = finiteQuotaNumber(limit.usage ?? limit.total);
@@ -204,7 +205,7 @@ export function normalizeGlmQuota(payload, {
           remaining,
           unit: "tools",
           resetAt,
-          metadata: quotaMetadata({ plan, displayName: "Monthly Tools" }),
+          metadata: quotaMetadata({ plan, displayName: "Monthly Tools" })
         });
       } else {
         const usedRatio = quotaPercent(limit.percentage);
@@ -215,7 +216,7 @@ export function normalizeGlmQuota(payload, {
           dimensionKey: quotaScopedKey("tools", "monthly"),
           remainingRatio: 1 - usedRatio,
           resetAt,
-          metadata: quotaMetadata({ plan, displayName: "Monthly Tools" }),
+          metadata: quotaMetadata({ plan, displayName: "Monthly Tools" })
         });
       }
     } else {
@@ -244,7 +245,7 @@ export async function fetchGlmQuota(context) {
   }
   const result = await createProviderRequest(context)(url, {
     method: "GET",
-    headers,
+    headers
   });
   if (!result.ok) return providerFailure(config, result);
   const root = asRecord(result.data);
@@ -259,7 +260,7 @@ export async function fetchGlmQuota(context) {
   const rows = normalizeGlmQuota(result.data, {
     accountKey: accountRaw ? quotaScopedKey("account", accountRaw, { privateValue: true }) : null,
     resourceKey: resourceRaw ? quotaScopedKey("project", resourceRaw, { privateValue: true }) : null,
-    now: new Date(result.attemptedAt).getTime(),
+    now: new Date(result.attemptedAt).getTime()
   });
   if (rows === null) return providerFailure(config, { outcome: "malformed", attemptedAt: result.attemptedAt });
   return providerSuccess(config, rows, result.attemptedAt);
@@ -288,7 +289,7 @@ function minimaxWindow(model, {
   resourceKey,
   dimension,
   resetAt,
-  displayName,
+  displayName
 }) {
   const total = finiteQuotaNumber(field(model, totalSnake, totalCamel));
   const count = finiteQuotaNumber(field(model, countSnake, countCamel));
@@ -297,8 +298,8 @@ function minimaxWindow(model, {
   if (total !== null && total > 0) {
     if (count === null || count > total || remainingRatio === null) return null;
     const remainingIfUsed = total - count;
-    const usedCountMatches = Math.abs((remainingIfUsed / total) - remainingRatio) <= 0.011;
-    const remainingCountMatches = Math.abs((count / total) - remainingRatio) <= 0.011;
+    const usedCountMatches = Math.abs(remainingIfUsed / total - remainingRatio) <= 0.011;
+    const remainingCountMatches = Math.abs(count / total - remainingRatio) <= 0.011;
     if (usedCountMatches === remainingCountMatches) return null;
     const remaining = usedCountMatches ? remainingIfUsed : count;
     const used = total - remaining;
@@ -311,7 +312,7 @@ function minimaxWindow(model, {
       remaining,
       unit: "requests",
       resetAt,
-      metadata: quotaMetadata({ displayName }),
+      metadata: quotaMetadata({ displayName })
     });
   }
   return ratioQuotaRow({
@@ -320,7 +321,7 @@ function minimaxWindow(model, {
     dimensionKey: quotaScopedKey("requests", dimension),
     remainingRatio,
     resetAt,
-    metadata: quotaMetadata({ displayName }),
+    metadata: quotaMetadata({ displayName })
   });
 }
 
@@ -350,19 +351,19 @@ export function normalizeMiniMaxQuota(payload, { accountKey = null, now = Date.n
   const sessionName = safePlan(field(sessionModel, "model_name", "modelName"));
   const weeklyName = safePlan(field(weeklyModel, "model_name", "modelName"));
   const session = minimaxWindow(sessionModel, {
-      totalSnake: "current_interval_total_count", totalCamel: "currentIntervalTotalCount",
-      countSnake: "current_interval_usage_count", countCamel: "currentIntervalUsageCount",
-      percentSnake: "current_interval_remaining_percent", percentCamel: "currentIntervalRemainingPercent",
-      accountKey, resourceKey: null, dimension: "session", displayName: sessionName,
-      resetAt: minimaxReset(sessionModel, now, "remains_time", "remainsTime", "end_time", "endTime"),
-    });
+    totalSnake: "current_interval_total_count", totalCamel: "currentIntervalTotalCount",
+    countSnake: "current_interval_usage_count", countCamel: "currentIntervalUsageCount",
+    percentSnake: "current_interval_remaining_percent", percentCamel: "currentIntervalRemainingPercent",
+    accountKey, resourceKey: null, dimension: "session", displayName: sessionName,
+    resetAt: minimaxReset(sessionModel, now, "remains_time", "remainsTime", "end_time", "endTime")
+  });
   const weekly = minimaxWindow(weeklyModel, {
-      totalSnake: "current_weekly_total_count", totalCamel: "currentWeeklyTotalCount",
-      countSnake: "current_weekly_usage_count", countCamel: "currentWeeklyUsageCount",
-      percentSnake: "current_weekly_remaining_percent", percentCamel: "currentWeeklyRemainingPercent",
-      accountKey, resourceKey: null, dimension: "weekly", displayName: weeklyName,
-      resetAt: minimaxReset(weeklyModel, now, "weekly_remains_time", "weeklyRemainsTime", "weekly_end_time", "weeklyEndTime"),
-    });
+    totalSnake: "current_weekly_total_count", totalCamel: "currentWeeklyTotalCount",
+    countSnake: "current_weekly_usage_count", countCamel: "currentWeeklyUsageCount",
+    percentSnake: "current_weekly_remaining_percent", percentCamel: "currentWeeklyRemainingPercent",
+    accountKey, resourceKey: null, dimension: "weekly", displayName: weeklyName,
+    resetAt: minimaxReset(weeklyModel, now, "weekly_remains_time", "weeklyRemainsTime", "weekly_end_time", "weeklyEndTime")
+  });
   if (session === null || weekly === null) return null;
   const rows = [session, weekly].filter(Boolean);
   return rows.length > 0 ? rows : null;
@@ -377,7 +378,7 @@ export async function fetchMiniMaxQuota(context) {
   for (const endpoint of config.urls) {
     const result = await request(endpoint.url, {
       method: "GET",
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" }
     });
     if (!result.ok) {
       lastFailure = result;
@@ -388,15 +389,15 @@ export async function fetchMiniMaxQuota(context) {
     const apiCode = finiteQuotaNumber(base?.status_code ?? base?.statusCode);
     const apiMessage = String(base?.status_msg ?? base?.statusMsg ?? base?.message ?? "").toLowerCase();
     if (
-      apiCode === 1004
-      || /token plan|coding plan|invalid api key|invalid key|unauthorized|inactive/.test(apiMessage)
-    ) return providerFailure(config, { outcome: "unauthenticated", attemptedAt: result.attemptedAt });
+    apiCode === 1004 ||
+    /token plan|coding plan|invalid api key|invalid key|unauthorized|inactive/.test(apiMessage))
+    return providerFailure(config, { outcome: "unauthenticated", attemptedAt: result.attemptedAt });
     if (apiCode !== null && apiCode !== 0) {
       lastFailure = { outcome: "provider_error", attemptedAt: result.attemptedAt };
       continue;
     }
     const rows = normalizeMiniMaxQuota(result.data, {
-      now: new Date(result.attemptedAt).getTime(),
+      now: new Date(result.attemptedAt).getTime()
     });
     if (rows === null) {
       lastFailure = { outcome: "malformed", attemptedAt: result.attemptedAt };
@@ -438,12 +439,12 @@ export function normalizeCodeBuddyQuota(payload, { accountKey = null, now = Date
   let bonusIndex = 0;
   const cadenceSeen = new Map();
   for (const { account, recurring } of ordered) {
-    const used = recurring
-      ? codeBuddyNumber(account, "CycleCapacityUsedPrecise", "CycleCapacityUsed")
-      : codeBuddyNumber(account, "CapacityUsedPrecise", "CapacityUsed");
-    const limit = recurring
-      ? codeBuddyNumber(account, "CycleCapacitySizePrecise", "CycleCapacitySize")
-      : codeBuddyNumber(account, "CapacitySizePrecise", "CapacitySize");
+    const used = recurring ?
+    codeBuddyNumber(account, "CycleCapacityUsedPrecise", "CycleCapacityUsed") :
+    codeBuddyNumber(account, "CapacityUsedPrecise", "CapacityUsed");
+    const limit = recurring ?
+    codeBuddyNumber(account, "CycleCapacitySizePrecise", "CycleCapacitySize") :
+    codeBuddyNumber(account, "CapacitySizePrecise", "CapacitySize");
     if (used === null || limit === null) return null;
     const start = parseQuotaTimestamp(account.CycleStartTime);
     const end = futureResetAt(parseQuotaTimestamp(account.CycleEndTime), now);
@@ -468,8 +469,8 @@ export function normalizeCodeBuddyQuota(payload, { accountKey = null, now = Date
       resetAt: end,
       metadata: quotaMetadata({
         displayName: safePlan(account.PackageName ?? account.SubProductName, name),
-        recurring,
-      }),
+        recurring
+      })
     });
     if (!row) return null;
     rows.push(row);
@@ -492,9 +493,9 @@ export async function fetchCodeBuddyQuota(context) {
       "X-IDE-Type": "CLI",
       "X-IDE-Name": "CLI",
       "x-requested-with": "XMLHttpRequest",
-      "x-codebuddy-request": "1",
+      "x-codebuddy-request": "1"
     },
-    body: "{}",
+    body: "{}"
   });
   if (!result.ok) return providerFailure(config, result);
   if (result.data?.code !== 0) return providerFailure(config, { outcome: "provider_error", attemptedAt: result.attemptedAt });
@@ -502,7 +503,7 @@ export async function fetchCodeBuddyQuota(context) {
   const accountRaw = data.accountId ?? data.userId;
   const rows = normalizeCodeBuddyQuota(result.data, {
     accountKey: accountRaw ? quotaScopedKey("account", accountRaw, { privateValue: true }) : null,
-    now: new Date(result.attemptedAt).getTime(),
+    now: new Date(result.attemptedAt).getTime()
   });
   if (rows === null) return providerFailure(config, { outcome: "malformed", attemptedAt: result.attemptedAt });
   return providerSuccess(config, rows, result.attemptedAt);
@@ -519,10 +520,10 @@ export function normalizeBailianQuota(payload, { now = Date.now() } = {}) {
   if (!quota) return null;
   const rows = [];
   for (const [name, usedField, totalField, resetField, seconds] of [
-    ["session", "per5HourUsedQuota", "per5HourTotalQuota", "per5HourQuotaNextRefreshTime", 5 * 60 * 60],
-    ["weekly", "perWeekUsedQuota", "perWeekTotalQuota", "perWeekQuotaNextRefreshTime", 7 * 24 * 60 * 60],
-    ["monthly", "perBillMonthUsedQuota", "perBillMonthTotalQuota", "perBillMonthQuotaNextRefreshTime", null],
-  ]) {
+  ["session", "per5HourUsedQuota", "per5HourTotalQuota", "per5HourQuotaNextRefreshTime", 5 * 60 * 60],
+  ["weekly", "perWeekUsedQuota", "perWeekTotalQuota", "perWeekQuotaNextRefreshTime", 7 * 24 * 60 * 60],
+  ["monthly", "perBillMonthUsedQuota", "perBillMonthTotalQuota", "perBillMonthQuotaNextRefreshTime", null]])
+  {
     const used = finiteQuotaNumber(quota[usedField]);
     const limit = finiteQuotaNumber(quota[totalField]);
     if (used === null || limit === null || limit <= 0) return null;
@@ -532,7 +533,7 @@ export function normalizeBailianQuota(payload, { now = Date.now() } = {}) {
       used,
       unit: "requests",
       resetAt: futureResetAt(parseQuotaTimestamp(quota[resetField]), now),
-      metadata: quotaMetadata({ windowSeconds: seconds }),
+      metadata: quotaMetadata({ windowSeconds: seconds })
     });
     if (!row) return null;
     rows.push(row);
@@ -546,7 +547,7 @@ const QWEN_TOKEN_PLAN_COMMODITY = "sfm_tokenplansolo_public_intl";
 
 function qwenTokenPlanCookie(data) {
   for (const key of ["qwenCloudCookie", "alibabaConsoleCookie", "cookie"]) {
-    if (typeof data[key] === "string" && data[key].trim()) return data[key].trim();
+    if (isString(data[key]) && data[key].trim()) return data[key].trim();
   }
   return null;
 }
@@ -565,7 +566,7 @@ function qwenTokenPlanPayload(endpoint, data, site) {
     action: QWEN_TOKEN_PLAN_ACTION,
     sec_token: data.qwenCloudSecToken || data.alibabaConsoleSecToken || data.secToken || "",
     region: data.qwenCloudRegion || data.region || "ap-southeast-1",
-    params: JSON.stringify({ Api: api, V: "1.0", Data: { commodityCode: QWEN_TOKEN_PLAN_COMMODITY, cornerstoneParam: { console: "ONE_CONSOLE", consoleSite: site.consoleSite, domain: site.domain, productCode: "p_efm", protocol: "V2", xsp_lang: "en-US" } } }),
+    params: JSON.stringify({ Api: api, V: "1.0", Data: { commodityCode: QWEN_TOKEN_PLAN_COMMODITY, cornerstoneParam: { console: "ONE_CONSOLE", consoleSite: site.consoleSite, domain: site.domain, productCode: "p_efm", protocol: "V2", xsp_lang: "en-US" } } })
   }).toString();
 }
 
@@ -578,7 +579,7 @@ function qwenTokenPlanEnvelopeOutcome(payload) {
   if (!envelope) return "malformed";
   if (envelope.code === "SUCCESS" && envelope.success === true && asRecord(envelope.data)) return null;
   if (["ConsoleNeedLogin", "ConsoleSessionExpired", "LoginRequired"].includes(envelope.code)) return "unauthenticated";
-  return typeof envelope.code === "string" && envelope.code ? "provider_error" : "malformed";
+  return isString(envelope.code) && envelope.code ? "provider_error" : "malformed";
 }
 
 function unwrapQwenTokenPlanPayload(payload) {
@@ -601,9 +602,9 @@ export function normalizeQwenTokenPlanQuota(payload, { now = Date.now() } = {}) 
   if (!usage || !quotaConfig || !plan) return null;
   const rows = [];
   for (const [name, percentageField, resetField, quotaField, seconds] of [
-    ["session", "per5HourPercentage", "per5HourResetTime", "five_hour", 5 * 60 * 60],
-    ["weekly", "per1WeekPercentage", "per1WeekResetTime", "weekly", 7 * 24 * 60 * 60],
-  ]) {
+  ["session", "per5HourPercentage", "per5HourResetTime", "five_hour", 5 * 60 * 60],
+  ["weekly", "per1WeekPercentage", "per1WeekResetTime", "weekly", 7 * 24 * 60 * 60]])
+  {
     if (!Object.hasOwn(usage, percentageField)) continue;
     const usedRatio = finiteQuotaNumber(usage[percentageField], { min: 0, max: 1 });
     const limit = qwenTokenPlanLimit(quotaConfig, plan, quotaField);
@@ -614,7 +615,7 @@ export function normalizeQwenTokenPlanQuota(payload, { now = Date.now() } = {}) 
       used: limit * usedRatio,
       unit: "requests",
       resetAt: futureResetAt(parseQuotaTimestamp(usage[resetField]), now),
-      metadata: quotaMetadata({ plan, windowSeconds: seconds }),
+      metadata: quotaMetadata({ plan, windowSeconds: seconds })
     });
     if (!row) return null;
     rows.push(row);
@@ -634,7 +635,7 @@ async function fetchQwenTokenPlanQuota(context, data) {
   let attemptedAt = null;
   for (const endpoint of ["usage", "quota-config", "subscription"]) {
     const result = await request(endpoint === "usage" ? url : url.replace(/usage$/, endpoint), {
-      method: "POST", headers, body: qwenTokenPlanPayload(endpoint, data, site),
+      method: "POST", headers, body: qwenTokenPlanPayload(endpoint, data, site)
     });
     attemptedAt = result.attemptedAt;
     if (!result.ok) return { failure: result };
@@ -654,9 +655,9 @@ export async function fetchBailianQuota(context) {
   if (personal?.rows) {
     return { outcome: "success", sourceId: config.tokenPlanSourceId, rows: personal.rows, attemptedAt: personal.attemptedAt };
   }
-  const key = typeof data.consoleApiKey === "string" && data.consoleApiKey.trim()
-    ? data.consoleApiKey.trim()
-    : connectionCredential(connection, "apiKey");
+  const key = isString(data.consoleApiKey) && data.consoleApiKey.trim() ?
+  data.consoleApiKey.trim() :
+  connectionCredential(connection, "apiKey");
   if (!key) return personal?.failure ? { ...personal.failure, sourceId: config.tokenPlanSourceId } : missingCredential(config);
   const request = createProviderRequest(context);
   const headers = {
@@ -664,7 +665,7 @@ export async function fetchBailianQuota(context) {
     "x-api-key": key,
     "X-DashScope-API-Key": key,
     Accept: "application/json",
-    "Content-Type": "application/json",
+    "Content-Type": "application/json"
   };
   let lastFailure = null;
   for (let index = 0; index < config.urls.length; index += 1) {
@@ -699,11 +700,11 @@ function qoderLegacyRow(raw, { accountKey, resource, resetAt, exhausted }) {
   if (Object.hasOwn(quota, "total") && limit === null) return null;
   if (Object.hasOwn(quota, "used") && used === null) return null;
   if (Object.hasOwn(quota, "remaining") && remaining === null) return null;
-  const unit = quota.unit === undefined || quota.unit === null
-    ? "credits"
-    : typeof quota.unit === "string" && ["credits", "requests", "tokens"].includes(quota.unit.trim().toLowerCase())
-      ? quota.unit.trim().toLowerCase()
-      : null;
+  const unit = quota.unit === undefined || quota.unit === null ?
+  "credits" :
+  isString(quota.unit) && ["credits", "requests", "tokens"].includes(quota.unit.trim().toLowerCase()) ?
+  quota.unit.trim().toLowerCase() :
+  null;
   if (!unit) return null;
   if (limit !== null && limit > 0) {
     if (used === null || remaining === null || Math.abs(Math.max(limit - used, 0) - remaining) > Math.max(1e-9, limit * 1e-9)) return null;
@@ -716,7 +717,7 @@ function qoderLegacyRow(raw, { accountKey, resource, resetAt, exhausted }) {
       remaining,
       unit,
       resetAt,
-      exhausted,
+      exhausted
     });
   }
   if (remaining !== null) {
@@ -728,7 +729,7 @@ function qoderLegacyRow(raw, { accountKey, resource, resetAt, exhausted }) {
       remaining,
       unit,
       resetAt,
-      exhausted,
+      exhausted
     });
   }
   return quotaRow({
@@ -737,7 +738,7 @@ function qoderLegacyRow(raw, { accountKey, resource, resetAt, exhausted }) {
     dimensionKey: quotaScopedKey("credits", "plan"),
     unit,
     resetAt,
-    exhausted,
+    exhausted
   });
 }
 
@@ -759,8 +760,8 @@ function normalizeQoderLegacyQuota(payload, { accountKey = null, now = Date.now(
 export function normalizeQoderStatusQuota(payload, { accountKey = null, now = Date.now() } = {}) {
   const root = asRecord(payload);
   const status = asRecord(root?.data) || root;
-  if (!status || typeof status.isQuotaExceeded !== "boolean") return null;
-  const userType = typeof status.userType === "string" ? status.userType.trim().toLowerCase() : "";
+  if (!status || !isBoolean(status.isQuotaExceeded)) return null;
+  const userType = isString(status.userType) ? status.userType.trim().toLowerCase() : "";
   const quota = finiteQuotaNumber(status.quota);
   if (!userType || quota === null) return null;
   const planRaw = safePlan(status.userTag ?? status.plan, "Qoder");
@@ -778,7 +779,7 @@ export function normalizeQoderStatusQuota(payload, { accountKey = null, now = Da
       unit: "requests",
       resetAt,
       exhausted: true,
-      metadata: quotaMetadata({ plan, displayName: "Quota exceeded" }),
+      metadata: quotaMetadata({ plan, displayName: "Quota exceeded" })
     });
   } else if (pooled) {
     row = quotaRow({
@@ -788,7 +789,7 @@ export function normalizeQoderStatusQuota(payload, { accountKey = null, now = Da
       used: 0,
       unit: "requests",
       resetAt,
-      metadata: quotaMetadata({ plan, displayName: `${plan} pooled quota` }),
+      metadata: quotaMetadata({ plan, displayName: `${plan} pooled quota` })
     });
   } else {
     row = remainingQuotaRow({
@@ -797,7 +798,7 @@ export function normalizeQoderStatusQuota(payload, { accountKey = null, now = Da
       remaining: quota,
       unit: "requests",
       resetAt,
-      metadata: quotaMetadata({ plan, displayName: `${quota} requests left` }),
+      metadata: quotaMetadata({ plan, displayName: `${quota} requests left` })
     });
   }
   return row ? [row] : null;
@@ -805,8 +806,8 @@ export function normalizeQoderStatusQuota(payload, { accountKey = null, now = Da
 
 export function normalizeQoderQuota(payload, options = {}) {
   const root = asRecord(payload);
-  if (root && !Object.hasOwn(root, "userQuota") && !Object.hasOwn(root, "orgResourcePackage")
-    && (Object.hasOwn(root, "userType") || asRecord(root.data)?.userType)) {
+  if (root && !Object.hasOwn(root, "userQuota") && !Object.hasOwn(root, "orgResourcePackage") && (
+  Object.hasOwn(root, "userType") || asRecord(root.data)?.userType)) {
     return normalizeQoderStatusQuota(payload, options);
   }
   return normalizeQoderLegacyQuota(payload, options);
@@ -817,31 +818,31 @@ export async function fetchQoderQuota(context) {
   const request = createProviderRequest(context);
   if (config.mode === "pat-status") {
     const pat = connectionCredential(connection, "apiKey", "qoderPat");
-    if (!pat || (!pat.startsWith("pt-") && !pat.startsWith("jt-"))) return missingCredential(config);
+    if (!pat || !pat.startsWith("pt-") && !pat.startsWith("jt-")) return missingCredential(config);
     let token = pat;
     if (pat.startsWith("pt-")) {
       const exchange = await request(config.exchangeUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ personal_token: pat }),
+        body: JSON.stringify({ personal_token: pat })
       });
       if (!exchange.ok) return providerFailure(config, exchange);
       const exchangeRoot = asRecord(exchange.data);
       const exchangeData = asRecord(exchangeRoot?.data);
       const candidates = [exchangeRoot?.job_token, exchangeRoot?.jobToken, exchangeRoot?.jt, exchangeRoot?.token, exchangeData?.job_token, exchangeData?.jobToken, exchangeData?.jt, exchangeData?.token];
-      token = candidates.find((value) => typeof value === "string" && value.startsWith("jt-"));
+      token = candidates.find((value) => isString(value) && value.startsWith("jt-"));
       if (!token) return providerFailure(config, { outcome: "malformed", attemptedAt: exchange.attemptedAt });
     }
     const result = await request(config.url, {
       method: "GET",
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
     });
     if (!result.ok) return providerFailure(config, result);
     const data = connectionData(connection);
     const accountRaw = result.data?.userId ?? data.userId ?? data.accountId;
     const rows = normalizeQoderStatusQuota(result.data, {
       accountKey: accountRaw ? quotaScopedKey("account", accountRaw, { privateValue: true }) : null,
-      now: new Date(result.attemptedAt).getTime(),
+      now: new Date(result.attemptedAt).getTime()
     });
     if (rows === null) return providerFailure(config, { outcome: "malformed", attemptedAt: result.attemptedAt });
     return providerSuccess(config, rows, result.attemptedAt);
@@ -851,14 +852,14 @@ export async function fetchQoderQuota(context) {
   if (!token) return missingCredential(config);
   const result = await request(config.url, {
     method: "GET",
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
   });
   if (!result.ok) return providerFailure(config, result);
   const data = connectionData(connection);
   const accountRaw = data.userId ?? data.accountId ?? data.deviceId;
   const rows = normalizeQoderQuota(result.data, {
     accountKey: accountRaw ? quotaScopedKey("account", accountRaw, { privateValue: true }) : null,
-    now: new Date(result.attemptedAt).getTime(),
+    now: new Date(result.attemptedAt).getTime()
   });
   if (rows === null) return providerFailure(config, { outcome: "malformed", attemptedAt: result.attemptedAt });
   return providerSuccess(config, rows, result.attemptedAt);

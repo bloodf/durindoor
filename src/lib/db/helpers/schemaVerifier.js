@@ -1,5 +1,6 @@
 import { TABLES, buildCreateTableSql } from "../schema.js";
 import { QUOTA_V7_TABLES, buildQuotaV7TableSql } from "../migrations/quota-v7-schema.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 function tableColumns(db, tableName) {
   const table = db.get(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, [tableName]);
@@ -11,14 +12,14 @@ function tableColumns(db, tableName) {
  * This catches incompatible partial/stamped schemas without ever editing the
  * immutable v5 migration file.
  */
-export function verifyApiKeyExpiryColumnShape(db) {
+export function verifyApiKeyExpiryColumnLayout(db) {
   const column = tableColumns(db, "apiKeys").find((row) => row.name === "expiresAt");
   if (!column) return;
 
-  const compatible = String(column.type || "").toUpperCase() === "TEXT"
-    && Number(column.notnull || 0) === 0
-    && Number(column.pk || 0) === 0
-    && column.dflt_value == null;
+  const compatible = String(column.type || "").toUpperCase() === "TEXT" &&
+  Number(column.notnull || 0) === 0 &&
+  Number(column.pk || 0) === 0 &&
+  column.dflt_value == null;
   if (!compatible) {
     throw new Error("Published schema mismatch: apiKeys.expiresAt must be nullable TEXT without a default");
   }
@@ -26,25 +27,25 @@ export function verifyApiKeyExpiryColumnShape(db) {
 
 const QUOTA_V7_TABLE_NAMES = ["providerQuotaSnapshots", "quotaFetchStates"];
 const QUOTA_LATEST_TABLE_NAMES = [
-  ...QUOTA_V7_TABLE_NAMES,
-  "quotaReservations",
-  "quotaReservationItems",
-];
+...QUOTA_V7_TABLE_NAMES,
+"quotaReservations",
+"quotaReservationItems"];
+
 
 /**
  * Tokenize SQLite schema DDL so harmless formatting and identifier quoting do
  * not hide semantic differences. String-literal bytes remain case-sensitive.
  */
 export function canonicalizeSchemaSql(sql) {
-  if (typeof sql !== "string" || !sql.trim()) throw new Error("Schema SQL must be a non-empty string");
+  if (!isString(sql) || !sql.trim()) throw new Error("Schema SQL must be a non-empty string");
   const tokens = [];
   let index = 0;
   while (index < sql.length) {
     const rest = sql.slice(index);
     const whitespace = rest.match(/^\s+/);
-    if (whitespace) { index += whitespace[0].length; continue; }
+    if (whitespace) {index += whitespace[0].length;continue;}
     const lineComment = rest.match(/^--[^\r\n]*(?:\r?\n|$)/);
-    if (lineComment) { index += lineComment[0].length; continue; }
+    if (lineComment) {index += lineComment[0].length;continue;}
     if (rest.startsWith("/*")) {
       const end = sql.indexOf("*/", index + 2);
       if (end < 0) throw new Error("Unterminated SQL comment");
@@ -109,7 +110,7 @@ export function canonicalizeSchemaSql(sql) {
       index += operator[0].length;
       continue;
     }
-    if (rest[0] === ";") { index += 1; continue; }
+    if (rest[0] === ";") {index += 1;continue;}
     throw new Error(`Unsupported SQL token at offset ${index}`);
   }
 
@@ -138,17 +139,17 @@ function expectedIndexName(sql) {
 }
 
 function quotaSchema(useLatest) {
-  return useLatest
-    ? {
-        definitions: TABLES,
-        tableNames: QUOTA_LATEST_TABLE_NAMES,
-        buildTableSql: (name) => buildCreateTableSql(name, TABLES[name]),
-      }
-    : {
-        definitions: QUOTA_V7_TABLES,
-        tableNames: QUOTA_V7_TABLE_NAMES,
-        buildTableSql: buildQuotaV7TableSql,
-      };
+  return useLatest ?
+  {
+    definitions: TABLES,
+    tableNames: QUOTA_LATEST_TABLE_NAMES,
+    buildTableSql: (name) => buildCreateTableSql(name, TABLES[name])
+  } :
+  {
+    definitions: QUOTA_V7_TABLES,
+    tableNames: QUOTA_V7_TABLE_NAMES,
+    buildTableSql: buildQuotaV7TableSql
+  };
 }
 
 function verifyQuotaTable(db, tableName, { requireComplete, definitions, buildTableSql }) {
@@ -159,7 +160,7 @@ function verifyQuotaTable(db, tableName, { requireComplete, definitions, buildTa
       const name = expectedIndexName(expectedSql);
       const collision = db.get(
         `SELECT 1 AS present FROM sqlite_master WHERE type='index' AND lower(name)=lower(?)`,
-        [name],
+        [name]
       );
       if (collision) {
         throw new Error(`Published schema mismatch: ${tableName}.${name} exists without its table`);
@@ -197,19 +198,19 @@ function verifyQuotaTable(db, tableName, { requireComplete, definitions, buildTa
 }
 
 /** Reject incompatible quota objects before mutation and verify completeness after sync. */
-export function verifyQuotaStorageShapes(db, { requireComplete = false, useLatest = false } = {}) {
+export function verifyQuotaStorageLayouts(db, { requireComplete = false, useLatest = false } = {}) {
   const schema = quotaSchema(useLatest);
   for (const tableName of schema.tableNames) verifyQuotaTable(db, tableName, { requireComplete, ...schema });
   const quotaTables = new Set(schema.tableNames.map((tableName) => tableName.toLowerCase()));
-  const violations = db.all(`PRAGMA foreign_key_check`)
-    .filter((row) => quotaTables.has(String(row.table).toLowerCase()));
+  const violations = db.all(`PRAGMA foreign_key_check`).
+  filter((row) => quotaTables.has(String(row.table).toLowerCase()));
   if (violations.length > 0) throw new Error("Published schema mismatch: quota storage contains orphan rows");
   if (useLatest) {
     const reservations = db.get(
-      `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND lower(name)=lower('quotaReservations')`,
+      `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND lower(name)=lower('quotaReservations')`
     );
     const connections = db.get(
-      `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND lower(name)=lower('providerConnections')`,
+      `SELECT 1 AS present FROM sqlite_master WHERE type='table' AND lower(name)=lower('providerConnections')`
     );
     if (reservations && connections) {
       const mismatch = db.get(
@@ -217,7 +218,7 @@ export function verifyQuotaStorageShapes(db, { requireComplete = false, useLates
          FROM quotaReservations r
          JOIN providerConnections c ON c.id=r.connectionId
          WHERE r.provider <> c.provider
-         LIMIT 1`,
+         LIMIT 1`
       );
       if (mismatch) {
         throw new Error("Published schema mismatch: quota reservation provider does not match its connection");
@@ -240,7 +241,12 @@ export function quotaStorageNeedsAdditiveRepair(db, { useLatest = false } = {}) 
   return false;
 }
 
-export function verifyPublishedSchemaShapes(db, { requireQuotaComplete = false, useLatestQuotaSchema = false } = {}) {
-  verifyApiKeyExpiryColumnShape(db);
-  verifyQuotaStorageShapes(db, { requireComplete: requireQuotaComplete, useLatest: useLatestQuotaSchema });
+/**
+ * Run every published-schema layout check (API-key expiry column + quota tables).
+ * @param {object} db DB adapter with `get` / `all`
+ * @param {{ requireQuotaComplete?: boolean, useLatestQuotaSchema?: boolean }} [opts]
+ */
+export function verifyPublishedSchemaLayouts(db, { requireQuotaComplete = false, useLatestQuotaSchema = false } = {}) {
+  verifyApiKeyExpiryColumnLayout(db);
+  verifyQuotaStorageLayouts(db, { requireComplete: requireQuotaComplete, useLatest: useLatestQuotaSchema });
 }

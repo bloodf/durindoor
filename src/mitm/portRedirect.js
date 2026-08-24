@@ -1,10 +1,11 @@
+const { isFunction } = require("../shared/utils/typeChecks.cjs");
 const { execFileSync } = require("child_process");
 const { resolveWindowsSystemBinary } = require("./trustedBinaries");
 
 function requireNumericUid(processImpl = process) {
-  const uid = typeof processImpl.geteuid === "function"
-    ? processImpl.geteuid()
-    : typeof processImpl.getuid === "function" ? processImpl.getuid() : null;
+  const uid = isFunction(processImpl.geteuid) ?
+  processImpl.geteuid() :
+  isFunction(processImpl.getuid) ? processImpl.getuid() : null;
   if (!Number.isSafeInteger(uid) || uid < 0) throw new Error("Unable to resolve the effective user ID for MITM isolation");
   return uid;
 }
@@ -13,7 +14,7 @@ function requireWindowsSid(execFileSyncImpl = execFileSync) {
   const output = execFileSyncImpl(
     resolveWindowsSystemBinary("powershell.exe", { verify: process.platform === "win32" }),
     ["-NoProfile", "-NonInteractive", "-Command", "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value"],
-    { encoding: "utf8", windowsHide: true, timeout: 5000 },
+    { encoding: "utf8", windowsHide: true, timeout: 5000 }
   );
   const sid = String(output || "").trim();
   if (!/^S-\d(?:-\d+){2,14}$/.test(sid)) throw new Error("Unable to resolve a safe Windows owner SID for MITM isolation");
@@ -27,13 +28,13 @@ function shellQuote(value) {
 function buildMacRedirect({ uid, publicPort, internalPort, allowExisting = true }) {
   const anchor = `com.apple/durindoor.mitm.${uid}`;
   const rules = [
-    `rdr on lo0 inet proto tcp from any to 127.0.0.1 port ${publicPort} -> 127.0.0.1 port ${internalPort}`,
-    `block return out quick on lo0 inet proto tcp from any to 127.0.0.1 port { ${publicPort}, ${internalPort} } user != ${uid}`,
-  ].join("\n");
+  `rdr on lo0 inet proto tcp from any to 127.0.0.1 port ${publicPort} -> 127.0.0.1 port ${internalPort}`,
+  `block return out quick on lo0 inet proto tcp from any to 127.0.0.1 port { ${publicPort}, ${internalPort} } user != ${uid}`].
+  join("\n");
   return {
     anchor,
     install: `set -eu; pfctl -s info 2>/dev/null | grep -q '^Status: Enabled'; ${allowExisting ? "" : `nat=$(pfctl -a ${anchor} -sn 2>/dev/null); filter=$(pfctl -a ${anchor} -sr 2>/dev/null); [ -z "$nat" ] && [ -z "$filter" ] || { echo 'A MITM PF rule already exists for this user' >&2; exit 76; };`} printf '%s\\n' ${shellQuote(rules)} | pfctl -a ${anchor} -f -`,
-    remove: `set -eu; pfctl -a ${anchor} -F all; nat=$(pfctl -a ${anchor} -sn 2>/dev/null); filter=$(pfctl -a ${anchor} -sr 2>/dev/null); [ -z "$nat" ] && [ -z "$filter" ] || { echo 'DurinDoor PF anchor remains active' >&2; exit 1; }`,
+    remove: `set -eu; pfctl -a ${anchor} -F all; nat=$(pfctl -a ${anchor} -sn 2>/dev/null); filter=$(pfctl -a ${anchor} -sr 2>/dev/null); [ -z "$nat" ] && [ -z "$filter" ] || { echo 'DurinDoor PF anchor remains active' >&2; exit 1; }`
   };
 }
 
@@ -42,7 +43,7 @@ function linuxRuleParts({ uid, publicPort, internalPort }) {
   return {
     tag,
     nat: `-t nat -p tcp -d 127.0.0.1 --dport ${publicPort} -m owner --uid-owner ${uid} -m comment --comment ${tag} -j REDIRECT --to-ports ${internalPort}`,
-    deny: `-p tcp -d 127.0.0.1 -m multiport --dports ${publicPort},${internalPort} -m owner ! --uid-owner ${uid} -m comment --comment ${tag} -j REJECT --reject-with tcp-reset`,
+    deny: `-p tcp -d 127.0.0.1 -m multiport --dports ${publicPort},${internalPort} -m owner ! --uid-owner ${uid} -m comment --comment ${tag} -j REJECT --reject-with tcp-reset`
   };
 }
 
@@ -51,30 +52,30 @@ function buildLinuxRedirect(options) {
   const allowExisting = options.allowExisting !== false;
   return {
     install: allowExisting ? [
-        "set -eu",
-        `iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null || iptables -w 5 -t nat -I OUTPUT 1 ${nat.replace(/^-t nat /, "")}`,
-        `iptables -w 5 -C OUTPUT ${deny} 2>/dev/null || iptables -w 5 -I OUTPUT 1 ${deny}`,
-        `iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} >/dev/null`,
-        `iptables -w 5 -C OUTPUT ${deny} >/dev/null`,
-      ].join("; ") : [
-        "set -eu",
-        `if iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null || iptables -w 5 -C OUTPUT ${deny} 2>/dev/null; then echo 'A MITM iptables rule already exists for this user' >&2; exit 76; fi`,
-        "nat_added=0; deny_added=0",
-        `cleanup() { if [ "$deny_added" -eq 1 ]; then iptables -w 5 -D OUTPUT ${deny} 2>/dev/null || true; fi; if [ "$nat_added" -eq 1 ]; then iptables -w 5 -t nat -D OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null || true; fi; }`,
-        "trap cleanup EXIT HUP INT TERM",
-        `iptables -w 5 -t nat -I OUTPUT 1 ${nat.replace(/^-t nat /, "")}; nat_added=1`,
-        `iptables -w 5 -I OUTPUT 1 ${deny}; deny_added=1`,
-        `iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} >/dev/null`,
-        `iptables -w 5 -C OUTPUT ${deny} >/dev/null`,
-        "deny_added=0; nat_added=0; trap - EXIT HUP INT TERM",
-      ].join("; "),
+    "set -eu",
+    `iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null || iptables -w 5 -t nat -I OUTPUT 1 ${nat.replace(/^-t nat /, "")}`,
+    `iptables -w 5 -C OUTPUT ${deny} 2>/dev/null || iptables -w 5 -I OUTPUT 1 ${deny}`,
+    `iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} >/dev/null`,
+    `iptables -w 5 -C OUTPUT ${deny} >/dev/null`].
+    join("; ") : [
+    "set -eu",
+    `if iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null || iptables -w 5 -C OUTPUT ${deny} 2>/dev/null; then echo 'A MITM iptables rule already exists for this user' >&2; exit 76; fi`,
+    "nat_added=0; deny_added=0",
+    `cleanup() { if [ "$deny_added" -eq 1 ]; then iptables -w 5 -D OUTPUT ${deny} 2>/dev/null || true; fi; if [ "$nat_added" -eq 1 ]; then iptables -w 5 -t nat -D OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null || true; fi; }`,
+    "trap cleanup EXIT HUP INT TERM",
+    `iptables -w 5 -t nat -I OUTPUT 1 ${nat.replace(/^-t nat /, "")}; nat_added=1`,
+    `iptables -w 5 -I OUTPUT 1 ${deny}; deny_added=1`,
+    `iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} >/dev/null`,
+    `iptables -w 5 -C OUTPUT ${deny} >/dev/null`,
+    "deny_added=0; nat_added=0; trap - EXIT HUP INT TERM"].
+    join("; "),
     remove: [
-      "set -eu",
-      `if iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null; then iptables -w 5 -t nat -D OUTPUT ${nat.replace(/^-t nat /, "")}; fi`,
-      `if iptables -w 5 -C OUTPUT ${deny} 2>/dev/null; then iptables -w 5 -D OUTPUT ${deny}; fi`,
-      `if iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null; then echo 'DurinDoor MITM NAT rule remains installed' >&2; exit 1; fi`,
-      `if iptables -w 5 -C OUTPUT ${deny} 2>/dev/null; then echo 'DurinDoor MITM isolation rule remains installed' >&2; exit 1; fi`,
-    ].join("; "),
+    "set -eu",
+    `if iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null; then iptables -w 5 -t nat -D OUTPUT ${nat.replace(/^-t nat /, "")}; fi`,
+    `if iptables -w 5 -C OUTPUT ${deny} 2>/dev/null; then iptables -w 5 -D OUTPUT ${deny}; fi`,
+    `if iptables -w 5 -t nat -C OUTPUT ${nat.replace(/^-t nat /, "")} 2>/dev/null; then echo 'DurinDoor MITM NAT rule remains installed' >&2; exit 1; fi`,
+    `if iptables -w 5 -C OUTPUT ${deny} 2>/dev/null; then echo 'DurinDoor MITM isolation rule remains installed' >&2; exit 1; fi`].
+    join("; ")
   };
 }
 
@@ -85,7 +86,7 @@ function quotePowerShell(value) {
 function windowsFirewallIdentity(sid) {
   return {
     name: `DurinDoor-MITM-Isolation-${sid}`,
-    localUser: `D:(D;;CC;;;${sid})(A;;CC;;;WD)`,
+    localUser: `D:(D;;CC;;;${sid})(A;;CC;;;WD)`
   };
 }
 
@@ -143,7 +144,7 @@ function buildWindowsRedirect({ sid, publicPort, allowExisting = true }) {
           throw 'DurinDoor MITM isolation rule removal could not be verified'
         }
       }
-    `,
+    `
   };
 }
 
@@ -154,5 +155,5 @@ module.exports = {
   linuxRuleParts,
   requireNumericUid,
   requireWindowsSid,
-  windowsFirewallIdentity,
+  windowsFirewallIdentity
 };

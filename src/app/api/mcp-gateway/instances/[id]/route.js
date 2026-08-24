@@ -4,13 +4,14 @@ import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { sanitizeInstanceHeaders } from "@/lib/mcp/gateway/instanceHeaders";
+import { isObject } from "../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
 function stripSecrets(inst) {
   if (!inst) return inst;
   const { headers: _h, env: _e, oauthTokens: _o, ...out } = inst;
-  void _h; void _e;
+  void _h;void _e;
   out.oauthStatus = deriveOauthStatus(!!inst.oauth, _o);
   out.oauthClientConfigured = !!(_o && _o.client && _o.client.clientId);
   return out;
@@ -73,7 +74,7 @@ export async function PUT(request, context) {
     if (!inst) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ instance: stripSecrets(inst) });
   } catch (e) {
-    const err = e && typeof e === "object" ? e : {};
+    const err = e && isObject(e) ? e : {};
     if (err?.code === "DUPLICATE_SLUG" || /already exists/i.test(err.message || "")) {
       return NextResponse.json({ error: err.message || "slug already exists" }, { status: 409 });
     }

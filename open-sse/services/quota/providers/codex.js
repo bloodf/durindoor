@@ -1,7 +1,7 @@
 import {
   hasConflictingCodexAccountIds,
-  resolveCodexAccountId,
-} from "../../../shared/codexAccountId.js";
+  resolveCodexAccountId } from
+"../../../shared/codexAccountId.js";
 import {
   asArray,
   asRecord,
@@ -9,8 +9,8 @@ import {
   quotaMetadata,
   quotaPercent,
   quotaScopedKey,
-  ratioQuotaRow,
-} from "../normalize.js";
+  ratioQuotaRow } from
+"../normalize.js";
 import {
   connectionCredential,
   connectionData,
@@ -18,8 +18,9 @@ import {
   futureResetAt,
   missingCredential,
   providerFailure,
-  providerSuccess,
-} from "../providerHelpers.js";
+  providerSuccess } from
+"../providerHelpers.js";
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
 
 function resetAtForWindow(window, now) {
   const absolute = parseQuotaTimestamp(window?.reset_at ?? window?.resets_at ?? window?.resetAt);
@@ -39,15 +40,15 @@ function appendWindows(rows, value, {
   accountKey,
   resourceKey,
   plan,
-  now,
+  now
 } = {}) {
   if (value === null || value === undefined) return true;
   const body = rateLimitBody(value);
   if (!body) return false;
   const windows = [
-    ["session", body.primary_window ?? body.primaryWindow ?? body.primary],
-    ["weekly", body.secondary_window ?? body.secondaryWindow ?? body.secondary],
-  ];
+  ["session", body.primary_window ?? body.primaryWindow ?? body.primary],
+  ["weekly", body.secondary_window ?? body.secondaryWindow ?? body.secondary]];
+
   for (const [name, rawWindow] of windows) {
     if (rawWindow === null || rawWindow === undefined) continue;
     const window = asRecord(rawWindow);
@@ -60,7 +61,7 @@ function appendWindows(rows, value, {
       dimensionKey: quotaScopedKey("requests", name),
       remainingRatio: 1 - usedRatio,
       resetAt: resetAtForWindow(window, now),
-      metadata: quotaMetadata({ plan, windowSeconds: name === "session" ? 5 * 60 * 60 : 7 * 24 * 60 * 60 }),
+      metadata: quotaMetadata({ plan, windowSeconds: name === "session" ? 5 * 60 * 60 : 7 * 24 * 60 * 60 })
     });
     if (!row) return false;
     rows.push(row);
@@ -86,9 +87,9 @@ function reviewLimit(data) {
   return additionalLimits(data).find((entry) => {
     const record = asRecord(entry) || {};
     const descriptor = [
-      record.limit_name, record.limitName, record.metered_feature, record.meteredFeature,
-      record.limit_id, record.limitId, record.id, record.name, record.title,
-    ].filter((value) => typeof value === "string").join(" ").toLowerCase();
+    record.limit_name, record.limitName, record.metered_feature, record.meteredFeature,
+    record.limit_id, record.limitId, record.id, record.name, record.title].
+    filter((value) => isString(value)).join(" ").toLowerCase();
     return descriptor.includes("review");
   }) || null;
 }
@@ -97,13 +98,13 @@ function sparkLimits(data) {
   return additionalLimits(data).filter((entry) => {
     const record = asRecord(entry) || {};
     const descriptor = [
-      record.limit_name, record.limitName, record.metered_feature, record.meteredFeature,
-      record.limit_id, record.limitId, record.id, record.name, record.title,
-      record.model, record.model_id, record.modelId,
-    ]
-      .filter((value) => typeof value === "string")
-      .join(" ")
-      .toLowerCase();
+    record.limit_name, record.limitName, record.metered_feature, record.meteredFeature,
+    record.limit_id, record.limitId, record.id, record.name, record.title,
+    record.model, record.model_id, record.modelId].
+
+    filter((value) => isString(value)).
+    join(" ").
+    toLowerCase();
     return descriptor.includes("spark");
   });
 }
@@ -121,9 +122,9 @@ export function normalizeCodexQuota(data, { accountId = "", now = Date.now() } =
     if (!Array.isArray(payload[field]) || payload[field].some((entry) => !asRecord(entry))) return null;
   }
   const rawPlan = payload.plan_type ?? payload.planType;
-  const plan = typeof rawPlan === "string"
-    ? rawPlan
-    : typeof payload.summary?.plan === "string" ? payload.summary.plan : null;
+  const plan = isString(rawPlan) ?
+  rawPlan :
+  isString(payload.summary?.plan) ? payload.summary.plan : null;
   const accountKey = accountId ? quotaScopedKey("account", accountId, { privateValue: true }) : null;
   const rows = [];
   const byId = rateLimitsById(payload);
@@ -131,20 +132,20 @@ export function normalizeCodexQuota(data, { accountId = "", now = Date.now() } =
     accountKey,
     resourceKey: null,
     plan,
-    now,
+    now
   })) return null;
   if (!appendWindows(rows, reviewLimit(payload), {
     accountKey,
     resourceKey: quotaScopedKey("feature", "code-review"),
     plan,
-    now,
+    now
   })) return null;
   for (const entry of sparkLimits(payload)) {
     if (!appendWindows(rows, entry, {
       accountKey,
       resourceKey: quotaScopedKey("model", "codex-spark"),
       plan,
-      now,
+      now
     })) return null;
   }
   return rows.length > 0 ? rows : null;
@@ -163,7 +164,7 @@ export async function fetchCodexQuota(context) {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
     originator: "codex_cli_rs",
-    "User-Agent": "codex_cli_rs/0.136.0",
+    "User-Agent": "codex_cli_rs/0.136.0"
   };
   if (accountId) headers["ChatGPT-Account-ID"] = accountId;
   const result = await createProviderRequest(context)(config.url, { method: "GET", headers });

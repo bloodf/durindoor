@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -10,9 +11,9 @@ function toBoolean(value) {
 const VALID_PROXY_TYPES = ["http", "vercel", "cloudflare"];
 
 function normalizeProxyPoolInput(body = {}) {
-  const name = typeof body?.name === "string" ? body.name.trim() : "";
-  const proxyUrl = typeof body?.proxyUrl === "string" ? body.proxyUrl.trim() : "";
-  const noProxy = typeof body?.noProxy === "string" ? body.noProxy.trim() : "";
+  const name = isString(body?.name) ? body.name.trim() : "";
+  const proxyUrl = isString(body?.proxyUrl) ? body.proxyUrl.trim() : "";
+  const noProxy = isString(body?.noProxy) ? body.noProxy.trim() : "";
   const isActive = body?.isActive === undefined ? true : body.isActive === true;
   const strictProxy = body?.strictProxy === true;
   const type = VALID_PROXY_TYPES.includes(body?.type) ? body.type : "http";
@@ -64,7 +65,7 @@ export async function GET(request) {
 
     const enrichedProxyPools = proxyPools.map((pool) => ({
       ...pool,
-      boundConnectionCount: usageMap.get(pool.id) || 0,
+      boundConnectionCount: usageMap.get(pool.id) || 0
     }));
 
     return NextResponse.json({ proxyPools: enrichedProxyPools });

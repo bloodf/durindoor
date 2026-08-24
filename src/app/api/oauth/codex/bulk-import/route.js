@@ -17,6 +17,7 @@ import { CODEX_FINGERPRINT_MODES } from "open-sse/config/codexIdentity.js";
  *
  * Tokens are NEVER echoed back in the response.
  */
+import { isNumber, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   let body;
   try {
@@ -32,9 +33,9 @@ export async function POST(request) {
   let accounts;
   if (Array.isArray(body)) {
     accounts = body;
-  } else if (body && typeof body === "object" && Array.isArray(body.accounts)) {
+  } else if (body && isObject(body) && Array.isArray(body.accounts)) {
     accounts = body.accounts;
-  } else if (body && typeof body === "object") {
+  } else if (body && isObject(body)) {
     accounts = [body];
   } else {
     accounts = null;
@@ -47,9 +48,9 @@ export async function POST(request) {
     );
   }
 
-  const globalCodexFingerprintMode = CODEX_FINGERPRINT_MODES.includes(body?.codexFingerprintMode)
-    ? body.codexFingerprintMode
-    : null;
+  const globalCodexFingerprintMode = CODEX_FINGERPRINT_MODES.includes(body?.codexFingerprintMode) ?
+  body.codexFingerprintMode :
+  null;
 
   const results = [];
   let success = 0;
@@ -60,7 +61,7 @@ export async function POST(request) {
   for (let i = 0; i < accounts.length; i++) {
     const raw = accounts[i];
     try {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      if (!raw || !isObject(raw) || Array.isArray(raw)) {
         throw new Error("Item is not an object");
       }
 
@@ -74,17 +75,17 @@ export async function POST(request) {
         ...item
       } = raw;
 
-      if (!item.accessToken || typeof item.accessToken !== "string") {
+      if (!item.accessToken || !isString(item.accessToken)) {
         throw new Error("Missing accessToken");
       }
 
       // Backfill missing identity fields from JWT claims
-      const psd = item.providerSpecificData && typeof item.providerSpecificData === "object"
-        ? { ...item.providerSpecificData }
-        : {};
-      psd.codexFingerprintMode = CODEX_FINGERPRINT_MODES.includes(psd.codexFingerprintMode)
-        ? psd.codexFingerprintMode
-        : globalCodexFingerprintMode || "session";
+      const psd = item.providerSpecificData && isObject(item.providerSpecificData) ?
+      { ...item.providerSpecificData } :
+      {};
+      psd.codexFingerprintMode = CODEX_FINGERPRINT_MODES.includes(psd.codexFingerprintMode) ?
+      psd.codexFingerprintMode :
+      globalCodexFingerprintMode || "session";
       delete psd.codexClientIdentity;
       delete psd.codexOriginalIdentityHeaders;
       const needsEmail = !item.email;
@@ -106,7 +107,7 @@ export async function POST(request) {
       }
 
       // Compute expiresAt from expiresIn if absent
-      if (!item.expiresAt && typeof item.expiresIn === "number" && item.expiresIn > 0) {
+      if (!item.expiresAt && isNumber(item.expiresIn) && item.expiresIn > 0) {
         item.expiresAt = new Date(Date.now() + item.expiresIn * 1000).toISOString();
       }
 
@@ -118,7 +119,7 @@ export async function POST(request) {
       const created = await createProviderConnection({
         provider: "codex",
         authType: "oauth",
-        ...item,
+        ...item
       });
 
       results.push({ index: i, ok: true, id: created.id });

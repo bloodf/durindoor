@@ -6,14 +6,15 @@ import { sanitizeErrorMessage } from "./error.js";
 import {
   assertGuardedProbeDispatcherAddressAllowed,
   isGuardedProbeDispatcher,
-  OutboundUrlGuardError,
-} from "./outboundUrlGuard.js";
+  OutboundUrlGuardError } from
+"./outboundUrlGuard.js";
 import { digestMemoryKey } from "./memoryKey.js";
 import {
   isQuotaBearingProviderRequest,
-  runProviderAttemptDispatch,
-} from "../services/providerAttemptContext.js";
+  runProviderAttemptDispatch } from
+"../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 
 let originalFetch = globalThis.fetch;
 const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
@@ -27,19 +28,19 @@ let realIpResolverForTesting = null;
 export function __setOriginalFetchForTesting(fn) {
   const prev = originalFetch;
   originalFetch = fn;
-  return () => { originalFetch = prev; };
+  return () => {originalFetch = prev;};
 }
 
 export function __setBypassTransportForTesting(transport) {
   const previous = bypassTransportForTesting;
   bypassTransportForTesting = transport;
-  return () => { bypassTransportForTesting = previous; };
+  return () => {bypassTransportForTesting = previous;};
 }
 
 export function __setRealIpResolverForTesting(resolver) {
   const previous = realIpResolverForTesting;
   realIpResolverForTesting = resolver;
-  return () => { realIpResolverForTesting = previous; };
+  return () => {realIpResolverForTesting = previous;};
 }
 
 export function __setProxyDispatcherForTesting(proxyUrl, dispatcher) {
@@ -55,7 +56,7 @@ export function __getProxyDispatcherCacheSnapshotForTesting() {
   return {
     keys: [...proxyDispatchers.keys()],
     size: proxyDispatchers.size,
-    maxSize: MEMORY_CONFIG.proxyDispatchersMaxSize,
+    maxSize: MEMORY_CONFIG.proxyDispatchersMaxSize
   };
 }
 
@@ -157,13 +158,13 @@ async function tryGotScrapingFetch(url, options) {
 // DNS cache — use Map to avoid prototype pollution via malformed hostnames
 const DNS_CACHE = new Map();
 const MITM_BYPASS_HOSTS = [
-  "cloudcode-pa.googleapis.com",
-  "daily-cloudcode-pa.googleapis.com",
-  "api.individual.githubcopilot.com",
-  "q.us-east-1.amazonaws.com",
-  "codewhisperer.us-east-1.amazonaws.com",
-  "api2.cursor.sh",
-];
+"cloudcode-pa.googleapis.com",
+"daily-cloudcode-pa.googleapis.com",
+"api.individual.githubcopilot.com",
+"q.us-east-1.amazonaws.com",
+"codewhisperer.us-east-1.amazonaws.com",
+"api2.cursor.sh"];
+
 const GOOGLE_DNS_SERVERS = ["8.8.8.8", "8.8.4.4"];
 const HTTPS_PORT = 443;
 const HTTP_SUCCESS_MIN = 200;
@@ -179,9 +180,9 @@ function safeTransportError(error) {
 }
 
 function signalAbortError(signal) {
-  return signal?.reason instanceof Error
-    ? signal.reason
-    : new DOMException("Provider request aborted", "AbortError");
+  return signal?.reason instanceof Error ?
+  signal.reason :
+  new DOMException("Provider request aborted", "AbortError");
 }
 
 function rethrowTransportAbort(error, signal) {
@@ -204,7 +205,7 @@ function raceWithSignal(promise, signal) {
     signal.addEventListener("abort", onAbort, { once: true });
     Promise.resolve(promise).then(
       (value) => finish(resolve, value),
-      (error) => finish(reject, error),
+      (error) => finish(reject, error)
     );
   });
 }
@@ -236,8 +237,8 @@ async function resolveRealIPs(hostname) {
 function shouldBypassMitmDns(url) {
   try {
     const hostname = new URL(url).hostname;
-    return MITM_BYPASS_HOSTS.some(host => hostname.includes(host));
-  } catch { return false; }
+    return MITM_BYPASS_HOSTS.some((host) => hostname.includes(host));
+  } catch {return false;}
 }
 
 function shouldBypassByNoProxy(targetUrl, noProxyValue) {
@@ -245,7 +246,7 @@ function shouldBypassByNoProxy(targetUrl, noProxyValue) {
   if (!noProxy) return false;
 
   let hostname;
-  try { hostname = new URL(targetUrl).hostname.toLowerCase(); } catch { return false; }
+  try {hostname = new URL(targetUrl).hostname.toLowerCase();} catch {return false;}
   const patterns = noProxy.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean);
 
   return patterns.some((pattern) => {
@@ -263,25 +264,25 @@ function getEnvProxyUrl(targetUrl) {
   if (shouldBypassByNoProxy(targetUrl, noProxy)) return null;
 
   let protocol;
-  try { protocol = new URL(targetUrl).protocol; } catch { return null; }
+  try {protocol = new URL(targetUrl).protocol;} catch {return null;}
 
   if (protocol === "https:") {
     return process.env.HTTPS_PROXY || process.env.https_proxy ||
-      process.env.ALL_PROXY || process.env.all_proxy;
+    process.env.ALL_PROXY || process.env.all_proxy;
   }
 
   return process.env.HTTP_PROXY || process.env.http_proxy ||
-    process.env.ALL_PROXY || process.env.all_proxy;
+  process.env.ALL_PROXY || process.env.all_proxy;
 }
 
 /** Whether a custom transport must delegate routing to proxyAwareFetch. */
 export function shouldUseProxyAwareTransport(targetUrl, proxyOptions = null) {
   if (
-    proxyOptions?.strictProxy === true
-    || proxyOptions?.enabled === true
-    || proxyOptions?.connectionProxyEnabled === true
-    || Boolean(normalizeString(proxyOptions?.vercelRelayUrl))
-  ) return true;
+  proxyOptions?.strictProxy === true ||
+  proxyOptions?.enabled === true ||
+  proxyOptions?.connectionProxyEnabled === true ||
+  Boolean(normalizeString(proxyOptions?.vercelRelayUrl)))
+  return true;
   if (proxyOptions?.disableEnvProxy === true) return false;
   return Boolean(normalizeProxyUrl(getEnvProxyUrl(targetUrl)));
 }
@@ -435,9 +436,9 @@ function getProxyUrl(targetUrl, proxyOptions) {
 
   // Try bulk import proxy URLs (from proxyOptions.bulkImport)
   if (options.bulkImport) {
-    const bulkUrls = Array.isArray(options.bulkImport)
-      ? options.bulkImport
-      : parseProxyUrls(options.bulkImport);
+    const bulkUrls = Array.isArray(options.bulkImport) ?
+    options.bulkImport :
+    parseProxyUrls(options.bulkImport);
 
     for (const bulkUrl of bulkUrls) {
       try {
@@ -488,9 +489,9 @@ async function getDispatcher(proxyUrl) {
         // block a new route merely because an older SSE request is long-lived.
         Promise.resolve(oldestDispatcher?.close?.()).catch(() => {});
       } catch {
+
         // The entry is already detached; cleanup must not prevent replacement.
-      }
-    }
+      }}
     // proxyTunnel: true forces a CONNECT tunnel even for plain-HTTP targets.
     // undici 8.6+ defaults to forwarding plain-HTTP as an origin request
     // (GET http://host/…) which CONNECT-only proxies reject with 501. Safe on
@@ -511,7 +512,7 @@ async function getDispatcher(proxyUrl) {
       keepAliveTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveTimeoutMs,
       keepAliveMaxTimeout: PROXY_FETCH_POOL_CONFIG.keepAliveMaxTimeoutMs,
       maxCachedSessions: PROXY_FETCH_POOL_CONFIG.proxyMaxCachedSessions,
-      pipelining: PROXY_FETCH_POOL_CONFIG.pipelining,
+      pipelining: PROXY_FETCH_POOL_CONFIG.pipelining
     }));
   }
 
@@ -531,8 +532,8 @@ export function getDirectDispatcherOptionsForTest() {
     pipelining: PROXY_FETCH_POOL_CONFIG.pipelining,
     connect: {
       autoSelectFamily: true,
-      autoSelectFamilyAttemptTimeout: 1000,
-    },
+      autoSelectFamilyAttemptTimeout: 1000
+    }
   };
 }
 
@@ -545,28 +546,28 @@ async function getDirectDispatcher() {
 async function directFetch(url, options) {
   const dispatcher = options?.dispatcher || (await getDirectDispatcher());
   const currentFetch = globalThis.fetch;
-  const isDurinDoorPatchedFetch = typeof currentFetch === "function"
-    && hasOwn(currentFetch, DURINDOOR_FETCH_PATCH)
-    && currentFetch[DURINDOOR_FETCH_PATCH] === true;
-  const isNextPatchedFetch = typeof currentFetch === "function"
-    && globalThis[NEXT_FETCH_PATCH] === true
-    && hasOwn(currentFetch, "__nextPatched")
-    && currentFetch.__nextPatched === true
-    && hasOwn(currentFetch, "__nextGetStaticStore")
-    && typeof currentFetch.__nextGetStaticStore === "function"
-    && hasOwn(currentFetch, "_nextOriginalFetch")
-    && typeof currentFetch._nextOriginalFetch === "function";
+  const isDurinDoorPatchedFetch = isFunction(currentFetch) &&
+  hasOwn(currentFetch, DURINDOOR_FETCH_PATCH) &&
+  currentFetch[DURINDOOR_FETCH_PATCH] === true;
+  const isNextPatchedFetch = isFunction(currentFetch) &&
+  globalThis[NEXT_FETCH_PATCH] === true &&
+  hasOwn(currentFetch, "__nextPatched") &&
+  currentFetch.__nextPatched === true &&
+  hasOwn(currentFetch, "__nextGetStaticStore") && isFunction(
+    currentFetch.__nextGetStaticStore) &&
+  hasOwn(currentFetch, "_nextOriginalFetch") && isFunction(
+    currentFetch._nextOriginalFetch);
   // A later Next wrapper can retain this module's patch through a dedupe
   // wrapper, and a second bundled module instance can install another DurinDoor
   // patch. Both identities must cross through this instance's captured fetch
   // to avoid A -> B -> A recursion. Ordinary unmarked replacements remain
   // supported for embedders and tests.
-  const fetchImpl = typeof currentFetch !== "function"
-    || currentFetch === patchedFetch
-    || isDurinDoorPatchedFetch
-    || isNextPatchedFetch
-    ? originalFetch
-    : currentFetch;
+  const fetchImpl = !isFunction(currentFetch) ||
+  currentFetch === patchedFetch ||
+  isDurinDoorPatchedFetch ||
+  isNextPatchedFetch ?
+  originalFetch :
+  currentFetch;
   return runProviderAttemptDispatch(() => fetchImpl(url, { ...options, dispatcher }));
 }
 
@@ -599,9 +600,9 @@ export async function createBypassRequest(parsedUrl, realIP, options) {
     };
     const onAbort = () => {
       const error = abortError();
-      try { responseStream?.destroy?.(error); } catch { /* noop */ }
-      try { req?.destroy?.(error); } catch { /* noop */ }
-      try { socket?.destroy?.(error); } catch { /* noop */ }
+      try {responseStream?.destroy?.(error);} catch {/* noop */}
+      try {req?.destroy?.(error);} catch {/* noop */}
+      try {socket?.destroy?.(error);} catch {/* noop */}
       if (!resolved) fail(error);
     };
     options?.signal?.addEventListener?.("abort", onAbort, { once: true });
@@ -616,17 +617,17 @@ export async function createBypassRequest(parsedUrl, realIP, options) {
       hostname: realIP,
       port: parsedUrl.port || HTTPS_PORT,
       servername: parsedUrl.hostname,
-      checkServerIdentity: (_hostname, certificate) => (
-        tls.checkServerIdentity(parsedUrl.hostname, certificate)
-      ),
+      checkServerIdentity: (_hostname, certificate) =>
+      tls.checkServerIdentity(parsedUrl.hostname, certificate),
+
       rejectUnauthorized: true,
       agent: false,
       path: parsedUrl.pathname + parsedUrl.search,
       method: options.method || "POST",
       headers: {
         ...options.headers,
-        Host: parsedUrl.host,
-      },
+        Host: parsedUrl.host
+      }
     };
 
     try {
@@ -643,7 +644,7 @@ export async function createBypassRequest(parsedUrl, realIP, options) {
             for await (const chunk of res) chunks.push(chunk);
             return Buffer.concat(chunks).toString();
           },
-          json: async () => JSON.parse(await response.text()),
+          json: async () => JSON.parse(await response.text())
         };
         resolved = true;
         settled = true;
@@ -652,7 +653,7 @@ export async function createBypassRequest(parsedUrl, realIP, options) {
         res.once("close", finishBody);
         resolve(response);
       });
-      req.once?.("socket", (activeSocket) => { socket = activeSocket; });
+      req.once?.("socket", (activeSocket) => {socket = activeSocket;});
       req.on("error", (error) => {
         if (!resolved) fail(error);
       });
@@ -673,16 +674,16 @@ export async function createBypassRequest(parsedUrl, realIP, options) {
 /** Preserve fetch BodyInit bytes when the DNS-bypass transport uses https.request. */
 export async function serializeBypassRequestBody(body) {
   if (body == null) return undefined;
-  if (typeof body === "string" || Buffer.isBuffer(body)) return body;
+  if (isString(body) || Buffer.isBuffer(body)) return body;
   if (body instanceof ArrayBuffer) return Buffer.from(body);
   if (ArrayBuffer.isView(body)) {
     return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
   }
-  if (typeof Blob !== "undefined" && body instanceof Blob) {
+  if (!isUndefined(Blob) && body instanceof Blob) {
     return Buffer.from(await body.arrayBuffer());
   }
   if (body instanceof URLSearchParams) return body.toString();
-  if (typeof body?.getReader === "function" || typeof body?.pipe === "function") {
+  if (isFunction(body?.getReader) || isFunction(body?.pipe)) {
     throw new TypeError("Streaming request bodies are not supported by the DNS-bypass transport");
   }
   return JSON.stringify(body);
@@ -699,13 +700,13 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // ticket. Provider runtime endpoints are fixed configuration, so redirects
   // fail closed and must never be enabled by caller-controlled options.
   if (isQuotaBearingProviderRequest()) options = { ...options, redirect: "error" };
-  const targetUrl = typeof url === "string" ? url : url.toString();
+  const targetUrl = isString(url) ? url : url.toString();
 
   const vercelRelayUrl = normalizeString(proxyOptions?.vercelRelayUrl);
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
-  const envProxyUrl = connectionProxyUrl || proxyOptions?.disableEnvProxy === true
-    ? null
-    : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
+  const envProxyUrl = connectionProxyUrl || proxyOptions?.disableEnvProxy === true ?
+  null :
+  normalizeProxyUrl(getEnvProxyUrl(targetUrl));
   const proxyUrl = connectionProxyUrl || envProxyUrl;
 
   // ProxyAgent resolves the CONNECT target outside our connector, so replacing
@@ -716,7 +717,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     throw new OutboundUrlGuardError("Guarded provider probe cannot use an outbound proxy", {
       code: "OUTBOUND_URL_GUARD_BLOCKED",
       url: targetUrl,
-      hostname: new URL(targetUrl).hostname,
+      hostname: new URL(targetUrl).hostname
     });
   }
 
@@ -767,9 +768,9 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       }
       if (realIPs.length) {
         if (options.signal?.aborted) {
-          throw options.signal.reason instanceof Error
-            ? options.signal.reason
-            : new DOMException("Provider request aborted", "AbortError");
+          throw options.signal.reason instanceof Error ?
+          options.signal.reason :
+          new DOMException("Provider request aborted", "AbortError");
         }
         return await runProviderAttemptDispatch(() => createBypassRequest(parsedUrl, realIPs[0], options));
       }
@@ -814,7 +815,7 @@ Object.defineProperty(patchedFetch, DURINDOOR_FETCH_PATCH, {
   value: true,
   enumerable: false,
   configurable: false,
-  writable: false,
+  writable: false
 });
 
 // Idempotency guard — only patch once to avoid wrapping multiple times

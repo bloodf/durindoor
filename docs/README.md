@@ -65,6 +65,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 
 - [Contributing](development/contributing.md)
 - [Local Development](development/local-development.md)
+- [Anti-slop (oxlint) gate](development/anti-slop.md)
 - [Architecture](ARCHITECTURE.md)
 - [Upstream Sync Watch](UPSTREAM_SYNC.md)
 - [tests/README.md](../tests/README.md)

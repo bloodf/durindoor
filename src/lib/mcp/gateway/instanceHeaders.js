@@ -1,4 +1,5 @@
 // Header allowlist for caller-supplied MCP instance headers.
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 //
 // Background: an attacker who can create or update an MCP instance can
 // supply arbitrary headers that are then forwarded to the upstream on
@@ -14,31 +15,31 @@
 // httpClient at all.
 
 const ALLOWED_HEADER_NAMES = new Set([
-  "x-trace-id",
-  "accept",
-  "accept-language",
-]);
+"x-trace-id",
+"accept",
+"accept-language"]
+);
 
 // Names that are ALWAYS stripped even if a future change tries to add
 // them to the allowlist. Belt-and-braces for the sensitive-forwards case.
 const BLOCKED_HEADER_NAMES = new Set([
-  "authorization",
-  "cookie",
-  "cookie2",
-  "set-cookie",
-  "proxy-authorization",
-  "proxy-authenticate",
-  "www-authenticate",
-  "content-type",
-  "content-length",
-  "transfer-encoding",
-  "connection",
-  "host",
-  "upgrade",
-  "expect",
-  "te",
-  "trailer",
-]);
+"authorization",
+"cookie",
+"cookie2",
+"set-cookie",
+"proxy-authorization",
+"proxy-authenticate",
+"www-authenticate",
+"content-type",
+"content-length",
+"transfer-encoding",
+"connection",
+"host",
+"upgrade",
+"expect",
+"te",
+"trailer"]
+);
 
 /**
  * Filter a caller-supplied `instance.headers` object against the
@@ -52,16 +53,16 @@ const BLOCKED_HEADER_NAMES = new Set([
  * @returns {Record<string, string>}
  */
 export function sanitizeInstanceHeaders(raw) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  if (!raw || !isObject(raw) || Array.isArray(raw)) return {};
   const out = {};
   for (const [k, v] of Object.entries(raw)) {
-    if (typeof k !== "string") continue;
+    if (!isString(k)) continue;
     const kl = k.trim().toLowerCase();
     if (!kl) continue;
     if (BLOCKED_HEADER_NAMES.has(kl)) continue;
     if (!ALLOWED_HEADER_NAMES.has(kl)) continue;
     if (v === undefined || v === null) continue;
-    const s = typeof v === "string" ? v : String(v);
+    const s = isString(v) ? v : String(v);
     // CR/LF injection guard — even on allowlisted names.
     if (/[\r\n]/.test(s)) continue;
     out[kl] = s;

@@ -6,8 +6,9 @@
  *
  * Ported from OmniRoute #7912.
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export const NON_ANTHROPIC_THINKING_PLACEHOLDER = "(prior reasoning summary unavailable)";
 
 export function isInternalReasoningPlaceholder(value) {
-  return typeof value === "string" && value.trim() === NON_ANTHROPIC_THINKING_PLACEHOLDER;
+  return isString(value) && value.trim() === NON_ANTHROPIC_THINKING_PLACEHOLDER;
 }

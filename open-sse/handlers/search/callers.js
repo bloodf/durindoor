@@ -39,6 +39,7 @@ import { assertOutboundUrlAllowed } from "../../utils/outboundUrlGuard.js";
  * @param {string[]} [domainFilter]
  * @returns {{includes: string[], excludes: string[]}}
  */
+import { isNumber, isString } from "../../../src/shared/utils/typeChecks.js";
 export function parseDomainFilter(domainFilter) {
   if (!domainFilter?.length) return { includes: [], excludes: [] };
   const includes = domainFilter.filter((d) => !d.startsWith("-"));
@@ -54,11 +55,11 @@ export function parseDomainFilter(domainFilter) {
  */
 export function getProviderSetting(params, key) {
   const fromOptions = params.providerOptions?.[key];
-  if (typeof fromOptions === "string" && fromOptions.trim().length > 0) {
+  if (isString(fromOptions) && fromOptions.trim().length > 0) {
     return fromOptions.trim();
   }
   const fromProviderData = params.providerSpecificData?.[key];
-  if (typeof fromProviderData === "string" && fromProviderData.trim().length > 0) {
+  if (isString(fromProviderData) && fromProviderData.trim().length > 0) {
     return fromProviderData.trim();
   }
   return undefined;
@@ -86,7 +87,7 @@ export function resolveBaseUrl(config, params) {
  * @returns {number|undefined}
  */
 export function toPageNumber(offset, maxResults) {
-  if (typeof offset !== "number" || offset <= 0 || maxResults <= 0) return undefined;
+  if (!isNumber(offset) || offset <= 0 || maxResults <= 0) return undefined;
   return Math.floor(offset / maxResults) + 1;
 }
 
@@ -102,8 +103,8 @@ function buildSerperRequest(config, params) {
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-Key": params.token },
-      body: JSON.stringify(body),
-    },
+      body: JSON.stringify(body)
+    }
   };
 }
 
@@ -116,8 +117,8 @@ function buildBraveRequest(config, params) {
     url: `${resolveBaseUrl(config, params)}${endpoint}?${qp}`,
     init: {
       method: "GET",
-      headers: { Accept: "application/json", "X-Subscription-Token": params.token },
-    },
+      headers: { Accept: "application/json", "X-Subscription-Token": params.token }
+    }
   };
 }
 
@@ -131,8 +132,8 @@ function buildPerplexityRequest(config, params) {
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${params.token}` },
-      body: JSON.stringify(body),
-    },
+      body: JSON.stringify(body)
+    }
   };
 }
 
@@ -143,7 +144,7 @@ function buildExaRequest(config, params) {
     numResults: params.maxResults,
     type: "auto",
     text: true,
-    highlights: true,
+    highlights: true
   };
   if (includes.length) body.includeDomains = includes;
   if (excludes.length) body.excludeDomains = excludes;
@@ -153,8 +154,8 @@ function buildExaRequest(config, params) {
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": params.token },
-      body: JSON.stringify(body),
-    },
+      body: JSON.stringify(body)
+    }
   };
 }
 
@@ -163,7 +164,7 @@ function buildTavilyRequest(config, params) {
   const body = {
     query: params.query,
     max_results: params.maxResults,
-    topic: params.searchType === "news" ? "news" : "general",
+    topic: params.searchType === "news" ? "news" : "general"
   };
   if (includes.length) body.include_domains = includes;
   if (excludes.length) body.exclude_domains = excludes;
@@ -173,8 +174,8 @@ function buildTavilyRequest(config, params) {
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${params.token}` },
-      body: JSON.stringify(body),
-    },
+      body: JSON.stringify(body)
+    }
   };
 }
 
@@ -188,7 +189,7 @@ function buildGooglePseRequest(config, params) {
     key: apiKey,
     cx,
     q: params.query,
-    num: String(Math.min(params.maxResults, 10)),
+    num: String(Math.min(params.maxResults, 10))
   });
   if (params.country) qp.set("gl", params.country.toLowerCase());
   if (params.language) qp.set("hl", params.language);
@@ -197,15 +198,15 @@ function buildGooglePseRequest(config, params) {
     const dateRestrict = dateRestrictMap[params.timeRange];
     if (dateRestrict) qp.set("dateRestrict", dateRestrict);
   }
-  if (typeof params.offset === "number" && params.offset > 0) {
+  if (isNumber(params.offset) && params.offset > 0) {
     qp.set("start", String(Math.min(params.offset + 1, 91)));
   }
   return {
     url: `${resolveBaseUrl(config, params)}?${qp}`,
     init: {
       method: "GET",
-      headers: { Accept: "application/json" },
-    },
+      headers: { Accept: "application/json" }
+    }
   };
 }
 
@@ -216,15 +217,15 @@ function buildLinkupRequest(config, params) {
   const { includes, excludes } = parseDomainFilter(params.domainFilter);
   const requestedDepth = getProviderSetting(params, "depth");
   const depth =
-    requestedDepth && ["fast", "standard", "deep"].includes(requestedDepth)
-      ? requestedDepth
-      : "standard";
+  requestedDepth && ["fast", "standard", "deep"].includes(requestedDepth) ?
+  requestedDepth :
+  "standard";
 
   const body = {
     q: params.query,
     depth,
     outputType: "searchResults",
-    maxResults: params.maxResults,
+    maxResults: params.maxResults
   };
   if (includes.length) body.includeDomains = includes;
   if (excludes.length) body.excludeDomains = excludes;
@@ -245,8 +246,8 @@ function buildLinkupRequest(config, params) {
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(body),
-    },
+      body: JSON.stringify(body)
+    }
   };
 }
 
@@ -257,7 +258,7 @@ function buildSearchApiRequest(config, params) {
   const qp = new URLSearchParams({
     engine: params.searchType === "news" ? "google_news" : "google",
     q: params.query,
-    api_key: apiKey,
+    api_key: apiKey
   });
   if (params.country) qp.set("gl", params.country.toLowerCase());
   if (params.language) qp.set("hl", params.language);
@@ -269,8 +270,8 @@ function buildSearchApiRequest(config, params) {
     url: `${resolveBaseUrl(config, params)}?${qp}`,
     init: {
       method: "GET",
-      headers: { Accept: "application/json" },
-    },
+      headers: { Accept: "application/json" }
+    }
   };
 }
 
@@ -281,11 +282,11 @@ function buildYouComRequest(config, params) {
   const { includes, excludes } = parseDomainFilter(params.domainFilter);
   const qp = new URLSearchParams({
     query: params.query,
-    count: String(Math.min(params.maxResults, 100)),
+    count: String(Math.min(params.maxResults, 100))
   });
 
   if (params.timeRange && params.timeRange !== "any") qp.set("freshness", params.timeRange);
-  if (typeof params.offset === "number" && params.offset > 0 && params.maxResults > 0) {
+  if (isNumber(params.offset) && params.offset > 0 && params.maxResults > 0) {
     qp.set("offset", String(Math.min(Math.floor(params.offset / params.maxResults), 9)));
   }
   if (params.country) qp.set("country", params.country);
@@ -305,8 +306,8 @@ function buildYouComRequest(config, params) {
     url: `${resolveBaseUrl(config, params)}?${qp}`,
     init: {
       method: "GET",
-      headers: { Accept: "application/json", "X-API-Key": apiKey },
-    },
+      headers: { Accept: "application/json", "X-API-Key": apiKey }
+    }
   };
 }
 
@@ -316,7 +317,7 @@ function buildSearxngRequest(config, params) {
   const qp = new URLSearchParams({
     q: params.query,
     format: "json",
-    categories: params.searchType === "news" ? "news" : "general",
+    categories: params.searchType === "news" ? "news" : "general"
   });
   if (params.language) qp.set("language", params.language);
   if (params.timeRange && params.timeRange !== "any") qp.set("time_range", params.timeRange);
@@ -328,8 +329,8 @@ function buildSearxngRequest(config, params) {
     url: `${url}?${qp}`,
     init: {
       method: "GET",
-      headers: { Accept: "application/json" },
-    },
+      headers: { Accept: "application/json" }
+    }
   };
 }
 
@@ -342,8 +343,8 @@ function buildOllamaRequest(config, params) {
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ query: params.query, max_results: params.maxResults }),
-    },
+      body: JSON.stringify({ query: params.query, max_results: params.maxResults })
+    }
   };
 }
 
@@ -360,7 +361,7 @@ const BUILDERS = {
   "searchapi": buildSearchApiRequest,
   "youcom": buildYouComRequest,
   "searxng": buildSearxngRequest,
-  "ollama": buildOllamaRequest,
+  "ollama": buildOllamaRequest
 };
 
 /**
@@ -380,13 +381,13 @@ export function buildSearchRequest(provider, params) {
       method: provider.method || "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(params.token ? { Authorization: `Bearer ${params.token}` } : {}),
+        ...(params.token ? { Authorization: `Bearer ${params.token}` } : null)
       },
       body: JSON.stringify({
         query: params.query,
         max_results: params.maxResults,
-        search_type: params.searchType,
-      }),
-    },
+        search_type: params.searchType
+      })
+    }
   };
 }

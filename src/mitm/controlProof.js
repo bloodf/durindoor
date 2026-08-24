@@ -1,3 +1,4 @@
+const { isString } = require("../shared/utils/typeChecks.cjs");
 const crypto = require("crypto");
 
 const CONTROL_SECRET_ENV = "DURINDOOR_CONTROL_PROOF_SECRET";
@@ -28,7 +29,7 @@ function proofPayload({ method, pathname, remotePort }) {
 }
 
 function isValidSecret(secret) {
-  return typeof secret === "string" && /^[a-f0-9]{64,128}$/i.test(secret);
+  return isString(secret) && /^[a-f0-9]{64,128}$/i.test(secret);
 }
 
 function createControlProof({ method, pathname, remotePort, secret = process.env[CONTROL_SECRET_ENV] }) {
@@ -49,5 +50,5 @@ module.exports = {
   CONTROL_PROOF_HEADER,
   CONTROL_SECRET_ENV,
   createControlProof,
-  verifyControlProof,
+  verifyControlProof
 };

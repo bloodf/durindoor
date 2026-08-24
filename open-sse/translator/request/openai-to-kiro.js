@@ -12,17 +12,18 @@ import {
   buildThinkingSystemPrefix,
   KIRO_AGENTIC_SYSTEM_PROMPT,
   normalizeKiroToolSchema,
-  resolveKiroProfileArn
-} from "../../config/kiroConstants.js";
+  resolveKiroProfileArn } from
+"../../config/kiroConstants.js";
 import { parseDataUri } from "../concerns/image.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 
 /** Render a single tool call as a readable text line. */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 function toolCallToText(name, input) {
   let argStr;
   try {
-    argStr = typeof input === "string" ? input : JSON.stringify(input ?? {});
+    argStr = isString(input) ? input : JSON.stringify(input ?? {});
   } catch {
     argStr = "{}";
   }
@@ -31,9 +32,9 @@ function toolCallToText(name, input) {
 
 /** Render a tool result (string or content-block array) as a text line. */
 function toolResultToText(content) {
-  const text = Array.isArray(content)
-    ? content.map(c => (typeof c === "string" ? c : c.text || "")).join("\n")
-    : (typeof content === "string" ? content : "");
+  const text = Array.isArray(content) ?
+  content.map((c) => isString(c) ? c : c.text || "").join("\n") :
+  isString(content) ? content : "";
   return `[Tool result: ${text}]`;
 }
 
@@ -75,7 +76,7 @@ function flattenToolInteractions(messages) {
             parts.push(c.text || "");
           }
         }
-      } else if (typeof msg.content === "string") {
+      } else if (isString(msg.content)) {
         parts.push(msg.content);
       }
       for (const tc of msg.tool_calls || []) {
@@ -87,10 +88,10 @@ function flattenToolInteractions(messages) {
 
     // User messages: replace tool_result blocks with text, keep text + images.
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
-      const newContent = msg.content.map(c =>
-        c.type === CLAUDE_BLOCK.TOOL_RESULT
-          ? { type: OPENAI_BLOCK.TEXT, text: toolResultToText(c.content) }
-          : c
+      const newContent = msg.content.map((c) =>
+      c.type === CLAUDE_BLOCK.TOOL_RESULT ?
+      { type: OPENAI_BLOCK.TEXT, text: toolResultToText(c.content) } :
+      c
       );
       out.push({ ...msg, content: newContent });
       continue;
@@ -164,8 +165,8 @@ function reconcileOrphanedToolResults(history, currentMessage) {
  * Safely parse JSON string, returning fallback on failure.
  */
 function safeJSONParse(str, fallback) {
-  if (typeof str !== "string") return str ?? fallback;
-  try { return JSON.parse(str); } catch { return fallback; }
+  if (!isString(str)) return str ?? fallback;
+  try {return JSON.parse(str);} catch {return fallback;}
 }
 
 /**
@@ -175,7 +176,7 @@ function safeJSONParse(str, fallback) {
  * response translators can hand the client back the name it sent.
  */
 function sanitizeKiroToolName(name) {
-  return typeof name === "string" ? name.replace(/_{2,}/g, "_") : name;
+  return isString(name) ? name.replace(/_{2,}/g, "_") : name;
 }
 
 /**
@@ -246,7 +247,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         if (!userMsg.userInputMessage.userInputMessageContext) {
           userMsg.userInputMessage.userInputMessageContext = {};
         }
-        userMsg.userInputMessage.userInputMessageContext.tools = tools.map(t => {
+        userMsg.userInputMessage.userInputMessageContext.tools = tools.map((t) => {
           const originalName = t.function?.name || t.name;
           // Kiro rejects consecutive underscores in a tool name. Collapse them
           // and remember the original so response translators can restore the
@@ -309,7 +310,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
     if (role === ROLE.USER) {
       // Extract content
       let content = "";
-      if (typeof msg.content === "string") {
+      if (isString(msg.content)) {
         content = msg.content;
       } else if (Array.isArray(msg.content)) {
         const textParts = [];
@@ -339,12 +340,12 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         content = textParts.join("\n");
 
         // Check for tool_result blocks
-        const toolResultBlocks = msg.content.filter(c => c.type === CLAUDE_BLOCK.TOOL_RESULT);
+        const toolResultBlocks = msg.content.filter((c) => c.type === CLAUDE_BLOCK.TOOL_RESULT);
         if (toolResultBlocks.length > 0) {
-          toolResultBlocks.forEach(block => {
-            const text = Array.isArray(block.content)
-              ? block.content.map(c => c.text || "").join("\n")
-              : (typeof block.content === "string" ? block.content : "");
+          toolResultBlocks.forEach((block) => {
+            const text = Array.isArray(block.content) ?
+            block.content.map((c) => c.text || "").join("\n") :
+            isString(block.content) ? block.content : "";
 
             pendingToolResults.push({
               toolUseId: block.tool_use_id,
@@ -357,7 +358,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
 
       // Handle tool role (from normalized)
       if (msg.role === ROLE.TOOL) {
-        const toolContent = typeof msg.content === "string" ? msg.content : "";
+        const toolContent = isString(msg.content) ? msg.content : "";
         pendingToolResults.push({
           toolUseId: msg.tool_call_id,
           status: "success",
@@ -375,12 +376,12 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
       let toolUses = [];
 
       if (Array.isArray(msg.content)) {
-        const textBlocks = msg.content.filter(c => c.type === OPENAI_BLOCK.TEXT);
-        textContent = textBlocks.map(b => b.text).join("\n").trim();
+        const textBlocks = msg.content.filter((c) => c.type === OPENAI_BLOCK.TEXT);
+        textContent = textBlocks.map((b) => b.text).join("\n").trim();
 
-        const toolUseBlocks = msg.content.filter(c => c.type === CLAUDE_BLOCK.TOOL_USE);
+        const toolUseBlocks = msg.content.filter((c) => c.type === CLAUDE_BLOCK.TOOL_USE);
         toolUses = toolUseBlocks;
-      } else if (typeof msg.content === "string") {
+      } else if (isString(msg.content)) {
         textContent = msg.content.trim();
       }
 
@@ -399,7 +400,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
 
         const lastMsg = history[history.length - 1];
         if (lastMsg?.assistantResponseMessage) {
-          lastMsg.assistantResponseMessage.toolUses = toolUses.map(tc => {
+          lastMsg.assistantResponseMessage.toolUses = toolUses.map((tc) => {
             if (tc.function) {
               return {
                 toolUseId: tc.id || uuidv4(),
@@ -438,12 +439,12 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
   const firstHistoryTools = history[0]?.userInputMessage?.userInputMessageContext?.tools;
 
   // Clean up history for Kiro API compatibility
-  history.forEach(item => {
+  history.forEach((item) => {
     if (item.userInputMessage?.userInputMessageContext?.tools) {
       delete item.userInputMessage.userInputMessageContext.tools;
     }
     if (item.userInputMessage?.userInputMessageContext &&
-        Object.keys(item.userInputMessage.userInputMessageContext).length === 0) {
+    Object.keys(item.userInputMessage.userInputMessageContext).length === 0) {
       delete item.userInputMessage.userInputMessageContext;
     }
     if (item.userInputMessage && !item.userInputMessage.modelId) {
@@ -458,8 +459,8 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
   for (let i = 0; i < history.length; i++) {
     const current = history[i];
     if (current.userInputMessage &&
-        mergedHistory.length > 0 &&
-        mergedHistory[mergedHistory.length - 1].userInputMessage) {
+    mergedHistory.length > 0 &&
+    mergedHistory[mergedHistory.length - 1].userInputMessage) {
       const prev = mergedHistory[mergedHistory.length - 1];
       prev.userInputMessage.content += "\n\n" + current.userInputMessage.content;
       // Merge context: combine toolResults, images, etc.
@@ -489,7 +490,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
     currentMessage = {
       userInputMessage: {
         content: "",
-        modelId: model,
+        modelId: model
       }
     };
   }
@@ -514,7 +515,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
   const resolvedTools = firstHistoryTools;
 
   if (resolvedTools?.length > 0 &&
-      !currentMessage.userInputMessage.userInputMessageContext?.tools) {
+  !currentMessage.userInputMessage.userInputMessageContext?.tools) {
     if (!currentMessage.userInputMessage.userInputMessageContext) {
       currentMessage.userInputMessage.userInputMessageContext = {};
     }
@@ -556,7 +557,7 @@ export function openaiToKiroRequest(model, body, stream, credentials, translatio
     body,
     credentials?.rawHeaders,
     model,
-    translationContext?.thinkingIntent,
+    translationContext?.thinkingIntent
   );
 
   const toolNameMap = new Map();
@@ -593,7 +594,7 @@ export function openaiToKiroRequest(model, body, stream, credentials, translatio
         headers: credentials?.rawHeaders,
         body,
         connectionId: credentials?.connectionId,
-        scope: "kiro",
+        scope: "kiro"
       }),
       currentMessage: {
         userInputMessage: {
@@ -630,7 +631,7 @@ export function openaiToKiroRequest(model, body, stream, credentials, translatio
       value: toolNameMap,
       enumerable: false,
       configurable: true,
-      writable: true,
+      writable: true
     });
   }
 

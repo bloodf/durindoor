@@ -17,6 +17,7 @@
 "use strict";
 
 /** Subprotocol prefix OpenAI realtime clients use to carry the API key. */
+const { isString } = require("./typeChecks.cjs");
 const OPENAI_KEY_SUBPROTO = "openai-insecure-api-key";
 
 /**
@@ -69,13 +70,13 @@ function extractRealtimeKey(req) {
   const headers = req.headers || {};
 
   const auth = headers["authorization"];
-  if (typeof auth === "string" && auth.startsWith("Bearer ")) {
+  if (isString(auth) && auth.startsWith("Bearer ")) {
     return { key: auth.slice(7).trim() || null, protocols: nonKeyProtocols(headers["sec-websocket-protocol"]) };
   }
-  if (typeof headers["x-api-key"] === "string" && headers["x-api-key"]) {
+  if (isString(headers["x-api-key"]) && headers["x-api-key"]) {
     return { key: headers["x-api-key"], protocols: nonKeyProtocols(headers["sec-websocket-protocol"]) };
   }
-  if (typeof headers["x-goog-api-key"] === "string" && headers["x-goog-api-key"]) {
+  if (isString(headers["x-goog-api-key"]) && headers["x-goog-api-key"]) {
     return { key: headers["x-goog-api-key"], protocols: nonKeyProtocols(headers["sec-websocket-protocol"]) };
   }
 
@@ -99,7 +100,7 @@ function extractRealtimeKey(req) {
     const url = new URL(req.url || "/", "http://localhost");
     const q = url.searchParams.get("key");
     if (q) return { key: q, protocols };
-  } catch { /* ignore malformed url */ }
+  } catch {/* ignore malformed url */}
 
   return { key: null, protocols };
 }
@@ -131,10 +132,10 @@ async function probeApiKey({ key, cliToken = null, authUrl, fetchFn = fetch, tim
     const res = await fetchFn(authUrl, {
       method: "GET",
       headers,
-      signal: controller.signal,
+      signal: controller.signal
     });
     let body = null;
-    try { body = await res.json(); } catch { /* non-json */ }
+    try {body = await res.json();} catch {/* non-json */}
     return { ok: res.status === 200, status: res.status, reason: body?.error?.message };
   } catch (error) {
     return { ok: false, status: 503, reason: error?.message || "auth probe failed" };
@@ -191,5 +192,5 @@ module.exports = {
   modelFromUrl,
   nonKeyProtocols,
   probeApiKey,
-  selectProtocol,
+  selectProtocol
 };

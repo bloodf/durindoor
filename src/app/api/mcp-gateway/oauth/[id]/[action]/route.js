@@ -26,17 +26,18 @@ import {
   registerMcpSession,
   getMcpSessionStatus,
   completeMcpSession,
-  clearMcpSession,
-} from "@/lib/oauth/utils/server";
+  clearMcpSession } from
+"@/lib/oauth/utils/server";
 import { discoverAuth } from "@/lib/mcp/gateway/oauthDiscovery";
 import { registerClient } from "@/lib/mcp/gateway/oauthRegister";
 import { storeTokens } from "@/lib/mcp/gateway/oauthRefresh";
 import {
   cimdClientId,
   buildClientMetadataDocument,
-  isPubliclyFetchableBase,
-} from "@/lib/mcp/gateway/oauthCimd";
+  isPubliclyFetchableBase } from
+"@/lib/mcp/gateway/oauthCimd";
 import { selectOAuthPublicBase } from "@/lib/mcp/gateway/oauthPublicBase";
+import { isObject, isString } from "../../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,14 +48,14 @@ const CALLBACK_TIMEOUT_MS = 300_000;
 // tunnel, then reverse-proxy headers and finally the request origin.
 async function appBase(request) {
   const envOverride =
-    process.env.MCP_GATEWAY_OAUTH_PUBLIC_URL ||
-    process.env.OAUTH_PUBLIC_BASE_URL;
+  process.env.MCP_GATEWAY_OAUTH_PUBLIC_URL ||
+  process.env.OAUTH_PUBLIC_BASE_URL;
   try {
     const { getTailscaleStatus, getTunnelStatus } = await import("@/lib/tunnel");
     const [tailscale, tunnel] = await Promise.all([
-      getTailscaleStatus(),
-      getTunnelStatus(),
-    ]);
+    getTailscaleStatus(),
+    getTunnelStatus()]
+    );
     const publicBase = selectOAuthPublicBase({ envOverride, tailscale, tunnel });
     if (publicBase) return publicBase;
   } catch {
@@ -64,9 +65,9 @@ async function appBase(request) {
 
   const url = new URL(request.url);
   const proto =
-    (request.headers.get("x-forwarded-proto") || "")
-      .split(",")[0]
-      .trim() || url.protocol.replace(":", "");
+  (request.headers.get("x-forwarded-proto") || "").
+  split(",")[0].
+  trim() || url.protocol.replace(":", "");
   const host = request.headers.get("x-forwarded-host") || url.host;
   return `${proto}://${host}`;
 }
@@ -106,7 +107,7 @@ async function ensureClient(instance, request) {
     if (instance.oauthTokens.client.cimd) {
       return {
         clientId: instance.oauthTokens.client.clientId,
-        clientSecret: instance.oauthTokens.client.clientSecret || null,
+        clientSecret: instance.oauthTokens.client.clientSecret || null
       };
     }
     const storedRedirect = instance.oauthTokens.client.redirectUri;
@@ -117,7 +118,7 @@ async function ensureClient(instance, request) {
     if (storedRedirect === currentRedirect) {
       return {
         clientId: instance.oauthTokens.client.clientId,
-        clientSecret: instance.oauthTokens.client.clientSecret || null,
+        clientSecret: instance.oauthTokens.client.clientSecret || null
       };
     }
     // Base changed — fall through to re-register a new client.
@@ -144,8 +145,8 @@ async function ensureClient(instance, request) {
         as: {
           token_endpoint: meta.token_endpoint,
           authorization_endpoint: meta.authorization_endpoint,
-          registration_endpoint: meta.registration_endpoint,
-        },
+          registration_endpoint: meta.registration_endpoint
+        }
       };
       await updateInstance(instance.id, { oauthTokens: newTokens });
       return { clientId, clientSecret: null };
@@ -163,13 +164,13 @@ async function ensureClient(instance, request) {
       clientId: reg.clientId,
       clientSecret: reg.clientSecret,
       clientIdIssuedAt: reg.clientIdIssuedAt,
-      redirectUri: redirectUri,
+      redirectUri: redirectUri
     },
     as: {
       token_endpoint: meta.token_endpoint,
       authorization_endpoint: meta.authorization_endpoint,
-      registration_endpoint: meta.registration_endpoint,
-    },
+      registration_endpoint: meta.registration_endpoint
+    }
   };
   await updateInstance(instance.id, { oauthTokens: newTokens });
   return { clientId: reg.clientId, clientSecret: reg.clientSecret };
@@ -179,10 +180,10 @@ function toOauthInstance(raw) {
   const oauthTokens = raw["oauthTokens"];
   return {
     id: raw.id,
-    url: typeof raw["url"] === "string" ? raw["url"] : undefined,
-    oauthTokens: oauthTokens && typeof oauthTokens === "object" && !Array.isArray(oauthTokens)
-      ? oauthTokens
-      : undefined,
+    url: isString(raw["url"]) ? raw["url"] : undefined,
+    oauthTokens: oauthTokens && isObject(oauthTokens) && !Array.isArray(oauthTokens) ?
+    oauthTokens :
+    undefined
   };
 }
 
@@ -200,7 +201,7 @@ export async function GET(request, context) {
       base: await appBase(request),
       instanceId: id,
       slug: raw.slug,
-      scope: raw.oauthTokens?.scope,
+      scope: raw.oauthTokens?.scope
     });
     return NextResponse.json(doc);
   }
@@ -213,7 +214,7 @@ export async function GET(request, context) {
     const base = await appBase(request);
     if (!isOAuthCapableBase(base)) {
       return NextResponse.json({
-        error: "OAuth requires a public HTTPS URL. Set MCP_GATEWAY_OAUTH_PUBLIC_URL env var or access the dashboard through your Cloudflare tunnel.",
+        error: "OAuth requires a public HTTPS URL. Set MCP_GATEWAY_OAUTH_PUBLIC_URL env var or access the dashboard through your Cloudflare tunnel."
       }, { status: 400 });
     }
     let client;
@@ -228,7 +229,7 @@ export async function GET(request, context) {
       token_endpoint: rawAs1?.token_endpoint,
       authorization_endpoint: rawAs1?.authorization_endpoint,
       registration_endpoint: rawAs1?.registration_endpoint,
-      resource: instance.oauthTokens?.resource,
+      resource: instance.oauthTokens?.resource
     };
     if (!meta.authorization_endpoint || !meta.token_endpoint) {
       // Partial AS metadata (e.g. a reuse-path that never stored
@@ -260,8 +261,8 @@ export async function GET(request, context) {
           as: {
             ...storedAs,
             token_endpoint: storedAs.token_endpoint || meta.token_endpoint,
-            authorization_endpoint: storedAs.authorization_endpoint || meta.authorization_endpoint,
-          },
+            authorization_endpoint: storedAs.authorization_endpoint || meta.authorization_endpoint
+          }
         };
         await updateInstance(instance.id, { oauthTokens: newTokens });
       }
@@ -276,7 +277,7 @@ export async function GET(request, context) {
       state: pkce.state,
       // Preserve || semantics from original
       resource: instance.oauthTokens?.resource || instance.url,
-      scope: instance.oauthTokens?.scope,
+      scope: instance.oauthTokens?.scope
     });
     registerMcpSession({
       instanceId: instance.id,
@@ -285,7 +286,7 @@ export async function GET(request, context) {
       redirectUri,
       // Preserve || semantics from original
       resource: instance.oauthTokens?.resource || instance.url,
-      clientId: client.clientId,
+      clientId: client.clientId
     });
     return NextResponse.json({ url: authUrl, state: pkce.state, expiresInMs: CALLBACK_TIMEOUT_MS });
   }
@@ -296,13 +297,13 @@ export async function GET(request, context) {
     const errParam = url.searchParams.get("error");
     if (errParam) {
       return new Response(renderResultPage(false, `OAuth error: ${errParam}`), {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: { "Content-Type": "text/html; charset=utf-8" }
       });
     }
     if (!code || !state) {
       return new Response(renderResultPage(false, "missing code or state"), {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: { "Content-Type": "text/html; charset=utf-8" }
       });
     }
     const raw = await getInstanceById(id);
@@ -312,7 +313,7 @@ export async function GET(request, context) {
     if (!session) {
       return new Response(renderResultPage(false, "CSRF check failed (no session)"), {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: { "Content-Type": "text/html; charset=utf-8" }
       });
     }
     const rawAs2 = instance.oauthTokens?.as;
@@ -320,14 +321,14 @@ export async function GET(request, context) {
       token_endpoint: rawAs2?.token_endpoint,
       authorization_endpoint: rawAs2?.authorization_endpoint,
       registration_endpoint: rawAs2?.registration_endpoint,
-      resource: instance.oauthTokens?.resource,
+      resource: instance.oauthTokens?.resource
     };
     const tokenEndpoint = meta.token_endpoint;
     if (!tokenEndpoint) {
       completeMcpSession(id, state, { status: "error", error: "no token_endpoint stored" });
       return new Response(renderResultPage(false, "no token_endpoint on instance"), {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: { "Content-Type": "text/html; charset=utf-8" }
       });
     }
     // Exchange code → tokens
@@ -336,21 +337,21 @@ export async function GET(request, context) {
       code,
       code_verifier: session.codeVerifier,
       client_id: session.clientId,
-      redirect_uri: session.redirectUri,
+      redirect_uri: session.redirectUri
     });
     if (session.resource) body.set("resource", session.resource);
     try {
       const tokenRes = await fetch(tokenEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: body.toString(),
+        body: body.toString()
       });
       const text = await tokenRes.text();
       if (!tokenRes.ok) {
         completeMcpSession(id, state, { status: "error", error: `token ${tokenRes.status}: ${text?.slice(0, 200)}` });
         return new Response(renderResultPage(false, `token exchange failed: ${tokenRes.status}`), {
           status: 500,
-          headers: { "Content-Type": "text/html; charset=utf-8" },
+          headers: { "Content-Type": "text/html; charset=utf-8" }
         });
       }
       const doc = JSON.parse(text);
@@ -358,7 +359,7 @@ export async function GET(request, context) {
         completeMcpSession(id, state, { status: "error", error: "no access_token in response" });
         return new Response(renderResultPage(false, "no access_token in response"), {
           status: 500,
-          headers: { "Content-Type": "text/html; charset=utf-8" },
+          headers: { "Content-Type": "text/html; charset=utf-8" }
         });
       }
       await storeTokens(id, {
@@ -368,23 +369,23 @@ export async function GET(request, context) {
         scope: doc.scope || session.scope,
         expires_at: doc.expires_in ? Date.now() + Number(doc.expires_in) * 1000 : undefined,
         token_endpoint: tokenEndpoint,
-        client: instance.oauthTokens?.client
-          ? { clientId: instance.oauthTokens.client.clientId, clientSecret: instance.oauthTokens.client.clientSecret || undefined }
-          : undefined,
+        client: instance.oauthTokens?.client ?
+        { clientId: instance.oauthTokens.client.clientId, clientSecret: instance.oauthTokens.client.clientSecret || undefined } :
+        undefined,
         as: { token_endpoint: meta.token_endpoint },
         resource: session.resource,
-        needsReauth: false,
+        needsReauth: false
       });
       completeMcpSession(id, state, { status: "complete", tokens: { hasAccess: true } });
       return new Response(renderResultPage(true, "Connected. You can close this tab."), {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: { "Content-Type": "text/html; charset=utf-8" }
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       completeMcpSession(id, state, { status: "error", error: msg });
       return new Response(renderResultPage(false, `exchange error: ${msg}`), {
         status: 500,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: { "Content-Type": "text/html; charset=utf-8" }
       });
     } finally {
       // Keep the session around briefly so the dashboard can poll status.
@@ -399,7 +400,7 @@ export async function GET(request, context) {
     if (!session) return NextResponse.json({ status: "missing" });
     return NextResponse.json({
       status: session.status,
-      error: session.error || null,
+      error: session.error || null
     });
   }
 

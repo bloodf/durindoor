@@ -8,9 +8,10 @@ import {
   QUOTA_METADATA_KEYS,
   QUOTA_REASON_CODES,
   QUOTA_SOURCE_TYPES,
-  QUOTA_STATES,
-} from "../constants/quota.js";
+  QUOTA_STATES } from
+"../constants/quota.js";
 import { parseAbsoluteTimestamp } from "./absoluteTimestamp.js";
+import { isBoolean, isNumber, isObject, isString } from "./typeChecks.js";
 
 const IDENTIFIER_MAX_LENGTH = 256;
 const TEXT_MAX_LENGTH = 128;
@@ -43,7 +44,7 @@ function invalid(message) {
 }
 
 function isPlainObject(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!value || !isObject(value) || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }
@@ -62,24 +63,24 @@ function rejectUnknownKeys(value, allowed, label) {
 function looksSecretOrRaw(value) {
   const candidate = value.trim();
   const opaqueLongValue = candidate.length >= 48 && /^[A-Za-z0-9._~+/-]+$/.test(candidate);
-  return SECRET_VALUE_PATTERN.test(candidate)
-    || RAW_VALUE_PATTERN.test(candidate)
-    || EMAIL_VALUE_PATTERN.test(candidate)
-    || SENSITIVE_PAYLOAD_PREFIX.test(candidate)
-    || opaqueLongValue;
+  return SECRET_VALUE_PATTERN.test(candidate) ||
+  RAW_VALUE_PATTERN.test(candidate) ||
+  EMAIL_VALUE_PATTERN.test(candidate) ||
+  SENSITIVE_PAYLOAD_PREFIX.test(candidate) ||
+  opaqueLongValue;
 }
 
 export function normalizeQuotaIdentifier(value, label = "quota identifier", {
   fallback,
   requireNamespace = false,
   allowCanonicalSentinels = false,
-  allowedNestedSegments = [],
+  allowedNestedSegments = []
 } = {}) {
   if (value === undefined || value === null) {
     if (fallback !== undefined) return fallback;
     invalid(`${label} is required`);
   }
-  if (typeof value !== "string" || value.length === 0 || value.length > IDENTIFIER_MAX_LENGTH || value.trim() !== value) {
+  if (!isString(value) || value.length === 0 || value.length > IDENTIFIER_MAX_LENGTH || value.trim() !== value) {
     invalid(`${label} must be a bounded non-secret ASCII identifier`);
   }
   if (CANONICAL_SENTINELS.has(value)) {
@@ -98,12 +99,12 @@ export function normalizeQuotaIdentifier(value, label = "quota identifier", {
   }
   const payload = colonIndex < 0 ? value : value.slice(colonIndex + 1);
   const allowedSegments = new Set(allowedNestedSegments.map((segment) => segment.toLowerCase()));
-  const hasSensitiveSegment = value
-    .split(":")
-    .some((segment, index) => (
-      (index === 0 || !allowedSegments.has(segment.toLowerCase())) && SENSITIVE_NAMESPACE_PATTERN.test(segment)
-    ) || looksSecretOrRaw(segment));
-  if (hasSensitiveSegment || looksSecretOrRaw(value) || (payload !== value && looksSecretOrRaw(payload))) {
+  const hasSensitiveSegment = value.
+  split(":").
+  some((segment, index) =>
+  (index === 0 || !allowedSegments.has(segment.toLowerCase())) && SENSITIVE_NAMESPACE_PATTERN.test(segment) ||
+  looksSecretOrRaw(segment));
+  if (hasSensitiveSegment || looksSecretOrRaw(value) || payload !== value && looksSecretOrRaw(payload)) {
     invalid(`${label} must not contain credentials, URLs, email addresses, headers, or raw provider data`);
   }
   return value;
@@ -121,7 +122,7 @@ export function normalizeQuotaSourceId(value, provider, label = "quota source id
 
 function normalizeOptionalNumber(value, label) {
   if (value === undefined || value === null) return null;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) {
+  if (!isNumber(value) || !Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) {
     invalid(`${label} must be a finite non-negative number no greater than Number.MAX_SAFE_INTEGER`);
   }
   return value;
@@ -135,7 +136,7 @@ function normalizeRatio(value) {
 
 function normalizeUnit(value) {
   if (value === undefined || value === null) return null;
-  if (typeof value !== "string" || !UNIT_PATTERN.test(value) || looksSecretOrRaw(value)) {
+  if (!isString(value) || !UNIT_PATTERN.test(value) || looksSecretOrRaw(value)) {
     invalid("amounts.unit must be a short ASCII unit identifier or null");
   }
   return value;
@@ -149,11 +150,11 @@ function normalizeTimestamp(value, label, { optional = false } = {}) {
 }
 
 function normalizeClock(value = Date.now()) {
-  const timestamp = value instanceof Date
-    ? value.getTime()
-    : typeof value === "number"
-      ? value
-      : parseAbsoluteTimestamp(value);
+  const timestamp = value instanceof Date ?
+  value.getTime() :
+  isNumber(value) ?
+  value :
+  parseAbsoluteTimestamp(value);
   const date = new Date(timestamp);
   if (!Number.isFinite(timestamp) || !Number.isFinite(date.getTime())) invalid("now must be a finite in-range epoch value, Date, or absolute timestamp");
   return { timestamp, value: date.toISOString() };
@@ -175,7 +176,7 @@ function normalizeMetadata(value) {
   const normalized = {};
   for (const [key, item] of Object.entries(metadata)) {
     if (key === "recurring") {
-      if (typeof item !== "boolean") invalid("provenance.metadata.recurring must be a boolean");
+      if (!isBoolean(item)) invalid("provenance.metadata.recurring must be a boolean");
       normalized[key] = item;
       continue;
     }
@@ -184,7 +185,7 @@ function normalizeMetadata(value) {
       normalized[key] = item;
       continue;
     }
-    if (typeof item !== "string" || item.length === 0 || item.length > TEXT_MAX_LENGTH || /[\u0000-\u001f\u007f]/.test(item)) {
+    if (!isString(item) || item.length === 0 || item.length > TEXT_MAX_LENGTH || /[\u0000-\u001f\u007f]/.test(item)) {
       invalid(`provenance.metadata.${key} must be a bounded non-empty string`);
     }
     if (looksSecretOrRaw(item)) {
@@ -204,37 +205,37 @@ export function normalizeQuotaIdentity(value, { allowCanonicalSentinels = false 
     accountKey: normalizeQuotaIdentifier(identity.accountKey, "identity.accountKey", {
       fallback: QUOTA_IDENTITY_DEFAULTS.accountKey,
       requireNamespace: true,
-      allowCanonicalSentinels,
+      allowCanonicalSentinels
     }),
     resourceKey: normalizeQuotaIdentifier(identity.resourceKey, "identity.resourceKey", {
       fallback: QUOTA_IDENTITY_DEFAULTS.resourceKey,
       requireNamespace: true,
-      allowCanonicalSentinels,
+      allowCanonicalSentinels
     }),
     // `requests:session` is a quota window name, not credential/session material.
     dimensionKey: normalizeQuotaIdentifier(identity.dimensionKey, "identity.dimensionKey", {
       requireNamespace: true,
-      allowedNestedSegments: ["session"],
-    }),
+      allowedNestedSegments: ["session"]
+    })
   };
 }
 
 export function quotaIdentityKey(identity) {
   const normalized = normalizeQuotaIdentity(identity, { allowCanonicalSentinels: true });
   return JSON.stringify([
-    normalized.connectionId,
-    normalized.provider,
-    normalized.accountKey,
-    normalized.resourceKey,
-    normalized.dimensionKey,
-  ]);
+  normalized.connectionId,
+  normalized.provider,
+  normalized.accountKey,
+  normalized.resourceKey,
+  normalized.dimensionKey]
+  );
 }
 
 /** Strict, side-effect-free normalization for one provider-reported quota row. */
 export function normalizeQuotaSnapshot(value, {
   allowCanonicalSentinels = false,
   now,
-  maxFutureSkewMs = QUOTA_MAX_CLOCK_SKEW_MS,
+  maxFutureSkewMs = QUOTA_MAX_CLOCK_SKEW_MS
 } = {}) {
   const snapshot = requireObject(value, "quota snapshot");
   rejectUnknownKeys(snapshot, SNAPSHOT_KEYS, "quota snapshot");
@@ -267,7 +268,7 @@ export function normalizeQuotaSnapshot(value, {
     if (limit === 0 && remainingRatio !== 0) invalid("zero quota limit requires a zero remaining ratio");
     if (limit > 0) {
       const absoluteRemaining = remaining ?? (used === null ? null : Math.max(limit - used, 0));
-      if (absoluteRemaining !== null && Math.abs((absoluteRemaining / limit) - remainingRatio) > 1e-9) {
+      if (absoluteRemaining !== null && Math.abs(absoluteRemaining / limit - remainingRatio) > 1e-9) {
         invalid("amounts.remainingRatio is inconsistent with the bounded quota amounts");
       }
     }
@@ -304,20 +305,20 @@ export function normalizeQuotaSnapshot(value, {
       observedAt: observed.value,
       staleAt: new Date(effectiveStaleAt).toISOString(),
       resetAt: reset?.value ?? null,
-      cooldownUntil: cooldown?.value ?? null,
+      cooldownUntil: cooldown?.value ?? null
     },
     provenance: {
       sourceType: provenance.sourceType,
       sourceId,
       reasonCode,
-      metadata: normalizeMetadata(provenance.metadata),
-    },
+      metadata: normalizeMetadata(provenance.metadata)
+    }
   };
 }
 
 export function normalizeQuotaFetchState(value, {
   now,
-  maxFutureSkewMs = QUOTA_MAX_CLOCK_SKEW_MS,
+  maxFutureSkewMs = QUOTA_MAX_CLOCK_SKEW_MS
 } = {}) {
   const state = requireObject(value, "quota fetch state");
   rejectUnknownKeys(state, FETCH_STATE_KEYS, "quota fetch state");
@@ -350,7 +351,7 @@ export function normalizeQuotaFetchState(value, {
     invalid("quota fetch state.retryAt must not be more than 24 hours after attemptedAt");
   }
   if (lastSuccess && lastSuccess.timestamp > attempted.timestamp) invalid("quota fetch state.lastSuccessAt must not follow attemptedAt");
-  if ((effectiveLastObserved === null) !== (lastSuccess === null)) {
+  if (effectiveLastObserved === null !== (lastSuccess === null)) {
     invalid("quota fetch state success history must include both lastObservedAt and lastSuccessAt");
   }
   if (effectiveLastObserved && lastSuccess && effectiveLastObserved.timestamp > lastSuccess.timestamp) {
@@ -372,7 +373,7 @@ export function normalizeQuotaFetchState(value, {
     attemptedAt: attempted.value,
     retryAt: retry?.value ?? null,
     lastSuccessAt: lastSuccess?.value ?? null,
-    reasonCode,
+    reasonCode
   };
 }
 
@@ -383,6 +384,6 @@ export function canonicalizeQuotaNow(value = Date.now()) {
 export function isQuotaSnapshotFresh(snapshot, now = Date.now()) {
   const clock = normalizeClock(now);
   const normalized = normalizeQuotaSnapshot(snapshot, { allowCanonicalSentinels: true });
-  return parseAbsoluteTimestamp(normalized.timing.observedAt) <= clock.timestamp
-    && parseAbsoluteTimestamp(normalized.timing.staleAt) > clock.timestamp;
+  return parseAbsoluteTimestamp(normalized.timing.observedAt) <= clock.timestamp &&
+  parseAbsoluteTimestamp(normalized.timing.staleAt) > clock.timestamp;
 }

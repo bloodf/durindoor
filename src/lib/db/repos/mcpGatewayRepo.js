@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 function rowToKey(row) {
   if (!row) return null;
@@ -10,7 +11,7 @@ function rowToKey(row) {
     key: row.key,
     machineId: row.machineId,
     isActive: row.isActive === 1 || row.isActive === true,
-    createdAt: row.createdAt,
+    createdAt: row.createdAt
   };
 }
 
@@ -37,7 +38,7 @@ export async function createGatewayKey(name, machineId) {
     key,
     machineId,
     isActive: true,
-    createdAt: new Date().toISOString(),
+    createdAt: new Date().toISOString()
   };
   db.run(
     `INSERT INTO mcpGatewayKeys(id, name, key, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
@@ -58,7 +59,7 @@ export async function deleteGatewayKey(id) {
  * persisted row. Returns null on miss or inactive.
  */
 export async function validateGatewayKey(rawKey) {
-  if (!rawKey || typeof rawKey !== "string") return null;
+  if (!rawKey || !isString(rawKey)) return null;
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM mcpGatewayKeys WHERE key = ?`, [rawKey]);
   if (!row) return null;
@@ -110,7 +111,7 @@ export async function setGrants(keyId, instanceIds, toolAllowlists) {
     if (Array.isArray(instanceIds) && instanceIds.length > 0) {
       instanceIds.forEach((id, i) => {
         const allow = toolAllowlists?.[i];
-        const allowJson = (Array.isArray(allow) && allow.length > 0) ? stringifyJson(allow.map(String)) : null;
+        const allowJson = Array.isArray(allow) && allow.length > 0 ? stringifyJson(allow.map(String)) : null;
         db.run(
           `INSERT OR IGNORE INTO mcpKeyGrants(keyId, instanceId, toolAllowlist) VALUES(?, ?, ?)`,
           [keyId, id, allowJson]

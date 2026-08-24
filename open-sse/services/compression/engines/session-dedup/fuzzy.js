@@ -2,6 +2,7 @@
 import { storeBlock } from "../ccr/index.js";
 
 /** Hard cap on blocks compared in the fuzzy O(n²) pass (fail-safe bound). */
+import { isBoolean, isNumber, isString } from "../../../../../src/shared/utils/typeChecks.js";
 export const MAX_FUZZY_BLOCKS = 200;
 
 /** FNV-1a 32-bit hash (deterministic, cheap, no Math.random). */
@@ -71,7 +72,7 @@ export function applyFuzzyPass(messages, opts) {
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i];
       if (m.role === "system") continue;
-      if (typeof m.content === "string" && m.content.length >= opts.minBlockChars) {
+      if (isString(m.content) && m.content.length >= opts.minBlockChars) {
         blocks.push({ text: m.content, index: i });
       }
     }
@@ -89,7 +90,7 @@ export function applyFuzzyPass(messages, opts) {
     if (replacements.size === 0) return { messages, fuzzyCount: 0 };
 
     const out = messages.map((m, i) =>
-      replacements.has(i) ? { ...m, content: replacements.get(i) } : m
+    replacements.has(i) ? { ...m, content: replacements.get(i) } : m
     );
     return { messages: out, fuzzyCount: replacements.size };
   } catch {
@@ -104,13 +105,13 @@ export function applyFuzzyPass(messages, opts) {
  */
 export function runFuzzyPass(messages, stepConfig, minBlockChars, principalId) {
   const raw = stepConfig["fuzzy"];
-  const cfg = typeof raw === "boolean" ? { enabled: raw } : raw;
+  const cfg = isBoolean(raw) ? { enabled: raw } : raw;
   if (!cfg?.enabled) return { messages, fuzzyCount: 0 };
   return applyFuzzyPass(messages, {
-    minJaccard: typeof cfg.minJaccard === "number" ? cfg.minJaccard : 0.85,
-    shingleSize: typeof cfg.shingleSize === "number" ? cfg.shingleSize : 3,
+    minJaccard: isNumber(cfg.minJaccard) ? cfg.minJaccard : 0.85,
+    shingleSize: isNumber(cfg.shingleSize) ? cfg.shingleSize : 3,
     maxBlocks: MAX_FUZZY_BLOCKS,
     minBlockChars,
-    principalId,
+    principalId
   });
 }

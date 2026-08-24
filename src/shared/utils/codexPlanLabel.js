@@ -11,8 +11,9 @@
  * @param {unknown} rawPlan - e.g. connection.providerSpecificData.chatgptPlanType or quota.plan
  * @returns {string} display label, or "" when the badge should be hidden
  */
+import { isString } from "./typeChecks.js";
 export function getCodexPlanLabel(isCodex, rawPlan) {
-  if (!isCodex || typeof rawPlan !== "string") return "";
+  if (!isCodex || !isString(rawPlan)) return "";
   const plan = rawPlan.trim();
   if (!plan || plan.toLowerCase() === "unknown") return "";
   return plan;

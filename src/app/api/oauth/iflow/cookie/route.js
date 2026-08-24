@@ -6,11 +6,12 @@ import { createProviderConnection } from "@/models";
  * POST /api/oauth/iflow/cookie
  * Body: { cookie: "BXAuth=xxx; ..." }
  */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { cookie } = await request.json();
 
-    if (!cookie || typeof cookie !== "string") {
+    if (!cookie || !isString(cookie)) {
       return NextResponse.json({ error: "Cookie is required" }, { status: 400 });
     }
 
@@ -37,8 +38,8 @@ export async function POST(request) {
         "Connection": "keep-alive",
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-      },
+        "Sec-Fetch-Site": "same-origin"
+      }
     });
 
     if (!getResponse.ok) {
@@ -74,9 +75,9 @@ export async function POST(request) {
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
         "Origin": "https://platform.iflow.cn",
-        "Referer": "https://platform.iflow.cn/",
+        "Referer": "https://platform.iflow.cn/"
       },
-      body: JSON.stringify({ name: keyData.name }),
+      body: JSON.stringify({ name: keyData.name })
     });
 
     if (!postResponse.ok) {
@@ -114,10 +115,10 @@ export async function POST(request) {
       apiKey: refreshedKey.apiKey,
       providerSpecificData: {
         cookie: cookieToSave,
-        expireTime: refreshedKey.expireTime,
+        expireTime: refreshedKey.expireTime
       },
       testStatus: "active",
-      isActive: true,
+      isActive: true
     });
 
     return NextResponse.json({
@@ -127,8 +128,8 @@ export async function POST(request) {
         provider: connection.provider,
         email: connection.email,
         apiKey: refreshedKey.apiKey.substring(0, 10) + "...", // masked
-        expireTime: refreshedKey.expireTime,
-      },
+        expireTime: refreshedKey.expireTime
+      }
     });
   } catch (error) {
     console.error("iFlow cookie auth error:", error);

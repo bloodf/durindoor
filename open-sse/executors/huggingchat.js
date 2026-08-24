@@ -8,9 +8,10 @@ import {
   jsonResponse,
   mergeUpstreamExtraHeaders,
   normalizeSessionCookieHeader,
-  sanitizeErrorMessage,
-} from "./websession-utils.js";
+  sanitizeErrorMessage } from
+"./websession-utils.js";
 import huggingchatRegistry from "../providers/registry/huggingchat.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const HUGGINGFACE_BASE = "https://huggingface.co";
 const CONVERSATION_URL = `${HUGGINGFACE_BASE}/chat/conversation`;
@@ -18,10 +19,10 @@ const API_CONVERSATIONS_URL = `${HUGGINGFACE_BASE}/chat/api/v2/conversations`;
 const DEFAULT_COOKIE_NAME = "hf-chat";
 const DEFAULT_MODEL = huggingchatRegistry.models?.[0]?.id || "baidu/ERNIE-4.5-VL-424B-A47B-Base-PT";
 const USER_AGENT =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 function isEncryptedCredentialBlob(value) {
-  return typeof value === "string" && value.trim().startsWith("enc:v1:");
+  return isString(value) && value.trim().startsWith("enc:v1:");
 }
 
 function buildConversationPrompt(messages) {
@@ -31,8 +32,8 @@ function buildConversationPrompt(messages) {
     const role = String(msg.role || "user");
     const text = extractTextFromContent(msg.content);
     if (!text) continue;
-    if (role === "system" || role === "developer") systemParts.push(text);
-    else if (role === "user" || role === "assistant") conversationParts.push({ role, content: text });
+    if (role === "system" || role === "developer") systemParts.push(text);else
+    if (role === "user" || role === "assistant") conversationParts.push({ role, content: text });
   }
   if (conversationParts.length === 0) return { inputs: systemParts.join("\n\n"), systemPrompt: null };
   if (conversationParts.length === 1 && conversationParts[0].role === "user") {
@@ -40,7 +41,7 @@ function buildConversationPrompt(messages) {
   }
   return {
     inputs: [...conversationParts.map((part) => `${part.role === "user" ? "User" : "Assistant"}: ${part.content}`), "Assistant:"].join("\n\n"),
-    systemPrompt: systemParts.join("\n\n") || null,
+    systemPrompt: systemParts.join("\n\n") || null
   };
 }
 
@@ -49,7 +50,7 @@ function splitCombinedSetCookieHeader(header) {
 }
 
 function getSetCookieHeaders(headers) {
-  if (typeof headers.getSetCookie === "function") return headers.getSetCookie().filter(Boolean);
+  if (isFunction(headers.getSetCookie)) return headers.getSetCookie().filter(Boolean);
   const combined = headers.get("set-cookie");
   return combined ? splitCombinedSetCookieHeader(combined) : [];
 }
@@ -76,17 +77,17 @@ function mergeCookieHeaderWithSetCookie(cookieHeader, setCookieHeaders) {
 }
 
 function unwrapSuperjsonPayload(value) {
-  return value && typeof value === "object" && !Array.isArray(value) && value.json && typeof value.json === "object"
-    ? value.json
-    : value;
+  return value && isObject(value) && !Array.isArray(value) && value.json && isObject(value.json) ?
+  value.json :
+  value;
 }
 
 function extractInitialParentMessageId(value) {
   const payload = unwrapSuperjsonPayload(value);
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
-  if (typeof payload.rootMessageId === "string" && payload.rootMessageId.trim()) return payload.rootMessageId;
+  if (!payload || !isObject(payload) || Array.isArray(payload)) return null;
+  if (isString(payload.rootMessageId) && payload.rootMessageId.trim()) return payload.rootMessageId;
   const lastMessage = Array.isArray(payload.messages) ? payload.messages.at(-1) : null;
-  return typeof lastMessage?.id === "string" && lastMessage.id.trim() ? lastMessage.id : null;
+  return isString(lastMessage?.id) && lastMessage.id.trim() ? lastMessage.id : null;
 }
 
 async function readUpstreamErrorDetails(response) {
@@ -102,7 +103,7 @@ async function readUpstreamErrorDetails(response) {
 }
 
 async function fetchInitialParentMessageId(conversationId, headers, signal, proxyOptions = null) {
-    const res = await fetchWithTimeout(`${API_CONVERSATIONS_URL}/${conversationId}`, { method: "GET", headers, signal }, { proxyOptions });
+  const res = await fetchWithTimeout(`${API_CONVERSATIONS_URL}/${conversationId}`, { method: "GET", headers, signal }, { proxyOptions });
   if (!res.ok) return null;
   const text = await res.text().catch(() => "");
   if (!text) return null;
@@ -143,18 +144,18 @@ export class HuggingChatExecutor extends BaseExecutor {
       Cookie: cookieHeader,
       "User-Agent": USER_AGENT,
       Origin: HUGGINGFACE_BASE,
-      Referer: `${HUGGINGFACE_BASE}/chat/`,
+      Referer: `${HUGGINGFACE_BASE}/chat/`
     };
     let conversationId;
     try {
       const createBody = { model: resolvedModel };
       if (systemPrompt) createBody.preprompt = systemPrompt;
-            const createRes = await fetchWithTimeout(CONVERSATION_URL, {
-              method: "POST",
-              headers: { ...baseHeaders, "Content-Type": "application/json" },
-              body: JSON.stringify(createBody),
-              signal,
-            }, { proxyOptions });
+      const createRes = await fetchWithTimeout(CONVERSATION_URL, {
+        method: "POST",
+        headers: { ...baseHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify(createBody),
+        signal
+      }, { proxyOptions });
       if (!createRes.ok) {
         const upstreamError = await readUpstreamErrorDetails(createRes);
         const auth = createRes.status === 401 || createRes.status === 403;
@@ -189,7 +190,7 @@ export class HuggingChatExecutor extends BaseExecutor {
       selectedMcpServerNames: [],
       selectedMcpServers: [],
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      id: parentMessageId,
+      id: parentMessageId
     };
     const formData = new FormData();
     formData.append("data", JSON.stringify(sendDataPayload));
@@ -197,7 +198,7 @@ export class HuggingChatExecutor extends BaseExecutor {
 
     let upstreamResponse;
     try {
-            upstreamResponse = await fetchWithTimeout(messageUrl, { method: "POST", headers: baseHeaders, body: formData, signal }, { proxyOptions });
+      upstreamResponse = await fetchWithTimeout(messageUrl, { method: "POST", headers: baseHeaders, body: formData, signal }, { proxyOptions });
     } catch (err) {
       log?.error?.("HUGGINGCHAT", `Message send failed: ${err?.message || err}`);
       return { response: errorJson(502, `HuggingChat connection failed: ${err?.message || err}`), url: messageUrl, headers: baseHeaders, transformedBody: sendDataPayload };
@@ -205,11 +206,11 @@ export class HuggingChatExecutor extends BaseExecutor {
 
     if (!upstreamResponse.ok) {
       const upstreamError = await readUpstreamErrorDetails(upstreamResponse);
-      let message = upstreamResponse.status === 401 || upstreamResponse.status === 403
-        ? "HuggingChat auth failed; session cookie may be expired."
-        : upstreamResponse.status === 429
-          ? "HuggingChat rate limited. Wait and retry."
-          : `HuggingChat returned HTTP ${upstreamResponse.status}`;
+      let message = upstreamResponse.status === 401 || upstreamResponse.status === 403 ?
+      "HuggingChat auth failed; session cookie may be expired." :
+      upstreamResponse.status === 429 ?
+      "HuggingChat rate limited. Wait and retry." :
+      `HuggingChat returned HTTP ${upstreamResponse.status}`;
       if (upstreamError.message) message = `${message}: ${upstreamError.message}`;
       return { response: errorJson(upstreamResponse.status, message, "upstream_error", { details: upstreamError.details }), url: messageUrl, headers: baseHeaders, transformedBody: sendDataPayload };
     }
@@ -229,7 +230,7 @@ export class HuggingChatExecutor extends BaseExecutor {
           } finally {
             controller.close();
           }
-        },
+        }
       });
       return { response: new Response(sseStream, { status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" } }), url: messageUrl, headers: baseHeaders, transformedBody: sendDataPayload };
     }
@@ -244,11 +245,11 @@ export class HuggingChatExecutor extends BaseExecutor {
         created,
         model: resolvedModel,
         choices: [{ index: 0, message, finish_reason: "stop" }],
-        usage: { prompt_tokens: estimateTokens(inputs), completion_tokens: estimateTokens(text + reasoning), total_tokens: estimateTokens(inputs) + estimateTokens(text + reasoning) },
+        usage: { prompt_tokens: estimateTokens(inputs), completion_tokens: estimateTokens(text + reasoning), total_tokens: estimateTokens(inputs) + estimateTokens(text + reasoning) }
       }),
       url: messageUrl,
       headers: baseHeaders,
-      transformedBody: sendDataPayload,
+      transformedBody: sendDataPayload
     };
   }
 }

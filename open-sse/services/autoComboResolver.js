@@ -27,6 +27,7 @@
  */
 
 import { MODEL_FAMILIES, detectModelFamily, isProviderOverrideFamily } from "./autoComboFamilies.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const AUTO_COMBO_PREFIX = "auto/";
 
@@ -34,7 +35,7 @@ const MODEL_FAMILY_SET = new Set(MODEL_FAMILIES);
 const FAMILY_SEGMENT_RE = /^[a-z0-9]+$/;
 
 function parseFamilySegment(modelStr) {
-  if (typeof modelStr !== "string" || !modelStr.startsWith(AUTO_COMBO_PREFIX)) return null;
+  if (!isString(modelStr) || !modelStr.startsWith(AUTO_COMBO_PREFIX)) return null;
   const seg = modelStr.slice(AUTO_COMBO_PREFIX.length).toLowerCase();
   // Only the canonical advertised families are valid auto-combo ids: an unknown
   // `auto/<x>` must NOT be treated as a combo (it would fail-fast empty and mask
@@ -64,13 +65,13 @@ export function familyOfAutoId(modelStr) {
 // `fireworks/accounts/fireworks/models/glm-5p2`, not `accounts/...` with the
 // alias dropped.
 function catalogToCandidates(catalog) {
-  if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)) return [];
+  if (!catalog || !isObject(catalog) || Array.isArray(catalog)) return [];
   const out = [];
   for (const [alias, models] of Object.entries(catalog)) {
     if (!Array.isArray(models)) continue;
     for (const entry of models) {
-      const id = typeof entry === "string" ? entry : entry?.id;
-      if (typeof id !== "string" || id.length === 0) continue;
+      const id = isString(entry) ? entry : entry?.id;
+      if (!isString(id) || id.length === 0) continue;
       const slash = id.indexOf("/");
       if (slash !== -1 && id.slice(0, slash) === alias) {
         // Already `<alias>/<model>` — keep as-is, never double-prefix.
@@ -92,7 +93,7 @@ function catalogToCandidates(catalog) {
  * @returns {string[]} provider-qualified members, deduped; [] when none match
  */
 export function resolveAutoCombo(family, catalog = {}, _settings) {
-  if (typeof family !== "string") return [];
+  if (!isString(family)) return [];
   family = family.toLowerCase();
   if (!MODEL_FAMILY_SET.has(family)) return [];
 

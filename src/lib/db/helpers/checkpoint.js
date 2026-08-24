@@ -3,9 +3,10 @@
  * Safety backups must treat that as a failure because copying data.sqlite at
  * that point may omit committed pages still held in the WAL file.
  */
+import { isObject } from "../../../shared/utils/typeChecks.js";
 export function assertCheckpointComplete(result, driver = "sqlite") {
   const row = Array.isArray(result) ? result[0] : result;
-  if (!row || typeof row !== "object") {
+  if (!row || !isObject(row)) {
     throw new Error(`[DB][checkpoint] ${driver} returned no status row`);
   }
   const busy = Number(row.busy ?? row.BUSY ?? Object.values(row)[0]);

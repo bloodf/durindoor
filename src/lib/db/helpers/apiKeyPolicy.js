@@ -6,15 +6,16 @@
  * preserved for forward compatibility, while the currently enforced fields
  * are normalized to a single well-defined shape.
  */
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 export function normalizeApiKeyPolicy(value) {
   if (value == null) return null;
-  if (typeof value !== "object" || Array.isArray(value)) {
+  if (!isObject(value) || Array.isArray(value)) {
     throw new TypeError("API-key policy must be an object or null");
   }
 
   const normalized = { ...value };
   if (Object.hasOwn(value, "allowedModels")) {
-    if (!Array.isArray(value.allowedModels) || value.allowedModels.some((model) => typeof model !== "string" || !model.trim())) {
+    if (!Array.isArray(value.allowedModels) || value.allowedModels.some((model) => !isString(model) || !model.trim())) {
       throw new TypeError("API-key policy allowedModels must be an array of non-empty strings");
     }
     normalized.allowedModels = [...new Set(value.allowedModels.map((model) => model.trim()))];
@@ -26,7 +27,7 @@ export function normalizeApiKeyPolicy(value) {
       continue;
     }
     const number = Number(value[field]);
-    if (!Number.isFinite(number) || number < 0 || (field === "maxTokens" && !Number.isSafeInteger(number))) {
+    if (!Number.isFinite(number) || number < 0 || field === "maxTokens" && !Number.isSafeInteger(number)) {
       throw new TypeError(`API-key policy ${field} must be a non-negative ${field === "maxTokens" ? "integer" : "number"}`);
     }
     normalized[field] = number;
@@ -46,7 +47,7 @@ export function validateApiKeyPolicy(value) {
 /** Merge a management patch against the latest stored policy. */
 export function mergeApiKeyPolicy(existing, patch) {
   const base = normalizeApiKeyPolicy(existing) || {};
-  if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
+  if (!patch || !isObject(patch) || Array.isArray(patch)) {
     throw new TypeError("API-key policy patch must be an object");
   }
   return normalizeApiKeyPolicy({ ...base, ...patch });

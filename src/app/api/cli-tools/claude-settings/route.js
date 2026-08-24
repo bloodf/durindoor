@@ -7,6 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 
@@ -22,9 +23,9 @@ const checkClaudeInstalled = async () => {
   try {
     const isWindows = os.platform() === "win32";
     const command = isWindows ? "where claude" : "which claude";
-    const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
-      : process.env;
+    const env = isWindows ?
+    { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` } :
+    process.env;
     await execAsync(command, { windowsHide: true, env });
     return true;
   } catch {
@@ -55,23 +56,23 @@ const readSettings = async () => {
 export async function GET() {
   try {
     const isInstalled = await checkClaudeInstalled();
-    
+
     if (!isInstalled) {
       return NextResponse.json({
         installed: false,
         settings: null,
-        message: "Claude CLI is not installed",
+        message: "Claude CLI is not installed"
       });
     }
 
     const settings = await readSettings();
-    const has9Router = !!(settings?.env?.ANTHROPIC_BASE_URL);
+    const has9Router = !!settings?.env?.ANTHROPIC_BASE_URL;
 
     return NextResponse.json({
       installed: true,
       settings: redactSecrets(settings),
       has9Router: has9Router,
-      settingsPath: getClaudeSettingsPath(),
+      settingsPath: getClaudeSettingsPath()
     });
   } catch (error) {
     console.log("Error checking claude settings:", error);
@@ -86,8 +87,8 @@ export async function GET() {
 export async function POST(request) {
   try {
     const { env, maxContextTokens } = await request.json();
-    
-    if (!env || typeof env !== "object") {
+
+    if (!env || !isObject(env)) {
       return NextResponse.json(
         { error: "Invalid env object" },
         { status: 400 }
@@ -113,9 +114,9 @@ export async function POST(request) {
 
     // Normalize ANTHROPIC_BASE_URL to ensure /v1 suffix
     if (env.ANTHROPIC_BASE_URL) {
-      env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL.endsWith("/v1")
-        ? env.ANTHROPIC_BASE_URL
-        : `${env.ANTHROPIC_BASE_URL}/v1`;
+      env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL.endsWith("/v1") ?
+      env.ANTHROPIC_BASE_URL :
+      `${env.ANTHROPIC_BASE_URL}/v1`;
     }
 
     // Strip the DurinDoor provider prefix (e.g. "cc/") from the
@@ -126,12 +127,12 @@ export async function POST(request) {
     // ("claude-opus-4-8") still routes correctly through DurinDoor, so the prefix
     // must not be persisted into Claude Code's settings.
     for (const key of [
-      "ANTHROPIC_DEFAULT_OPUS_MODEL",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-      "ANTHROPIC_DEFAULT_FABLE_MODEL",
-    ]) {
-      if (typeof env[key] === "string") {
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL"])
+    {
+      if (isString(env[key])) {
         env[key] = env[key].replace(/^cc\//, "");
       }
     }
@@ -142,8 +143,8 @@ export async function POST(request) {
       hasCompletedOnboarding: true,
       env: {
         ...(currentSettings.env || {}),
-        ...env,
-      },
+        ...env
+      }
     };
 
     // CLAUDE_CODE_MAX_CONTEXT_TOKENS — only set when a concrete value is chosen;
@@ -159,7 +160,7 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      message: "Settings updated successfully",
+      message: "Settings updated successfully"
     });
   } catch (error) {
     console.log("Error updating claude settings:", error);
@@ -172,14 +173,14 @@ export async function POST(request) {
 
 // Fields to remove when resetting
 const RESET_ENV_KEYS = [
-  "ANTHROPIC_BASE_URL",
-  "ANTHROPIC_AUTH_TOKEN",
-  "ANTHROPIC_DEFAULT_OPUS_MODEL",
-  "ANTHROPIC_DEFAULT_SONNET_MODEL",
-  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-  "API_TIMEOUT_MS",
-  "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
-];
+"ANTHROPIC_BASE_URL",
+"ANTHROPIC_AUTH_TOKEN",
+"ANTHROPIC_DEFAULT_OPUS_MODEL",
+"ANTHROPIC_DEFAULT_SONNET_MODEL",
+"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+"API_TIMEOUT_MS",
+"CLAUDE_CODE_MAX_CONTEXT_TOKENS"];
+
 
 // DELETE - Reset settings (remove env fields)
 export async function DELETE() {
@@ -195,7 +196,7 @@ export async function DELETE() {
       if (error.code === "ENOENT") {
         return NextResponse.json({
           success: true,
-          message: "No settings file to reset",
+          message: "No settings file to reset"
         });
       }
       throw error;
@@ -206,7 +207,7 @@ export async function DELETE() {
       RESET_ENV_KEYS.forEach((key) => {
         delete currentSettings.env[key];
       });
-      
+
       // Clean up empty env object
       if (Object.keys(currentSettings.env).length === 0) {
         delete currentSettings.env;
@@ -218,7 +219,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: "Settings reset successfully",
+      message: "Settings reset successfully"
     });
   } catch (error) {
     console.log("Error resetting claude settings:", error);

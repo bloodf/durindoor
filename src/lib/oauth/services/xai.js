@@ -18,6 +18,7 @@ import { spinner as createSpinner } from "../utils/ui.js";
  *  4. Exchange code with form-urlencoded body
  *  5. id_token email decode (no signature verify, mirrors Go)
  */
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 const BASE64_BLOCK_SIZE = 4;
 
@@ -55,23 +56,23 @@ export async function discoverEndpoints(proxyOptions = null) {
   try {
     const res = await fetch(XAI_CONFIG.discoveryUrl, {
       headers: { Accept: "application/json" },
-      proxyOptions,
+      proxyOptions
     });
     if (res.ok) {
       const data = await res.json();
       cachedDiscovery = {
         authorizeUrl: validateOAuthEndpoint(data.authorization_endpoint, "authorization_endpoint"),
-        tokenUrl: validateOAuthEndpoint(data.token_endpoint, "token_endpoint"),
+        tokenUrl: validateOAuthEndpoint(data.token_endpoint, "token_endpoint")
       };
       return cachedDiscovery;
     }
   } catch {
+
     // fall through to static fallback
   }
-
   cachedDiscovery = {
     authorizeUrl: XAI_CONFIG.authorizeUrl,
-    tokenUrl: XAI_CONFIG.tokenUrl,
+    tokenUrl: XAI_CONFIG.tokenUrl
   };
   return cachedDiscovery;
 }
@@ -81,12 +82,12 @@ export async function discoverEndpoints(proxyOptions = null) {
  * mirrors CLIProxyAPI Go behavior. Returns undefined if not parseable.
  */
 export function decodeIdTokenEmail(idToken) {
-  if (!idToken || typeof idToken !== "string") return undefined;
+  if (!idToken || !isString(idToken)) return undefined;
   const parts = idToken.split(".");
   if (parts.length !== 3) return undefined;
   try {
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padding = (BASE64_BLOCK_SIZE - (base64.length % BASE64_BLOCK_SIZE)) % BASE64_BLOCK_SIZE;
+    const padding = (BASE64_BLOCK_SIZE - base64.length % BASE64_BLOCK_SIZE) % BASE64_BLOCK_SIZE;
     const json = Buffer.from(base64 + "=".repeat(padding), "base64").toString("utf8");
     const payload = JSON.parse(json);
     return payload.email || payload.preferred_username || payload.sub || undefined;
@@ -115,11 +116,11 @@ export class XaiService extends OAuthService {
       state,
       nonce,
       plan: "generic",
-      referrer: "cli-proxy-api",
+      referrer: "cli-proxy-api"
     };
-    const qs = Object.entries(params)
-      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-      .join("&");
+    const qs = Object.entries(params).
+    map(([k, v]) => `${k}=${encodeURIComponent(v)}`).
+    join("&");
     return `${authorizeUrl}?${qs}`;
   }
 
@@ -132,16 +133,16 @@ export class XaiService extends OAuthService {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
+        Accept: "application/json"
       },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: XAI_CONFIG.clientId,
         code,
         redirect_uri: redirectUri,
-        code_verifier: codeVerifier,
+        code_verifier: codeVerifier
       }),
-      proxyOptions,
+      proxyOptions
     });
 
     if (!res.ok) {
@@ -160,14 +161,14 @@ export class XaiService extends OAuthService {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
+        Accept: "application/json"
       },
       body: new URLSearchParams({
         grant_type: "refresh_token",
         client_id: XAI_CONFIG.clientId,
-        refresh_token: refreshToken,
+        refresh_token: refreshToken
       }),
-      proxyOptions,
+      proxyOptions
     });
     if (!res.ok) {
       const err = await res.text();
@@ -227,7 +228,7 @@ export class XaiService extends OAuthService {
         tokenUrl,
         code: callbackParams.code,
         redirectUri,
-        codeVerifier,
+        codeVerifier
       });
 
       const email = decodeIdTokenEmail(tokens.id_token);

@@ -8,11 +8,12 @@ import { U, parseResetTime } from "./shared.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
 
 // Claude API config (urls from registry, apiVersion is header logic kept here)
+import { isNumber, isObject } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_CONFIG = {
   oauthUsageUrl: U("claude").oauthUrl,
   usageUrl: U("claude").orgUrl,
   settingsUrl: U("claude").settingsUrl,
-  apiVersion: ANTHROPIC_API_VERSION,
+  apiVersion: ANTHROPIC_API_VERSION
 };
 
 // Primary OAuth usage endpoint headers. Reuses the exported CLI fingerprint so
@@ -21,7 +22,7 @@ const CLAUDE_CONFIG = {
 function buildOAuthUsageHeaders(accessToken) {
   return {
     "Authorization": `Bearer ${accessToken}`,
-    ...CLAUDE_CLI_SPOOF_HEADERS,
+    ...CLAUDE_CLI_SPOOF_HEADERS
   };
 }
 
@@ -42,17 +43,17 @@ function getOAuthCacheEntry(key) {
   const entry = oauthQuotaCache.get(key);
   if (!entry) return null;
   if (
-    Date.now() - entry.cachedAt >= OAUTH_QUOTA_CACHE_TTL_MS &&
-    Date.now() >= entry.rateLimitedUntil
-  ) {
+  Date.now() - entry.cachedAt >= OAUTH_QUOTA_CACHE_TTL_MS &&
+  Date.now() >= entry.rateLimitedUntil)
+  {
     oauthQuotaCache.delete(key);
     return null;
   }
   if (
-    !isOAuthRateLimited(entry) &&
-    !entry.data?.quotas &&
-    entry.rateLimitedUntil
-  ) {
+  !isOAuthRateLimited(entry) &&
+  !entry.data?.quotas &&
+  entry.rateLimitedUntil)
+  {
     oauthQuotaCache.delete(key);
     return null;
   }
@@ -100,9 +101,9 @@ export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oau
   const cacheKey = getOAuthCacheKey(accessToken);
   const cached = getOAuthCacheEntry(cacheKey);
   if (cached && isOAuthRateLimited(cached)) {
-    return Promise.resolve(cached.data?.quotas
-      ? makeStaleResponse(cached, "Rate limited; showing cached quota.")
-      : cached.data);
+    return Promise.resolve(cached.data?.quotas ?
+    makeStaleResponse(cached, "Rate limited; showing cached quota.") :
+    cached.data);
   }
   if (!options.force && cached) return Promise.resolve(cached.data);
 
@@ -121,7 +122,7 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
   try {
     const oauthResponse = await proxyAwareFetch(CLAUDE_CONFIG.oauthUsageUrl, {
       method: "GET",
-      headers: buildOAuthUsageHeaders(accessToken),
+      headers: buildOAuthUsageHeaders(accessToken)
     }, proxyOptions);
 
     if (oauthResponse.ok) {
@@ -130,7 +131,7 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
 
       // utilization = % USED (e.g. 87 means 87% used, 13% remaining)
       const hasUtilization = (window) =>
-        window && typeof window === "object" && typeof window.utilization === "number";
+      window && isObject(window) && isNumber(window.utilization);
 
       const createQuotaObject = (window) => {
         const used = window.utilization;
@@ -141,7 +142,7 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
           remaining,
           remainingPercentage: remaining,
           resetAt: parseResetTime(window.resets_at),
-          unlimited: false,
+          unlimited: false
         };
       };
 
@@ -164,7 +165,7 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
       const result = {
         plan: "Claude Code",
         extraUsage: data.extra_usage ?? null,
-        quotas,
+        quotas
       };
       setOAuthCacheEntry(cacheKey, result);
       return result;
@@ -176,9 +177,9 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
     if (status === 429) {
       const result = cached?.data || { message: "Rate limited, try again later." };
       setOAuthRateLimited(cacheKey, result);
-      return cached
-        ? makeStaleResponse(cached, "Rate limited; showing cached quota.")
-        : result;
+      return cached ?
+      makeStaleResponse(cached, "Rate limited; showing cached quota.") :
+      result;
     }
 
     if (status >= 500 && status < 600) {
@@ -217,8 +218,8 @@ async function getClaudeUsageLegacy(accessToken, proxyOptions = null) {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${accessToken}`,
-        "anthropic-version": CLAUDE_CONFIG.apiVersion,
-      },
+        "anthropic-version": CLAUDE_CONFIG.apiVersion
+      }
     }, proxyOptions);
 
     if (settingsResponse.ok) {
@@ -231,8 +232,8 @@ async function getClaudeUsageLegacy(accessToken, proxyOptions = null) {
             method: "GET",
             headers: {
               "Authorization": `Bearer ${accessToken}`,
-              "anthropic-version": CLAUDE_CONFIG.apiVersion,
-            },
+              "anthropic-version": CLAUDE_CONFIG.apiVersion
+            }
           },
           proxyOptions
         );
@@ -242,7 +243,7 @@ async function getClaudeUsageLegacy(accessToken, proxyOptions = null) {
           return {
             plan: settings.plan || "Unknown",
             organization: settings.organization_name,
-            quotas: usage,
+            quotas: usage
           };
         }
       }
@@ -250,7 +251,7 @@ async function getClaudeUsageLegacy(accessToken, proxyOptions = null) {
       return {
         plan: settings.plan || "Unknown",
         organization: settings.organization_name,
-        message: "Claude connected. Usage details require admin access.",
+        message: "Claude connected. Usage details require admin access."
       };
     }
 

@@ -1,6 +1,6 @@
 import { validateFirecrawlBaseUrl, validateFirecrawlHeaders, parseFirecrawlHeaders } from "open-sse/shared/firecrawlConfig.js";
 // Returns normalized shape across all providers
-
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_FORMAT = "markdown";
 
@@ -34,7 +34,7 @@ function sanitizeHeaders(headers) {
   if (!headers) return headers;
   const out = {};
   for (const [k, v] of Object.entries(headers)) {
-    out[k] = typeof v === "string" ? v.replace(/[^\x00-\xFF]/g, "").trim() : v;
+    out[k] = isString(v) ? v.replace(/[^\x00-\xFF]/g, "").trim() : v;
   }
   return out;
 }
@@ -54,7 +54,7 @@ async function tryFetch(url, init, timeoutMs) {
 }
 
 function truncate(text, max) {
-  if (!text || typeof text !== "string") return text || "";
+  if (!text || !isString(text)) return text || "";
   if (!max || max <= 0) return text;
   return text.length > max ? text.slice(0, max) : text;
 }
@@ -79,7 +79,7 @@ function buildData({ provider, url, title, format, text, costUsd, responseMs, up
 async function readJsonOrText(res) {
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
-    try { return { json: await res.json() }; } catch { return { text: "" }; }
+    try {return { json: await res.json() };} catch {return { text: "" };}
   }
   return { text: await res.text() };
 }
@@ -97,7 +97,7 @@ async function readJsonOrText(res) {
  * @returns {Promise<FetchResult>}
  */
 export async function handleFetchCore({ url, format, maxCharacters, provider, providerConfig, credentials, log }) {
-  if (!url || typeof url !== "string") {
+  if (!url || !isString(url)) {
     return { success: false, status: 400, error: "url is required" };
   }
   if (!provider) {
@@ -165,7 +165,7 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
     headers.authorization = `Bearer ${apiKey}`;
   }
 
-  if (customHeaders && typeof customHeaders === "object") {
+  if (customHeaders && isObject(customHeaders)) {
     Object.assign(headers, customHeaders);
   }
 
@@ -267,7 +267,7 @@ async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {})
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : null)
     },
     body: JSON.stringify({ urls: [url], extract_depth: "basic" })
   }, timeoutMs);
@@ -297,7 +297,7 @@ async function runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...(apiKey ? { "x-api-key": apiKey } : {})
+      ...(apiKey ? { "x-api-key": apiKey } : null)
     },
     body: JSON.stringify({ ids: [url], text: true })
   }, timeoutMs);

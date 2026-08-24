@@ -10,6 +10,7 @@ import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { isFunction, isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 
 async function proxyAgentForWebSocket(proxyUrl) {
   try {
@@ -29,7 +30,7 @@ const COPILOT_BASE = "https://copilot.microsoft.com";
 const COPILOT_START_URL = `${COPILOT_BASE}/c/api/start`;
 const COPILOT_WS_URL = "wss://copilot.microsoft.com/c/api/chat?api-version=2";
 const COPILOT_USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 const MODEL_MODE_MAP = {
   copilot: "chat",
@@ -43,7 +44,7 @@ const MODEL_MODE_MAP = {
   "copilot-smart": "smart",
   "copilot-gpt5": "smart",
   "gpt-5": "smart",
-  "copilot-study": "chat",
+  "copilot-study": "chat"
 };
 
 let WebSocketCtorForTesting = null;
@@ -76,10 +77,10 @@ export function solveHashcash(parameter, difficulty) {
  * progressing while a challenge is evaluated.
  */
 export async function solveHashcashAsync(
-  parameter,
-  difficulty,
-  { maxIterations = 10_000_000, maxDurationMs = 2_000, yieldEvery = 2_000 } = {},
-) {
+parameter,
+difficulty,
+{ maxIterations = 10_000_000, maxDurationMs = 2_000, yieldEvery = 2_000 } = {})
+{
   if (!Number.isInteger(difficulty) || difficulty < 1 || difficulty > 8) return null;
   const prefix = "0".repeat(difficulty);
   const deadline = Date.now() + Math.max(1, maxDurationMs);
@@ -106,9 +107,9 @@ export function extractAccessToken(credential) {
 }
 
 export function sessionPoolKey(token) {
-  return token && token.length > 0
-    ? createHash("sha256").update(String(token)).digest("hex")
-    : "anonymous";
+  return token && token.length > 0 ?
+  createHash("sha256").update(String(token)).digest("hex") :
+  "anonymous";
 }
 
 async function resolveWebSocketCtor() {
@@ -123,49 +124,49 @@ function makeSseChunk(model, delta, finishReason = null) {
     object: "chat.completion.chunk",
     created: Math.floor(Date.now() / 1000),
     model,
-    choices: [{ index: 0, delta, finish_reason: finishReason }],
+    choices: [{ index: 0, delta, finish_reason: finishReason }]
   })}\n\n`;
 }
 
 function jsonError(message, status = 502) {
   return new Response(JSON.stringify({ error: { message } }), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" }
   });
 }
 
 function messageContentText(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (part?.type === "text" && typeof part.text === "string") return part.text;
-        return JSON.stringify(part ?? "");
-      })
-      .filter(Boolean)
-      .join("\n");
+    return content.
+    map((part) => {
+      if (isString(part)) return part;
+      if (part?.type === "text" && isString(part.text)) return part.text;
+      return JSON.stringify(part ?? "");
+    }).
+    filter(Boolean).
+    join("\n");
   }
   return content == null ? "" : JSON.stringify(content);
 }
 
 export function flattenPrompt(body) {
   const messages = body?.messages || [];
-  const systemText = messages
-    .filter((m) => m.role === "system" || m.role === "developer")
-    .map((m) => messageContentText(m.content))
-    .filter(Boolean)
-    .join("\n");
-  const turns = messages
-    .filter((m) => m.role !== "system" && m.role !== "developer")
-    .map((m) => {
-      const text = messageContentText(m.content).trim();
-      if (!text) return "";
-      const role = m.role === "assistant" ? "Assistant" : m.role === "tool" ? "Tool" : "User";
-      return `[${role}]\n${text}`;
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  const systemText = messages.
+  filter((m) => m.role === "system" || m.role === "developer").
+  map((m) => messageContentText(m.content)).
+  filter(Boolean).
+  join("\n");
+  const turns = messages.
+  filter((m) => m.role !== "system" && m.role !== "developer").
+  map((m) => {
+    const text = messageContentText(m.content).trim();
+    if (!text) return "";
+    const role = m.role === "assistant" ? "Assistant" : m.role === "tool" ? "Tool" : "User";
+    return `[${role}]\n${text}`;
+  }).
+  filter(Boolean).
+  join("\n\n");
   return `${systemText ? `[System Instructions]\n${systemText}\n\n` : ""}${turns}`;
 }
 
@@ -174,15 +175,15 @@ function timeoutSignal(parentSignal, timeoutMs) {
   const timeout = setTimeout(() => controller.abort(new Error("Copilot session start timeout")), timeoutMs);
   const onAbort = () => controller.abort(parentSignal?.reason || new Error("Request aborted"));
   if (parentSignal) {
-    if (parentSignal.aborted) onAbort();
-    else parentSignal.addEventListener("abort", onAbort, { once: true });
+    if (parentSignal.aborted) onAbort();else
+    parentSignal.addEventListener("abort", onAbort, { once: true });
   }
   return {
     signal: controller.signal,
     cleanup: () => {
       clearTimeout(timeout);
       parentSignal?.removeEventListener?.("abort", onAbort);
-    },
+    }
   };
 }
 
@@ -207,7 +208,7 @@ export class CopilotWebExecutor extends BaseExecutor {
       "Content-Type": "application/json",
       "User-Agent": COPILOT_USER_AGENT,
       Origin: COPILOT_BASE,
-      Referer: `${COPILOT_BASE}/`,
+      Referer: `${COPILOT_BASE}/`
     };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
@@ -219,9 +220,9 @@ export class CopilotWebExecutor extends BaseExecutor {
         body: JSON.stringify({
           timeZone: "America/New_York",
           startNewConversation: true,
-          teenSupportEnabled: false,
+          teenSupportEnabled: false
         }),
-        signal: scopedSignal.signal,
+        signal: scopedSignal.signal
       }, proxyOptions);
 
       if (!response.ok) {
@@ -235,15 +236,15 @@ export class CopilotWebExecutor extends BaseExecutor {
       const conversationId = data.currentConversationId || data.conversationId;
       if (!conversationId) throw new Error("Copilot /c/api/start returned no conversationId");
 
-      const setCookies = typeof response.headers.getSetCookie === "function"
-        ? response.headers.getSetCookie()
-        : [];
+      const setCookies = isFunction(response.headers.getSetCookie) ?
+      response.headers.getSetCookie() :
+      [];
       return {
         conversationId,
         cookies: setCookies.map((cookie) => cookie.split(";")[0]).join("; "),
         remainingTurns: data.remainingTurns ?? 1000,
         isBlocked: data.isBlocked ?? false,
-        createdAt: Date.now(),
+        createdAt: Date.now()
       };
     } finally {
       scopedSignal.cleanup();
@@ -267,7 +268,7 @@ export class CopilotWebExecutor extends BaseExecutor {
         const cleanup = () => {
           if (timeout) clearTimeout(timeout);
           if (ws) {
-            try { ws.close(); } catch { /* ignore */ }
+            try {ws.close();} catch {/* ignore */}
           }
         };
         const finish = () => {
@@ -283,7 +284,7 @@ export class CopilotWebExecutor extends BaseExecutor {
           settled = true;
           cleanup();
           controller.enqueue(encoder.encode(
-            `data: ${JSON.stringify({ error: { message: sanitizeErrorMessage(reason) } })}\n\n`,
+            `data: ${JSON.stringify({ error: { message: sanitizeErrorMessage(reason) } })}\n\n`
           ));
           controller.close();
         };
@@ -294,7 +295,7 @@ export class CopilotWebExecutor extends BaseExecutor {
             event: "send",
             conversationId,
             content: [{ type: "text", text: prompt }],
-            mode,
+            mode
           }));
         };
         const resetStallTimer = () => {
@@ -331,7 +332,7 @@ export class CopilotWebExecutor extends BaseExecutor {
             resetStallTimer();
             const raw = message?.data ?? message;
             try {
-              const event = typeof raw === "string" ? JSON.parse(raw) : JSON.parse(String(raw));
+              const event = isString(raw) ? JSON.parse(raw) : JSON.parse(String(raw));
               if (event.event === "appendText" || event.event === "replaceText") {
                 const text = event.text || "";
                 let delta = "";
@@ -361,7 +362,7 @@ export class CopilotWebExecutor extends BaseExecutor {
                   ws.send(JSON.stringify({
                     event: "challengeResponse",
                     token: String(solution),
-                    method: "hashcash",
+                    method: "hashcash"
                   }));
                   chatSent = false;
                   sendChat();
@@ -375,9 +376,9 @@ export class CopilotWebExecutor extends BaseExecutor {
                 abort(event.error || "Copilot stream error");
               }
             } catch {
+
               // Ignore unparsable provider frames.
-            }
-          };
+            }};
           const onError = (err) => abort(err?.message || "Copilot WebSocket error");
           const onClose = () => {
             if (!doneReceived) {
@@ -387,7 +388,7 @@ export class CopilotWebExecutor extends BaseExecutor {
             }
           };
 
-          if (typeof ws.on === "function") {
+          if (isFunction(ws.on)) {
             ws.on("open", onOpen);
             ws.on("message", onMessage);
             ws.on("error", onError);
@@ -401,7 +402,7 @@ export class CopilotWebExecutor extends BaseExecutor {
         } catch (err) {
           abort(err instanceof Error ? err.message : "Failed to connect to Copilot");
         }
-      },
+      }
     }, { highWaterMark: 16384 });
   }
 
@@ -411,7 +412,7 @@ export class CopilotWebExecutor extends BaseExecutor {
     const mode = getCopilotMode(model);
     const stream = input.stream !== false;
     const rawCredential =
-      input.credentials?.apiKey || input.credentials?.providerSpecificData?.cookie || "";
+    input.credentials?.apiKey || input.credentials?.providerSpecificData?.cookie || "";
     const accessToken = extractAccessToken(rawCredential);
     const prompt = flattenPrompt(body).trim();
 
@@ -424,13 +425,13 @@ export class CopilotWebExecutor extends BaseExecutor {
       const session = await this.getSession(accessToken || undefined, input.signal, input.proxyOptions);
       conversationId = session.conversationId;
     } catch (err) {
-      const upstreamStatus = typeof err?.status === "number" ? err.status : undefined;
+      const upstreamStatus = isNumber(err?.status) ? err.status : undefined;
       const status = upstreamStatus === 401 || upstreamStatus === 403 ? upstreamStatus : 502;
       return {
         response: jsonError(sanitizeErrorMessage(err instanceof Error ? err.message : "Failed to start Copilot conversation"), status),
         url: COPILOT_START_URL,
         headers: accessToken ? { Authorization: "[redacted]" } : {},
-        transformedBody: { conversationId: null, mode, prompt: prompt.slice(0, 100) },
+        transformedBody: { conversationId: null, mode, prompt: prompt.slice(0, 100) }
       };
     }
 
@@ -442,17 +443,17 @@ export class CopilotWebExecutor extends BaseExecutor {
       accessToken: accessToken || undefined,
       signal: input.signal,
       stream,
-      proxyOptions: input.proxyOptions,
+      proxyOptions: input.proxyOptions
     });
 
     if (stream) {
       return {
         response: new Response(wsStream, {
-          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
         }),
         url: COPILOT_WS_URL,
         headers: {},
-        transformedBody: { conversationId, mode, prompt: prompt.slice(0, 100) },
+        transformedBody: { conversationId, mode, prompt: prompt.slice(0, 100) }
       };
     }
 
@@ -473,15 +474,15 @@ export class CopilotWebExecutor extends BaseExecutor {
               response: sseErrorResponse(parsed.error),
               url: COPILOT_WS_URL,
               headers: {},
-              transformedBody: { conversationId, mode, prompt: prompt.slice(0, 100) },
+              transformedBody: { conversationId, mode, prompt: prompt.slice(0, 100) }
             };
           }
           const content = parsed.choices?.[0]?.delta?.content;
-          if (typeof content === "string") fullText += content;
+          if (isString(content)) fullText += content;
         } catch {
+
           // Skip malformed SSE lines.
-        }
-      }
+        }}
     }
 
     return {
@@ -491,11 +492,11 @@ export class CopilotWebExecutor extends BaseExecutor {
         created: Math.floor(Date.now() / 1000),
         model,
         choices: [{ index: 0, message: { role: "assistant", content: fullText || "(empty response)" }, finish_reason: "stop" }],
-        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
       }), { headers: { "Content-Type": "application/json" } }),
       url: COPILOT_WS_URL,
       headers: {},
-      transformedBody: { conversationId, mode, prompt: prompt.slice(0, 100) },
+      transformedBody: { conversationId, mode, prompt: prompt.slice(0, 100) }
     };
   }
 }

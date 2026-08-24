@@ -11,13 +11,14 @@ import { getEmbeddingAdapter } from "./embeddingProviders/index.js";
  *
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export async function handleEmbeddingsCore({
   body,
   modelInfo,
   credentials,
   log,
   onCredentialsRefreshed,
-  onRequestSuccess,
+  onRequestSuccess
 }) {
   const { provider, model } = modelInfo;
   const proxyOptions = resolveCredentialProxyOptions(credentials);
@@ -27,7 +28,7 @@ export async function handleEmbeddingsCore({
   if (!input) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
   }
-  if (typeof input !== "string" && !Array.isArray(input)) {
+  if (!isString(input) && !Array.isArray(input)) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "input must be a string or array of strings");
   }
 
@@ -46,7 +47,7 @@ export async function handleEmbeddingsCore({
     input,
     encoding_format: body.encoding_format || "float",
     dimensions: body.dimensions,
-    input_type: body.input_type,
+    input_type: body.input_type
   });
 
   log?.debug?.("EMBEDDINGS", `${provider.toUpperCase()} | ${model} | input_type=${Array.isArray(input) ? `array[${input.length}]` : "string"}`);
@@ -57,7 +58,7 @@ export async function handleEmbeddingsCore({
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
-      proxyOptions,
+      proxyOptions
     });
   } catch (error) {
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
@@ -68,10 +69,10 @@ export async function handleEmbeddingsCore({
   // Handle 401/403 — try token refresh (skip for noAuth providers)
   const executor = getExecutor(provider);
   if (
-    !executor?.noAuth &&
-    (providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
-      providerResponse.status === HTTP_STATUS.FORBIDDEN)
-  ) {
+  !executor?.noAuth && (
+  providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
+  providerResponse.status === HTTP_STATUS.FORBIDDEN))
+  {
     const newCredentials = await refreshWithRetry(
       () => executor.refreshCredentials(credentials, log, proxyOptions),
       3,
@@ -90,7 +91,7 @@ export async function handleEmbeddingsCore({
           method: "POST",
           headers: retryHeaders,
           body: JSON.stringify(requestBody),
-          proxyOptions,
+          proxyOptions
         });
       } catch {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
@@ -124,8 +125,8 @@ export async function handleEmbeddingsCore({
     response: new Response(JSON.stringify(normalized), {
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    }),
+        "Access-Control-Allow-Origin": "*"
+      }
+    })
   };
 }

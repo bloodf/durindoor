@@ -10,12 +10,13 @@ import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
+import { isString } from "../utils/typeChecks.js";
 const PROVIDER_ORDER = [
-  ...Object.keys(OAUTH_PROVIDERS),
-  ...Object.keys(FREE_PROVIDERS),
-  ...Object.keys(FREE_TIER_PROVIDERS),
-  ...Object.keys(APIKEY_PROVIDERS),
-];
+...Object.keys(OAUTH_PROVIDERS),
+...Object.keys(FREE_PROVIDERS),
+...Object.keys(FREE_TIER_PROVIDERS),
+...Object.keys(APIKEY_PROVIDERS)];
+
 
 /**
  * No-auth, non-hidden providers from both free categories, deduplicated for combo pickers.
@@ -23,9 +24,9 @@ const PROVIDER_ORDER = [
  * Reuses the registry-backed generic-selection predicate; ported from upstream PR #3280.
  */
 export const NO_AUTH_PROVIDER_IDS = [...new Set([
-  ...Object.keys(FREE_PROVIDERS).filter((id) => FREE_PROVIDERS[id].noAuth && !isHiddenProvider(id)),
-  ...Object.keys(FREE_TIER_PROVIDERS).filter((id) => FREE_TIER_PROVIDERS[id].noAuth && !isHiddenProvider(id)),
-])];
+...Object.keys(FREE_PROVIDERS).filter((id) => FREE_PROVIDERS[id].noAuth && !isHiddenProvider(id)),
+...Object.keys(FREE_TIER_PROVIDERS).filter((id) => FREE_TIER_PROVIDERS[id].noAuth && !isHiddenProvider(id))]
+)];
 
 // kindFilter (UI service kind) → /api/v1/models slug. webSearch/webFetch share
 // the `web` slug server-side. null/absent → root LLM list.
@@ -36,7 +37,7 @@ const KIND_TO_SLUG = {
   embedding: "embedding",
   imageToText: "image-to-text",
   webSearch: "web",
-  webFetch: "web",
+  webFetch: "web"
 };
 
 // Web provider-as-model rows are routed by providerId but cataloged as
@@ -54,7 +55,7 @@ export default function ModelSelectModal({
   modelAliases = {},
   kindFilter = null,
   addedModelValues = [],
-  closeOnSelect = true,
+  closeOnSelect = true
 }) {
   // Filter activeProviders by serviceKinds when kindFilter set (e.g. "webSearch", "webFetch")
   const filteredActiveProviders = useMemo(() => {
@@ -110,9 +111,9 @@ export default function ModelSelectModal({
         if (!modelsRes.ok) throw new Error(`models ${modelsRes.status}`);
         const modelsData = await modelsRes.json();
         if (!Array.isArray(modelsData?.data) || ignore) return;
-        const ids = modelsData.data
-          .map((m) => m.id)
-          .filter((id) => typeof id === "string");
+        const ids = modelsData.data.
+        map((m) => m.id).
+        filter((id) => isString(id));
         setVisibleModelIds(new Set(ids));
       } catch (error) {
         if (error?.name === "AbortError") return;
@@ -177,7 +178,7 @@ export default function ModelSelectModal({
   const fetchProviderModels = async (providerId) => {
     try {
       // Find the connection ID for this provider
-      const connection = activeProviders.find(p => p.provider === providerId);
+      const connection = activeProviders.find((p) => p.provider === providerId);
       if (!connection?.id) return null;
 
       const res = await fetch(`/api/providers/${connection.id}/models`);
@@ -198,9 +199,9 @@ export default function ModelSelectModal({
     if (!isOpen) return;
 
     const loadCustomProviderModels = async () => {
-      const customProviderIds = activeProviders
-        .filter(p => isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider) || p.provider === "hcnsec")
-        .map(p => p.provider);
+      const customProviderIds = activeProviders.
+      filter((p) => isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider) || p.provider === "hcnsec").
+      map((p) => p.provider);
 
       if (customProviderIds.length === 0) return;
 
@@ -260,20 +261,20 @@ export default function ModelSelectModal({
     };
 
     // Get all active provider IDs from connections (filtered by kindFilter if set)
-    const activeConnectionIds = filteredActiveProviders.map(p => p.provider);
+    const activeConnectionIds = filteredActiveProviders.map((p) => p.provider);
 
     // No-auth providers: filter by kindFilter as well
-    const noAuthIds = kindFilter
-      ? NO_AUTH_PROVIDER_IDS.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter))
-      : NO_AUTH_PROVIDER_IDS;
+    const noAuthIds = kindFilter ?
+    NO_AUTH_PROVIDER_IDS.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter)) :
+    NO_AUTH_PROVIDER_IDS;
 
     // Show connected providers and no-auth providers. Custom compatible-provider
     // nodes are covered by activeConnectionIds (connection.provider === node id),
     // so they appear only with a non-disabled connection — the parent already
     // filtered disabled connections out of activeProviders (DurinDoor #2526).
     const providerIdsToShow = new Set([
-      ...activeConnectionIds,           // Connected providers (incl. active custom nodes)
-      ...noAuthIds,                     // No-auth providers (kind-filtered)
+    ...activeConnectionIds, // Connected providers (incl. active custom nodes)
+    ...noAuthIds // No-auth providers (kind-filtered)
     ]);
 
     // Sort by PROVIDER_ORDER
@@ -294,40 +295,40 @@ export default function ModelSelectModal({
           name: providerInfo.name,
           alias,
           color: providerInfo.color,
-          models: [{ id: providerId, name: providerInfo.name, value: providerId }],
+          models: [{ id: providerId, name: providerInfo.name, value: providerId }]
         };
         return;
       }
 
       if (providerInfo.passthroughModels) {
-        const aliasModels = Object.entries(modelAliases)
-          .filter(([, fullModel]) => typeof fullModel === "string" && fullModel.startsWith(`${alias}/`))
-          .map(([aliasName, fullModel]) => ({
-            id: fullModel.replace(`${alias}/`, ""),
-            name: aliasName,
-            value: fullModel,
-          }));
-        const customRegisteredModels = customModels
-          .filter((m) => m.providerAlias === alias)
-          .map((m) => ({
-            id: m.id,
-            name: m.name || m.id,
-            value: `${alias}/${m.id}`,
-            kind: getModelKind(m),
-            isCustom: true,
-          }));
+        const aliasModels = Object.entries(modelAliases).
+        filter(([, fullModel]) => isString(fullModel) && fullModel.startsWith(`${alias}/`)).
+        map(([aliasName, fullModel]) => ({
+          id: fullModel.replace(`${alias}/`, ""),
+          name: aliasName,
+          value: fullModel
+        }));
+        const customRegisteredModels = customModels.
+        filter((m) => m.providerAlias === alias).
+        map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          value: `${alias}/${m.id}`,
+          kind: getModelKind(m),
+          isCustom: true
+        }));
 
         // For typed kinds, only include hardcoded typed models (aliases are typically LLM-only and lack type info)
         let combined = aliasModels;
         if (kindFilter && TYPED_KINDS.has(kindFilter)) {
           const registeredTyped = customRegisteredModels.filter((m) => getModelKind(m) === kindFilter);
           combined = [
-            ...registeredTyped,
-            ...getModelsByProviderId(providerId)
-            .filter((m) => getModelKind(m) === kindFilter)
-            .map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) }))
-            .filter((m) => !registeredTyped.some((registered) => registered.value === m.value)),
-          ];
+          ...registeredTyped,
+          ...getModelsByProviderId(providerId).
+          filter((m) => getModelKind(m) === kindFilter).
+          map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })).
+          filter((m) => !registeredTyped.some((registered) => registered.value === m.value))];
+
           // Fallback: provider-as-model when no hardcoded models match (tts/image/webFetch only)
           if (combined.length === 0 && ALLOW_PROVIDER_FALLBACK_KINDS.has(kindFilter)) {
             const supports = (providerInfo.serviceKinds || ["llm"]).includes(kindFilter);
@@ -335,71 +336,71 @@ export default function ModelSelectModal({
           }
           // Augment with live-fetched models of the same kind when available
           const dynamicModels = fetchedModels[providerId] || [];
-          const dynamicModelEntries = dynamicModels
-            .map((m) => ({
-              id: m.id || m.slug || m.model || m.name,
-              name: m.name || m.displayName || m.id,
-              value: `${alias}/${m.id || m.slug || m.model || m.name}`,
-              kind: getModelKind(m),
-            }))
-            .filter((m) => m.id && getModelKind(m) === kindFilter && !combined.some((existing) => existing.value === m.value));
+          const dynamicModelEntries = dynamicModels.
+          map((m) => ({
+            id: m.id || m.slug || m.model || m.name,
+            name: m.name || m.displayName || m.id,
+            value: `${alias}/${m.id || m.slug || m.model || m.name}`,
+            kind: getModelKind(m)
+          })).
+          filter((m) => m.id && getModelKind(m) === kindFilter && !combined.some((existing) => existing.value === m.value));
           combined = [...combined, ...dynamicModelEntries];
         } else {
           // LLM/null kind: merge hardcoded models (e.g. mimo-free → mimo-auto) with user-added models
           const registeredLlms = customRegisteredModels.filter((m) => !getModelKind(m) || getModelKind(m) === "llm");
           const seen = new Set([...aliasModels, ...registeredLlms].map((m) => m.value));
-          const hardcoded = getModelsByProviderId(providerId)
-            .filter((m) => !getModelKind(m) || getModelKind(m) === "llm")
-            .map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) }))
-            .filter((m) => !seen.has(m.value));
+          const hardcoded = getModelsByProviderId(providerId).
+          filter((m) => !getModelKind(m) || getModelKind(m) === "llm").
+          map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })).
+          filter((m) => !seen.has(m.value));
           combined = [...registeredLlms, ...aliasModels.filter((m) => !registeredLlms.some((registered) => registered.value === m.value)), ...hardcoded];
           // Augment with live-fetched LLM models when available
           const dynamicModels = fetchedModels[providerId] || [];
-          const dynamicModelEntries = dynamicModels
-            .map((m) => ({
-              id: m.id || m.slug || m.model || m.name,
-              name: m.name || m.displayName || m.id,
-              value: `${alias}/${m.id || m.slug || m.model || m.name}`,
-              kind: getModelKind(m),
-            }))
-            .filter((m) => {
-              if (!m.id) return false;
-              if (getModelKind(m) && getModelKind(m) !== "llm") return false;
-              return !combined.some((existing) => existing.value === m.value);
-            });
+          const dynamicModelEntries = dynamicModels.
+          map((m) => ({
+            id: m.id || m.slug || m.model || m.name,
+            name: m.name || m.displayName || m.id,
+            value: `${alias}/${m.id || m.slug || m.model || m.name}`,
+            kind: getModelKind(m)
+          })).
+          filter((m) => {
+            if (!m.id) return false;
+            if (getModelKind(m) && getModelKind(m) !== "llm") return false;
+            return !combined.some((existing) => existing.value === m.value);
+          });
           combined = [...combined, ...dynamicModelEntries];
         }
 
         if (combined.length > 0) {
           // Check for custom name from providerNodes (for compatible providers)
-          const matchedNode = providerNodes.find(node => node.id === providerId);
+          const matchedNode = providerNodes.find((node) => node.id === providerId);
           const displayName = matchedNode?.name || providerInfo.name;
 
           groups[providerId] = {
             name: displayName,
             alias: alias,
             color: providerInfo.color,
-            models: combined,
+            models: combined
           };
         }
       } else if (isCustomProvider) {
         // Custom (openai/anthropic-compatible) providers are LLM-only — skip for typed media kinds
         if (kindFilter && TYPED_KINDS.has(kindFilter)) return;
         // Find connection object to get prefix synchronously without waiting for providerNodes fetch
-        const connection = activeProviders.find(p => p.provider === providerId);
-        const matchedNode = providerNodes.find(node => node.id === providerId);
+        const connection = activeProviders.find((p) => p.provider === providerId);
+        const matchedNode = providerNodes.find((node) => node.id === providerId);
         const displayName = matchedNode?.name || connection?.name || providerInfo.name;
         const nodePrefix = connection?.providerSpecificData?.prefix || matchedNode?.prefix || providerId;
 
         // Aliases are stored using the raw providerId as key (e.g. "openai-compatible-chat-<uuid>/glm-4.7"),
         // so we must filter by providerId, not by the display prefix.
-        const nodeModels = Object.entries(modelAliases)
-          .filter(([, fullModel]) => typeof fullModel === "string" && fullModel.startsWith(`${providerId}/`))
-          .map(([aliasName, fullModel]) => ({
-            id: fullModel.replace(`${providerId}/`, ""),
-            name: aliasName,
-            value: `${nodePrefix}/${fullModel.replace(`${providerId}/`, "")}`,
-          }));
+        const nodeModels = Object.entries(modelAliases).
+        filter(([, fullModel]) => isString(fullModel) && fullModel.startsWith(`${providerId}/`)).
+        map(([aliasName, fullModel]) => ({
+          id: fullModel.replace(`${providerId}/`, ""),
+          name: aliasName,
+          value: `${nodePrefix}/${fullModel.replace(`${providerId}/`, "")}`
+        }));
 
         // Fetch models dynamically from the provider's upstream API
         const dynamicModels = fetchedModels[providerId] || [];
@@ -407,28 +408,28 @@ export default function ModelSelectModal({
           id: m.id || m.slug || m.model || m.name,
           name: m.name || m.displayName || m.id,
           value: `${nodePrefix}/${m.id || m.slug || m.model || m.name}`,
-          isFetched: true,
+          isFetched: true
         }));
 
         // Merge custom models registered via /api/models/custom for this provider
         // providerAlias in DB uses the raw providerId, not the display prefix
-        const registeredCustom = customModels
-          .filter((m) => m.providerAlias === providerId)
-          .map((m) => ({
-            id: m.id,
-            name: m.name || m.id,
-            value: `${nodePrefix}/${m.id}`,
-            isCustom: true,
-          }));
+        const registeredCustom = customModels.
+        filter((m) => m.providerAlias === providerId).
+        map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          value: `${nodePrefix}/${m.id}`,
+          isCustom: true
+        }));
 
-        const seenValues = new Set(nodeModels.map(m => m.value));
-        const mergedCustom = registeredCustom.filter(m => {
+        const seenValues = new Set(nodeModels.map((m) => m.value));
+        const mergedCustom = registeredCustom.filter((m) => {
           if (seenValues.has(m.value)) return false;
           seenValues.add(m.value);
           return true;
         });
-        
-        const mergedDynamic = dynamicModelEntries.filter(m => {
+
+        const mergedDynamic = dynamicModelEntries.filter((m) => {
           if (seenValues.has(m.value)) return false;
           seenValues.add(m.value);
           return true;
@@ -442,7 +443,7 @@ export default function ModelSelectModal({
           id: `__placeholder__${providerId}`,
           name: `${nodePrefix}/model-id`,
           value: `${nodePrefix}/model-id`,
-          isPlaceholder: true,
+          isPlaceholder: true
         }];
 
         groups[providerId] = {
@@ -451,7 +452,7 @@ export default function ModelSelectModal({
           color: providerInfo.color,
           models: modelsToShow,
           isCustom: true,
-          hasModels: mergedModels.length > 0,
+          hasModels: mergedModels.length > 0
         };
       } else {
         const hardcodedModels = getModelsByProviderId(providerId);
@@ -460,29 +461,29 @@ export default function ModelSelectModal({
         // Custom models: if no hardcoded models (e.g. openrouter), show all aliases for this provider
         // Otherwise only show aliases where aliasName === modelId ("Add Model" button pattern)
         const hasHardcoded = hardcodedModels.length > 0;
-        const customAliasModels = Object.entries(modelAliases)
-          .filter(([aliasName, fullModel]) =>
-            typeof fullModel === "string" &&
-            fullModel.startsWith(`${alias}/`) &&
-            (hasHardcoded ? aliasName === fullModel.replace(`${alias}/`, "") : true) &&
-            !hardcodedIds.has(fullModel.replace(`${alias}/`, ""))
-          )
-          .map(([aliasName, fullModel]) => {
-            const modelId = fullModel.replace(`${alias}/`, "");
-            return { id: modelId, name: aliasName, value: fullModel, isCustom: true };
-          });
+        const customAliasModels = Object.entries(modelAliases).
+        filter(([aliasName, fullModel]) =>
+        isString(fullModel) &&
+        fullModel.startsWith(`${alias}/`) && (
+        hasHardcoded ? aliasName === fullModel.replace(`${alias}/`, "") : true) &&
+        !hardcodedIds.has(fullModel.replace(`${alias}/`, ""))
+        ).
+        map(([aliasName, fullModel]) => {
+          const modelId = fullModel.replace(`${alias}/`, "");
+          return { id: modelId, name: aliasName, value: fullModel, isCustom: true };
+        });
 
         // Custom models registered via /api/models/custom (provider "Add Model" button)
         const customAliasIds = new Set(customAliasModels.map((m) => m.id));
-        const customRegisteredModels = customModels
-          .filter((m) => m.providerAlias === alias && !hardcodedIds.has(m.id) && !customAliasIds.has(m.id))
-          .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
+        const customRegisteredModels = customModels.
+        filter((m) => m.providerAlias === alias && !hardcodedIds.has(m.id) && !customAliasIds.has(m.id)).
+        map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
 
         const merged = [
-          ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
-          ...customAliasModels,
-          ...customRegisteredModels,
-        ];
+        ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
+        ...customAliasModels,
+        ...customRegisteredModels];
+
         // Dedupe by value (alias may equal hardcoded id, causing React key collision)
         const seen = new Set();
         let allModels = filterByKind(merged.filter((m) => {
@@ -505,7 +506,7 @@ export default function ModelSelectModal({
             name: providerInfo.name,
             alias: alias,
             color: providerInfo.color,
-            models: allModels,
+            models: allModels
           };
         }
       }
@@ -515,9 +516,9 @@ export default function ModelSelectModal({
     Object.entries(groups).forEach(([providerId, group]) => {
       const aliasKey = getProviderAlias(providerId);
       const disabledIds = new Set([
-        ...(disabledModels[aliasKey] || []),
-        ...(disabledModels[providerId] || []),
-      ]);
+      ...(disabledModels[aliasKey] || []),
+      ...(disabledModels[providerId] || [])]
+      );
       if (disabledIds.size === 0) return;
       group.models = group.models.filter((m) => !disabledIds.has(m.id));
       if (group.models.length === 0) delete groups[providerId];
@@ -558,13 +559,13 @@ export default function ModelSelectModal({
     if (visibleModelIds) list = list.filter((c) => visibleModelIds.has(c.name));
     if (!searchQuery.trim()) return list;
     const query = searchQuery.toLowerCase();
-    return list.filter(c => c.name.toLowerCase().includes(query));
+    return list.filter((c) => c.name.toLowerCase().includes(query));
   }, [combos, searchQuery, kindFilter, visibleModelIds]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {
-    const added = models.filter(m => addedModelValues.includes(m.value)).sort((a, b) => a.name.localeCompare(b.name));
-    const rest = models.filter(m => !addedModelValues.includes(m.value)).sort((a, b) => a.name.localeCompare(b.name));
+    const added = models.filter((m) => addedModelValues.includes(m.value)).sort((a, b) => a.name.localeCompare(b.name));
+    const rest = models.filter((m) => !addedModelValues.includes(m.value)).sort((a, b) => a.name.localeCompare(b.name));
     return [...added, ...rest];
   };
 
@@ -579,14 +580,14 @@ export default function ModelSelectModal({
         const providerNameMatches = group.name.toLowerCase().includes(query);
         models = models.filter(
           (m) =>
-            m.name.toLowerCase().includes(query) ||
-            m.id.toLowerCase().includes(query)
+          m.name.toLowerCase().includes(query) ||
+          m.id.toLowerCase().includes(query)
         );
         if (models.length === 0 && !providerNameMatches) return;
       }
       filtered[providerId] = {
         ...group,
-        models: sortModels(models),
+        models: sortModels(models)
       };
     });
 
@@ -619,8 +620,8 @@ export default function ModelSelectModal({
       title={title}
       size="md"
       className="p-4!"
-      footer={null}
-    >
+      footer={null}>
+      
       {/* Info bar */}
       <div className="flex items-center gap-2 mb-3 px-2.5 py-2 bg-primary/8 border border-primary/20 rounded-lg text-xs text-text-muted">
         <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: "14px" }}>info</span>
@@ -638,16 +639,16 @@ export default function ModelSelectModal({
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-surface border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
-          />
+            className="w-full pl-8 pr-3 py-1.5 bg-surface border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
+          
         </div>
       </div>
 
       {/* Models grouped by provider - compact */}
       <div className="max-h-[400px] overflow-y-auto space-y-3">
         {/* Combos section - always first */}
-        {filteredCombos.length > 0 && (
-          <div>
+        {filteredCombos.length > 0 &&
+        <div>
             <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
               <span className="material-symbols-outlined text-primary text-[14px]">layers</span>
               <span className="text-xs font-medium text-primary">Combos</span>
@@ -655,44 +656,44 @@ export default function ModelSelectModal({
             </div>
             <div className="flex flex-wrap gap-1.5">
               {filteredCombos.map((combo) => {
-                const isSelected = selectedModel === combo.name;
-                return (
-                  <button
-                    key={combo.id}
-                    onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}
-                    className={`
+              const isSelected = selectedModel === combo.name;
+              return (
+                <button
+                  key={combo.id}
+                  onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}
+                  className={`
                       px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
-                      ${isSelected
-                        ? "bg-primary text-white border-primary"
-                        : addedModelValues.includes(combo.name)
-                          ? "bg-primary border-primary text-white hover:bg-primary-hover"
-                          : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
-                      }
-                    `}
-                  >
-                    {addedModelValues.includes(combo.name) && (
-                      <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
-                    )}
+                      ${isSelected ?
+                  "bg-primary text-white border-primary" :
+                  addedModelValues.includes(combo.name) ?
+                  "bg-primary border-primary text-white hover:bg-primary-hover" :
+                  "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"}
+                    `
+                  }>
+                  
+                    {addedModelValues.includes(combo.name) &&
+                  <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
+                  }
                     {combo.name}
-                  </button>
-                );
-              })}
+                  </button>);
+
+            })}
             </div>
           </div>
-        )}
+        }
 
         {/* Provider models */}
-        {Object.entries(filteredGroups).map(([providerId, group]) => (
-          <div key={providerId}>
+        {Object.entries(filteredGroups).map(([providerId, group]) =>
+        <div key={providerId}>
             {/* Provider header */}
             <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
               <ProviderIcon
-                src={`/providers/${providerId}.png`}
-                alt={group.name}
-                size={14}
-                fallbackText={(group.name || providerId).slice(0, 2).toUpperCase()}
-                fallbackColor={group.color}
-              />
+              src={`/providers/${providerId}.png`}
+              alt={group.name}
+              size={14}
+              fallbackText={(group.name || providerId).slice(0, 2).toUpperCase()}
+              fallbackColor={group.color} />
+            
               <span className="text-xs font-medium text-primary">
                 {group.name}
               </span>
@@ -703,71 +704,71 @@ export default function ModelSelectModal({
 
             <div className="flex flex-wrap gap-1.5">
               {group.models.map((model) => {
-                const isSelected = selectedModel === model.value;
-                const isPlaceholder = model.isPlaceholder;
-                return (
-                  <button
-                    key={model.value}
-                    onClick={() => handleSelect(model)}
-                    title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined}
-                    className={`
+              const isSelected = selectedModel === model.value;
+              const isPlaceholder = model.isPlaceholder;
+              return (
+                <button
+                  key={model.value}
+                  onClick={() => handleSelect(model)}
+                  title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined}
+                  className={`
                       px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer
-                      ${isPlaceholder
-                        ? "border-dashed border-border text-text-muted hover:border-primary/50 hover:text-primary bg-surface italic"
-                        : isSelected
-                          ? "bg-primary text-white border-primary"
-                          : addedModelValues.includes(model.value)
-                            ? "bg-primary border-primary text-white hover:bg-primary-hover"
-                            : "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"
-                      }
-                    `}
-                  >
+                      ${isPlaceholder ?
+                  "border-dashed border-border text-text-muted hover:border-primary/50 hover:text-primary bg-surface italic" :
+                  isSelected ?
+                  "bg-primary text-white border-primary" :
+                  addedModelValues.includes(model.value) ?
+                  "bg-primary border-primary text-white hover:bg-primary-hover" :
+                  "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"}
+                    `
+                  }>
+                  
                     <span className="flex items-center gap-1">
-                      {addedModelValues.includes(model.value) && !isPlaceholder && (
-                        <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
-                      )}
-                      {isPlaceholder ? (
-                        <>
+                      {addedModelValues.includes(model.value) && !isPlaceholder &&
+                    <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
+                    }
+                      {isPlaceholder ?
+                    <>
                           <span className="material-symbols-outlined text-[11px]">edit</span>
                           {model.name}
-                        </>
-                      ) : model.isCustom ? (
-                        <>
+                        </> :
+                    model.isCustom ?
+                    <>
                           {model.name}
                           <span className="text-[9px] opacity-60 font-normal">custom</span>
                           <CapacityBadges caps={getCaps(model.value)} />
-                        </>
-                      ) : model.isFetched ? (
-                        <>
+                        </> :
+                    model.isFetched ?
+                    <>
                           {model.name}
                           <span className="text-[9px] opacity-60 font-normal">auto</span>
                           <CapacityBadges caps={getCaps(model.value)} />
-                        </>
-                      ) : (
-                        <>
+                        </> :
+
+                    <>
                           {model.name}
                           <CapacityBadges caps={getCaps(model.value)} />
                         </>
-                      )}
+                    }
                     </span>
-                  </button>
-                );
-              })}
+                  </button>);
+
+            })}
             </div>
           </div>
-        ))}
+        )}
 
-        {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 && (
-          <div className="text-center py-4 text-text-muted">
+        {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 &&
+        <div className="text-center py-4 text-text-muted">
             <span className="material-symbols-outlined text-2xl mb-1 block">
               search_off
             </span>
             <p className="text-xs">No models found</p>
           </div>
-        )}
+        }
       </div>
-    </Modal>
-  );
+    </Modal>);
+
 }
 
 ModelSelectModal.propTypes = {
@@ -777,13 +778,13 @@ ModelSelectModal.propTypes = {
   onDeselect: PropTypes.func,
   selectedModel: PropTypes.string,
   activeProviders: PropTypes.arrayOf(
-    PropTypes.shape({
-      provider: PropTypes.string.isRequired,
+    PropTypes['shape']({
+      provider: PropTypes.string.isRequired
     })
   ),
   title: PropTypes.string,
   modelAliases: PropTypes.object,
   kindFilter: PropTypes.string,
   addedModelValues: PropTypes.arrayOf(PropTypes.string),
-  closeOnSelect: PropTypes.bool,
+  closeOnSelect: PropTypes.bool
 };

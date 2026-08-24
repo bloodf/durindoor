@@ -1,3 +1,4 @@
+import { isBrowser, isFunction, isUndefined } from "../../src/shared/utils/typeChecks.js";
 const GLOBAL_KEY = "__kimchi_ua_state";
 
 // Initialize global state if it doesn't exist to persist across Next.js HMR/re-evaluations
@@ -6,7 +7,7 @@ if (!globalThis[GLOBAL_KEY]) {
     currentAgent: "kimchi/0.1.01", // Default fallback
     lastFetchTime: 0,
     activePromise: null,
-    intervalStarted: false,
+    intervalStarted: false
   };
 }
 
@@ -33,7 +34,7 @@ export function getKimchiUserAgent() {
  * @returns {Promise<string>} The (possibly unchanged) current user-agent.
  */
 export async function updateKimchiUserAgent(fetcher) {
-  if (typeof window !== "undefined") {
+  if (isBrowser()) {
     return uaState.currentAgent;
   }
 
@@ -60,7 +61,7 @@ export async function updateKimchiUserAgent(fetcher) {
         const path = await import("path");
         const url = await import("url");
 
-        if (typeof process !== "undefined" && typeof process.cwd === "function") {
+        if (!isUndefined(globalThis.process) && isFunction(process.cwd)) {
           const filePath = path.join(process.cwd(), "open-sse", "utils", "proxyFetch.js");
           const fileUrl = url.pathToFileURL(filePath).href;
 
@@ -78,26 +79,26 @@ export async function updateKimchiUserAgent(fetcher) {
       const targetUrl = "https://api.github.com/repos/getkimchi/kimchi/releases/latest";
       console.log("[KimchiUA] Fetching latest release from:", targetUrl);
       const response = await fetchImpl(targetUrl, {
-          method: "GET",
-          headers: {
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "9router/1.0.0"
-          }
-        });
-
-        console.log("[KimchiUA] GitHub response status:", response.status, response.statusText);
-        if (response.ok) {
-          const data = await response.json();
-          const version = data.tag_name ? data.tag_name.replace(/^v/, "") : "";
-          console.log("[KimchiUA] Parsed version:", version);
-          if (version) {
-            uaState.currentAgent = `kimchi/${version}`;
-            uaState.lastFetchTime = Date.now();
-          }
-        } else {
-          const errText = await response.text().catch(() => "");
-          console.log("[KimchiUA] GitHub error body:", errText.substring(0, 200));
+        method: "GET",
+        headers: {
+          "Accept": "application/vnd.github+json",
+          "User-Agent": "9router/1.0.0"
         }
+      });
+
+      console.log("[KimchiUA] GitHub response status:", response.status, response.statusText);
+      if (response.ok) {
+        const data = await response.json();
+        const version = data.tag_name ? data.tag_name.replace(/^v/, "") : "";
+        console.log("[KimchiUA] Parsed version:", version);
+        if (version) {
+          uaState.currentAgent = `kimchi/${version}`;
+          uaState.lastFetchTime = Date.now();
+        }
+      } else {
+        const errText = await response.text().catch(() => "");
+        console.log("[KimchiUA] GitHub error body:", errText.substring(0, 200));
+      }
     } catch (error) {
       console.error("[KimchiUA Error]", error);
     }
@@ -113,14 +114,14 @@ export async function updateKimchiUserAgent(fetcher) {
 }
 
 // Only trigger background fetching on server
-if (typeof window === "undefined") {
+if (!isBrowser()) {
   if (!uaState.intervalStarted) {
     uaState.intervalStarted = true;
     updateKimchiUserAgent();
 
     // Periodically update every 4 hours to keep in sync without hitting GitHub API rate limits
     const timer = setInterval(updateKimchiUserAgent, 4 * 60 * 60 * 1000);
-    if (timer && typeof timer.unref === "function") {
+    if (timer && isFunction(timer.unref)) {
       timer.unref();
     }
   }

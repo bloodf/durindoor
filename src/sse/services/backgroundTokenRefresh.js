@@ -6,6 +6,7 @@ import { getRefreshLeadMs } from "open-sse/services/tokenRefresh.js";
 import { getCredentialExpiryMs } from "open-sse/services/oauthCredentialManager.js";
 
 /** Refresh when expiry is within 30 minutes (or the provider on-request lead, whichever larger). */
+import { isBrowser } from "../../shared/utils/typeChecks.js";
 export const BACKGROUND_REFRESH_LEAD_MS = 30 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 const INITIAL_DELAY_MS = 10 * 1000;
@@ -22,13 +23,13 @@ function isTruthyEnv(value) {
 }
 
 function isNonServerRuntime() {
-  if (typeof window !== "undefined") return true;
+  if (isBrowser()) return true;
   const phase = process.env.NEXT_PHASE || "";
   if (
-    phase === "phase-production-build" ||
-    phase === "phase-export" ||
-    phase === "phase-static"
-  ) {
+  phase === "phase-production-build" ||
+  phase === "phase-export" ||
+  phase === "phase-static")
+  {
     return true;
   }
   // Next.js build / static generation markers
@@ -102,14 +103,14 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
 
     if (due.length === 0) {
       log.debug("BG_TOKEN_REFRESH", "No connections due for refresh", {
-        active: Array.isArray(connections) ? connections.length : 0,
+        active: Array.isArray(connections) ? connections.length : 0
       });
       return;
     }
 
     log.info("BG_TOKEN_REFRESH", "Refreshing due OAuth connections", {
       due: due.length,
-      ids: due.map((c) => c.id).filter(Boolean),
+      ids: due.map((c) => c.id).filter(Boolean)
     });
 
     await Promise.allSettled(
@@ -118,20 +119,20 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
           await refresh(conn);
           log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
             id: conn.id,
-            provider: conn.provider,
+            provider: conn.provider
           });
         } catch (err) {
           log.warn("BG_TOKEN_REFRESH", "Connection refresh failed (swallowed)", {
             id: conn?.id,
             provider: conn?.provider,
-            error: err?.message ?? String(err),
+            error: err?.message ?? String(err)
           });
         }
       })
     );
   } catch (err) {
     log.warn("BG_TOKEN_REFRESH", "Tick failed (swallowed)", {
-      error: err?.message ?? String(err),
+      error: err?.message ?? String(err)
     });
   } finally {
     tickRunning = false;
@@ -160,7 +161,7 @@ export function startBackgroundTokenRefresh({ intervalMs } = {}) {
   const safeTick = () => {
     runBackgroundTokenRefreshTick().catch((err) => {
       log.warn("BG_TOKEN_REFRESH", "Unhandled tick rejection (swallowed)", {
-        error: err?.message ?? String(err),
+        error: err?.message ?? String(err)
       });
     });
   };
@@ -175,7 +176,7 @@ export function startBackgroundTokenRefresh({ intervalMs } = {}) {
   log.info("BG_TOKEN_REFRESH", "Scheduler started", {
     intervalMs: period,
     initialDelayMs: INITIAL_DELAY_MS,
-    leadMs: BACKGROUND_REFRESH_LEAD_MS,
+    leadMs: BACKGROUND_REFRESH_LEAD_MS
   });
   return true;
 }

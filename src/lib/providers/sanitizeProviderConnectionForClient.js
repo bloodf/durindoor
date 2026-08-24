@@ -1,24 +1,25 @@
 import { CODEX_FINGERPRINT_MODES } from "../../../open-sse/config/codexIdentity.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 const SAFE_FIELDS = [
-  "id", "provider", "authType", "name", "email", "displayName",
-  "priority", "globalPriority", "isActive", "defaultModel",
-  "testStatus", "lastError", "lastErrorAt", "errorCode",
-  "expiresAt", "lastUsedAt", "consecutiveUseCount",
-  "createdAt", "updatedAt",
-];
+"id", "provider", "authType", "name", "email", "displayName",
+"priority", "globalPriority", "isActive", "defaultModel",
+"testStatus", "lastError", "lastErrorAt", "errorCode",
+"expiresAt", "lastUsedAt", "consecutiveUseCount",
+"createdAt", "updatedAt"];
+
 
 const SAFE_PSD_FIELDS = [
-  "baseUrl", "azureEndpoint", "deployment", "apiVersion", "accountId",
-  "region", "projectId", "resourceUrl", "proxyPoolId", "cx",
-  "connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy",
-  "githubLogin", "githubName", "githubEmail", "githubUserId",
-  "username", "firstName", "lastName", "authMethod", "authKind",
-  "profileArn", "codexFingerprintMode",
-];
+"baseUrl", "azureEndpoint", "deployment", "apiVersion", "accountId",
+"region", "projectId", "resourceUrl", "proxyPoolId", "cx",
+"connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy",
+"githubLogin", "githubName", "githubEmail", "githubUserId",
+"username", "firstName", "lastName", "authMethod", "authKind",
+"profileArn", "codexFingerprintMode"];
+
 
 function maskName(name) {
-  if (typeof name !== "string" || name.length <= 16) return name;
+  if (!isString(name) || name.length <= 16) return name;
   if (/[a-zA-Z0-9_-]{32,}/.test(name)) return `${name.slice(0, 8)}***`;
   return name;
 }
@@ -33,7 +34,7 @@ export function sanitizeProviderConnectionForClient(c) {
   /** Report stale unavailable status as active once every model cooldown expires. */
   if (safe.testStatus === "unavailable") {
     const hasActiveLock = Object.entries(c).some(([key, value]) =>
-      key.startsWith("modelLock_") && value && new Date(value).getTime() > Date.now()
+    key.startsWith("modelLock_") && value && new Date(value).getTime() > Date.now()
     );
     if (!hasActiveLock) safe.testStatus = "active";
   }

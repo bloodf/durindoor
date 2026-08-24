@@ -31,18 +31,19 @@ import {
   getEngine as realGetEngine,
   isEngineAvailable as realIsEngineAvailable,
   planToEngineIds as realPlanToEngineIds,
-  registerBuiltinEngines,
-} from "../../services/compression/index.js";
+  registerBuiltinEngines } from
+"../../services/compression/index.js";
 import { deriveDefaultPlan as realDeriveDefaultPlan } from "../../services/compression/deriveDefaultPlan.js";
 import { resolveAdaptivePlan as realResolveAdaptivePlan } from "../../services/compression/adaptiveCompression/resolveAdaptivePlan.js";
 import { estimateCompressionTokens } from "../../services/compression/stats.js";
+import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 try {
   registerBuiltinEngines();
 } catch {
+
   // Registration must never break module load; getEngine self-registers on demand too.
 }
-
 /**
  * Run the compression engine loop.
  *
@@ -71,15 +72,15 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
     // sees every budget field it dereferences (outputReserve/safetyMargin/pct/
     // absoluteBudget). mode:"off" short-circuits the resolver before any of
     // those reads, so a bare { mode:"off" } stays safe for the non-adaptive path.
-    const config = adaptive.mode
-      ? { policy: "default", ...adaptive }
-      : { mode: "off" };
+    const config = adaptive.mode ?
+    { policy: "default", ...adaptive } :
+    { mode: "off" };
     const resolved = resolveAdaptivePlan({
       basePlan,
       estimatedTokens: adaptive.estimatedTokens ?? 0,
       modelContextLimit: adaptive.modelContextLimit ?? 0,
       requestMaxTokens: adaptive.requestMaxTokens ?? 0,
-      config,
+      config
     });
     const plan = resolved?.plan ?? resolved ?? basePlan;
     engineIds = planToEngineIds(plan);
@@ -111,7 +112,7 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       const step = stepById[id] ?? { engine: id };
       const opts = { config: cfg.applyOpts || {}, stepConfig: step };
       const res = await getEngine(id).apply(working, opts);
-      if (!res || typeof res !== "object" || !res.body || typeof res.body !== "object") {
+      if (!res || !isObject(res) || !res.body || !isObject(res.body)) {
         throw new Error(`engine ${id} returned malformed result`);
       }
       const stepOutSerialized = JSON.stringify(res.body);
@@ -137,10 +138,10 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
 
   const outputTokens = estimateCompressionTokens(working);
   const savingsPercent =
-    inputTokens > 0 ? Math.round(((inputTokens - outputTokens) / inputTokens) * 10000) / 100 : 0;
+  inputTokens > 0 ? Math.round((inputTokens - outputTokens) / inputTokens * 10000) / 100 : 0;
 
   return {
     body: working,
-    headerValue: `${compressedEngineIds.join(",")}|${savingsPercent}%`,
+    headerValue: `${compressedEngineIds.join(",")}|${savingsPercent}%`
   };
 }

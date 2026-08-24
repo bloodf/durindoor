@@ -2,13 +2,14 @@
  * Detect CLI tool identity from request headers/body.
  * Used to determine if a request can be passed through losslessly.
  */
+import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
 
 // Map of CLI tool identifiers to provider IDs they are "native" to
 const NATIVE_PAIRS = {
   "claude": ["claude", "anthropic"],
   "gemini-cli": ["gemini-cli"],
   "antigravity": ["antigravity"],
-  "codex": ["codex"],
+  "codex": ["codex"]
 };
 
 /**
@@ -41,13 +42,13 @@ export function detectClientTool(headers = {}, body = {}) {
   // Codex CLI: codex-tui (current Rust CLI), codex-cli / codex_cli_rs (legacy), codex_exec.
   // Codex Desktop uses UA "Codex Desktop" or originator "codex_work_desktop".
   if (
-    ua.includes("codex-tui") ||
-    ua.includes("codex-cli") ||
-    ua.includes("codex_cli_rs") ||
-    ua.includes("codex desktop") ||
-    ua.includes("codex_exec") ||
-    originator.startsWith("codex_")
-  ) {
+  ua.includes("codex-tui") ||
+  ua.includes("codex-cli") ||
+  ua.includes("codex_cli_rs") ||
+  ua.includes("codex desktop") ||
+  ua.includes("codex_exec") ||
+  originator.startsWith("codex_"))
+  {
     return "codex";
   }
 
@@ -67,9 +68,9 @@ export function isNativePassthrough(clientTool, provider) {
   const nativeProviders = NATIVE_PAIRS[clientTool];
   if (!nativeProviders) return false;
   // Support anthropic-compatible-* variants
-  const normalizedProvider = provider.startsWith("anthropic-compatible")
-    ? "anthropic"
-    : provider;
+  const normalizedProvider = provider.startsWith("anthropic-compatible") ?
+  "anthropic" :
+  provider;
   return nativeProviders.includes(normalizedProvider);
 }
 
@@ -89,8 +90,8 @@ export function isCodexOriginatedHeaders(headers) {
   if (!headers) return false;
   let originator = "";
   let ua = "";
-  const read = (value) => (typeof value === "string" ? value.toLowerCase() : "");
-  if (typeof headers.get === "function") {
+  const read = (value) => isString(value) ? value.toLowerCase() : "";
+  if (isFunction(headers.get)) {
     // WHATWG Headers: .get is case-insensitive per spec.
     originator = read(headers.get("originator"));
     ua = read(headers.get("user-agent"));
@@ -100,8 +101,8 @@ export function isCodexOriginatedHeaders(headers) {
     // not coerce into a match.
     for (const [key, value] of Object.entries(headers)) {
       const name = key.toLowerCase();
-      if (name === "originator") originator = read(value);
-      else if (name === "user-agent") ua = read(value);
+      if (name === "originator") originator = read(value);else
+      if (name === "user-agent") ua = read(value);
     }
   }
   return originator.startsWith("codex") || ua.startsWith("codex");

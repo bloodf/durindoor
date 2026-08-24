@@ -10,8 +10,9 @@ import {
   ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard,
   HermesToolCard, DefaultToolCard, OpenCodeToolCard, CoworkToolCard,
   CopilotToolCard, ClineToolCard, KiloToolCard, DeepSeekTuiToolCard,
-  JcodeToolCard, GrokBuildToolCard,
-} from "../components";
+  JcodeToolCard, GrokBuildToolCard } from
+"../components";
+import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
@@ -32,11 +33,11 @@ export default function ToolDetailClient({ toolId, machineId }) {
     (async () => {
       try {
         const [provRes, settingsRes, tunnelRes, keysRes] = await Promise.all([
-          fetch("/api/providers"),
-          fetch("/api/settings"),
-          fetch("/api/tunnel/status"),
-          fetch("/api/keys"),
-        ]);
+        fetch("/api/providers"),
+        fetch("/api/settings"),
+        fetch("/api/tunnel/status"),
+        fetch("/api/keys")]
+        );
         if (!mounted) return;
         if (provRes.ok) {
           const data = await provRes.json();
@@ -63,21 +64,21 @@ export default function ToolDetailClient({ toolId, machineId }) {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {mounted = false;};
   }, []);
 
-  const getActiveProviders = () => connections.filter(c => c.isActive !== false);
+  const getActiveProviders = () => connections.filter((c) => c.isActive !== false);
 
   const getAllAvailableModels = () => {
     const activeProviders = getActiveProviders();
     const models = [];
     const seenModels = new Set();
-    activeProviders.forEach(conn => {
+    activeProviders.forEach((conn) => {
       const alias = PROVIDER_ID_TO_ALIAS[conn.provider] || conn.provider;
       const providerModels = getModelsByProviderId(conn.provider);
-      const modelList = providerModels.length > 0
-        ? providerModels.map(m => ({ id: m.id, prefix: alias }))
-        : fallbackConnectionModels(conn).map(m => ({ id: m.id, prefix: conn.providerSpecificData?.prefix || alias }));
+      const modelList = providerModels.length > 0 ?
+      providerModels.map((m) => ({ id: m.id, prefix: alias })) :
+      fallbackConnectionModels(conn).map((m) => ({ id: m.id, prefix: conn.providerSpecificData?.prefix || alias }));
       modelList.forEach(({ id, prefix }) => {
         const modelValue = `${prefix}/${id}`;
         if (!seenModels.has(modelValue)) {
@@ -90,7 +91,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
   };
 
   const handleModelMappingChange = useCallback((tId, alias, target) => {
-    setModelMappings(prev => {
+    setModelMappings((prev) => {
       if (prev[tId]?.[alias] === target) return prev;
       return { ...prev, [tId]: { ...prev[tId], [alias]: target } };
     });
@@ -99,7 +100,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const getBaseUrl = () => {
     if (tunnelEnabled && tunnelPublicUrl) return tunnelPublicUrl;
     if (cloudEnabled && CLOUD_URL) return CLOUD_URL;
-    if (typeof window !== "undefined") return window.location.origin;
+    if (isBrowser()) return window.location.origin;
     return "http://localhost:20128";
   };
 
@@ -115,7 +116,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
       tunnelEnabled,
       tunnelPublicUrl,
       tailscaleEnabled,
-      tailscaleUrl,
+      tailscaleUrl
     };
 
     switch (toolId) {
@@ -159,8 +160,8 @@ export default function ToolDetailClient({ toolId, machineId }) {
           Back to CLI Tools
         </Link>
         <p className="text-sm text-text-muted">Tool not found or disabled.</p>
-      </div>
-    );
+      </div>);
+
   }
 
   return (
@@ -174,6 +175,6 @@ export default function ToolDetailClient({ toolId, machineId }) {
         <p className="text-sm text-text-muted">{tool.description}</p>
       </div>
       {loading ? <CardSkeleton /> : renderToolCard()}
-    </div>
-  );
+    </div>);
+
 }

@@ -9,7 +9,7 @@ async function hyperbolic({ baseUrl, apiKey, text }) {
   const res = await fetch(baseUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text })
   });
   if (!res.ok) await throwUpstreamError(res);
   const data = await res.json();
@@ -23,7 +23,7 @@ async function deepgram({ baseUrl, apiKey, text, modelId }) {
   const res = await fetch(url.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Token ${apiKey}` },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text })
   });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "mp3");
@@ -34,7 +34,7 @@ async function nvidia({ baseUrl, apiKey, text, modelId, voiceId }) {
   const res = await fetch(baseUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-    body: JSON.stringify({ input: { text }, voice: voiceId || "default", model: modelId }),
+    body: JSON.stringify({ input: { text }, voice: voiceId || "default", model: modelId })
   });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "wav");
@@ -46,7 +46,7 @@ async function huggingface({ baseUrl, apiKey, text, modelId }) {
   const res = await fetch(`${baseUrl}/${modelId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-    body: JSON.stringify({ inputs: text }),
+    body: JSON.stringify({ inputs: text })
   });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "wav");
@@ -59,13 +59,13 @@ async function fishAudio({ baseUrl, apiKey, text, modelId, voiceId, proxyOptions
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`,
-      "model": modelId || "s2.1-pro-free",
+      "model": modelId || "s2.1-pro-free"
     },
     body: JSON.stringify({
       text,
       format: "mp3",
-      ...(voiceId ? { reference_id: voiceId } : {}),
-    }),
+      ...(voiceId ? { reference_id: voiceId } : null)
+    })
   }, proxyOptions);
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "mp3");
@@ -80,8 +80,8 @@ async function inworld({ baseUrl, apiKey, text, modelId, voiceId }) {
       text,
       voiceId: voiceId || "Alex",
       modelId: modelId || "inworld-tts-1.5-mini",
-      audioConfig: { audioEncoding: "MP3" },
-    }),
+      audioConfig: { audioEncoding: "MP3" }
+    })
   });
   if (!res.ok) await throwUpstreamError(res);
   const data = await res.json();
@@ -96,14 +96,14 @@ async function cartesia({ baseUrl, apiKey, text, modelId, voiceId }) {
     headers: {
       "Content-Type": "application/json",
       "X-API-Key": apiKey,
-      "Cartesia-Version": "2024-06-10",
+      "Cartesia-Version": "2024-06-10"
     },
     body: JSON.stringify({
       model_id: modelId || "sonic-2",
       transcript: text,
-      ...(voiceId ? { voice: { mode: "id", id: voiceId } } : {}),
-      output_format: { container: "mp3", bit_rate: 128000, sample_rate: 44100 },
-    }),
+      ...(voiceId ? { voice: { mode: "id", id: voiceId } } : null),
+      output_format: { container: "mp3", bit_rate: 128000, sample_rate: 44100 }
+    })
   });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "mp3");
@@ -118,15 +118,15 @@ async function playht({ baseUrl, apiKey, text, modelId, voiceId }) {
       "Content-Type": "application/json",
       "Accept": "audio/mpeg",
       "X-USER-ID": userId || "",
-      "Authorization": `Bearer ${key || apiKey}`,
+      "Authorization": `Bearer ${key || apiKey}`
     },
     body: JSON.stringify({
       text,
       voice: voiceId || "s3://voice-cloning-zero-shot/d9ff78ba-d016-47f6-b0ef-dd630f59414e/female-cs/manifest.json",
       voice_engine: modelId || "PlayDialog",
       output_format: "mp3",
-      speed: 1,
-    }),
+      speed: 1
+    })
   });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "mp3");
@@ -137,7 +137,7 @@ async function coqui({ baseUrl, text, voiceId }) {
   const res = await fetch(baseUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, ...(voiceId ? { speaker_id: voiceId } : {}) }),
+    body: JSON.stringify({ text, ...(voiceId ? { speaker_id: voiceId } : null) })
   });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "wav");
@@ -148,7 +148,7 @@ async function tortoise({ baseUrl, text, voiceId }) {
   const res = await fetch(baseUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, voice: voiceId || "random" }),
+    body: JSON.stringify({ text, voice: voiceId || "random" })
   });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "wav");
@@ -166,8 +166,8 @@ async function openaiCompat({ baseUrl, apiKey, text, modelId, voiceId }) {
       input: text,
       voice: voiceId || "alloy",
       response_format: "mp3",
-      speed: 1.0,
-    }),
+      speed: 1.0
+    })
   });
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "mp3");
@@ -186,5 +186,5 @@ export const FORMAT_HANDLERS = {
   tortoise,
   openai: openaiCompat,
   "minimax-tts": minimaxTts,
-  "fish-audio": fishAudio,
+  "fish-audio": fishAudio
 };

@@ -5,8 +5,9 @@
  * Runs vendored dmmulroy/anti-slop (via oxlint) with every generic rule as
  * error. Exit code is non-zero when any diagnostic remains.
  *
- * Node 20.20.x rejects `--experimental-strip-types` in NODE_OPTIONS, so we
- * invoke the oxlint CLI entry with the flag on the node argv instead.
+ * Node 20.20.x (CI pin) does not support `--experimental-strip-types`. The
+ * vendored plugin is pre-bundled to `tools/oxlint/anti-slop/index.bundle.js`
+ * by `scripts/build-anti-slop-plugin.mjs` before oxlint runs.
  *
  * @see docs/development/anti-slop.md
  * @see https://github.com/dmmulroy/anti-slop
@@ -30,16 +31,12 @@ export function runOxlint(opts = {}) {
   const configPath = path.join(root, ".oxlintrc.json");
   const oxlintArgs = opts.args ?? ["-c", configPath, "--quiet", "-f", "json", "."];
 
-  const result = spawnSync(
-    process.execPath,
-    ["--experimental-strip-types", OXLINT_CLI, ...oxlintArgs],
-    {
-      cwd: root,
-      env: process.env,
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    },
-  );
+  const result = spawnSync(process.execPath, [OXLINT_CLI, ...oxlintArgs], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
 
   if (result.error) {
     throw result.error;
@@ -91,17 +88,13 @@ export async function main(argv = process.argv.slice(2)) {
   );
 
   if (diagnostics.length > 0) {
-    spawnSync(
-      process.execPath,
-      ["--experimental-strip-types", OXLINT_CLI, "-c", path.join(ROOT, ".oxlintrc.json"), "--quiet", "."],
-      {
-        cwd: ROOT,
-        env: process.env,
-        encoding: "utf8",
-        stdio: "inherit",
-        maxBuffer: 64 * 1024 * 1024,
-      },
-    );
+    spawnSync(process.execPath, [OXLINT_CLI, "-c", path.join(ROOT, ".oxlintrc.json"), "--quiet", "."], {
+      cwd: ROOT,
+      env: process.env,
+      encoding: "utf8",
+      stdio: "inherit",
+      maxBuffer: 64 * 1024 * 1024,
+    });
     console.error(
       `anti-slop gate failed: ${diagnostics.length} error(s). Fix every diagnostic; do not baseline.`,
     );

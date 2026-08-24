@@ -51,5 +51,10 @@ bracket access (`PropTypes["shape"](...)`) so the identifier is not named
 
 See [`tools/oxlint/anti-slop/VENDOR.md`](../../tools/oxlint/anti-slop/VENDOR.md) for the upstream SHA and refresh steps.
 
-Node loads the TypeScript plugin via `--experimental-strip-types` (Node
-`20.20.2` / CI pin). The check script sets `NODE_OPTIONS` for you.
+Node loads the bundled JavaScript plugin at
+`tools/oxlint/anti-slop/index.bundle.js`. Rebuild it after refreshing the
+vendored TypeScript sources:
+
+```bash
+node scripts/build-anti-slop-plugin.mjs
+```

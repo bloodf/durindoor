@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
-npx --no-install lint-staged || true
+npx --no-install lint-staged
 # Required local gates before commit. anti-slop must not be fail-open.
 npm run lint:anti-slop

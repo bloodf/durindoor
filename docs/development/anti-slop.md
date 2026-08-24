@@ -15,8 +15,8 @@ npm run lint
 npm run lint:anti-slop
 ```
 
-Husky `pre-commit` runs `lint-staged` (eslint on staged `src/**` files; fail-open
-via `|| true`) and then `npm run lint:anti-slop` (required; not fail-open).
+Husky `pre-commit` runs `lint-staged` (eslint on staged `src/**` files) and then
+`npm run lint:anti-slop`; both are required and fail-closed.
 
 ## What is enforced
 

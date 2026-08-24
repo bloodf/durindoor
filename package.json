@@ -68,11 +68,11 @@
   },
   "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
   "devDependencies": {
-    "@oxlint/plugins": "^1.78.0",
+    "@oxlint/plugins": "1.78.0",
     "@tailwindcss/postcss": "^4.3.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
-    "oxlint": "^1.78.0",
+    "oxlint": "1.78.0",
     "postcss": "^8.5.23",
     "tailwindcss": "^4"
   },

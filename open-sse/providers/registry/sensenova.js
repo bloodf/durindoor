@@ -1,4 +1,5 @@
-import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js"; // SenseNova Token Plan ceiling: the /v1/chat/completions endpoint rejects
+// SenseNova Token Plan ceiling: the /v1/chat/completions endpoint rejects
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 // max_tokens / max_completion_tokens above 65536. requestDefaults.maxTokens only
 // fills the field when BOTH are absent, so an explicit client value above the
 // ceiling must be clamped here before the body is forwarded upstream.

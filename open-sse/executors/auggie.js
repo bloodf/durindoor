@@ -191,7 +191,8 @@ export class AuggieExecutor extends BaseExecutor {
     } catch {
 
       // Child error/close handlers surface the subprocess failure.
-    }return child;
+    }
+    return child;
   }
 
   runStreaming(auggieBin, model, promptText, signal, log) {

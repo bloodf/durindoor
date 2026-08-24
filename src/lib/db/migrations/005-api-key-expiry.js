@@ -1,4 +1,5 @@
-import { isFunction } from "../../../shared/utils/typeChecks.js"; // Adds an optional expiry timestamp to API keys so expired keys can be
+// Adds an optional expiry timestamp to API keys so expired keys can be
+import { isFunction } from "../../../shared/utils/typeChecks.js";
 // identified without deleting or rotating their stored secret. Version 5 is
 // intentionally after the already-published v4 daily-limit migration.
 export default {

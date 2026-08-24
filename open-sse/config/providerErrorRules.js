@@ -1,4 +1,4 @@
-import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Provider-specific error markers that do not fit the shared status rules.
  * Each rule's `scope` is forwarded into fallback locking:
  *   - "connection" forces an account-wide lock (`modelLock___all`)
@@ -11,6 +11,7 @@ import { isFunction, isObject, isString } from "../../src/shared/utils/typeCheck
  * body, and any user prompt are NEVER concatenated here — that would
  * let a provider echo a malicious prompt bypass the markers.
  */
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 const MAX_ERROR_ENVELOPE_BYTES = 8_192;
 
 function readErrorEnvelope(body) {
@@ -91,7 +92,6 @@ export const providerRuleRegistry = new Map([
 export function resolveRuleMatchBody(_provider, structuredError) {
   return structuredError ?? null;
 }
-
 
 export function getProviderErrorRuleMatch(provider, status, headers, body) {
   if (!provider) return null;

@@ -7,7 +7,8 @@ import { discoverInterpreters, managedVenvBinary, managedVenvDir, managedVenvPyt
 // `code` adds tree-sitter AST compression; `ml` adds Kompress-v2 HF model.
 // Other `[all]` extras (image, voice, otel, reports, evals, ...) are not
 // useful for the 9router proxy use case, so we don't track them here.
-import { isFunction } from "../../shared/utils/typeChecks.js";export const HEADROOM_COMPRESSION_EXTRAS = ["code", "ml"];
+import { isFunction } from "../../shared/utils/typeChecks.js";
+export const HEADROOM_COMPRESSION_EXTRAS = ["code", "ml"];
 
 // Primary import-time marker module per extra (probed via importlib, works
 // with no pip present) plus a secondary distribution-name marker (used both

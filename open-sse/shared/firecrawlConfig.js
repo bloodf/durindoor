@@ -3,7 +3,8 @@ import { URL } from "node:url";
 // Self-hosted Firecrawl probe / runtime base URL allowlist.
 // Distinct from public SSRF guard: this explicitly permits loopback and private
 // LAN targets because the user is intentionally configuring a local instance.
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";export const ALLOWED_FIRECRAWL_HOSTS = Object.freeze([
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+export const ALLOWED_FIRECRAWL_HOSTS = Object.freeze([
 "localhost",
 "127.0.0.1",
 "::1",

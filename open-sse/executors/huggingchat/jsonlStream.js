@@ -1,4 +1,5 @@
-import { isString } from "../../../src/shared/utils/typeChecks.js";export function sseChunk(data) {
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+export function sseChunk(data) {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
 
@@ -23,7 +24,8 @@ export function parseJsonlLine(line) {
   } catch {
 
     // Ignore keepalive and malformed lines from the JSONL stream.
-  }return {};
+  }
+  return {};
 }
 
 export async function* streamJsonlToOpenAi(body, model, id, created, signal) {

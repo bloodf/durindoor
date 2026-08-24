@@ -16,7 +16,8 @@ import {
 
 // SEC-B-02: credential fields that must be AES-256-GCM-encrypted at rest
 // inside providerConnections.data. All other fields stay plaintext.
-import { isBoolean, isFunction, isNumber, isString } from "../../../shared/utils/typeChecks.js";export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
+import { isBoolean, isFunction, isNumber, isString } from "../../../shared/utils/typeChecks.js";
+export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
 "accessToken",
 "refreshToken",
 "apiKey",

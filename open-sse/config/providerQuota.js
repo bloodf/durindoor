@@ -1,9 +1,10 @@
-import { isObject } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Authoritative provider-quota endpoints and operational bounds.
  *
  * This module is intentionally side-effect free so offline tests and quota
  * workers never have to import the generated provider registry.
  */
+import { isObject } from "../../src/shared/utils/typeChecks.js";
 
 function deepFreeze(value) {
   if (!value || !isObject(value) || Object.isFrozen(value)) return value;

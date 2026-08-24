@@ -27,7 +27,8 @@ import { ENGINE_CATALOG } from "open-sse/services/compression/engineCatalog.js";
 // already produces on `stats`: `validationErrors` plus inflation-guard entries
 // in `validationWarnings`. Non-fallback runs get [] / null — zero change on the
 // happy path, even when warnings exist (mirrors the source gating).
-import { isNumber, isObject, isString } from "../../../../shared/utils/typeChecks.js";function computeFallbackReasons(stats) {
+import { isNumber, isObject, isString } from "../../../../shared/utils/typeChecks.js";
+function computeFallbackReasons(stats) {
   const reasons = [];
   if (!stats || stats.fallbackApplied !== true) return reasons;
   const seen = new Set();

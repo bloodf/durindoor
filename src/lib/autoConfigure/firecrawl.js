@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../shared/utils/typeChecks.js";function stringifyHeaders(headers) {
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
+function stringifyHeaders(headers) {
   if (!headers || !isObject(headers) || Array.isArray(headers)) return undefined;
   const entries = Object.entries(headers).filter(([, v]) => v !== undefined && v !== null);
   return entries.length > 0 ? JSON.stringify(Object.fromEntries(entries)) : undefined;

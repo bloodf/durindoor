@@ -1,4 +1,5 @@
-import { isString } from "./typeChecks.js";export const OAUTH_CALLBACK_FRESHNESS_MS = 30_000;
+import { isString } from "./typeChecks.js";
+export const OAUTH_CALLBACK_FRESHNESS_MS = 30_000;
 
 /** Build the explicit browser-to-server routing contract for a new flow. */
 export function oauthProxySelection(proxyPoolId) {
@@ -93,7 +94,8 @@ export function createOAuthFlowLifecycle({
       } catch {
 
         // Best-effort cleanup for a popup created by stale work.
-      }return false;
+      }
+      return false;
     }
     flow.popup = popup || null;
     return true;

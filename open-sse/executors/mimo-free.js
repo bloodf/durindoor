@@ -37,7 +37,8 @@ function generateFingerprint() {
   } catch {
 
     // ignore
-  }const cpu = (os.cpus()[0]?.model || "unknown-cpu").trim();
+  }
+  const cpu = (os.cpus()[0]?.model || "unknown-cpu").trim();
   const seed = `${os.hostname()}|${os.platform()}|${os.arch()}|${cpu}|${username}`;
   return createHash("sha256").update(seed).digest("hex");
 }
@@ -58,7 +59,8 @@ function parseJwtExp(jwt) {
   } catch {
 
     // ignore
-  }return Date.now() + JWT_FALLBACK_TTL_SEC * 1000;
+  }
+  return Date.now() + JWT_FALLBACK_TTL_SEC * 1000;
 }
 
 // Ensure the body carries the anti-abuse marker in a system message (idempotent)

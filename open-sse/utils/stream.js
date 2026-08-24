@@ -329,7 +329,15 @@ export function createSSEStream(options = {}) {
         }
         if (isClaude) {
           const contentBlocks = [...claudeBlocks.entries()].sort(([a], [b]) => a - b).flatMap(([, block]) => {
-            if (block.type === "tool_use") {let input = {};try {if (block.inputJson) input = JSON.parse(block.inputJson);} catch {input = block.inputJson;}return [{ type: "tool_use", id: block.id, name: block.name, input }];}
+            if (block.type === "tool_use") {
+              let input = {};
+              try {
+                if (block.inputJson) input = JSON.parse(block.inputJson);
+              } catch {
+                input = block.inputJson;
+              }
+              return [{ type: "tool_use", id: block.id, name: block.name, input }];
+            }
             if (block.type === "thinking") return block.thinking ? [{ type: "thinking", thinking: block.thinking, ...(block.signature ? { signature: block.signature } : null) }] : [];
             return block.text ? [{ type: "text", text: block.text }] : [];
           });

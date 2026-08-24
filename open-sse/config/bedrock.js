@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";export const BEDROCK_DEFAULT_REGION = "us-east-1";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+export const BEDROCK_DEFAULT_REGION = "us-east-1";
 
 const BEDROCK_REGION_PATTERN = /^[a-z]{2}(?:-gov)?-[a-z]+-\d+$/i;
 

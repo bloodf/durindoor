@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../../shared/utils/typeChecks.js"; // Header allowlist for caller-supplied MCP instance headers.
+// Header allowlist for caller-supplied MCP instance headers.
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 //
 // Background: an attacker who can create or update an MCP instance can
 // supply arbitrary headers that are then forwarded to the upstream on

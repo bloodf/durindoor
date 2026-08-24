@@ -328,7 +328,8 @@ async function peekQoderBillingFrame(reader, timeoutMs) {
         } catch {
 
           // Malformed frames remain existing stream-transform failures.
-        }return { chunks, done: false };
+        }
+        return { chunks, done: false };
       }
     }
     return { chunks, done: false };

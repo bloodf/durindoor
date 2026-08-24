@@ -1,4 +1,5 @@
-import { isString } from "../../../../../shared/utils/typeChecks.js";export function isAccountIdValid(accountId) {
+import { isString } from "../../../../../shared/utils/typeChecks.js";
+export function isAccountIdValid(accountId) {
   return isString(accountId) && accountId.trim().length > 0;
 }
 

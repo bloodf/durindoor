@@ -1,4 +1,4 @@
-import { isBoolean, isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * ClinePass response-envelope helpers.
  *
  * Cline's `/api/v1/chat/completions` endpoint wraps every body in a
@@ -9,6 +9,7 @@ import { isBoolean, isObject, isString } from "../../src/shared/utils/typeChecks
  *
  * Source: decolua/9router#2332 @ 005d970f49.
  */
+import { isBoolean, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 /**
  * Unwrap a ClinePass `{success, data}` envelope.

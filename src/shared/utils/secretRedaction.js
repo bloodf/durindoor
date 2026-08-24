@@ -1,4 +1,5 @@
-import { isObject } from "./typeChecks.js";export const REDACTED_SECRET = "[REDACTED]";
+import { isObject } from "./typeChecks.js";
+export const REDACTED_SECRET = "[REDACTED]";
 
 function isSecretField(name) {
   const normalized = String(name || "").replace(/[^a-z0-9]/gi, "").toLowerCase();

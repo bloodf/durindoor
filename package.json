@@ -74,9 +74,13 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "eslint-plugin-react-hooks": "7.1.1",
+    "lint-staged": "15.5.2",
     "oxlint": "1.78.0",
     "postcss": "^8.5.23",
     "tailwindcss": "^4"
+  },
+  "lint-staged": {
+    "src/**/*.{js,jsx,mjs}": "eslint --max-warnings=0"
   },
   "overrides": {
     "dompurify": "3.4.13",

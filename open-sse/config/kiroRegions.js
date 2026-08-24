@@ -1,4 +1,4 @@
-import { isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Kiro regional topology — SINGLE SOURCE OF TRUTH.
  *
  * Kiro / AWS CodeWhisperer is region-scoped: the access token, its profileArn,
@@ -18,6 +18,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js"; /**
  * This module is intentionally dependency-free so both the SSE hot path
  * (executors/translators) and the OAuth helpers (src/lib/oauth) can import it.
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 export const KIRO_DEFAULT_REGION = "us-east-1";
 const KIRO_REGION_PATTERN = /^[a-z]{2}(?:-[a-z0-9]+)+-\d{1,2}$/;
@@ -35,7 +36,6 @@ const KIRO_RUNTIME_HOSTS = [
 { host: (r) => `runtime.${r}.kiro.dev`, availableIn: "all" },
 { host: (r) => `codewhisperer.${r}.amazonaws.com`, availableIn: [KIRO_DEFAULT_REGION] },
 { host: (r) => `q.${r}.amazonaws.com`, availableIn: "all" }];
-
 
 function hostAvailable(entry, region) {
   return entry.availableIn === "all" || entry.availableIn.includes(region);

@@ -1,9 +1,10 @@
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * OpenCode / OpenAI-compatible tool name mapping for Cursor native tools.
  *
  * Cursor expects native tool names (shell, ls, read, write, grep).
  * OpenCode sends OpenAI-style names (bash, list, glob, read, write, grep).
  */
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const OPENAI_TO_CURSOR = {
   bash: "shell",
@@ -173,7 +174,6 @@ export function parseNativeToolCallsFromText(text) {
   const patterns = [
   /(?:<\|[^|]*tool_call_begin[^|]*\|>\s*)?(run_terminal_cmd|execute_command|shell)\s*(\{[\s\S]*?\})/gi,
   /(?:<\|tool_call_begin\|>\s*)([a-zA-Z0-9_\-]+)\s*([\s\S]*?)(?:<\|tool_call_end\|>)/g];
-
 
   for (const pattern of patterns) {
     let match;

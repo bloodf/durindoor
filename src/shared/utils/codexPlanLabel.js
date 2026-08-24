@@ -1,4 +1,4 @@
-import { isString } from "./typeChecks.js"; /**
+/**
  * Resolve the Codex/ChatGPT plan badge label for a connection or quota row.
  *
  * Shared by the provider connection row and the usage quota view so both apply
@@ -11,6 +11,7 @@ import { isString } from "./typeChecks.js"; /**
  * @param {unknown} rawPlan - e.g. connection.providerSpecificData.chatgptPlanType or quota.plan
  * @returns {string} display label, or "" when the badge should be hidden
  */
+import { isString } from "./typeChecks.js";
 export function getCodexPlanLabel(isCodex, rawPlan) {
   if (!isCodex || !isString(rawPlan)) return "";
   const plan = rawPlan.trim();

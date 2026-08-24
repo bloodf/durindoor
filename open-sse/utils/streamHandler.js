@@ -4,7 +4,8 @@ import { dbg, isDebugEnabled } from "./debugLog.js";
 import { sanitizeErrorMessage } from "./error.js";
 
 // Get HH:MM:SS timestamp
-import { isString } from "../../src/shared/utils/typeChecks.js";function getTimeString() {
+import { isString } from "../../src/shared/utils/typeChecks.js";
+function getTimeString() {
   return new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 

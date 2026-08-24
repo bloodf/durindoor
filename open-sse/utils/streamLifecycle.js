@@ -1,4 +1,4 @@
-import { isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Local stream lifecycle classifier (ported from OmniRoute #7907/#7908).
  *
  * When the caller drops the connection mid-stream (combo race loser, model
@@ -12,6 +12,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js"; /**
  * Treat them as local lifecycle events: the cooldown / fallback accrual must
  * skip them. Genuine upstream failures (5xx/429/401) still count.
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export function isLocalStreamLifecycleError(error) {
   if (!error) return false;
   const name = isString(error?.name) ? error.name : "";

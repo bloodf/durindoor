@@ -1,7 +1,8 @@
-import { isFunction, isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Detect CLI tool identity from request headers/body.
  * Used to determine if a request can be passed through losslessly.
  */
+import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
 
 // Map of CLI tool identifiers to provider IDs they are "native" to
 const NATIVE_PAIRS = {

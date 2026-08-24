@@ -1,4 +1,4 @@
-import { isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Pure text helpers for providers that explicitly declare the MiniMax M3
  * OpenAI-transport compatibility quirk. The handler owns provider/model
  * gating and invokes `extractThinkTags()` before any client-format conversion.
@@ -13,6 +13,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js"; /**
  * visible and disable later extraction, but cannot retract reasoning that the
  * client has already consumed.
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const OPEN_TAG = "<think>";
 const CLOSE_TAG = "</think>";

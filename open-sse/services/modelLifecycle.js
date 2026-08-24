@@ -1,4 +1,5 @@
-import { isNumber, isString } from "../../src/shared/utils/typeChecks.js"; // Provider-scoped model lifecycle policy.
+// Provider-scoped model lifecycle policy.
+import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 //
 // Replacement model IDs are migration guidance only. This module never rewrites
 // a request: shutdown models are rejected, deprecated models remain callable

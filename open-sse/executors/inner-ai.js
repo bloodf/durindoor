@@ -134,7 +134,8 @@ async function resolveCredentials(token, credEmail, signal) {
   } catch {
 
     // Profile fetch is a best-effort email discovery step.
-  }if (!email && credEmail) email = credEmail;
+  }
+  if (!email && credEmail) email = credEmail;
   if (!email && isString(payload?.sub) && payload.sub.includes("@")) email = payload.sub;
   const creds = { email, deviceId };
   lruSet(credentialCache, key, creds);

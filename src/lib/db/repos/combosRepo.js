@@ -6,7 +6,8 @@ import { validateComboInvariant } from "@/lib/combos/invariants.js";
 // Extract the persisted invariant shape from a combo payload. Accepts the
 // fields under `invariant` or as top-level `allowedProviders` /
 // `allowedModelFamilies`. Returns null when no constraint is declared.
-import { isObject, isString } from "../../../shared/utils/typeChecks.js";function normalizeInvariant(data) {
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+function normalizeInvariant(data) {
   const src =
   data.invariant && isObject(data.invariant) && !Array.isArray(data.invariant) ?
   data.invariant :

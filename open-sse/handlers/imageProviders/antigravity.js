@@ -4,7 +4,8 @@ import { nowSec } from "./_base.js";
 import { getExecutor } from "../../executors/index.js";
 
 // Convert image input (data URI or raw base64) to Gemini inlineData part
-import { isString } from "../../../src/shared/utils/typeChecks.js";function resolveImageInput(input) {
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+function resolveImageInput(input) {
   if (!input || !isString(input)) return null;
   // data:image/png;base64,... format
   const dataUriMatch = input.match(/^data:(image\/[^;]+);base64,(.+)$/);

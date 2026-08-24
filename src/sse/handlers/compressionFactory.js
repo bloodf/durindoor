@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../shared/utils/typeChecks.js"; // F-1b production wiring for the chatCore compression seam.
+// F-1b production wiring for the chatCore compression seam.
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 //
 // Settings (compressionV2Mode / compressionV2Stack) -> the per-engine toggle map
 // the chatCore seam hands to deriveDefaultPlan. Intensity rides along on each

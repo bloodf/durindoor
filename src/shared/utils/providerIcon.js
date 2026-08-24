@@ -1,4 +1,4 @@
-import { isString } from "./typeChecks.js"; /**
+/**
  * rendered as an <img> src by ProviderIcon.js). Used by create/update
  * provider-node API routes. The browser never fetches a URL server-side;
  * validation confines persisted image sources to safe supported schemes.
@@ -14,6 +14,7 @@ import { isString } from "./typeChecks.js"; /**
  *   - malformed / non-base64 / empty payloads
  *   - anything over the length or decoded-size bound
  */
+import { isString } from "./typeChecks.js";
 export const MAX_PROVIDER_ICON_URL_LENGTH = 2000;
 export const MAX_PROVIDER_ICON_DATA_URL_LENGTH = 256 * 1024;
 export const MAX_PROVIDER_ICON_DATA_BYTES = Math.floor(MAX_PROVIDER_ICON_DATA_URL_LENGTH * 3 / 4);

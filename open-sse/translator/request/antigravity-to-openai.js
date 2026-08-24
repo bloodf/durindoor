@@ -8,7 +8,8 @@ import { collapseTextParts } from "../concerns/message.js";
 
 // Convert Antigravity request to OpenAI format
 // Antigravity body: { project, model, userAgent, requestType, requestId, request: { contents, systemInstruction, tools, toolConfig, generationConfig, sessionId } }
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";export function antigravityToOpenAIRequest(model, body, stream) {
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+export function antigravityToOpenAIRequest(model, body, stream) {
   const req = body.request || body;
   const result = {
     model: model,

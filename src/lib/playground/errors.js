@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../shared/utils/typeChecks.js"; // Sanitizes server error text before it reaches the playground UI so markup,
+// Sanitizes server error text before it reaches the playground UI so markup,
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 // stack frames, and absolute filesystem paths never render in a toast or
 // message bubble. Capped at 200 chars so a runaway trace can't flood the UI.
 function textValue(value) {

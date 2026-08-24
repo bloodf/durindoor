@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";export function isRecord(value) {
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+export function isRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 

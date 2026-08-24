@@ -6,7 +6,8 @@ import { collapseTextParts } from "../concerns/message.js";
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK } from "../schema/index.js";
 
 // Convert Gemini request to OpenAI format
-import { isString } from "../../../src/shared/utils/typeChecks.js";export function geminiToOpenAIRequest(model, body, stream) {
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+export function geminiToOpenAIRequest(model, body, stream) {
   const result = {
     model: model,
     messages: [],

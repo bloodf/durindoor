@@ -1,4 +1,5 @@
-import { isString } from "../../../src/shared/utils/typeChecks.js"; /** A local capacity/coordinator failure that must never become provider evidence. */
+/** A local capacity/coordinator failure that must never become provider evidence. */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 export class QuotaDispatchUnavailableError extends Error {
   constructor(reason = "capacity_exhausted") {
     super("Provider quota capacity unavailable");

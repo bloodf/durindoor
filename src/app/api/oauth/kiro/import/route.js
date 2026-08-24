@@ -47,7 +47,8 @@ export async function POST(request) {
     } catch (cacheError) {
 
       // Cache unavailable or token not cached — proceed with standard flow.
-    }if (cacheResult?.authMethod === "external_idp" && cacheResult.rawAuth) {
+    }
+    if (cacheResult?.authMethod === "external_idp" && cacheResult.rawAuth) {
       // Throws on invalid metadata (e.g. non-Microsoft token endpoint).
       const normalized = normalizeKiroExternalIdpAuth(cacheResult.rawAuth);
       resolvedProviderData = normalized.providerSpecificData;

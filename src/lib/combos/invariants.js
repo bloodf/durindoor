@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../shared/utils/typeChecks.js"; // Declarative combo invariants (port of OmniRoute #8304).
+// Declarative combo invariants (port of OmniRoute #8304).
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 //
 // A combo MAY constrain which providers and/or model families its targets are
 // allowed to use. When set, every non-combo-ref target is validated on

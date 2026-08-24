@@ -1,8 +1,9 @@
-import { isObject } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Singleton cache for real Claude Code client headers.
  * Captures headers from authentic Claude Code requests and makes them available
  * for forwarding to api.anthropic.com, replacing static hardcoded values.
  */
+import { isObject } from "../../src/shared/utils/typeChecks.js";
 
 const CLAUDE_IDENTITY_HEADERS = [
 "user-agent",
@@ -24,7 +25,6 @@ const CLAUDE_IDENTITY_HEADERS = [
 "runtime-version",
 "os",
 "arch"];
-
 
 let cachedHeaders = null;
 

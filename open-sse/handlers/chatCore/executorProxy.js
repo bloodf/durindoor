@@ -113,7 +113,8 @@ export async function resolveExecutorWithProxy(providerId, log, providerSpecific
     } catch {
 
       // ignore cancel errors; body may already be consumed or not cancelable
-    }return executeCliproxyapiMapped(proxyExec, providerId, input, cfg.cliproxyapiModelMapping);
+    }
+    return executeCliproxyapiMapped(proxyExec, providerId, input, cfg.cliproxyapiModelMapping);
   };
 
   return wrapper;

@@ -1,4 +1,5 @@
-import { isUndefined } from "../../shared/utils/typeChecks.js";function normalizeString(value) {
+import { isUndefined } from "../../shared/utils/typeChecks.js";
+function normalizeString(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
 }

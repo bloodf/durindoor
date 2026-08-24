@@ -152,7 +152,8 @@ export class DevinCliExecutor extends BaseExecutor {
           } catch {
 
             // Ignore close races.
-          }const killTimer = setTimeout(() => {
+          }
+          const killTimer = setTimeout(() => {
             if (!child.killed) child.kill("SIGKILL");
           }, 2000);
           killTimer.unref?.();

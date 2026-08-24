@@ -1,4 +1,5 @@
-import { isBrowser } from "../utils/typeChecks.js"; // Skip during Next.js build/prerender — bootstrap would download cloudflared, init DNS, etc.
+// Skip during Next.js build/prerender — bootstrap would download cloudflared, init DNS, etc.
+import { isBrowser } from "../utils/typeChecks.js";
 const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build" ||
 process.env.NEXT_PHASE === "phase-export" ||
 process.env.NEXT_PHASE === "phase-static" ||

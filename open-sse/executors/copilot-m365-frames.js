@@ -1,9 +1,10 @@
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Microsoft 365 Copilot SignalR-over-WebSocket frame helpers.
  *
  * These functions are transport-free so tests can pin the wire shape without
  * opening a live Microsoft socket.
  */
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export const RECORD_SEPARATOR = String.fromCharCode(0x1e);
 export const HANDSHAKE_REQUEST = { protocol: "json", version: 1 };
 export const KEEPALIVE_PING = { type: 6 };
@@ -20,7 +21,6 @@ export const ALLOWED_MESSAGE_TYPES = [
 "AdsQuery",
 "SemanticSerp",
 "GenerateContentQuery"];
-
 
 export const M365_DEFAULT_OPTION_SETS = [
 "search_result_progress_messages_with_search_queries",
@@ -48,7 +48,6 @@ export const M365_DEFAULT_OPTION_SETS = [
 "flux_v3_image_gen_enable_non_watermarked_storage",
 "flux_v3_image_gen_enable_story",
 "rich_responses"];
-
 
 export function encodeFrame(obj) {
   return JSON.stringify(obj) + RECORD_SEPARATOR;

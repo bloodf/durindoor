@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";function toRecord(value) {
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+function toRecord(value) {
   return value && isObject(value) && !Array.isArray(value) ? value : null;
 }
 

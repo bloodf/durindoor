@@ -9,7 +9,8 @@ import { AI_PROVIDERS, MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers
 import { filterActiveConnections } from "@/shared/utils/connectionStatus";
 
 // Parse "providerId/model" or just "providerId" → { providerId, model }
-import { isObject, isString } from "../../../../../../shared/utils/typeChecks.js";function parseModelEntry(entry) {
+import { isObject, isString } from "../../../../../../shared/utils/typeChecks.js";
+function parseModelEntry(entry) {
   if (!isString(entry)) return { providerId: "", model: "" };
   const idx = entry.indexOf("/");
   if (idx < 0) return { providerId: entry, model: "" };

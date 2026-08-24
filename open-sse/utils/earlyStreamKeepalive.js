@@ -1,4 +1,4 @@
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Early SSE keepalive wrapper for streaming route handlers.
  *
  * Strict HTTP clients (e.g. Codex CLI's `reqwest`, Claude Code/Anthropic SDK)
@@ -13,6 +13,7 @@ import { isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
  * resolves; its body is then forwarded. If the handler ultimately fails, a
  * structured `event: error` frame is emitted in-band.
  */
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const ENCODER = new TextEncoder();
 const DEFAULT_KEEPALIVE_FRAME = ENCODER.encode(": keepalive\n\n");

@@ -1,4 +1,4 @@
-import { isNumber } from "../../../../src/shared/utils/typeChecks.js"; /**
+/**
  * Pure target-token computation (design D-C1). No clock, no DB, no tokenizer.
  *
  * @param {string} policy            active target policy
@@ -7,6 +7,7 @@ import { isNumber } from "../../../../src/shared/utils/typeChecks.js"; /**
  * @param {object} config            reserves / margin / pct / absoluteBudget
  * @returns {number} the maximum prompt-token target the compressed request should fit within
  */
+import { isNumber } from "../../../../src/shared/utils/typeChecks.js";
 export function computeTarget(policy, modelContextLimit, requestMaxTokens, config) {
   if (policy === "absolute") {
     return Math.max(0, Math.floor(config.absoluteBudget));

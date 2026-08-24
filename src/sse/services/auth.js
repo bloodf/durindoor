@@ -95,7 +95,8 @@ async function resolveStaticRetryCooldown(provider, defaultCooldownMs) {
   } catch {
 
     // Settings failure keeps the validated BACKOFF_CONFIG schedule.
-  }if (!configured && SHORT_COOLDOWN_PROVIDERS.has(providerKey)) {
+  }
+  if (!configured && SHORT_COOLDOWN_PROVIDERS.has(providerKey)) {
     cooldownMs = Math.min(cooldownMs, FREE_TIER_STATIC_COOLDOWN_CAP_MS);
   }
   return { cooldownMs, configured };

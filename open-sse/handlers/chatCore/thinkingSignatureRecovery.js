@@ -1,4 +1,4 @@
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js"; /**
+/**
  * Anthropic thinking-signature one-shot recovery (ported from OmniRoute #7906).
  *
  * Anthropic occasionally rejects a request whose COMPLETED historical assistant
@@ -10,6 +10,7 @@ import { isObject, isString } from "../../../src/shared/utils/typeChecks.js"; /*
  * These helpers are pure and intentionally NOT applied eagerly: normal requests
  * must retain their thinking history, cache shape, and current-model semantics.
  */
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function isThinkingBlock(block) {
   if (!block || !isObject(block)) return false;

@@ -6,7 +6,8 @@ import { DATA_DIR } from "@/lib/dataDir.js";
 import { createDiagnostic, quoteShellArg, redactSensitive, SetupError } from "@/shared/utils/setupDiagnostics.js";
 
 // headroom-ai declares `requires_python = ">=3.10"` with no upper bound.
-import { isFunction } from "../../shared/utils/typeChecks.js";export const MIN_PYTHON = [3, 10];
+import { isFunction } from "../../shared/utils/typeChecks.js";
+export const MIN_PYTHON = [3, 10];
 
 const IS_WIN = process.platform === "win32";
 const WHICH_CMD = IS_WIN ? "where" : "which";

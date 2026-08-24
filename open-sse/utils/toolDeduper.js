@@ -1,8 +1,9 @@
-import { isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Normalize outbound tools for upstream PR #3333.
  * Claude clients lose configured built-ins shadowed by MCP tools; DeepSeek
  * models retain only the first exact-name definition because duplicates 400.
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEDUP_RULES = [
 {
@@ -20,7 +21,6 @@ const DEDUP_RULES = [
   triggers: [/^mcp__browsermcp__/],
   strip: [/^mcp__Claude_in_Chrome__/]
 }];
-
 
 function getToolName(t) {
   return t?.name || t?.function?.name || "";

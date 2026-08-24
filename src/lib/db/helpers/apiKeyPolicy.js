@@ -1,4 +1,4 @@
-import { isObject, isString } from "../../../shared/utils/typeChecks.js"; /**
+/**
  * Validate and normalize the persisted API-key policy contract.
  *
  * Policy data is security-sensitive: malformed limits must never become NaN
@@ -6,6 +6,7 @@ import { isObject, isString } from "../../../shared/utils/typeChecks.js"; /**
  * preserved for forward compatibility, while the currently enforced fields
  * are normalized to a single well-defined shape.
  */
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 export function normalizeApiKeyPolicy(value) {
   if (value == null) return null;
   if (!isObject(value) || Array.isArray(value)) {

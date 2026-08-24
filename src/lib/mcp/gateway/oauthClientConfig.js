@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../../shared/utils/typeChecks.js"; // Merge manually-entered OAuth client credentials (client_id / client_secret /
+// Merge manually-entered OAuth client credentials (client_id / client_secret /
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 // scope) from an instance create/update payload into the instance's oauthTokens
 // bundle, WITHOUT clobbering any live token material already stored there.
 //

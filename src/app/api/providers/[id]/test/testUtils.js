@@ -30,7 +30,8 @@ import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/se
 import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 
 // OAuth provider test endpoints
-import { isString } from "../../../../../shared/utils/typeChecks.js";export const OAUTH_TEST_CONFIG = {
+import { isString } from "../../../../../shared/utils/typeChecks.js";
+export const OAUTH_TEST_CONFIG = {
   claude: { checkExpiry: true, refreshable: true },
   codex: {
     url: "https://chatgpt.com/backend-api/codex/responses",
@@ -177,7 +178,8 @@ function parseProviderErrorMessage(bodyText, fallback) {
   } catch {
 
     // fall through
-  }return bodyText.trim() || fallback;
+  }
+  return bodyText.trim() || fallback;
 }
 
 async function probeCloudCodeAssistAccess(connection, accessToken, effectiveProxy = null) {

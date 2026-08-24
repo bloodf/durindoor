@@ -1,4 +1,5 @@
-import { isString } from "../../../../../shared/utils/typeChecks.js";export function apiKeyConnectionNames(connections = []) {
+import { isString } from "../../../../../shared/utils/typeChecks.js";
+export function apiKeyConnectionNames(connections = []) {
   return connections.
   filter((connection) => connection?.authType === "apikey").
   map((connection) => connection.name);

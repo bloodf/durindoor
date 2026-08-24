@@ -20,7 +20,8 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";export {
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+export {
   refreshAccessToken,
   refreshClaudeOAuthToken,
   refreshGoogleToken,

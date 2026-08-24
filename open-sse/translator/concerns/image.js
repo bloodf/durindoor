@@ -1,4 +1,5 @@
-import { isString } from "../../../src/shared/utils/typeChecks.js"; // Build a base64 data URI from mime + base64 payload
+// Build a base64 data URI from mime + base64 payload
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function encodeDataUri(mimeType, base64) {
   return `data:${mimeType};base64,${base64}`;
 }
@@ -106,7 +107,14 @@ export async function fetchImageAsBase64(imageUrl, options = {}) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.length;
-      if (total > maxBytes) {try {await reader.cancel();} catch {/* ignore */}return null;}
+      if (total > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        return null;
+      }
       chunks.push(value);
     }
 

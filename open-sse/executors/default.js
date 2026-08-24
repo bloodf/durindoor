@@ -21,7 +21,8 @@ import { FORMATS } from "../translator/formats.js";
 // the same mechanism the Codex executor uses. We do NOT enable it by default:
 // some strict openai-compatible gateways reject unknown fields. A custom
 // provider opts in via providerSpecificData.enablePromptCacheKey === true.
-import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";export function normalizePromptCacheKey(provider, sessionId) {
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+export function normalizePromptCacheKey(provider, sessionId) {
   if (!sessionId) return "";
   const scoped = `${provider || "openai-compatible"}:${sessionId}`;
   return `cc_${crypto.createHash("sha256").update(scoped).digest("hex").slice(0, 32)}`;

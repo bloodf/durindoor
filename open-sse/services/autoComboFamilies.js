@@ -1,4 +1,4 @@
-import { isString } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Model-family primitives for auto-combo (F-2).
  *
  * Pure, dependency-free primitives ported verbatim in shape from
@@ -12,6 +12,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js"; /**
  * is intentionally NOT detectable from a model id — it is a provider-override
  * family ("route to my z.ai backend"), distinct from `glm` ("any GLM backend").
  */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export const MODEL_FAMILIES = Object.freeze([
 "glm",
 "minimax",

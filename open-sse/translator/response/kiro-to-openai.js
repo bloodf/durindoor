@@ -12,7 +12,8 @@ import { reasoningDelta } from "../concerns/reasoning.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
 
 // Build chunk meta for current kiro state
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";function chunkMeta(state) {
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+function chunkMeta(state) {
   return { id: state.responseId, created: state.created, model: state.model || "kiro" };
 }
 

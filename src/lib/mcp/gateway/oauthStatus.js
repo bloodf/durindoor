@@ -1,4 +1,5 @@
-import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js"; // Dashboard-safe OAuth status derivation — never returns token material.
+// Dashboard-safe OAuth status derivation — never returns token material.
+import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 //
 // Distinct from `hasUsableToken` in oauthRefresh.js (which answers
 // "is a token usable right now for a live upstream call?"). This answers

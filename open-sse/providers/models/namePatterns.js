@@ -1,4 +1,5 @@
-import { isString } from "../../../src/shared/utils/typeChecks.js"; // Derive a display name from a model id when the entry omits `name` (mirrors PATTERN_PRICING).
+// Derive a display name from a model id when the entry omits `name` (mirrors PATTERN_PRICING).
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 // Provider entries that ship their own `name` always win; this is only a fallback for terse entries.
 
 // Capitalize a hyphen/space separated token group: "coder-plus" → "Coder Plus".

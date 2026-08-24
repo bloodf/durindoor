@@ -1,4 +1,5 @@
-import { isString } from "../../../src/shared/utils/typeChecks.js"; // Shared helpers for image provider adapters
+// Shared helpers for image provider adapters
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 export const POLL_INTERVAL_MS = 1500;
 export const POLL_TIMEOUT_MS = 120000;

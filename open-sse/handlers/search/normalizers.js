@@ -1,9 +1,10 @@
-import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js"; /**
+/**
  * Search Response Normalizers
  *
  * Ported from OmniRoute open-sse/handlers/search.ts.
  * Each normalizer maps a provider-specific response into the unified SearchResult shape.
  */
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 /** Build a unified SearchResult object. */
 function makeResult(providerId, item, idx, now) {

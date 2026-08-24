@@ -1,4 +1,5 @@
-import { isNumber, isString } from "../../../shared/utils/typeChecks.js"; // Bounded retry helper with exponential backoff and jitter for transient
+// Bounded retry helper with exponential backoff and jitter for transient
+import { isNumber, isString } from "../../../shared/utils/typeChecks.js";
 // MCP gateway failures. Used by HTTP and stdio clients to handle temporary
 // network/upstream blips without surfacing them as fatal errors to the harness.
 

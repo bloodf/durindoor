@@ -1,4 +1,4 @@
-import { isString } from "../../../src/shared/utils/typeChecks.js"; /**
+/**
  * Qoder body encoding ported from qoder2api's QoderEncoding.java (via the
  * CLIProxyAPIPlus qoder-provider branch).
  *
@@ -11,6 +11,7 @@ import { isString } from "../../../src/shared/utils/typeChecks.js"; /**
  * server decodes in reverse. The obfuscation prevents Alibaba Cloud WAF from
  * pattern-matching the plaintext request body.
  */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const QODER_STD_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const QODER_CUSTOM_ALPHABET = "_doRTgHZBKcGVjlvpC,@aFSx#DPuNJme&i*MzLOEn)sUrthbf%Y^w.(kIQyXqWA!";

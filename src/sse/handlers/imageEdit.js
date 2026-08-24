@@ -15,7 +15,8 @@ import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 // Allow large image uploads (mask + image can be several MB).
-import { isString } from "../../shared/utils/typeChecks.js";export const maxDuration = 300;
+import { isString } from "../../shared/utils/typeChecks.js";
+export const maxDuration = 300;
 
 /**
  * Handle image-edit request — OpenAI /v1/images/edits multipart passthrough.

@@ -7,7 +7,8 @@ import { reasoningDelta } from "../concerns/reasoning.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
 
 // Create OpenAI chunk helper
-import { isNumber, isObject } from "../../../src/shared/utils/typeChecks.js";function createChunk(state, delta, finishReason = null) {
+import { isNumber, isObject } from "../../../src/shared/utils/typeChecks.js";
+function createChunk(state, delta, finishReason = null) {
   return buildChunk(
     { id: `chatcmpl-${state.messageId}`, created: Math.floor(Date.now() / 1000), model: state.model },
     delta,

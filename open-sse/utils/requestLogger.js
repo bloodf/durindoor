@@ -1,4 +1,5 @@
-import { isBrowser, isFunction, isObject, isString, isUndefined } from "../../src/shared/utils/typeChecks.js"; // Check if running in Node.js environment (has fs module)
+// Check if running in Node.js environment (has fs module)
+import { isBrowser, isFunction, isObject, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 const isNode = !isUndefined(globalThis.process) && process.versions?.node && !isBrowser();
 
 // Check if logging is enabled via environment variable (default: false)

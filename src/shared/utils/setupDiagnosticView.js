@@ -1,9 +1,10 @@
-import { isString } from "./typeChecks.js"; /**
+/**
  * Pure view helpers for rendering Headroom setup diagnostics in the dashboard.
  *
  * All user-facing string choices and branch decisions live here so the
  * presentational card can stay declarative.
  */
+import { isString } from "./typeChecks.js";
 
 const CODE_HEADINGS = {
   NO_SUPPORTED_PYTHON: "No supported Python interpreter was found",

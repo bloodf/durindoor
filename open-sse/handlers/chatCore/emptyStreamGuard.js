@@ -21,7 +21,8 @@ import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { isQuotaDispatchUnavailable } from "../../services/quota/dispatch.js";
 
 // Mirrors oh-my-pi's empty-response policy: 2 retries, 500ms * 2^attempt backoff.
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";export const EMPTY_STREAM_MAX_RETRIES = 2;
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+export const EMPTY_STREAM_MAX_RETRIES = 2;
 export const EMPTY_STREAM_BASE_DELAY_MS = 500;
 
 // A part is meaningful when it carries output the client can act on: a tool

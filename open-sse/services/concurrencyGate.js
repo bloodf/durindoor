@@ -1,4 +1,4 @@
-import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js"; /**
+/**
  * Per-provider concurrency gate (semaphore).
  *
  * Limits the number of concurrent in-flight upstream requests for a single
@@ -14,6 +14,7 @@ import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js"; /**
  * scaled horizontally the gate would need to be backed by a shared store
  * (Redis, SQLite), but for the typical 9router deployment this is sufficient.
  */
+import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
 
 /** @type {Map<string, {current: number, queue: Array<{resolve, reject, timer}>}>} */
 const gates = new Map();

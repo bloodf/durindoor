@@ -11,7 +11,8 @@ import { createProviderConnection } from "@/models";
  * - accessToken: string - Access token from cursorAuth/accessToken
  * - machineId: string - Machine ID from storage.serviceMachineId
  * - cachedEmail: string - Optional email from cursorAuth/cachedEmail
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { accessToken, machineId, cachedEmail: bodyCachedEmail } = await request.json();

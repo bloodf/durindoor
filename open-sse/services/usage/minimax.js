@@ -6,7 +6,8 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U, parseResetTime } from "./shared.js";
 
 // MiniMax usage endpoints (try in order, fallback on transient errors)
-import { isObject } from "@/shared/utils/typeChecks.js";const MINIMAX_USAGE_URLS = {
+import { isObject } from "../../../src/shared/utils/typeChecks.js";
+const MINIMAX_USAGE_URLS = {
   minimax: U("minimax").urls,
   "minimax-cn": U("minimax-cn").urls
 };

@@ -7,7 +7,7 @@ import {
   saveRequestUsage } from
 "@/lib/localDb";
 import { isRecord } from "./guards";
-import { isNumber, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isString } from "../../../shared/utils/typeChecks.js";
 
 const SERVER_INFO = { name: "9router-gateway", version: "1" };
 const PROTOCOL_VERSION = "2025-06-18";

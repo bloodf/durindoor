@@ -12,7 +12,7 @@ import { PROVIDERS } from "../providers/index.js";
 // Registry for translators. Lazy-init guards against circular-import order:
 // translator modules call register() (side-effect) before this module's body runs.
 // var (not let): hoisted as undefined so register() can run during circular import (no TDZ).
-import { isObject, isString } from "@/shared/utils/typeChecks.js";var requestRegistry;
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";var requestRegistry;
 var responseRegistry;
 
 // Register translator

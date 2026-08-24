@@ -13,7 +13,7 @@ import {
 "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 function nowMs() {
   return Date.now();

@@ -5,7 +5,8 @@ import { getDefaultPricing } from "open-sse/providers/pricing.js";
 /**
  * GET /api/pricing
  * Get current pricing configuration (merged user + defaults)
- */import { isNumber, isObject } from "@/shared/utils/typeChecks.js";
+ */
+import { isNumber, isObject } from "../../../shared/utils/typeChecks.js";
 export async function GET() {
   try {
     const pricing = await getPricing();

@@ -11,7 +11,7 @@ import {
 "@/shared/components";
 import { filterActiveConnections } from "@/shared/utils/connectionStatus";
 import { ENGINE_IDS, isEngineAvailable, engineMeta } from "open-sse/services/compression/engineCatalog.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const PRESETS = [
 {

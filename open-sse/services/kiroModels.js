@@ -36,7 +36,7 @@ import {
   buildKiroModelVariants,
   stripKiroSyntheticSuffixes } from
 "../providers/models/kiroVariants.js";
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const KIRO_RUNTIME_SDK_VERSION = "1.0.0";
 const KIRO_AGENT_OS = "windows";

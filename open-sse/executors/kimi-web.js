@@ -16,7 +16,7 @@ import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { extractKimiJwt } from "@/lib/providers/webCookieAuth";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export { extractKimiJwt };
 

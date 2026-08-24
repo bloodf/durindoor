@@ -12,7 +12,7 @@ import {
   CopilotToolCard, ClineToolCard, KiloToolCard, DeepSeekTuiToolCard,
   JcodeToolCard, GrokBuildToolCard } from
 "../components";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
+import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { reorderProviderConnectionsByIds } from "@/lib/db";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 

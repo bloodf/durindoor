@@ -8,7 +8,8 @@ import { spinner as createSpinner } from "../utils/ui.js";
 /**
  * Gemini CLI (Google Cloud Code Assist) OAuth Service
  * Uses standard OAuth2 Authorization Code flow (no PKCE)
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../shared/utils/typeChecks.js";
 export class GeminiCLIService {
   constructor() {
     this.config = GEMINI_CONFIG;

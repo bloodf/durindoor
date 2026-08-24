@@ -2,7 +2,7 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../shared/utils/typeChecks.js";
 
 export function resolveCustomCapabilities(provider, model, requestPrefix, customModels) {
   if (!Array.isArray(customModels) || !model) return null;

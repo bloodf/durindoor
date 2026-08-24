@@ -6,7 +6,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
-import { isUndefined } from "@/shared/utils/typeChecks.js";
+import { isUndefined } from "../../../../../shared/utils/typeChecks.js";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 

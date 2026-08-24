@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { QuotaDispatchUnavailableError } from "./quota/dispatch.js";
-import { isFunction, isObject } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 
 const providerAttemptStorage = new AsyncLocalStorage();
 const quotaBearingStorage = new AsyncLocalStorage();

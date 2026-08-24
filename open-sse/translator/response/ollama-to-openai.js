@@ -16,7 +16,8 @@ import { toOpenAIFinish } from "../concerns/finishReason.js";
  * OpenAI format:
  * {"id": "...", "object": "chat.completion.chunk", "created": 123, "model": "...",
  *  "choices": [{"index": 0, "delta": {"content": "..."}, "finish_reason": null}]}
- */import { isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 export function ollamaToOpenAIResponse(chunk, state) {
   if (!chunk || !isObject(chunk)) return null;
 

@@ -9,7 +9,7 @@ import { createSseParser } from "@/lib/playground/sse";
 import { sanitizeErrorText } from "@/lib/playground/errors";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { getConnectionOptions, getModelReasoningOptions, groupModelsByProvider, normalizeReasoningEffort, paginateSessions } from "./playgroundHelpers";
-import { isBrowser, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBrowser, isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",

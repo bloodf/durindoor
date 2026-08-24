@@ -10,7 +10,8 @@ import { normalizeResponsesInput } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
 // Responses API enforces max 64 chars on call_id (#393)
-import { isString } from "@/shared/utils/typeChecks.js";const MAX_CALL_ID_LEN = 64;
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+const MAX_CALL_ID_LEN = 64;
 const clampCallId = (id) => isString(id) && id.length > MAX_CALL_ID_LEN ? id.substring(0, MAX_CALL_ID_LEN) : id;
 
 /**

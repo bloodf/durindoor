@@ -10,7 +10,8 @@ import { extractReasoningText } from "../concerns/reasoning.js";
  *
  * Input:  OpenAI Chat Completions JSON  {object:"chat.completion", choices:[{message:{...}}]}
  * Output: Anthropic Messages JSON        {id:"msg_...", type:"message", content:[...]}
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, options = {}) {
   if (!responseBody || !responseBody.choices?.[0]) return responseBody;
 

@@ -25,7 +25,8 @@ import {
   normalizeKiroRegion } from
 "./kiroRegions.js";
 
-/** Instruction appended to the retried Kiro turn after wrapper validation fails. */import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+/** Instruction appended to the retried Kiro turn after wrapper validation fails. */
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export const KIRO_TOOL_CALL_REPAIR_INSTRUCTION = [
 "Retry the previous response because its Kiro tool_call wrapper was malformed.",
 "The tool_call input must be an object with a non-empty string name and an arguments field.",

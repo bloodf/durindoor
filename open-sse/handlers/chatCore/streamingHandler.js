@@ -13,7 +13,8 @@ import { createErrorResult, readBoundedResponseText, sanitizeErrorMessage } from
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
-import { isFunction } from "@/shared/utils/typeChecks.js";const CODEX_SOURCE_TO_TARGET = {
+import { isFunction } from "../../../src/shared/utils/typeChecks.js";
+const CODEX_SOURCE_TO_TARGET = {
   [FORMATS.OPENAI_RESPONSES]: FORMATS.OPENAI_RESPONSES,
   [FORMATS.CLAUDE]: FORMATS.CLAUDE,
   [FORMATS.ANTIGRAVITY]: FORMATS.ANTIGRAVITY,

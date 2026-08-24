@@ -1,4 +1,5 @@
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const REASONING_EFFORTS = require("../../open-sse/config/reasoningEfforts.json");
+const { isObject, isString } = require("../shared/utils/typeChecks.cjs");
+const REASONING_EFFORTS = require("../../open-sse/config/reasoningEfforts.json");
 const REASONING_EFFORT_SET = new Set(REASONING_EFFORTS);
 
 function normalizeReasoningEffort(value) {

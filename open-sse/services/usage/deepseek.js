@@ -5,7 +5,7 @@
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { toFiniteNumber } from "./shared.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const BALANCE_URL = "https://api.deepseek.com/user/balance";
 

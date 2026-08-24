@@ -16,7 +16,8 @@ import { normalizeModelId } from "./models/schema.js";
 // Alias→id and id→entry maps for resolving the provider half of a model string
 // when classifying paid vs free. Built once from the registry single-source so
 // per-model classification is O(1) (the /v1/models list carries hundreds).
-import { isString } from "@/shared/utils/typeChecks.js";const ALIAS_TO_PROVIDER_ID = {};
+import { isString } from "../../src/shared/utils/typeChecks.js";
+const ALIAS_TO_PROVIDER_ID = {};
 const PROVIDER_BY_ID = {};
 for (const entry of REGISTRY) {
   PROVIDER_BY_ID[entry.id] = entry;

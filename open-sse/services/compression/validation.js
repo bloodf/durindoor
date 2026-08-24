@@ -1,5 +1,5 @@
 import { findFencedCodeBlocks } from "./preservation.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 
 

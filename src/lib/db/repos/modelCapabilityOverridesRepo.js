@@ -1,5 +1,5 @@
 import { getAdapter } from "../driver.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 function isMissingTable(err) {
   return /no such table:\s*modelCapabilityOverrides/i.test(String(err?.message || err));

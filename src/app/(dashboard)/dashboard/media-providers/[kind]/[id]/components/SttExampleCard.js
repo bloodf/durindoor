@@ -7,7 +7,7 @@ import { getModelKind } from "@/shared/constants/models";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { Row } from "./exampleShared";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../../../../shared/utils/typeChecks.js";
 
 export function SttExampleCard({ providerId }) {
   const providerAlias = getProviderAlias(providerId);

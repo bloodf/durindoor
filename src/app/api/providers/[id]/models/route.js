@@ -9,7 +9,8 @@ import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 /**
  * GET /api/providers/[id]/models - Get models list from provider
- */import { isFunction, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
 export async function GET(request, { params }) {
   try {
     const { id } = await params;

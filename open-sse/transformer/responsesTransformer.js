@@ -10,7 +10,7 @@ import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { isInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.js";
 
 // Create log directory for responses (Node.js only)
-import { isFunction, isObject, isUndefined } from "@/shared/utils/typeChecks.js";export function createResponsesLogger(model, logsDir = null) {
+import { isFunction, isObject, isUndefined } from "../../src/shared/utils/typeChecks.js";export function createResponsesLogger(model, logsDir = null) {
   // Skip logging in worker environment (no fs)
   if (!isFunction(fs.mkdirSync)) {
     return null;

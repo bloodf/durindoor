@@ -5,7 +5,7 @@ import { isApiKeyPolicyInputError, resolveApiKeyPolicyInput } from "@/shared/uti
 import { deleteApiKey, getApiKeyById, getApiKeyUsageTotals, updateApiKey } from "@/lib/localDb";
 
 // GET /api/keys/[id] - Get single key
-import { isObject, isString } from "@/shared/utils/typeChecks.js";export async function GET(request, { params }) {
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";export async function GET(request, { params }) {
   try {
     const { id } = await params;
     const key = await getApiKeyById(id);

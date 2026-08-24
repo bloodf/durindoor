@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import { marked } from "marked";
 import { GITHUB_CONFIG } from "@/shared/constants/config";
-import { isUndefined } from "@/shared/utils/typeChecks.js";
+import { isUndefined } from "../utils/typeChecks.js";
 
 marked.setOptions({ gfm: true, breaks: true });
 

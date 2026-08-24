@@ -4,7 +4,7 @@ import { deriveModelName } from "./namePatterns.js";
 // Registry ids use dots for versions ("claude-sonnet-4.5") but clients (CLIs, aliases)
 // often send them with dashes ("claude-sonnet-4-5"). Only digit-digit hyphens are
 // touched, so word/suffix hyphens stay intact ("-thinking", "-agentic", "qwen3-coder-next").
-import { isString } from "@/shared/utils/typeChecks.js";export function normalizeModelId(modelId) {
+import { isString } from "../../../src/shared/utils/typeChecks.js";export function normalizeModelId(modelId) {
   if (!isString(modelId)) return modelId;
   return modelId.replace(/(\d)-(\d)/g, "$1.$2");
 }

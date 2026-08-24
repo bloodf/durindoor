@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useState, useEffect } from "react";
 import { Card, Button, Input } from "@/shared/components";
 import { safeNextPath } from "@/lib/auth/safeNextPath";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
+import { isBrowser } from "../../shared/utils/typeChecks.js";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");

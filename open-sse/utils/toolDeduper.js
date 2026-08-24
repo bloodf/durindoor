@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /**
+import { isString } from "../../src/shared/utils/typeChecks.js"; /**
  * Normalize outbound tools for upstream PR #3333.
  * Claude clients lose configured built-ins shadowed by MCP tools; DeepSeek
  * models retain only the first exact-name definition because duplicates 400.

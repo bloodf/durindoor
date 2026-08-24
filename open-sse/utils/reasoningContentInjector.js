@@ -2,7 +2,7 @@
 // to be echoed back on assistant messages. Clients in OpenAI format don't send it,
 // so we inject a non-empty placeholder to satisfy upstream validation.
 import { PROVIDERS } from "../config/providers.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const PLACEHOLDER = " ";
 

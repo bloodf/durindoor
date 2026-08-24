@@ -13,7 +13,8 @@ import { getModelCapabilityOverride } from "./db/repos/modelCapabilityOverridesR
  * @param {string | { provider?: string | null, model?: string | null }} input
  *   Either a "provider/model" string or an object with provider/model fields.
  * @returns {Promise<{ provider: string | null, model: string | null, maxOutputTokens: number | null }>}
- */import { isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isObject, isString } from "../shared/utils/typeChecks.js";
 export async function getResolvedModelCapabilities(input) {
   let provider = null;
   let model = null;

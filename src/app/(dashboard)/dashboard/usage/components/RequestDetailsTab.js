@@ -8,7 +8,7 @@ import Pagination from "@/shared/components/Pagination";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { cn } from "@/shared/utils/cn";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
-import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const REQUEST_TABS = [
 { value: "clientRequest", label: "1. Client Request (Input)", icon: "input" },

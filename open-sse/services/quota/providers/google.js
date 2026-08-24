@@ -25,7 +25,7 @@ import {
   providerFailure,
   providerSuccess } from
 "../providerHelpers.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../../src/shared/utils/typeChecks.js";
 
 function projectIdFromConnection(connection) {
   const data = connectionData(connection);

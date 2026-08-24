@@ -18,7 +18,7 @@ import {
   providerFailure,
   providerSuccess } from
 "../providerHelpers.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
 
 function appendClaudeWindow(rows, raw, {
   name,

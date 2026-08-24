@@ -1,4 +1,5 @@
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const STATUS_URL = "/api/pxpipe/status";
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+const STATUS_URL = "/api/pxpipe/status";
 
 export async function fetchPxpipeStatus(fetchImpl = fetch) {
   try {

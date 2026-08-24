@@ -3,7 +3,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { createHash } from "crypto";
 import os from "os";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const BOOTSTRAP_URL = "https://api.xiaomimimo.com/api/free-ai/bootstrap";
 const CHAT_URL = PROVIDERS["mimo-free"].baseUrl;

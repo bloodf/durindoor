@@ -2,7 +2,7 @@ import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usa
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage } from "../../utils/usageTracking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 const OPTIONAL_PARAMS = [
 "temperature", "top_p", "top_k",

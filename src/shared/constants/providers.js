@@ -1,7 +1,7 @@
 // Provider definitions
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../utils/typeChecks.js";
 
 const MEDIA_ENTRY_KEYS = [
 "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",

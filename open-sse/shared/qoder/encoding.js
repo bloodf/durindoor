@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /**
+import { isString } from "../../../src/shared/utils/typeChecks.js"; /**
  * Qoder body encoding ported from qoder2api's QoderEncoding.java (via the
  * CLIProxyAPIPlus qoder-provider branch).
  *

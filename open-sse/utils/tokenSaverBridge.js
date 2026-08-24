@@ -1,7 +1,7 @@
 import { detectFormat } from "../services/provider.js";
 import { FORMATS } from "../translator/formats.js";
 import { createSyntheticResponse } from "./bypassResponse.js";
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_PONYTAIL_HELP =
 "Ponytail — lazy-senior persona for minimal code.\n" +

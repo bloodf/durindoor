@@ -8,7 +8,7 @@ import {
   ANTHROPIC_COMPATIBLE_PREFIX } from
 "@/shared/constants/providers";
 import { testSingleConnection } from "../[id]/test/testUtils.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 function getAuthGroup(providerId, connection = null) {
   // Prioritize authType from connection if available

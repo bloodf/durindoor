@@ -1,4 +1,5 @@
-import { isBrowser, isFunction, isUndefined } from "@/shared/utils/typeChecks.js";const GLOBAL_KEY = "__kimchi_ua_state";
+import { isBrowser, isFunction, isUndefined } from "../../src/shared/utils/typeChecks.js";
+const GLOBAL_KEY = "__kimchi_ua_state";
 
 // Initialize global state if it doesn't exist to persist across Next.js HMR/re-evaluations
 if (!globalThis[GLOBAL_KEY]) {

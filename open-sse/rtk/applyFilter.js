@@ -1,4 +1,4 @@
-import { isFunction, isString } from "@/shared/utils/typeChecks.js"; // Port of apply_filter (rtk/src/cmds/system/pipe_cmd.rs) — catch_unwind equivalent
+import { isFunction, isString } from "../../src/shared/utils/typeChecks.js"; // Port of apply_filter (rtk/src/cmds/system/pipe_cmd.rs) — catch_unwind equivalent
 // On panic/error: passthrough raw output + warn to stderr
 export function safeApply(fn, text) {
   if (!isFunction(fn)) return text;

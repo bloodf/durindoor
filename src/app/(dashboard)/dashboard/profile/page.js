@@ -9,7 +9,7 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
-import { isBrowser, isUndefined } from "@/shared/utils/typeChecks.js";
+import { isBrowser, isUndefined } from "../../../../shared/utils/typeChecks.js";
 
 function getLocaleFromCookie() {
   if (isUndefined(globalThis.document)) return "en";

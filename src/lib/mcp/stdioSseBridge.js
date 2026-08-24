@@ -1,4 +1,5 @@
-import { isString } from "@/shared/utils/typeChecks.js"; // Inline stdio<->SSE bridge for MCP. Spawns one child per plugin on demand,
+const { isString } = require("../../shared/utils/typeChecks.cjs");
+// Inline stdio<->SSE bridge for MCP. Spawns one child per plugin on demand,
 // broadcasts JSON-RPC frames over SSE, accepts client messages via HTTP POST.
 
 const { spawn } = require("child_process");

@@ -1,7 +1,7 @@
 // OAuth 2.0 discovery helpers for upstream MCP servers (RFC 9728 + 8414).
 
 import { isRecord } from "./guards";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 const META_PATHS = [
 "/.well-known/oauth-protected-resource",

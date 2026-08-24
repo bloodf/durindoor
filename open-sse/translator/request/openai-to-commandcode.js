@@ -16,7 +16,7 @@ import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { stripThinkingSuffix } from "../concerns/thinkingUnified.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function flattenText(content) {
   if (content == null) return "";

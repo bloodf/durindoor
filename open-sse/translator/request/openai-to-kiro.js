@@ -18,7 +18,8 @@ import { parseDataUri } from "../concerns/image.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 
-/** Render a single tool call as a readable text line. */import { isString } from "@/shared/utils/typeChecks.js";
+/** Render a single tool call as a readable text line. */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 function toolCallToText(name, input) {
   let argStr;
   try {

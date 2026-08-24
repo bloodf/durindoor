@@ -11,7 +11,7 @@
 
 import { parseResetTime, toFiniteNumber, fetchTextWithTimeout } from "./shared.js";
 import { buildKimiHeaders } from "../../config/appConstants.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const USAGE_URL = "https://api.kimi.com/coding/v1/usages";
 

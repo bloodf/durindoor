@@ -12,7 +12,7 @@ import { DATA_DIR } from "@/lib/dataDir";
 //   3. Throw — refuses to silently forge keys with a public secret.
 // `requireLogin` is intentionally NOT consulted here: a login-disabled local
 // install still needs a stable secret so already-issued keys keep validating.
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "./typeChecks.js";
 const SECRET_FILE_BASENAME = "api-key-secret";
 
 let cachedSecret = null;

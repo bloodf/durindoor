@@ -5,7 +5,8 @@ import { createSyntheticResponse } from "./bypassResponse.js";
 /**
  * Check for bypass patterns - return fake response without calling provider
  * Only works for Claude CLI requests
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export function handleBypassRequest(body, model, userAgent = "", ccFilterNaming = false) {
   if (!userAgent.includes("claude-cli")) return null;
   if (!body.messages?.length) return null;

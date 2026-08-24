@@ -10,7 +10,7 @@ import {
   validateFirecrawlBaseUrl,
   parseFirecrawlHeaders } from
 "open-sse/shared/firecrawlConfig.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 export {
   ALLOWED_FIRECRAWL_HOSTS,

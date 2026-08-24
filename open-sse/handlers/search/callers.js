@@ -38,7 +38,8 @@ import { assertOutboundUrlAllowed } from "../../utils/outboundUrlGuard.js";
  * Split domain filter into includes / excludes (excludes prefixed with "-").
  * @param {string[]} [domainFilter]
  * @returns {{includes: string[], excludes: string[]}}
- */import { isNumber, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isNumber, isString } from "../../../src/shared/utils/typeChecks.js";
 export function parseDomainFilter(domainFilter) {
   if (!domainFilter?.length) return { includes: [], excludes: [] };
   const includes = domainFilter.filter((d) => !d.startsWith("-"));

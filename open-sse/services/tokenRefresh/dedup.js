@@ -1,6 +1,6 @@
 import { MEMORY_CONFIG } from "../../config/runtimeConfig.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 const refreshDedupCache = new Map();
 

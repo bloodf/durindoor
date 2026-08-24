@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { DATA_DIR } from '@/lib/dataDir';
-export { isBrowser } from '@/shared/utils/typeChecks.js';
+export { isBrowser } from "./typeChecks.js";
 
 const MACHINE_ID_FILE = path.join(DATA_DIR, 'machine-id');
 const AUTH_DIR = path.join(DATA_DIR, 'auth');

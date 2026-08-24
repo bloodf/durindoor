@@ -8,7 +8,8 @@ import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
  * label and falling back to a short id display.
  * @param {object|null} group
  * @returns {Array<{value:string, label:string}>}
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../../shared/utils/typeChecks.js";
 export function getConnectionOptions(group) {
   if (!group || !Array.isArray(group.connections) || group.connections.length <= 1) {
     return [];

@@ -19,7 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { getDataDir } from "@/lib/dataDir";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const MASTER_KEY_BASENAME = "master-key";
 const MASTER_KEY_BYTES = 32;

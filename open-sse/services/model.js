@@ -4,7 +4,8 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 
 // Alias→id derived from registry single-source: id→id, alias→id, aliases[]→id.
 // Media-only providers without a registry transport entry keep explicit aliases here.
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";const MEDIA_ONLY_ALIASES = {
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+const MEDIA_ONLY_ALIASES = {
   el: "elevenlabs",
   jina: "jina-ai",
   "jina-ai": "jina-ai",

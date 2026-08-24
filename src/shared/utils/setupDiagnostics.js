@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /**
+import { isString } from "./typeChecks.js"; /**
  * @typedef {Object} SetupFix
  * @property {string} label Imperative one-liner.
  * @property {string} [command] Exact copy-pasteable command.

@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 
 import { guardedProbeFetch } from "../utils/outboundUrlGuard.js";
-import { isFunction, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 

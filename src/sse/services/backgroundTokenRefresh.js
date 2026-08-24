@@ -5,7 +5,8 @@ import * as log from "../utils/logger.js";
 import { getRefreshLeadMs } from "open-sse/services/tokenRefresh.js";
 import { getCredentialExpiryMs } from "open-sse/services/oauthCredentialManager.js";
 
-/** Refresh when expiry is within 30 minutes (or the provider on-request lead, whichever larger). */import { isBrowser } from "@/shared/utils/typeChecks.js";
+/** Refresh when expiry is within 30 minutes (or the provider on-request lead, whichever larger). */
+import { isBrowser } from "../../shared/utils/typeChecks.js";
 export const BACKGROUND_REFRESH_LEAD_MS = 30 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 const INITIAL_DELAY_MS = 10 * 1000;

@@ -7,7 +7,7 @@
 import { clientFor } from "./client";
 import { filterToolsByGrants, isToolAllowed } from "./grants";
 import { isRecord } from "./guards";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 export const TOOL_PREFIX_SEP = "__";
 

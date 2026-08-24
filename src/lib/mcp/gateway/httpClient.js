@@ -7,7 +7,7 @@ import { retryWithBackoff } from "./retry";
 import { isJsonRpcResponse, isRecord } from "./guards";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { updateInstance, getInstanceById } from "@/lib/localDb";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 const TIMEOUT_MS = 30_000;
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";

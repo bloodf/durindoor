@@ -1,4 +1,4 @@
-import { isBoolean, isObject, isString } from "@/shared/utils/typeChecks.js"; /**
+import { isBoolean, isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
  * ClinePass response-envelope helpers.
  *
  * Cline's `/api/v1/chat/completions` endpoint wraps every body in a

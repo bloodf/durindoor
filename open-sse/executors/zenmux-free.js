@@ -7,7 +7,7 @@ import { toOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { applyThinking, captureThinking } from "../translator/concerns/thinkingUnified.js";
 import zenmuxFreeRegistry from "../providers/registry/zenmux-free.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_MODEL = zenmuxFreeRegistry.models?.[0]?.id || "deepseek/deepseek-chat";
 

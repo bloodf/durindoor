@@ -22,7 +22,8 @@ import { createErrorResult } from "../../utils/error.js";
  * @param {{ warn?: (tag: string, message: string) => unknown }} [args.log]
  * @param {Date | number | string} [args.asOf]
  * @returns {ReturnType<typeof createErrorResult> | null}
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function checkModelLifecycle({ provider, canonicalModel, upstreamModel, log, asOf = Date.now() } = {}) {
   const candidates = [];
   if (isString(canonicalModel) && canonicalModel) {

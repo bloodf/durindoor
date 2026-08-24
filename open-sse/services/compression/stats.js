@@ -4,7 +4,7 @@ import {
   DEFAULT_RTK_CONFIG,
   DEFAULT_COMPRESSION_LANGUAGE_CONFIG } from
 "./types.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CHARS_PER_TOKEN = 4;
 const BASE64_IMAGE_DATA_URI_PREFIX = "data:image/";

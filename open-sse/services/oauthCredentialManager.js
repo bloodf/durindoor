@@ -10,7 +10,7 @@ import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 
 // Single source: codex.oauth.maxRefreshAgeMs (8 days) — proactive refresh window
-import { isNumber, isObject } from "@/shared/utils/typeChecks.js";export const CODEX_MAX_REFRESH_AGE_MS = PROVIDER_OAUTH["codex"]?.maxRefreshAgeMs;
+import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js";export const CODEX_MAX_REFRESH_AGE_MS = PROVIDER_OAUTH["codex"]?.maxRefreshAgeMs;
 
 const refreshLocks = new Map();
 

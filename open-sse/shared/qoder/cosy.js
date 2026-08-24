@@ -30,7 +30,7 @@ import {
 // of a fresh UUID's canonical string (hyphens included). The key is fresh
 // per request so even though the IV reuses the key bytes, each request still
 // has a unique IV.
-import { isString } from "@/shared/utils/typeChecks.js";function generateAesKey() {
+import { isString } from "../../../src/shared/utils/typeChecks.js";function generateAesKey() {
   return uuidv4().slice(0, 16);
 }
 

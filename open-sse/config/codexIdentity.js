@@ -4,7 +4,8 @@ import { createHash, randomUUID } from "node:crypto";
 // convergence modes" — converges Codex OAuth requests onto a stable,
 // account-scoped installation/session/thread identity instead of leaking the
 // caller's own client identity upstream (reduces account-flagging risk).
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const CODEX_INSTALLATION_SALT = "durindoor-codex-installation";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+const CODEX_INSTALLATION_SALT = "durindoor-codex-installation";
 const CODEX_SESSION_SEED_PREFIX = "durindoor:codex-session-id:v1:";
 const CODEX_THREAD_SEED_PREFIX = "durindoor:codex-thread-id:v1:";
 

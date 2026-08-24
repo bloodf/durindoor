@@ -1,4 +1,4 @@
-import { isBoolean, isFunction, isNumber } from "@/shared/utils/typeChecks.js"; // DurinDoor-adapted executor result guard (OmniRoute#10256, #10373).
+import { isBoolean, isFunction, isNumber } from "../../../src/shared/utils/typeChecks.js"; // DurinDoor-adapted executor result guard (OmniRoute#10256, #10373).
 //
 // Upstream `normalizeExecutorResult` returns only five canonical keys
 // (`response`, `url`, `headers`, `transformedBody`, `transport`) and would

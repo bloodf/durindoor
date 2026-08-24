@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { AI_PROVIDERS } from "@/shared/constants/providers.js";
 import { FILTERS } from "./filters.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 

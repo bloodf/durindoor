@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; // OpenAI-compatible error types mapping (client-facing)
+import { isString } from "../../src/shared/utils/typeChecks.js"; // OpenAI-compatible error types mapping (client-facing)
 export const ERROR_TYPES = {
   400: { type: "invalid_request_error", code: "bad_request" },
   401: { type: "authentication_error", code: "invalid_api_key" },

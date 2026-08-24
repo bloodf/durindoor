@@ -54,7 +54,8 @@ import { matchPattern } from "../../providers/pricing.js";
 // Alias→entry map for resolving the provider half of a model string.
 // REGISTRY is an array keyed by nothing; mirror pricing.js's map (id, alias,
 // uiAlias, aliases[]) so "alias/model" and "provider/model" both resolve.
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const PROVIDER_BY_ID = {};
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+const PROVIDER_BY_ID = {};
 for (const entry of REGISTRY) {
   PROVIDER_BY_ID[entry.id] = entry;
   if (entry.alias) PROVIDER_BY_ID[entry.alias] = entry;

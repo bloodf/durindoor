@@ -1,7 +1,7 @@
 import { BaseExecutor } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { errorJson, jsonResponse, sanitizeErrorMessage } from "./websession-utils.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const BASE_URL = "https://veoaifree.com";
 const AJAX_URL = `${BASE_URL}/wp-admin/admin-ajax.php`;

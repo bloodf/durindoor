@@ -4,7 +4,7 @@ import { PROVIDER_MODELS } from "../providers/index.js";
 import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 export { PROVIDER_MODELS };
 

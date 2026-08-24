@@ -1,4 +1,4 @@
-import { isNumber, isString } from "@/shared/utils/typeChecks.js"; // HTTP status codes
+import { isNumber, isString } from "../../src/shared/utils/typeChecks.js"; // HTTP status codes
 export const HTTP_STATUS = {
   BAD_REQUEST: 400,
   UNAUTHORIZED: 401,

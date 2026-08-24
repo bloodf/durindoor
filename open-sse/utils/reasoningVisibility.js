@@ -9,7 +9,8 @@ import { REASONING_HEADER } from "../config/runtimeConfig.js";
  * @param {object|null|undefined} response - OpenAI-compatible response payload.
  * @param {object|null|undefined} clientRawRequest - Raw client request metadata.
  * @returns {object|null|undefined} The same response payload, possibly stripped in place.
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export function applyReasoningVisibility(response, clientRawRequest) {
   const header = clientRawRequest?.headers?.[REASONING_HEADER];
   const env = process.env.STRIP_REASONING_CONTENT?.trim().toLowerCase();

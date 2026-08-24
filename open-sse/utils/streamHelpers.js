@@ -6,7 +6,8 @@ import { FORMATS } from "../translator/formats.js";
 // gc/ (Gemini Cloud Code Assist) occasionally prepends terminal control chars
 // (cursor-up, clear-line, carriage-return) to SSE frames before the "data:" prefix,
 // which masks the prefix and causes strict client SSE parsers to crash or hang.
-import { isObject } from "@/shared/utils/typeChecks.js";const ANSI_ESCAPE_RE = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[A-Z\[\]\\^_`])|[\x00-\x08\x0b\x0c\x0e-\x1f]/g;
+import { isObject } from "../../src/shared/utils/typeChecks.js";
+const ANSI_ESCAPE_RE = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[A-Z\[\]\\^_`])|[\x00-\x08\x0b\x0c\x0e-\x1f]/g;
 
 /**
  * Strip ANSI / VT100 terminal control sequences from a string.

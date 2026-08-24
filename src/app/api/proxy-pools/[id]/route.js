@@ -5,7 +5,7 @@ import {
   getProxyPoolById,
   updateProxyPool } from
 "@/models";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};

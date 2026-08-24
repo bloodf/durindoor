@@ -7,7 +7,8 @@ import { extractThinkTags } from "../../utils/thinkStripper.js";
  * Resolve an inline-thinking response quirk from the exact selected transport
  * and model id. A similarly named model on another provider is intentionally
  * not eligible.
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function resolveInlineThinkingFormat(provider, model, targetFormat) {
   const config = PROVIDERS[provider];
   if (!config || !isString(model) || !isString(targetFormat)) return null;

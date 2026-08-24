@@ -14,7 +14,7 @@ import {
   runProviderAttemptDispatch } from
 "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
-import { isFunction, isString, isUndefined } from "@/shared/utils/typeChecks.js";
+import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 
 let originalFetch = globalThis.fetch;
 const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");

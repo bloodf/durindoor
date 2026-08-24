@@ -4,7 +4,7 @@ import {
   STREAM_FIRST_CHUNK_TIMEOUT_MS,
   STREAM_STALL_TIMEOUT_MS } from
 "./runtimeConfig.js";
-import { isBoolean, isNumber, isObject } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
 
 export const QUOTA_SELECTION_DEFAULTS = Object.freeze({
   routingFloorEnabled: false,

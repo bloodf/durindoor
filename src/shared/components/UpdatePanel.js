@@ -24,7 +24,8 @@ import {
  * Unlike upstream, the status poll is bounded (`hasExceededStartupBudget`):
  * if the detached updater never comes up or wedges mid-phase, the panel
  * fails over to manual install instead of polling forever.
- */import { isBrowser } from "@/shared/utils/typeChecks.js";
+ */
+import { isBrowser } from "../utils/typeChecks.js";
 export default function UpdatePanel({
   currentVersion,
   latestVersion,

@@ -1,6 +1,6 @@
 // Shared TTS helpers
 import { Buffer } from "node:buffer";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 export const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
 

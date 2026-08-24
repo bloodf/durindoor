@@ -5,7 +5,8 @@ import { FORMATS } from "../formats.js";
 import { fetchImageAsBase64, parseDataUri } from "./image.js";
 
 // Targets that require inline base64 images (cannot accept remote URLs).
-import { isString } from "@/shared/utils/typeChecks.js";const TARGETS_NEED_BASE64 = new Set([
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+const TARGETS_NEED_BASE64 = new Set([
 FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX,
 FORMATS.ANTIGRAVITY, FORMATS.OLLAMA, FORMATS.KIRO]
 );

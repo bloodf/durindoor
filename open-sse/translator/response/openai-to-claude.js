@@ -10,7 +10,8 @@ import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.j
 // defensively so tool names from such turns resolve back (e.g. proxy_Read → Read
 // for arg sanitization). Current request translator emits no prefix ("") — strip
 // is then a no-op. Kept intentionally; do NOT couple to request's empty prefix.
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const CLAUDE_OAUTH_TOOL_PREFIX = "proxy_";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+const CLAUDE_OAUTH_TOOL_PREFIX = "proxy_";
 
 // Detect and deduplicate doubled JSON (e.g. {"query":"x"}{"query":"x"})
 // Some OpenAI-compatible models emit tool arguments as the same JSON object twice.

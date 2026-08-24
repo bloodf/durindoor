@@ -1,4 +1,5 @@
-import { isString } from "@/shared/utils/typeChecks.js";const CODEX_ACCOUNT_ID_FIELDS = Object.freeze([
+import { isString } from "../../src/shared/utils/typeChecks.js";
+const CODEX_ACCOUNT_ID_FIELDS = Object.freeze([
 "workspaceId",
 "chatgptAccountId",
 "accountId"]

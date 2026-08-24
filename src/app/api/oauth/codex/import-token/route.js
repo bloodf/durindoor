@@ -9,7 +9,8 @@ import { CODEX_FINGERPRINT_MODES } from "open-sse/config/codexIdentity.js";
  * as a provider connection, bypassing OAuth refresh flow.
  *
  * Body: { accessToken: string, name?: string }
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { accessToken, name, codexFingerprintMode } = await request.json();

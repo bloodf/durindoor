@@ -1,4 +1,5 @@
-import { isFunction, isString } from "../../../../src/shared/utils/typeChecks.js";const EXPIRY_OPTIONS = Object.freeze([
+const { isFunction, isString } = require("../../../../src/shared/utils/typeChecks.cjs");
+const EXPIRY_OPTIONS = Object.freeze([
 { label: "Never expires", value: "never", days: null },
 { label: "1 day", value: "1", days: 1 },
 { label: "7 days", value: "7", days: 7 },

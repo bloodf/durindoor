@@ -1,4 +1,4 @@
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 
 

@@ -1,5 +1,5 @@
 import { CODEX_FINGERPRINT_MODES } from "../../../open-sse/config/codexIdentity.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 const SAFE_FIELDS = [
 "id", "provider", "authType", "name", "email", "displayName",

@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js";export function sseChunk(data) {
+import { isString } from "../../../src/shared/utils/typeChecks.js";export function sseChunk(data) {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
 

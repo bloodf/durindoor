@@ -1,4 +1,5 @@
-import { isString } from "@/shared/utils/typeChecks.js";const crypto = require("crypto");
+const { isString } = require("../shared/utils/typeChecks.cjs");
+const crypto = require("crypto");
 
 const CONTROL_SECRET_ENV = "DURINDOOR_CONTROL_PROOF_SECRET";
 const CONTROL_PROOF_HEADER = "x-9r-owner-proof";

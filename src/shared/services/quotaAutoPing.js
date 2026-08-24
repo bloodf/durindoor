@@ -25,7 +25,7 @@ import { QUOTA_AUTOPING_CONFIG } from "@/shared/constants/config";
 import { readBoundedResponseText } from "open-sse/utils/error.js";
 import { createUpstreamTerminalTracker } from "open-sse/utils/streamTerminal.js";
 import { FORMATS } from "open-sse/translator/formats.js";
-import { isFunction } from "@/shared/utils/typeChecks.js";
+import { isFunction } from "../utils/typeChecks.js";
 
 const C = QUOTA_AUTOPING_CONFIG;
 const CLAUDE_PING_URL = "https://api.anthropic.com/v1/messages?beta=true";

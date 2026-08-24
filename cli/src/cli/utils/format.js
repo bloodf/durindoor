@@ -1,4 +1,5 @@
-import { isNumber } from "../../../../src/shared/utils/typeChecks.js"; /**
+const { isNumber } = require("../../../../src/shared/utils/typeChecks.cjs");
+/**
  * Truncate text with ellipsis
  * @param {string} text - Text to truncate
  * @param {number} maxLength - Maximum length

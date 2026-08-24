@@ -11,7 +11,8 @@ import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 
 /**
  * Process a single SSE message and update state accordingly.
- */import { isFunction, isNumber, isObject } from "@/shared/utils/typeChecks.js";
+ */
+import { isFunction, isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
 function processSSEMessage(msg, state) {
   if (!msg.trim()) return;
   if (msg.trim().startsWith(":")) return;

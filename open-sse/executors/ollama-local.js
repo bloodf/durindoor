@@ -4,7 +4,7 @@ import { OLLAMA_LOCAL_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
 
 // Format byte count to human-readable string for debug logs
-import { isString } from "@/shared/utils/typeChecks.js";function fmtBytes(n) {
+import { isString } from "../../src/shared/utils/typeChecks.js";function fmtBytes(n) {
   if (n < 1024) return `${n}B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
   return `${(n / (1024 * 1024)).toFixed(2)}MB`;

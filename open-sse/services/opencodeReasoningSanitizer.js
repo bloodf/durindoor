@@ -1,4 +1,4 @@
-import { isBoolean, isObject } from "@/shared/utils/typeChecks.js"; // Port of OmniRoute #7891 (eadcbea1c), adapted to DurinDoor JS.
+import { isBoolean, isObject } from "../../src/shared/utils/typeChecks.js"; // Port of OmniRoute #7891 (eadcbea1c), adapted to DurinDoor JS.
 //
 // Providers backed by the opencode-go backend (opencode-go, opencode,
 // opencode-zen) use a Go ChatCompletionRequest struct where the `reasoning`

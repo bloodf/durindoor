@@ -17,7 +17,8 @@ import { CLAUDE_BLOCK, ROLE } from "../schema/index.js";
  * Ported from decolua/9router#3116.
  *
  * @returns {Map<string,string>} alias → original name, for the response path.
- */import { isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 export function normalizeOpenAIToolNames(body, maxLength = 64) {
   const aliases = new Map();
   if (!body || !isObject(body)) return aliases;

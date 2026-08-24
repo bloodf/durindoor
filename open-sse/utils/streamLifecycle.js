@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /**
+import { isString } from "../../src/shared/utils/typeChecks.js"; /**
  * Local stream lifecycle classifier (ported from OmniRoute #7907/#7908).
  *
  * When the caller drops the connection mid-stream (combo race loser, model

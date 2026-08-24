@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 
 import { OAUTH_TIMEOUT } from "@/lib/oauth/constants/oauth.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const flows = new Map();
 const stateAliases = new Map();

@@ -21,7 +21,7 @@ import {
   isEncryptedBlob } from
 "../../crypto/columnCrypto.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "../repos/connectionsRepo.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 const migration = {
   version: 9,

@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js";export const OAUTH_CALLBACK_FRESHNESS_MS = 30_000;
+import { isString } from "./typeChecks.js";export const OAUTH_CALLBACK_FRESHNESS_MS = 30_000;
 
 /** Build the explicit browser-to-server routing contract for a new flow. */
 export function oauthProxySelection(proxyPoolId) {

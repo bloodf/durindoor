@@ -1,7 +1,7 @@
 import { getExecutor } from "../executors/index.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
   return value !== null && isObject(value) && !Array.isArray(value);

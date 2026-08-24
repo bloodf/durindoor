@@ -5,7 +5,7 @@ import { resolveCredentialProxyOptions } from "../services/oauthCredentialManage
 import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
 import { urlToBase64 } from "./imageProviders/_base.js";
-import { isString, isUndefined } from "@/shared/utils/typeChecks.js";
+import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 
 function serializeRequestBody(requestBody) {
   if (!isUndefined(FormData) && requestBody instanceof FormData) return requestBody;

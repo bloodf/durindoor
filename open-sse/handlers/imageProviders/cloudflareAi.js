@@ -1,6 +1,6 @@
 import { nowSec, urlToBase64 } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
-import { isString, isUndefined } from "@/shared/utils/typeChecks.js";
+import { isString, isUndefined } from "../../../src/shared/utils/typeChecks.js";
 
 const BASE_URL = PROVIDER_MEDIA["cloudflare-ai"]?.imageConfig?.baseUrl;
 

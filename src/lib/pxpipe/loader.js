@@ -3,7 +3,9 @@ import { getInstallInfo, libraryEntry } from "./install.js";
 
 // Module cache: pxpipe is loaded once per process ("started") and dropped on
 // "stop". In library mode start/stop govern the in-process module, not a daemon.
-import { isBoolean, isFunction } from "@/shared/utils/typeChecks.js";let cached = null; // { module, version, loadedAt }
+import { isBoolean, isFunction } from "../../shared/utils/typeChecks.js";
+
+let cached = null; // { module, version, loadedAt }
 let loadPromise = null;
 
 function normalizeLibraryResult(result) {

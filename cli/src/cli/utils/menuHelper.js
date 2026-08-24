@@ -1,4 +1,5 @@
-import { isFunction } from "../../../../src/shared/utils/typeChecks.js";const { selectMenu } = require("./input");
+const { isFunction } = require("../../../../src/shared/utils/typeChecks.cjs");
+const { selectMenu } = require("./input");
 
 /**
  * Show a menu with back button at top and handle selection

@@ -9,7 +9,8 @@ import { buildExternalIdpRefreshParams } from "../kiroExternalIdp.js";
  * 2. AWS IAM Identity Center/IDC (Device Code Flow)
  * 3. Google/GitHub Social Login (Authorization Code Flow + Manual Callback)
  * 4. Import Token (Manual refresh token paste)
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 const KIRO_AUTH_SERVICE = "https://prod.us-east-1.auth.desktop.kiro.dev";
 

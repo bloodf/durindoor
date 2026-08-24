@@ -27,7 +27,7 @@
 import crypto from "node:crypto";
 import { createCompressionStats } from "../../stats.js";
 import { runFuzzyPass } from "./fuzzy.js";
-import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isString } from "../../../../../src/shared/utils/typeChecks.js";
 
 const ENGINE_ID = "session-dedup";
 const DEFAULT_MIN_BLOCK_CHARS = 80;

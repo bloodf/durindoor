@@ -1,4 +1,5 @@
-import { isString } from "../../../../src/shared/utils/typeChecks.js";const readline = require("readline");
+const { isString } = require("../../../../src/shared/utils/typeChecks.cjs");
+const readline = require("readline");
 
 const COLORS = {
   reset: "\x1b[0m",

@@ -5,7 +5,7 @@ import { sseChunk } from "../utils/sse.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
-import { isString, isUndefined } from "@/shared/utils/typeChecks.js";
+import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
 const PPLX_API_VERSION = "2.18";

@@ -40,7 +40,7 @@ import {
   stopXaiProxy } from
 "@/lib/oauth/utils/server";
 import { createProviderConnection } from "@/models";
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "github",

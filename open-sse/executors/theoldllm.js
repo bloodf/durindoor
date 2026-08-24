@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const API_URL = "https://theoldllm.vercel.app/api/chatgpt";
 const CHROME_UA =

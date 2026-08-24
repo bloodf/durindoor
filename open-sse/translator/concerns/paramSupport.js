@@ -5,7 +5,8 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 
 // Each rule: optional provider string/regex, regex match on model, list of params to drop.
 // A param is removed only when it is present (!== undefined).
-import { isFunction, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const STRIP_RULES = [
+import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+const STRIP_RULES = [
 /** All Claude models reject the deprecated temperature parameter upstream with HTTP 400. */
 { match: /claude/i, drop: ["temperature"] },
 // GitHub Copilot gpt-5.4: temperature unsupported.

@@ -15,7 +15,7 @@ import {
   providerFailure,
   providerSuccess } from
 "../providerHelpers.js";
-import { isBoolean, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isString } from "../../../../src/shared/utils/typeChecks.js";
 
 export function normalizeVercelQuota(payload, { accountKey = null } = {}) {
   const data = asRecord(payload);

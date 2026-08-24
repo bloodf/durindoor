@@ -2,7 +2,7 @@ import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { getProviderPluginManifestHeader } from "../config/providerPluginManifestUrl.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = "8317";

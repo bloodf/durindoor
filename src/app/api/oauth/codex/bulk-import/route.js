@@ -16,7 +16,8 @@ import { CODEX_FINGERPRINT_MODES } from "open-sse/config/codexIdentity.js";
  * account info is best-effort backfilled from the JWT (idToken or accessToken).
  *
  * Tokens are NEVER echoed back in the response.
- */import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isNumber, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   let body;
   try {

@@ -59,7 +59,8 @@ import { isOpencodeGoProvider, stripBooleanReasoning } from "../services/opencod
 // circuits resolveAdaptivePlan before it dereferences budget fields, but the
 // object is kept complete so a later adaptive mode flip already has the full
 // computeTarget() contract (outputReserve/safetyMargin/pct/absoluteBudget).
-import { isBoolean, isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";const COMPRESSION_ADAPTIVE_CONFIG = Object.freeze({
+import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+const COMPRESSION_ADAPTIVE_CONFIG = Object.freeze({
   mode: "off",
   policy: "reserve-output",
   outputReserve: 4096,

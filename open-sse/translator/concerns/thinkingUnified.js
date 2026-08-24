@@ -8,7 +8,7 @@ import { PROVIDERS } from "../../providers/index.js";
 import { FORMATS } from "../formats.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
 import { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 export { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
 

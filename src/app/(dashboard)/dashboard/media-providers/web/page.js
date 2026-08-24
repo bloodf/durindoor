@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, Badge, Button } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 
 function getEffectiveStatus(conn) {
   const isCooldown = Object.entries(conn).some(

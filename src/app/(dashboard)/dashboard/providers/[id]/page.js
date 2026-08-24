@@ -31,7 +31,7 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
 import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
-import { isBrowser, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 

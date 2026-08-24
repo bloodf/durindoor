@@ -1,5 +1,5 @@
 import { getSettings } from "@/lib/localDb";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 const proxyConfigCache = new Map();
 const PROXY_CONFIG_CACHE_TTL_MS = 10_000;

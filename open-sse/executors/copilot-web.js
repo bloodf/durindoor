@@ -10,7 +10,7 @@ import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
-import { isFunction, isNumber, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 
 async function proxyAgentForWebSocket(proxyUrl) {
   try {

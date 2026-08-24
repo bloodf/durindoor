@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { THEME_CONFIG } from "@/shared/constants/config";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
+import { isBrowser } from "../shared/utils/typeChecks.js";
 
 const useThemeStore = create(
   persist(

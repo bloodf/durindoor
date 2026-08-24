@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatResetTime, getRemainingPercentage } from "./utils";
-import { isFunction } from "@/shared/utils/typeChecks.js";
+import { isFunction } from "../../../../../../shared/utils/typeChecks.js";
 
 const PAGE_SIZE = 10;
 

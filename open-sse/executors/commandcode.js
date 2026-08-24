@@ -13,7 +13,7 @@ import {
 "../config/commandcode.js";
 import { COMMANDCODE_EVENT } from "../translator/schema/index.js";
 import { cancelAndReleaseReader, releaseReader } from "../utils/streamReader.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const COMMANDCODE_PREFLIGHT_PREAMBLE_EVENTS = new Set([
 COMMANDCODE_EVENT.START,

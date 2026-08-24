@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { testProxyUrl } from "@/lib/network/proxyTest";
-import { isNumber } from "@/shared/utils/typeChecks.js";
+import { isNumber } from "../../../../shared/utils/typeChecks.js";
 
 export async function POST(request) {
   try {

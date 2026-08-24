@@ -13,7 +13,7 @@ import { handleChatSearch } from "./chatSearch.js";
 import { resolveCredentialProxyOptions } from "../../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
 const NON_RETRIABLE = new Set([400, 401, 403, 404]);

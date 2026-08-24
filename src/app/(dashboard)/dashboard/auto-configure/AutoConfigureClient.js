@@ -11,7 +11,8 @@ import { serviceStatus } from "./autoConfigureStatus.js";
 // Absence (pxpipe/firecrawl not present, headroom not reachable) must surface as "Unavailable"
 
 // Service display config keyed on report.services entries from runAutoConfigure.
-import { isString } from "@/shared/utils/typeChecks.js";const SERVICE_META = {
+import { isString } from "../../../../shared/utils/typeChecks.js";
+const SERVICE_META = {
   headroom: { label: "Headroom", icon: "compress" },
   pxpipe: { label: "PxPipe", icon: "token" },
   firecrawl: { label: "Firecrawl", icon: "travel_explore" },

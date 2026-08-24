@@ -22,7 +22,7 @@ import { FORMATS } from "../translator/formats.js";
 // frames to the Ollama wire shape {error: string}. Never returns null for an
 // actual error; falls back to a safe string so the client sees a frame instead
 // of an empty truncated stream.
-import { isBoolean, isObject, isString } from "@/shared/utils/typeChecks.js";function normalizeError(error) {
+import { isBoolean, isObject, isString } from "../../src/shared/utils/typeChecks.js";function normalizeError(error) {
   if (error == null) return { error: "Upstream error" };
   if (isString(error)) return { error: error };
   if (isObject(error)) {

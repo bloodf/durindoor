@@ -5,7 +5,8 @@ import { createProviderConnection } from "@/models";
  * iFlow Cookie-Based Authentication
  * POST /api/oauth/iflow/cookie
  * Body: { cookie: "BXAuth=xxx; ..." }
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { cookie } = await request.json();

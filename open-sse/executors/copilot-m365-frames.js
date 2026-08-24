@@ -1,4 +1,4 @@
-import { isObject, isString } from "@/shared/utils/typeChecks.js"; /**
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
  * Microsoft 365 Copilot SignalR-over-WebSocket frame helpers.
  *
  * These functions are transport-free so tests can pin the wire shape without

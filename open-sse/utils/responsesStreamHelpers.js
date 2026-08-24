@@ -3,7 +3,8 @@ import { FORMATS } from "../translator/formats.js";
 import { formatSSE } from "./streamHelpers.js";
 
 // Responses API events that signal the stream has reached a terminal state
-import { isString } from "@/shared/utils/typeChecks.js";const OPENAI_RESPONSES_TERMINAL_EVENTS = new Set([
+import { isString } from "../../src/shared/utils/typeChecks.js";
+const OPENAI_RESPONSES_TERMINAL_EVENTS = new Set([
 "response.completed",
 "response.done",
 "response.incomplete",

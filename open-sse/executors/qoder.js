@@ -50,7 +50,8 @@ import { getQoderModelConfig, resolveQoderModels } from "../services/qoderModels
 /**
  * Hoist role:"system" messages out of the messages array (Qoder rejects
  * system in messages) and flatten any multipart content arrays.
- */import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 function normalizeMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return { messages: [], systemText: "" };

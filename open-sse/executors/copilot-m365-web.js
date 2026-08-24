@@ -20,7 +20,7 @@ import {
   parseFrame,
   splitFrames } from
 "./copilot-m365-frames.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 let WebSocketCtor = WebSocket;
 

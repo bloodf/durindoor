@@ -1,5 +1,5 @@
 import { getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 function isCodexUserAgent(request) {
   const originator = request.headers.get("originator") ?? "";

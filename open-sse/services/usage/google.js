@@ -7,7 +7,8 @@ import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, ANTIGRAVITY_OAUTH_
 import { U, parseResetTime, normalizeCloudCodeProjectId, fetchWithTimeout } from "./shared.js";
 
 // Antigravity API config (from Quotio) — urls from registry, oauth client + dynamic UA kept here
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const ANTIGRAVITY_CONFIG = {
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+const ANTIGRAVITY_CONFIG = {
   ...U("antigravity"),
   ...ANTIGRAVITY_OAUTH_CLIENT,
   userAgent: ANTIGRAVITY_IDE_USER_AGENT

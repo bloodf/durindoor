@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { errorJson, extractTextFromContent, jsonResponse, readTextStream, withTimeoutSignal } from "./websession-utils.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DUCKDUCKGO_BASE = "https://duckduckgo.com";
 const STATUS_URL = `${DUCKDUCKGO_BASE}/duckchat/v1/status`;

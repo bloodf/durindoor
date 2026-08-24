@@ -1,7 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const TIMEOUT_MS = 8000;
 

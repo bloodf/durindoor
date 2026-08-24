@@ -12,7 +12,7 @@ import {
   resolveOpenCodeConfigDir,
   resolveOpenCodeConfigPath } from
 "@/shared/services/opencodeConfig";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 

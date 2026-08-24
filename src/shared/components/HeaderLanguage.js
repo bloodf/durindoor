@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
 import LanguageSwitcher from "./LanguageSwitcher";
-import { isUndefined } from "@/shared/utils/typeChecks.js";
+import { isUndefined } from "../utils/typeChecks.js";
 
 function getLocaleFromCookie() {
   if (isUndefined(globalThis.document)) return "en";

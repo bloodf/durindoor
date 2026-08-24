@@ -6,7 +6,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
+import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
 
 export default function JcodeToolCard({
   tool,

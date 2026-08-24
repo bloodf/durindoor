@@ -1,4 +1,5 @@
-import { isObject } from "@/shared/utils/typeChecks.js";const PROVIDER_REFRESH_CONTEXT_FIELDS = Object.freeze([
+import { isObject } from "./typeChecks.js";
+const PROVIDER_REFRESH_CONTEXT_FIELDS = Object.freeze([
 "authKind",
 "authMethod",
 "baseUrl",

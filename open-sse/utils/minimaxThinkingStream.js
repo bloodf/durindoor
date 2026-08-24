@@ -3,7 +3,7 @@
 // Ported from upstream decolua/9router PR #2525 (head 72385571c6).
 
 import { PROVIDERS } from "../config/providers.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const START_MARKERS = ["<think>", "<mm:think>"];
 const END_MARKERS = ["</think>", "</mm:think>"];

@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { CLAUDE_TOOL_SUFFIX, CC_DEFAULT_TOOLS } from "../config/appConstants.js";
 import { CLAUDE_CLI_VERSION } from "../providers/shared.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const CC_ENTRYPOINT = "sdk-cli";
 

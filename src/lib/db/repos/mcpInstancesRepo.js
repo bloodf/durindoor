@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../../shared/utils/typeChecks.js";
 
 const JSON_COLS = ["args", "env", "headers", "oauthTokens"];
 

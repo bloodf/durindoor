@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { applyEdits, modify, parse, printParseErrorCode } from "jsonc-parser";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../utils/typeChecks.js";
 
 const formattingOptions = { insertSpaces: true, tabSize: 2 };
 

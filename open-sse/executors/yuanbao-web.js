@@ -12,7 +12,7 @@ import {
   stripCookieInputPrefix } from
 "./websession-utils.js";
 import yuanbaoWebRegistry from "../providers/registry/yuanbao-web.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const YUANBAO_BASE = "https://yuanbao.tencent.com";
 const CREATE_URL = `${YUANBAO_BASE}/api/user/agent/conversation/create`;

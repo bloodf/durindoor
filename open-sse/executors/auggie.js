@@ -5,7 +5,7 @@ import path from "node:path";
 import { BaseExecutor } from "./base.js";
 import { buildErrorBody, errorResponse } from "../utils/error.js";
 import auggieRegistry from "../providers/registry/auggie.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const AUGGIE_URL = "auggie://cli/stdio";
 const MODEL_ALLOWLIST = new Set((auggieRegistry.models || []).map((model) => model.id));

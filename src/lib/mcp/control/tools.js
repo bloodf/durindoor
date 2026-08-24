@@ -16,7 +16,7 @@ import {
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 import { sanitizeProviderConnectionForClient } from "@/lib/providers/sanitizeProviderConnectionForClient.js";
 import { getUsageStats, getTokenSaverStats } from "@/lib/usageDb";
-import { isBoolean, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isString } from "../../../shared/utils/typeChecks.js";
 
 function sanitizeConnection(c) {
   const safe = sanitizeProviderConnectionForClient(c);

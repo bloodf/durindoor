@@ -21,7 +21,7 @@
  */
 
 import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const RESPONSES_LIFECYCLE_EVENTS = new Set([
 "response.created",

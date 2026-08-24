@@ -8,7 +8,8 @@ import { PROVIDER_OAUTH, PROVIDERS as REGISTRY_PROVIDERS } from "open-sse/provid
 /**
  * Get the platform enum value based on the current OS.
  * Matches Antigravity binary's ClientMetadata.Platform enum.
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../shared/utils/typeChecks.js";
 function getOAuthPlatformEnum() {
   const os = platform();
   const architecture = arch();

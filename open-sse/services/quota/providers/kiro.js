@@ -23,7 +23,7 @@ import {
   providerFailure,
   providerSuccess } from
 "../providerHelpers.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
 
 export function normalizeKiroQuota(payload, { accountKey = null, now = Date.now() } = {}) {
   const data = asRecord(payload);

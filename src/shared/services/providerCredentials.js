@@ -6,7 +6,7 @@ import {
   providerRefreshContext,
   providerRefreshContextMatches } from
 "@/shared/utils/providerCredentialContext";
-import { isBoolean, isFunction, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../utils/typeChecks.js";
 
 const REFRESH_METADATA_FIELDS = new Set([
 "baseUrl",

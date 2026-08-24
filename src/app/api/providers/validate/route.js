@@ -12,7 +12,7 @@ import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
-import { isUndefined } from "@/shared/utils/typeChecks.js";
+import { isUndefined } from "../../../../shared/utils/typeChecks.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 

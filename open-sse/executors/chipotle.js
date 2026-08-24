@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const BASE_URL = "https://amelia.chipotle.com";
 const DOMAIN_CODE = "chipotle";

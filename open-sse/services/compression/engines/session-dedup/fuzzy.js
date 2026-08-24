@@ -1,7 +1,8 @@
 // open-sse/services/compression/engines/session-dedup/fuzzy.js
 import { storeBlock } from "../ccr/index.js";
 
-/** Hard cap on blocks compared in the fuzzy O(n²) pass (fail-safe bound). */import { isBoolean, isNumber, isString } from "@/shared/utils/typeChecks.js";
+/** Hard cap on blocks compared in the fuzzy O(n²) pass (fail-safe bound). */
+import { isBoolean, isNumber, isString } from "../../../../../src/shared/utils/typeChecks.js";
 export const MAX_FUZZY_BLOCKS = 200;
 
 /** FNV-1a 32-bit hash (deterministic, cheap, no Math.random). */

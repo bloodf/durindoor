@@ -1,6 +1,6 @@
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
-import { isBoolean, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const STATUS_MAP = {
   queued: "pending",

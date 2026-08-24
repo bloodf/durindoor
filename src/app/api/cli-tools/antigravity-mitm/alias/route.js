@@ -5,7 +5,7 @@ import { getMitmAlias, setMitmAliasAll } from "@/models";
 import { getMitmStatus } from "@/mitm/manager";
 import { writeAliasForTool } from "@/lib/mitmAliasCache";
 import aliasConfig from "@/mitm/aliasConfig";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../../../../shared/utils/typeChecks.js";
 
 const { normalizeAliasMappings, hasInvalidReasoningEffort } = aliasConfig;
 

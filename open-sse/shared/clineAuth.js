@@ -1,5 +1,5 @@
 import pkg from "../../package.json" with { type: "json" };
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const APP_VERSION = pkg.version || "0.0.0";
 

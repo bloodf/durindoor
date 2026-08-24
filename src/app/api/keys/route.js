@@ -4,7 +4,7 @@ import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { isApiKeyExpiryValidationError } from "@/shared/utils/apiKeyExpiry";
 import { toApiKeyManagementView } from "@/shared/utils/apiKeyManagement";
 import { isApiKeyPolicyInputError, resolveApiKeyPolicyInput } from "@/shared/utils/apiKeyPolicyManagement";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 

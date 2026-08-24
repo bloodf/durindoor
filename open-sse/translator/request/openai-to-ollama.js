@@ -17,7 +17,8 @@ import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
  * - Content must be string, not array
  * - Multimodal images should be mapped to `message.images[]` (raw base64, no data: prefix)
  * - tool role maps to tool (Ollama supports tool messages)
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function openaiToOllamaRequest(model, body, stream) {
   const result = {
     model: model,

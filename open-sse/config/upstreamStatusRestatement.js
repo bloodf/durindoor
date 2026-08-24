@@ -29,7 +29,8 @@ import { parseRateLimitEvidence } from "../utils/error.js";
  * flip the connection into a terminal `credits_exhausted` state — never use
  * them as markers here.
  *
- */import { isNumber, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 
 const AGENTROUTER_RULES = [
 {

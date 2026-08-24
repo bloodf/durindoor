@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js";function modelType(model) {
+import { isString } from "./typeChecks.js";function modelType(model) {
   return model?.kind || model?.type || "llm";
 }
 

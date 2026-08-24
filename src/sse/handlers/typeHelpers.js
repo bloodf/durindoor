@@ -1,4 +1,4 @@
-import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";function isRecord(value) {
+import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";function isRecord(value) {
   return value !== null && isObject(value) && !Array.isArray(value);
 }
 

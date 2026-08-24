@@ -14,7 +14,8 @@ import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboReso
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
-import { isBoolean, isFunction, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 
 // Prefixes used when flattening tool turns into plain prose for panel models.
 const TOOL_CALL_PREFIX = "[Called tools: ";

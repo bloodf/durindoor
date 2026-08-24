@@ -11,7 +11,7 @@ import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 

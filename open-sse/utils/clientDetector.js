@@ -1,4 +1,4 @@
-import { isFunction, isString } from "@/shared/utils/typeChecks.js"; /**
+import { isFunction, isString } from "../../src/shared/utils/typeChecks.js"; /**
  * Detect CLI tool identity from request headers/body.
  * Used to determine if a request can be passed through losslessly.
  */

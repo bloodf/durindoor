@@ -11,7 +11,7 @@ import {
   getCursorDbCandidatePaths,
   readCursorLocalAuthSync } from
 "@/lib/oauth/services/cursorLocalStore.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 
 const execFileAsync = promisify(execFile);
 

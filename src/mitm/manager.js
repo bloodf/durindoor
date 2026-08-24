@@ -1,4 +1,5 @@
-import { isNumber, isString } from "@/shared/utils/typeChecks.js";const { execFile, execFileSync, spawn } = require("child_process");
+const { isNumber, isString } = require("../shared/utils/typeChecks.cjs");
+const { execFile, execFileSync, spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");

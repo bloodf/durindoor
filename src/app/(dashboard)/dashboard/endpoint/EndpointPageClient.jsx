@@ -34,7 +34,7 @@ import {
   expirySelectionFromValue,
   formatKeyExpiry } from
 "./apiKeyExpiry";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
+import { isBrowser } from "../../../../shared/utils/typeChecks.js";
 
 export default function APIPageClient({ machineId, localPort = 20128 }) {
   const [keys, setKeys] = useState([]);

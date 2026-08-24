@@ -1,4 +1,4 @@
-import { isObject, isString } from "@/shared/utils/typeChecks.js"; /**
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
  * OpenCode / OpenAI-compatible tool name mapping for Cursor native tools.
  *
  * Cursor expects native tool names (shell, ls, read, write, grep).

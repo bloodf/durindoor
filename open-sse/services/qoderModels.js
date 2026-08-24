@@ -19,7 +19,7 @@ import { buildCosyHeaders } from "../shared/qoder/cosy.js";
 import {
   QODER_MODEL_LIST_URL } from
 "../shared/qoder/constants.js";
-import { isFunction, isObject } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1h, same as the Kiro catalog

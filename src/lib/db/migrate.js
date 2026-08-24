@@ -13,7 +13,8 @@ import { runIntegrityCheckOrThrow } from "./helpers/integrityCheck.js";
 import { canonicalizeApiKeyExpiresAt } from "../../shared/utils/apiKeyExpiry.js";
 
 // Marker file: prevents re-importing legacy JSON when user wipes data.sqlite.
-import { isNumber, isObject } from "@/shared/utils/typeChecks.js";const migratedMarkerFile = () => path.join(currentDbDir(), ".migrated-from-json");
+import { isNumber, isObject } from "../../shared/utils/typeChecks.js";
+const migratedMarkerFile = () => path.join(currentDbDir(), ".migrated-from-json");
 
 // Track per-adapter so reusing same adapter skips re-run, but new adapter (after reset) re-runs.
 const _migratedAdapters = new WeakSet();

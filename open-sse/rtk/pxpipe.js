@@ -2,7 +2,7 @@
 // library API (transformAnthropicMessages). Fail-open like every token saver:
 // any error/timeout returns { body: null, summary } and leaves the request untouched.
 import { FORMATS } from "../translator/formats.js";
-import { isFunction, isNumber } from "@/shared/utils/typeChecks.js";
+import { isFunction, isNumber } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MIN_CHARS = 25000;

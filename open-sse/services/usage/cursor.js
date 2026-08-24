@@ -5,7 +5,7 @@
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { buildCursorHeaders } from "../../utils/cursorChecksum.js";
 import { parseResetTime, toFiniteNumber } from "./shared.js";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 const CURSOR_USAGE_CONFIG = {
   currentPeriodUsageUrl: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",

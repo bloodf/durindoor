@@ -7,7 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../../../shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 

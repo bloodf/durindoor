@@ -1,4 +1,5 @@
-import { isString } from "@/shared/utils/typeChecks.js";const { err } = require("../logger");
+const { isString } = require("../../shared/utils/typeChecks.cjs");
+const { err } = require("../logger");
 const { IS_DEV } = require("../config");
 const { fetchRouter, pipeTransformedEventStream } = require("./base");
 const fs = require("fs");

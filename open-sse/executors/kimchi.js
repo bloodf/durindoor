@@ -1,6 +1,6 @@
 import { DefaultExecutor } from "./default.js";
 import { getCachedKimchiModelMetadata } from "../services/kimchiModels.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const TOP_LEVEL_OPENAI_GATEWAY_DROPS = [
 "anthropic_version",

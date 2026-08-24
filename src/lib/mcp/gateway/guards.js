@@ -1,4 +1,4 @@
-import { isObject, isString } from "@/shared/utils/typeChecks.js"; // Boundary-parser guards for JSON-RPC / MCP payloads.
+import { isObject, isString } from "../../../shared/utils/typeChecks.js"; // Boundary-parser guards for JSON-RPC / MCP payloads.
 
 /**
  * @param {unknown} x

@@ -9,7 +9,8 @@ import { resolveKiroCredentialsFromSsoCache } from "open-sse/services/kiroModels
  * Import and validate refresh token from Kiro IDE.
  * For IDC (organization) tokens, accepts clientId/clientSecret/region so the
  * token can be refreshed via the regional AWS OIDC endpoint.
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { refreshToken, clientId, clientSecret, region, authMethod, profileArn } = await request.json();

@@ -27,7 +27,7 @@
  */
 
 import { MODEL_FAMILIES, detectModelFamily, isProviderOverrideFamily } from "./autoComboFamilies.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const AUTO_COMBO_PREFIX = "auto/";
 

@@ -9,7 +9,7 @@ import {
   maskAccountId,
   isNetworkErrorRotatable } from
 "./accountRotation.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const BASE_URL = "https://api.xiaomimimo.com";
 const BOOTSTRAP_PATH = "/api/free-ai/bootstrap";

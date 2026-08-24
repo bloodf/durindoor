@@ -8,7 +8,8 @@ import { spinner as createSpinner } from "../utils/ui.js";
 /**
  * Antigravity OAuth Service
  * Uses standard OAuth2 Authorization Code flow (similar to Gemini)
- */import { isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 export class AntigravityService {
   constructor() {
     this.config = ANTIGRAVITY_CONFIG;

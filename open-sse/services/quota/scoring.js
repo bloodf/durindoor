@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { QUOTA_SELECTION_DEFAULTS } from "../../config/quotaSelection.js";
-import { isNumber, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const HEALTH_FACTORS = Object.freeze({ healthy: 1, closed: 1, degraded: 0.5, "half-open": 0.5, unhealthy: 0, open: 0 });
 const DIAGNOSTIC_REASONS = new Set([

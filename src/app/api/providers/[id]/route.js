@@ -11,7 +11,7 @@ import { buildOAuthProxyMetadataPatch } from "@/lib/oauth/proxySelection.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "clientSecret",

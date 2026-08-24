@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { normalizeQuotaIdentifier } from "../../../src/shared/utils/quotaSnapshot.js";
-import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const METADATA_TEXT_MAX = 128;
 const UNSAFE_TEXT = /(?:[\u0000-\u001f\u007f]|[a-z][a-z0-9+.-]*:\/\/|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|bearer\s+|authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|cookie|secret)/i;

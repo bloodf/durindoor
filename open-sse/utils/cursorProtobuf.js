@@ -13,7 +13,7 @@ import {
   parseNativeToolCallsFromText,
   getSupportedToolEnumsFromOpenAiTools } from
 "./cursorToolMapping.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEBUG = process.env.CURSOR_PROTOBUF_DEBUG === "1";
 const log = (tag, ...args) => DEBUG && console.log(`[PROTOBUF:${tag}]`, ...args);

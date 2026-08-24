@@ -3,7 +3,7 @@ import { PROVIDERS, PROVIDER_OAUTH } from "./providers.js";
 import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 
 // === Gemini CLI === derive từ registry gemini-cli.transport
-import { isUndefined } from "@/shared/utils/typeChecks.js";export const GEMINI_CLI_VERSION = PROVIDERS["gemini-cli"]?.cliVersion;
+import { isUndefined } from "../../src/shared/utils/typeChecks.js";export const GEMINI_CLI_VERSION = PROVIDERS["gemini-cli"]?.cliVersion;
 export const GEMINI_CLI_API_CLIENT = PROVIDERS["gemini-cli"]?.apiClient;
 
 // Map Node arch to Gemini CLI arch string (x64/x86/arm64/...)

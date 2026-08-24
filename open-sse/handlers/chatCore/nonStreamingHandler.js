@@ -25,7 +25,7 @@ import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 // Upstream #10258: reject parsed JSON that isn't a plain record (primitives,
 // arrays, null) before any envelope unwrap or property access can throw or
 // silently coerce garbage into a "coherent" response.
-import { isObject, isString } from "@/shared/utils/typeChecks.js";function isJsonRecord(value) {
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 

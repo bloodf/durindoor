@@ -2,7 +2,7 @@
 // Loaded only when process.versions.bun is present.
 import { PRAGMA_SQL } from "../schema.js";
 import { assertCheckpointComplete } from "../helpers/checkpoint.js";
-import { isFunction } from "@/shared/utils/typeChecks.js";
+import { isFunction } from "../../../shared/utils/typeChecks.js";
 
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 

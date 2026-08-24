@@ -10,7 +10,8 @@ import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
-import { isString } from "@/shared/utils/typeChecks.js";const PROVIDER_ORDER = [
+import { isString } from "../utils/typeChecks.js";
+const PROVIDER_ORDER = [
 ...Object.keys(OAUTH_PROVIDERS),
 ...Object.keys(FREE_PROVIDERS),
 ...Object.keys(FREE_TIER_PROVIDERS),

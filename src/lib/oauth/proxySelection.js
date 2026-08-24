@@ -1,5 +1,5 @@
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../shared/utils/typeChecks.js";
 
 export const OAUTH_PROXY_MODE = Object.freeze({
   LEGACY: "legacy",

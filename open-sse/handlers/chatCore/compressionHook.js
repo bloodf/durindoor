@@ -36,7 +36,7 @@ import {
 import { deriveDefaultPlan as realDeriveDefaultPlan } from "../../services/compression/deriveDefaultPlan.js";
 import { resolveAdaptivePlan as realResolveAdaptivePlan } from "../../services/compression/adaptiveCompression/resolveAdaptivePlan.js";
 import { estimateCompressionTokens } from "../../services/compression/stats.js";
-import { isObject } from "@/shared/utils/typeChecks.js";
+import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 try {
   registerBuiltinEngines();

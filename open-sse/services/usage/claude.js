@@ -8,7 +8,8 @@ import { U, parseResetTime } from "./shared.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
 
 // Claude API config (urls from registry, apiVersion is header logic kept here)
-import { isNumber, isObject } from "@/shared/utils/typeChecks.js";const CLAUDE_CONFIG = {
+import { isNumber, isObject } from "../../../src/shared/utils/typeChecks.js";
+const CLAUDE_CONFIG = {
   oauthUsageUrl: U("claude").oauthUrl,
   usageUrl: U("claude").orgUrl,
   settingsUrl: U("claude").settingsUrl,

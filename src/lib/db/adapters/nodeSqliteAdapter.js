@@ -2,7 +2,7 @@
 // No native build, no npm install. API mirrors betterSqliteAdapter.
 import { PRAGMA_SQL } from "../schema.js";
 import { assertCheckpointComplete } from "../helpers/checkpoint.js";
-import { isFunction } from "@/shared/utils/typeChecks.js";
+import { isFunction } from "../../../shared/utils/typeChecks.js";
 
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 

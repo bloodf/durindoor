@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { formatEndpointPresetLabel, readLastCustomUrl, writeLastCustomUrl } from "./cliEndpointPresets";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
+import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
 
 const STORAGE_KEY = "durindoor.cliToolEndpointPresets";
 const CUSTOM_VALUE = "__custom__";

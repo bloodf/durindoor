@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 function toBoolean(value) {
   if (value === "true") return true;

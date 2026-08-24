@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 function hexToBase64(audioHex) {
   const clean = isString(audioHex) ? audioHex.trim() : "";

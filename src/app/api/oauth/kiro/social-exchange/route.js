@@ -11,7 +11,8 @@ import { claimOAuthFlow, consumeOAuthFlow } from "@/lib/oauth/flowStore.js";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { ensureOutboundProxyInitialized } from "@/lib/network/initOutboundProxy";
 
-/** Exchange a Kiro social code using only server-bound flow metadata. */import { isString } from "@/shared/utils/typeChecks.js";
+/** Exchange a Kiro social code using only server-bound flow metadata. */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   let claim = null;
   try {

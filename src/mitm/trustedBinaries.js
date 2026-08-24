@@ -1,4 +1,5 @@
-import { isNumber } from "@/shared/utils/typeChecks.js";const fs = require("fs");
+const { isNumber } = require("../shared/utils/typeChecks.cjs");
+const fs = require("fs");
 const path = require("path");
 
 const FIXED_UNIX_PATH = "/usr/sbin:/usr/bin:/sbin:/bin";

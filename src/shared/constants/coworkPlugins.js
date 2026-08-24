@@ -1,4 +1,5 @@
-import { isString } from "@/shared/utils/typeChecks.js"; // Default remote plugins for Claude Cowork (3p managedMcpServers, HTTPS only).
+const { isString } = require("../utils/typeChecks.cjs");
+// Default remote plugins for Claude Cowork (3p managedMcpServers, HTTPS only).
 const DEFAULT_PLUGINS = [
 {
   name: "exa",

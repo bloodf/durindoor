@@ -4,7 +4,7 @@ import { makeDefaultExecutor } from "open-sse/handlers/localBatchExecutor.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",

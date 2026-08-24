@@ -30,7 +30,8 @@ import { cancelAndReleaseReader, releaseReader } from "../utils/streamReader.js"
 
 // Recognized Codex effort suffixes, lowest-to-highest. Single source of truth for
 // routing normalization: transformRequest strips the suffix from the wire id.
-import { isFunction, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const CODEX_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+const CODEX_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
 /**
  * Split a Codex model id into its bare upstream id and recognized effort suffix.

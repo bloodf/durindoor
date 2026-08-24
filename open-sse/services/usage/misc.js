@@ -6,7 +6,8 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U } from "./shared.js";
 
 // GLM quota endpoints (region-aware) — url from registry transport.usage
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const GLM_QUOTA_URLS = {
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+const GLM_QUOTA_URLS = {
   international: U("glm").url,
   china: U("glm-cn").url
 };

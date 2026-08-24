@@ -5,7 +5,8 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
 
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
-import { isString } from "@/shared/utils/typeChecks.js";const projectIdCache = new Map();
+import { isString } from "../../src/shared/utils/typeChecks.js";
+const projectIdCache = new Map();
 
 /**
  * Parse Google ADC user credential JSON from apiKey string.

@@ -18,7 +18,7 @@
 // paid even when some ancillary rate happens to be 0.
 
 import { FREE_MODEL_BUDGETS } from "./freeModelCatalog.data.js";
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const PROVIDERS_WITH_FREE_MODELS = new Set(FREE_MODEL_BUDGETS.map((m) => m.provider));
 

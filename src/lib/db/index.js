@@ -18,7 +18,7 @@ import { readQuotaPortableStateSync, writeQuotaPortableStateSync } from "./repos
 import { assertNoActiveQuotaReservationsSync } from "./repos/quotaReservationsRepo.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "./repos/connectionsRepo.js";
 import { isEncryptedBlob, decryptField, encryptField } from "../crypto/columnCrypto.js";
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();

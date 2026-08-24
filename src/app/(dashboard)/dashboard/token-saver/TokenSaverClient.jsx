@@ -21,7 +21,7 @@ import {
   PONYTAIL_LEVELS } from
 "../endpoint/endpointConstants";
 import { fetchPxpipeStatus, getPxpipeStatusView } from "../pxpipe/pxpipeStatus.js";
-import { isNumber } from "@/shared/utils/typeChecks.js";
+import { isNumber } from "../../../../shared/utils/typeChecks.js";
 
 export default function TokenSaverClient({ view = "overview" }) {
   const [rtkEnabled, setRtkEnabledState] = useState(true);

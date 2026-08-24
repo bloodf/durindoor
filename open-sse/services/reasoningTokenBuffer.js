@@ -6,7 +6,8 @@ import {
 import { normalizeModelId } from "../providers/models/schema.js";
 import { supportsReasoning } from "./modelCapabilities.js";
 
-/** Add reasoning headroom without exceeding an explicit model output cap. */import { isBoolean, isNumber, isString } from "@/shared/utils/typeChecks.js";
+/** Add reasoning headroom without exceeding an explicit model output cap. */
+import { isBoolean, isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 export const REASONING_BUFFER_MIN_TRIGGER = 256;
 
 export function toPositiveInteger(value) {

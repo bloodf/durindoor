@@ -2,7 +2,7 @@ import { getAdapter } from "../driver.js";
 import { stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
 import { DEFAULT_CAPABILITIES } from "open-sse/providers/capabilities.js";
-import { isBoolean, isObject } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isObject } from "../../../shared/utils/typeChecks.js";
 
 const aliasKv = makeKv("modelAliases");
 const customKv = makeKv("customModels");

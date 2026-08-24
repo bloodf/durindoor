@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 
 

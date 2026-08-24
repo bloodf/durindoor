@@ -15,7 +15,7 @@
 // compression registry) stay synchronous and alias-free at module load.
 
 import { createCompressionStats } from "../stats.js";
-import { isBoolean, isFunction, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../../src/shared/utils/typeChecks.js";
 
 const ENGINE_ID = "headroom";
 

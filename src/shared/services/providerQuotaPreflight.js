@@ -6,7 +6,7 @@ import {
   QUOTA_MAX_CLOCK_SKEW_MS,
   QUOTA_MAX_RETRY_DELAY_MS } from
 "@/shared/constants/quota";
-import { isFunction, isNumber, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isString } from "../utils/typeChecks.js";
 
 const BLOCKING_STATES = new Set(["exhausted", "cooldown"]);
 const POSITIVE_STATES = new Set(["available", "low"]);

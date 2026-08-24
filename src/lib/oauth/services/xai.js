@@ -17,7 +17,8 @@ import { spinner as createSpinner } from "../utils/ui.js";
  *  3. PKCE S256 with 96-byte verifier
  *  4. Exchange code with form-urlencoded body
  *  5. id_token email decode (no signature verify, mirrors Go)
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 const BASE64_BLOCK_SIZE = 4;
 

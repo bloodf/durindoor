@@ -1,4 +1,5 @@
-import { isObject } from "@/shared/utils/typeChecks.js";const BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+import { isObject } from "../../../shared/utils/typeChecks.js";
+const BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const TOKEN_FIELDS = new Set(["accessToken", "refreshToken", "idToken"]);
 
 function isPlainObject(value) {

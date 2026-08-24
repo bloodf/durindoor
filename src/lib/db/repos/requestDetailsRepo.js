@@ -1,6 +1,6 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { isBoolean, isObject } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isObject } from "../../../shared/utils/typeChecks.js";
 
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;

@@ -11,7 +11,7 @@ import {
   incrementHeadroomFailures,
   resetHeadroomCircuit } from
 "./headroomCircuit.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const RETRY_BACKOFF_MS = 100;

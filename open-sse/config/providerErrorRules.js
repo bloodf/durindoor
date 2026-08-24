@@ -1,4 +1,4 @@
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js"; /**
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js"; /**
  * Provider-specific error markers that do not fit the shared status rules.
  * Each rule's `scope` is forwarded into fallback locking:
  *   - "connection" forces an account-wide lock (`modelLock___all`)

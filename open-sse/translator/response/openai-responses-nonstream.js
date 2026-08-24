@@ -1,5 +1,5 @@
 import { ROLE, CLAUDE_BLOCK, RESPONSES_ITEM, MODEL_FALLBACK } from "../schema/index.js";
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function n(value) {
   return isNumber(value) ? value : 0;

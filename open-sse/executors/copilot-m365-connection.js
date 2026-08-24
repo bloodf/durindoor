@@ -5,7 +5,7 @@
  * Microsoft's browser client, so logged URLs must pass through redactWsUrl().
  */
 import { randomBytes, randomUUID } from "node:crypto";
-import { isBoolean, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const M365_INDIVIDUAL_DEFAULTS = {
   host: "substrate.office.com",

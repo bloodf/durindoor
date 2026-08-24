@@ -1,4 +1,5 @@
-import { isString } from "@/shared/utils/typeChecks.js";const ABSOLUTE_ISO_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
+import { isString } from "./typeChecks.js";
+const ABSOLUTE_ISO_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
 
 /**
  * Parse a strict absolute ISO-8601 timestamp without accepting Date's silent

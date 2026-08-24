@@ -12,7 +12,8 @@ import { CURSOR_CONFIG } from "../constants/oauth.js";
  * Database Keys:
  * - cursorAuth/accessToken: The access token
  * - storage.serviceMachineId: Machine ID for checksum
- */import { isString, isUndefined } from "@/shared/utils/typeChecks.js";
+ */
+import { isString, isUndefined } from "../../../shared/utils/typeChecks.js";
 
 export function isCursorEmail(value) {
   return isString(value) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);

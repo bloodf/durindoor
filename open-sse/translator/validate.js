@@ -19,7 +19,7 @@ import {
 
 // Internal-only keys that must NEVER be sent to an upstream provider.
 // Detection of these fails validation; stripping always removes them.
-import { isNumber, isObject, isString, runtimeTypeName } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString, runtimeTypeName } from "../../src/shared/utils/typeChecks.js";
 
 export const INTERNAL_KEYS = Object.freeze([
 "_toolNameMap",

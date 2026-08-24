@@ -1,4 +1,5 @@
-import { isObject, isString } from "../../../../src/shared/utils/typeChecks.js";const api = require("../api/client");
+const { isObject, isString } = require("../../../../src/shared/utils/typeChecks.cjs");
+const api = require("../api/client");
 const { prompt, confirm, pause } = require("../utils/input");
 const { clearScreen, showStatus, showHeader } = require("../utils/display");
 const { formatDate } = require("../utils/format");

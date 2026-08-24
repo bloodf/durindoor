@@ -6,7 +6,7 @@ import { execSync, exec, spawn } from "child_process";
 import { promisify } from "util";
 import { execWithPassword } from "@/mitm/dns/dnsConfig";
 import { DATA_DIR } from "@/lib/dataDir.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 

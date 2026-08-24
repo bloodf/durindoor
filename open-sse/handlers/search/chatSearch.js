@@ -7,7 +7,8 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 
 // Default search model + endpoint derive from registry searchViaChat (single source)
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const searchModel = (id) => PROVIDER_MEDIA[id]?.searchViaChat?.defaultModel;
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+const searchModel = (id) => PROVIDER_MEDIA[id]?.searchViaChat?.defaultModel;
 const searchEndpoint = (id, model) =>
 (PROVIDER_MEDIA[id]?.searchViaChat?.endpoint || "").replace("{model}", model || "");
 

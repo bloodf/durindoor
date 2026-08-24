@@ -10,7 +10,8 @@ import { getEmbeddingAdapter } from "./embeddingProviders/index.js";
  * live in `./embeddingProviders/{id}.js`.
  *
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export async function handleEmbeddingsCore({
   body,
   modelInfo,

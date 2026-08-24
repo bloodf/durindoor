@@ -1,5 +1,5 @@
 import { pingModelByKind } from "../ping";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 
 const CONCURRENCY_LIMIT = 10;
 

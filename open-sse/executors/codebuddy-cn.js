@@ -1,6 +1,6 @@
 import { DefaultExecutor } from "./default.js";
 import { OPENAI_BLOCK, ROLE } from "../translator/schema/index.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_SYSTEM_PROMPT_MAX_LEN = 2000;
 const NEUTRAL_PROMPT = "You are a helpful AI assistant that helps with software engineering tasks.";

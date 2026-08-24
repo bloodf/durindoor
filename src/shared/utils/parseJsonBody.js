@@ -7,7 +7,8 @@ import { NextResponse } from "next/server";
  * Call OUTSIDE the handler `try` so downstream failures keep their own status.
  * @param {Request} request
  * @returns {Promise<{ok: true, body: object} | {ok: false, response: Response}>}
- */import { isObject } from "@/shared/utils/typeChecks.js";
+ */
+import { isObject } from "./typeChecks.js";
 export async function parseJsonBody(request) {
   let body;
   try {

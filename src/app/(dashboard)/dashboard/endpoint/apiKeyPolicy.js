@@ -1,4 +1,4 @@
-import { isObject, isString } from "@/shared/utils/typeChecks.js";export function emptyApiKeyPolicyDraft() {
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";export function emptyApiKeyPolicyDraft() {
   return { accessMode: "all", allowedModels: [], maxTokens: "", maxCostUsd: "" };
 }
 

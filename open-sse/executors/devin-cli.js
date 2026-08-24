@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { BaseExecutor } from "./base.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function resolveDevinBin() {
   const envBin = process.env.CLI_DEVIN_BIN?.trim();

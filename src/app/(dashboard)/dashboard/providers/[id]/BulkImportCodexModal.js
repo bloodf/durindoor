@@ -4,7 +4,7 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal, Select } from "@/shared/components";
 import { translate } from "@/i18n/runtime";
-import { isFunction, isObject } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject } from "../../../../../shared/utils/typeChecks.js";
 
 const PLACEHOLDER = `[
   {

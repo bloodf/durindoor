@@ -5,7 +5,8 @@ import { FORMATS } from "../formats.js";
 
 // Placeholder text inserted where a media block was removed.
 // Current turn: explain the active model can't read what the user just sent.
-import { isString } from "@/shared/utils/typeChecks.js";const PLACEHOLDER_CURRENT = {
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+const PLACEHOLDER_CURRENT = {
   vision: "[image omitted: model has no vision support]",
   audioInput: "[audio omitted: model has no audio support]",
   videoInput: "[video omitted: model has no video support]",

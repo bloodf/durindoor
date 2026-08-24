@@ -2,7 +2,7 @@ import {
   PROVIDER_QUOTA_DEFAULTS } from
 "../../config/providerQuota.js";
 import { QUOTA_MAX_RETRY_DELAY_MS } from "../../../src/shared/constants/quota.js";
-import { isFunction, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const HTTP_OUTCOMES = Object.freeze({
   401: "unauthenticated",

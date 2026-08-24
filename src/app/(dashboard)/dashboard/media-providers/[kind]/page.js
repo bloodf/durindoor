@@ -12,7 +12,8 @@ import { getLocalEmbeddingProviders } from "./localEmbeddingResolver";
 
 // Kinds that support combos (currently disabled for image/tts — temporarily hidden).
 // webSearch/webFetch handled by /web page.
-import { isString } from "@/shared/utils/typeChecks.js";const COMBO_KINDS = new Set([]);
+import { isString } from "../../../../../shared/utils/typeChecks.js";
+const COMBO_KINDS = new Set([]);
 const COMBO_BASE_NAMES = { image: "image-combo", tts: "tts-combo" };
 
 function ComboList({ combos }) {

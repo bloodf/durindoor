@@ -23,7 +23,7 @@ import { toOpenAIUsage } from "../concerns/usage.js";
 import { reasoningDelta } from "../concerns/reasoning.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function ensureState(state, model) {
   state.responseId ??= `chatcmpl-${Date.now()}`;

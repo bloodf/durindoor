@@ -25,12 +25,12 @@ describe("ModelSelectModal null modelAliases guard (#2247)", () => {
     const entriesCalls = src.match(/Object\.entries\(modelAliases\)/g) || [];
     expect(entriesCalls.length).toBe(3);
 
-    // Each must be paired with a guarded predicate that checks typeof === "string"
-    // AND calls .startsWith, with the typeof check lexically preceding .startsWith
+    // Each must be paired with a guarded predicate that checks isString()
+    // AND calls .startsWith, with the isString check lexically preceding .startsWith
     // so the guard actually short-circuits the crash. One guarded chain per
     // Object.entries(modelAliases) call — no more, no less.
     const guardedChains =
-      src.match(/typeof fullModel === "string"\s*&&\s*fullModel\.startsWith/g) || [];
+      src.match(/isString\(fullModel\)\s*&&\s*fullModel\.startsWith/g) || [];
     expect(guardedChains.length).toBe(entriesCalls.length);
   });
 });

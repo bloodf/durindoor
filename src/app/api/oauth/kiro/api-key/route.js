@@ -7,7 +7,8 @@ import { createProviderConnection } from "@/models";
  * Import a Kiro API key (headless auth). The key is a long-lived bearer
  * credential — there is no refresh token. It is validated by listing
  * CodeWhisperer profiles, then stored with authMethod="api_key".
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { apiKey, region } = await request.json();

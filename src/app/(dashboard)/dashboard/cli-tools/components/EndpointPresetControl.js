@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
+import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
 
 const STORAGE_KEY = "durindoor.cliToolEndpointPresets";
 

@@ -1,6 +1,6 @@
 import { getAdapter, getAdapterSync } from "../../src/lib/db/driver.js";
 import { parseJson, stringifyJson } from "../../src/lib/db/helpers/jsonCol.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const NAMESPACE = "gemini_thought_signatures";
 const MAX_SIGNATURES = 1000;

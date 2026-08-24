@@ -20,7 +20,7 @@ import {
   providerFailure,
   providerSuccess } from
 "../providerHelpers.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
 
 function resetAtForWindow(window, now) {
   const absolute = parseQuotaTimestamp(window?.reset_at ?? window?.resets_at ?? window?.resetAt);

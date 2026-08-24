@@ -1,5 +1,5 @@
 import { KIRO_DEFAULT_REGION, normalizeKiroRegion } from "../../../open-sse/config/kiroRegions.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const MICROSOFT_TOKEN_ENDPOINT_HOSTS = new Set([
 "login.microsoftonline.com",

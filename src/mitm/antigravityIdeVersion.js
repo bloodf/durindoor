@@ -3,7 +3,7 @@
 // Rewrite Antigravity IDE markers so upstream AG 2.x backend accepts the request.
 // User-Agent header (antigravity/<old>) and body.metadata.ideVersion are forced
 // to a known-good IDE version. Hardcoded MVP — toggle/version configurable later.
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+const { isObject, isString } = require("../shared/utils/typeChecks.cjs");
 const ANTIGRAVITY_IDE_VERSION = "1.23.2";
 const ANTIGRAVITY_IDE_VERSION_OVERRIDE_ENABLED = true;
 

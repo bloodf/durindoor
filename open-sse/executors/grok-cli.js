@@ -12,7 +12,8 @@ import { getConsistentMachineId } from "../shared/machineId.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 
 // Server-generated item id prefixes that /responses cannot resolve when store=false.
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const SERVER_ID_PATTERN = /^(rs|fc|resp|msg)_/;
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+const SERVER_ID_PATTERN = /^(rs|fc|resp|msg)_/;
 
 // Hosted tool types executed server-side by the Grok CLI backend.
 const HOSTED_TOOL_TYPES = new Set([

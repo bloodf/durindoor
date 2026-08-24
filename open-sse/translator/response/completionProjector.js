@@ -1,7 +1,7 @@
 import { FORMATS } from "../formats.js";
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function parseArgs(value) {
   if (!value) return {};

@@ -8,7 +8,8 @@ import { prepareMinimaxVideoRequest, normalizeMinimaxVideoResponse } from "./vid
 
 // Upstream fetch deadline for video job submission/polling (the job itself is
 // async upstream — this only bounds the HTTP round-trip, not video rendering).
-import { isFunction, isString } from "@/shared/utils/typeChecks.js";const VIDEO_FETCH_TIMEOUT_MS = Number(process.env.VIDEO_FETCH_TIMEOUT_MS || 120000);
+import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
+const VIDEO_FETCH_TIMEOUT_MS = Number(process.env.VIDEO_FETCH_TIMEOUT_MS || 120000);
 
 // POST /videos/* creates a billable upstream job. A network error after the
 // request left the socket may still have created the job, so creation is NEVER

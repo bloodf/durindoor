@@ -15,7 +15,7 @@ import {
   resetPasswordChangeProofs } from
 "@/lib/auth/passwordChangeProof";
 import { PasswordEpochMismatchError, getSettings, updateSettingsWithPasswordEpoch } from "@/lib/localDb";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 

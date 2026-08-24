@@ -11,7 +11,7 @@ import {
   QUOTA_STATES } from
 "../constants/quota.js";
 import { parseAbsoluteTimestamp } from "./absoluteTimestamp.js";
-import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isString } from "./typeChecks.js";
 
 const IDENTIFIER_MAX_LENGTH = 256;
 const TEXT_MAX_LENGTH = 128;

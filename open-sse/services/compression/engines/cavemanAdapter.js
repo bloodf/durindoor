@@ -9,7 +9,7 @@
 
 import { cavemanCompress } from "../caveman.js";
 import { adaptBodyForCompression } from "../bodyAdapter.js";
-import { isBoolean, isNumber } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isNumber } from "../../../../src/shared/utils/typeChecks.js";
 
 const CAVEMAN_INTENSITIES = ["lite", "full", "ultra"];
 

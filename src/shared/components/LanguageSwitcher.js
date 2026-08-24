@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { LOCALES, LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { reloadTranslations } from "@/i18n/runtime";
-import { isBoolean, isUndefined } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isUndefined } from "../utils/typeChecks.js";
 
 function getLocaleFromCookie() {
   if (isUndefined(globalThis.document)) return "en";

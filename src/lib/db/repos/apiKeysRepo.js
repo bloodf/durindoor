@@ -12,7 +12,8 @@ import { getCommittedTokenCount } from "../helpers/committedTokens.js";
  * - Existing keys without an expiry are treated as never-expiring.
  * - Expired keys remain visible in the dashboard/CLI but stop authenticating requests.
  * - Setting `expiresAt` to null clears an existing expiry.
- */import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 function parseApiKeyPolicy(raw) {
   if (raw == null) return null;

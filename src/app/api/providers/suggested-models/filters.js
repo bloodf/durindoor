@@ -1,4 +1,5 @@
-import { isString } from "@/shared/utils/typeChecks.js";const KNOWN_FREE_OPENROUTER_MODELS = [
+import { isString } from "../../../../shared/utils/typeChecks.js";
+const KNOWN_FREE_OPENROUTER_MODELS = [
 "openai/gpt-3.5-turbo",
 "openai/gpt-4o",
 "openai/gpt-4o-mini",

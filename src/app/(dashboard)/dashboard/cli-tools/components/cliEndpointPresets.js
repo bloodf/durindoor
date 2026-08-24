@@ -1,4 +1,5 @@
-import { isBrowser } from "@/shared/utils/typeChecks.js";const CUSTOM_LAST_KEY = "durindoor.cliToolEndpointCustom";
+import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
+const CUSTOM_LAST_KEY = "durindoor.cliToolEndpointCustom";
 
 /** Display both user label and endpoint when they differ. */
 export function formatEndpointPresetLabel({ name, baseUrl }) {

@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /**
+import { isString } from "../../src/shared/utils/typeChecks.js"; /**
  * Model-family primitives for auto-combo (F-2).
  *
  * Pure, dependency-free primitives ported verbatim in shape from

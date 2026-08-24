@@ -1,4 +1,4 @@
-import { isObject } from "@/shared/utils/typeChecks.js"; /**
+import { isObject } from "../../src/shared/utils/typeChecks.js"; /**
  * Authoritative provider-quota endpoints and operational bounds.
  *
  * This module is intentionally side-effect free so offline tests and quota

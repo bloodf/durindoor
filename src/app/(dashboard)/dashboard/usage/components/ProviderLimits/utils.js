@@ -2,7 +2,7 @@ import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-import { isBrowser, isNumber, isObject, isString, isUndefined } from "@/shared/utils/typeChecks.js";export const QUOTA_CACHE_KEY = "quotaCacheData";
+import { isBrowser, isNumber, isObject, isString, isUndefined } from "../../../../../../shared/utils/typeChecks.js";export const QUOTA_CACHE_KEY = "quotaCacheData";
 export const REFRESH_INTERVAL_MS = 60000;
 // Claude usage/quota endpoint rate-limits; poll it less often than other providers
 export const CLAUDE_REFRESH_INTERVAL_MS = 600000;

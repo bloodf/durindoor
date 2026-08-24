@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; // Fields that strict upstream gateways may reject by literal name in a 400
+import { isString } from "../../src/shared/utils/typeChecks.js"; // Fields that strict upstream gateways may reject by literal name in a 400
 // response. BaseExecutor strips one matching top-level request field and retries
 // once, preserving compatibility with clients that send harmless extension data.
 export const KNOWN_OFFENDING_FIELDS = [

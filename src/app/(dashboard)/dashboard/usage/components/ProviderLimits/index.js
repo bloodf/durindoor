@@ -54,7 +54,8 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 // Maps the stored providerSpecificData.authMethod to a human label for Kiro.
 // Values come from the Kiro connect flows: builder-id/idc (device code),
 // google/github (social), imported (refresh-token paste), api_key (headless).
-import { isBrowser, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const KIRO_METHOD_LABELS = {
+import { isBrowser, isNumber, isObject, isString } from "../../../../../../shared/utils/typeChecks.js";
+const KIRO_METHOD_LABELS = {
   "builder-id": "AWS Builder ID",
   idc: "IAM Identity Center",
   google: "Google",

@@ -1,4 +1,4 @@
-import { isObject, isString } from "@/shared/utils/typeChecks.js"; /**
+import { isObject, isString } from "../../../../../shared/utils/typeChecks.js"; /**
  * Conversion helpers for the Gemini-compatible /v1beta bridge. Keeping these
  * outside route.js lets unit tests exercise the translation surface without
  * adding non-route exports to the Next.js app route module.

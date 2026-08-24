@@ -11,7 +11,8 @@ import { resolveProviderId, isLocalOllamaProvider, getProviderAlias } from "@/sh
  * @param {object[]} models - `/api/v1/models/embedding` data array.
  * @param {object[]} connections - active provider connections from `/api/providers`.
  * @returns {object[]} unique provider descriptor objects for local Ollama entries.
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 export function getLocalEmbeddingProviders(models, connections) {
   const ownedByToProvider = new Map();
   for (const conn of connections) {

@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /**
+import { isString } from "./typeChecks.js"; /**
  * Pure view helpers for rendering Headroom setup diagnostics in the dashboard.
  *
  * All user-facing string choices and branch decisions live here so the

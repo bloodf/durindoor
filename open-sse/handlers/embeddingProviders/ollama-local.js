@@ -1,6 +1,6 @@
 // Ollama Local embeddings adapter — normalizes Ollama /api/embed to OpenAI shape.
 import { resolveOllamaLocalHost } from "../../config/providers.js";
-import { isNumber } from "@/shared/utils/typeChecks.js";
+import { isNumber } from "../../../src/shared/utils/typeChecks.js";
 
 export default {
   buildUrl: (_model, creds) => `${resolveOllamaLocalHost(creds)}/api/embed`,

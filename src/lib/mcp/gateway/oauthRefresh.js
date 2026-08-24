@@ -3,7 +3,7 @@
 import { updateInstance, getInstanceById } from "@/lib/localDb";
 import { isRecord } from "./guards";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
-import { isNumber, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isString } from "../../../shared/utils/typeChecks.js";
 
 const REFRESH_LEEWAY_MS = 60_000;
 const KEY = "__9routerGatewayRefresh";

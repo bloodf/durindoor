@@ -5,7 +5,7 @@ import { buildKiroOidcEndpoint, KIRO_DEFAULT_REGION } from "../../config/kiroReg
 import { dedupRefresh } from "./dedup.js";
 import { buildExternalIdpRefreshParams } from "../../../src/lib/oauth/kiroExternalIdp.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 function safeRefreshError(value) {
   if (isString(value)) return sanitizeErrorMessage(value);

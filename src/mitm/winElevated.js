@@ -1,4 +1,5 @@
-import { isFunction } from "@/shared/utils/typeChecks.js";const { execFile, execFileSync } = require("child_process");
+const { isFunction } = require("../shared/utils/typeChecks.cjs");
+const { execFile, execFileSync } = require("child_process");
 const { buildMinimalWindowsEnv, resolveWindowsSystemBinary } = require("./trustedBinaries");
 
 const IS_WIN = process.platform === "win32";

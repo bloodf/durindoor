@@ -22,7 +22,8 @@ import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../servi
  * Provider IS the model (no model field). Mirrors handleEmbeddings auth + fallback flow.
  *
  * @param {Request} request
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../shared/utils/typeChecks.js";
 export async function handleSearch(request) {
   let body;
   try {

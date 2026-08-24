@@ -31,7 +31,7 @@ import { rankQuotaConnections } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";

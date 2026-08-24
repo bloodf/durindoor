@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /**
+import { isString } from "../../src/shared/utils/typeChecks.js"; /**
  * Kiro regional topology — SINGLE SOURCE OF TRUTH.
  *
  * Kiro / AWS CodeWhisperer is region-scoped: the access token, its profileArn,

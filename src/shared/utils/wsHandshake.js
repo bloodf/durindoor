@@ -16,7 +16,8 @@
 
 "use strict";
 
-/** Subprotocol prefix OpenAI realtime clients use to carry the API key. */import { isString } from "@/shared/utils/typeChecks.js";
+/** Subprotocol prefix OpenAI realtime clients use to carry the API key. */
+const { isString } = require("./typeChecks.cjs");
 const OPENAI_KEY_SUBPROTO = "openai-insecure-api-key";
 
 /**

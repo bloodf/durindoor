@@ -37,7 +37,7 @@ import {
   isPubliclyFetchableBase } from
 "@/lib/mcp/gateway/oauthCimd";
 import { selectOAuthPublicBase } from "@/lib/mcp/gateway/oauthPublicBase";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { retryWithBackoff } from "./retry";
 import { isRecord } from "./guards";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 const STDIO_KEY = "__9routerGatewayStdio";
 const STDIO_PROTOCOL_VERSION = "2025-06-18";

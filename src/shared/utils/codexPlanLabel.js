@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /**
+import { isString } from "./typeChecks.js"; /**
  * Resolve the Codex/ChatGPT plan badge label for a connection or quota row.
  *
  * Shared by the provider connection row and the usage quota view so both apply

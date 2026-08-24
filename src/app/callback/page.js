@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 
 /**
  * OAuth Callback Page Content
- */import { isBrowser } from "@/shared/utils/typeChecks.js";
+ */
+import { isBrowser } from "../../shared/utils/typeChecks.js";
 function CallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState("processing");

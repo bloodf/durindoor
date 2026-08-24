@@ -13,7 +13,8 @@ import { createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+const isResponsesProvider = (p) => PROVIDERS[p]?.format === FORMATS.OPENAI_RESPONSES;
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
 
 // Claude Code classifier compat: detect classifier-shaped requests by the

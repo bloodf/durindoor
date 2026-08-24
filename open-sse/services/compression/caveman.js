@@ -12,7 +12,7 @@ import { createCompressionStats, estimateCompressionTokens } from "./stats.js";
 import { validateCompression } from "./validation.js";
 import { mapTextContent } from "./messageContent.js";
 import { detectCompressionLanguage } from "./languageDetector.js";
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 
 

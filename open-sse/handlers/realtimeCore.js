@@ -19,8 +19,7 @@
  */
 
 "use strict";
-import { isFunction, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
-
+const { isFunction, isNumber, isObject, isString } = require("../../src/shared/utils/typeChecks.cjs");
 const { randomUUID } = require("crypto");
 const { MAX_SESSION_ITEMS } = require("../../src/shared/utils/realtimeConfig");
 

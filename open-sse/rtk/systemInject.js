@@ -4,7 +4,7 @@
 
 import { FORMATS } from "../translator/formats.js";
 import { OPENAI_BLOCK, RESPONSES_ITEM, ROLE } from "../translator/schema/index.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const SEP = "\n\n";
 

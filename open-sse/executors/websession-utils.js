@@ -1,5 +1,5 @@
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const WEBSESSION_FETCH_TIMEOUT_MS = 30_000;
 

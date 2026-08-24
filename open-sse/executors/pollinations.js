@@ -6,7 +6,8 @@ import { PROVIDERS } from "../config/providers.js";
  * gen.pollinations.ai gateway and only enables jsonMode for explicit JSON
  * response formats. Pollinations rejects ordinary prompts when jsonMode is set
  * unconditionally.
- */import { isObject } from "@/shared/utils/typeChecks.js";
+ */
+import { isObject } from "../../src/shared/utils/typeChecks.js";
 export class PollinationsExecutor extends BaseExecutor {
   constructor() {
     super("pollinations", PROVIDERS.pollinations || { format: "openai" });

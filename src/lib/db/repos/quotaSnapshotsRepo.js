@@ -16,7 +16,7 @@ import {
   QUOTA_MAX_SOURCE_SNAPSHOTS,
   QUOTA_PORTABLE_VERSION } from
 "../../../shared/constants/quota.js";
-import { isFunction, isNumber, isObject } from "@/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject } from "../../../shared/utils/typeChecks.js";
 
 function assertRuntimeCommitAllowed({ signal = null, shouldCommit = null } = {}) {
   if (signal?.aborted) throw new DOMException("Provider quota persistence aborted", "AbortError");

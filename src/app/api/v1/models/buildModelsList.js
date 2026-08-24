@@ -37,7 +37,8 @@ import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 // in-flight promise is shared — settled results are NEVER cached (the key is
 // deleted in `finally`), so DB/credential changes are observed on the next
 // request and a rejection cannot poison future calls.
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const modelsInFlight = new Map();
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+const modelsInFlight = new Map();
 
 function kindFilterKey(kindFilter) {
   return Array.isArray(kindFilter) ? kindFilter.slice().sort().join("\0") : "";

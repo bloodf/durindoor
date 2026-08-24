@@ -1,4 +1,5 @@
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const GOOGLE_PSE_PROVIDER_ID = "google-pse";
+import { isObject, isString } from "./typeChecks.js";
+const GOOGLE_PSE_PROVIDER_ID = "google-pse";
 
 export function isGooglePseProvider(provider) {
   return provider === GOOGLE_PSE_PROVIDER_ID;

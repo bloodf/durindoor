@@ -26,7 +26,8 @@ import { v4 as uuidv4 } from "uuid";
 // Timeout for OAuth helper calls. The OAuth modal polls every 2s for up to
 // 5 minutes; an individual request that stalls beyond this is treated as a
 // failed poll attempt and the next poll iteration retries.
-import { isNumber, isString } from "@/shared/utils/typeChecks.js";const FETCH_TIMEOUT_MS = 15_000;
+import { isNumber, isString } from "../../../shared/utils/typeChecks.js";
+const FETCH_TIMEOUT_MS = 15_000;
 
 function base64Url(buf) {
   return buf.

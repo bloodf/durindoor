@@ -2,7 +2,8 @@ import { Buffer } from "node:buffer";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 
-/** Builds configured STT auth, including raw Authorization required by AssemblyAI (upstream #3058). */import { isString } from "@/shared/utils/typeChecks.js";
+/** Builds configured STT auth, including raw Authorization required by AssemblyAI (upstream #3058). */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 function buildAuthHeaders(cfg, token) {
   if (!token) return {};
   switch (cfg.authHeader) {

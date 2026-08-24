@@ -2,7 +2,8 @@ import { DefaultExecutor } from "./default.js";
 import { PROVIDERS } from "../config/providers.js";
 import { refreshProviderCredentials } from "../services/oauthCredentialManager.js";
 
-/** portal.qwen.ai — static fingerprint matching stable Qwen Code release */import { isObject } from "@/shared/utils/typeChecks.js";
+/** portal.qwen.ai — static fingerprint matching stable Qwen Code release */
+import { isObject } from "../../src/shared/utils/typeChecks.js";
 const QWEN_USER_AGENT = "QwenCode/0.12.3 (linux; x64)";
 const QWEN_STAINLESS = {
   os: "Linux",

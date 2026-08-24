@@ -24,7 +24,7 @@ import {
   QUOTA_MAX_RETRY_DELAY_MS,
   QUOTA_MAX_SOURCE_SNAPSHOTS } from
 "@/shared/constants/quota";
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../utils/typeChecks.js";
 
 const VALID_FETCH_OUTCOMES = new Set(QUOTA_FETCH_OUTCOMES);
 const SUCCESS_RESULT_KEYS = new Set(["attemptedAt", "outcome", "rows", "sourceId"]);

@@ -5,7 +5,7 @@ import { createRequire } from "module";
 
 // better-sqlite3 is optional; lazy-load via createRequire so this module
 // can be imported on hosts where the native binding fails to build.
-import { isString } from "@/shared/utils/typeChecks.js";let Database = null;
+const { isString } = require("../../../shared/utils/typeChecks.cjs");
 try {
   const require = createRequire(import.meta.url);
   Database = require("better-sqlite3");

@@ -5,7 +5,7 @@ import { DATA_DIR } from "@/lib/dataDir.js";
 import { findHeadroomBinary, HEADROOM_COMPRESSION_EXTRAS, getInstalledHeadroomExtras } from "./detect.js";
 import { ensureManagedVenv, managedVenvBinary } from "./pythonEnv.js";
 import { createDiagnostic, quoteShellArg, redactSensitive, SetupError } from "@/shared/utils/setupDiagnostics.js";
-import { isNumber } from "@/shared/utils/typeChecks.js";
+import { isNumber } from "../../shared/utils/typeChecks.js";
 
 const HEADROOM_DIR = path.join(DATA_DIR, "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");

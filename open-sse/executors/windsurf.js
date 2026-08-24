@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const WS_BASE_URL = "https://server.self-serve.windsurf.com";
 const WS_SERVICE = "exa.language_server_pb.LanguageServerService";

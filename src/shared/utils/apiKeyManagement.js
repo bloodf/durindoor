@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /** Return a stable management label without returning the credential itself. */
+import { isString } from "./typeChecks.js"; /** Return a stable management label without returning the credential itself. */
 export function maskApiKeySecret(secret) {
   if (!isString(secret) || !secret.startsWith("sk-")) return "***";
   // Do not expose suffix bytes: legacy sk-<8 hex> credentials have too little

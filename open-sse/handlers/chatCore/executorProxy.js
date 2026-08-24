@@ -2,7 +2,7 @@ import { getSettings } from "@/lib/localDb";
 import { getExecutor } from "../../executors/index.js";
 import { isCliproxyapiDeepModeEnabled } from "../../executors/cliproxyapi.js";
 import { getUpstreamProxyConfigCached } from "./comboContextCache.js";
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CLIPROXYAPI_PROVIDER_ID = "cliproxyapi";
 const DEFAULT_FALLBACK_CODES = [429, 500, 502, 503, 504];

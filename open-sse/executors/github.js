@@ -20,7 +20,7 @@ import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
 import { estimateInputTokens } from "../utils/usageTracking.js";
 import crypto from "crypto";
-import { isNumber, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 
 export class GithubExecutor extends BaseExecutor {
   constructor() {

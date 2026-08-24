@@ -1,5 +1,5 @@
 import { DefaultExecutor } from "./default.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_API_VERSION = "2024-12-01-preview";
 

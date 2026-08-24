@@ -1,4 +1,4 @@
-import { isNumber } from "@/shared/utils/typeChecks.js"; /**
+import { isNumber } from "../../../../src/shared/utils/typeChecks.js"; /**
  * Pure target-token computation (design D-C1). No clock, no DB, no tokenizer.
  *
  * @param {string} policy            active target policy

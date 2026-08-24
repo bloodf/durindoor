@@ -1,7 +1,7 @@
 import { FORMATS } from "../translator/formats.js";
 import { GEMINI_ERROR_FINISH_REASONS } from "../translator/schema/finishReasons.js";
 import { buildAbortedResponsesTerminalBytes } from "./responsesStreamHelpers.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const RESPONSES_SUCCESS_EVENTS = new Set([
 "response.completed",

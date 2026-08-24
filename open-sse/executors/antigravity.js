@@ -12,7 +12,7 @@ import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignatur
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
-import { isObject, isString } from "@/shared/utils/typeChecks.js";function sanitizeFunctionName(name) {
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";function sanitizeFunctionName(name) {
   if (!name) return "_unknown";
   let s = name.replace(/[^a-zA-Z0-9_.:\-]/g, "_");
   if (!/^[a-zA-Z_]/.test(s)) s = "_" + s;

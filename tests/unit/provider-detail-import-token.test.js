@@ -11,7 +11,7 @@ describe("ProviderDetailPage import-token branch", () => {
     const page = fs.readFileSync(pagePath, "utf8");
     expect(page).toContain("ImportTokenModal");
     expect(page).toContain("providerInfo?.flowType === \"import_token\"");
-    expect(page).toContain("isImportToken ? (");
+    expect(page).toContain("isImportToken ?");
   });
 
   it("builds OAuth provider entries with import_token flowType", async () => {

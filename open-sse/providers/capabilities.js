@@ -34,7 +34,8 @@ import REGISTRY from "./registry/index.js";
 /**
  * Safe floor — every resolved result is merged over this so consumers
  * never need null-checks. Most modern LLMs meet these limits.
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export const DEFAULT_CAPABILITIES = {
   // input modalities
   vision: false, // read images

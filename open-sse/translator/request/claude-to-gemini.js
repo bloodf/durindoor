@@ -3,7 +3,7 @@ import { FORMATS } from "../formats.js";
 import { DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function sanitizeGeminiToolName(name, toolNameMap) {
   let sanitized = String(name || "_unknown").replace(/[^a-zA-Z0-9_.:-]/g, "_");

@@ -33,7 +33,8 @@ import { OPENAI_BLOCK } from "../translator/schema/index.js";
 // (AWS ServiceQuotaExceededException / MONTHLY_REQUEST_COUNT). Some surfaces
 // flatten cause.name/cause.reason onto the top-level object, so both are checked.
 // Any other 402 stays ambiguous and keeps the generic 402 cooldown.
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const KIRO_QUOTA_EXCEEDED_EXCEPTION = "ServiceQuotaExceededException";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+const KIRO_QUOTA_EXCEEDED_EXCEPTION = "ServiceQuotaExceededException";
 const KIRO_QUOTA_EXCEEDED_REASON = "MONTHLY_REQUEST_COUNT";
 const KIRO_RESET_LOOKUP_TIMEOUT_MS = 8000;
 

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
 import innerAiRegistry from "../providers/registry/inner-ai.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_MODEL = innerAiRegistry.models?.[0]?.id || "gpt-4o";
 

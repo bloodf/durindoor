@@ -8,7 +8,7 @@
  */
 
 import { U, fetchWithTimeout, parseResetTime, toFiniteNumber } from "./shared.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const USAGE = U("opencode-go");
 export const OPENCODE_GO_USAGE_URL = USAGE.url;

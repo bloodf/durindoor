@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import useThemeStore from "@/store/themeStore";
 
 // Subscribe to system theme changes
-import { isBrowser } from "@/shared/utils/typeChecks.js";function subscribeToSystemTheme(callback) {
+import { isBrowser } from "../utils/typeChecks.js";function subscribeToSystemTheme(callback) {
   if (!isBrowser()) return () => {};
   const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
   mediaQuery.addEventListener("change", callback);

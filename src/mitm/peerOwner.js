@@ -1,4 +1,5 @@
-import { isFunction } from "@/shared/utils/typeChecks.js";const fs = require("fs");
+const { isFunction } = require("../shared/utils/typeChecks.cjs");
+const fs = require("fs");
 const { execFile } = require("child_process");
 const { LSOF_BIN } = require("./config");
 const { resolveWindowsSystemBinary } = require("./trustedBinaries");

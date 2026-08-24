@@ -11,7 +11,7 @@ import {
   sanitizeErrorMessage } from
 "./websession-utils.js";
 import huggingchatRegistry from "../providers/registry/huggingchat.js";
-import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const HUGGINGFACE_BASE = "https://huggingface.co";
 const CONVERSATION_URL = `${HUGGINGFACE_BASE}/chat/conversation`;

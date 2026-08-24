@@ -43,7 +43,8 @@ import { getPricingForModel } from "../providers/pricing.js";
  * @property {number|null} averageScore           null — no intelligence data
  * @property {number} modelCount                  real registry metadata
  * @property {string} freeReason                  why classified free (real metadata)
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const MODEL_ID = (m) => isString(m) ? m : m?.id;
 

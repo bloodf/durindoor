@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; // Build a base64 data URI from mime + base64 payload
+import { isString } from "../../../src/shared/utils/typeChecks.js"; // Build a base64 data URI from mime + base64 payload
 export function encodeDataUri(mimeType, base64) {
   return `data:${mimeType};base64,${base64}`;
 }

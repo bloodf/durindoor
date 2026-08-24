@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DATA_DIR } from "@/lib/dataDir";
 import { getSettings, getSettingsSync } from "@/lib/localDb";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 export const DEFAULT_PASSWORD = "123456";
 

@@ -5,7 +5,8 @@ import { NextResponse } from "next/server";
  *
  * JSON-RPC 2.0 MCP server for DurinDoor management. Stateless over HTTP.
  * Auth is enforced by the dashboard guard before this handler runs.
- */import { isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 export const dynamic = "force-dynamic";
 
 function jsonRpcError(id, code, message) {

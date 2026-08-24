@@ -11,7 +11,7 @@ import {
   upsertFirecrawlCustomConnection,
   ALLOWED_FIRECRAWL_HOSTS } from
 "@/lib/firecrawl/firecrawlConfig";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 

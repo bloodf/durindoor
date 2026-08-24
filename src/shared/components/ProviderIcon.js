@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../utils/typeChecks.js";
 
 const KNOWN_SVGS = new Set([
 "anthropic",

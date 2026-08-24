@@ -3,7 +3,7 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input, OAuthModal } from "@/shared/components";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
+import { isBrowser } from "../utils/typeChecks.js";
 
 const GITLAB_COM = "https://gitlab.com";
 

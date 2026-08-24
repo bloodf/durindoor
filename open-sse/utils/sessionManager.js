@@ -12,7 +12,8 @@ import crypto from "crypto";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 
 // Runtime storage: Key = connectionId, Value = { sessionId, lastUsed }
-import { isObject, isString } from "@/shared/utils/typeChecks.js";const runtimeSessionStore = new Map();
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+const runtimeSessionStore = new Map();
 
 // Periodically evict entries that haven't been used within TTL
 const cleanupInterval = setInterval(() => {

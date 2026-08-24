@@ -1,5 +1,5 @@
 import { buildKiroProfileEndpoint } from "../../../open-sse/config/kiroRegions.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 const BASE64_BLOCK_SIZE = 4;
 const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;

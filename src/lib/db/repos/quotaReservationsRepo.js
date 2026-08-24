@@ -7,7 +7,7 @@ import {
   quotaIdentityKey } from
 "../../../shared/utils/quotaSnapshot.js";
 import { QUOTA_SELECTION_DEFAULTS, resolveQuotaLeaseMs } from "../../../../open-sse/config/quotaSelection.js";
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 const TERMINAL_REASONS = new Set([
 "success", "capacity_race", "pre_dispatch", "upstream_error",

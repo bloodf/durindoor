@@ -1,4 +1,4 @@
-import { isString } from "@/shared/utils/typeChecks.js"; /**
+import { isString } from "./typeChecks.js"; /**
  * rendered as an <img> src by ProviderIcon.js). Used by create/update
  * provider-node API routes. The browser never fetches a URL server-side;
  * validation confines persisted image sources to safe supported schemes.

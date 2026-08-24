@@ -28,9 +28,12 @@ import zlib from "zlib";
 import { createRequire } from "module";
 
 // Detect cloud environment
-import { isFunction, isObject, isUndefined } from "@/shared/utils/typeChecks.js";const isCloudEnv = () => {
-  if (!isUndefined(caches) && isObject(caches)) return true;
-  if (!isUndefined(EdgeRuntime)) return true;
+const { isFunction, isObject, isUndefined } = require("../../src/shared/utils/typeChecks.cjs");
+const isCloudEnv = () => {
+  const cachesBinding = "caches" in globalThis ? globalThis.caches : undefined;
+  if (!isUndefined(cachesBinding) && isObject(cachesBinding)) return true;
+  const edgeRuntime = "EdgeRuntime" in globalThis ? globalThis.EdgeRuntime : undefined;
+  if (!isUndefined(edgeRuntime)) return true;
   return false;
 };
 

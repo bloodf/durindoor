@@ -3,7 +3,8 @@ import { PRAGMA_SQL } from "../schema.js";
 import { assertCheckpointComplete } from "../helpers/checkpoint.js";
 
 // Periodic checkpoint to keep WAL file small (avoid huge -wal/-shm growth)
-import { isFunction } from "@/shared/utils/typeChecks.js";const CHECKPOINT_INTERVAL_MS = 60 * 1000;
+import { isFunction } from "../../../shared/utils/typeChecks.js";
+const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
 export function createBetterSqliteAdapter(filePath) {
   const db = new Database(filePath);

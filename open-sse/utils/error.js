@@ -10,7 +10,8 @@ import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
  * @returns {object} Error response object
- */import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export function buildErrorBody(statusCode, message) {
   const errorInfo = ERROR_TYPES[statusCode] || (
   statusCode >= 500 ?

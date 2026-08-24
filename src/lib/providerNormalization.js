@@ -4,7 +4,8 @@ import { AI_PROVIDERS, getProviderByAlias, resolveProviderId } from "../shared/c
  * Detect xAI Grok models by id pattern (grok-*, Grok_*, etc).
  * @param {string} modelId
  * @returns {boolean}
- */import { isObject, isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isObject, isString } from "../shared/utils/typeChecks.js";
 export function isXaiModel(modelId) {
   return isString(modelId) && /^grok[-_]/i.test(modelId.trim());
 }

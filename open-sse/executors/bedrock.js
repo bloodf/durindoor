@@ -10,7 +10,7 @@ import {
   buildBedrockNativeConverseUrl,
   resolveBedrockRegion } from
 "../config/bedrock.js";
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const encoder = new TextEncoder();
 

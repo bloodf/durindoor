@@ -1,7 +1,7 @@
 "use client";
 
 import { DEFAULT_LOCALE, LOCALE_COOKIE, normalizeLocale } from "./config";
-import { isBrowser, isString, isUndefined } from "@/shared/utils/typeChecks.js";
+import { isBrowser, isString, isUndefined } from "../shared/utils/typeChecks.js";
 
 let translationMap = {};
 let currentLocale = DEFAULT_LOCALE;

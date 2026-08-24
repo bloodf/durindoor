@@ -12,7 +12,7 @@ import {
   QUOTA_MAX_FRESHNESS_MS } from
 "@/shared/constants/quota";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
-import { isFunction, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isString } from "../utils/typeChecks.js";
 
 const RUNTIME_DIMENSION = "requests:runtime";
 let lastAttemptTimestamp = 0;

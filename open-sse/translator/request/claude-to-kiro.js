@@ -36,7 +36,8 @@ import {
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
 
-/** Stringify a tool_use input as a readable line. */import { isString } from "@/shared/utils/typeChecks.js";
+/** Stringify a tool_use input as a readable line. */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 function toolUseToText(name, input) {
   let argStr;
   try {

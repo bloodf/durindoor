@@ -11,7 +11,7 @@ import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, ANTIGRAVITY_LOAD_CODE_ASSIST_
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { readBoundedResponseText, sanitizeErrorMessage } from "../utils/error.js";
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const PROJECT_RESPONSE_MAX_BYTES = 256 * 1024;
 const PROJECT_RESPONSE_TIMEOUT_MS = 30_000;

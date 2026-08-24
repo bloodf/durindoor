@@ -42,7 +42,7 @@ import {
   extractCodexAccountInfo,
   fetchKiroProfileArn } from
 "./providerHelpers";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn };
 

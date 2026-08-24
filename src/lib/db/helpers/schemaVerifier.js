@@ -1,6 +1,6 @@
 import { TABLES, buildCreateTableSql } from "../schema.js";
 import { QUOTA_V7_TABLES, buildQuotaV7TableSql } from "../migrations/quota-v7-schema.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 function tableColumns(db, tableName) {
   const table = db.get(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, [tableName]);

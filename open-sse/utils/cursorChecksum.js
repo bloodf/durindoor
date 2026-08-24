@@ -13,7 +13,8 @@ import { v5 as uuidv5 } from "uuid";
  * @param {string} input - Input string
  * @param {string} salt - Optional salt
  * @returns {string} - 64-character hex string
- */import { isUndefined } from "@/shared/utils/typeChecks.js";
+ */
+import { isUndefined } from "../../src/shared/utils/typeChecks.js";
 export function generateHashed64Hex(input, salt = "") {
   return crypto.createHash("sha256").update(input + salt).digest("hex");
 }

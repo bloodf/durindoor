@@ -27,7 +27,7 @@
  */
 
 import { EXTRA_TOOL_RENAME_MAP } from "./claudeCodeExtraRemap.js";
-import { isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const TOOL_RENAME_MAP = {
   ...EXTRA_TOOL_RENAME_MAP,

@@ -16,7 +16,8 @@ import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 
-/** Collect events while preserving the stream-wide sequence across deferred completion. */import { isObject, isString } from "@/shared/utils/typeChecks.js";
+/** Collect events while preserving the stream-wide sequence across deferred completion. */
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function createEventEmitter(state) {
   const events = [];
   const emit = (eventType, data) => {

@@ -1,4 +1,5 @@
-import { isFunction } from "../../../../src/shared/utils/typeChecks.js";const { exec } = require("child_process");
+const { isFunction } = require("../../../../src/shared/utils/typeChecks.cjs");
+const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 

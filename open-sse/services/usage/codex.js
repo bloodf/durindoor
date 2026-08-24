@@ -7,7 +7,8 @@ import { U, parseResetTime, toFiniteNumber } from "./shared.js";
 import { applyCodexAccountHeader, resolveCodexAccountId } from "../../shared/codexAccountId.js";
 
 // Codex (OpenAI) API config
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const CODEX_CONFIG = {
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+const CODEX_CONFIG = {
   usageUrl: U("codex").url,
   modelsUrl: U("codex").modelsUrl,
   clientVersion: U("codex").clientVersion,

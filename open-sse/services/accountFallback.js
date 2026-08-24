@@ -9,7 +9,8 @@ import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/provi
  * @param {number} status - HTTP status code
  * @param {unknown} errorText - Upstream error body
  * @returns {boolean} Whether the request should be replayed in place
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export function isRequestReplayBufferError(status, errorText) {
   if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
   const message = isString(errorText) ? errorText : JSON.stringify(errorText || "");

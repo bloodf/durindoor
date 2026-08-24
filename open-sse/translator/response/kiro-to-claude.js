@@ -15,7 +15,7 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function stopThinkingBlock(state, results) {
   if (!state.thinkingBlockStarted) return;

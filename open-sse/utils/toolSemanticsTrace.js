@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { dbg } from "./debugLog.js";
-import { isString } from "@/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const TRACE_SECRET = crypto.randomBytes(32);
 

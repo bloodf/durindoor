@@ -1,4 +1,5 @@
-import { isFunction } from "@/shared/utils/typeChecks.js";const { execFileSync } = require("child_process");
+const { isFunction } = require("../shared/utils/typeChecks.cjs");
+const { execFileSync } = require("child_process");
 const { resolveWindowsSystemBinary } = require("./trustedBinaries");
 
 function requireNumericUid(processImpl = process) {

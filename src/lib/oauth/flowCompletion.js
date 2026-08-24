@@ -11,7 +11,8 @@ import {
 "@/models";
 import { isOAuthFlowClaimActive } from "@/lib/oauth/flowStore.js";
 
-/** Merge durable OAuth routing without erasing provider-owned metadata. */import { isObject, isString } from "@/shared/utils/typeChecks.js";
+/** Merge durable OAuth routing without erasing provider-owned metadata. */
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 export function withOAuthProxyMetadata(providerSpecificData, proxySelection) {
   const metadataPatch = proxySelection?.metadataPatch ||
   buildOAuthProxyMetadataPatch(proxySelection);

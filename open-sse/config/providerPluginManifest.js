@@ -1,4 +1,5 @@
-import { isFunction, isNumber } from "@/shared/utils/typeChecks.js";const SIDECAR_COMPATIBLE_EXECUTORS = new Set(["default"]);
+import { isFunction, isNumber } from "../../src/shared/utils/typeChecks.js";
+const SIDECAR_COMPATIBLE_EXECUTORS = new Set(["default"]);
 
 function compactObject(value) {
   return Object.fromEntries(

@@ -5,7 +5,8 @@
 import { FORMATS } from "../translator/formats.js";
 
 // Legacy per-chunk usage console line; off by default (superseded by "📊 done")
-import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const DEBUG_USAGE = process.env.LOG_USAGE_VERBOSE === "1";
+import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+const DEBUG_USAGE = process.env.LOG_USAGE_VERBOSE === "1";
 
 // ANSI color codes
 export const COLORS = {

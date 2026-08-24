@@ -12,7 +12,8 @@ import { LEVEL_TO_BUDGET } from "./thinking.js";
  *
  * @param {unknown} model
  * @returns {{ cleanModel: unknown, override: null | { mode: "none" | "auto" } | { mode: "budget", budget: number } | { mode: "level", level: string } }}
- */import { isString } from "@/shared/utils/typeChecks.js";
+ */
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function parseSuffix(model) {
   if (!isString(model)) return { cleanModel: model, override: null };
   const match = model.match(/^(.*)\(([^()]+)\)\s*$/);

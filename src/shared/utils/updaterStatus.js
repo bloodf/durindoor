@@ -18,7 +18,8 @@ import { UPDATER_CONFIG } from "@/shared/constants/config";
  * the origin parameter for callers that want to supply a LAN hostname, but
  * the current implementation falls back to localhost for safety (HTTPS/tunnel
  * origins would require a secure transport the status server does not expose).
- */import { isNumber, isObject } from "@/shared/utils/typeChecks.js";
+ */
+import { isNumber, isObject } from "./typeChecks.js";
 export function getUpdaterStatusUrl(port = UPDATER_CONFIG.statusPort, origin = null) {
   if (origin) {
     try {

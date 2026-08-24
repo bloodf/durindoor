@@ -7,15 +7,15 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-export const INTERNAL_PREFIXES = [
-  "docs/superpowers/",
-];
+/**
+ * Path prefixes treated as internal (not required to be reachable from README.md).
+ * Empty after `docs/superpowers/` agent plan/spec trees were removed from the repo.
+ */
+export const INTERNAL_PREFIXES = [];
 
 export const INTERNAL_FILES = new Set([
   "AGENTS.md",
   "CLAUDE.md",
-  ".sources.md",
-  "model-catalog-report.md",
   "open-sse/AGENT-INDEX.md",
   "tests/README.md",
 ]);

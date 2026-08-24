@@ -209,7 +209,7 @@ Provider-agnostic SSE engine: one OpenAI-style request → any provider (LLM cha
 
 ### 6.4 CI gates
 
-- `.github/workflows/ci.yml`, `test.yml`, `commitlint.yml`, `docs.yml`, `upstream-watch.yml`, `nightly.yml`, `release.yml` run on PRs and pushes per their triggers.
+- `.github/workflows/ci.yml`, `test.yml`, `commitlint.yml`, `upstream-watch.yml`, `nightly.yml`, `release.yml` run on PRs and pushes per their triggers.
 - A PR MUST NOT be merged with red CI on the merge commit.
 - If GitHub Actions minutes are exhausted (verify at `https://github.com/settings/billing` or the org-level page), the agent MUST run the equivalent checks locally before merging:
   - `npm run lint` (replaces `ci.yml` lint job)

@@ -2,12 +2,13 @@ import { access, constants } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 import { createRequire } from "module";
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 // better-sqlite3 is optional; lazy-load via createRequire so this module
 // can be imported on hosts where the native binding fails to build.
-const { isString } = require("../../../shared/utils/typeChecks.cjs");
+const require = createRequire(import.meta.url);
+let Database;
 try {
-  const require = createRequire(import.meta.url);
   Database = require("better-sqlite3");
 } catch {
   Database = null;

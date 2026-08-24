@@ -79,3 +79,6 @@ graphify-out/*
 
 # cron + drift-check scripts (added in the daily-check PR)
 scripts/__pycache__/
+
+# Local catalog comparison output (`npm run catalog:diff`); do not commit.
+model-catalog-report.md

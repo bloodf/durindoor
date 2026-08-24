@@ -100,7 +100,7 @@ export async function isUsingDefaultPassword(settings) {
  */
 export function loadJwtSecret() {
   const fromEnv = process.env.JWT_SECRET;
-  if (typeof fromEnv === "string" && fromEnv.length > 0) {
+  if (isString(fromEnv) && fromEnv.length > 0) {
     return fromEnv;
   }
 
@@ -158,11 +158,14 @@ export async function createDashboardAuthToken(claims = {}) {
   const passwordSessionEpoch = claims.oidc ?
   undefined :
   claims.passwordSessionEpoch ?? (await getSettings()).passwordSessionEpoch;
-  return new SignJWT({
+  const jwtPayload = {
     authenticated: true,
     ...claims,
-    ...(passwordSessionEpoch === undefined ? {} : { passwordSessionEpoch }),
-  })
+  };
+  if (passwordSessionEpoch !== undefined) {
+    jwtPayload.passwordSessionEpoch = passwordSessionEpoch;
+  }
+  return new SignJWT(jwtPayload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("24h")

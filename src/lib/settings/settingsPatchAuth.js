@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasValidCliToken } from "@/dashboardGuard";
+import { isFunction } from "@/shared/utils/typeChecks.js";
 
 /**
  * Secrets that must never be mass-assigned from a PATCH body. Password
@@ -39,7 +40,7 @@ export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
  * only a valid dashboard JWT or machine-bound CLI token qualifies.
  */
 export async function canModifySecurityCriticalSettings(request) {
-  if (!request || typeof request.headers?.get !== "function") return false;
+  if (!request || !isFunction(request.headers?.get)) return false;
   try {
     if (await hasValidCliToken(request)) return true;
     const cookieStore = await cookies();

@@ -10,7 +10,6 @@ import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import crypto from "node:crypto";
-<<<<<<< HEAD
 import {
   AUTH_CRITICAL_SETTING_KEYS,
   SECRET_SETTING_KEYS,
@@ -18,9 +17,6 @@ import {
   stripSettingKeys,
 } from "@/lib/settings/settingsPatchAuth";
 import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
-=======
-import { isBoolean, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
->>>>>>> 0bf1d704 (fix(ci): repair typeChecks imports for plain Node and CI gates)
 
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"

@@ -8,7 +8,7 @@ Use `.env.example` as the machine-readable starter file and this page as the exp
 
 | Variable | Example | Required | Description |
 | --- | --- | --- | --- |
-| `JWT_SECRET` | `openssl rand -hex 32` output | Production | Signs dashboard session tokens. Changing it invalidates active sessions. |
+| `JWT_SECRET` | `openssl rand -hex 32` output | **Required** (or legacy file) | Signs dashboard session tokens. Changing it invalidates active sessions. DurinDoor no longer auto-generates `DATA_DIR/jwt-secret`. Prefer the env var; an existing legacy `DATA_DIR/jwt-secret` file is still accepted with a warning so older installs are not bricked. Fresh installs without env or file fail closed. |
 | `INITIAL_PASSWORD` | a strong password | First production boot | Initial dashboard password when no password exists yet. Change it in the dashboard after first login. |
 | `DATA_DIR` | `/var/lib/durindoor` or `/app/data` | Production | Persistent storage for the SQLite database, auth secrets, logs, runtime helpers, tunnels, MITM files, and backups. |
 | `API_KEY_SECRET` | `openssl rand -hex 32` output | Production | Keeps generated API keys valid across redeploys. |

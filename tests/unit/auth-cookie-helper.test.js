@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Fail-closed JWT loading requires an explicit secret; do not rely on auto-mint.
+process.env.JWT_SECRET ??= "unit-test-jwt-secret-do-not-reuse";
+
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getSettingsSync: vi.fn(),

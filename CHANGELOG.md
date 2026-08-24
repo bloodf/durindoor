@@ -1,3 +1,9 @@
+# Unreleased
+
+## Security
+
+- Require an explicit `JWT_SECRET` for dashboard sessions (independent of 9router #3501 / GHSA-jphh). DurinDoor no longer auto-writes `DATA_DIR/jwt-secret`. Existing installs that already have that file keep working with a warning; set `JWT_SECRET` to the file contents (or a new secret, accepting session invalidation) to silence the warning. Fresh installs without env or file fail closed. Closes #550.
+
 # 3.17.7
 
 33 upstream 9router GAP/PARTIAL ports from the 2026-08-21 #508 shortlist, plus the campaign closeout ledger.

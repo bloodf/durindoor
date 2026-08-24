@@ -98,7 +98,7 @@ See [Environment Variables](../reference/environment.md) for the full reference.
 | `PORT` | `20128` | HTTP port for the production gateway |
 | `HOSTNAME` | `127.0.0.1` | Network interface to bind. Use `0.0.0.0` in containers |
 | `DATA_DIR` | `~/.9router` | Persistent data directory |
-| `JWT_SECRET` | generated | Dashboard session signing secret. Set explicitly in production |
+| `JWT_SECRET` | *(required)* | Dashboard session signing secret. Set explicitly; DurinDoor no longer auto-generates `DATA_DIR/jwt-secret` |
 | `INITIAL_PASSWORD` | local default | Initial dashboard password |
 | `API_KEY_SECRET` | generated | API key validation secret. Set explicitly when keys must survive redeploys |
 | `BASE_URL` | local URL | Server-side base URL used by callbacks and selected routes |

@@ -1,0 +1,7 @@
+{
+  "name": "oxlint-plugin-anti-slop-vendored",
+  "private": true,
+  "type": "module",
+  "description": "Vendored copy of dmmulroy/anti-slop (not published; see VENDOR.md).",
+  "exports": "./index.ts"
+}

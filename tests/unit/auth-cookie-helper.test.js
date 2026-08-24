@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Fail-closed JWT loading requires an explicit secret; do not rely on auto-mint.
-process.env.JWT_SECRET ??= "unit-test-jwt-secret-do-not-reuse";
-
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getSettingsSync: vi.fn(),
@@ -13,16 +10,24 @@ vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   getSettingsSync: mocks.getSettingsSync,
 }));
-const { setDashboardAuthCookie, shouldUseSecureCookie } = await import("../../src/lib/auth/dashboardSession.js");
+const {
+  setDashboardAuthCookie,
+  shouldUseSecureCookie,
+  __resetJwtSecretForTests,
+} = await import("../../src/lib/auth/dashboardSession.js");
 const originalBaseUrl = process.env.BASE_URL;
 const originalAuthCookieSecure = process.env.AUTH_COOKIE_SECURE;
 
 beforeEach(() => {
+  vi.stubEnv("JWT_SECRET", "unit-test-jwt-secret-do-not-reuse");
+  __resetJwtSecretForTests();
   vi.clearAllMocks();
   delete process.env.BASE_URL;
   delete process.env.AUTH_COOKIE_SECURE;
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
+  __resetJwtSecretForTests();
   if (originalBaseUrl === undefined) delete process.env.BASE_URL;
   else process.env.BASE_URL = originalBaseUrl;
   if (originalAuthCookieSecure === undefined) delete process.env.AUTH_COOKIE_SECURE;

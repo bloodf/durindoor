@@ -10,13 +10,17 @@ import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import crypto from "node:crypto";
+import {
+  AUTH_CRITICAL_SETTING_KEYS,
+  SECRET_SETTING_KEYS,
+  canModifySecurityCriticalSettings,
+  stripSettingKeys,
+} from "@/lib/settings/settingsPatchAuth";
 
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
 };
 
-// Secrets must never be mass-assigned from request body (CWE-915)
-const PROTECTED_SETTING_KEYS = ["password", "passwordSessionEpoch", "mitmSudoEncrypted"];
 const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
 
 export async function GET() {
@@ -50,8 +54,12 @@ export async function PATCH(request) {
       }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
-    // Strip protected secrets before any internal handling sets them
-    for (const key of PROTECTED_SETTING_KEYS) delete body[key];
+    // CWE-915: never mass-assign secrets; auth-critical keys need JWT/CLI proof.
+    stripSettingKeys(body, SECRET_SETTING_KEYS);
+    const mayModifySecurityCritical = await canModifySecurityCriticalSettings(request);
+    if (!mayModifySecurityCritical) {
+      stripSettingKeys(body, AUTH_CRITICAL_SETTING_KEYS);
+    }
 
     let passwordSessionEpoch;
     let expectedPasswordSessionEpoch = "initial";

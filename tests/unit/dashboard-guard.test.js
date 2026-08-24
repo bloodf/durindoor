@@ -570,6 +570,72 @@ describe("dashboard guard MCP CIMD client-metadata", () => {
   });
 });
 
+describe("dashboard guard management API auth", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
+  });
+
+  for (const [method, path] of [
+    ["GET", "/api/providers"],
+    ["PATCH", "/api/providers/conn-1"],
+    ["GET", "/api/usage/stats"],
+    ["PATCH", "/api/usage/reset"],
+  ]) {
+    it(`rejects remote unauthenticated ${method} ${path} when requireLogin=false`, async () => {
+      const response = await proxy(request(path, { host: "router.example.com" }, method));
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe("Unauthorized");
+    });
+  }
+
+  it("allows remote management API with a valid dashboard JWT", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const req = request("/api/providers", { host: "router.example.com" });
+    req.cookies.get = vi.fn((name) => (name === "auth_token" ? { value: "valid-jwt" } : undefined));
+    const response = await proxy(req);
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.verifyDashboardAuthToken).toHaveBeenCalledWith("valid-jwt");
+  });
+
+  it("allows remote management API with a machine-bound CLI token", async () => {
+    const response = await proxy(request("/api/usage/stats", {
+      host: "router.example.com",
+      "x-9r-cli-token": "cli-token",
+    }));
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("preserves loopback open-dashboard access to providers when requireLogin=false", async () => {
+    const response = await proxy(request("/api/providers", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+    }));
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("preserves loopback open-dashboard access to usage when requireLogin=false", async () => {
+    const response = await proxy(request("/api/usage/stats", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+    }));
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects remote unauthenticated access to other management prefixes (keys, oauth)", async () => {
+    for (const path of ["/api/keys", "/api/oauth/status", "/api/combos"]) {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.status).toBe(401);
+    }
+  });
+});
+
 describe("dashboard guard helpers", () => {
   it("extracts bearer API keys before x-api-key", () => {
     const apiRequest = request("/v1/chat/completions", {

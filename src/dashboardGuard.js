@@ -60,8 +60,9 @@ const ALWAYS_PROTECTED = [
   "/api/oauth/kiro/auto-import",
 ];
 
-// Require auth, but allow through if requireLogin is disabled
-const PROTECTED_API_PATHS = [
+// Management APIs — require JWT/CLI; loopback may use the open-dashboard
+// requireLogin=false policy. Remote unauthenticated access is always denied.
+const MANAGEMENT_API_PATHS = [
   "/api/settings",
   "/api/keys",
   "/api/providers",
@@ -263,6 +264,25 @@ async function isAuthenticated(request) {
   return false;
 }
 
+function isManagementApi(pathname) {
+  return MANAGEMENT_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+/**
+ * Management routes (providers, usage, keys, settings, …) must not trust the
+ * global requireLogin=false bypass for remote callers. JWT and CLI token always
+ * qualify; loopback peers keep open-dashboard usability when login is disabled.
+ */
+async function canAccessManagementApi(request) {
+  if (await hasValidCliToken(request)) return true;
+  if (await hasValidToken(request)) return true;
+  if (isLocalRequest(request)) {
+    const settings = await loadSettings();
+    if (settings && settings.requireLogin === false) return true;
+  }
+  return false;
+}
+
 function isPxpipePath(pathname) {
   return pathname === "/api/pxpipe" || pathname.startsWith("/api/pxpipe/");
 }
@@ -287,6 +307,8 @@ export const __test__ = {
   extractApiKeyCandidates,
   canAccessPublicLlmApi,
   canAccessLocalOnlyRoute,
+  isManagementApi,
+  canAccessManagementApi,
 };
 
 export async function proxy(request) {
@@ -383,6 +405,10 @@ export async function proxy(request) {
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
+    if (isManagementApi(pathname)) {
+      if (await canAccessManagementApi(request)) return NextResponse.next();
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     if (await hasValidCliToken(request) || await isAuthenticated(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

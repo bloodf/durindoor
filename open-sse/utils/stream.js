@@ -19,10 +19,11 @@ import {
   isMinimaxThinkingProvider,
   sanitizeMinimaxDelta,
   shouldOmitStreamReasoning,
-  stripClientReasoningDelta,
-} from "./minimaxThinkingStream.js";
+  stripClientReasoningDelta } from
+"./minimaxThinkingStream.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
+import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -34,19 +35,19 @@ const sharedEncoder = new TextEncoder();
  * Stream modes
  */
 const STREAM_MODE = {
-  TRANSLATE: "translate",    // Full translation between formats
+  TRANSLATE: "translate", // Full translation between formats
   PASSTHROUGH: "passthrough" // No translation, normalize output, extract usage
 };
 const GEMINI_PASSTHROUGH_PROVIDERS = new Set(["antigravity", "agy", "gemini", "gemini-cli", "gc", "vertex"]);
 
 function normalizeStreamError(error) {
-  if (!error || typeof error !== "object") {
+  if (!error || !isObject(error)) {
     return { message: String(error || "Upstream stream error"), type: "server_error", code: "stream_error" };
   }
   return {
     message: String(error.message || "Upstream stream error"),
     type: String(error.type || "server_error"),
-    code: String(error.code || "stream_error"),
+    code: String(error.code || "stream_error")
   };
 }
 
@@ -64,9 +65,9 @@ function formatTranslatedStreamError(error, sourceFormat) {
         status: "failed",
         background: false,
         error: normalized,
-        output: [],
+        output: []
       },
-      sequence_number: 0,
+      sequence_number: 0
     };
     return `event: response.failed\ndata: ${JSON.stringify(failed)}\n\ndata: [DONE]\n\n`;
   }
@@ -115,42 +116,42 @@ export function createSSEStream(options = {}) {
   const decoder = new TextDecoder("utf-8", { fatal: false });
 
   const claudeCompatMode = claudeClassifierCompat || "off";
-  const systemTexts = Array.isArray(body?.system)
-    ? body.system.map((part) => (typeof part?.text === "string" ? part.text : "")).filter(Boolean)
-    : [];
+  const systemTexts = Array.isArray(body?.system) ?
+  body.system.map((part) => isString(part?.text) ? part.text : "").filter(Boolean) :
+  [];
   const stopSequences = Array.isArray(body?.stop_sequences) ? body.stop_sequences : [];
   const isClaudeClassifierRequest =
-    sourceFormat === FORMATS.CLAUDE && (
-      systemTexts.some((text) => text.includes("You are a security monitor for autonomous AI coding agents")) ||
-      stopSequences.includes("</block>")
-    );
+  sourceFormat === FORMATS.CLAUDE && (
+  systemTexts.some((text) => text.includes("You are a security monitor for autonomous AI coding agents")) ||
+  stopSequences.includes("</block>"));
+
   const claudeCompat =
-    sourceFormat === FORMATS.CLAUDE && (
-      claudeCompatMode === "always" ||
-      (claudeCompatMode === "auto" && isClaudeClassifierRequest)
-    );
+  sourceFormat === FORMATS.CLAUDE && (
+  claudeCompatMode === "always" ||
+  claudeCompatMode === "auto" && isClaudeClassifierRequest);
+
   // MiniMax M3 passthrough: peel leaked thinking markers from delta.content into
   // reasoning_content, then (openai transport only) strip reasoning fields so
   // OpenAI clients (OpenCode) don't render them. Ported from upstream PR #2525.
-  const minimaxThinkingState = mode === STREAM_MODE.PASSTHROUGH
-    && isMinimaxThinkingProvider(provider)
-    && targetFormat === FORMATS.OPENAI
-    ? createMinimaxThinkingStreamState()
-    : null;
+  const minimaxThinkingState = mode === STREAM_MODE.PASSTHROUGH &&
+  isMinimaxThinkingProvider(provider) &&
+  targetFormat === FORMATS.OPENAI ?
+  createMinimaxThinkingStreamState() :
+  null;
 
   // The compatibility parser is enabled only by exact provider transport/model
   // metadata. State is isolated by OpenAI choice index.
-  const extractInlineThinking = mode === STREAM_MODE.PASSTHROUGH
-    && resolveInlineThinkingFormat(provider, model, targetFormat) === INLINE_THINKING_FORMATS.THINK_TAGS;
+  const extractInlineThinking = mode === STREAM_MODE.PASSTHROUGH &&
+  resolveInlineThinkingFormat(provider, model, targetFormat) === INLINE_THINKING_FORMATS.THINK_TAGS;
   // When the inline-thinking extractor owns <think> peeling for this provider/model
   // (registry quirks.inlineThinking), the upstream-#2525 sanitizer must not also
   // rewrite delta.content — the extractor's fail-open byte-for-byte contract wins.
   const sanitizeMinimaxThinking = minimaxThinkingState && !extractInlineThinking;
   const omitStreamReasoning = sanitizeMinimaxThinking && shouldOmitStreamReasoning(provider);
 
-  const state = mode === STREAM_MODE.TRANSLATE
-    ? { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, signatureNamespace: connectionId, ...(claudeCompat && { claudeCompat: true }) }
-    : null;
+  const state = mode === STREAM_MODE.TRANSLATE ?
+  { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, signatureNamespace: connectionId, ...(claudeCompat && { claudeCompat: true }) } :
+  null;
   // Keep a compact completion view while chunks flow. Unlike retained request
   // diagnostics, this sees terminal metadata even when callers cap raw events.
   const providerSummary = (() => {
@@ -166,29 +167,29 @@ export function createSSEStream(options = {}) {
     const isResponses = format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE;
     const isClaude = format === FORMATS.CLAUDE;
     const isGemini = format === FORMATS.GEMINI || format === FORMATS.GEMINI_CLI || format === FORMATS.ANTIGRAVITY;
-    const bounded = (value, limit = MAX_FIELD) => typeof value === "string" ? value.slice(0, limit) : "";
+    const bounded = (value, limit = MAX_FIELD) => isString(value) ? value.slice(0, limit) : "";
     const append = (current, value, limit) => current.length >= limit ? current : current + bounded(value, limit - current.length);
     const scalarUsage = (value) => {
-      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      if (!value || !isObject(value) || Array.isArray(value)) return null;
       const result = {};
       let accepted = 0;
       for (const key in value) {
         if (!Object.hasOwn(value, key)) continue;
         const item = value[key];
-        if (typeof item !== "number" && typeof item !== "boolean" && typeof item !== "string") continue;
+        if (!isNumber(item) && !isBoolean(item) && !isString(item)) continue;
         if (accepted++ >= MAX_USAGE_FIELDS) break;
-        result[bounded(key, 64)] = typeof item === "string" ? bounded(item) : item;
+        result[bounded(key, 64)] = isString(item) ? bounded(item) : item;
       }
       return result;
     };
     const projectResponse = (value) => {
-      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      if (!value || !isObject(value) || Array.isArray(value)) return null;
       return {
         id: bounded(value.id, MAX_ID),
         model: bounded(value.model, MAX_MODEL),
         status: bounded(value.status, 64),
-        created_at: typeof value.created_at === "number" ? value.created_at : undefined,
-        usage: scalarUsage(value.usage),
+        created_at: isNumber(value.created_at) ? value.created_at : undefined,
+        usage: scalarUsage(value.usage)
       };
     };
     let sawAny = false;
@@ -211,32 +212,32 @@ export function createSSEStream(options = {}) {
     let geminiRole = "model";
     let geminiFinishReason = "STOP";
     const boundedObject = (value) => {
-      if (typeof value === "string") {
-        try { return JSON.parse(bounded(value)); } catch { return {}; }
+      if (isString(value)) {
+        try {return JSON.parse(bounded(value));} catch {return {};}
       }
-      if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+      if (!value || !isObject(value) || Array.isArray(value)) return {};
       const text = JSON.stringify(value);
       if (text === undefined || text.length > MAX_FIELD) return {};
-      try { return JSON.parse(text); } catch { return {}; }
+      try {return JSON.parse(text);} catch {return {};}
     };
     const appendGeminiPart = (part) => {
       const last = geminiParts.at(-1);
-      if (last?.text && part.text && Boolean(last.thought) === Boolean(part.thought)) last.text = append(last.text, part.text, MAX_FIELD);
-      else if (geminiParts.length < MAX_PARTS) geminiParts.push(part.text ? { text: bounded(part.text), ...(part.thought === true ? { thought: true } : {}) } : { functionCall: { name: bounded(part.functionCall?.name, 256), args: boundedObject(part.functionCall?.args) } });
+      if (last?.text && part.text && Boolean(last.thought) === Boolean(part.thought)) last.text = append(last.text, part.text, MAX_FIELD);else
+      if (geminiParts.length < MAX_PARTS) geminiParts.push(part.text ? { text: bounded(part.text), ...(part.thought === true ? { thought: true } : null) } : { functionCall: { name: bounded(part.functionCall?.name, 256), args: boundedObject(part.functionCall?.args) } });
     };
     return {
       ingest(rawChunk) {
-        if (!rawChunk || typeof rawChunk !== "object" || Array.isArray(rawChunk)) return;
-        const chunk = isGemini && rawChunk.response && typeof rawChunk.response === "object" && !Array.isArray(rawChunk.response) ? rawChunk.response : rawChunk;
+        if (!rawChunk || !isObject(rawChunk) || Array.isArray(rawChunk)) return;
+        const chunk = isGemini && rawChunk.response && isObject(rawChunk.response) && !Array.isArray(rawChunk.response) ? rawChunk.response : rawChunk;
         if (!Object.keys(chunk).length) return;
         if (isResponses) {
           sawAny = true;
           if (chunk.type === "response.completed") completedResponse = projectResponse(chunk.response);
-          if (chunk.response) response = projectResponse(chunk.response);
-          else if (chunk.object === "response") response = projectResponse(chunk);
+          if (chunk.response) response = projectResponse(chunk.response);else
+          if (chunk.object === "response") response = projectResponse(chunk);
           if (chunk.type === "response.output_text.delta") responseText = append(responseText, chunk.delta, MAX_TEXT);
-          if (chunk.usage) summaryUsage = scalarUsage(chunk.usage);
-          else if (chunk.response?.usage) summaryUsage = scalarUsage(chunk.response.usage);
+          if (chunk.usage) summaryUsage = scalarUsage(chunk.usage);else
+          if (chunk.response?.usage) summaryUsage = scalarUsage(chunk.response.usage);
           const item = chunk.item;
           const outputIndex = Number.isSafeInteger(chunk.output_index) ? chunk.output_index : null;
           if (chunk.type === "response.output_item.added" && item?.type === "function_call" && responseTools.size < MAX_TOOLS) {
@@ -272,9 +273,9 @@ export function createSSEStream(options = {}) {
             const delta = chunk.delta || {};
             const block = claudeBlocks.get(key);
             if (block) {
-              if (delta.type === "input_json_delta") block.inputJson = append(block.inputJson, delta.partial_json, MAX_FIELD);
-              else if (delta.type === "thinking_delta" || typeof delta.thinking === "string") block.thinking = append(block.thinking, delta.thinking, MAX_FIELD);
-              else block.text = append(block.text, delta.text, MAX_FIELD);
+              if (delta.type === "input_json_delta") block.inputJson = append(block.inputJson, delta.partial_json, MAX_FIELD);else
+              if (delta.type === "thinking_delta" || isString(delta.thinking)) block.thinking = append(block.thinking, delta.thinking, MAX_FIELD);else
+              block.text = append(block.text, delta.text, MAX_FIELD);
             }
           } else if (chunk.type === "message_delta") {
             claudeStopReason = bounded(chunk.delta?.stop_reason, 64) || claudeStopReason;
@@ -292,7 +293,7 @@ export function createSSEStream(options = {}) {
           const candidateContent = candidate.content || {};
           geminiRole = bounded(candidateContent.role, 32) || geminiRole;
           for (const part of candidateContent.parts || []) {
-            if (part?.functionCall || typeof part?.text === "string") appendGeminiPart(part);
+            if (part?.functionCall || isString(part?.text)) appendGeminiPart(part);
           }
           return;
         }
@@ -328,19 +329,19 @@ export function createSSEStream(options = {}) {
         }
         if (isClaude) {
           const contentBlocks = [...claudeBlocks.entries()].sort(([a], [b]) => a - b).flatMap(([, block]) => {
-            if (block.type === "tool_use") { let input = {}; try { if (block.inputJson) input = JSON.parse(block.inputJson); } catch { input = block.inputJson; } return [{ type: "tool_use", id: block.id, name: block.name, input }]; }
-            if (block.type === "thinking") return block.thinking ? [{ type: "thinking", thinking: block.thinking, ...(block.signature ? { signature: block.signature } : {}) }] : [];
+            if (block.type === "tool_use") {let input = {};try {if (block.inputJson) input = JSON.parse(block.inputJson);} catch {input = block.inputJson;}return [{ type: "tool_use", id: block.id, name: block.name, input }];}
+            if (block.type === "thinking") return block.thinking ? [{ type: "thinking", thinking: block.thinking, ...(block.signature ? { signature: block.signature } : null) }] : [];
             return block.text ? [{ type: "text", text: block.text }] : [];
           });
-          return { providerResponse: { id: claudeId || `msg_${Date.now()}`, type: "message", role: claudeRole, model: summaryModel || "claude", content: contentBlocks, stop_reason: claudeStopReason, ...(claudeStopSequence ? { stop_sequence: claudeStopSequence } : {}), ...(summaryUsage ? { usage: summaryUsage } : {}) } };
+          return { providerResponse: { id: claudeId || `msg_${Date.now()}`, type: "message", role: claudeRole, model: summaryModel || "claude", content: contentBlocks, stop_reason: claudeStopReason, ...(claudeStopSequence ? { stop_sequence: claudeStopSequence } : null), ...(summaryUsage ? { usage: summaryUsage } : null) } };
         }
-        if (isGemini) return { providerResponse: { candidates: [{ index: 0, content: { role: geminiRole, parts: geminiParts }, finishReason: geminiFinishReason }], ...(summaryUsage ? { usageMetadata: summaryUsage } : {}), modelVersion: summaryModel || "gemini" } };
+        if (isGemini) return { providerResponse: { candidates: [{ index: 0, content: { role: geminiRole, parts: geminiParts }, finishReason: geminiFinishReason }], ...(summaryUsage ? { usageMetadata: summaryUsage } : null), modelVersion: summaryModel || "gemini" } };
         const message = {};
         if (content) message.content = content;
         if (reasoning.trim()) message.reasoning_content = reasoning.trim();
         if (toolCalls.size) message.tool_calls = [...new Set(toolCalls.values())];
-        return { providerResponse: { object: "chat.completion", ...(summaryModel ? { model: summaryModel } : {}), ...(summaryUsage || finalUsage ? { usage: summaryUsage || finalUsage } : {}), choices: [{ finish_reason: finishReason, message }] } };
-      },
+        return { providerResponse: { object: "chat.completion", ...(summaryModel ? { model: summaryModel } : null), ...(summaryUsage || finalUsage ? { usage: summaryUsage || finalUsage } : null), choices: [{ finish_reason: finishReason, message }] } };
+      }
     };
   })();
 
@@ -351,7 +352,7 @@ export function createSSEStream(options = {}) {
   let sseLineCount = 0;
   let sseEmittedCount = 0;
   const eventTypeCounts = {};
-  let onStreamCompleteFired = false;  // guard so terminal-chunk completion + flush() both fire onStreamComplete only once
+  let onStreamCompleteFired = false; // guard so terminal-chunk completion + flush() both fire onStreamComplete only once
   const recordCompletionData = (parsed, { summary = true, trackUsage = true, content = false } = {}) => {
     if (summary) providerSummary.ingest(parsed);
     const extracted = extractUsage(parsed);
@@ -359,13 +360,13 @@ export function createSSEStream(options = {}) {
     if (!content) return extracted;
 
     if (!minimaxThinkingState) {
-      for (const choice of (parsed.choices || [])) {
+      for (const choice of parsed.choices || []) {
         const delta = choice?.delta;
-        if (typeof delta?.content === "string" && delta.content) {
+        if (isString(delta?.content) && delta.content) {
           totalContentLength += delta.content.length;
           accumulatedContent += delta.content;
         }
-        if (typeof delta?.reasoning_content === "string" && delta.reasoning_content) {
+        if (isString(delta?.reasoning_content) && delta.reasoning_content) {
           totalContentLength += delta.reasoning_content.length;
           accumulatedThinking += delta.reasoning_content;
         }
@@ -373,10 +374,10 @@ export function createSSEStream(options = {}) {
     }
     const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
     for (const part of geminiParts) {
-      if (typeof part?.text !== "string" || !part.text) continue;
+      if (!isString(part?.text) || !part.text) continue;
       totalContentLength += part.text.length;
-      if (part.thought === true) accumulatedThinking += part.text;
-      else accumulatedContent += part.text;
+      if (part.thought === true) accumulatedThinking += part.text;else
+      accumulatedContent += part.text;
     }
     return extracted;
   };
@@ -386,7 +387,7 @@ export function createSSEStream(options = {}) {
   let currentUpstreamEvent = null;
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
-  let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
+  let streamDoneSent = false; // track duplicate [DONE] across transform + flush
   let claudeTerminalSeen = false;
   let upstreamErrorForwarded = false;
   const terminalBody = providerBody || body;
@@ -395,10 +396,10 @@ export function createSSEStream(options = {}) {
     onCoherentTerminal,
     deferSuccessCallback: true,
     expectedChoiceCount: terminalBody?.n,
-    expectedCandidateCount: terminalBody?.candidate_count
-      ?? terminalBody?.candidateCount
-      ?? terminalBody?.generationConfig?.candidateCount
-      ?? terminalBody?.generation_config?.candidate_count,
+    expectedCandidateCount: terminalBody?.candidate_count ??
+    terminalBody?.candidateCount ??
+    terminalBody?.generationConfig?.candidateCount ??
+    terminalBody?.generation_config?.candidate_count
   });
   const observeBufferedUpstream = (text, pendingEventName = null) => {
     let eventName = pendingEventName;
@@ -410,16 +411,16 @@ export function createSSEStream(options = {}) {
       }
       if (!line.startsWith("data:") && !line.startsWith("{")) continue;
       const parsed = parseSSELine(line, targetFormat);
-      if (parsed?.done) upstreamTerminal.observe({ rawDone: true, eventName });
-      else if (parsed) {
+      if (parsed?.done) upstreamTerminal.observe({ rawDone: true, eventName });else
+      if (parsed) {
         upstreamTerminal.observe({ chunk: parsed, eventName });
         if (
-          targetFormat === FORMATS.CLAUDE
-          && parsed?.type === "message_stop"
-          && upstreamTerminal.outcome === "success"
-        ) claudeTerminalSeen = true;
-      }
-      else if (line.startsWith("{") || line.slice(5).trim()) upstreamTerminal.fail();
+        targetFormat === FORMATS.CLAUDE &&
+        parsed?.type === "message_stop" &&
+        upstreamTerminal.outcome === "success")
+        claudeTerminalSeen = true;
+      } else
+      if (line.startsWith("{") || line.slice(5).trim()) upstreamTerminal.fail();
       eventName = null;
     }
     return eventName;
@@ -437,15 +438,15 @@ export function createSSEStream(options = {}) {
         bypass: false,
         reasoningSeen: false,
         reasoningEndsWithNewline: false,
-        lastReasoningSource: null,
+        lastReasoningSource: null
       });
     }
     return inlineThinkingStates.get(choiceIndex);
   };
 
   const appendInlineThinkingReasoning = (choiceState, existing, addition) => {
-    if (typeof addition !== "string" || addition.length === 0) return existing;
-    if (typeof existing === "string" && existing.length > 0) {
+    if (!isString(addition) || addition.length === 0) return existing;
+    if (isString(existing) && existing.length > 0) {
       return appendReasoningText(existing, addition);
     }
     if (choiceState.reasoningSeen) {
@@ -456,14 +457,14 @@ export function createSSEStream(options = {}) {
   };
 
   const trackInlineThinkingReasoning = (choiceState, value, source) => {
-    if (typeof value !== "string" || value.length === 0) return;
+    if (!isString(value) || value.length === 0) return;
     choiceState.reasoningSeen = true;
     choiceState.reasoningEndsWithNewline = value.endsWith("\n");
     if (source) choiceState.lastReasoningSource = source;
   };
 
   const normalizeNativeReasoningAfterInline = (choiceState, value) => {
-    if (typeof value !== "string" || value.length === 0) return value;
+    if (!isString(value) || value.length === 0) return value;
     if (choiceState.lastReasoningSource !== "inline") return value;
     const separator = choiceState.reasoningEndsWithNewline || value.startsWith("\n") ? "" : "\n";
     return `${separator}${value}`;
@@ -497,7 +498,7 @@ export function createSSEStream(options = {}) {
       object: inlineThinkingChunkMeta?.object || "chat.completion.chunk",
       created: inlineThinkingChunkMeta?.created || Math.floor(Date.now() / 1000),
       model: inlineThinkingChunkMeta?.model || model || "unknown",
-      choices,
+      choices
     };
     return `data: ${JSON.stringify(chunk)}\n\n`;
   };
@@ -555,17 +556,17 @@ export function createSSEStream(options = {}) {
               upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
               recordCompletionData(parsed, { trackUsage: false });
               if (
-                targetFormat === FORMATS.CLAUDE
-                && parsed?.type === "message_stop"
-                && upstreamTerminal.outcome === "success"
-              ) claudeTerminalSeen = true;
+              targetFormat === FORMATS.CLAUDE &&
+              parsed?.type === "message_stop" &&
+              upstreamTerminal.outcome === "success")
+              claudeTerminalSeen = true;
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
                   id: parsed.id,
                   object: parsed.object,
                   created: parsed.created,
-                  model: parsed.model,
+                  model: parsed.model
                 };
               }
 
@@ -591,17 +592,17 @@ export function createSSEStream(options = {}) {
               // empty placeholder when the provider quirk requests it (#2706).
               let fieldsInjected = false;
               if (
-                PROVIDERS[provider]?.quirks?.ensureThinkingSignature &&
-                parsed.type === "content_block_start" &&
-                parsed.content_block?.type === CLAUDE_BLOCK.THINKING &&
-                parsed.content_block.signature === undefined
-              ) {
+              PROVIDERS[provider]?.quirks?.ensureThinkingSignature &&
+              parsed.type === "content_block_start" &&
+              parsed.content_block?.type === CLAUDE_BLOCK.THINKING &&
+              parsed.content_block.signature === undefined)
+              {
                 parsed.content_block.signature = "";
                 fieldsInjected = true;
               }
               if (parsed.choices !== undefined) {
-                if (!parsed.object) { parsed.object = "chat.completion.chunk"; fieldsInjected = true; }
-                if (!parsed.created) { parsed.created = Math.floor(Date.now() / 1000); fieldsInjected = true; }
+                if (!parsed.object) {parsed.object = "chat.completion.chunk";fieldsInjected = true;}
+                if (!parsed.created) {parsed.created = Math.floor(Date.now() / 1000);fieldsInjected = true;}
               }
 
               // Strip Azure-specific non-standard fields from streaming chunks
@@ -657,11 +658,11 @@ export function createSSEStream(options = {}) {
                 const delta = parsed.choices?.[0]?.delta;
                 const content = delta?.content;
                 const reasoning = delta?.reasoning_content;
-                if (content && typeof content === "string") {
+                if (content && isString(content)) {
                   totalContentLength += content.length;
                   accumulatedContent += content;
                 }
-                if (reasoning && typeof reasoning === "string") {
+                if (reasoning && isString(reasoning)) {
                   totalContentLength += reasoning.length;
                   accumulatedThinking += reasoning;
                 }
@@ -678,19 +679,19 @@ export function createSSEStream(options = {}) {
                   const choiceState = getInlineThinkingState(choiceIndex);
                   const extractor = choiceState.extractor;
                   const delta = choice.delta || (choice.delta = {});
-                  let nextContent = typeof delta.content === "string" ? delta.content : "";
+                  let nextContent = isString(delta.content) ? delta.content : "";
                   let changed = false;
                   let emittedInlineReasoning = false;
 
-                  const hasStructuredReasoning = delta.reasoning_content != null
-                    && typeof delta.reasoning_content !== "string";
-                  const hasNativeReasoning = typeof delta.reasoning_content === "string"
-                    && delta.reasoning_content.length > 0;
+                  const hasStructuredReasoning = delta.reasoning_content != null && !isString(
+                    delta.reasoning_content);
+                  const hasNativeReasoning = isString(delta.reasoning_content) &&
+                  delta.reasoning_content.length > 0;
 
                   if (!choiceState.bypass && hasNativeReasoning) {
                     const normalizedNativeReasoning = normalizeNativeReasoningAfterInline(
                       choiceState,
-                      delta.reasoning_content,
+                      delta.reasoning_content
                     );
                     if (normalizedNativeReasoning !== delta.reasoning_content) {
                       delta.reasoning_content = normalizedNativeReasoning;
@@ -702,7 +703,7 @@ export function createSSEStream(options = {}) {
                     const pending = extractor.failOpen();
                     choiceState.bypass = true;
                     if (pending.content) {
-                      if (typeof delta.content === "string") {
+                      if (isString(delta.content)) {
                         nextContent = `${pending.content}${delta.content}`;
                         changed = true;
                       } else if (delta.content == null) {
@@ -712,13 +713,13 @@ export function createSSEStream(options = {}) {
                         inlineThinkingRecoveryChoices.push({
                           index: choiceIndex,
                           delta: { content: pending.content },
-                          finish_reason: null,
+                          finish_reason: null
                         });
                         totalContentLength += pending.content.length;
                         accumulatedContent += pending.content;
                       }
                     }
-                  } else if (!choiceState.bypass && typeof delta.content === "string") {
+                  } else if (!choiceState.bypass && isString(delta.content)) {
                     const extractedThink = extractor.process(delta.content);
                     nextContent = extractedThink.content;
                     changed = extractedThink.changed || extractedThink.content !== delta.content;
@@ -726,7 +727,7 @@ export function createSSEStream(options = {}) {
                       delta.reasoning_content = appendInlineThinkingReasoning(
                         choiceState,
                         delta.reasoning_content,
-                        extractedThink.reasoning,
+                        extractedThink.reasoning
                       );
                       changed = true;
                       emittedInlineReasoning = true;
@@ -743,7 +744,7 @@ export function createSSEStream(options = {}) {
                       delta.reasoning_content = appendInlineThinkingReasoning(
                         choiceState,
                         delta.reasoning_content,
-                        pending.reasoning,
+                        pending.reasoning
                       );
                       changed = true;
                       emittedInlineReasoning = true;
@@ -753,14 +754,14 @@ export function createSSEStream(options = {}) {
 
                   if (changed) {
                     fieldsInjected = true;
-                    if (nextContent.length > 0) delta.content = nextContent;
-                    else delete delta.content;
+                    if (nextContent.length > 0) delta.content = nextContent;else
+                    delete delta.content;
                   }
 
                   trackInlineThinkingReasoning(
                     choiceState,
                     delta.reasoning_content,
-                    emittedInlineReasoning ? "inline" : (hasNativeReasoning ? "native" : null),
+                    emittedInlineReasoning ? "inline" : hasNativeReasoning ? "native" : null
                   );
                 }
               }
@@ -771,7 +772,7 @@ export function createSSEStream(options = {}) {
                   object: inlineThinkingChunkMeta?.object || parsed.object || "chat.completion.chunk",
                   created: inlineThinkingChunkMeta?.created || parsed.created || Math.floor(Date.now() / 1000),
                   model: inlineThinkingChunkMeta?.model || parsed.model || model || "unknown",
-                  choices: inlineThinkingRecoveryChoices,
+                  choices: inlineThinkingRecoveryChoices
                 };
                 pendingInlineThinkingOutput += `data: ${JSON.stringify(recoveryChunk)}\n\n`;
               }
@@ -780,8 +781,8 @@ export function createSSEStream(options = {}) {
 
               // Detect terminal chunk in both OpenAI (choices[0].finish_reason) and
               // Gemini-family (response.candidates[0].finishReason) passthrough shapes.
-              const isFinishChunk = parsed.choices?.some?.(choice => choice?.finish_reason)
-                || parsed.response?.candidates?.[0]?.finishReason;
+              const isFinishChunk = parsed.choices?.some?.((choice) => choice?.finish_reason) ||
+              parsed.response?.candidates?.[0]?.finishReason;
               const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
               if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
@@ -804,8 +805,8 @@ export function createSSEStream(options = {}) {
               // is the legacy helper contract and completes immediately;
               // explicit Gemini streams defer so trailing usage/tool parts win.
               const immediateGeminiTerminal =
-                parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason)
-                || (targetFormat == null && parsed.candidates?.some?.((candidate) => candidate?.finishReason));
+              parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason) ||
+              targetFormat == null && parsed.candidates?.some?.((candidate) => candidate?.finishReason);
               if (immediateGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
                 if (!hasValidUsage(usage) && totalContentLength > 0) {
                   usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
@@ -815,7 +816,7 @@ export function createSSEStream(options = {}) {
                   { content: accumulatedContent, thinking: accumulatedThinking },
                   usage,
                   ttftAt,
-                  providerSummary.finalize(usage),
+                  providerSummary.finalize(usage)
                 );
               }
               if (toolNameDecloaked && !injectedUsage) {
@@ -869,14 +870,14 @@ export function createSSEStream(options = {}) {
         // Responses API same-format passthrough: preserve event framing + track terminal state
         const isOpenAIResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
         const keepsOpenAIResponsesFormat = isOpenAIResponsesStream && sourceFormat === FORMATS.OPENAI_RESPONSES;
-        const openAIResponsesEventName = isOpenAIResponsesStream
-          ? getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed)
-          : currentUpstreamEvent;
+        const openAIResponsesEventName = isOpenAIResponsesStream ?
+        getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed) :
+        currentUpstreamEvent;
 
         upstreamTerminal.observe({
           chunk: parsed,
           eventName: openAIResponsesEventName,
-          rawDone: parsed?.done === true,
+          rawDone: parsed?.done === true
         });
         currentUpstreamEvent = null;
         providerSummary.ingest(parsed);
@@ -909,11 +910,11 @@ export function createSSEStream(options = {}) {
 
         // Ollama native format. Terminal `done: true` events can carry the
         // final assistant payload, and request logging must see it too.
-        if (typeof parsed.message?.content === "string" && parsed.message.content) {
+        if (isString(parsed.message?.content) && parsed.message.content) {
           totalContentLength += parsed.message.content.length;
           accumulatedContent += parsed.message.content;
         }
-        if (typeof parsed.message?.thinking === "string" && parsed.message.thinking) {
+        if (isString(parsed.message?.thinking) && parsed.message.thinking) {
           totalContentLength += parsed.message.thinking.length;
           accumulatedThinking += parsed.message.thinking;
         }
@@ -928,7 +929,7 @@ export function createSSEStream(options = {}) {
           totalContentLength += parsed.delta.thinking.length;
           accumulatedThinking += parsed.delta.thinking;
         }
-        
+
         // OpenAI format - content
         if (parsed.choices?.[0]?.delta?.content) {
           totalContentLength += parsed.choices[0].delta.content.length;
@@ -939,12 +940,12 @@ export function createSSEStream(options = {}) {
           totalContentLength += parsed.choices[0].delta.reasoning_content.length;
           accumulatedThinking += parsed.choices[0].delta.reasoning_content;
         }
-        
+
         // Gemini format
         if (parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts) {
           const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content.parts || [];
           for (const part of geminiParts) {
-            if (part.text && typeof part.text === "string") {
+            if (part.text && isString(part.text)) {
               totalContentLength += part.text.length;
               // Check if this is thinking content
               if (part.thought === true) {
@@ -1046,15 +1047,15 @@ export function createSSEStream(options = {}) {
                 accumulatedContent += tail.content;
               }
               const flushedDelta = {
-                ...(tail.content ? { content: tail.content } : {}),
-                ...(!omitStreamReasoning && tail.reasoning ? { reasoning_content: tail.reasoning } : {}),
+                ...(tail.content ? { content: tail.content } : null),
+                ...(!omitStreamReasoning && tail.reasoning ? { reasoning_content: tail.reasoning } : null)
               };
               if (Object.keys(flushedDelta).length > 0) {
                 const flushed = {
                   object: "chat.completion.chunk",
                   created: Math.floor(Date.now() / 1000),
                   model: model || "unknown",
-                  choices: [{ index: 0, delta: flushedDelta }],
+                  choices: [{ index: 0, delta: flushedDelta }]
                 };
                 const flushedOutput = `data: ${JSON.stringify(flushed)}\n`;
                 reqLogger?.appendConvertedChunk?.(flushedOutput);
@@ -1096,9 +1097,9 @@ export function createSSEStream(options = {}) {
           if (hasValidUsage(usage)) {
             logUsage(provider, usage, model, connectionId, apiKey);
           } else {
-            appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
+            appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => {});
           }
-          
+
           // IMPORTANT: In passthrough mode we still must terminate the SSE stream.
           // Some clients (e.g. OpenClaw) expect the OpenAI-style sentinel:
           //   data: [DONE]\n\n
@@ -1114,17 +1115,17 @@ export function createSSEStream(options = {}) {
             const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
             upstreamTerminal.observe({
               eventName: "response.failed",
-              chunk: { type: "response.failed", response: { status: "failed" } },
+              chunk: { type: "response.failed", response: { status: "failed" } }
             });
             reqLogger?.appendConvertedChunk?.(failedOutput);
             controller.enqueue(sharedEncoder.encode(failedOutput));
           }
           if (
-            !streamDoneSent
-            && !isGeminiFamily
-            && !isClaudeStream
-            && upstreamTerminal.outcome !== "failure"
-          ) {
+          !streamDoneSent &&
+          !isGeminiFamily &&
+          !isClaudeStream &&
+          upstreamTerminal.outcome !== "failure")
+          {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
@@ -1141,7 +1142,7 @@ export function createSSEStream(options = {}) {
         }
 
         if (upstreamErrorForwarded) {
-          appendRequestLog({ model, provider, connectionId, tokens: null, status: "FAILED STREAM_ERROR" }).catch(() => { });
+          appendRequestLog({ model, provider, connectionId, tokens: null, status: "FAILED STREAM_ERROR" }).catch(() => {});
           return;
         }
 
@@ -1213,9 +1214,9 @@ export function createSSEStream(options = {}) {
         if (hasValidUsage(state?.usage)) {
           logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
         } else {
-          appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
+          appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => {});
         }
-        
+
         if (onStreamComplete && !onStreamCompleteFired) {
           onStreamCompleteFired = true;
           onStreamComplete({

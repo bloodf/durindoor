@@ -1,18 +1,19 @@
 import { findFencedCodeBlocks } from "./preservation.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
-                                   
-                 
-                   
-                     
-                           
- 
+
+
+
+
+
+
 
 function requireExactPresence(
-  label        ,
-  originalItems          ,
-  compressed        ,
-  errors          
-) {
+label,
+originalItems,
+compressed,
+errors)
+{
   for (const item of originalItems) {
     if (!compressed.includes(item)) {
       const preview = collapseWhitespaceForPreview(item).slice(0, 80);
@@ -21,53 +22,53 @@ function requireExactPresence(
   }
 }
 
-function isPreviewWhitespace(char        )          {
+function isPreviewWhitespace(char) {
   return (
     char === " " ||
     char === "\t" ||
     char === "\n" ||
     char === "\r" ||
     char === "\f" ||
-    char === "\v"
-  );
+    char === "\v");
+
 }
 
-function isHorizontalWhitespace(char        )          {
+function isHorizontalWhitespace(char) {
   return char === " " || char === "\t";
 }
 
-function isAsciiDigit(char                    )          {
+function isAsciiDigit(char) {
   return !!char && char >= "0" && char <= "9";
 }
 
-function isAsciiUpper(char                    )          {
+function isAsciiUpper(char) {
   return !!char && char >= "A" && char <= "Z";
 }
 
-function isAsciiLetter(char                    )          {
-  return !!char && ((char >= "A" && char <= "Z") || (char >= "a" && char <= "z"));
+function isAsciiLetter(char) {
+  return !!char && (char >= "A" && char <= "Z" || char >= "a" && char <= "z");
 }
 
-function isAsciiAlphaNumeric(char                    )          {
+function isAsciiAlphaNumeric(char) {
   return !!char && (isAsciiLetter(char) || isAsciiDigit(char));
 }
 
-function isWordChar(char                    )          {
+function isWordChar(char) {
   return !!char && (isAsciiAlphaNumeric(char) || char === "_");
 }
 
-function isUrlTerminator(char        )          {
+function isUrlTerminator(char) {
   return (
     isPreviewWhitespace(char) ||
     char === ")" ||
     char === "]" ||
     char === '"' ||
     char === "'" ||
-    char === ">"
-  );
+    char === ">");
+
 }
 
-function collapseWhitespaceForPreview(text        )         {
+function collapseWhitespaceForPreview(text) {
   let output = "";
   let previousWasWhitespace = false;
   let changed = false;
@@ -91,16 +92,16 @@ function collapseWhitespaceForPreview(text        )         {
   return changed ? output : text;
 }
 
-export function validateCompression(original        , compressed        )                   {
-  const errors           = [];
-  const warnings           = [];
+export function validateCompression(original, compressed) {
+  const errors = [];
+  const warnings = [];
 
-  if (typeof original !== "string" || typeof compressed !== "string") {
+  if (!isString(original) || !isString(compressed)) {
     return {
       valid: false,
       errors: ["validation received non-string input"],
       warnings,
-      fallbackApplied: true,
+      fallbackApplied: true
     };
   }
 
@@ -137,12 +138,12 @@ export function validateCompression(original        , compressed        )       
     valid: errors.length === 0,
     errors,
     warnings,
-    fallbackApplied: errors.length > 0,
+    fallbackApplied: errors.length > 0
   };
 }
 
-function collectInlineCode(text        )           {
-  const matches           = [];
+function collectInlineCode(text) {
+  const matches = [];
 
   for (let index = 0; index < text.length; index++) {
     if (text[index] !== "`") continue;
@@ -159,8 +160,8 @@ function collectInlineCode(text        )           {
   return matches;
 }
 
-function collectUrls(text        )           {
-  const matches           = [];
+function collectUrls(text) {
+  const matches = [];
 
   for (let index = 0; index < text.length; index++) {
     const startsWithHttp = text.startsWith("http://", index);
@@ -182,8 +183,8 @@ function collectUrls(text        )           {
   return matches;
 }
 
-function collectMarkdownLinks(text        )           {
-  const matches           = [];
+function collectMarkdownLinks(text) {
+  const matches = [];
 
   for (let index = 0; index < text.length; index++) {
     if (text[index] !== "[") continue;
@@ -213,7 +214,7 @@ function collectMarkdownLinks(text        )           {
   return matches;
 }
 
-function collectFrontmatter(text        )           {
+function collectFrontmatter(text) {
   if (!text.startsWith("---\n")) return [];
   const close = text.indexOf("\n---", 4);
   if (close === -1) return [];
@@ -222,7 +223,7 @@ function collectFrontmatter(text        )           {
   return [text.slice(0, end)];
 }
 
-function collectHeadings(text        )           {
+function collectHeadings(text) {
   return collectLines(text).filter((line) => {
     let markerCount = 0;
     while (markerCount < line.length && line[markerCount] === "#") {
@@ -238,7 +239,7 @@ function collectHeadings(text        )           {
   });
 }
 
-function collectTableRows(text        )           {
+function collectTableRows(text) {
   return collectLines(text).filter((line) => {
     let index = 0;
     while (index < line.length && isHorizontalWhitespace(line[index])) {
@@ -254,8 +255,8 @@ function collectTableRows(text        )           {
   });
 }
 
-function collectLines(text        )           {
-  const lines           = [];
+function collectLines(text) {
+  const lines = [];
   let start = 0;
 
   for (let index = 0; index < text.length; index++) {
@@ -268,8 +269,8 @@ function collectLines(text        )           {
   return lines;
 }
 
-function collectMathBlocks(text        )           {
-  const matches           = [];
+function collectMathBlocks(text) {
+  const matches = [];
   let index = 0;
 
   while (index < text.length) {
@@ -289,8 +290,8 @@ function collectMathBlocks(text        )           {
   return matches;
 }
 
-function collectInlineMath(text        )           {
-  const matches           = [];
+function collectInlineMath(text) {
+  const matches = [];
 
   for (let index = 0; index < text.length; index++) {
     if (text[index] !== "$") continue;
@@ -320,8 +321,8 @@ function collectInlineMath(text        )           {
   return matches;
 }
 
-function collectLatexBlocks(text        )           {
-  const matches           = [];
+function collectLatexBlocks(text) {
+  const matches = [];
   let index = 0;
 
   while (index < text.length) {
@@ -360,8 +361,8 @@ function collectLatexBlocks(text        )           {
   return matches;
 }
 
-function collectVersions(text        )           {
-  const matches           = [];
+function collectVersions(text) {
+  const matches = [];
 
   for (let index = 0; index < text.length; index++) {
     if (!isAsciiDigit(text[index])) continue;
@@ -390,7 +391,7 @@ function collectVersions(text        )           {
   return matches;
 }
 
-function readDigits(text        , start        )         {
+function readDigits(text, start) {
   let cursor = start;
   while (cursor < text.length && isAsciiDigit(text[cursor])) {
     cursor++;
@@ -398,12 +399,12 @@ function readDigits(text        , start        )         {
   return cursor;
 }
 
-function isVersionSuffixChar(char                    )          {
+function isVersionSuffixChar(char) {
   return !!char && (isAsciiAlphaNumeric(char) || char === "." || char === "-");
 }
 
-function collectConstCase(text        )           {
-  const matches           = [];
+function collectConstCase(text) {
+  const matches = [];
 
   for (let index = 0; index < text.length; index++) {
     if (!isAsciiUpper(text[index])) continue;

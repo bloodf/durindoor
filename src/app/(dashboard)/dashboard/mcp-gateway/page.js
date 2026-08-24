@@ -9,28 +9,29 @@ import {
   Select,
   Toggle,
   Modal,
-  ConfirmModal,
-} from "@/shared/components";
+  ConfirmModal } from
+"@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 function nowMs() {
   return Date.now();
 }
 const KIND_OPTIONS = [
-  { value: "http", label: "HTTP" },
-  { value: "sse", label: "SSE" },
-  { value: "npx", label: "npx" },
-  { value: "python", label: "Python" },
-  { value: "docker", label: "Docker" },
-  { value: "command", label: "Command" },
-];
+{ value: "http", label: "HTTP" },
+{ value: "sse", label: "SSE" },
+{ value: "npx", label: "npx" },
+{ value: "python", label: "Python" },
+{ value: "docker", label: "Docker" },
+{ value: "command", label: "Command" }];
+
 
 const TRANSPORT_OPTIONS = [
-  { value: "http", label: "http" },
-  { value: "sse", label: "sse" },
-  { value: "stdio", label: "stdio" },
-];
+{ value: "http", label: "http" },
+{ value: "sse", label: "sse" },
+{ value: "stdio", label: "stdio" }];
+
 
 function emptyInstance() {
   return {
@@ -44,12 +45,12 @@ function emptyInstance() {
     env: "{}",
     headers: "{}",
     oauth: false,
-    enabled: true,
+    enabled: true
   };
 }
 
 function parseMaybeJson(s, fallback) {
-  if (!s || typeof s !== "string") return fallback;
+  if (!s || !isString(s)) return fallback;
   try {
     return JSON.parse(s);
   } catch {
@@ -59,7 +60,7 @@ function parseMaybeJson(s, fallback) {
 
 function stringifyMaybe(v) {
   if (v == null) return "";
-  if (typeof v === "string") return v;
+  if (isString(v)) return v;
   try {
     return JSON.stringify(v);
   } catch {
@@ -83,9 +84,9 @@ export default function McpGatewayPage() {
     setLoading(true);
     try {
       const [instRes, keyRes] = await Promise.all([
-        fetch("/api/mcp-gateway/instances"),
-        fetch("/api/mcp-gateway/keys"),
-      ]);
+      fetch("/api/mcp-gateway/instances"),
+      fetch("/api/mcp-gateway/keys")]
+      );
       const instBody = instRes.ok ? await instRes.json().catch(() => ({})) : {};
       const keyBody = keyRes.ok ? await keyRes.json().catch(() => ({})) : {};
       if (!instRes.ok) {
@@ -115,7 +116,7 @@ export default function McpGatewayPage() {
       ...form,
       args: parseMaybeJson(form.args, []),
       env: parseMaybeJson(form.env, {}),
-      headers: parseMaybeJson(form.headers, {}),
+      headers: parseMaybeJson(form.headers, {})
     };
     const isNew = !form.id;
     const res = await fetch(
@@ -123,7 +124,7 @@ export default function McpGatewayPage() {
       {
         method: isNew ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(payload)
       }
     );
     const body = await res.json().catch(() => ({}));
@@ -135,11 +136,11 @@ export default function McpGatewayPage() {
     return true;
   }
 
-   async function toggleInstanceEnabled(id, enabled) {
+  async function toggleInstanceEnabled(id, enabled) {
     const res = await fetch(`/api/mcp-gateway/instances/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled })
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -196,8 +197,8 @@ export default function McpGatewayPage() {
             return;
           }
         } catch {
-          /* keep polling */
-        }
+
+          /* keep polling */}
         setTimeout(() => {
           tick();
         }, pollMs);
@@ -219,9 +220,9 @@ export default function McpGatewayPage() {
       if (!res.ok) {
         // Error shape per src/app/api/mcp-gateway/instances/[id]/test/route.js:
         // `{ error: string, ok: false }` with 400/404/502 statuses.
-        const msg = typeof body?.error === "string" && body.error
-          ? body.error
-          : `test failed (HTTP ${res.status})`;
+        const msg = isString(body?.error) && body.error ?
+        body.error :
+        `test failed (HTTP ${res.status})`;
         setTestResults((m) => ({ ...m, [id]: { ok: false, error: msg, status: res.status } }));
         return;
       }
@@ -237,7 +238,7 @@ export default function McpGatewayPage() {
     const res = await fetch("/api/mcp-gateway/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name })
     });
     const body = await res.json();
     if (!res.ok) {
@@ -277,7 +278,7 @@ export default function McpGatewayPage() {
     const res = await fetch(`/api/mcp-gateway/keys/${keyId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ grants: instanceIds }),
+      body: JSON.stringify({ grants: instanceIds })
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -305,19 +306,19 @@ export default function McpGatewayPage() {
 
       {/* Instances */}
       <Card title="Instances" subtitle={`${instances.length} registered`}>
-        {loading ? (
-          <p className="text-sm text-text-muted">Loading…</p>
-        ) : instances.length === 0 ? (
-          <p className="text-sm text-text-muted">No instances yet. Click &quot;New instance&quot; to add one.</p>
-        ) : (
-          <div className="space-y-2">
+        {loading ?
+        <p className="text-sm text-text-muted">Loading…</p> :
+        instances.length === 0 ?
+        <p className="text-sm text-text-muted">No instances yet. Click &quot;New instance&quot; to add one.</p> :
+
+        <div className="space-y-2">
             {instances.map((i) => {
-              const test = testResults[i.id];
-              return (
-                <div
-                  key={i.id}
-                  className="flex items-start gap-3 p-3 rounded-[10px] border border-border-subtle bg-surface-1"
-                >
+            const test = testResults[i.id];
+            return (
+              <div
+                key={i.id}
+                className="flex items-start gap-3 p-3 rounded-[10px] border border-border-subtle bg-surface-1">
+                
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-sm text-text-main">{i.slug}</span>
@@ -326,80 +327,80 @@ export default function McpGatewayPage() {
                       {i.oauth && <Badge size="sm" variant="info">oauth</Badge>}
                       {i.oauth && i.oauthStatus === "needs_login" && <Badge size="sm" variant="warning" dot>needs login</Badge>}
                       {i.oauth && i.oauthStatus === "connected" && <Badge size="sm" variant="success" dot>connected</Badge>}
-                      {i.enabled ? (
-                        <Badge size="sm" variant="success" dot>enabled</Badge>
-                      ) : (
-                        <Badge size="sm" variant="default" dot>disabled</Badge>
-                      )}
+                      {i.enabled ?
+                    <Badge size="sm" variant="success" dot>enabled</Badge> :
+
+                    <Badge size="sm" variant="default" dot>disabled</Badge>
+                    }
                     </div>
                     <div className="text-xs text-text-muted mt-1 truncate">
-                      {i.transport === "stdio"
-                        ? `${i.command} ${(Array.isArray(i.args) ? i.args : []).join(" ")}`
-                        : i.url}
+                      {i.transport === "stdio" ?
+                    `${i.command} ${(Array.isArray(i.args) ? i.args : []).join(" ")}` :
+                    i.url}
                     </div>
-                    {test && !test.loading && (
-                      <div className="mt-2 text-xs">
-                        {test.ok ? (
-                          <span className="text-green-600 dark:text-green-400">
+                    {test && !test.loading &&
+                  <div className="mt-2 text-xs">
+                        {test.ok ?
+                    <span className="text-green-600 dark:text-green-400">
                             {test.toolCount} tools
-                            {test.sample?.length
-                              ? ` — sample: ${test.sample.map((s) => s.name).join(", ")}`
-                              : ""}
-                          </span>
-                        ) : (
-                          <>
+                            {test.sample?.length ?
+                      ` — sample: ${test.sample.map((s) => s.name).join(", ")}` :
+                      ""}
+                          </span> :
+
+                    <>
                             <span className="text-red-600 dark:text-red-400">test failed: {test.error}</span>
-                            {/requires re-login|upstream 40[13]/.test(test.error ?? "") && (
-                              <Button size="sm" variant="ghost" icon="login" className="ml-2" onClick={() => connectInstance(i.id)}>Login</Button>
-                            )}
+                            {/requires re-login|upstream 40[13]/.test(test.error ?? "") &&
+                      <Button size="sm" variant="ghost" icon="login" className="ml-2" onClick={() => connectInstance(i.id)}>Login</Button>
+                      }
                           </>
-                        )}
+                    }
                       </div>
-                    )}
+                  }
                   </div>
                   <div className="flex gap-1 shrink-0 items-center">
                     <Toggle
-                      size="sm"
-                      checked={!!i.enabled}
-                      onChange={(v) => toggleInstanceEnabled(i.id, v)}
-                      title={i.enabled ? "Disable instance" : "Enable instance"}
-                    />
+                    size="sm"
+                    checked={!!i.enabled}
+                    onChange={(v) => toggleInstanceEnabled(i.id, v)}
+                    title={i.enabled ? "Disable instance" : "Enable instance"} />
+                  
                     <Button size="sm" variant="ghost" icon="play_arrow" onClick={() => testInstance(i.id)} loading={test?.loading}>Test</Button>
-                    {i.oauth && (
-                      <Button
-                        size="sm"
-                        icon="login"
-                        onClick={() => connectInstance(i.id)}
-                      >
+                    {i.oauth &&
+                  <Button
+                    size="sm"
+                    icon="login"
+                    onClick={() => connectInstance(i.id)}>
+                    
                         {i.oauthStatus === "connected" ? "Re-login" : "Login"}
                       </Button>
-                    )}
+                  }
                     <Button size="sm" variant="ghost" icon="edit" onClick={() => setEditing({
-                      ...i,
-                      args: stringifyMaybe(i.args),
-                      env: stringifyMaybe(i.env),
-                      headers: stringifyMaybe(i.headers),
-                    })}>Edit</Button>
+                    ...i,
+                    args: stringifyMaybe(i.args),
+                    env: stringifyMaybe(i.env),
+                    headers: stringifyMaybe(i.headers)
+                  })}>Edit</Button>
                     <Button size="sm" variant="ghost" icon="delete" onClick={() => setConfirmDelete({ kind: "instance", id: i.id })} />
                   </div>
-                </div>
-              );
-            })}
+                </div>);
+
+          })}
           </div>
-        )}
+        }
       </Card>
 
       {/* Keys */}
       <Card title="Gateway Keys" subtitle="API keys that harnesses use to talk to the gateway">
-        {keys.length === 0 ? (
-          <p className="text-sm text-text-muted">No gateway keys yet. Click &quot;New key&quot; to mint one.</p>
-        ) : (
-          <div className="space-y-2">
-            {keys.map((k) => (
-              <div
-                key={k.id}
-                className="flex items-start gap-3 p-3 rounded-[10px] border border-border-subtle bg-surface-1"
-              >
+        {keys.length === 0 ?
+        <p className="text-sm text-text-muted">No gateway keys yet. Click &quot;New key&quot; to mint one.</p> :
+
+        <div className="space-y-2">
+            {keys.map((k) =>
+          <div
+            key={k.id}
+            className="flex items-start gap-3 p-3 rounded-[10px] border border-border-subtle bg-surface-1">
+            
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-text-main">{k.name ?? <span className="text-text-muted">unnamed</span>}</div>
                   <div className="text-xs text-text-muted mt-1">
@@ -409,43 +410,43 @@ export default function McpGatewayPage() {
                 <div className="flex gap-1 shrink-0">
                   <Button size="sm" variant="ghost" icon="tune" onClick={() => setEditingKey(k.id)}>Grants</Button>
                   <Button
-                    size="sm"
-                    variant="ghost"
-                    icon={copied === `reveal_${k.id}` ? "check" : "content_copy"}
-                    onClick={() => revealAndCopyKey(k.id)}
-                  >
+                size="sm"
+                variant="ghost"
+                icon={copied === `reveal_${k.id}` ? "check" : "content_copy"}
+                onClick={() => revealAndCopyKey(k.id)}>
+                
                     {copied === `reveal_${k.id}` ? "Copied" : "Copy key"}
                   </Button>
                   <Button size="sm" variant="ghost" icon="delete" onClick={() => setConfirmDelete({ kind: "key", id: k.id })} />
                 </div>
               </div>
-            ))}
+          )}
           </div>
-        )}
+        }
       </Card>
 
       {/* Instance edit modal */}
-      {editing && (
-        <InstanceEditModal
-          initial={editing}
-          onClose={() => setEditing(null)}
-          onSave={saveInstance}
-        />
-      )}
+      {editing &&
+      <InstanceEditModal
+        initial={editing}
+        onClose={() => setEditing(null)}
+        onSave={saveInstance} />
+
+      }
 
       {/* Grants modal */}
-      {editingKey && (
-        <GrantsModal
-          keyId={editingKey}
-          allInstances={instances}
-          onClose={() => setEditingKey(null)}
-          onSave={saveGrants}
-        />
-      )}
+      {editingKey &&
+      <GrantsModal
+        keyId={editingKey}
+        allInstances={instances}
+        onClose={() => setEditingKey(null)}
+        onSave={saveGrants} />
+
+      }
 
       {/* Newly created key reveal modal */}
-      {createdKey && (
-        <Modal isOpen onClose={() => setCreatedKey(null)} title="Gateway key created" showTrafficLights>
+      {createdKey &&
+      <Modal isOpen onClose={() => setCreatedKey(null)} title="Gateway key created" showTrafficLights>
           <p className="text-sm text-text-muted mb-2">
             Copy this key now — you will not see it again.
           </p>
@@ -458,29 +459,29 @@ export default function McpGatewayPage() {
             </Button>
           </div>
         </Modal>
-      )}
+      }
 
       {/* Confirm delete */}
-      {confirmDelete?.kind === "instance" && (
-        <ConfirmModal
-          isOpen
-          onClose={() => setConfirmDelete(null)}
-          onConfirm={() => deleteInstance(confirmDelete.id)}
-          title="Delete instance?"
-          message="All grants to this instance will also be removed."
-        />
-      )}
-      {confirmDelete?.kind === "key" && (
-        <ConfirmModal
-          isOpen
-          onClose={() => setConfirmDelete(null)}
-          onConfirm={() => deleteKey(confirmDelete.id)}
-          title="Delete gateway key?"
-          message="Any harness using this key will lose access immediately."
-        />
-      )}
-    </div>
-  );
+      {confirmDelete?.kind === "instance" &&
+      <ConfirmModal
+        isOpen
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => deleteInstance(confirmDelete.id)}
+        title="Delete instance?"
+        message="All grants to this instance will also be removed." />
+
+      }
+      {confirmDelete?.kind === "key" &&
+      <ConfirmModal
+        isOpen
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => deleteKey(confirmDelete.id)}
+        title="Delete gateway key?"
+        message="Any harness using this key will lose access immediately." />
+
+      }
+    </div>);
+
 }
 
 function InstanceEditModal({ initial, onClose, onSave }) {
@@ -499,31 +500,31 @@ function InstanceEditModal({ initial, onClose, onSave }) {
       size="lg"
       showTrafficLights
       footer={
-        <div className="flex gap-2 justify-end">
+      <div className="flex gap-2 justify-end">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={() => onSave(form)} icon="save">Save</Button>
         </div>
-      }
-    >
+      }>
+      
       <div className="space-y-3">
-        {!form.id && (
-          <div className="flex items-center gap-2 text-xs text-text-muted">
+        {!form.id &&
+        <div className="flex items-center gap-2 text-xs text-text-muted">
             <span>Preset:</span>
             <Button
-              size="sm"
-              variant="outline"
-              onClick={() => patch({
-                slug: "zai-search",
-                title: "Z.AI Web Search",
-                kind: "http",
-                transport: "http",
-                url: "https://api.z.ai/api/mcp/web_search_prime/mcp",
-              })}
-            >
+            size="sm"
+            variant="outline"
+            onClick={() => patch({
+              slug: "zai-search",
+              title: "Z.AI Web Search",
+              kind: "http",
+              transport: "http",
+              url: "https://api.z.ai/api/mcp/web_search_prime/mcp"
+            })}>
+            
               Z.AI MCP
             </Button>
           </div>
-        )}
+        }
         <div className="grid grid-cols-2 gap-3">
           <Input label="Slug" required value={form.slug} onChange={(e) => patch({ slug: e.target.value.toLowerCase() })} placeholder="jira-acme" hint="lowercase, digits, dashes; 2-40 chars; no __" />
           <Input label="Title" value={form.title} onChange={(e) => patch({ title: e.target.value })} placeholder="Jira (Acme)" />
@@ -533,35 +534,35 @@ function InstanceEditModal({ initial, onClose, onSave }) {
           <Select label="Transport" value={form.transport} onChange={(e) => patch({ transport: e.target.value })} options={TRANSPORT_OPTIONS} />
         </div>
 
-        {isHttpLike ? (
-          <Input label="URL" required value={form.url} onChange={(e) => patch({ url: e.target.value })} placeholder="https://mcp.example.com/mcp" />
-        ) : (
-          <>
+        {isHttpLike ?
+        <Input label="URL" required value={form.url} onChange={(e) => patch({ url: e.target.value })} placeholder="https://mcp.example.com/mcp" /> :
+
+        <>
             <Input label="Command" required value={form.command} onChange={(e) => patch({ command: e.target.value })} placeholder="npx" />
             <Input label="Args (JSON array)" value={form.args} onChange={(e) => patch({ args: e.target.value })} hint='e.g. ["-y", "@browsermcp/mcp@latest"]' />
             <Input label="Env (JSON object)" value={form.env} onChange={(e) => patch({ env: e.target.value })} hint='e.g. {"API_KEY":"..."}' />
           </>
-        )}
-         {isHttpLike && (
-          <Input label="Headers (JSON object)" value={form.headers} onChange={(e) => patch({ headers: e.target.value })} hint='merged into every request; cannot override Content-Type/Accept/mcp-*' />
-        )}
-        {isHttpLike && (
-          <Input
-            label="Provider Connection ID (optional)"
-            value={form.providerConnectionId || ""}
-            onChange={(e) => patch({ providerConnectionId: e.target.value || undefined })}
-            placeholder="e.g. conn-… (z.ai API key stored in Providers)"
-            hint="Resolves to a stored z.ai API key for the URL https://api.z.ai/api/mcp/..."
-          />
-        )}
+        }
+         {isHttpLike &&
+        <Input label="Headers (JSON object)" value={form.headers} onChange={(e) => patch({ headers: e.target.value })} hint='merged into every request; cannot override Content-Type/Accept/mcp-*' />
+        }
+        {isHttpLike &&
+        <Input
+          label="Provider Connection ID (optional)"
+          value={form.providerConnectionId || ""}
+          onChange={(e) => patch({ providerConnectionId: e.target.value || undefined })}
+          placeholder="e.g. conn-… (z.ai API key stored in Providers)"
+          hint="Resolves to a stored z.ai API key for the URL https://api.z.ai/api/mcp/..." />
+
+        }
 
         <div className="flex items-center gap-6 pt-1">
           <Toggle checked={form.oauth} onChange={(v) => patch({ oauth: v })} label="Requires OAuth" description="Instance needs an Authorization token from a browser login" />
           <Toggle checked={form.enabled} onChange={(v) => patch({ enabled: v })} label="Enabled" />
         </div>
       </div>
-    </Modal>
-  );
+    </Modal>);
+
 }
 
 function GrantsModal({ keyId, allInstances, onClose, onSave }) {
@@ -583,8 +584,8 @@ function GrantsModal({ keyId, allInstances, onClose, onSave }) {
   function toggle(id) {
     setGrants((s) => {
       const next = new Set(s);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) next.delete(id);else
+      next.add(id);
       return next;
     });
   }
@@ -597,35 +598,35 @@ function GrantsModal({ keyId, allInstances, onClose, onSave }) {
       size="md"
       showTrafficLights
       footer={
-        <div className="flex gap-2 justify-end">
+      <div className="flex gap-2 justify-end">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => { onSave(keyId, [...grants]); onClose(); }} icon="save" disabled={loading}>Save</Button>
+          <Button onClick={() => {onSave(keyId, [...grants]);onClose();}} icon="save" disabled={loading}>Save</Button>
         </div>
-      }
-    >
-      {loading ? (
-        <p className="text-sm text-text-muted">Loading…</p>
-      ) : allInstances.length === 0 ? (
-        <p className="text-sm text-text-muted">No instances exist yet. Create one first.</p>
-      ) : (
-        <div className="space-y-1 max-h-96 overflow-y-auto">
-          {allInstances.map((i) => (
-            <label
-              key={i.id}
-              className="flex items-center gap-3 p-2 rounded-[8px] hover:bg-surface-2 cursor-pointer"
-            >
+      }>
+      
+      {loading ?
+      <p className="text-sm text-text-muted">Loading…</p> :
+      allInstances.length === 0 ?
+      <p className="text-sm text-text-muted">No instances exist yet. Create one first.</p> :
+
+      <div className="space-y-1 max-h-96 overflow-y-auto">
+          {allInstances.map((i) =>
+        <label
+          key={i.id}
+          className="flex items-center gap-3 p-2 rounded-[8px] hover:bg-surface-2 cursor-pointer">
+          
               <input
-                type="checkbox"
-                checked={grants.has(i.id)}
-                onChange={() => toggle(i.id)}
-                className="size-4 rounded border-border"
-              />
+            type="checkbox"
+            checked={grants.has(i.id)}
+            onChange={() => toggle(i.id)}
+            className="size-4 rounded border-border" />
+          
               <span className="font-mono text-sm">{i.slug}</span>
               <Badge size="sm" variant="default">{i.kind}</Badge>
             </label>
-          ))}
+        )}
         </div>
-      )}
-    </Modal>
-  );
+      }
+    </Modal>);
+
 }

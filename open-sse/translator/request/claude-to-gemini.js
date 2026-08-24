@@ -3,6 +3,7 @@ import { FORMATS } from "../formats.js";
 import { DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 function sanitizeGeminiToolName(name, toolNameMap) {
   let sanitized = String(name || "_unknown").replace(/[^a-zA-Z0-9_.:-]/g, "_");
@@ -21,12 +22,12 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   const sanitize = (name) => sanitizeGeminiToolName(name, toolNameMap);
   const provider = credentials?._provider;
   const stripFunctionCallId = provider === "vertex" || provider === "vertex-partner";
-  const signatureNamespace = typeof credentials?._signatureNamespace === "string" ? credentials._signatureNamespace : null;
+  const signatureNamespace = isString(credentials?._signatureNamespace) ? credentials._signatureNamespace : null;
   const result = {
     model,
     contents: [],
     generationConfig: {},
-    safetySettings: body.safetySettings || DEFAULT_SAFETY_SETTINGS,
+    safetySettings: body.safetySettings || DEFAULT_SAFETY_SETTINGS
   };
 
   for (const [source, target] of [["temperature", "temperature"], ["top_p", "topP"], ["top_k", "topK"]]) {
@@ -45,8 +46,8 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
     for (const block of message.content) {
       if (block.type !== CLAUDE_BLOCK.TOOL_USE || !block.id || !block.name) continue;
       toolUseNames[block.id] = sanitize(block.name);
-      const clientSignature = typeof block.thoughtSignature === "string" && block.thoughtSignature
-        || typeof block.thought_signature === "string" && block.thought_signature;
+      const clientSignature = isString(block.thoughtSignature) && block.thoughtSignature ||
+      isString(block.thought_signature) && block.thought_signature;
       const signature = resolveGeminiThoughtSignature(buildGeminiThoughtSignatureKey(signatureNamespace, block.id), clientSignature);
       if (signature) signatures.set(block.id, signature);
     }
@@ -56,12 +57,12 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
     const parts = [];
     if (Array.isArray(message.content)) {
       for (const block of message.content) {
-        if (block.type === CLAUDE_BLOCK.TEXT && block.text) parts.push({ text: block.text });
-        else if (block.type === CLAUDE_BLOCK.THINKING && block.thinking) parts.push({ thought: true, text: block.thinking });
-        else if (block.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "base64") parts.push({ inlineData: { mimeType: block.source.media_type || DEFAULT_IMAGE_MIME, data: block.source.data } });
-        else if (block.type === CLAUDE_BLOCK.TOOL_USE) {
+        if (block.type === CLAUDE_BLOCK.TEXT && block.text) parts.push({ text: block.text });else
+        if (block.type === CLAUDE_BLOCK.THINKING && block.thinking) parts.push({ thought: true, text: block.thinking });else
+        if (block.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "base64") parts.push({ inlineData: { mimeType: block.source.media_type || DEFAULT_IMAGE_MIME, data: block.source.data } });else
+        if (block.type === CLAUDE_BLOCK.TOOL_USE) {
           const signature = signatures.get(block.id);
-          parts.push({ ...(signature ? { thoughtSignature: signature } : {}), functionCall: { ...(stripFunctionCallId ? {} : { id: block.id }), name: sanitize(block.name), args: block.input || {} } });
+          parts.push({ ...(signature ? { thoughtSignature: signature } : null), functionCall: { ...(stripFunctionCallId ? null : { id: block.id }), name: sanitize(block.name), args: block.input || {} } });
         } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
           let content = block.content;
           if (Array.isArray(content)) content = content.map((entry) => entry.type === CLAUDE_BLOCK.TEXT ? entry.text : JSON.stringify(entry)).join("\n");
@@ -71,11 +72,11 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
             continue;
           }
           let parsed = sanitizeFunctionResponseResult(tryParseJSON(content));
-          if (parsed === null || typeof parsed !== "object") parsed = { result: parsed === null ? content : parsed };
-          parts.push({ functionResponse: { ...(stripFunctionCallId ? {} : { id: block.tool_use_id }), name, response: { result: parsed } } });
+          if (parsed === null || !isObject(parsed)) parsed = { result: parsed === null ? content : parsed };
+          parts.push({ functionResponse: { ...(stripFunctionCallId ? null : { id: block.tool_use_id }), name, response: { result: parsed } } });
         }
       }
-    } else if (typeof message.content === "string" && message.content) parts.push({ text: message.content });
+    } else if (isString(message.content) && message.content) parts.push({ text: message.content });
     if (parts.length) result.contents.push({ role: message.role === ROLE.ASSISTANT ? GEMINI_ROLE.MODEL : GEMINI_ROLE.USER, parts });
   }
 

@@ -1,8 +1,8 @@
-const BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+import { isObject } from "@/shared/utils/typeChecks.js";const BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const TOKEN_FIELDS = new Set(["accessToken", "refreshToken", "idToken"]);
 
 function isPlainObject(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!value || !isObject(value) || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }
@@ -13,9 +13,9 @@ export function mergeProviderSpecificData(existing = {}, incoming = {}) {
   if (!isPlainObject(incoming)) return result;
   for (const [key, value] of Object.entries(incoming)) {
     if (BLOCKED_KEYS.has(key) || value === undefined) continue;
-    result[key] = isPlainObject(value)
-      ? mergeProviderSpecificData(result[key], value)
-      : value;
+    result[key] = isPlainObject(value) ?
+    mergeProviderSpecificData(result[key], value) :
+    value;
   }
   return result;
 }
@@ -30,23 +30,23 @@ export function mergeProviderConnection(existing, patch) {
   for (const [key, value] of Object.entries(patch || {})) {
     if (value === undefined) continue;
     if (TOKEN_FIELDS.has(key) && (value === null || value === "")) continue;
-    result[key] = key === "providerSpecificData"
-      ? mergeProviderSpecificData(existing?.providerSpecificData, value)
-      : value;
+    result[key] = key === "providerSpecificData" ?
+    mergeProviderSpecificData(existing?.providerSpecificData, value) :
+    value;
   }
   if (
-    existing?.isActive === false
-    && patch?.isActive === true
-    && existing.autoDisabledReason
-    && existing.autoDisabledAt
-  ) {
+  existing?.isActive === false &&
+  patch?.isActive === true &&
+  existing.autoDisabledReason &&
+  existing.autoDisabledAt)
+  {
     Object.assign(result, {
       testStatus: null,
       lastError: null,
       errorCode: null,
       lastErrorAt: null,
       autoDisabledReason: null,
-      autoDisabledAt: null,
+      autoDisabledAt: null
     });
   }
   return result;

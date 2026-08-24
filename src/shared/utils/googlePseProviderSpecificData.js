@@ -1,11 +1,11 @@
-const GOOGLE_PSE_PROVIDER_ID = "google-pse";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";const GOOGLE_PSE_PROVIDER_ID = "google-pse";
 
 export function isGooglePseProvider(provider) {
   return provider === GOOGLE_PSE_PROVIDER_ID;
 }
 
 export function normalizeGooglePseCx(cx) {
-  return typeof cx === "string" ? cx.trim() : "";
+  return isString(cx) ? cx.trim() : "";
 }
 
 export function buildGooglePseProviderSpecificData(cx, existingProviderSpecificData = null) {
@@ -13,10 +13,10 @@ export function buildGooglePseProviderSpecificData(cx, existingProviderSpecificD
   if (!normalizedCx) return undefined;
 
   return {
-    ...((existingProviderSpecificData && typeof existingProviderSpecificData === "object")
-      ? existingProviderSpecificData
-      : {}),
-    cx: normalizedCx,
+    ...(existingProviderSpecificData && isObject(existingProviderSpecificData) ?
+    existingProviderSpecificData : null),
+
+    cx: normalizedCx
   };
 }
 

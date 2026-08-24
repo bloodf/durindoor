@@ -1,8 +1,8 @@
-// Check if running in Node.js environment (has fs module)
-const isNode = typeof process !== "undefined" && process.versions?.node && typeof window === "undefined";
+import { isBrowser, isFunction, isObject, isString, isUndefined } from "@/shared/utils/typeChecks.js"; // Check if running in Node.js environment (has fs module)
+const isNode = !isUndefined(globalThis.process) && process.versions?.node && !isBrowser();
 
 // Check if logging is enabled via environment variable (default: false)
-const LOGGING_ENABLED = typeof process !== "undefined" && process.env?.ENABLE_REQUEST_LOGS === 'true';
+const LOGGING_ENABLED = !isUndefined(globalThis.process) && process.env?.ENABLE_REQUEST_LOGS === 'true';
 
 let fs = null;
 let path = null;
@@ -14,11 +14,11 @@ async function ensureNodeModules() {
   try {
     fs = await import("fs");
     path = await import("path");
-    LOGS_DIR = path.join(typeof process !== "undefined" && process.cwd ? process.cwd() : ".", "logs");
+    LOGS_DIR = path.join(!isUndefined(globalThis.process) && process.cwd ? process.cwd() : ".", "logs");
   } catch {
+
     // Running in non-Node environment (Worker, Browser, etc.)
-  }
-}
+  }}
 
 // Format timestamp for folder name: 20251228_143045_123
 function formatTimestamp(date = new Date()) {
@@ -37,19 +37,19 @@ function formatTimestamp(date = new Date()) {
 async function createLogSession(sourceFormat, targetFormat, model) {
   await ensureNodeModules();
   if (!fs || !LOGS_DIR) return null;
-  
+
   try {
     if (!fs.existsSync(LOGS_DIR)) {
       fs.mkdirSync(LOGS_DIR, { recursive: true, mode: 0o700 });
     }
-    
+
     const timestamp = formatTimestamp();
     const safeModel = (model || "unknown").replace(/[/:]/g, "-");
     const folderName = `${sourceFormat}_${targetFormat}_${safeModel}_${timestamp}`;
     const sessionPath = path.join(LOGS_DIR, folderName);
-    
+
     fs.mkdirSync(sessionPath, { recursive: true, mode: 0o700 });
-    
+
     return sessionPath;
   } catch (err) {
     console.log("[LOG] Failed to create log session:", err.message);
@@ -60,7 +60,7 @@ async function createLogSession(sourceFormat, targetFormat, model) {
 // Write JSON file
 function writeJsonFile(sessionPath, filename, data) {
   if (!fs || !sessionPath) return;
-  
+
   try {
     const filePath = path.join(sessionPath, filename);
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
@@ -76,32 +76,32 @@ const SENSITIVE_QUERY_RE = new RegExp(`^(?:access[-_]?token|refresh[-_]?token|id
 const SENSITIVE_FIELD_RE = new RegExp(`^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|${SESSION_METADATA_PATTERN})$`, "i");
 
 export function maskSensitiveText(value) {
-  return String(value ?? "")
-    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
-    .replace(
-      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)"\s*:\s*")[^"]*"/gi,
-      '$1[redacted]"',
-    )
-    .replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]")
-    .replace(
-      /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)=)[^&;\s]+/gi,
-      "$1[redacted]",
-    );
+  return String(value ?? "").
+  replace(/\bBearer\s+\S+/gi, "Bearer [redacted]").
+  replace(
+    /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)"\s*:\s*")[^"]*"/gi,
+    '$1[redacted]"'
+  ).
+  replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]").
+  replace(
+    /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)=)[^&;\s]+/gi,
+    "$1[redacted]"
+  );
 }
 
 /** Recursively redact credential fields and credential-shaped text in logs. */
 export function maskSensitiveValue(value, seen = new WeakSet(), depth = 0) {
-  if (typeof value === "string") return maskSensitiveText(value);
-  if (value == null || typeof value !== "object" || depth >= 12) return value;
+  if (isString(value)) return maskSensitiveText(value);
+  if (value == null || !isObject(value) || depth >= 12) return value;
   if (seen.has(value)) return "[circular]";
   seen.add(value);
   if (Array.isArray(value)) {
     return value.map((entry) => maskSensitiveValue(entry, seen, depth + 1));
   }
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
-    key,
-    SENSITIVE_FIELD_RE.test(key) ? REDACTED : maskSensitiveValue(entry, seen, depth + 1),
-  ]));
+  key,
+  SENSITIVE_FIELD_RE.test(key) ? REDACTED : maskSensitiveValue(entry, seen, depth + 1)]
+  ));
 }
 
 /**
@@ -110,13 +110,13 @@ export function maskSensitiveValue(value, seen = new WeakSet(), depth = 0) {
  */
 export function maskSensitiveHeaders(headers) {
   if (!headers) return {};
-  const entries = typeof headers.entries === "function"
-    ? Array.from(headers.entries())
-    : Object.entries(headers);
+  const entries = isFunction(headers.entries) ?
+  Array.from(headers.entries()) :
+  Object.entries(headers);
   return Object.fromEntries(entries.map(([key, value]) => [
-    key,
-    SENSITIVE_HEADER_RE.test(String(key)) ? REDACTED : value,
-  ]));
+  key,
+  SENSITIVE_HEADER_RE.test(String(key)) ? REDACTED : value]
+  ));
 }
 
 /** Redact credential-bearing query parameters while preserving the target. */
@@ -143,7 +143,7 @@ export function maskSensitiveUrl(value) {
   } catch {
     return raw.replace(
       /([?&#](?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key)=)[^&#\s]*/gi,
-      `$1${REDACTED}`,
+      `$1${REDACTED}`
     );
   }
 }
@@ -177,13 +177,13 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
   if (!LOGGING_ENABLED) {
     return createNoOpLogger();
   }
-  
+
   // Wait for session to be created before returning logger
   const sessionPath = await createLogSession(sourceFormat, targetFormat, model);
-  
+
   return {
-    get sessionPath() { return sessionPath; },
-    
+    get sessionPath() {return sessionPath;},
+
     // 1. Log client raw request (before any conversion)
     logClientRawRequest(endpoint, body, headers = {}) {
       writeJsonFile(sessionPath, "1_req_client.json", {
@@ -193,7 +193,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         body: maskSensitiveValue(body)
       });
     },
-    
+
     // 2. Log raw request from client (after initial conversion like responsesApi)
     logRawRequest(body, headers = {}) {
       writeJsonFile(sessionPath, "2_req_source.json", {
@@ -202,7 +202,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         body: maskSensitiveValue(body)
       });
     },
-    
+
     // 3. Log OpenAI intermediate format (source → openai)
     logOpenAIRequest(body) {
       writeJsonFile(sessionPath, "3_req_openai.json", {
@@ -210,7 +210,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         body: maskSensitiveValue(body)
       });
     },
-    
+
     // 4. Log target format request (openai → target)
     logTargetRequest(url, headers, body) {
       writeJsonFile(sessionPath, "4_req_target.json", {
@@ -220,7 +220,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         body: maskSensitiveValue(body)
       });
     },
-    
+
     // 5. Log provider response (for non-streaming or error)
     logProviderResponse(status, statusText, headers, body) {
       const filename = "5_res_provider.json";
@@ -232,7 +232,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         body: maskSensitiveValue(body)
       });
     },
-    
+
     // 5. Append streaming chunk to provider response
     appendProviderChunk(chunk) {
       if (!fs || !sessionPath) return;
@@ -240,10 +240,10 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         const filePath = path.join(sessionPath, "5_res_provider.txt");
         fs.appendFileSync(filePath, maskSensitiveText(chunk));
       } catch (err) {
+
         // Ignore append errors
-      }
-    },
-    
+      }},
+
     // 6. Append OpenAI intermediate chunks (target → openai)
     appendOpenAIChunk(chunk) {
       if (!fs || !sessionPath) return;
@@ -251,10 +251,10 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         const filePath = path.join(sessionPath, "6_res_openai.txt");
         fs.appendFileSync(filePath, maskSensitiveText(chunk));
       } catch (err) {
+
         // Ignore append errors
-      }
-    },
-    
+      }},
+
     // 7. Log converted response to client (for non-streaming)
     logConvertedResponse(body) {
       writeJsonFile(sessionPath, "7_res_client.json", {
@@ -262,7 +262,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         body: maskSensitiveValue(body)
       });
     },
-    
+
     // 7. Append streaming chunk to converted response
     appendConvertedChunk(chunk) {
       if (!fs || !sessionPath) return;
@@ -270,10 +270,10 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         const filePath = path.join(sessionPath, "7_res_client.txt");
         fs.appendFileSync(filePath, maskSensitiveText(chunk));
       } catch (err) {
+
         // Ignore append errors
-      }
-    },
-    
+      }},
+
     // 6. Log error
     logError(error, requestBody = null) {
       writeJsonFile(sessionPath, "6_error.json", {
@@ -291,15 +291,15 @@ export function logRequest() {}
 export function logResponse() {}
 export function logError(provider, { error, url, model, requestBody }) {
   if (!fs || !LOGS_DIR) return;
-  
+
   try {
     if (!fs.existsSync(LOGS_DIR)) {
       fs.mkdirSync(LOGS_DIR, { recursive: true, mode: 0o700 });
     }
-    
+
     const date = new Date().toISOString().split("T")[0];
     const logPath = path.join(LOGS_DIR, `${provider}-${date}.log`);
-    
+
     const logEntry = {
       timestamp: new Date().toISOString(),
       type: "error",
@@ -310,7 +310,7 @@ export function logError(provider, { error, url, model, requestBody }) {
       stack: error?.stack ? maskSensitiveText(error.stack) : undefined,
       requestBody: maskSensitiveValue(requestBody)
     };
-    
+
     fs.appendFileSync(logPath, JSON.stringify(logEntry) + "\n");
   } catch (err) {
     console.log("[LOG] Failed to write error log:", err.message);

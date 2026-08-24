@@ -14,13 +14,13 @@ import {
   refreshCopilotToken,
   refreshCodebuddyToken,
   refreshGitLabDuoToken,
-  classifyOAuthRefreshError,
-} from "./tokenRefresh/providers.js";
+  classifyOAuthRefreshError } from
+"./tokenRefresh/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
-export {
+import { isObject, isString } from "@/shared/utils/typeChecks.js";export {
   refreshAccessToken,
   refreshClaudeOAuthToken,
   refreshGoogleToken,
@@ -32,20 +32,20 @@ export {
   refreshCopilotToken,
   refreshCodebuddyToken,
   refreshGitLabDuoToken,
-  classifyOAuthRefreshError,
-};
+  classifyOAuthRefreshError };
+
 
 export const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
 export function isUnrecoverableRefreshError(result) {
   return (
-    result &&
-    typeof result === "object" &&
-    (result.error === "unrecoverable_refresh_error" ||
-      result.error === "refresh_token_reused" ||
-      result.error === "invalid_request" ||
-      result.error === "invalid_grant")
-  );
+    result && isObject(
+      result) && (
+    result.error === "unrecoverable_refresh_error" ||
+    result.error === "refresh_token_reused" ||
+    result.error === "invalid_request" ||
+    result.error === "invalid_grant"));
+
 }
 
 export function getRefreshLeadMs(provider) {
@@ -53,7 +53,7 @@ export function getRefreshLeadMs(provider) {
 }
 
 export function parseVertexSaJson(apiKey) {
-  if (typeof apiKey !== "string") return null;
+  if (!isString(apiKey)) return null;
 
   try {
     const parsed = JSON.parse(apiKey);
@@ -81,9 +81,9 @@ export function validateVertexSaKey(saJson) {
   }
 
   const bits = key.asymmetricKeyDetails?.modulusLength || 0;
-  return bits < 2048
-    ? `Vertex: service account private_key must be RSA-2048 or larger (RS256), got ${bits} bits`
-    : null;
+  return bits < 2048 ?
+  `Vertex: service account private_key must be RSA-2048 or larger (RS256), got ${bits} bits` :
+  null;
 }
 
 // Cache Vertex tokens keyed by service account email { token, expiresAt }
@@ -109,21 +109,21 @@ export async function refreshVertexToken(saJson, log, proxyOptions = null) {
     const privateKey = await importPKCS8(saJson.private_key.replace(/\\n/g, "\n"), "RS256");
     const now = Math.floor(Date.now() / 1000);
 
-    const jwt = await new SignJWT({ scope: "https://www.googleapis.com/auth/cloud-platform" })
-      .setProtectedHeader({ alg: "RS256" })
-      .setIssuer(saJson.client_email)
-      .setAudience(OAUTH_ENDPOINTS.google.token)
-      .setIssuedAt(now)
-      .setExpirationTime(now + 3600)
-      .sign(privateKey);
+    const jwt = await new SignJWT({ scope: "https://www.googleapis.com/auth/cloud-platform" }).
+    setProtectedHeader({ alg: "RS256" }).
+    setIssuer(saJson.client_email).
+    setAudience(OAUTH_ENDPOINTS.google.token).
+    setIssuedAt(now).
+    setExpirationTime(now + 3600).
+    sign(privateKey);
 
     const res = await proxyAwareFetch(OAUTH_ENDPOINTS.google.token, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        assertion: jwt,
-      }),
+        assertion: jwt
+      })
     }, proxyOptions);
 
     if (!res.ok) {
@@ -170,7 +170,7 @@ const REFRESH_HANDLERS = {
 };
 
 export async function getAccessToken(provider, credentials, log, proxyOptions = null) {
-  if (!credentials || !credentials.refreshToken || typeof credentials.refreshToken !== "string") {
+  if (!credentials || !credentials.refreshToken || !isString(credentials.refreshToken)) {
     log?.warn?.("TOKEN_REFRESH", `No valid refresh token available for provider: ${provider}`);
     return null;
   }
@@ -197,9 +197,9 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyOptions)
 export async function refreshTokenByProvider(provider, credentials, log, proxyOptions = null) {
   if (!credentials.refreshToken) return null;
   const handler = REFRESH_HANDLERS[provider];
-  return handler
-    ? handler(credentials, log, proxyOptions)
-    : refreshAccessToken(provider, credentials.refreshToken, credentials, log, proxyOptions);
+  return handler ?
+  handler(credentials, log, proxyOptions) :
+  refreshAccessToken(provider, credentials.refreshToken, credentials, log, proxyOptions);
 }
 
 export function formatProviderCredentials(provider, credentials, log) {
@@ -277,9 +277,9 @@ const TRANSIENT_REFRESH_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "UND_ERR_SOC
 
 function isTransientRefreshError(error) {
   const status = Number(error?.status || error?.statusCode || error?.response?.status);
-  return TRANSIENT_REFRESH_CODES.has(error?.code)
-    || TRANSIENT_REFRESH_CODES.has(error?.cause?.code)
-    || (status >= 500 && status < 600);
+  return TRANSIENT_REFRESH_CODES.has(error?.code) ||
+  TRANSIENT_REFRESH_CODES.has(error?.cause?.code) ||
+  status >= 500 && status < 600;
 }
 
 export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
@@ -290,7 +290,7 @@ export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
     if (attempt > 0) {
       const delay = attempt * 1000;
       log?.debug?.("TOKEN_REFRESH", `Retry ${attempt}/${maxRetries} after ${delay}ms`);
-      await new Promise(r => setTimeout(r, delay));
+      await new Promise((r) => setTimeout(r, delay));
     }
 
     try {
@@ -306,7 +306,7 @@ export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
       attempt += 1;
       log?.warn?.(
         "TOKEN_REFRESH",
-        `Attempt ${attempt}/${maxRetries} failed: ${sanitizeErrorMessage(error?.message || error)}`,
+        `Attempt ${attempt}/${maxRetries} failed: ${sanitizeErrorMessage(error?.message || error)}`
       );
     }
   }

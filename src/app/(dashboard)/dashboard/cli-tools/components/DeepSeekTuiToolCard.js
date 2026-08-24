@@ -6,6 +6,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import { isBrowser } from "@/shared/utils/typeChecks.js";
 
 const ENDPOINT = "/api/cli-tools/deepseek-tui-settings";
 
@@ -22,7 +23,7 @@ export default function DeepSeekTuiToolCard({
   tunnelEnabled,
   tunnelPublicUrl,
   tailscaleEnabled,
-  tailscaleUrl,
+  tailscaleUrl
 }) {
   const [deepseekStatus, setDeepseekStatus] = useState(initialStatus || null);
   const [checking, setChecking] = useState(false);
@@ -93,7 +94,7 @@ export default function DeepSeekTuiToolCard({
   const normalizeLocalhost = (url) => url.replace("://localhost", "://127.0.0.1");
 
   const getLocalBaseUrl = () => {
-    if (typeof window !== "undefined") {
+    if (isBrowser()) {
       return normalizeLocalhost(window.location.origin);
     }
     return "http://127.0.0.1:20128";
@@ -108,8 +109,8 @@ export default function DeepSeekTuiToolCard({
     setApplying(true);
     setMessage(null);
     try {
-      const keyToUse = selectedApiKey?.trim()
-        || (!cloudEnabled ? "sk_durindoor" : null);
+      const keyToUse = selectedApiKey?.trim() || (
+      !cloudEnabled ? "sk_durindoor" : null);
 
       const res = await fetch(ENDPOINT, {
         method: "POST",
@@ -117,8 +118,8 @@ export default function DeepSeekTuiToolCard({
         body: JSON.stringify({
           baseUrl: getEffectiveBaseUrl(),
           apiKey: keyToUse,
-          model: selectedModel,
-        }),
+          model: selectedModel
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -160,9 +161,9 @@ export default function DeepSeekTuiToolCard({
   };
 
   const getManualConfigs = () => {
-    const keyToUse = (selectedApiKey && selectedApiKey.trim())
-      ? selectedApiKey
-      : (!cloudEnabled ? "sk_durindoor" : "<API_KEY_FROM_DASHBOARD>");
+    const keyToUse = selectedApiKey && selectedApiKey.trim() ?
+    selectedApiKey :
+    !cloudEnabled ? "sk_durindoor" : "<API_KEY_FROM_DASHBOARD>";
 
     const tomlContent = `[providers.openai]
 base_url = "${getEffectiveBaseUrl()}"
@@ -171,8 +172,8 @@ model = "${selectedModel || "provider/model-id"}"
 `;
 
     return [
-      { filename: "~/.deepseek/config.toml", content: tomlContent },
-    ];
+    { filename: "~/.deepseek/config.toml", content: tomlContent }];
+
   };
 
   return (
@@ -180,7 +181,7 @@ model = "${selectedModel || "provider/model-id"}"
       <div className="flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">
-            <Image src={tool.image || "/providers/deepseek-tui.png"} alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
+            <Image src={tool.image || "/providers/deepseek-tui.png"} alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => {e.target.style.display = "none";}} />
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -195,17 +196,17 @@ model = "${selectedModel || "provider/model-id"}"
         <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
       </div>
 
-      {isExpanded && (
-        <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
-          {checking && (
-            <div className="flex items-center gap-2 text-text-muted">
+      {isExpanded &&
+      <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
+          {checking &&
+        <div className="flex items-center gap-2 text-text-muted">
               <span className="material-symbols-outlined animate-spin">progress_activity</span>
               <span>Checking DeepSeek TUI...</span>
             </div>
-          )}
+        }
 
-          {!checking && deepseekStatus && !deepseekStatus.installed && (
-            <div className="flex flex-col gap-4">
+          {!checking && deepseekStatus && !deepseekStatus.installed &&
+        <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
@@ -224,51 +225,51 @@ model = "${selectedModel || "provider/model-id"}"
                 </div>
               </div>
             </div>
-          )}
+        }
 
-          {!checking && deepseekStatus?.installed && (
-            <>
+          {!checking && deepseekStatus?.installed &&
+        <>
               <div className="flex flex-col gap-2">
-                {tool.notes && tool.notes.length > 0 && (
-                  <div className="flex flex-col gap-2 mb-2">
-                    {tool.notes.map((note, idx) => (
-                      <div key={idx} className={`flex items-start gap-2 p-2 rounded text-xs ${
-                        note.type === "warning" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" :
-                        note.type === "error" ? "bg-red-500/10 text-red-600 dark:text-red-400" :
-                        "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                      }`}>
+                {tool.notes && tool.notes.length > 0 &&
+            <div className="flex flex-col gap-2 mb-2">
+                    {tool.notes.map((note, idx) =>
+              <div key={idx} className={`flex items-start gap-2 p-2 rounded text-xs ${
+              note.type === "warning" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" :
+              note.type === "error" ? "bg-red-500/10 text-red-600 dark:text-red-400" :
+              "bg-blue-500/10 text-blue-600 dark:text-blue-400"}`
+              }>
                         <span className="material-symbols-outlined text-[14px] mt-0.5">
                           {note.type === "warning" ? "warning" : note.type === "error" ? "error" : "info"}
                         </span>
                         <span>{note.text}</span>
                       </div>
-                    ))}
+              )}
                   </div>
-                )}
+            }
 
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Select Endpoint</span>
                   <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                   <BaseUrlSelect
-                    value={customBaseUrl || getEffectiveBaseUrl()}
-                    onChange={setCustomBaseUrl}
-                    requiresExternalUrl={tool.requiresExternalUrl}
-                    tunnelEnabled={tunnelEnabled}
-                    tunnelPublicUrl={tunnelPublicUrl}
-                    tailscaleEnabled={tailscaleEnabled}
-                    tailscaleUrl={tailscaleUrl}
-                  />
+                value={customBaseUrl || getEffectiveBaseUrl()}
+                onChange={setCustomBaseUrl}
+                requiresExternalUrl={tool.requiresExternalUrl}
+                tunnelEnabled={tunnelEnabled}
+                tunnelPublicUrl={tunnelPublicUrl}
+                tailscaleEnabled={tailscaleEnabled}
+                tailscaleUrl={tailscaleUrl} />
+              
                 </div>
 
-                {deepseekStatus?.settings?.["providers.openai"]?.base_url && (
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
+                {deepseekStatus?.settings?.["providers.openai"]?.base_url &&
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
                       {deepseekStatus.settings["providers.openai"].base_url}
                     </span>
                   </div>
-                )}
+            }
 
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">API Key</span>
@@ -287,12 +288,12 @@ model = "${selectedModel || "provider/model-id"}"
                 </div>
               </div>
 
-              {message && (
-                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+              {message &&
+          <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
                   <span className="material-symbols-outlined text-[14px]">{message.type === "success" ? "check_circle" : "error"}</span>
                   <span>{message.text}</span>
                 </div>
-              )}
+          }
 
               <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
                 <Button variant="primary" size="sm" onClick={handleApply} disabled={!selectedModel} loading={applying}>
@@ -306,9 +307,9 @@ model = "${selectedModel || "provider/model-id"}"
                 </Button>
               </div>
             </>
-          )}
+        }
         </div>
-      )}
+      }
 
       <ModelSelectModal
         isOpen={modalOpen}
@@ -317,15 +318,15 @@ model = "${selectedModel || "provider/model-id"}"
         selectedModel={selectedModel}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
-        title="Select Model for DeepSeek TUI"
-      />
+        title="Select Model for DeepSeek TUI" />
+      
 
       <ManualConfigModal
         isOpen={showManualConfigModal}
         onClose={() => setShowManualConfigModal(false)}
         title="DeepSeek TUI - Manual Configuration"
-        configs={getManualConfigs()}
-      />
-    </Card>
-  );
+        configs={getManualConfigs()} />
+      
+    </Card>);
+
 }

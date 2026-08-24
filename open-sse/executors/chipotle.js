@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const BASE_URL = "https://amelia.chipotle.com";
 const DOMAIN_CODE = "chipotle";
@@ -49,7 +50,7 @@ export class AmeliaClient {
     this.messageCallbacks = new Map();
     this.connectPromise = null;
     this.webSocketFactory = webSocketFactory;
-    this.connectTimeoutMs = Math.max(1, typeof connectTimeoutMs === "number" ? connectTimeoutMs : 15_000);
+    this.connectTimeoutMs = Math.max(1, isNumber(connectTimeoutMs) ? connectTimeoutMs : 15_000);
   }
 
   async init() {
@@ -57,9 +58,9 @@ export class AmeliaClient {
       headers: {
         "User-Agent": "Mozilla/5.0 AppleWebKit/537.36 Chrome/149.0.0.0 Safari/537.36",
         Origin: BASE_URL,
-        Referer: `${BASE_URL}/Amelia/ui/chipotle/chat?embed=iframe`,
+        Referer: `${BASE_URL}/Amelia/ui/chipotle/chat?embed=iframe`
       },
-      redirect: "manual",
+      redirect: "manual"
     });
     if (!res.ok) throw new Error(`Amelia init failed: ${res.status}`);
     const data = await res.json();
@@ -67,7 +68,7 @@ export class AmeliaClient {
     this.session = {
       csrfToken: data.csrfToken,
       userId: data.user?.userId,
-      cookieHeader: setCookies.map((cookie) => cookie.split(";")[0]).join("; "),
+      cookieHeader: setCookies.map((cookie) => cookie.split(";")[0]).join("; ")
     };
   }
 
@@ -89,7 +90,7 @@ export class AmeliaClient {
       const headers = {
         Cookie: this.session.cookieHeader,
         Origin: BASE_URL,
-        "User-Agent": "Mozilla/5.0 AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 AppleWebKit/537.36"
       };
       const ws = this.webSocketFactory ? this.webSocketFactory(wsUrl, { headers }) : new WebSocket(wsUrl, { headers });
       const timeout = setTimeout(() => {
@@ -121,9 +122,9 @@ export class AmeliaClient {
         this.handleStompFrame(msg, resolveConnect, rejectConnect, timeout);
       }
     } catch {
+
       // Ignore malformed SockJS frames.
-    }
-  }
+    }}
 
   handleStompFrame(frame, resolveConnect, rejectConnect, timeout) {
     const command = frame.split("\n")[0].replace(/\r$/, "");
@@ -220,8 +221,8 @@ async function getClient() {
 }
 
 function releaseClient(client) {
-  if (pool.length < 5) pool.push(client);
-  else client.close().catch(() => {});
+  if (pool.length < 5) pool.push(client);else
+  client.close().catch(() => {});
 }
 
 export class ChipotleExecutor extends BaseExecutor {
@@ -239,7 +240,7 @@ export class ChipotleExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
-    return body && typeof body === "object" ? { ...body, model } : body;
+    return body && isObject(body) ? { ...body, model } : body;
   }
 
   async execute(input) {
@@ -248,12 +249,12 @@ export class ChipotleExecutor extends BaseExecutor {
     const lastUser = [...messages].reverse().find((message) => message.role === "user");
     const prompt = (() => {
       const content = lastUser?.content;
-      if (typeof content === "string") return content;
+      if (isString(content)) return content;
       if (!Array.isArray(content)) return "";
-      return content
-        .filter((part) => typeof part === "string" || (part && part.type === "text" && typeof part.text === "string"))
-        .map((part) => (typeof part === "string" ? part : part.text))
-        .join("");
+      return content.
+      filter((part) => isString(part) || part && part.type === "text" && isString(part.text)).
+      map((part) => isString(part) ? part : part.text).
+      join("");
     })();
     let client = null;
     try {
@@ -270,15 +271,15 @@ export class ChipotleExecutor extends BaseExecutor {
         return {
           response: new Response(
             [
-              `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`,
-              `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
-              "data: [DONE]\n\n",
-            ].join(""),
+            `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`,
+            `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
+            "data: [DONE]\n\n"].
+            join(""),
             { status: 200, headers: { "Content-Type": "text/event-stream" } }
           ),
           url: this.buildUrl(),
           headers: this.buildHeaders(),
-          transformedBody: body,
+          transformedBody: body
         };
       }
       return {
@@ -289,13 +290,13 @@ export class ChipotleExecutor extends BaseExecutor {
             created,
             model,
             choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         ),
         url: this.buildUrl(),
         headers: this.buildHeaders(),
-        transformedBody: body,
+        transformedBody: body
       };
     } catch (err) {
       if (client && this.clientFactory === getClient) client.close().catch(() => {});
@@ -307,7 +308,7 @@ export class ChipotleExecutor extends BaseExecutor {
         ),
         url: this.buildUrl(),
         headers: this.buildHeaders(),
-        transformedBody: body,
+        transformedBody: body
       };
     }
   }

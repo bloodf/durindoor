@@ -4,14 +4,14 @@ import {
   FETCH_CONNECT_TIMEOUT_MS,
   HTTP_STATUS,
   MAX_PROVIDER_BODY_BYTES,
-  PROVIDER_BODY_TIMEOUT_MS,
-} from "../config/runtimeConfig.js";
+  PROVIDER_BODY_TIMEOUT_MS } from
+"../config/runtimeConfig.js";
 import {
   generateCursorBody,
   parseConnectRPCFrame,
   extractTextFromResponse,
-  parseNativeToolCallsFromText,
-} from "../utils/cursorProtobuf.js";
+  parseNativeToolCallsFromText } from
+"../utils/cursorProtobuf.js";
 import { shouldForceAgentMode } from "../utils/cursorToolMapping.js";
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { estimateUsage } from "../utils/usageTracking.js";
@@ -21,16 +21,16 @@ import { FORMATS } from "../translator/formats.js";
 import { proxyAwareFetch, shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
 import {
   runProviderAttemptDispatch,
-  runQuotaBearingProviderRequest,
-} from "../services/providerAttemptContext.js";
+  runQuotaBearingProviderRequest } from
+"../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import zlib from "zlib";
 import { createRequire } from "module";
 
 // Detect cloud environment
-const isCloudEnv = () => {
-  if (typeof caches !== "undefined" && typeof caches === "object") return true;
-  if (typeof EdgeRuntime !== "undefined") return true;
+import { isFunction, isObject, isUndefined } from "@/shared/utils/typeChecks.js";const isCloudEnv = () => {
+  if (!isUndefined(caches) && isObject(caches)) return true;
+  if (!isUndefined(EdgeRuntime)) return true;
   return false;
 };
 
@@ -44,14 +44,14 @@ if (!isCloudEnv()) {
     const require = createRequire(import.meta.url);
     http2 = require("http2");
   } catch {
+
     // http2 not available
-  }
-}
+  }}
 
 export function __setCursorHttp2ForTesting(value) {
   const previous = http2;
   http2 = value;
-  return () => { http2 = previous; };
+  return () => {http2 = previous;};
 }
 
 const COMPRESS_FLAG = {
@@ -95,10 +95,10 @@ function decompressPayload(payload, flags, maxOutputLength = MAX_PROVIDER_BODY_B
   }
 
   if (
-    flags === COMPRESS_FLAG.GZIP ||
-    flags === COMPRESS_FLAG.TRAILER ||
-    flags === COMPRESS_FLAG.GZIP_TRAILER
-  ) {
+  flags === COMPRESS_FLAG.GZIP ||
+  flags === COMPRESS_FLAG.TRAILER ||
+  flags === COMPRESS_FLAG.GZIP_TRAILER)
+  {
     // Primary: try gzip decompression (standard gzip header 0x1f 0x8b)
     try {
       return zlib.gunzipSync(payload, { maxOutputLength });
@@ -154,13 +154,13 @@ function readCursorFrame(buffer, offset, frameNum, tag, maxOutputLength = MAX_PR
 }
 
 function createErrorResponse(jsonError) {
-  const errorMsg = jsonError?.error?.details?.[0]?.debug?.details?.title
-    || jsonError?.error?.details?.[0]?.debug?.details?.detail
-    || jsonError?.error?.message
-    || "API Error";
-  
+  const errorMsg = jsonError?.error?.details?.[0]?.debug?.details?.title ||
+  jsonError?.error?.details?.[0]?.debug?.details?.detail ||
+  jsonError?.error?.message ||
+  "API Error";
+
   const isRateLimit = jsonError?.error?.code === "resource_exhausted";
-  
+
   return new Response(JSON.stringify({
     error: {
       message: errorMsg,
@@ -175,10 +175,10 @@ function createErrorResponse(jsonError) {
 
 function createCursorStreamErrorResponse(message, status = HTTP_STATUS.BAD_GATEWAY) {
   return new Response(JSON.stringify({
-    error: { message, type: "stream_error", code: "incomplete_stream" },
+    error: { message, type: "stream_error", code: "incomplete_stream" }
   }), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" }
   });
 }
 
@@ -201,9 +201,9 @@ export function appendBoundedCursorChunk(state, chunk, maxBytes = MAX_PROVIDER_B
 
 function readCursorChunk(reader, combined, signal) {
   if (combined.aborted) {
-    return Promise.reject(signal?.aborted
-      ? cursorAbortError(signal.reason)
-      : new Error("Cursor response body timed out"));
+    return Promise.reject(signal?.aborted ?
+    cursorAbortError(signal.reason) :
+    new Error("Cursor response body timed out"));
   }
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -215,19 +215,19 @@ function readCursorChunk(reader, combined, signal) {
     };
     const onAbort = () => finish(
       reject,
-      signal?.aborted ? cursorAbortError(signal.reason) : new Error("Cursor response body timed out"),
+      signal?.aborted ? cursorAbortError(signal.reason) : new Error("Cursor response body timed out")
     );
     combined.addEventListener("abort", onAbort, { once: true });
     reader.read().then(
       (value) => finish(resolve, value),
-      (error) => finish(reject, error),
+      (error) => finish(reject, error)
     );
   });
 }
 
 export async function readCursorResponseBody(response, signal, {
   maxBytes = MAX_PROVIDER_BODY_BYTES,
-  timeoutMs = PROVIDER_BODY_TIMEOUT_MS,
+  timeoutMs = PROVIDER_BODY_TIMEOUT_MS
 } = {}) {
   if (signal?.aborted) throw cursorAbortError(signal.reason);
   const reader = response?.body?.getReader?.();
@@ -235,7 +235,7 @@ export async function readCursorResponseBody(response, signal, {
   const state = { chunks: [], total: 0 };
   const timeout = AbortSignal.timeout(timeoutMs);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const onAbort = () => { void Promise.resolve(reader.cancel(combined.reason)).catch(() => {}); };
+  const onAbort = () => {void Promise.resolve(reader.cancel(combined.reason)).catch(() => {});};
   combined.addEventListener("abort", onAbort, { once: true });
   try {
     while (true) {
@@ -249,7 +249,7 @@ export async function readCursorResponseBody(response, signal, {
     throw error;
   } finally {
     combined.removeEventListener("abort", onAbort);
-    try { reader.releaseLock(); } catch { /* noop */ }
+    try {reader.releaseLock();} catch {/* noop */}
   }
 }
 
@@ -293,7 +293,7 @@ export class CursorExecutor extends BaseExecutor {
     signal?.addEventListener?.("abort", onAbort, { once: true });
     const timeout = setTimeout(
       () => connectController.abort(new Error("Cursor response headers timed out")),
-      timeoutMs,
+      timeoutMs
     );
     let response;
     try {
@@ -301,7 +301,7 @@ export class CursorExecutor extends BaseExecutor {
         method: "POST",
         headers,
         body,
-        signal: connectController.signal,
+        signal: connectController.signal
       }, proxyOptions));
     } finally {
       clearTimeout(timeout);
@@ -337,12 +337,12 @@ export class CursorExecutor extends BaseExecutor {
 
       const closeTransport = (error, destroy) => {
         if (destroy) {
-          try { req?.close?.(http2.constants?.NGHTTP2_CANCEL); } catch { /* already closed */ }
-          try { req?.destroy?.(error); } catch { /* already destroyed */ }
-          try { client.destroy?.(error); } catch { /* already destroyed */ }
+          try {req?.close?.(http2.constants?.NGHTTP2_CANCEL);} catch {/* already closed */}
+          try {req?.destroy?.(error);} catch {/* already destroyed */}
+          try {client.destroy?.(error);} catch {/* already destroyed */}
           return;
         }
-        try { client.close(); } catch { /* already closed */ }
+        try {client.close();} catch {/* already closed */}
       };
 
       // Gracefully close only a complete response. Timeout, abort, and transport
@@ -377,7 +377,7 @@ export class CursorExecutor extends BaseExecutor {
         return;
       }
 
-      req.on("response", (hdrs) => { responseHeaders = hdrs; });
+      req.on("response", (hdrs) => {responseHeaders = hdrs;});
       req.on("data", (chunk) => {
         if (settled) return;
         try {
@@ -427,16 +427,16 @@ export class CursorExecutor extends BaseExecutor {
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
 
-    const providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0
-      ? attemptStartedAt
-      : (typeof onProviderAttempt === "function" ? onProviderAttempt() : Date.now());
+    const providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
+    attemptStartedAt :
+    isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
     try {
       const shouldForceFetch = shouldUseProxyAwareTransport(url, proxyOptions);
-      const response = (http2 && !shouldForceFetch)
-        ? await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(
-            () => this.makeHttp2Request(url, headers, transformedBody, signal),
-          ))
-        : await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
+      const response = http2 && !shouldForceFetch ?
+      await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(
+        () => this.makeHttp2Request(url, headers, transformedBody, signal)
+      )) :
+      await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
 
       if (response.status !== 200) {
         const errorResponse = new Response(JSON.stringify({
@@ -452,9 +452,9 @@ export class CursorExecutor extends BaseExecutor {
         return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
       }
 
-      const transformedResponse = stream !== false
-        ? this.transformProtobufToSSE(response.body, model, body)
-        : this.transformProtobufToJSON(response.body, model, body);
+      const transformedResponse = stream !== false ?
+      this.transformProtobufToSSE(response.body, model, body) :
+      this.transformProtobufToJSON(response.body, model, body);
 
       return {
         response: transformedResponse,
@@ -462,7 +462,7 @@ export class CursorExecutor extends BaseExecutor {
         headers,
         transformedBody: body,
         attemptStartedAt: providerAttemptStartedAt,
-        terminalProvenance: "validated",
+        terminalProvenance: "validated"
       };
     } catch (error) {
       if (isQuotaDispatchUnavailable(error)) throw error;
@@ -578,9 +578,9 @@ export class CursorExecutor extends BaseExecutor {
 
     if (frameCount === 0) return createCursorStreamErrorResponse("Cursor returned an empty protobuf stream");
 
-    const visibleComposerContent = isComposerModel(model)
-      ? visibleComposerContentFromThinking(totalThinking)
-      : "";
+    const visibleComposerContent = isComposerModel(model) ?
+    visibleComposerContentFromThinking(totalThinking) :
+    "";
     const finalContent = totalContent || visibleComposerContent;
 
     debugLog(
@@ -727,16 +727,16 @@ export class CursorExecutor extends BaseExecutor {
               id: responseId, created, model,
               delta: {
                 tool_calls: [
-                  {
-                    index: existing.index,
-                    id: tc.id,
-                    type: "function",
-                    function: {
-                      name: tc.function.name,
-                      arguments: tc.function.arguments
-                    }
+                {
+                  index: existing.index,
+                  id: tc.id,
+                  type: "function",
+                  function: {
+                    name: tc.function.name,
+                    arguments: tc.function.arguments
                   }
-                ]
+                }]
+
               }
             }));
           }
@@ -753,16 +753,16 @@ export class CursorExecutor extends BaseExecutor {
             id: responseId, created, model,
             delta: {
               tool_calls: [
-                {
-                  index: toolCallIndex,
-                  id: tc.id,
-                  type: "function",
-                  function: {
-                    name: tc.function.name,
-                    arguments: tc.function.arguments
-                  }
+              {
+                index: toolCallIndex,
+                id: tc.id,
+                type: "function",
+                function: {
+                  name: tc.function.name,
+                  arguments: tc.function.arguments
                 }
-              ]
+              }]
+
             }
           }));
         }
@@ -773,9 +773,9 @@ export class CursorExecutor extends BaseExecutor {
         chunks.push(chatChunkSse({
           id: responseId, created, model,
           delta:
-            chunks.length === 0 && toolCalls.length === 0
-              ? { role: "assistant", content: result.text }
-              : { content: result.text }
+          chunks.length === 0 && toolCalls.length === 0 ?
+          { role: "assistant", content: result.text } :
+          { content: result.text }
         }));
       }
 
@@ -789,9 +789,9 @@ export class CursorExecutor extends BaseExecutor {
           chunks.push(chatChunkSse({
             id: responseId, created, model,
             delta:
-              chunks.length === 0 && toolCalls.length === 0
-                ? { role: "assistant", content: deltaContent }
-                : { content: deltaContent }
+            chunks.length === 0 && toolCalls.length === 0 ?
+            { role: "assistant", content: deltaContent } :
+            { content: deltaContent }
           }));
         }
       }
@@ -824,16 +824,16 @@ export class CursorExecutor extends BaseExecutor {
             id: responseId, created, model,
             delta: {
               tool_calls: [
-                {
-                  index: toolCallIndex,
-                  id: tc.id,
-                  type: "function",
-                  function: {
-                    name: tc.function.name,
-                    arguments: tc.function.arguments
-                  }
+              {
+                index: toolCallIndex,
+                id: tc.id,
+                type: "function",
+                function: {
+                  name: tc.function.name,
+                  arguments: tc.function.arguments
                 }
-              ]
+              }]
+
             }
           }));
         }
@@ -853,12 +853,12 @@ export class CursorExecutor extends BaseExecutor {
         created,
         model,
         choices: [
-          {
-            index: 0,
-            delta: {},
-            finish_reason: toolCalls.length > 0 ? "tool_calls" : "stop"
-          }
-        ],
+        {
+          index: 0,
+          delta: {},
+          finish_reason: toolCalls.length > 0 ? "tool_calls" : "stop"
+        }],
+
         usage
       })}\n\n`
     );

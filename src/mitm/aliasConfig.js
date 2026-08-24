@@ -1,31 +1,31 @@
-const REASONING_EFFORTS = require("../../open-sse/config/reasoningEfforts.json");
+import { isObject, isString } from "@/shared/utils/typeChecks.js";const REASONING_EFFORTS = require("../../open-sse/config/reasoningEfforts.json");
 const REASONING_EFFORT_SET = new Set(REASONING_EFFORTS);
 
 function normalizeReasoningEffort(value) {
-  if (typeof value !== "string") return null;
+  if (!isString(value)) return null;
   const normalized = value.trim().toLowerCase();
   return REASONING_EFFORT_SET.has(normalized) ? normalized : null;
 }
 
 function normalizeAliasEntry(value) {
-  if (typeof value === "string") {
+  if (isString(value)) {
     const model = value.trim();
     return model ? { model } : null;
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if (!value || !isObject(value) || Array.isArray(value)) return null;
 
-  const model = typeof value.model === "string" ? value.model.trim() : "";
+  const model = isString(value.model) ? value.model.trim() : "";
   const reasoningEffort = normalizeReasoningEffort(value.reasoningEffort);
   if (!model && !reasoningEffort) return null;
 
   return {
-    ...(model ? { model } : {}),
-    ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...(model ? { model } : null),
+    ...(reasoningEffort ? { reasoningEffort } : null)
   };
 }
 
 function normalizeAliasMappings(mappings) {
-  if (!mappings || typeof mappings !== "object" || Array.isArray(mappings)) return {};
+  if (!mappings || !isObject(mappings) || Array.isArray(mappings)) return {};
   const normalized = {};
   for (const [alias, value] of Object.entries(mappings)) {
     if (!alias) continue;
@@ -36,15 +36,15 @@ function normalizeAliasMappings(mappings) {
 }
 
 function hasInvalidReasoningEffort(mappings) {
-  if (!mappings || typeof mappings !== "object" || Array.isArray(mappings)) return false;
-  return Object.values(mappings).some((value) => (
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    value.reasoningEffort != null &&
-    value.reasoningEffort !== "" &&
-    !normalizeReasoningEffort(value.reasoningEffort)
-  ));
+  if (!mappings || !isObject(mappings) || Array.isArray(mappings)) return false;
+  return Object.values(mappings).some((value) =>
+  value && isObject(
+    value) &&
+  !Array.isArray(value) &&
+  value.reasoningEffort != null &&
+  value.reasoningEffort !== "" &&
+  !normalizeReasoningEffort(value.reasoningEffort)
+  );
 }
 
 module.exports = {
@@ -52,5 +52,5 @@ module.exports = {
   normalizeReasoningEffort,
   normalizeAliasEntry,
   normalizeAliasMappings,
-  hasInvalidReasoningEffort,
+  hasInvalidReasoningEffort
 };

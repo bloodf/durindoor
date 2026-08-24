@@ -1,30 +1,31 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 function asObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return value && isObject(value) && !Array.isArray(value) ? value : {};
 }
 
 function extractText(content) {
-  if (typeof content === "string") return content.trim();
+  if (isString(content)) return content.trim();
   if (!Array.isArray(content)) return "";
-  return content
-    .map(part => {
-      if (!part || typeof part !== "object") return "";
-      if ((part.type === "text" || part.type === "input_text") && typeof part.text === "string") {
-        return part.text;
-      }
-      return "";
-    })
-    .filter(Boolean)
-    .join("\n")
-    .trim();
+  return content.
+  map((part) => {
+    if (!part || !isObject(part)) return "";
+    if ((part.type === "text" || part.type === "input_text") && isString(part.text)) {
+      return part.text;
+    }
+    return "";
+  }).
+  filter(Boolean).
+  join("\n").
+  trim();
 }
 
 function hasToolExchange(messages) {
-  return messages.some(message => {
+  return messages.some((message) => {
     const role = String(message?.role || "user").toLowerCase();
-    return role === "tool" || (role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length > 0);
+    return role === "tool" || role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
   });
 }
 
@@ -48,8 +49,8 @@ function buildPrompt(messages = []) {
       const role = String(message?.role || "user").toLowerCase();
       const text = extractText(message?.content);
       if (!text) continue;
-      if (role === "system" || role === "developer") systemParts.push(text);
-      else if (role === "user") userParts.push(text);
+      if (role === "system" || role === "developer") systemParts.push(text);else
+      if (role === "user") userParts.push(text);
     }
     const latestUser = userParts.at(-1) || "";
     return systemParts.length ? `System instructions:\n${systemParts.join("\n\n")}\n\n${latestUser}`.trim() : latestUser;
@@ -93,12 +94,12 @@ function buildRequestBody(model, body, credentials) {
     current_file: {
       file_name: fileName,
       content_above_cursor: prompt,
-      content_below_cursor: "",
+      content_below_cursor: ""
     },
     intent: providerData.intent || "generation",
     user_instruction: prompt,
     model_provider: providerData.modelProvider || undefined,
-    model_name: model,
+    model_name: model
   };
 }
 
@@ -108,9 +109,9 @@ function resolveText(payload) {
 }
 
 function resolveModel(payload, fallback) {
-  if (typeof payload?.model === "string" && payload.model) return payload.model;
-  if (typeof payload?.model?.name === "string") return payload.model.name;
-  if (typeof payload?.metadata?.model_details?.model_name === "string") {
+  if (isString(payload?.model) && payload.model) return payload.model;
+  if (isString(payload?.model?.name)) return payload.model.name;
+  if (isString(payload?.metadata?.model_details?.model_name)) {
     return payload.metadata.model_details.model_name;
   }
   return fallback;
@@ -126,9 +127,9 @@ function completionResponse(payload, fallbackModel) {
     choices: [{
       index: 0,
       message: { role: "assistant", content: resolveText(payload) },
-      finish_reason: payload?.choices?.[0]?.finish_reason || "stop",
+      finish_reason: payload?.choices?.[0]?.finish_reason || "stop"
     }],
-    usage: payload?.usage,
+    usage: payload?.usage
   };
 }
 
@@ -137,13 +138,13 @@ function streamFromCompletion(json) {
   const text = json.choices?.[0]?.message?.content || "";
   const stream = new ReadableStream({
     start(controller) {
-      const emit = value => controller.enqueue(enc.encode(`data: ${JSON.stringify(value)}\n\n`));
+      const emit = (value) => controller.enqueue(enc.encode(`data: ${JSON.stringify(value)}\n\n`));
       emit({ ...json, object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] });
       if (text) emit({ ...json, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: text }, finish_reason: null }] });
       emit({ ...json, object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
-    },
+    }
   });
   return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
 }
@@ -151,7 +152,7 @@ function streamFromCompletion(json) {
 function errorResponse(status, message) {
   return new Response(JSON.stringify({ error: { message, type: status === 401 || status === 403 ? "authentication_error" : "api_error" } }), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" }
   });
 }
 
@@ -169,7 +170,7 @@ export class GitlabExecutor extends BaseExecutor {
     return {
       "Content-Type": "application/json",
       Accept: "application/json",
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${token}`
     };
   }
 
@@ -185,7 +186,7 @@ export class GitlabExecutor extends BaseExecutor {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
-      signal: signal || undefined,
+      signal: signal || undefined
     });
     const text = await response.text();
     let payload = null;
@@ -202,7 +203,7 @@ export class GitlabExecutor extends BaseExecutor {
       response: stream ? streamFromCompletion(json) : new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } }),
       url,
       headers,
-      transformedBody,
+      transformedBody
     };
   }
 }

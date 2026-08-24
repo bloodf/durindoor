@@ -4,31 +4,32 @@ import {
   createProviderConnection,
   getProviderNodeById,
   getProviderNodes,
-  getProxyPoolById,
-} from "@/models";
+  getProxyPoolById } from
+"@/models";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isHiddenProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
-  "clientSecret",
-  "qwenCloudCookie",
-  "alibabaConsoleCookie",
-  "cookie",
-  "QWEN_CLOUD_COOKIE",
-]);
+"clientSecret",
+"qwenCloudCookie",
+"alibabaConsoleCookie",
+"cookie",
+"QWEN_CLOUD_COOKIE"]
+);
 
 function sanitizeProviderConnection(connection) {
-  const providerSpecificData = connection.providerSpecificData
-    ? Object.fromEntries(
-        Object.entries(connection.providerSpecificData)
-          .filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
-      )
-    : connection.providerSpecificData;
+  const providerSpecificData = connection.providerSpecificData ?
+  Object.fromEntries(
+    Object.entries(connection.providerSpecificData).
+    filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
+  ) :
+  connection.providerSpecificData;
 
   return {
     ...connection,
@@ -37,14 +38,14 @@ function sanitizeProviderConnection(connection) {
     refreshToken: undefined,
     idToken: undefined,
     firecrawlHeaders: undefined,
-    ...(providerSpecificData !== undefined ? { providerSpecificData } : {}),
+    ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
   };
 }
 
 function normalizeProxyConfig(body = {}) {
   const enabled = body?.connectionProxyEnabled === true;
-  const url = typeof body?.connectionProxyUrl === "string" ? body.connectionProxyUrl.trim() : "";
-  const noProxy = typeof body?.connectionNoProxy === "string" ? body.connectionNoProxy.trim() : "";
+  const url = isString(body?.connectionProxyUrl) ? body.connectionProxyUrl.trim() : "";
+  const noProxy = isString(body?.connectionNoProxy) ? body.connectionNoProxy.trim() : "";
 
   if (enabled && !url) {
     return { error: "Connection proxy URL is required when connection proxy is enabled" };
@@ -53,7 +54,7 @@ function normalizeProxyConfig(body = {}) {
   return {
     connectionProxyEnabled: enabled,
     connectionProxyUrl: url,
-    connectionNoProxy: noProxy,
+    connectionNoProxy: noProxy
   };
 }
 
@@ -87,14 +88,14 @@ export async function GET() {
       for (const node of nodes) {
         if (node.id && node.name) nodeNameMap[node.id] = node.name;
       }
-    } catch { }
+    } catch {}
 
     // Hide sensitive fields, enrich name for compatible providers
-    const safeConnections = connections.map(c => {
+    const safeConnections = connections.map((c) => {
       const isCompatible = isOpenAICompatibleProvider(c.provider) || isAnthropicCompatibleProvider(c.provider);
-      const name = isCompatible
-        ? (c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider)
-        : c.name;
+      const name = isCompatible ?
+      c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider :
+      c.name;
       return sanitizeProviderConnection({ ...c, name });
     });
 
@@ -129,13 +130,13 @@ export async function POST(request) {
     // accept an API key via authModes — they aren't in APIKEY_PROVIDERS, so allow them here.
     const supportsApiKeyMode = !!AI_PROVIDERS[provider]?.authModes?.includes("apikey");
     const isValidProvider = APIKEY_PROVIDERS[provider] ||
-      FREE_TIER_PROVIDERS[provider] ||
-      FREE_PROVIDERS[provider] ||
-      supportsApiKeyMode ||
-      isWebCookieProvider ||
-      isOpenAICompatibleProvider(provider) ||
-      isAnthropicCompatibleProvider(provider) ||
-      isCustomEmbeddingProvider(provider);
+    FREE_TIER_PROVIDERS[provider] ||
+    FREE_PROVIDERS[provider] ||
+    supportsApiKeyMode ||
+    isWebCookieProvider ||
+    isOpenAICompatibleProvider(provider) ||
+    isAnthropicCompatibleProvider(provider) ||
+    isCustomEmbeddingProvider(provider);
 
     if (!provider || !isValidProvider) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
@@ -147,7 +148,7 @@ export async function POST(request) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
     const rawConnectionName = name || displayName || AI_PROVIDERS[provider]?.name;
-    const connectionName = typeof rawConnectionName === "string" ? rawConnectionName.trim() : "";
+    const connectionName = isString(rawConnectionName) ? rawConnectionName.trim() : "";
     if (!connectionName) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
@@ -157,7 +158,7 @@ export async function POST(request) {
       try {
         providerSpecificData = {
           ...(providerSpecificData || {}),
-          accountId: normalizeAccountIdPlaceholder(provider, providerSpecificData?.accountId),
+          accountId: normalizeAccountIdPlaceholder(provider, providerSpecificData?.accountId)
         };
       } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
@@ -179,7 +180,7 @@ export async function POST(request) {
         prefix: node.prefix,
         apiType: node.apiType,
         baseUrl: node.baseUrl,
-        nodeName: node.name,
+        nodeName: node.name
       };
     } else if (isAnthropicCompatibleProvider(provider)) {
       const node = await getProviderNodeById(provider);
@@ -189,7 +190,7 @@ export async function POST(request) {
       providerSpecificData = {
         prefix: node.prefix,
         baseUrl: node.baseUrl,
-        nodeName: node.name,
+        nodeName: node.name
       };
     } else if (isCustomEmbeddingProvider(provider)) {
       const node = await getProviderNodeById(provider);
@@ -199,7 +200,7 @@ export async function POST(request) {
       providerSpecificData = {
         prefix: node.prefix,
         baseUrl: node.baseUrl,
-        nodeName: node.name,
+        nodeName: node.name
       };
     }
 
@@ -207,7 +208,7 @@ export async function POST(request) {
       ...(providerSpecificData || {}),
       connectionProxyEnabled: proxyConfig.connectionProxyEnabled,
       connectionProxyUrl: proxyConfig.connectionProxyUrl,
-      connectionNoProxy: proxyConfig.connectionNoProxy,
+      connectionNoProxy: proxyConfig.connectionNoProxy
     };
 
     if (proxyPoolId !== null) {
@@ -233,7 +234,7 @@ export async function POST(request) {
         defaultModel: defaultModel || null,
         providerSpecificData: mergedProviderSpecificData,
         isActive: true,
-        testStatus: testStatus || "unknown",
+        testStatus: testStatus || "unknown"
       }, createOnly === true ? { requireNewName: true } : { createOnly: true });
     } catch (error) {
       if (error?.code === "PROVIDER_CONNECTION_ALREADY_EXISTS" || error?.code === "PROVIDER_CONNECTION_NAME_CONFLICT") {

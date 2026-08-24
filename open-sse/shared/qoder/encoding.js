@@ -1,4 +1,4 @@
-/**
+import { isString } from "@/shared/utils/typeChecks.js"; /**
  * Qoder body encoding ported from qoder2api's QoderEncoding.java (via the
  * CLIProxyAPIPlus qoder-provider branch).
  *
@@ -30,11 +30,11 @@ const QODER_S2C = (() => {
  * @returns {string} encoded string
  */
 export function qoderEncodeBody(plaintext) {
-  const buf = Buffer.isBuffer(plaintext)
-    ? plaintext
-    : typeof plaintext === "string"
-      ? Buffer.from(plaintext, "utf8")
-      : Buffer.from(plaintext);
+  const buf = Buffer.isBuffer(plaintext) ?
+  plaintext :
+  isString(plaintext) ?
+  Buffer.from(plaintext, "utf8") :
+  Buffer.from(plaintext);
 
   const std = buf.toString("base64");
   const n = std.length;

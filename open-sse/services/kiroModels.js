@@ -30,12 +30,13 @@ import { sanitizeErrorMessage } from "../utils/error.js";
 import {
   KIRO_DEFAULT_REGION,
   regionFromProfileArn,
-  resolveKiroRegion,
-} from "../config/kiroRegions.js";
+  resolveKiroRegion } from
+"../config/kiroRegions.js";
 import {
   buildKiroModelVariants,
-  stripKiroSyntheticSuffixes,
-} from "../providers/models/kiroVariants.js";
+  stripKiroSyntheticSuffixes } from
+"../providers/models/kiroVariants.js";
+import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const KIRO_RUNTIME_SDK_VERSION = "1.0.0";
 const KIRO_AGENT_OS = "windows";
@@ -53,7 +54,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
  * scopes. Ported from 9router PR #2615 (`src/lib/oauth/kiroSsoCache.js`).
  */
 export function isKiroSsoToken(data) {
-  if (!data || typeof data.refreshToken !== "string" || !data.refreshToken) return false;
+  if (!data || !isString(data.refreshToken) || !data.refreshToken) return false;
   if (data.refreshToken.startsWith("aorAAAAAG")) return true;
   if (data.authMethod === "external_idp") return true;
   if (Array.isArray(data.scopes) && data.scopes.some((s) => String(s).includes("codewhisperer"))) return true;
@@ -128,9 +129,9 @@ export async function resolveKiroCredentialsFromSsoCache(targetRefreshToken = nu
   }
 
   if (!refreshToken) {
-    throw new Error(targetRefreshToken
-      ? "Provided refresh token not found in local AWS SSO cache."
-      : "Kiro token not found in AWS SSO cache. Please login to Kiro IDE first.");
+    throw new Error(targetRefreshToken ?
+    "Provided refresh token not found in local AWS SSO cache." :
+    "Kiro token not found in AWS SSO cache. Please login to Kiro IDE first.");
   }
 
   // For IDC/organization tokens, resolve clientId and clientSecret from the
@@ -145,9 +146,9 @@ export async function resolveKiroCredentialsFromSsoCache(targetRefreshToken = nu
     // only accept the expected hex-hash shape (no path separators) before
     // joining it into a path, so a crafted entry cannot read files outside
     // the SSO cache.
-    const safeHash = /^[0-9a-f]{1,128}$/i.test(String(tokenData.clientIdHash))
-      ? String(tokenData.clientIdHash)
-      : null;
+    const safeHash = /^[0-9a-f]{1,128}$/i.test(String(tokenData.clientIdHash)) ?
+    String(tokenData.clientIdHash) :
+    null;
     if (safeHash) {
       try {
         const clientContent = await readFile(join(cachePath, `${safeHash}.json`), "utf-8");
@@ -164,9 +165,9 @@ export async function resolveKiroCredentialsFromSsoCache(targetRefreshToken = nu
   // carries the correct region for the account.
   let profileArn = null;
   const kiroProfilePaths = [
-    join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json"),
-    join(homedir(), ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json"),
-  ];
+  join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json"),
+  join(homedir(), ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json")];
+
   for (const profilePath of kiroProfilePaths) {
     try {
       const profileData = JSON.parse(await readFile(profilePath, "utf-8"));
@@ -188,7 +189,7 @@ export async function resolveKiroCredentialsFromSsoCache(targetRefreshToken = nu
     scopes: tokenData.scopes,
     region: tokenData.region,
     profile_arn: profileArn,
-    ...(tokenData.expiresAt ? { expired: tokenData.expiresAt } : {}),
+    ...(tokenData.expiresAt ? { expired: tokenData.expiresAt } : null)
   } : undefined;
 
   return { refreshToken, source: foundFile, clientId, clientSecret, region, authMethod, profileArn, rawAuth };
@@ -209,8 +210,8 @@ export async function enrichKiroCredentialsFromSsoCache(credentials, log = null)
   // the cache lookup: the SSO cache entry may declare a more specific method
   // (external_idp / idc) plus the metadata that method's refresh requires.
   const genericMethod = !psd.authMethod || psd.authMethod === "imported";
-  const needsExternalIdp = psd.authMethod === "external_idp"
-    && !(psd.clientId && psd.tokenEndpoint && psd.scope);
+  const needsExternalIdp = psd.authMethod === "external_idp" &&
+  !(psd.clientId && psd.tokenEndpoint && psd.scope);
   const needsIdc = psd.authMethod === "idc" && !(psd.clientId && psd.clientSecret);
   const needsArn = !psd.profileArn;
   if (!genericMethod && !needsExternalIdp && !needsIdc && !needsArn) return credentials;
@@ -234,20 +235,20 @@ export async function enrichKiroCredentialsFromSsoCache(credentials, log = null)
     ...credentials,
     providerSpecificData: {
       ...psd,
-      ...(resolvedMethod ? { authMethod: resolvedMethod } : {}),
-      ...(psd.profileArn || !cached.profileArn ? {} : { profileArn: cached.profileArn }),
-      ...(psd.region || !cached.region ? {} : { region: cached.region }),
-      ...(psd.clientId || !cachedClientId ? {} : { clientId: cachedClientId }),
-      ...(psd.clientSecret || !cached.clientSecret ? {} : { clientSecret: cached.clientSecret }),
-      ...(psd.tokenEndpoint || !cached.rawAuth?.token_endpoint ? {} : { tokenEndpoint: cached.rawAuth.token_endpoint }),
-      ...(psd.scope || !cachedScope ? {} : { scope: cachedScope }),
-    },
+      ...(resolvedMethod ? { authMethod: resolvedMethod } : null),
+      ...(psd.profileArn || !cached.profileArn ? null : { profileArn: cached.profileArn }),
+      ...(psd.region || !cached.region ? null : { region: cached.region }),
+      ...(psd.clientId || !cachedClientId ? null : { clientId: cachedClientId }),
+      ...(psd.clientSecret || !cached.clientSecret ? null : { clientSecret: cached.clientSecret }),
+      ...(psd.tokenEndpoint || !cached.rawAuth?.token_endpoint ? null : { tokenEndpoint: cached.rawAuth.token_endpoint }),
+      ...(psd.scope || !cachedScope ? null : { scope: cachedScope })
+    }
   };
 }
 
 function normalizeKiroSsoScope(scopes) {
   if (Array.isArray(scopes)) return scopes.map((s) => String(s).trim()).filter(Boolean).join(" ");
-  return typeof scopes === "string" ? scopes.trim() : "";
+  return isString(scopes) ? scopes.trim() : "";
 }
 
 /** @type {Map<string, { expiresAt: number, models: any[] }>} */
@@ -267,19 +268,19 @@ const stripSyntheticSuffixes = stripKiroSyntheticSuffixes;
  */
 function buildKiroFingerprintHeaders(credentials) {
   const seed =
-    credentials?.providerSpecificData?.clientId
-    || credentials?.refreshToken
-    || credentials?.providerSpecificData?.profileArn
-    || credentials?.accessToken
-    || "kiro-anonymous";
+  credentials?.providerSpecificData?.clientId ||
+  credentials?.refreshToken ||
+  credentials?.providerSpecificData?.profileArn ||
+  credentials?.accessToken ||
+  "kiro-anonymous";
   const machineId = createHash("sha256").update(String(seed)).digest("hex");
 
   const userAgent =
-    `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} ua/2.1 ` +
-    `os/${KIRO_AGENT_OS}#${KIRO_AGENT_OS_VERSION} ` +
-    `lang/js md/nodejs#${KIRO_NODE_VERSION} ` +
-    `api/codewhispererruntime#${KIRO_RUNTIME_SDK_VERSION} m/N,E ` +
-    `KiroIDE-${KIRO_VERSION}-${machineId}`;
+  `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} ua/2.1 ` +
+  `os/${KIRO_AGENT_OS}#${KIRO_AGENT_OS_VERSION} ` +
+  `lang/js md/nodejs#${KIRO_NODE_VERSION} ` +
+  `api/codewhispererruntime#${KIRO_RUNTIME_SDK_VERSION} m/N,E ` +
+  `KiroIDE-${KIRO_VERSION}-${machineId}`;
   const amzUserAgent = `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} KiroIDE-${KIRO_VERSION}-${machineId}`;
 
   return {
@@ -338,13 +339,13 @@ async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
   const headers = {
     ...buildKiroFingerprintHeaders(credentials),
     "Authorization": `Bearer ${credentials?.accessToken || ""}`,
-    ...(authMethod === "api_key" ? { "TokenType": "API_KEY" } : {})
+    ...(authMethod === "api_key" ? { "TokenType": "API_KEY" } : null)
   };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("timeout"), FETCH_TIMEOUT_MS);
   // Forward outer cancellation if any.
-  if (signal && typeof signal.addEventListener === "function") {
+  if (signal && isFunction(signal.addEventListener)) {
     signal.addEventListener("abort", () => controller.abort(signal.reason));
   }
 
@@ -380,11 +381,11 @@ async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
 function cacheKey(credentials) {
   const psd = credentials?.providerSpecificData || {};
   const seed =
-    psd.profileArn
-    || psd.clientId
-    || credentials?.refreshToken
-    || credentials?.accessToken
-    || "anonymous";
+  psd.profileArn ||
+  psd.clientId ||
+  credentials?.refreshToken ||
+  credentials?.accessToken ||
+  "anonymous";
   return createHash("sha256").update(`kiro:${seed}`).digest("hex");
 }
 
@@ -440,8 +441,8 @@ export async function resolveKiroModels(credentials, options = {}) {
       );
       if (refreshed?.accessToken) {
         const next = { ...credentials, ...refreshed };
-        if (typeof options.onCredentialsRefreshed === "function") {
-          try { await options.onCredentialsRefreshed(refreshed); } catch (e) {
+        if (isFunction(options.onCredentialsRefreshed)) {
+          try {await options.onCredentialsRefreshed(refreshed);} catch (e) {
             options.log?.warn?.(
               "KIRO_MODELS",
               `onCredentialsRefreshed failed: ${sanitizeErrorMessage(e?.message || e)}`
@@ -476,7 +477,7 @@ export async function resolveKiroModels(credentials, options = {}) {
 
   const expanded = [];
   for (const m of raw) {
-    if (!m || typeof m !== "object") continue;
+    if (!m || !isObject(m)) continue;
     const upstreamId = m.modelId || m.id;
     if (!upstreamId) continue;
     const display = formatDisplayName(m.modelName, upstreamId, m.rateMultiplier);
@@ -488,7 +489,7 @@ export async function resolveKiroModels(credentials, options = {}) {
         // Carry over context window + raw upstream metadata so the caller
         // (e.g. the dashboard models endpoint) can render it.
         contextLength: ctx,
-        ...(maxOutputTokens ? { maxOutputTokens } : {}),
+        ...(maxOutputTokens ? { maxOutputTokens } : null),
         rateMultiplier: Number.isFinite(Number(m.rateMultiplier)) ? Number(m.rateMultiplier) : 1.0,
         upstreamModelId: upstreamId,
         description: m.description || ""

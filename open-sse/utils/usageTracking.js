@@ -5,7 +5,7 @@
 import { FORMATS } from "../translator/formats.js";
 
 // Legacy per-chunk usage console line; off by default (superseded by "📊 done")
-const DEBUG_USAGE = process.env.LOG_USAGE_VERBOSE === "1";
+import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const DEBUG_USAGE = process.env.LOG_USAGE_VERBOSE === "1";
 
 // ANSI color codes
 export const COLORS = {
@@ -31,7 +31,7 @@ function getTimeString() {
  * @returns {object} Usage with buffer added
  */
 export function addBufferToUsage(usage) {
-  if (!usage || typeof usage !== "object") return usage;
+  if (!usage || !isObject(usage)) return usage;
 
   const result = { ...usage };
 
@@ -57,7 +57,7 @@ export function addBufferToUsage(usage) {
 }
 
 export function filterUsageForFormat(usage, targetFormat) {
-  if (!usage || typeof usage !== "object") return usage;
+  if (!usage || !isObject(usage)) return usage;
 
   // Helper to pick only defined fields from usage
   const pickFields = (fields) => {
@@ -73,32 +73,32 @@ export function filterUsageForFormat(usage, targetFormat) {
   // Define allowed fields for each format
   const formatFields = {
     [FORMATS.CLAUDE]: [
-      'input_tokens', 'output_tokens', 
-      'cache_read_input_tokens', 'cache_creation_input_tokens',
-      'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'
-    ],
+    'input_tokens', 'output_tokens',
+    'cache_read_input_tokens', 'cache_creation_input_tokens',
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'],
+
     [FORMATS.GEMINI]: [
-      'promptTokenCount', 'candidatesTokenCount', 'totalTokenCount',
-      'cachedContentTokenCount', 'thoughtsTokenCount',
-      'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'
-    ],
+    'promptTokenCount', 'candidatesTokenCount', 'totalTokenCount',
+    'cachedContentTokenCount', 'thoughtsTokenCount',
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'],
+
     [FORMATS.OPENAI_RESPONSES]: [
-      'input_tokens', 'output_tokens',
-      'input_tokens_details', 'output_tokens_details',
-      'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'
-    ],
+    'input_tokens', 'output_tokens',
+    'input_tokens_details', 'output_tokens_details',
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'],
+
     // OpenAI format (default for OPENAI, CODEX, KIRO, etc.)
     default: [
-      'prompt_tokens', 'completion_tokens', 'total_tokens',
-      'cached_tokens', 'reasoning_tokens',
-      'prompt_tokens_details', 'completion_tokens_details', 'output_tokens_details',
-      'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks'
-    ]
+    'prompt_tokens', 'completion_tokens', 'total_tokens',
+    'cached_tokens', 'reasoning_tokens',
+    'prompt_tokens_details', 'completion_tokens_details', 'output_tokens_details',
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks']
+
   };
 
   // Get fields for target format
   let fields = formatFields[targetFormat];
-  
+
   // Use same fields for similar formats
   if (targetFormat === FORMATS.GEMINI_CLI || targetFormat === FORMATS.ANTIGRAVITY) {
     fields = formatFields[FORMATS.GEMINI];
@@ -112,10 +112,10 @@ export function filterUsageForFormat(usage, targetFormat) {
   // Client-only projection: expose Anthropic thinking without adding a
   // canonical reasoning_tokens field that would alter downstream billing.
   const thinkingTokens = usage.output_tokens_details?.thinking_tokens;
-  if (!formatFields[targetFormat] && typeof thinkingTokens === "number") {
+  if (!formatFields[targetFormat] && isNumber(thinkingTokens)) {
     filtered.completion_tokens_details = {
       ...filtered.completion_tokens_details,
-      reasoning_tokens: thinkingTokens,
+      reasoning_tokens: thinkingTokens
     };
   }
   return filtered;
@@ -125,7 +125,7 @@ export function filterUsageForFormat(usage, targetFormat) {
  * Normalize usage object - ensure all values are valid numbers
  */
 export function normalizeUsage(usage) {
-  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
+  if (!usage || !isObject(usage) || Array.isArray(usage)) return null;
 
   const normalized = {};
   const assignNumber = (key, value) => {
@@ -146,11 +146,11 @@ export function normalizeUsage(usage) {
   assignNumber("cost_in_usd_ticks", usage?.cost_in_usd_ticks);
   // Kiro meters in credits, not tokens — preserve through normalization
   // (consumption is never negative; drop malformed null/negative values)
-  const kiroCredits = usage?.kiro_credits !== null && usage?.kiro_credits !== undefined
-    ? Number(usage.kiro_credits) : NaN;
+  const kiroCredits = usage?.kiro_credits !== null && usage?.kiro_credits !== undefined ?
+  Number(usage.kiro_credits) : NaN;
   if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
     normalized.kiro_credits = kiroCredits;
-    if (typeof usage?.kiro_credit_unit === "string") {
+    if (isString(usage?.kiro_credit_unit)) {
       normalized.kiro_credit_unit = usage.kiro_credit_unit;
     }
   }
@@ -160,13 +160,13 @@ export function normalizeUsage(usage) {
   if (usage?.estimated === true) normalized.estimated = true;
 
   // Preserve nested details objects for OpenAI format forwarding
-  if (usage?.prompt_tokens_details && typeof usage.prompt_tokens_details === "object") {
+  if (usage?.prompt_tokens_details && isObject(usage.prompt_tokens_details)) {
     normalized.prompt_tokens_details = usage.prompt_tokens_details;
   }
-  if (usage?.completion_tokens_details && typeof usage.completion_tokens_details === "object") {
+  if (usage?.completion_tokens_details && isObject(usage.completion_tokens_details)) {
     normalized.completion_tokens_details = usage.completion_tokens_details;
   }
-  if (usage?.output_tokens_details && typeof usage.output_tokens_details === "object") {
+  if (usage?.output_tokens_details && isObject(usage.output_tokens_details)) {
     normalized.output_tokens_details = usage.output_tokens_details;
   }
 
@@ -192,9 +192,9 @@ export function normalizeUsage(usage) {
  * @returns {object|null} canonical token object, or null for invalid input
  */
 export function canonicalizeUsage(usage) {
-  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
+  if (!usage || !isObject(usage) || Array.isArray(usage)) return null;
 
-  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const num = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
   const completion = num(usage.completion_tokens ?? usage.output_tokens);
   const reasoning = num(usage.reasoning_tokens ?? usage.completion_tokens_details?.reasoning_tokens);
   // Fall back to the nested prompt_tokens_details.cache_creation_tokens shape
@@ -214,8 +214,8 @@ export function canonicalizeUsage(usage) {
   // Guard on the absence of `cached_tokens`: our own canonical output always
   // sets that key (even to 0), so re-running canonicalizeUsage on an already-
   // folded result takes the passthrough branch instead of folding again.
-  const foldsExclusiveCache = usage.cached_tokens === undefined &&
-      (usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined);
+  const foldsExclusiveCache = usage.cached_tokens === undefined && (
+  usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined);
   if (foldsExclusiveCache) {
     cached = num(usage.cache_read_input_tokens);
     prompt = prompt + cached + cacheCreation;
@@ -232,9 +232,9 @@ export function canonicalizeUsage(usage) {
     completion_tokens: completion,
     // Claude's exclusive cache fold changes the component sum, so its incoming
     // total becomes stale. Other providers' explicit totals are authoritative.
-    total_tokens: foldsExclusiveCache ? componentTotal : (explicitTotal > 0 ? explicitTotal : componentTotal),
+    total_tokens: foldsExclusiveCache ? componentTotal : explicitTotal > 0 ? explicitTotal : componentTotal,
     cached_tokens: cached,
-    cache_creation_input_tokens: cacheCreation,
+    cache_creation_input_tokens: cacheCreation
   };
   if (Number.isFinite(Number(usage.cost_usd))) result.cost_usd = Number(usage.cost_usd);
   if (Number.isFinite(Number(usage.cost_in_usd))) result.cost_in_usd = Number(usage.cost_in_usd);
@@ -243,11 +243,11 @@ export function canonicalizeUsage(usage) {
   if (Number.isFinite(Number(usage.cost_usd))) result.cost_usd = Number(usage.cost_usd);
   if (Number.isFinite(Number(usage.cost_in_usd))) result.cost_in_usd = Number(usage.cost_in_usd);
   if (Number.isFinite(Number(usage.cost_in_usd_ticks))) result.cost_in_usd_ticks = Number(usage.cost_in_usd_ticks);
-  const kiroCredits = usage.kiro_credits !== null && usage.kiro_credits !== undefined
-    ? Number(usage.kiro_credits) : NaN;
+  const kiroCredits = usage.kiro_credits !== null && usage.kiro_credits !== undefined ?
+  Number(usage.kiro_credits) : NaN;
   if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
     result.kiro_credits = kiroCredits;
-    if (typeof usage.kiro_credit_unit === "string") result.kiro_credit_unit = usage.kiro_credit_unit;
+    if (isString(usage.kiro_credit_unit)) result.kiro_credit_unit = usage.kiro_credit_unit;
   }
   if (usage.estimated === true) result.estimated = true;
   return result;
@@ -265,14 +265,14 @@ export function claudeUsageToOpenAI(usage) {
     prompt_tokens: usage?.input_tokens,
     completion_tokens: usage?.output_tokens,
     cache_read_input_tokens: usage?.cache_read_input_tokens,
-    cache_creation_input_tokens: usage?.cache_creation_input_tokens,
+    cache_creation_input_tokens: usage?.cache_creation_input_tokens
   });
   if (!canonical) return null;
 
   const result = {
     prompt_tokens: canonical.prompt_tokens,
     completion_tokens: canonical.completion_tokens,
-    total_tokens: canonical.total_tokens,
+    total_tokens: canonical.total_tokens
   };
   if (canonical.cached_tokens > 0 || canonical.cache_creation_input_tokens > 0) {
     result.prompt_tokens_details = {};
@@ -284,10 +284,10 @@ export function claudeUsageToOpenAI(usage) {
     }
   }
   const thinkingTokens = outputTokensDetails?.thinking_tokens;
-  if (typeof thinkingTokens === "number") {
+  if (isNumber(thinkingTokens)) {
     result.completion_tokens_details = { reasoning_tokens: thinkingTokens };
   }
-  if (outputTokensDetails && typeof outputTokensDetails === "object") {
+  if (outputTokensDetails && isObject(outputTokensDetails)) {
     result.output_tokens_details = outputTokensDetails;
   }
   return result;
@@ -299,17 +299,17 @@ export function claudeUsageToOpenAI(usage) {
  * Invalid = empty object {}, null, undefined, no token fields, or all zeros
  */
 export function hasValidUsage(usage) {
-  if (!usage || typeof usage !== "object") return false;
+  if (!usage || !isObject(usage)) return false;
 
   // Check for any known token field with value > 0
   const tokenFields = [
-    "prompt_tokens", "completion_tokens", "total_tokens",  // OpenAI
-    "input_tokens", "output_tokens",                        // Claude
-    "promptTokenCount", "candidatesTokenCount"              // Gemini
+  "prompt_tokens", "completion_tokens", "total_tokens", // OpenAI
+  "input_tokens", "output_tokens", // Claude
+  "promptTokenCount", "candidatesTokenCount" // Gemini
   ];
 
   for (const field of tokenFields) {
-    if (typeof usage[field] === "number" && usage[field] > 0) {
+    if (isNumber(usage[field]) && usage[field] > 0) {
       return true;
     }
   }
@@ -321,12 +321,12 @@ export function hasValidUsage(usage) {
  * Extract usage from any format (Claude, OpenAI, Gemini, Responses API)
  */
 export function extractUsage(chunk) {
-  if (!chunk || typeof chunk !== "object") return null;
+  if (!chunk || !isObject(chunk)) return null;
 
   // Claude format (message_start event): carries input_tokens + cache_read +
   // cache_creation. message_delta later carries only the final output_tokens,
   // so callers must MERGE (mergeUsage), not overwrite, to keep cache counts.
-  if (chunk.type === "message_start" && chunk.message?.usage && typeof chunk.message.usage === "object") {
+  if (chunk.type === "message_start" && chunk.message?.usage && isObject(chunk.message.usage)) {
     const u = chunk.message.usage;
     return normalizeUsage({
       prompt_tokens: u.input_tokens || 0,
@@ -337,18 +337,18 @@ export function extractUsage(chunk) {
   }
   // Claude format (message_delta event). Anthropic reports thinking as a
   // subset of output_tokens, so preserve the detail without inflating output.
-  if (chunk.type === "message_delta" && chunk.usage && typeof chunk.usage === "object") {
+  if (chunk.type === "message_delta" && chunk.usage && isObject(chunk.usage)) {
     return normalizeUsage({
       prompt_tokens: chunk.usage.input_tokens || 0,
       completion_tokens: chunk.usage.output_tokens || 0,
       cache_read_input_tokens: chunk.usage.cache_read_input_tokens,
       cache_creation_input_tokens: chunk.usage.cache_creation_input_tokens,
-      output_tokens_details: chunk.usage.output_tokens_details,
+      output_tokens_details: chunk.usage.output_tokens_details
     });
   }
 
   // OpenAI Responses API format (response.completed or response.done)
-  if ((chunk.type === "response.completed" || chunk.type === "response.done") && chunk.response?.usage && typeof chunk.response.usage === "object") {
+  if ((chunk.type === "response.completed" || chunk.type === "response.done") && chunk.response?.usage && isObject(chunk.response.usage)) {
     const usage = chunk.response.usage;
     const cachedTokens = usage.input_tokens_details?.cached_tokens;
     return normalizeUsage({
@@ -364,12 +364,12 @@ export function extractUsage(chunk) {
 
   // OpenAI format (also covers DeepSeek which uses prompt_cache_hit_tokens).
   // Kiro can attach credit-only metering without token counts.
-  if (chunk.usage && typeof chunk.usage === "object" &&
-      (chunk.usage.prompt_tokens !== undefined || chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
+  if (chunk.usage && isObject(chunk.usage) && (
+  chunk.usage.prompt_tokens !== undefined || chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
     const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
     return normalizeUsage({
       prompt_tokens: chunk.usage.prompt_tokens,
-      completion_tokens: hasPromptTokens ? (chunk.usage.completion_tokens || 0) : chunk.usage.completion_tokens,
+      completion_tokens: hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
       total_tokens: chunk.usage.total_tokens,
       cached_tokens: chunk.usage.prompt_tokens_details?.cached_tokens || chunk.usage.prompt_cache_hit_tokens,
       reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens,
@@ -386,7 +386,7 @@ export function extractUsage(chunk) {
   // Gemini format (Antigravity)
   // Antigravity wraps usageMetadata inside response: { response: { usageMetadata: {...} } }
   const usageMeta = chunk.usageMetadata || chunk.response?.usageMetadata;
-  if (usageMeta && typeof usageMeta === "object") {
+  if (usageMeta && isObject(usageMeta)) {
     return normalizeUsage({
       prompt_tokens: usageMeta.promptTokenCount || 0,
       completion_tokens: usageMeta.candidatesTokenCount || 0,
@@ -398,7 +398,7 @@ export function extractUsage(chunk) {
 
   // Ollama NDJSON format (raw from provider, before translation)
   // Ollama sends: {"model":"...","done":true,"prompt_eval_count":N,"eval_count":M}
-  if (chunk.done === true && typeof chunk.prompt_eval_count === "number") {
+  if (chunk.done === true && isNumber(chunk.prompt_eval_count)) {
     return normalizeUsage({
       prompt_tokens: chunk.prompt_eval_count || 0,
       completion_tokens: chunk.eval_count || 0,
@@ -421,15 +421,15 @@ export function mergeUsage(prev, next) {
   for (const [k, v] of Object.entries(next)) {
     // typeof NaN === "number" — guard with Number.isFinite so one malformed
     // chunk can't poison the whole accumulation (Math.max(x, NaN) is NaN).
-    if (typeof v === "number" && Number.isFinite(v)) {
-      merged[k] = Math.max(typeof merged[k] === "number" ? merged[k] : 0, v);
-    } else if (k === "estimated" && typeof v === "boolean") {
+    if (isNumber(v) && Number.isFinite(v)) {
+      merged[k] = Math.max(isNumber(merged[k]) ? merged[k] : 0, v);
+    } else if (k === "estimated" && isBoolean(v)) {
       // Estimation marker: once estimated, stays estimated (a real value never
       // downgrades an estimate to authoritative).
       merged[k] = merged[k] === true || v === true;
-    } else if (v && typeof v === "object") {
+    } else if (v && isObject(v)) {
       merged[k] = v; // nested details objects: take latest
-    } else if (typeof v === "string" && k === "kiro_credit_unit") {
+    } else if (isString(v) && k === "kiro_credit_unit") {
       merged[k] = v; // Kiro credit unit label: take latest
     }
   }
@@ -441,7 +441,7 @@ export function mergeUsage(prev, next) {
  * Calculate total body size for more accurate estimation
  */
 export function estimateInputTokens(body) {
-  if (!body || typeof body !== "object") return 0;
+  if (!body || !isObject(body)) return 0;
 
   try {
     // Calculate total body size (includes messages, tools, system, thinking config, etc.)
@@ -473,10 +473,10 @@ export function estimateOutputTokens(contentLength) {
 export function formatUsage(inputTokens, outputTokens, targetFormat) {
   // Claude format uses input_tokens/output_tokens
   if (targetFormat === FORMATS.CLAUDE) {
-    return addBufferToUsage({ 
-      input_tokens: inputTokens, 
-      output_tokens: outputTokens, 
-      estimated: true 
+    return addBufferToUsage({
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      estimated: true
     });
   }
 
@@ -507,7 +507,7 @@ export function estimateUsage(body, contentLength, targetFormat = FORMATS.OPENAI
  * Log usage with cache info (green color)
  */
 export function logUsage(provider, usage, model = null, connectionId = null, apiKey = null) {
-  if (!usage || typeof usage !== "object") return;
+  if (!usage || !isObject(usage)) return;
 
   // Console output moved to the unified "📊 done" line (streamingHandler). Kept as
   // a no-op hook so callers stay unchanged; usage persistence happens via saveUsageStats.

@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const TIMEOUT_MS = 8000;
 
@@ -10,7 +11,7 @@ async function probeMcp(url) {
   const headers = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/event-stream",
-    "MCP-Protocol-Version": "2025-06-18",
+    "MCP-Protocol-Version": "2025-06-18"
   };
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
@@ -21,9 +22,9 @@ async function probeMcp(url) {
       headers,
       body: JSON.stringify({
         jsonrpc: "2.0", id: 1, method: "initialize",
-        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "9router", version: "1" } },
+        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "9router", version: "1" } }
       }),
-      signal: ac.signal,
+      signal: ac.signal
     });
     if (initRes.status === 401 || initRes.status === 403) {
       return { requiresAuth: true, tools: [] };
@@ -42,7 +43,7 @@ async function probeMcp(url) {
       method: "POST",
       headers: listHeaders,
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }),
-      signal: ac.signal,
+      signal: ac.signal
     }).catch(() => {});
 
     // Step 3: tools/list
@@ -50,7 +51,7 @@ async function probeMcp(url) {
       method: "POST",
       headers: listHeaders,
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
-      signal: ac.signal,
+      signal: ac.signal
     });
     if (listRes.status === 401 || listRes.status === 403) {
       return { requiresAuth: true, tools: [] };
@@ -64,15 +65,15 @@ async function probeMcp(url) {
       for (const line of dataLines) {
         try {
           const obj = JSON.parse(line.replace(/^data:\s*/, ""));
-          if (obj?.id === 2 && obj.result) { parsed = obj; break; }
-        } catch { /* skip */ }
+          if (obj?.id === 2 && obj.result) {parsed = obj;break;}
+        } catch {/* skip */}
       }
     } else {
       parsed = await listRes.json().catch(() => null);
     }
     const tools = parsed?.result?.tools || [];
     return {
-      tools: tools.map((t) => ({ name: t.name, description: t.description || "" })),
+      tools: tools.map((t) => ({ name: t.name, description: t.description || "" }))
     };
   } catch (e) {
     return { error: e.name === "AbortError" ? "timeout" : e.message, tools: [] };
@@ -84,7 +85,7 @@ async function probeMcp(url) {
 export async function POST(request) {
   try {
     const { url } = await request.json();
-    if (!url || typeof url !== "string") {
+    if (!url || !isString(url)) {
       return NextResponse.json({ error: "url required" }, { status: 400 });
     }
     const result = await probeMcp(url);

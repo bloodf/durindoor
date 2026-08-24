@@ -2,6 +2,7 @@ import { getAdapter } from "../driver.js";
 import { stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
 import { DEFAULT_CAPABILITIES } from "open-sse/providers/capabilities.js";
+import { isBoolean, isObject } from "@/shared/utils/typeChecks.js";
 
 const aliasKv = makeKv("modelAliases");
 const customKv = makeKv("customModels");
@@ -41,33 +42,33 @@ function pruneNull(obj) {
 
 // Valid thinkingFormat values from capabilities.js schema.
 const VALID_THINKING_FORMATS = new Set([
-  "openai",
-  "claude-adaptive",
-  "claude-budget",
-  "gemini-level",
-  "gemini-budget",
-  "zai",
-  "qwen",
-  "deepseek",
-  "kimi",
-  "minimax",
-  "hunyuan",
-  "step",
-  "kiro",
-]);
+"openai",
+"claude-adaptive",
+"claude-budget",
+"gemini-level",
+"gemini-budget",
+"zai",
+"qwen",
+"deepseek",
+"kimi",
+"minimax",
+"hunyuan",
+"step",
+"kiro"]
+);
 
 const BOOLEAN_CAPS = [
-  "vision",
-  "pdf",
-  "audioInput",
-  "videoInput",
-  "imageOutput",
-  "audioOutput",
-  "search",
-  "reasoning",
-  "tools",
-  "thinkingCanDisable",
-];
+"vision",
+"pdf",
+"audioInput",
+"videoInput",
+"imageOutput",
+"audioOutput",
+"search",
+"reasoning",
+"tools",
+"thinkingCanDisable"];
+
 
 const INTEGER_CAPS = ["contextWindow", "maxOutput"];
 
@@ -78,7 +79,7 @@ function isPositiveInteger(value) {
 function isValidThinkingRange(value) {
   if (value === undefined) return true;
   if (value === null) return true;
-  if (typeof value !== "object" || Array.isArray(value)) return false;
+  if (!isObject(value) || Array.isArray(value)) return false;
   const { min, max } = value;
   // min 0 is legal (Gemini dynamic thinking budget_tokens: 0)
   if (min !== undefined && min !== null && !(Number.isSafeInteger(min) && min >= 0)) return false;
@@ -98,7 +99,7 @@ export function normalizeCustomCapabilities(raw) {
   if (raw === null || raw === undefined) {
     return { ok: true, caps: {} };
   }
-  if (typeof raw !== "object" || Array.isArray(raw)) {
+  if (!isObject(raw) || Array.isArray(raw)) {
     return { ok: false, error: "capabilities must be an object" };
   }
   const out = {};
@@ -110,7 +111,7 @@ export function normalizeCustomCapabilities(raw) {
   for (const key of BOOLEAN_CAPS) {
     const value = raw[key];
     if (value === undefined) continue;
-    if (typeof value !== "boolean") {
+    if (!isBoolean(value)) {
       return { ok: false, error: `${key} must be a boolean` };
     }
     out[key] = value;
@@ -163,7 +164,7 @@ export async function addCustomModel({ providerAlias, id, type = "llm", name, ca
     const row = db.get(`SELECT 1 FROM kv WHERE scope = 'customModels' AND key = ?`, [k]);
     if (row) return;
     const value = {
-      providerAlias, id, type, name: name || id, capabilities: pruneNull(norm.caps),
+      providerAlias, id, type, name: name || id, capabilities: pruneNull(norm.caps)
     };
     db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [k, stringifyJson(value)]);
     added = value;

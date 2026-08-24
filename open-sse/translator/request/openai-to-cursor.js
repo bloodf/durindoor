@@ -10,17 +10,18 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 import { DEFAULT_MIN_TOKENS } from "../../config/runtimeConfig.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 function extractContent(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (Array.isArray(content)) {
-    return content
-      .filter(part => {
-        if (!part || typeof part !== "object") return false;
-        return part.type === OPENAI_BLOCK.TEXT && typeof part.text === "string";
-      })
-      .map(part => part.text || "")
-      .join("");
+    return content.
+    filter((part) => {
+      if (!part || !isObject(part)) return false;
+      return part.type === OPENAI_BLOCK.TEXT && isString(part.text);
+    }).
+    map((part) => part.text || "").
+    join("");
   }
   return "";
 }
@@ -37,21 +38,21 @@ function escapeXml(text) {
 function buildToolResultBlock(toolName, toolCallId, resultText) {
   const cleanResult = sanitizeToolResultText(resultText || "");
   return [
-    "<tool_result>",
-    `<tool_name>${escapeXml(toolName || "tool")}</tool_name>`,
-    `<tool_call_id>${escapeXml(toolCallId || "")}</tool_call_id>`,
-    `<result>${escapeXml(cleanResult)}</result>`,
-    "</tool_result>"
-  ].join("\n");
+  "<tool_result>",
+  `<tool_name>${escapeXml(toolName || "tool")}</tool_name>`,
+  `<tool_call_id>${escapeXml(toolCallId || "")}</tool_call_id>`,
+  `<result>${escapeXml(cleanResult)}</result>`,
+  "</tool_result>"].
+  join("\n");
 }
 
 function normalizeToolCallId(id) {
-  return typeof id === "string" ? id.split("\n")[0] : "";
+  return isString(id) ? id.split("\n")[0] : "";
 }
 
 function convertMessages(messages) {
   const result = [];
-  
+
   // Build a map of tool_call_id -> tool name from assistant tool calls
   const toolCallMetaMap = new Map();
   const rememberToolMeta = (toolCallId, toolName) => {
@@ -105,9 +106,9 @@ function convertMessages(messages) {
       if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
         const parts = [];
         for (const block of msg.content) {
-          if (!block || typeof block !== "object") continue;
+          if (!block || !isObject(block)) continue;
           if (block.type === CLAUDE_BLOCK.TEXT) {
-            if (typeof block.text === "string") {
+            if (isString(block.text)) {
               parts.push(block.text || "");
             }
             continue;
@@ -115,8 +116,8 @@ function convertMessages(messages) {
           if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
             const toolCallId = block.tool_use_id || "";
             const toolMeta =
-              toolCallMetaMap.get(toolCallId) ||
-              toolCallMetaMap.get(normalizeToolCallId(toolCallId));
+            toolCallMetaMap.get(toolCallId) ||
+            toolCallMetaMap.get(normalizeToolCallId(toolCallId));
             const toolName = toolMeta?.name || "tool";
             const toolContent = extractContent(block.content);
             parts.push(buildToolResultBlock(toolName, toolCallId, toolContent));
@@ -131,23 +132,23 @@ function convertMessages(messages) {
 
       if (msg.role === ROLE.ASSISTANT && msg.tool_calls && msg.tool_calls.length > 0) {
         const assistantMsg = { role: ROLE.ASSISTANT, content: content || "" };
-        assistantMsg.tool_calls = msg.tool_calls.map(tc => {
+        assistantMsg.tool_calls = msg.tool_calls.map((tc) => {
           const { index, ...rest } = tc || {};
           return rest;
         });
         result.push(assistantMsg);
       } else if (msg.role === ROLE.ASSISTANT && Array.isArray(msg.content)) {
-        const extractedToolCalls = msg.content
-          .filter(b => b?.type === CLAUDE_BLOCK.TOOL_USE)
-          .map(b => ({
-            id: b.id || "",
-            type: OPENAI_BLOCK.FUNCTION,
-            function: {
-              name: b.name || "tool",
-              arguments: JSON.stringify(b.input || {})
-            }
-          }))
-          .filter(tc => tc.id);
+        const extractedToolCalls = msg.content.
+        filter((b) => b?.type === CLAUDE_BLOCK.TOOL_USE).
+        map((b) => ({
+          id: b.id || "",
+          type: OPENAI_BLOCK.FUNCTION,
+          function: {
+            name: b.name || "tool",
+            arguments: JSON.stringify(b.input || {})
+          }
+        })).
+        filter((tc) => tc.id);
 
         if (extractedToolCalls.length > 0) {
           result.push({

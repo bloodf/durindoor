@@ -5,11 +5,12 @@
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { buildCursorHeaders } from "../../utils/cursorChecksum.js";
 import { parseResetTime, toFiniteNumber } from "./shared.js";
+import { isObject } from "@/shared/utils/typeChecks.js";
 
 const CURSOR_USAGE_CONFIG = {
   currentPeriodUsageUrl: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
   planInfoUrl: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo",
-  authUsageUrl: "https://api2.cursor.sh/auth/usage",
+  authUsageUrl: "https://api2.cursor.sh/auth/usage"
 };
 
 function buildCursorUsageHeaders(accessToken, providerSpecificData = {}) {
@@ -18,7 +19,7 @@ function buildCursorUsageHeaders(accessToken, providerSpecificData = {}) {
   return {
     ...headers,
     "content-type": "application/json",
-    accept: "application/json",
+    accept: "application/json"
   };
 }
 
@@ -29,7 +30,7 @@ function formatCursorPercentWindow(percentUsed, resetAt) {
     total: 100,
     remaining: Math.max(0, 100 - used),
     resetAt,
-    unlimited: false,
+    unlimited: false
   };
 }
 
@@ -45,10 +46,10 @@ function formatCursorCentsWindow(spentCents, limitCents, resetAt) {
   return {
     used: usedDollars,
     total: totalDollars,
-    remaining: totalDollars > 0 ? Math.round((remainingDollars / totalDollars) * 100) : 0,
+    remaining: totalDollars > 0 ? Math.round(remainingDollars / totalDollars * 100) : 0,
     resetAt,
     unlimited: false,
-    unit: "usd",
+    unit: "usd"
   };
 }
 
@@ -60,7 +61,7 @@ function parseCursorDashboardUsage(data) {
   const included = formatCursorCentsWindow(
     planUsage.includedSpend ?? planUsage.totalSpend,
     planUsage.limit,
-    resetAt,
+    resetAt
   );
   if (included) quotas["Included spend"] = included;
 
@@ -90,12 +91,12 @@ function parseCursorDashboardUsage(data) {
 
 function parseCursorAuthUsage(data) {
   const quotas = {};
-  if (!data || typeof data !== "object") return quotas;
+  if (!data || !isObject(data)) return quotas;
 
   const resetAt = parseResetTime(data.startOfMonth);
 
   for (const [modelKey, bucket] of Object.entries(data)) {
-    if (modelKey === "startOfMonth" || !bucket || typeof bucket !== "object") continue;
+    if (modelKey === "startOfMonth" || !bucket || !isObject(bucket)) continue;
 
     const used = toFiniteNumber(bucket.numRequests, 0);
     const total = toFiniteNumber(bucket.maxRequestUsage, 0);
@@ -104,9 +105,9 @@ function parseCursorAuthUsage(data) {
     quotas[modelKey] = {
       used,
       total,
-      remaining: Math.max(0, Math.round(((total - used) / total) * 100)),
+      remaining: Math.max(0, Math.round((total - used) / total * 100)),
       resetAt,
-      unlimited: false,
+      unlimited: false
     };
   }
 
@@ -124,7 +125,7 @@ export async function getCursorUsage(accessToken, providerSpecificData = {}, pro
     const usageRes = await proxyAwareFetch(
       CURSOR_USAGE_CONFIG.currentPeriodUsageUrl,
       { method: "POST", headers, body: "{}" },
-      proxyOptions,
+      proxyOptions
     );
 
     if (usageRes.status === 401) {
@@ -148,16 +149,16 @@ export async function getCursorUsage(accessToken, providerSpecificData = {}, pro
       const planRes = await proxyAwareFetch(
         CURSOR_USAGE_CONFIG.planInfoUrl,
         { method: "POST", headers, body: "{}" },
-        proxyOptions,
+        proxyOptions
       );
       if (planRes?.ok) {
         const planData = await planRes.json().catch(() => ({}));
         planName = planData?.planInfo?.planName || null;
       }
     } catch {
+
       // Plan info is optional; usage data is the primary signal.
     }
-
     if (usageRes.ok) {
       const data = usageData;
       const quotas = parseCursorDashboardUsage(data || {});
@@ -167,7 +168,7 @@ export async function getCursorUsage(accessToken, providerSpecificData = {}, pro
           billingCycleStart: parseResetTime(data?.billingCycleStart),
           billingCycleEnd: parseResetTime(data?.billingCycleEnd),
           displayMessage: data?.displayMessage || null,
-          quotas,
+          quotas
         };
       }
     }
@@ -178,10 +179,10 @@ export async function getCursorUsage(accessToken, providerSpecificData = {}, pro
         method: "GET",
         headers: {
           authorization: headers.authorization,
-          accept: "application/json",
-        },
+          accept: "application/json"
+        }
       },
-      proxyOptions,
+      proxyOptions
     );
 
     if (fallbackRes.status === 401) {
@@ -197,7 +198,7 @@ export async function getCursorUsage(accessToken, providerSpecificData = {}, pro
     }
 
     return {
-      message: `Cursor connected. Usage API temporarily unavailable (${usageRes.status}).`,
+      message: `Cursor connected. Usage API temporarily unavailable (${usageRes.status}).`
     };
   } catch (error) {
     throw new Error(`Failed to fetch Cursor usage: ${error.message}`);

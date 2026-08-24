@@ -27,6 +27,7 @@
 import crypto from "node:crypto";
 import { createCompressionStats } from "../../stats.js";
 import { runFuzzyPass } from "./fuzzy.js";
+import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const ENGINE_ID = "session-dedup";
 const DEFAULT_MIN_BLOCK_CHARS = 80;
@@ -75,8 +76,8 @@ function dedupeWithinMessage(text, minBlockChars) {
 
   for (const { block } of sortedBlocks) {
     const occurrences = (
-      result.match(new RegExp(block.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []
-    ).length;
+    result.match(new RegExp(block.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).
+    length;
     if (occurrences < 2) continue;
 
     const sha = hashBlock(block);
@@ -170,12 +171,12 @@ function processMessages(messages, minBlockChars) {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if (msg.role === "system") continue;
-    if (typeof msg.content === "string") {
+    if (isString(msg.content)) {
       msgTexts.push({ msgIdx: i, text: msg.content });
     } else if (Array.isArray(msg.content)) {
       for (let p = 0; p < msg.content.length; p++) {
         const part = msg.content[p];
-        if (part["type"] === "text" && typeof part["text"] === "string") {
+        if (part["type"] === "text" && isString(part["text"])) {
           msgTexts.push({ msgIdx: i * 100000 + p + 1, text: part["text"] });
         }
       }
@@ -195,7 +196,7 @@ function processMessages(messages, minBlockChars) {
   const result = messages.map((msg, i) => {
     if (msg.role === "system") return { ...msg };
 
-    if (typeof msg.content === "string") {
+    if (isString(msg.content)) {
       const replacement = deduped.get(i);
       return replacement !== undefined ? { ...msg, content: replacement } : { ...msg };
     }
@@ -203,7 +204,7 @@ function processMessages(messages, minBlockChars) {
     if (Array.isArray(msg.content)) {
       let changed = false;
       const newContent = msg.content.map((part, p) => {
-        if (part["type"] !== "text" || typeof part["text"] !== "string") return part;
+        if (part["type"] !== "text" || !isString(part["text"])) return part;
         const key = i * 100000 + p + 1;
         const replacement = deduped.get(key);
         if (replacement !== undefined) {
@@ -222,48 +223,48 @@ function processMessages(messages, minBlockChars) {
 }
 
 const SESSION_DEDUP_SCHEMA = [
-  {
-    key: "enabled",
-    type: "boolean",
-    label: "Enabled",
-    defaultValue: true,
-  },
-  {
-    key: "minBlockChars",
-    type: "number",
-    label: "Minimum block characters",
-    description: "Minimum character count for a suffix block to be a dedup candidate.",
-    defaultValue: DEFAULT_MIN_BLOCK_CHARS,
-    min: 1,
-    max: 100000,
-  },
-  {
-    key: "fuzzy",
-    type: "boolean",
-    label: "Fuzzy near-duplicate dedup",
-    description:
-      "Opt-in: replace whole messages ~85%+ similar to an earlier one with a recoverable CCR marker.",
-    defaultValue: false,
-  },
-];
+{
+  key: "enabled",
+  type: "boolean",
+  label: "Enabled",
+  defaultValue: true
+},
+{
+  key: "minBlockChars",
+  type: "number",
+  label: "Minimum block characters",
+  description: "Minimum character count for a suffix block to be a dedup candidate.",
+  defaultValue: DEFAULT_MIN_BLOCK_CHARS,
+  min: 1,
+  max: 100000
+},
+{
+  key: "fuzzy",
+  type: "boolean",
+  label: "Fuzzy near-duplicate dedup",
+  description:
+  "Opt-in: replace whole messages ~85%+ similar to an earlier one with a recoverable CCR marker.",
+  defaultValue: false
+}];
+
 
 function validateSessionDedupConfig(config) {
   const errors = [];
-  if (config["enabled"] !== undefined && typeof config["enabled"] !== "boolean") {
+  if (config["enabled"] !== undefined && !isBoolean(config["enabled"])) {
     errors.push("enabled must be a boolean");
   }
   if (config["minBlockChars"] !== undefined) {
     const v = config["minBlockChars"];
-    if (typeof v !== "number" || !Number.isFinite(v) || v < 1) {
+    if (!isNumber(v) || !Number.isFinite(v) || v < 1) {
       errors.push("minBlockChars must be a positive number");
     }
   }
   if (config["fuzzy"] !== undefined) {
     const f = config["fuzzy"];
-    if (typeof f === "object" && f !== null) {
+    if (isObject(f) && f !== null) {
       const fe = f["enabled"];
-      if (fe !== undefined && typeof fe !== "boolean") errors.push("fuzzy.enabled must be a boolean");
-    } else if (typeof f !== "boolean") {
+      if (fe !== undefined && !isBoolean(fe)) errors.push("fuzzy.enabled must be a boolean");
+    } else if (!isBoolean(f)) {
       errors.push("fuzzy must be an object { enabled } or a boolean");
     }
   }
@@ -274,8 +275,8 @@ export const sessionDedupEngine = {
   id: ENGINE_ID,
   name: "Session Dedup",
   description:
-    "Content-addressed cross-turn deduplication: replaces repeated multi-line blocks " +
-    "with short reference markers (R11/N2/TO1, TokenMizer blueprint).",
+  "Content-addressed cross-turn deduplication: replaces repeated multi-line blocks " +
+  "with short reference markers (R11/N2/TO1, TokenMizer blueprint).",
   icon: "content_copy",
   targets: ["messages"],
   stackable: true,
@@ -284,11 +285,11 @@ export const sessionDedupEngine = {
     id: ENGINE_ID,
     name: "Session Dedup",
     description:
-      "Content-addressed cross-turn deduplication: replaces repeated multi-line blocks with short reference markers.",
+    "Content-addressed cross-turn deduplication: replaces repeated multi-line blocks with short reference markers.",
     inputScope: "messages",
     targetLatencyMs: 1,
     supportsPreview: true,
-    stable: true,
+    stable: true
   },
 
   apply(body, options) {
@@ -299,9 +300,9 @@ export const sessionDedupEngine = {
     }
 
     const minBlockChars =
-      typeof stepConfig["minBlockChars"] === "number"
-        ? stepConfig["minBlockChars"]
-        : DEFAULT_MIN_BLOCK_CHARS;
+    isNumber(stepConfig["minBlockChars"]) ?
+    stepConfig["minBlockChars"] :
+    DEFAULT_MIN_BLOCK_CHARS;
 
     const messages = body["messages"];
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -343,5 +344,5 @@ export const sessionDedupEngine = {
 
   validateConfig(config) {
     return validateSessionDedupConfig(config);
-  },
+  }
 };

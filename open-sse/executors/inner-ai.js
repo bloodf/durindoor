@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
 import innerAiRegistry from "../providers/registry/inner-ai.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const DEFAULT_MODEL = innerAiRegistry.models?.[0]?.id || "gpt-4o";
 
@@ -78,14 +79,14 @@ function makeErrorResult(status, message, body) {
         error: {
           message: sanitizeErrorMessage(message),
           type: "upstream_error",
-          code: `HTTP_${status}`,
-        },
+          code: `HTTP_${status}`
+        }
       }),
       { status, headers: { "Content-Type": "application/json" } }
     ),
     url: INNER_AI_CHAT_URL,
     headers: {},
-    transformedBody: body,
+    transformedBody: body
   };
 }
 
@@ -97,7 +98,7 @@ function buildHeaders(token, email, deviceId) {
     "USER-TOKEN": token,
     "DEVICE-ID": deviceId,
     Origin: "https://app.innerai.com",
-    Referer: "https://app.innerai.com/",
+    Referer: "https://app.innerai.com/"
   };
   if (email) headers["USER-EMAIL"] = email;
   return headers;
@@ -118,11 +119,11 @@ async function resolveCredentials(token, credEmail, signal) {
         Cookie: `token=${token}`,
         "USER-TOKEN": token,
         "User-Agent": USER_AGENT,
-        ...(deviceId ? { "DEVICE-ID": deviceId } : {}),
+        ...(deviceId ? { "DEVICE-ID": deviceId } : null),
         Origin: "https://app.innerai.com",
-        Referer: "https://app.innerai.com/",
+        Referer: "https://app.innerai.com/"
       },
-      signal: signal ?? undefined,
+      signal: signal ?? undefined
     });
     if (profileResp.ok) {
       const body = await profileResp.json().catch(() => null);
@@ -131,10 +132,10 @@ async function resolveCredentials(token, credEmail, signal) {
       ).trim();
     }
   } catch {
+
     // Profile fetch is a best-effort email discovery step.
-  }
-  if (!email && credEmail) email = credEmail;
-  if (!email && typeof payload?.sub === "string" && payload.sub.includes("@")) email = payload.sub;
+  }if (!email && credEmail) email = credEmail;
+  if (!email && isString(payload?.sub) && payload.sub.includes("@")) email = payload.sub;
   const creds = { email, deviceId };
   lruSet(credentialCache, key, creds);
   return creds;
@@ -155,7 +156,7 @@ async function resolveModels(token, deviceId, email, signal) {
   if (cached && Date.now() < cached.expiresAt) return cached.models;
   const resp = await fetch(INNER_AI_MODELS_URL, {
     headers: buildHeaders(token, email, deviceId),
-    signal: signal ?? undefined,
+    signal: signal ?? undefined
   });
   if (!resp.ok) {
     const preview = await resp.text().catch(() => "");
@@ -163,13 +164,13 @@ async function resolveModels(token, deviceId, email, signal) {
     throw new InnerAiModelsError(resp.status, preview.slice(0, 200));
   }
   const body = await resp.json().catch(() => null);
-  const raw = Array.isArray(body)
-    ? body
-    : Array.isArray(body?.data)
-      ? body.data
-      : Array.isArray(body?.ai_models)
-        ? body.ai_models
-        : [];
+  const raw = Array.isArray(body) ?
+  body :
+  Array.isArray(body?.data) ?
+  body.data :
+  Array.isArray(body?.ai_models) ?
+  body.ai_models :
+  [];
   const planRaw = String(
     decodeJwtPayload(token)?.plan ?? decodeJwtPayload(token)?.tier ?? decodeJwtPayload(token)?.subscription ?? ""
   ).toLowerCase();
@@ -197,23 +198,23 @@ export function findModel(models, requestedId) {
     models.find((m) => m.llm_model === requestedId) ||
     models.find((m) => String(m.llm_model).toLowerCase() === lower) ||
     models.find((m) => String(m.llm_model).toLowerCase().includes(lower)) ||
-    null
-  );
+    null);
+
 }
 
 function buildMessageContent(messages) {
   const parts = [];
   for (const msg of messages) {
     const content =
-      typeof msg.content === "string"
-        ? msg.content
-        : Array.isArray(msg.content)
-          ? msg.content.filter((c) => c?.type === "text").map((c) => String(c.text ?? "")).join("")
-          : "";
+    isString(msg.content) ?
+    msg.content :
+    Array.isArray(msg.content) ?
+    msg.content.filter((c) => c?.type === "text").map((c) => String(c.text ?? "")).join("") :
+    "";
     if (!content.trim()) continue;
-    if (msg.role === "system") parts.push(`[Instructions]\n${content}`);
-    else if (msg.role === "assistant") parts.push(`[Assistant]\n${content}`);
-    else parts.push(content);
+    if (msg.role === "system") parts.push(`[Instructions]\n${content}`);else
+    if (msg.role === "assistant") parts.push(`[Assistant]\n${content}`);else
+    parts.push(content);
   }
   return parts.join("\n\n");
 }
@@ -226,7 +227,7 @@ function transformInnerAiSSE(upstream, model) {
   let buffer = "";
   let emittedRole = false;
   const chunkEvent = (delta, finishReason = null) =>
-    `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`;
+  `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`;
   return new ReadableStream({
     async start(controller) {
       const reader = upstream.getReader();
@@ -281,7 +282,7 @@ function transformInnerAiSSE(upstream, model) {
       controller.enqueue(encoder.encode(chunkEvent({}, "stop")));
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
-    },
+    }
   });
 }
 
@@ -315,7 +316,7 @@ async function collectContent(upstream) {
       } catch {
         continue;
       }
-      if (data.type === "text" && typeof data.item === "string") content += data.item;
+      if (data.type === "text" && isString(data.item)) content += data.item;
       if (["missing_credits", "reached_limit", "rate_limit_reached", "rate_limit_longer_reached"].includes(data.type)) {
         throw new InnerAiStreamError(429, data.type, "Inner.ai: rate limit reached");
       }
@@ -369,7 +370,7 @@ export class InnerAiExecutor extends BaseExecutor {
       env: "production",
       temporary: true,
       use_web_search: false,
-      knowledge_list: [],
+      knowledge_list: []
     };
     const reqHeaders = buildHeaders(token, creds.email, creds.deviceId);
 
@@ -379,7 +380,7 @@ export class InnerAiExecutor extends BaseExecutor {
         method: "POST",
         headers: reqHeaders,
         body: JSON.stringify(innerAiBody),
-        signal: signal ?? undefined,
+        signal: signal ?? undefined
       });
     } catch (err) {
       return makeErrorResult(502, `Inner.ai request failed: ${sanitizeErrorMessage(err.message)}`, body);
@@ -416,13 +417,13 @@ export class InnerAiExecutor extends BaseExecutor {
                 object: "chat.completion",
                 created: Math.floor(Date.now() / 1000),
                 model: resolvedModel,
-                choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: parsed.toolCalls }, finish_reason: parsed.finishReason }],
+                choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: parsed.toolCalls }, finish_reason: parsed.finishReason }]
               }),
               { status: 200, headers: { "Content-Type": "application/json" } }
             ),
             url: INNER_AI_CHAT_URL,
             headers: reqHeaders,
-            transformedBody: innerAiBody,
+            transformedBody: innerAiBody
           };
         }
         content = parsed.content;
@@ -435,13 +436,13 @@ export class InnerAiExecutor extends BaseExecutor {
             created: Math.floor(Date.now() / 1000),
             model: resolvedModel,
             choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
           }),
           { headers: { "Content-Type": "application/json" } }
         ),
         url: INNER_AI_CHAT_URL,
         headers: reqHeaders,
-        transformedBody: innerAiBody,
+        transformedBody: innerAiBody
       };
     }
     if (hasTools) {
@@ -458,41 +459,41 @@ export class InnerAiExecutor extends BaseExecutor {
       if (parsed.toolCalls) {
         const toolCalls = parsed.toolCalls;
         const streamBody = [
-          `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] })}\n\n`,
-          ...toolCalls.map((call, index) => `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { tool_calls: [{ index, id: call.id, type: "function", function: { name: call.function.name, arguments: call.function.arguments } }] }, finish_reason: null }] })}\n\n`),
-          `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: {}, finish_reason: parsed.finishReason }] })}\n\n`,
-          "data: [DONE]\n\n",
-        ].join("");
+        `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] })}\n\n`,
+        ...toolCalls.map((call, index) => `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { tool_calls: [{ index, id: call.id, type: "function", function: { name: call.function.name, arguments: call.function.arguments } }] }, finish_reason: null }] })}\n\n`),
+        `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: {}, finish_reason: parsed.finishReason }] })}\n\n`,
+        "data: [DONE]\n\n"].
+        join("");
         return {
           response: new Response(streamBody, {
-            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
           }),
           url: INNER_AI_CHAT_URL,
           headers: reqHeaders,
-          transformedBody: innerAiBody,
+          transformedBody: innerAiBody
         };
       }
       const streamBody = [
-        `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { role: "assistant", content: parsed.content }, finish_reason: null }] })}\n\n`,
-        `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
-        "data: [DONE]\n\n",
-      ].join("");
+      `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { role: "assistant", content: parsed.content }, finish_reason: null }] })}\n\n`,
+      `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
+      "data: [DONE]\n\n"].
+      join("");
       return {
         response: new Response(streamBody, {
-          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
         }),
         url: INNER_AI_CHAT_URL,
         headers: reqHeaders,
-        transformedBody: innerAiBody,
+        transformedBody: innerAiBody
       };
     }
     return {
       response: new Response(transformInnerAiSSE(upstream.body, resolvedModel), {
-        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
       }),
       url: INNER_AI_CHAT_URL,
       headers: reqHeaders,
-      transformedBody: innerAiBody,
+      transformedBody: innerAiBody
     };
   }
 }

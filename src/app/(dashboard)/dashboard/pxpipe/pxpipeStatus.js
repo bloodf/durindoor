@@ -1,16 +1,16 @@
-const STATUS_URL = "/api/pxpipe/status";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";const STATUS_URL = "/api/pxpipe/status";
 
 export async function fetchPxpipeStatus(fetchImpl = fetch) {
   try {
     const response = await fetchImpl(STATUS_URL, {
-      headers: { "Cache-Control": "no-store" },
+      headers: { "Cache-Control": "no-store" }
     });
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
       return { error: data?.error || `PXPIPE status failed (${response.status})`, loading: false };
     }
-    if (!data || typeof data !== "object" || Array.isArray(data)) {
+    if (!data || !isObject(data) || Array.isArray(data)) {
       return { error: "PXPIPE status returned invalid JSON", loading: false };
     }
     return { ...data, error: null, loading: false };
@@ -21,9 +21,9 @@ export async function fetchPxpipeStatus(fetchImpl = fetch) {
 
 export function getPxpipeStatusView(status = {}, health = null) {
   status ??= {};
-  const error = typeof status.error === "string" && status.error.trim()
-    ? status.error.trim()
-    : null;
+  const error = isString(status.error) && status.error.trim() ?
+  status.error.trim() :
+  null;
   if (error) return { label: "Unavailable", dependencyMissing: false, error };
   if (status.loading) return { label: "Checking…", dependencyMissing: false, error: null };
   if (status.installing) return { label: "Installing…", dependencyMissing: false, error: null };

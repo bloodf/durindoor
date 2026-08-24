@@ -6,25 +6,25 @@ import { DATA_DIR } from "@/lib/dataDir.js";
 import { createDiagnostic, quoteShellArg, redactSensitive, SetupError } from "@/shared/utils/setupDiagnostics.js";
 
 // headroom-ai declares `requires_python = ">=3.10"` with no upper bound.
-export const MIN_PYTHON = [3, 10];
+import { isFunction } from "@/shared/utils/typeChecks.js";export const MIN_PYTHON = [3, 10];
 
 const IS_WIN = process.platform === "win32";
 const WHICH_CMD = IS_WIN ? "where" : "which";
-const EXTRA_BINS = IS_WIN
-  ? [
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python313\\Scripts`,
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python312\\Scripts`,
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python311\\Scripts`,
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python310\\Scripts`,
-      `${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`,
-    ]
-  : [
-      "/usr/local/bin",
-      "/opt/homebrew/bin",
-      `${process.env.HOME || ""}/.local/bin`,
-      "/usr/bin",
-      "/bin",
-    ];
+const EXTRA_BINS = IS_WIN ?
+[
+`${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python313\\Scripts`,
+`${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python312\\Scripts`,
+`${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python311\\Scripts`,
+`${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python310\\Scripts`,
+`${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`] :
+
+[
+"/usr/local/bin",
+"/opt/homebrew/bin",
+`${process.env.HOME || ""}/.local/bin`,
+"/usr/bin",
+"/bin"];
+
 const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
 
 // How far past MIN_PYTHON to scan for a newer minor (e.g. 3.20) without a
@@ -65,7 +65,7 @@ function resolveOnPath(command) {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       timeout: PROBE_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: { ...process.env, PATH: EXTENDED_PATH }
     }).toString().trim();
     return out ? out.split(/\r?\n/)[0].trim() : null;
   } catch {
@@ -82,7 +82,7 @@ function isUserScopedPath(resolvedPath) {
 }
 
 function versionAtLeast([major, minor], [minMajor, minMinor]) {
-  return major > minMajor || (major === minMajor && minor >= minMinor);
+  return major > minMajor || major === minMajor && minor >= minMinor;
 }
 
 function describeExecError(error) {
@@ -97,7 +97,7 @@ function probeInterpreter(resolvedPath) {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       timeout: PROBE_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: { ...process.env, PATH: EXTENDED_PATH }
     }).toString();
     const parsed = JSON.parse(out);
     return { probe: { major: parsed.major, minor: parsed.minor, externallyManaged: Boolean(parsed.em) }, failed: false };
@@ -122,14 +122,14 @@ function probeCanCreateVenv(resolvedPath) {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       timeout: VENV_PROBE_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: { ...process.env, PATH: EXTENDED_PATH }
     });
     return { ok: true, ensurepipMissing: false, stderr: "" };
   } catch (error) {
     const stderr = describeExecError(error);
     return { ok: false, ensurepipMissing: /ensurepip/i.test(stderr), stderr };
   } finally {
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+    try {fs.rmSync(tmpDir, { recursive: true, force: true });} catch {/* best-effort cleanup */}
   }
 }
 
@@ -175,15 +175,15 @@ function probeInterpretersDetailed({ probeVenv = false } = {}) {
         supported: false,
         userScoped,
         externallyManaged: false,
-        venvProbe: { ok: false, probed: false, ensurepipMissing: false, stderr: "" },
+        venvProbe: { ok: false, probed: false, ensurepipMissing: false, stderr: "" }
       });
       continue;
     }
     const supported = versionAtLeast([probe.major, probe.minor], MIN_PYTHON);
     const canUseForVenv = supported && !(isRootProcess() && userScoped);
-    const venvProbe = canUseForVenv && probeVenv
-      ? { ...probeCanCreateVenv(resolvedPath), probed: true }
-      : { ok: null, probed: false, ensurepipMissing: false, stderr: "" };
+    const venvProbe = canUseForVenv && probeVenv ?
+    { ...probeCanCreateVenv(resolvedPath), probed: true } :
+    { ok: null, probed: false, ensurepipMissing: false, stderr: "" };
     entries.push({
       command,
       resolvedPath,
@@ -191,7 +191,7 @@ function probeInterpretersDetailed({ probeVenv = false } = {}) {
       supported,
       userScoped,
       externallyManaged: probe.externallyManaged,
-      venvProbe,
+      venvProbe
     });
   }
   if (!hadProbeError) interpreterCache = { at: Date.now(), withVenvProbe: probeVenv, entries };
@@ -227,7 +227,7 @@ function buildInterpreterDetail(entries, isRoot) {
 }
 
 function isRootProcess() {
-  return typeof process.getuid === "function" && process.getuid() === 0;
+  return isFunction(process.getuid) && process.getuid() === 0;
 }
 
 /**
@@ -249,9 +249,9 @@ export function managedVenvDir() {
  * @returns {string | null}
  */
 export function managedVenvPython() {
-  const bin = IS_WIN
-    ? path.join(managedVenvDir(), "Scripts", "python.exe")
-    : path.join(managedVenvDir(), "bin", "python");
+  const bin = IS_WIN ?
+  path.join(managedVenvDir(), "Scripts", "python.exe") :
+  path.join(managedVenvDir(), "bin", "python");
   return fs.existsSync(bin) ? bin : null;
 }
 
@@ -264,9 +264,9 @@ export function managedVenvPython() {
  * @returns {string | null}
  */
 export function managedVenvBinary(name) {
-  const bin = IS_WIN
-    ? path.join(managedVenvDir(), "Scripts", `${name}.exe`)
-    : path.join(managedVenvDir(), "bin", name);
+  const bin = IS_WIN ?
+  path.join(managedVenvDir(), "Scripts", `${name}.exe`) :
+  path.join(managedVenvDir(), "bin", name);
   return fs.existsSync(bin) ? bin : null;
 }
 
@@ -288,7 +288,7 @@ export function managedVenvBinary(name) {
 export function discoverInterpreters({ probeVenv = false } = {}) {
   return probeInterpretersDetailed({ probeVenv }).map(({ venvProbe, ...entry }) => ({
     ...entry,
-    canCreateVenv: venvProbe.probed ? venvProbe.ok : null,
+    canCreateVenv: venvProbe.probed ? venvProbe.ok : null
   }));
 }
 
@@ -324,9 +324,9 @@ export function pickVenvBasePython() {
       summary: `No Python ${MIN_PYTHON.join(".")}+ interpreter found on PATH`,
       detail: buildInterpreterDetail(entries, root),
       fixes: [
-        { label: "Install Python 3.10 or newer (Debian/Ubuntu)", command: "sudo apt install -y python3" },
-        { label: "Or download an installer", url: "https://www.python.org/downloads/" },
-      ],
+      { label: "Install Python 3.10 or newer (Debian/Ubuntu)", command: "sudo apt install -y python3" },
+      { label: "Or download an installer", url: "https://www.python.org/downloads/" }]
+
     }));
   }
 
@@ -337,9 +337,9 @@ export function pickVenvBasePython() {
       summary: `Only user-scoped Python ${MIN_PYTHON.join(".")}+ interpreters were found; the service runs as root and cannot use them`,
       detail: buildInterpreterDetail(entries, root),
       fixes: [
-        { label: "Install a root-visible Python 3.10+ (Debian/Ubuntu)", command: "sudo apt install -y python3" },
-        { label: "Or download an installer", url: "https://www.python.org/downloads/" },
-      ],
+      { label: "Install a root-visible Python 3.10+ (Debian/Ubuntu)", command: "sudo apt install -y python3" },
+      { label: "Or download an installer", url: "https://www.python.org/downloads/" }]
+
     }));
   }
 
@@ -353,8 +353,8 @@ export function pickVenvBasePython() {
         summary: `${candidate.resolvedPath} cannot create a venv because ensurepip is unavailable`,
         detail: redactSensitive(`python -m venv failed for ${candidate.resolvedPath} (Python ${candidate.version}): ${candidate.venvProbe.stderr}`),
         fixes: [
-          { label: `Install the venv/ensurepip package for Python ${candidate.version}`, command: `sudo apt install -y python3.${minor}-venv` },
-        ],
+        { label: `Install the venv/ensurepip package for Python ${candidate.version}`, command: `sudo apt install -y python3.${minor}-venv` }]
+
       }));
     }
     throw new SetupError(createDiagnostic({
@@ -362,8 +362,8 @@ export function pickVenvBasePython() {
       summary: `${candidate.resolvedPath} failed to create a virtual environment`,
       detail: redactSensitive(`python -m venv failed for ${candidate.resolvedPath} (Python ${candidate.version}): ${candidate.venvProbe.stderr}`),
       fixes: [
-        { label: "Retry venv creation manually and inspect the error", command: `${quoteShellArg(candidate.resolvedPath)} -m venv ${quoteShellArg("/tmp/durindoor-venv-check")}` },
-      ],
+      { label: "Retry venv creation manually and inspect the error", command: `${quoteShellArg(candidate.resolvedPath)} -m venv ${quoteShellArg("/tmp/durindoor-venv-check")}` }]
+
     }));
   }
 
@@ -392,9 +392,9 @@ export function ensureManagedVenv() {
     try {
       stat = fs.lstatSync(dir);
       symlink = stat.isSymbolicLink();
-    } catch { /* fail closed below */ }
-    const expectedUid = typeof process.getuid === "function" ? process.getuid() : null;
-    const untrusted = !stat || symlink || (expectedUid !== null && stat.uid !== expectedUid) || (stat.mode & 0o022) !== 0;
+    } catch {/* fail closed below */}
+    const expectedUid = isFunction(process.getuid) ? process.getuid() : null;
+    const untrusted = !stat || symlink || expectedUid !== null && stat.uid !== expectedUid || (stat.mode & 0o022) !== 0;
     if (untrusted) {
       const observed = stat ? `symlink=${symlink}, uid=${stat.uid}, mode=${(stat.mode & 0o777).toString(8)}` : "directory metadata unavailable";
       throw new SetupError(createDiagnostic({
@@ -402,9 +402,9 @@ export function ensureManagedVenv() {
         summary: "Existing managed venv is owned by another user or is world-writable; refusing to run as root",
         detail: `Managed venv directory ${dir}: ${observed}. Expected uid ${expectedUid ?? "current user"} and no group/world write permissions.`,
         fixes: [
-          { label: "Remove the untrusted venv and let DurinDoor recreate it", command: `rm -rf ${quoteShellArg(dir)}` },
-          { label: "Or fix ownership manually", command: `chown -R $(id -u):$(id -g) ${quoteShellArg(dir)} && chmod 700 ${quoteShellArg(dir)}` },
-        ],
+        { label: "Remove the untrusted venv and let DurinDoor recreate it", command: `rm -rf ${quoteShellArg(dir)}` },
+        { label: "Or fix ownership manually", command: `chown -R $(id -u):$(id -g) ${quoteShellArg(dir)} && chmod 700 ${quoteShellArg(dir)}` }]
+
       }));
     }
     return { python: existingPython, binDir: path.dirname(existingPython), created: false };
@@ -419,11 +419,11 @@ export function ensureManagedVenv() {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       timeout: VENV_CREATE_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: { ...process.env, PATH: EXTENDED_PATH }
     });
   } catch (error) {
     if (!existedBefore) {
-      try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+      try {fs.rmSync(dir, { recursive: true, force: true });} catch {/* best-effort cleanup */}
     }
     const detail = redactSensitive(describeExecError(error));
     throw new SetupError(createDiagnostic({
@@ -431,10 +431,10 @@ export function ensureManagedVenv() {
       summary: `Failed to create the managed virtual environment at ${dir}`,
       detail: `python -m venv ${dir} using ${command} failed: ${detail}`,
       fixes: [
-        { label: "Retry venv creation manually and inspect the error", command: `${quoteShellArg(command)} -m venv ${quoteShellArg(dir)}` },
-        { label: "Check permissions and free space for the data directory", command: `ls -ld ${quoteShellArg(path.dirname(dir))} && df -h ${quoteShellArg(path.dirname(dir))}` },
-      ],
-      logTail: detail,
+      { label: "Retry venv creation manually and inspect the error", command: `${quoteShellArg(command)} -m venv ${quoteShellArg(dir)}` },
+      { label: "Check permissions and free space for the data directory", command: `ls -ld ${quoteShellArg(path.dirname(dir))} && df -h ${quoteShellArg(path.dirname(dir))}` }],
+
+      logTail: detail
     }));
   }
 
@@ -445,8 +445,8 @@ export function ensureManagedVenv() {
       summary: `Virtual environment created at ${dir} but no python binary was found inside it`,
       detail: `Expected ${IS_WIN ? "Scripts\\python.exe" : "bin/python"} under ${dir}`,
       fixes: [
-        { label: "Remove the incomplete venv and retry", command: `rm -rf ${quoteShellArg(dir)}` },
-      ],
+      { label: "Remove the incomplete venv and retry", command: `rm -rf ${quoteShellArg(dir)}` }]
+
     }));
   }
   invalidateInterpreterCache();
@@ -471,7 +471,7 @@ function readShebangInterpreter(scriptPath) {
     return null;
   } finally {
     if (fd !== undefined) {
-      try { fs.closeSync(fd); } catch { /* already closed */ }
+      try {fs.closeSync(fd);} catch {/* already closed */}
     }
   }
 }
@@ -508,16 +508,16 @@ export function describeExternalInstall() {
   // a pipx user to run `uv tool uninstall` is worse than saying nothing, because
   // it fails and teaches them the guidance is unreliable.
   const probe = `${interpreter || ""} ${resolvedPath}`;
-  const manager = /[/\\]uv[/\\]tools[/\\]/.test(probe)
-    ? "uv"
-    : /[/\\]pipx[/\\]/.test(probe)
-      ? "pipx"
-      : "unknown";
-  const uninstallCommand = manager === "uv"
-    ? "uv tool uninstall headroom-ai"
-    : manager === "pipx"
-      ? "pipx uninstall headroom-ai"
-      : null;
+  const manager = /[/\\]uv[/\\]tools[/\\]/.test(probe) ?
+  "uv" :
+  /[/\\]pipx[/\\]/.test(probe) ?
+  "pipx" :
+  "unknown";
+  const uninstallCommand = manager === "uv" ?
+  "uv tool uninstall headroom-ai" :
+  manager === "pipx" ?
+  "pipx uninstall headroom-ai" :
+  null;
 
   return {
     path: resolvedPath,
@@ -525,6 +525,6 @@ export function describeExternalInstall() {
     hasPip,
     userScoped: isUserScopedPath(resolvedPath),
     manager,
-    uninstallCommand,
+    uninstallCommand
   };
 }

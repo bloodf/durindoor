@@ -1,4 +1,4 @@
-function normalizeString(value) {
+import { isUndefined } from "@/shared/utils/typeChecks.js";function normalizeString(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
 }
@@ -18,9 +18,9 @@ function validateProxyUrl(url) {
 }
 
 export function applyOutboundProxyEnv(
-  { outboundProxyEnabled, outboundProxyUrl, outboundNoProxy } = {}
-) {
-  if (typeof process === "undefined" || !process.env) return;
+{ outboundProxyEnabled, outboundProxyUrl, outboundNoProxy } = {})
+{
+  if (isUndefined(globalThis.process) || !process.env) return;
   const enabled = Boolean(outboundProxyEnabled);
   const proxyUrl = normalizeString(outboundProxyUrl);
   const noProxy = normalizeString(outboundNoProxy);

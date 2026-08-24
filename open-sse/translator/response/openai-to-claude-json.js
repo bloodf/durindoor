@@ -10,7 +10,7 @@ import { extractReasoningText } from "../concerns/reasoning.js";
  *
  * Input:  OpenAI Chat Completions JSON  {object:"chat.completion", choices:[{message:{...}}]}
  * Output: Anthropic Messages JSON        {id:"msg_...", type:"message", content:[...]}
- */
+ */import { isString } from "@/shared/utils/typeChecks.js";
 export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, options = {}) {
   if (!responseBody || !responseBody.choices?.[0]) return responseBody;
 
@@ -28,7 +28,7 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
   if (reasoningText.length > 0) {
     content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoningText });
   }
-  if (typeof msg.content === "string" && msg.content.length > 0) {
+  if (isString(msg.content) && msg.content.length > 0) {
     content.push({ type: CLAUDE_BLOCK.TEXT, text: msg.content });
   }
 
@@ -36,8 +36,8 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
   if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
     for (const tc of msg.tool_calls) {
       let input = {};
-      if (typeof tc.function?.arguments === "string") {
-        try { input = JSON.parse(tc.function.arguments); } catch { input = {}; }
+      if (isString(tc.function?.arguments)) {
+        try {input = JSON.parse(tc.function.arguments);} catch {input = {};}
       }
       content.push({
         type: CLAUDE_BLOCK.TOOL_USE,
@@ -57,7 +57,7 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
     [OPENAI_FINISH.STOP]: CLAUDE_STOP.END_TURN,
     [OPENAI_FINISH.LENGTH]: CLAUDE_STOP.MAX_TOKENS,
     [OPENAI_FINISH.TOOL_CALLS]: CLAUDE_STOP.TOOL_USE,
-    [OPENAI_FINISH.CONTENT_FILTER]: CLAUDE_STOP.END_TURN,
+    [OPENAI_FINISH.CONTENT_FILTER]: CLAUDE_STOP.END_TURN
   };
 
   const usage = responseBody.usage || {};
@@ -65,8 +65,8 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
   const claudeUsage = {};
   if (usage.prompt_tokens != null) {
     claudeUsage.input_tokens = usage.prompt_tokens;
-    claudeUsage.output_tokens = (usage.completion_tokens || 0)
-      + (usage.completion_tokens_details?.reasoning_tokens || 0);
+    claudeUsage.output_tokens = (usage.completion_tokens || 0) + (
+    usage.completion_tokens_details?.reasoning_tokens || 0);
     if (usage.prompt_tokens_details?.cached_tokens) {
       claudeUsage.cache_read_input_tokens = usage.prompt_tokens_details.cached_tokens;
     }

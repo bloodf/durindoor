@@ -12,16 +12,16 @@ import crypto from "crypto";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 
 // Runtime storage: Key = connectionId, Value = { sessionId, lastUsed }
-const runtimeSessionStore = new Map();
+import { isObject, isString } from "@/shared/utils/typeChecks.js";const runtimeSessionStore = new Map();
 
 // Periodically evict entries that haven't been used within TTL
 const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of runtimeSessionStore) {
-        if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) {
-            runtimeSessionStore.delete(key);
-        }
+  const now = Date.now();
+  for (const [key, entry] of runtimeSessionStore) {
+    if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) {
+      runtimeSessionStore.delete(key);
     }
+  }
 }, MEMORY_CONFIG.sessionCleanupIntervalMs);
 
 // Allow Node.js to exit even if interval is still active
@@ -42,26 +42,26 @@ if (cleanupInterval.unref) cleanupInterval.unref();
  * @returns {string} A stable session ID string matching binary format
  */
 export function deriveSessionId(connectionId) {
-    if (!connectionId) {
-        return generateBinaryStyleId();
-    }
+  if (!connectionId) {
+    return generateBinaryStyleId();
+  }
 
-    const existing = runtimeSessionStore.get(connectionId);
-    if (existing) {
-        existing.lastUsed = Date.now();
-        return existing.sessionId;
-    }
+  const existing = runtimeSessionStore.get(connectionId);
+  if (existing) {
+    existing.lastUsed = Date.now();
+    return existing.sessionId;
+  }
 
-    // Evict oldest entry if store exceeds max size (safety cap between cleanup cycles)
-    const MAX_SESSIONS = 1000;
-    if (runtimeSessionStore.size >= MAX_SESSIONS) {
-      const oldest = runtimeSessionStore.keys().next().value;
-      runtimeSessionStore.delete(oldest);
-    }
+  // Evict oldest entry if store exceeds max size (safety cap between cleanup cycles)
+  const MAX_SESSIONS = 1000;
+  if (runtimeSessionStore.size >= MAX_SESSIONS) {
+    const oldest = runtimeSessionStore.keys().next().value;
+    runtimeSessionStore.delete(oldest);
+  }
 
-    const sessionId = generateBinaryStyleId();
-    runtimeSessionStore.set(connectionId, { sessionId, lastUsed: Date.now() });
-    return sessionId;
+  const sessionId = generateBinaryStyleId();
+  runtimeSessionStore.set(connectionId, { sessionId, lastUsed: Date.now() });
+  return sessionId;
 }
 
 /**
@@ -71,17 +71,17 @@ export function deriveSessionId(connectionId) {
  * @returns {string} A session ID in binary format
  */
 export function generateBinaryStyleId() {
-    return crypto.randomUUID() + Date.now().toString();
+  return crypto.randomUUID() + Date.now().toString();
 }
 
 /**
  * Clears all session IDs (e.g. useful for testing or explicit reset)
  */
 export function clearSessionStore() {
-    runtimeSessionStore.clear();
-    assistantSessionStore.clear();
-    globalContinuationStore.clear();
-    requestContinuationStore = new WeakMap();
+  runtimeSessionStore.clear();
+  assistantSessionStore.clear();
+  globalContinuationStore.clear();
+  requestContinuationStore = new WeakMap();
 }
 
 // Conversation-stable session store: Key = hash(scope+assistant text), Value = { sessionId, lastUsed }
@@ -113,99 +113,99 @@ const SESSION_HEADER_KEYS = ["x-session-id", "session-id", "session_id", "x-amp-
 const CLAUDE_CODE_SESSION_RE = /_session_([a-f0-9-]+)$/;
 
 function sha16(text) {
-    return crypto.createHash("sha256").update(text).digest("hex").slice(0, 16);
+  return crypto.createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
 
 // Normalize a session id candidate (trim, length cap)
 function normalizeSessionId(value) {
-    if (typeof value !== "string") return null;
-    const v = value.trim();
-    if (!v || v.length > 256) return null;
-    return v;
+  if (!isString(value)) return null;
+  const v = value.trim();
+  if (!v || v.length > 256) return null;
+  return v;
 }
 
 // Extract Claude Code session id from metadata.user_id (_session_{uuid} | JSON {session_id})
 function extractClaudeCodeSession(userId) {
-    if (typeof userId !== "string" || !userId) return null;
-    const m = userId.match(CLAUDE_CODE_SESSION_RE);
-    if (m) return m[1];
-    if (userId[0] === "{") {
-        try { return normalizeSessionId(JSON.parse(userId)?.session_id); } catch { /* noop */ }
-    }
-    return null;
+  if (!isString(userId) || !userId) return null;
+  const m = userId.match(CLAUDE_CODE_SESSION_RE);
+  if (m) return m[1];
+  if (userId[0] === "{") {
+    try {return normalizeSessionId(JSON.parse(userId)?.session_id);} catch {/* noop */}
+  }
+  return null;
 }
 
 // Lowercase-key lookup for raw client headers
 function headerValue(headers, key) {
-    if (!headers || typeof headers !== "object") return null;
-    return normalizeSessionId(headers[key] ?? headers[key.toLowerCase()]);
+  if (!headers || !isObject(headers)) return null;
+  return normalizeSessionId(headers[key] ?? headers[key.toLowerCase()]);
 }
 
 // Read client-provided session id from headers/body (no generation)
 // Antigravity envelope carries session in request.sessionId; requestId embeds conversation uuid
 const ANTIGRAVITY_CONV_RE = /^[a-z]+\/([0-9a-f-]{36})\//i;
 function extractAntigravitySession(body) {
-    const sid = body?.request?.sessionId;
-    if (sid != null && sid !== "") return normalizeSessionId(String(sid));
-    const m = typeof body?.requestId === "string" ? body.requestId.match(ANTIGRAVITY_CONV_RE) : null;
-    return m ? normalizeSessionId(m[1]) : null;
+  const sid = body?.request?.sessionId;
+  if (sid != null && sid !== "") return normalizeSessionId(String(sid));
+  const m = isString(body?.requestId) ? body.requestId.match(ANTIGRAVITY_CONV_RE) : null;
+  return m ? normalizeSessionId(m[1]) : null;
 }
 
 export function extractClientSessionId(headers, body, scope = "") {
-    const claude = extractClaudeCodeSession(body?.metadata?.user_id);
-    if (claude) return scope === "claude" ? claude : `claude:${claude}`;
-    const antigravity = extractAntigravitySession(body);
-    if (antigravity) return `antigravity:${antigravity}`;
-    for (const key of SESSION_HEADER_KEYS) {
-        if (scope === "kiro" && key === "x-client-request-id") continue;
-        const v = headerValue(headers, key);
-        if (v) return v;
-    }
-    const fromBody =
-        normalizeSessionId(body?.prompt_cache_key) ||
-        normalizeSessionId(body?.session_id) ||
-        normalizeSessionId(body?.conversation_id) ||
-        (scope === "kiro" ? null : normalizeSessionId(body?.metadata?.user_id));
-    return fromBody || null;
+  const claude = extractClaudeCodeSession(body?.metadata?.user_id);
+  if (claude) return scope === "claude" ? claude : `claude:${claude}`;
+  const antigravity = extractAntigravitySession(body);
+  if (antigravity) return `antigravity:${antigravity}`;
+  for (const key of SESSION_HEADER_KEYS) {
+    if (scope === "kiro" && key === "x-client-request-id") continue;
+    const v = headerValue(headers, key);
+    if (v) return v;
+  }
+  const fromBody =
+  normalizeSessionId(body?.prompt_cache_key) ||
+  normalizeSessionId(body?.session_id) ||
+  normalizeSessionId(body?.conversation_id) || (
+  scope === "kiro" ? null : normalizeSessionId(body?.metadata?.user_id));
+  return fromBody || null;
 }
 
 export function resolveClientSessionId({ headers, body, scope = "" } = {}) {
-    return extractClientSessionId(headers, body, scope);
+  return extractClientSessionId(headers, body, scope);
 }
 
 // Accumulate assistant text from OpenAI/Responses-style input/messages (cap-limited)
 function accumulateAssistantText(body) {
-    const items = Array.isArray(body?.input) ? body.input
-        : Array.isArray(body?.messages) ? body.messages : null;
-    if (!items) return "";
-    let text = "";
-    for (const item of items) {
-        if (item?.role !== "assistant") continue;
-        if (typeof item.content === "string") text += item.content;
-        else if (Array.isArray(item.content)) {
-            for (const c of item.content) text += c?.text || c?.output || "";
-        }
-        if (text.length >= ASSISTANT_CAP_LEN) break;
+  const items = Array.isArray(body?.input) ? body.input :
+  Array.isArray(body?.messages) ? body.messages : null;
+  if (!items) return "";
+  let text = "";
+  for (const item of items) {
+    if (item?.role !== "assistant") continue;
+    if (isString(item.content)) text += item.content;else
+    if (Array.isArray(item.content)) {
+      for (const c of item.content) text += c?.text || c?.output || "";
     }
-    return text;
+    if (text.length >= ASSISTANT_CAP_LEN) break;
+  }
+  return text;
 }
 
 // Stable session id keyed on accumulated assistant text (avoids collision on identical first user prompt)
 function assistantTextSessionId(scope, body) {
-    const text = accumulateAssistantText(body);
-    if (text.length < ASSISTANT_MIN_LEN) return null;
-    const hash = sha16(`${scope}:${text.slice(0, ASSISTANT_CAP_LEN)}`);
-    const existing = assistantSessionStore.get(hash);
-    if (existing) {
-        existing.lastUsed = Date.now();
-        return existing.sessionId;
-    }
-    if (assistantSessionStore.size >= MAX_ASSISTANT_SESSIONS) {
-        assistantSessionStore.delete(assistantSessionStore.keys().next().value);
-    }
-    const sessionId = generateBinaryStyleId();
-    assistantSessionStore.set(hash, { sessionId, lastUsed: Date.now() });
-    return sessionId;
+  const text = accumulateAssistantText(body);
+  if (text.length < ASSISTANT_MIN_LEN) return null;
+  const hash = sha16(`${scope}:${text.slice(0, ASSISTANT_CAP_LEN)}`);
+  const existing = assistantSessionStore.get(hash);
+  if (existing) {
+    existing.lastUsed = Date.now();
+    return existing.sessionId;
+  }
+  if (assistantSessionStore.size >= MAX_ASSISTANT_SESSIONS) {
+    assistantSessionStore.delete(assistantSessionStore.keys().next().value);
+  }
+  const sessionId = generateBinaryStyleId();
+  assistantSessionStore.set(hash, { sessionId, lastUsed: Date.now() });
+  return sessionId;
 }
 
 /**
@@ -216,13 +216,13 @@ function assistantTextSessionId(scope, body) {
  * @returns {{ sessionId: string, requestScoped: boolean }}
  */
 function resolveSessionIdWithProvenance({ headers, body, connectionId, workspaceId, scope = "" } = {}) {
-    const client = extractClientSessionId(headers, body, scope);
-    if (client) return { sessionId: client, requestScoped: false };
-    const fromAssistant = assistantTextSessionId(`${scope}:${connectionId || ""}`, body);
-    if (fromAssistant) return { sessionId: fromAssistant, requestScoped: false };
-    const ws = normalizeSessionId(workspaceId);
-    if (ws) return { sessionId: ws, requestScoped: false };
-    return { sessionId: deriveSessionId(connectionId), requestScoped: true };
+  const client = extractClientSessionId(headers, body, scope);
+  if (client) return { sessionId: client, requestScoped: false };
+  const fromAssistant = assistantTextSessionId(`${scope}:${connectionId || ""}`, body);
+  if (fromAssistant) return { sessionId: fromAssistant, requestScoped: false };
+  const ws = normalizeSessionId(workspaceId);
+  if (ws) return { sessionId: ws, requestScoped: false };
+  return { sessionId: deriveSessionId(connectionId), requestScoped: true };
 }
 
 /**
@@ -238,7 +238,7 @@ function resolveSessionIdWithProvenance({ headers, body, connectionId, workspace
  * @returns {string} A stable session id
  */
 export function resolveSessionId(opts) {
-    return resolveSessionIdWithProvenance(opts).sessionId;
+  return resolveSessionIdWithProvenance(opts).sessionId;
 }
 
 /**
@@ -281,85 +281,85 @@ export function resolveSessionId(opts) {
  *   one-shot id when the tuple is incomplete or no requestContext is available
  */
 export function resolveContinuationId({ sessionId, connectionId, model, scope = "", requestContext = null, requestScoped = true } = {}) {
-    if (!sessionId || !connectionId || !model || !scope) return crypto.randomUUID();
-    const key = JSON.stringify([scope, connectionId, model, sessionId]);
-    const now = Date.now();
+  if (!sessionId || !connectionId || !model || !scope) return crypto.randomUUID();
+  const key = JSON.stringify([scope, connectionId, model, sessionId]);
+  const now = Date.now();
 
-    // Explicit, assistant-derived, and workspace sessions are reused across
-    // turns via a global cache.
-    if (!requestScoped) {
-        const existing = globalContinuationStore.get(key);
-        if (existing) {
-            existing.lastUsed = now;
-            // Refresh recency so the LRU cap evicts genuinely-idle entries first.
-            globalContinuationStore.delete(key);
-            globalContinuationStore.set(key, existing);
-            return existing.continuationId;
-        }
-        const continuationId = crypto.randomUUID();
-        if (globalContinuationStore.size >= MAX_CONTINUATION_SESSIONS) {
-            globalContinuationStore.delete(globalContinuationStore.keys().next().value);
-        }
-        globalContinuationStore.set(key, { continuationId, lastUsed: now });
-        return continuationId;
-    }
-
-    // Generated/fallback sessions must stay scoped to the inbound request so
-    // two independent headerless first-turn conversations never share a
-    // continuation id. The same requestContext object survives retries.
-    if (!requestContext) return crypto.randomUUID();
-
-    let inner = requestContinuationStore.get(requestContext);
-    if (!inner) {
-        inner = new Map();
-        requestContinuationStore.set(requestContext, inner);
-    }
-
-    const existing = inner.get(key);
+  // Explicit, assistant-derived, and workspace sessions are reused across
+  // turns via a global cache.
+  if (!requestScoped) {
+    const existing = globalContinuationStore.get(key);
     if (existing) {
-        existing.lastUsed = now;
-        inner.delete(key);
-        inner.set(key, existing);
-        return existing.continuationId;
+      existing.lastUsed = now;
+      // Refresh recency so the LRU cap evicts genuinely-idle entries first.
+      globalContinuationStore.delete(key);
+      globalContinuationStore.set(key, existing);
+      return existing.continuationId;
     }
     const continuationId = crypto.randomUUID();
-    if (inner.size >= MAX_CONTINUATION_SESSIONS) {
-        inner.delete(inner.keys().next().value);
+    if (globalContinuationStore.size >= MAX_CONTINUATION_SESSIONS) {
+      globalContinuationStore.delete(globalContinuationStore.keys().next().value);
     }
-    inner.set(key, { continuationId, lastUsed: now });
+    globalContinuationStore.set(key, { continuationId, lastUsed: now });
     return continuationId;
+  }
+
+  // Generated/fallback sessions must stay scoped to the inbound request so
+  // two independent headerless first-turn conversations never share a
+  // continuation id. The same requestContext object survives retries.
+  if (!requestContext) return crypto.randomUUID();
+
+  let inner = requestContinuationStore.get(requestContext);
+  if (!inner) {
+    inner = new Map();
+    requestContinuationStore.set(requestContext, inner);
+  }
+
+  const existing = inner.get(key);
+  if (existing) {
+    existing.lastUsed = now;
+    inner.delete(key);
+    inner.set(key, existing);
+    return existing.continuationId;
+  }
+  const continuationId = crypto.randomUUID();
+  if (inner.size >= MAX_CONTINUATION_SESSIONS) {
+    inner.delete(inner.keys().next().value);
+  }
+  inner.set(key, { continuationId, lastUsed: now });
+  return continuationId;
 }
 
 // Capture session id from request body + credentials (envelope still intact here)
 export function captureSessionId(body, credentials, connectionId, scope = "") {
-    const { sessionId, requestScoped } = resolveSessionIdWithProvenance({ headers: credentials?.rawHeaders, body, connectionId, scope });
-    if (credentials) {
-        // True only when resolveSessionId fell back to the generated per-connection
-        // branch; explicit/assistant/workspace derived sessions stay global.
-        credentials._clientSessionIsGenerated = requestScoped;
-    }
-    return sessionId;
+  const { sessionId, requestScoped } = resolveSessionIdWithProvenance({ headers: credentials?.rawHeaders, body, connectionId, scope });
+  if (credentials) {
+    // True only when resolveSessionId fell back to the generated per-connection
+    // branch; explicit/assistant/workspace derived sessions stay global.
+    credentials._clientSessionIsGenerated = requestScoped;
+  }
+  return sessionId;
 }
 
 // Convert any session id to Antigravity numeric format "-<int64>" (matches real AG / CLIProxyAPI).
 // Already-numeric ids (native AG sessionId) pass through unchanged.
 export function toNumericSessionId(sessionId) {
-    const v = normalizeSessionId(sessionId);
-    if (!v) return null;
-    if (/^-?\d+$/.test(v)) return v;
-    const h = crypto.createHash("sha256").update(v).digest();
-    const n = h.readBigUInt64BE(0) & 0x7fffffffffffffffn;
-    return `-${n.toString()}`;
+  const v = normalizeSessionId(sessionId);
+  if (!v) return null;
+  if (/^-?\d+$/.test(v)) return v;
+  const h = crypto.createHash("sha256").update(v).digest();
+  const n = h.readBigUInt64BE(0) & 0x7fffffffffffffffn;
+  return `-${n.toString()}`;
 }
 
 // Cleanup expired assistant-session entries
 const assistantCleanup = setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of assistantSessionStore) {
-        if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) assistantSessionStore.delete(key);
-    }
-    for (const [key, entry] of globalContinuationStore) {
-        if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) globalContinuationStore.delete(key);
-    }
+  const now = Date.now();
+  for (const [key, entry] of assistantSessionStore) {
+    if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) assistantSessionStore.delete(key);
+  }
+  for (const [key, entry] of globalContinuationStore) {
+    if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) globalContinuationStore.delete(key);
+  }
 }, MEMORY_CONFIG.sessionCleanupIntervalMs);
 if (assistantCleanup.unref) assistantCleanup.unref();

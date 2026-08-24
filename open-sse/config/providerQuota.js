@@ -1,4 +1,4 @@
-/**
+import { isObject } from "@/shared/utils/typeChecks.js"; /**
  * Authoritative provider-quota endpoints and operational bounds.
  *
  * This module is intentionally side-effect free so offline tests and quota
@@ -6,7 +6,7 @@
  */
 
 function deepFreeze(value) {
-  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  if (!value || !isObject(value) || Object.isFrozen(value)) return value;
   for (const child of Object.values(value)) deepFreeze(child);
   return Object.freeze(value);
 }
@@ -16,7 +16,7 @@ export const PROVIDER_QUOTA_DEFAULTS = deepFreeze({
   freshnessMs: 60_000,
   cacheTtlMs: 60_000,
   maxCacheEntries: 512,
-  maxResponseBytes: 1024 * 1024,
+  maxResponseBytes: 1024 * 1024
 });
 
 const PREFLIGHT_POLICY = deepFreeze({
@@ -31,7 +31,7 @@ const PREFLIGHT_POLICY = deepFreeze({
   qoderLegacy: { gates: [{ aggregate: "any-sufficient", selectors: [{ resourceNamespace: "scope", dimensionNamespaces: ["credits"] }] }] },
   balance: { gates: [{ aggregate: "all-required", selectors: [{ resource: "account", dimensionNamespaces: ["balance"] }] }] },
   crof: { gates: [{ choose: "first-present", aggregate: "all-required", selectors: [{ resource: "account", dimensionKeys: ["requests:daily"] }, { resource: "account", dimensionKeys: ["balance:usd"] }] }] },
-  deepseek: { gates: [{ aggregate: "any-sufficient", selectors: [{ resourceNamespace: "currency", dimensionKeys: ["balance:available"] }] }] },
+  deepseek: { gates: [{ aggregate: "any-sufficient", selectors: [{ resourceNamespace: "currency", dimensionKeys: ["balance:available"] }] }] }
 });
 
 const GOOGLE_QUOTA_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota";
@@ -44,7 +44,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     sourceId: "gemini-cli:retrieve-user-quota:v1",
     quotaUrl: GOOGLE_QUOTA_URL,
     projectUrl: GOOGLE_PROJECT_URL,
-    preflightPolicy: PREFLIGHT_POLICY.google,
+    preflightPolicy: PREFLIGHT_POLICY.google
   },
   antigravity: {
     adapter: "google",
@@ -52,7 +52,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     sourceId: "antigravity:retrieve-user-quota:v1",
     quotaUrl: GOOGLE_QUOTA_URL,
     projectUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist",
-    preflightPolicy: PREFLIGHT_POLICY.google,
+    preflightPolicy: PREFLIGHT_POLICY.google
   },
   agy: {
     adapter: "google",
@@ -60,7 +60,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     sourceId: "agy:retrieve-user-quota:v1",
     quotaUrl: GOOGLE_QUOTA_URL,
     projectUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist",
-    preflightPolicy: PREFLIGHT_POLICY.google,
+    preflightPolicy: PREFLIGHT_POLICY.google
   },
   codex: {
     adapter: "codex",
@@ -71,10 +71,10 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     // substring matching from an untrusted passthrough model ID.
     preflightScopes: {
       quotaFamilies: { review: "feature:code-review" },
-      models: { "gpt-5.3-codex-spark": "model:codex-spark" },
+      models: { "gpt-5.3-codex-spark": "model:codex-spark" }
     },
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.codex,
+    preflightPolicy: PREFLIGHT_POLICY.codex
   },
   claude: {
     adapter: "claude",
@@ -83,7 +83,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     settingsUrl: "https://api.anthropic.com/v1/settings",
     orgUsageUrl: "https://api.anthropic.com/v1/organizations/{org_id}/usage",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests
   },
   github: {
     adapter: "github",
@@ -93,7 +93,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     editorVersion: "vscode/1.126.0",
     pluginVersion: "copilot-chat/0.54.0",
     userAgent: "GitHubCopilotChat/0.54.0",
-    preflightPolicy: PREFLIGHT_POLICY.github,
+    preflightPolicy: PREFLIGHT_POLICY.github
   },
   cursor: {
     adapter: "cursor",
@@ -102,13 +102,13 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     origin: "https://cursor.com",
     referer: "https://cursor.com/dashboard/spending",
     userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/149.0.0.0 Safari/537.36",
-    preflightPolicy: PREFLIGHT_POLICY.cursor,
+    preflightPolicy: PREFLIGHT_POLICY.cursor
   },
   kiro: {
     adapter: "kiro",
     sourceId: "kiro:get-usage-limits:v1",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.kiro,
+    preflightPolicy: PREFLIGHT_POLICY.kiro
   },
   "kimi-coding": {
     adapter: "kimi",
@@ -117,7 +117,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     platform: "omniroute",
     version: "2.1.2",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests
   },
   "kimi-coding-apikey": {
     adapter: "kimi",
@@ -126,62 +126,62 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     platform: "omniroute",
     version: "2.1.2",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests
   },
   glm: {
     adapter: "glm",
     sourceId: "glm:coding-plan-quota:v1",
     url: "https://api.z.ai/api/monitor/usage/quota/limit",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.glm,
+    preflightPolicy: PREFLIGHT_POLICY.glm
   },
   "glm-cn": {
     adapter: "glm",
     sourceId: "glm-cn:coding-plan-quota:v1",
     url: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.glm,
+    preflightPolicy: PREFLIGHT_POLICY.glm
   },
   zai: {
     adapter: "glm",
     sourceId: "zai:coding-plan-quota:v1",
     url: "https://api.z.ai/api/monitor/usage/quota/limit",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.glm,
+    preflightPolicy: PREFLIGHT_POLICY.glm
   },
   glmt: {
     adapter: "glm",
     sourceId: "glmt:coding-plan-quota:v1",
     url: "https://api.z.ai/api/monitor/usage/quota/limit",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.glm,
+    preflightPolicy: PREFLIGHT_POLICY.glm
   },
   minimax: {
     adapter: "minimax",
     sourceId: "minimax:coding-plan-remains:v1",
     urls: [
-      { url: "https://www.minimax.io/v1/token_plan/remains" },
-      { url: "https://api.minimax.io/v1/api/openplatform/coding_plan/remains" },
-    ],
+    { url: "https://www.minimax.io/v1/token_plan/remains" },
+    { url: "https://api.minimax.io/v1/api/openplatform/coding_plan/remains" }],
+
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests
   },
   "minimax-cn": {
     adapter: "minimax",
     sourceId: "minimax-cn:coding-plan-remains:v1",
     urls: [
-      { url: "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains" },
-      { url: "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains" },
-    ],
+    { url: "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains" },
+    { url: "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains" }],
+
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests
   },
   "codebuddy-cn": {
     adapter: "codebuddy",
     sourceId: "codebuddy-cn:billing-meter:v1",
     url: "https://copilot.tencent.com/v2/billing/meter/get-user-resource",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.codebuddy,
+    preflightPolicy: PREFLIGHT_POLICY.codebuddy
   },
   "bailian-coding-plan": {
     adapter: "bailian",
@@ -189,14 +189,14 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     tokenPlanSourceId: "bailian-coding-plan:token-plan-quota:v1",
     tokenPlanHosts: {
       international: "https://bailian-singapore-cs.alibabacloud.com",
-      domestic: "https://cs-data.qwencloud.com",
+      domestic: "https://cs-data.qwencloud.com"
     },
     urls: [
-      "https://modelstudio.console.alibabacloud.com/data/api.json?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2",
-      "https://bailian.console.aliyun.com/data/api.json?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2",
-    ],
+    "https://modelstudio.console.alibabacloud.com/data/api.json?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2",
+    "https://bailian.console.aliyun.com/data/api.json?action=zeldaEasy.broadscope-bailian.codingPlan.queryCodingPlanInstanceInfoV2&product=broadscope-bailian&api=queryCodingPlanInstanceInfoV2"],
+
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests
   },
   qoder: {
     adapter: "qoder",
@@ -205,7 +205,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     exchangeUrl: "https://openapi.qoder.sh/api/v1/jobToken/exchange",
     url: "https://openapi.qoder.sh/api/v3/user/status",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.accountRequests,
+    preflightPolicy: PREFLIGHT_POLICY.accountRequests
   },
   "qoder-cn": {
     adapter: "qoder",
@@ -213,29 +213,29 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     sourceId: "qoder-cn:quota-usage-legacy:v1",
     url: "https://openapi.qoder.com.cn/api/v2/quota/usage",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.qoderLegacy,
+    preflightPolicy: PREFLIGHT_POLICY.qoderLegacy
   },
   "vercel-ai-gateway": {
     adapter: "vercel",
     sourceId: "vercel-ai-gateway:credits:v1",
     url: "https://ai-gateway.vercel.sh/v1/credits",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.balance,
+    preflightPolicy: PREFLIGHT_POLICY.balance
   },
   crof: {
     adapter: "crof",
     sourceId: "crof:usage-api:v1",
     url: "https://crof.ai/usage_api/",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.crof,
+    preflightPolicy: PREFLIGHT_POLICY.crof
   },
   deepseek: {
     adapter: "deepseek",
     sourceId: "deepseek:balance:v1",
     url: "https://api.deepseek.com/user/balance",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
-    preflightPolicy: PREFLIGHT_POLICY.deepseek,
-  },
+    preflightPolicy: PREFLIGHT_POLICY.deepseek
+  }
 });
 
 export const PROVIDER_QUOTA_UNSUPPORTED = deepFreeze({
@@ -253,7 +253,7 @@ export const PROVIDER_QUOTA_UNSUPPORTED = deepFreeze({
   "amazon-q": "represented-by-kiro",
   opencode: "speculative-endpoint",
   "opencode-go": "speculative-or-scraped-endpoint",
-  "opencode-zen": "speculative-endpoint",
+  "opencode-zen": "speculative-endpoint"
 });
 
 export function getProviderQuotaConfig(provider) {

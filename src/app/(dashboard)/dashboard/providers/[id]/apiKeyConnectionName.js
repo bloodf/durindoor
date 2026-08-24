@@ -1,7 +1,7 @@
-export function apiKeyConnectionNames(connections = []) {
-  return connections
-    .filter((connection) => connection?.authType === "apikey")
-    .map((connection) => connection.name);
+import { isString } from "@/shared/utils/typeChecks.js";export function apiKeyConnectionNames(connections = []) {
+  return connections.
+  filter((connection) => connection?.authType === "apikey").
+  map((connection) => connection.name);
 }
 
 export function defaultApiKeyConnectionName(existingConnectionNames = []) {
@@ -13,7 +13,7 @@ export function defaultApiKeyConnectionName(existingConnectionNames = []) {
   const names = new Set(existingConnectionNames.map((name) => String(name || "").trim()).filter(Boolean));
   if (!names.has("main")) return "main";
 
-  for (let suffix = 2; ; suffix += 1) {
+  for (let suffix = 2;; suffix += 1) {
     const candidate = `main-${suffix}`;
     if (!names.has(candidate)) return candidate;
   }
@@ -28,16 +28,16 @@ export function createAddApiKeyModalInitialState(existingConnectionNames = [], d
       defaultModel: "",
       priority: 1,
       proxyPoolId: "__none__",
-      ollamaHostUrl: "",
+      ollamaHostUrl: ""
     },
     azureData: {
       azureEndpoint: "",
       apiVersion: "2024-10-01-preview",
       deployment: "",
-      organization: "",
+      organization: ""
     },
     accountIdData: { accountId: "" },
-    region: defaultRegion,
+    region: defaultRegion
   };
 }
 
@@ -78,7 +78,7 @@ export function shouldResetAddApiKeyModal(previousIsOpen, nextIsOpen) {
  */
 export function allocateBulkConnectionName(base, usedNames) {
   const safeBase = String(base || "").trim() || "Key";
-  for (let n = 1; ; n += 1) {
+  for (let n = 1;; n += 1) {
     const candidate = `${safeBase} ${n}`;
     if (!usedNames.has(candidate.toLowerCase())) {
       usedNames.add(candidate.toLowerCase());
@@ -95,5 +95,5 @@ export function allocateBulkConnectionName(base, usedNames) {
  */
 export function bulkUsedNameSet(existingNames) {
   const safe = Array.isArray(existingNames) ? existingNames : [];
-  return new Set(safe.map((n) => (typeof n === "string" ? n.trim().toLowerCase() : "")).filter(Boolean));
+  return new Set(safe.map((n) => isString(n) ? n.trim().toLowerCase() : "").filter(Boolean));
 }

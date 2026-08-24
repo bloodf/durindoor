@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { DATA_DIR } from '@/lib/dataDir';
+export { isBrowser } from '@/shared/utils/typeChecks.js';
 
 const MACHINE_ID_FILE = path.join(DATA_DIR, 'machine-id');
 const AUTH_DIR = path.join(DATA_DIR, 'auth');
@@ -61,6 +62,3 @@ export async function getRawMachineId() {
  * Check if we're running in browser or server environment
  * @returns {boolean} True if in browser, false if in server
  */
-export function isBrowser() {
-  return typeof window !== 'undefined';
-}

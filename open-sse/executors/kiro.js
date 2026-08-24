@@ -4,8 +4,8 @@ import {
   KIRO_MAX_TOOL_CALL_WRAPPER_BYTES,
   KIRO_MAX_TOOL_CALL_REPAIR_ATTEMPTS,
   KIRO_TOOL_CALL_REPAIR_INSTRUCTION,
-  resolveKiroModel,
-} from "../config/kiroConstants.js";
+  resolveKiroModel } from
+"../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { enrichKiroCredentialsFromSsoCache } from "../services/kiroModels.js";
@@ -16,16 +16,16 @@ import {
   buildKiroBaseUrls,
   buildKiroProfileEndpoint,
   regionFromProfileArn,
-  KIRO_DEFAULT_REGION,
-} from "../config/kiroRegions.js";
+  KIRO_DEFAULT_REGION } from
+"../config/kiroRegions.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveContinuationId, extractClientSessionId } from "../utils/sessionManager.js";
 import { getKiroUsage } from "../services/usage/kiro.js";
 import { KIRO_CREDIT_EXHAUSTION_PROBE_MS } from "../config/errorConfig.js";
 import {
   settleProviderAttemptDispatch,
-  transferProviderAttemptDispatch,
-} from "../services/providerAttemptContext.js";
+  transferProviderAttemptDispatch } from
+"../services/providerAttemptContext.js";
 import { MAX_PROVIDER_BODY_BYTES } from "../config/runtimeConfig.js";
 import { OPENAI_BLOCK } from "../translator/schema/index.js";
 
@@ -33,7 +33,7 @@ import { OPENAI_BLOCK } from "../translator/schema/index.js";
 // (AWS ServiceQuotaExceededException / MONTHLY_REQUEST_COUNT). Some surfaces
 // flatten cause.name/cause.reason onto the top-level object, so both are checked.
 // Any other 402 stays ambiguous and keeps the generic 402 cooldown.
-const KIRO_QUOTA_EXCEEDED_EXCEPTION = "ServiceQuotaExceededException";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";const KIRO_QUOTA_EXCEEDED_EXCEPTION = "ServiceQuotaExceededException";
 const KIRO_QUOTA_EXCEEDED_REASON = "MONTHLY_REQUEST_COUNT";
 const KIRO_RESET_LOOKUP_TIMEOUT_MS = 8000;
 
@@ -45,10 +45,10 @@ function utf8ByteLengthOver(value, limit) {
   let bytes = 0;
   for (let index = 0; index < value.length; index++) {
     const code = value.charCodeAt(index);
-    const paired = code >= 0xd800 && code <= 0xdbff
-      && index + 1 < value.length
-      && value.charCodeAt(index + 1) >= 0xdc00
-      && value.charCodeAt(index + 1) <= 0xdfff;
+    const paired = code >= 0xd800 && code <= 0xdbff &&
+    index + 1 < value.length &&
+    value.charCodeAt(index + 1) >= 0xdc00 &&
+    value.charCodeAt(index + 1) <= 0xdfff;
     bytes += paired ? 4 : code < 0x80 ? 1 : code < 0x800 ? 2 : 3;
     if (paired) index++;
     if (bytes > limit) return bytes;
@@ -57,10 +57,10 @@ function utf8ByteLengthOver(value, limit) {
 }
 
 function validateKiroToolCallWrapperInput(input) {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
+  if (!input || !isObject(input) || Array.isArray(input)) {
     throw new Error("Invalid Kiro tool_call payload: input must be an object with name and arguments");
   }
-  if (typeof input.name !== "string" || !input.name.trim()) {
+  if (!isString(input.name) || !input.name.trim()) {
     throw new Error("Invalid Kiro tool_call payload: missing nested MCP tool name at input.name");
   }
   if (!Object.hasOwn(input, "arguments")) {
@@ -70,7 +70,7 @@ function validateKiroToolCallWrapperInput(input) {
 
 function appendKiroToolCallWrapperInput(pending, input) {
   if (input === undefined) return;
-  if (typeof input === "string") {
+  if (isString(input)) {
     if (pending.inputKind && pending.inputKind !== "string") {
       throw new Error("Invalid Kiro tool_call payload: mixed input fragment types");
     }
@@ -83,7 +83,7 @@ function appendKiroToolCallWrapperInput(pending, input) {
     pending.inputText += input;
     return;
   }
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
+  if (!input || !isObject(input) || Array.isArray(input)) {
     throw new Error("Invalid Kiro tool_call payload: input must be an object or JSON string");
   }
   if (pending.inputKind && pending.inputKind !== "object") {
@@ -122,7 +122,7 @@ function completeKiroToolCallWrapper(pending, terminal = false) {
 }
 
 function releaseReader(reader) {
-  try { reader.releaseLock(); } catch { /* already released */ }
+  try {reader.releaseLock();} catch {/* already released */}
 }
 
 async function cancelAndReleaseReader(reader, reason) {
@@ -130,11 +130,11 @@ async function cancelAndReleaseReader(reader, reason) {
   try {
     const cancellation = Promise.resolve(reader.cancel(reason)).catch(() => {});
     await Promise.race([
-      cancellation,
-      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
-    ]);
-  } catch { /* cancellation is best-effort */ }
-  finally {
+    cancellation,
+    new Promise((resolve) => {timer = setTimeout(resolve, 250);})]
+    );
+  } catch {/* cancellation is best-effort */} finally
+  {
     if (timer) clearTimeout(timer);
     releaseReader(reader);
   }
@@ -162,7 +162,7 @@ function classifyRepairGateChunk(chunk) {
       if (parsed?.error?.code === "invalid_kiro_tool_call") {
         return { invalid: parsed.error.message || "Invalid Kiro tool_call payload" };
       }
-    } catch { /* transform output owns SSE framing; malformed data is ordinary output */ }
+    } catch {/* transform output owns SSE framing; malformed data is ordinary output */}
   }
   return { meaningful };
 }
@@ -186,7 +186,7 @@ function replayChunksAndReader(chunks, reader) {
     },
     cancel(reason) {
       return cancelAndReleaseReader(reader, reason);
-    },
+    }
   });
 }
 
@@ -194,7 +194,7 @@ function replayChunksAndReader(chunks, reader) {
 function buildKiroToolCallRepairBody(body) {
   const repaired = structuredClone(body);
   const message = repaired?.conversationState?.currentMessage?.userInputMessage;
-  if (!message || typeof message.content !== "string") return repaired;
+  if (!message || !isString(message.content)) return repaired;
   message.content = `${message.content}\n\n${KIRO_TOOL_CALL_REPAIR_INSTRUCTION}`;
   return repaired;
 }
@@ -206,10 +206,10 @@ function isConfirmedKiroCreditExhaustion(bodyText) {
     const name = json?.name ?? json?.cause?.name;
     const reason = json?.reason ?? json?.cause?.reason;
     if (name === KIRO_QUOTA_EXCEEDED_EXCEPTION && reason === KIRO_QUOTA_EXCEEDED_REASON) return true;
-  } catch { /* not JSON — fall through to the text check */ }
+  } catch {/* not JSON — fall through to the text check */}
   const lower = bodyText.toLowerCase();
-  return lower.includes(KIRO_QUOTA_EXCEEDED_EXCEPTION.toLowerCase())
-    && lower.includes(KIRO_QUOTA_EXCEEDED_REASON.toLowerCase());
+  return lower.includes(KIRO_QUOTA_EXCEEDED_EXCEPTION.toLowerCase()) &&
+  lower.includes(KIRO_QUOTA_EXCEEDED_REASON.toLowerCase());
 }
 
 function earliestDepletedResetMs(quotas) {
@@ -225,9 +225,9 @@ function earliestDepletedResetMs(quotas) {
 
 function withKiroLookupTimeout(promise, ms) {
   return Promise.race([
-    promise,
-    new Promise((resolve) => setTimeout(() => resolve(null), ms)),
-  ]);
+  promise,
+  new Promise((resolve) => setTimeout(() => resolve(null), ms))]
+  );
 }
 // Strict AWS region id allowlist (incl. GovCloud partition `us-gov-west-1`),
 // matching the Bedrock validator shape. Used as a trust-boundary guard before
@@ -235,7 +235,7 @@ function withKiroLookupTimeout(promise, ms) {
 // host (SSRF). Stored credentials and ARN segments are untrusted input.
 const AWS_REGION_PATTERN = /^[a-z]{2}(?:-gov)?-[a-z]+-\d+$/;
 function isValidAwsRegion(r) {
-  return typeof r === "string" && AWS_REGION_PATTERN.test(r.toLowerCase());
+  return isString(r) && AWS_REGION_PATTERN.test(r.toLowerCase());
 }
 
 // Region the data plane must target: the profile's own region is authoritative
@@ -262,7 +262,7 @@ const KIRO_EVENTSTREAM_CRC_TABLE = new Uint32Array(256);
 for (let index = 0; index < KIRO_EVENTSTREAM_CRC_TABLE.length; index++) {
   let value = index;
   for (let bit = 0; bit < 8; bit++) {
-    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    value = value & 1 ? 0xedb88320 ^ value >>> 1 : value >>> 1;
   }
   KIRO_EVENTSTREAM_CRC_TABLE[index] = value >>> 0;
 }
@@ -270,7 +270,7 @@ for (let index = 0; index < KIRO_EVENTSTREAM_CRC_TABLE.length; index++) {
 function eventStreamCrc32(bytes) {
   let checksum = 0xffffffff;
   for (const byte of bytes) {
-    checksum = (checksum >>> 8) ^ KIRO_EVENTSTREAM_CRC_TABLE[(checksum ^ byte) & 0xff];
+    checksum = checksum >>> 8 ^ KIRO_EVENTSTREAM_CRC_TABLE[(checksum ^ byte) & 0xff];
   }
   return (checksum ^ 0xffffffff) >>> 0;
 }
@@ -295,27 +295,27 @@ const KIRO_PROFILE_FALLBACK_REGIONS = ["us-east-1", "eu-central-1"];
  * @returns {Promise<string|null>}
  */
 export async function resolveKiroProfileArnAcrossRegions(
-  accessToken,
-  preferredRegion,
-  proxyOptions = null,
-  log = null,
-  fetchImpl = proxyAwareFetch,
-  signal = null,
-) {
+accessToken,
+preferredRegion,
+proxyOptions = null,
+log = null,
+fetchImpl = proxyAwareFetch,
+signal = null)
+{
   if (!accessToken) return null;
   const rawCandidates = [...new Set(
-    [preferredRegion, ...KIRO_PROFILE_FALLBACK_REGIONS]
-      .filter(Boolean)
-      .map((region) => typeof region === "string" ? region.trim().toLowerCase() : region),
+    [preferredRegion, ...KIRO_PROFILE_FALLBACK_REGIONS].
+    filter(Boolean).
+    map((region) => isString(region) ? region.trim().toLowerCase() : region)
   )];
   // Trust boundary: providerSpecificData.region is stored from user input and is
   // interpolated into the control-plane host. Drop anything that isn't a valid
   // AWS region id rather than building an arbitrary `q.<x>.amazonaws.com` URL.
   const candidates = rawCandidates.filter(isValidAwsRegion);
   for (const region of candidates) {
-    if (signal?.aborted) throw signal.reason instanceof Error
-      ? signal.reason
-      : new DOMException("Kiro profile discovery aborted", "AbortError");
+    if (signal?.aborted) throw signal.reason instanceof Error ?
+    signal.reason :
+    new DOMException("Kiro profile discovery aborted", "AbortError");
     try {
       const response = await fetchImpl(buildKiroProfileEndpoint(region), {
         method: "POST",
@@ -323,14 +323,14 @@ export async function resolveKiroProfileArnAcrossRegions(
           "Content-Type": "application/x-amz-json-1.0",
           "x-amz-target": "AmazonCodeWhispererService.ListAvailableProfiles",
           "Authorization": `Bearer ${accessToken}`,
-          "Accept": "application/json",
+          "Accept": "application/json"
         },
         body: JSON.stringify({ maxResults: 10 }),
-        signal,
+        signal
       }, proxyOptions);
       if (!response?.ok) {
         log?.debug?.("KIRO", `ListAvailableProfiles ${region} → ${response?.status}`);
-        try { void response?.body?.cancel?.().catch?.(() => {}); } catch { /* already closed */ }
+        try {void response?.body?.cancel?.().catch?.(() => {});} catch {/* already closed */}
         continue;
       }
       const data = await response.json().catch(() => null);
@@ -375,10 +375,10 @@ export class KiroExecutor extends BaseExecutor {
       const accessToken = credentials?.apiKey || credentials?.accessToken;
       const usage = await withKiroLookupTimeout(
         getKiroUsage(accessToken, credentials?.providerSpecificData, proxyOptions),
-        KIRO_RESET_LOOKUP_TIMEOUT_MS,
+        KIRO_RESET_LOOKUP_TIMEOUT_MS
       );
       resetsAtMs = earliestDepletedResetMs(usage?.quotas);
-    } catch { /* best-effort only — fall back to the daily probe below */ }
+    } catch {/* best-effort only — fall back to the daily probe below */}
     if (!resetsAtMs || resetsAtMs <= Date.now()) {
       resetsAtMs = Date.now() + KIRO_CREDIT_EXHAUSTION_PROBE_MS;
     }
@@ -447,7 +447,7 @@ export class KiroExecutor extends BaseExecutor {
     // does not exist elsewhere); the kiro.dev host stays as a failover. us-east-1
     // OAuth/social keeps kiro.dev-first order.
     const isCodeWhispererSurface =
-      authMethod === "api_key" || authMethod === "external_idp" || authMethod === "idc";
+    authMethod === "api_key" || authMethod === "external_idp" || authMethod === "idc";
     const amazonFirst = isCodeWhispererSurface || region !== KIRO_DEFAULT_REGION;
     if (!amazonFirst) return baseUrls;
     const amazon = [...new Set(baseUrls.filter((u) => u.includes("amazonaws.com")))];
@@ -480,38 +480,38 @@ export class KiroExecutor extends BaseExecutor {
   transformRequest(model, body, stream, credentials, requestContext = null, targetUrl = null) {
     let transformedBody = body;
     if (
-      targetUrl?.includes(".kiro.dev") &&
-      body &&
-      typeof body === "object" &&
-      !Array.isArray(body) &&
-      Object.prototype.hasOwnProperty.call(body, "systemPrompt")
-    ) {
+    targetUrl?.includes(".kiro.dev") &&
+    body && isObject(
+      body) &&
+    !Array.isArray(body) &&
+    Object.prototype.hasOwnProperty.call(body, "systemPrompt"))
+    {
       transformedBody = { ...body };
       delete transformedBody.systemPrompt;
     }
 
     const conversationId = transformedBody?.conversationState?.conversationId;
-    if (!conversationId || typeof transformedBody?.conversationState !== "object") return transformedBody;
+    if (!conversationId || !isObject(transformedBody?.conversationState)) return transformedBody;
     const explicitFromContext = extractClientSessionId(requestContext?.clientHeaders, null);
     const explicitFromCredentials = extractClientSessionId(credentials?.rawHeaders, null);
-    const isGenerated = credentials?._clientSessionIsGenerated
-      ?? !(explicitFromContext ?? explicitFromCredentials);
+    const isGenerated = credentials?._clientSessionIsGenerated ??
+    !(explicitFromContext ?? explicitFromCredentials);
     const continuationId = resolveContinuationId({
       sessionId: conversationId,
       connectionId: credentials?.connectionId,
       model,
       scope: "kiro",
       requestContext,
-      requestScoped: isGenerated,
+      requestScoped: isGenerated
     });
     return {
       ...transformedBody,
       conversationState: {
         ...transformedBody.conversationState,
         agentContinuationId: continuationId,
-        agentTaskType: "vibe",
+        agentTaskType: "vibe"
       },
-      agentMode: "vibe",
+      agentMode: "vibe"
     };
   }
 
@@ -549,7 +549,7 @@ export class KiroExecutor extends BaseExecutor {
       return currentResult;
     }
 
-    for (let repairAttempts = 0; ; repairAttempts++) {
+    for (let repairAttempts = 0;; repairAttempts++) {
       const gate = await this.openToolCallRepairGate(currentResult.response, args.model);
       if (gate.kind !== "invalid" || repairAttempts >= KIRO_MAX_TOOL_CALL_REPAIR_ATTEMPTS) {
         const originalResponse = currentResult.response;
@@ -564,7 +564,7 @@ export class KiroExecutor extends BaseExecutor {
       currentResult = await BaseExecutor.prototype.execute.call(this, {
         ...args,
         body: buildKiroToolCallRepairBody(args.body),
-        attemptStartedAt: null,
+        attemptStartedAt: null
       });
       if (!currentResult?.response?.ok) return currentResult;
     }
@@ -596,7 +596,7 @@ export class KiroExecutor extends BaseExecutor {
           return {
             kind: "invalid",
             message: classification.invalid,
-            bytes: concatChunks(chunks, totalBytes),
+            bytes: concatChunks(chunks, totalBytes)
           };
         }
         if (classification.meaningful || totalBytes >= MAX_PROVIDER_BODY_BYTES) {
@@ -610,13 +610,13 @@ export class KiroExecutor extends BaseExecutor {
   }
 
   responseFromToolCallRepairGate(original, gate) {
-    const body = gate.kind === "stream"
-      ? replayChunksAndReader(gate.chunks, gate.reader)
-      : gate.bytes;
+    const body = gate.kind === "stream" ?
+    replayChunksAndReader(gate.chunks, gate.reader) :
+    gate.bytes;
     return new Response(body, {
       status: original.status,
       statusText: original.statusText,
-      headers: { ...SSE_HEADERS },
+      headers: { ...SSE_HEADERS }
     });
   }
 
@@ -632,7 +632,7 @@ export class KiroExecutor extends BaseExecutor {
    */
   async ensureKiroProfileArn(args) {
     const { body, credentials, log, proxyOptions = null } = args || {};
-    if (!body || typeof body !== "object" || body.profileArn) return;
+    if (!body || !isObject(body) || body.profileArn) return;
     const psd = credentials?.providerSpecificData || {};
     if (psd.authMethod === "api_key") return;
     const accessToken = credentials?.accessToken;
@@ -645,13 +645,13 @@ export class KiroExecutor extends BaseExecutor {
       return;
     }
 
-    const preferredRegion = isValidAwsRegion(psd.region)
-      ? psd.region
-      : (regionFromProfileArn(psd.profileArn) || KIRO_DEFAULT_REGION);
+    const preferredRegion = isValidAwsRegion(psd.region) ?
+    psd.region :
+    regionFromProfileArn(psd.profileArn) || KIRO_DEFAULT_REGION;
     const arn = await resolveKiroProfileArnAcrossRegions(accessToken, preferredRegion, proxyOptions, log, proxyAwareFetch, args?.signal || null);
-    if (args?.signal?.aborted) throw args.signal.reason instanceof Error
-      ? args.signal.reason
-      : new DOMException("Kiro profile discovery aborted", "AbortError");
+    if (args?.signal?.aborted) throw args.signal.reason instanceof Error ?
+    args.signal.reason :
+    new DOMException("Kiro profile discovery aborted", "AbortError");
     if (arn) {
       KIRO_PROFILE_ARN_CACHE.set(accessToken, arn);
       body.profileArn = arn;
@@ -695,7 +695,7 @@ export class KiroExecutor extends BaseExecutor {
       state.failureSeen = true;
       buffer = new Uint8Array(0);
       controller.enqueue(new TextEncoder().encode(
-        `data: ${JSON.stringify({ error: { message: "Kiro returned an invalid EventStream frame", type: "stream_error" } })}\n\n`,
+        `data: ${JSON.stringify({ error: { message: "Kiro returned an invalid EventStream frame", type: "stream_error" } })}\n\n`
       ));
     };
     const rejectToolCall = (controller, message) => {
@@ -704,7 +704,7 @@ export class KiroExecutor extends BaseExecutor {
       state.invalidToolCall = true;
       buffer = new Uint8Array(0);
       controller.enqueue(new TextEncoder().encode(
-        `data: ${JSON.stringify({ error: { message, type: "invalid_tool_call", code: "invalid_kiro_tool_call" } })}\n\n`,
+        `data: ${JSON.stringify({ error: { message, type: "invalid_tool_call", code: "invalid_kiro_tool_call" } })}\n\n`
       ));
     };
     const emitPendingWrapper = (controller, toolCallId, pending, argumentsStr) => {
@@ -717,16 +717,16 @@ export class KiroExecutor extends BaseExecutor {
         choices: [{
           index: 0,
           delta: {
-            ...(chunkIndex === 0 ? { role: "assistant" } : {}),
+            ...(chunkIndex === 0 ? { role: "assistant" } : null),
             tool_calls: [{
               index: toolIndex,
               id: toolCallId,
               type: "function",
-              function: { name: KIRO_TOOL_CALL_WRAPPER, arguments: "" },
-            }],
+              function: { name: KIRO_TOOL_CALL_WRAPPER, arguments: "" }
+            }]
           },
-          finish_reason: null,
-        }],
+          finish_reason: null
+        }]
       };
       const argsChunk = {
         id: responseId,
@@ -738,11 +738,11 @@ export class KiroExecutor extends BaseExecutor {
           delta: {
             tool_calls: [{
               index: toolIndex,
-              function: { arguments: argumentsStr },
-            }],
+              function: { arguments: argumentsStr }
+            }]
           },
-          finish_reason: null,
-        }],
+          finish_reason: null
+        }]
       };
       state.hasToolCalls = true;
       state.totalContentLength += KIRO_TOOL_CALL_WRAPPER.length + argumentsStr.length;
@@ -769,7 +769,7 @@ export class KiroExecutor extends BaseExecutor {
     const transformStream = new TransformStream({
       async transform(chunk, controller) {
         if (state.failureSeen) return;
-             // Track output so we can emit a keepalive if this frame yields no chunk.
+        // Track output so we can emit a keepalive if this frame yields no chunk.
         const enqueueCountBefore = chunkIndex;
         // Append to buffer
         const newBuffer = new Uint8Array(buffer.length + chunk.length);
@@ -787,11 +787,11 @@ export class KiroExecutor extends BaseExecutor {
           const headersLength = view.getUint32(4, false);
 
           if (
-            totalLength < 16
-            || totalLength > KIRO_MAX_EVENTSTREAM_FRAME_BYTES
-            || headersLength > KIRO_MAX_EVENTSTREAM_HEADERS_BYTES
-            || headersLength > totalLength - 16
-          ) {
+          totalLength < 16 ||
+          totalLength > KIRO_MAX_EVENTSTREAM_FRAME_BYTES ||
+          headersLength > KIRO_MAX_EVENTSTREAM_HEADERS_BYTES ||
+          headersLength > totalLength - 16)
+          {
             rejectFraming(controller);
             break;
           }
@@ -811,7 +811,7 @@ export class KiroExecutor extends BaseExecutor {
           if (messageType === "error" || messageType === "exception" || /(?:Error|Exception)$/.test(eventType)) {
             state.failureSeen = true;
             controller.enqueue(new TextEncoder().encode(
-              `data: ${JSON.stringify({ error: { message: "Kiro upstream stream failed", type: "provider_error" } })}\n\n`,
+              `data: ${JSON.stringify({ error: { message: "Kiro upstream stream failed", type: "provider_error" } })}\n\n`
             ));
             continue;
           }
@@ -865,9 +865,9 @@ export class KiroExecutor extends BaseExecutor {
               model,
               choices: [{
                 index: 0,
-                delta: chunkIndex === 0
-                  ? { role: "assistant", content }
-                  : { content },
+                delta: chunkIndex === 0 ?
+                { role: "assistant", content } :
+                { content },
                 finish_reason: null
               }]
             };
@@ -882,16 +882,16 @@ export class KiroExecutor extends BaseExecutor {
           // it back to Claude thinking blocks / Anthropic reasoning, etc.
           if (eventType === "reasoningContentEvent") {
             const reasoning = event.payload?.reasoningContentEvent || event.payload || {};
-            const reasoningText = (typeof reasoning === "string")
-              ? reasoning
-              : (reasoning.text || reasoning.content || "");
+            const reasoningText = isString(reasoning) ?
+            reasoning :
+            reasoning.text || reasoning.content || "";
             if (reasoningText) {
               state.hasReasoningContent = true;
               state.totalContentLength += reasoningText.length;
 
-              const reasoningDelta = state.reasoningChunkCount === 0 && chunkIndex === 0
-                ? { role: "assistant", reasoning_content: reasoningText }
-                : { reasoning_content: reasoningText };
+              const reasoningDelta = state.reasoningChunkCount === 0 && chunkIndex === 0 ?
+              { role: "assistant", reasoning_content: reasoningText } :
+              { reasoning_content: reasoningText };
 
               const chunk = {
                 id: responseId,
@@ -937,13 +937,13 @@ export class KiroExecutor extends BaseExecutor {
               // entry (null, non-object, or unserializable input) must drop
               // only that entry -- a valid sibling call in the same event
               // still has to reach the client.
-              if (!singleToolUse || typeof singleToolUse !== "object") {
+              if (!singleToolUse || !isObject(singleToolUse)) {
                 console.error("[Kiro] dropping malformed tool call entry");
                 continue;
               }
 
               const toolCallId = singleToolUse.toolUseId || `call_${Date.now()}`;
-              const toolName = typeof singleToolUse.name === "string" ? singleToolUse.name : "";
+              const toolName = isString(singleToolUse.name) ? singleToolUse.name : "";
               const toolInput = singleToolUse.input;
               let argumentsStr;
 
@@ -956,7 +956,7 @@ export class KiroExecutor extends BaseExecutor {
                   }
                   pendingWrapper = {
                     inputBytes: 0,
-                    inputText: "",
+                    inputText: ""
                   };
                   state.pendingWrapperToolCalls.set(toolCallId, pendingWrapper);
                 }
@@ -977,9 +977,9 @@ export class KiroExecutor extends BaseExecutor {
                   return;
                 }
                 if (toolInput !== undefined) {
-                  if (typeof toolInput === "string") {
+                  if (isString(toolInput)) {
                     argumentsStr = toolInput;
-                  } else if (typeof toolInput === "object") {
+                  } else if (isObject(toolInput)) {
                     try {
                       argumentsStr = JSON.stringify(toolInput);
                     } catch (error) {
@@ -1008,7 +1008,7 @@ export class KiroExecutor extends BaseExecutor {
                   choices: [{
                     index: 0,
                     delta: {
-                      ...(chunkIndex === 0 ? { role: "assistant" } : {}),
+                      ...(chunkIndex === 0 ? { role: "assistant" } : null),
                       tool_calls: [{
                         index: toolIndex,
                         id: toolCallId,
@@ -1076,14 +1076,14 @@ export class KiroExecutor extends BaseExecutor {
           if (eventType === "meteringEvent") {
             state.hasMeteringEvent = true;
             const metering = event.payload?.meteringEvent || event.payload || {};
-            const credits = metering.usage !== null && metering.usage !== undefined
-              ? Number(metering.usage) : NaN;
+            const credits = metering.usage !== null && metering.usage !== undefined ?
+            Number(metering.usage) : NaN;
             // Consumption is never negative; ignore malformed values
             if (Number.isFinite(credits) && credits >= 0) {
               state.usage = {
                 ...(state.usage || {}),
                 kiro_credits: credits,
-                kiro_credit_unit: typeof metering.unit === "string" ? metering.unit : "credit"
+                kiro_credit_unit: isString(metering.unit) ? metering.unit : "credit"
               };
             }
           }
@@ -1092,7 +1092,7 @@ export class KiroExecutor extends BaseExecutor {
           if (eventType === "metricsEvent") {
             // Extract usage data from metricsEvent payload
             const metrics = event.payload?.metricsEvent || event.payload;
-            if (metrics && typeof metrics === 'object') {
+            if (metrics && isObject(metrics)) {
               const inputTokens = metrics.inputTokens || 0;
               const outputTokens = metrics.outputTokens || 0;
               // ponytail: Amazon Q upstream does not expose cache fields today,
@@ -1126,17 +1126,17 @@ export class KiroExecutor extends BaseExecutor {
             // metering (kiro_credits) means we have usage but no token counts,
             // so estimate whenever token counts are absent, preserving credits.
             const hasTokenUsage = Number.isFinite(Number(state.usage?.prompt_tokens)) ||
-              Number.isFinite(Number(state.usage?.completion_tokens));
+            Number.isFinite(Number(state.usage?.completion_tokens));
             if (!hasTokenUsage) {
               // Estimate output tokens from content length
-              const estimatedOutputTokens = state.totalContentLength > 0
-                ? Math.max(1, Math.floor(state.totalContentLength / 4))
-                : 0;
+              const estimatedOutputTokens = state.totalContentLength > 0 ?
+              Math.max(1, Math.floor(state.totalContentLength / 4)) :
+              0;
 
               // Estimate input tokens from contextUsagePercentage
-              const estimatedInputTokens = state.contextUsagePercentage > 0
-                ? Math.floor(state.contextUsagePercentage * contextWindow / 100)
-                : 0;
+              const estimatedInputTokens = state.contextUsagePercentage > 0 ?
+              Math.floor(state.contextUsagePercentage * contextWindow / 100) :
+              0;
 
               state.usage = {
                 ...(state.usage || {}),
@@ -1173,10 +1173,10 @@ export class KiroExecutor extends BaseExecutor {
         }
 
         // No client chunk produced this frame — emit an SSE comment keepalive
-                // so the stall watchdog sees upstream activity (ignored by parser/client).
-                if (chunkIndex === enqueueCountBefore && !state.finishEmitted && !state.failureSeen) {
-                  controller.enqueue(new TextEncoder().encode(": ka\n\n"));
-                }
+        // so the stall watchdog sees upstream activity (ignored by parser/client).
+        if (chunkIndex === enqueueCountBefore && !state.finishEmitted && !state.failureSeen) {
+          controller.enqueue(new TextEncoder().encode(": ka\n\n"));
+        }
       },
 
       flush(controller) {
@@ -1184,12 +1184,12 @@ export class KiroExecutor extends BaseExecutor {
         if (buffer.length > 0) {
           state.failureSeen = true;
           controller.enqueue(new TextEncoder().encode(
-            `data: ${JSON.stringify({ error: { message: "Kiro stream ended with a truncated EventStream frame", type: "stream_error" } })}\n\n`,
+            `data: ${JSON.stringify({ error: { message: "Kiro stream ended with a truncated EventStream frame", type: "stream_error" } })}\n\n`
           ));
         } else if (!state.rawTerminalSeen && !state.failureSeen) {
           state.failureSeen = true;
           controller.enqueue(new TextEncoder().encode(
-            `data: ${JSON.stringify({ error: { message: "Kiro stream ended before messageStopEvent", type: "stream_error" } })}\n\n`,
+            `data: ${JSON.stringify({ error: { message: "Kiro stream ended before messageStopEvent", type: "stream_error" } })}\n\n`
           ));
         }
 
@@ -1197,12 +1197,12 @@ export class KiroExecutor extends BaseExecutor {
         if (state.rawTerminalSeen && !state.failureSeen && !state.finishEmitted) {
           state.finishEmitted = true;
           const hasTokenUsage = Number.isFinite(Number(state.usage?.prompt_tokens)) ||
-            Number.isFinite(Number(state.usage?.completion_tokens));
+          Number.isFinite(Number(state.usage?.completion_tokens));
           if (!hasTokenUsage && state.totalContentLength > 0) {
             const completionTokens = Math.max(1, Math.floor(state.totalContentLength / 4));
-            const promptTokens = state.contextUsagePercentage > 0
-              ? Math.floor(state.contextUsagePercentage * contextWindow / 100)
-              : 0;
+            const promptTokens = state.contextUsagePercentage > 0 ?
+            Math.floor(state.contextUsagePercentage * contextWindow / 100) :
+            0;
             state.usage = {
               ...(state.usage || {}),
               prompt_tokens: promptTokens,
@@ -1220,7 +1220,7 @@ export class KiroExecutor extends BaseExecutor {
               index: 0,
               delta: {},
               finish_reason: state.hasToolCalls ? "tool_calls" : KIRO_TRUNCATION_STOP_REASONS.has(state.stopReason) && chunkIndex > 0 ? "length" : "stop"
-              }]
+            }]
           };
           if (state.usage) finishChunk.usage = state.usage;
           controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(finishChunk)}\n\n`));
@@ -1235,7 +1235,7 @@ export class KiroExecutor extends BaseExecutor {
     if (!response.body) {
       return new Response(JSON.stringify({ error: { message: "Kiro upstream returned no response body" } }), {
         status: 502,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" }
       });
     }
     const transformedBody = response.body.pipeThrough(transformStream);
@@ -1265,7 +1265,7 @@ export class KiroExecutor extends BaseExecutor {
       },
       cancel(reason) {
         return transformedReader ? cancelAndReleaseReader(transformedReader, reason) : undefined;
-      },
+      }
     });
 
     return new Response(transformedStream, {
@@ -1309,15 +1309,15 @@ function parseEventFrame(data) {
     const totalLength = view.getUint32(0, false);
     const headersLength = view.getUint32(4, false);
     if (
-      totalLength !== data.byteLength
-      || headersLength > KIRO_MAX_EVENTSTREAM_HEADERS_BYTES
-      || headersLength > totalLength - 16
-    ) return null;
+    totalLength !== data.byteLength ||
+    headersLength > KIRO_MAX_EVENTSTREAM_HEADERS_BYTES ||
+    headersLength > totalLength - 16)
+    return null;
     if (view.getUint32(8, false) !== eventStreamCrc32(data.subarray(0, 8))) return null;
     if (
-      view.getUint32(totalLength - 4, false)
-      !== eventStreamCrc32(data.subarray(0, totalLength - 4))
-    ) return null;
+    view.getUint32(totalLength - 4, false) !==
+    eventStreamCrc32(data.subarray(0, totalLength - 4)))
+    return null;
 
     const headers = {};
     let offset = 12; // After prelude

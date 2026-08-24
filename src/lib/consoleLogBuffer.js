@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const consoleLevels = ["log", "info", "warn", "error", "debug"];
 
@@ -9,7 +10,7 @@ if (!global._consoleLogBufferState) {
     revision: 0,
     patched: false,
     originals: {},
-    emitter: new EventEmitter(),
+    emitter: new EventEmitter()
   };
   global._consoleLogBufferState.emitter.setMaxListeners(50);
 }
@@ -55,7 +56,7 @@ function stripAnsi(str) {
 }
 
 function formatArg(arg) {
-  if (typeof arg === "string") return stripAnsi(arg);
+  if (isString(arg)) return stripAnsi(arg);
   if (arg instanceof Error) return stripAnsi(arg.stack || arg.message || String(arg));
   try {
     return stripAnsi(JSON.stringify(arg));

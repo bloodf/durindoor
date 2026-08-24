@@ -3,21 +3,21 @@ import { URL } from "node:url";
 // Self-hosted Firecrawl probe / runtime base URL allowlist.
 // Distinct from public SSRF guard: this explicitly permits loopback and private
 // LAN targets because the user is intentionally configuring a local instance.
-export const ALLOWED_FIRECRAWL_HOSTS = Object.freeze([
-  "localhost",
-  "127.0.0.1",
-  "::1",
-  "10.0.0.0/8",
-  "172.16.0.0/12",
-  "192.168.0.0/16",
-  "fc00::/7 (IPv6 ULA)",
-]);
+import { isObject, isString } from "@/shared/utils/typeChecks.js";export const ALLOWED_FIRECRAWL_HOSTS = Object.freeze([
+"localhost",
+"127.0.0.1",
+"::1",
+"10.0.0.0/8",
+"172.16.0.0/12",
+"192.168.0.0/16",
+"fc00::/7 (IPv6 ULA)"]
+);
 
 const BLOCKED_SUFFIXES = [".internal", ".local"];
 const BLOCKED_HOSTNAMES = ["metadata.google.internal", "0.0.0.0"];
 
 function isRfc1918Ipv4(host) {
-  if (!host || typeof host !== "string") return false;
+  if (!host || !isString(host)) return false;
   const parts = host.split(".");
   if (parts.length !== 4) return false;
   if (!parts.every((p) => /^(0|[1-9]\d{0,2})$/.test(p))) return false;
@@ -35,7 +35,7 @@ function isLoopbackIpv6(host) {
 }
 
 function isUlaIpv6(host) {
-  if (!host || typeof host !== "string" || !host.includes(":")) return false;
+  if (!host || !isString(host) || !host.includes(":")) return false;
   const first = host.split(":")[0];
   if (!first) return false;
   return /^[fF][cCdD]/.test(first);
@@ -58,29 +58,29 @@ function isBlockedHost(host) {
 }
 
 const BLOCKED_REQUEST_HEADERS = new Set([
-  "host",
-  "content-length",
-  "connection",
-  "transfer-encoding",
-  "expect",
-  "proxy-authorization",
-  "proxy-authenticate",
-  "proxy-connection",
-]);
+"host",
+"content-length",
+"connection",
+"transfer-encoding",
+"expect",
+"proxy-authorization",
+"proxy-authenticate",
+"proxy-connection"]
+);
 
 function isValidHeaderName(name) {
-  if (typeof name !== "string" || name.length === 0 || name.length > 256) return false;
+  if (!isString(name) || name.length === 0 || name.length > 256) return false;
   return /^[a-zA-Z0-9!#$%&'*+\-.^_`|~]+$/.test(name);
 }
 
 function isValidHeaderValue(value) {
-  if (typeof value !== "string" || value.length === 0 || value.length > 8192) return false;
+  if (!isString(value) || value.length === 0 || value.length > 8192) return false;
   return !/[\r\n]/.test(value);
 }
 
 export function validateFirecrawlHeaders(input) {
   if (input === undefined || input === null) return { ok: true, headers: undefined };
-  if (typeof input !== "object" || Array.isArray(input)) {
+  if (!isObject(input) || Array.isArray(input)) {
     return { ok: false, error: "Headers must be a plain object" };
   }
   const proto = Object.getPrototypeOf(input);
@@ -109,13 +109,13 @@ export function validateFirecrawlHeaders(input) {
 }
 
 function isValidApiKey(value) {
-  if (typeof value !== "string" || value.length === 0 || value.length > 4096) return false;
+  if (!isString(value) || value.length === 0 || value.length > 4096) return false;
   return /^[\x20-\x7E]+$/.test(value);
 }
 
 export function validateFirecrawlApiKey(input) {
   if (input === undefined || input === null || input === "") return { ok: true, apiKey: undefined };
-  if (typeof input !== "string") return { ok: false, error: "Invalid API key" };
+  if (!isString(input)) return { ok: false, error: "Invalid API key" };
   const trimmed = input.trim();
   if (trimmed.length === 0) return { ok: true, apiKey: undefined };
   if (!isValidApiKey(trimmed)) return { ok: false, error: "Invalid API key" };
@@ -136,7 +136,7 @@ function getRawHost(raw) {
 }
 
 export function validateFirecrawlBaseUrl(raw) {
-  if (!raw || typeof raw !== "string") {
+  if (!raw || !isString(raw)) {
     return { ok: false, error: "Firecrawl base URL is required" };
   }
   raw = raw.trim();
@@ -163,19 +163,19 @@ export function validateFirecrawlBaseUrl(raw) {
     return { ok: false, error: "Host is not allowed for self-hosted Firecrawl" };
   }
   if (
-    host.toLowerCase() === "localhost" ||
-    host === "127.0.0.1" ||
-    isRfc1918Ipv4(host) ||
-    isLoopbackIpv6(host) ||
-    isUlaIpv6(host)
-  ) {
+  host.toLowerCase() === "localhost" ||
+  host === "127.0.0.1" ||
+  isRfc1918Ipv4(host) ||
+  isLoopbackIpv6(host) ||
+  isUlaIpv6(host))
+  {
     return { ok: true, url };
   }
   return { ok: false, error: "Host is not allowed for self-hosted Firecrawl" };
 }
 
 export function parseFirecrawlHeaders(raw) {
-  if (!raw || typeof raw !== "string") return undefined;
+  if (!raw || !isString(raw)) return undefined;
   try {
     return JSON.parse(raw);
   } catch {

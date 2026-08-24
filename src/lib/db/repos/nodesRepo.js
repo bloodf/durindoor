@@ -11,7 +11,7 @@ function rowToNode(row) {
     type: row.type,
     name: row.name,
     createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    updatedAt: row.updatedAt
   };
 }
 
@@ -23,7 +23,7 @@ function nodeToRow(n) {
     name: name ?? null,
     data: stringifyJson(rest),
     createdAt,
-    updatedAt,
+    updatedAt
   };
 }
 
@@ -42,7 +42,7 @@ export async function getProviderNodes(filter = {}) {
   const db = await getAdapter();
   const where = [];
   const params = [];
-  if (filter.type) { where.push("type = ?"); params.push(filter.type); }
+  if (filter.type) {where.push("type = ?");params.push(filter.type);}
   const sql = `SELECT * FROM providerNodes${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`;
   return db.all(sql, params).map(rowToNode);
 }
@@ -62,9 +62,9 @@ export async function createProviderNode(data) {
     prefix: data.prefix,
     apiType: data.apiType,
     baseUrl: data.baseUrl,
-    ...data.iconUrl ? { iconUrl: data.iconUrl } : {},
+    ...(data.iconUrl ? { iconUrl: data.iconUrl } : null),
     createdAt: now,
-    updatedAt: now,
+    updatedAt: now
   };
   upsert(db, node);
   return node;

@@ -3,22 +3,23 @@ import {
   getProviderConnectionById,
   getProxyPoolById,
   updateProviderConnection,
-  deleteProviderConnection,
-} from "@/models";
+  deleteProviderConnection } from
+"@/models";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { mergeProviderSpecificData } from "@/lib/db/helpers/mergeProviderMetadata.js";
 import { buildOAuthProxyMetadataPatch } from "@/lib/oauth/proxySelection.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
-  "clientSecret",
-  "qwenCloudCookie",
-  "alibabaConsoleCookie",
-  "cookie",
-  "QWEN_CLOUD_COOKIE",
-]);
+"clientSecret",
+"qwenCloudCookie",
+"alibabaConsoleCookie",
+"cookie",
+"QWEN_CLOUD_COOKIE"]
+);
 
 // Port of OmniRoute #6562/#6626: `priority` auto-increments unbounded on
 // connection creation (`MAX(priority)+1` per provider in connectionsRepo),
@@ -52,16 +53,16 @@ function invalidRequest(field) {
 }
 
 function sanitizeProviderConnection(connection) {
-  const providerSpecificData = connection.providerSpecificData
-    ? Object.fromEntries(
-        Object.entries(normalizeOpenAIStoreSetting(connection.provider, connection.providerSpecificData))
-          .filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
-      )
-    : connection.providerSpecificData;
+  const providerSpecificData = connection.providerSpecificData ?
+  Object.fromEntries(
+    Object.entries(normalizeOpenAIStoreSetting(connection.provider, connection.providerSpecificData)).
+    filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
+  ) :
+  connection.providerSpecificData;
 
   const result = {
     ...connection,
-    ...(providerSpecificData !== undefined ? { providerSpecificData } : {}),
+    ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
   };
   delete result.apiKey;
   delete result.accessToken;
@@ -73,20 +74,20 @@ function sanitizeProviderConnection(connection) {
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
-    Object.prototype.hasOwnProperty.call(body, "connectionProxyEnabled") ||
-    Object.prototype.hasOwnProperty.call(body, "connectionProxyUrl") ||
-    Object.prototype.hasOwnProperty.call(body, "connectionNoProxy");
+  Object.prototype.hasOwnProperty.call(body, "connectionProxyEnabled") ||
+  Object.prototype.hasOwnProperty.call(body, "connectionProxyUrl") ||
+  Object.prototype.hasOwnProperty.call(body, "connectionNoProxy");
 
   if (!hasAnyProxyField) return { hasAnyProxyField: false };
 
   const enabled = body?.connectionProxyEnabled === true;
-  const url = typeof body?.connectionProxyUrl === "string" ? body.connectionProxyUrl.trim() : "";
-  const noProxy = typeof body?.connectionNoProxy === "string" ? body.connectionNoProxy.trim() : "";
+  const url = isString(body?.connectionProxyUrl) ? body.connectionProxyUrl.trim() : "";
+  const noProxy = isString(body?.connectionNoProxy) ? body.connectionNoProxy.trim() : "";
 
   if (enabled && !url) {
     return {
       hasAnyProxyField: true,
-      error: "Connection proxy URL is required when connection proxy is enabled",
+      error: "Connection proxy URL is required when connection proxy is enabled"
     };
   }
 
@@ -94,7 +95,7 @@ function normalizeProxyConfig(body = {}) {
     hasAnyProxyField: true,
     connectionProxyEnabled: enabled,
     connectionProxyUrl: url,
-    connectionNoProxy: noProxy,
+    connectionNoProxy: noProxy
   };
 }
 
@@ -125,7 +126,7 @@ function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, has
 }
 
 function normalizeOpenAIStoreSetting(provider, providerSpecificData) {
-  if (!providerSpecificData || (provider === "openai" || provider?.startsWith("openai-compatible-responses-"))) {
+  if (!providerSpecificData || provider === "openai" || provider?.startsWith("openai-compatible-responses-")) {
     return providerSpecificData;
   }
   const { openaiStoreEnabled: _ignored, ...remaining } = providerSpecificData;
@@ -134,9 +135,9 @@ function normalizeOpenAIStoreSetting(provider, providerSpecificData) {
 
 function hasDurableOAuthProxyPolicy(connection) {
   return connection?.authType === "oauth" ||
-    connection?.authType === "access_token" ||
-    (connection?.providerSpecificData?.oauthProxy &&
-      typeof connection.providerSpecificData.oauthProxy === "object");
+  connection?.authType === "access_token" ||
+  connection?.providerSpecificData?.oauthProxy && isObject(
+    connection.providerSpecificData.oauthProxy);
 }
 
 /**
@@ -152,10 +153,10 @@ function applyProxyPoolMetadataUpdate(metadata, proxyPoolId, connection) {
   return mergeProviderSpecificData(
     metadata,
     buildOAuthProxyMetadataPatch(
-      proxyPoolId === null
-        ? { proxyMode: "direct" }
-        : { proxyMode: "strict-pool", proxyPoolId },
-    ),
+      proxyPoolId === null ?
+      { proxyMode: "direct" } :
+      { proxyMode: "strict-pool", proxyPoolId }
+    )
   );
 }
 
@@ -248,21 +249,21 @@ export async function PUT(request, { params }) {
     if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;
 
     if (
-      shouldMergeProviderSpecificData(
-        normalizedExistingProviderSpecificData,
-        normalizedProviderSpecificData,
-        proxyConfig.hasAnyProxyField,
-        proxyPoolResult.hasProxyPoolField
-      )
-    ) {
+    shouldMergeProviderSpecificData(
+      normalizedExistingProviderSpecificData,
+      normalizedProviderSpecificData,
+      proxyConfig.hasAnyProxyField,
+      proxyPoolResult.hasProxyPoolField
+    ))
+    {
       const merged = mergeProviderSpecificData(
         normalizedExistingProviderSpecificData,
-        normalizedProviderSpecificData,
+        normalizedProviderSpecificData
       );
       updateData.providerSpecificData = normalizeProviderSpecificData(
         existing.provider,
         body,
-        merged,
+        merged
       );
 
       if (proxyConfig.hasAnyProxyField) {
@@ -275,7 +276,7 @@ export async function PUT(request, { params }) {
         updateData.providerSpecificData = applyProxyPoolMetadataUpdate(
           updateData.providerSpecificData,
           proxyPoolResult.proxyPoolId,
-          existing,
+          existing
         );
       }
     }
@@ -285,7 +286,7 @@ export async function PUT(request, { params }) {
       try {
         updateData.providerSpecificData = {
           ...merged,
-          accountId: normalizeAccountIdPlaceholder(existing.provider, merged.accountId),
+          accountId: normalizeAccountIdPlaceholder(existing.provider, merged.accountId)
         };
       } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });

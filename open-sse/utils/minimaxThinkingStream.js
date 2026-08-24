@@ -3,6 +3,7 @@
 // Ported from upstream decolua/9router PR #2525 (head 72385571c6).
 
 import { PROVIDERS } from "../config/providers.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const START_MARKERS = ["<think>", "<mm:think>"];
 const END_MARKERS = ["</think>", "</mm:think>"];
@@ -20,7 +21,7 @@ export function shouldOmitStreamReasoning(provider) {
 }
 
 export function stripClientReasoningDelta(delta) {
-  if (!delta || typeof delta !== "object") return false;
+  if (!delta || !isObject(delta)) return false;
   let changed = false;
   for (const key of ["reasoning_content", "reasoning", "reasoning_details"]) {
     if (delta[key] !== undefined) {
@@ -37,9 +38,9 @@ export function createMinimaxThinkingStreamState() {
 
 function extractReasoningDetails(details) {
   if (!Array.isArray(details)) return "";
-  return details
-    .map((d) => (typeof d === "string" ? d : d?.text || d?.content || ""))
-    .join("");
+  return details.
+  map((d) => isString(d) ? d : d?.text || d?.content || "").
+  join("");
 }
 
 function findEarliestMarker(text, markers) {
@@ -120,10 +121,10 @@ export function flushMinimaxThinkingStreamState(state) {
 
 // Mutates delta in place. Returns true when the delta was changed.
 export function sanitizeMinimaxDelta(delta, state) {
-  if (!delta || typeof delta !== "object" || !state) return false;
+  if (!delta || !isObject(delta) || !state) return false;
   let changed = false;
 
-  if (typeof delta.reasoning === "string" && delta.reasoning) {
+  if (isString(delta.reasoning) && delta.reasoning) {
     delta.reasoning_content = `${delta.reasoning_content || ""}${delta.reasoning}`;
     delete delta.reasoning;
     changed = true;
@@ -131,14 +132,14 @@ export function sanitizeMinimaxDelta(delta, state) {
 
   const fromDetails = extractReasoningDetails(delta.reasoning_details);
   if (fromDetails) {
-    const existing = typeof delta.reasoning_content === "string" ? delta.reasoning_content : "";
+    const existing = isString(delta.reasoning_content) ? delta.reasoning_content : "";
     if (!existing.includes(fromDetails)) {
       delta.reasoning_content = `${existing}${fromDetails}`;
     }
     changed = true;
   }
 
-  if (typeof delta.content !== "string" || !delta.content) return changed;
+  if (!isString(delta.content) || !delta.content) return changed;
 
   const merged = `${state.carry}${delta.content}`;
   state.carry = "";

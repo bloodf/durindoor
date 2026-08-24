@@ -16,6 +16,7 @@ import {
   canModifySecurityCriticalSettings,
   stripSettingKeys,
 } from "@/lib/settings/settingsPatchAuth";
+import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
@@ -28,12 +29,12 @@ export async function GET() {
     const settings = await getSettings();
     const { password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
-    
+
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
     const enableTranslator = process.env.ENABLE_TRANSLATOR === "true";
-    
-    return NextResponse.json({ 
-      ...safeSettings, 
+
+    return NextResponse.json({
+      ...safeSettings,
       enableRequestLogs,
       enableTranslator,
       hasPassword: !!password
@@ -50,7 +51,7 @@ export async function PATCH(request) {
 
     if (SCOPED_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
       return NextResponse.json({
-        error: "Auto-ping must be updated through the connection-scoped endpoint",
+        error: "Auto-ping must be updated through the connection-scoped endpoint"
       }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
@@ -130,12 +131,12 @@ export async function PATCH(request) {
         return NextResponse.json({ error: "Invalid pxpipeTimeoutMs" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
     }
-    if (Object.prototype.hasOwnProperty.call(body, "pxpipeEnabled") && typeof body.pxpipeEnabled !== "boolean") {
+    if (Object.prototype.hasOwnProperty.call(body, "pxpipeEnabled") && !isBoolean(body.pxpipeEnabled)) {
       return NextResponse.json({ error: "Invalid pxpipeEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
     if (Object.prototype.hasOwnProperty.call(body, "pxpipeAllowedModels")) {
       const raw = body.pxpipeAllowedModels;
-      if (!Array.isArray(raw) || raw.some((m) => typeof m !== "string")) {
+      if (!Array.isArray(raw) || raw.some((m) => !isString(m))) {
         return NextResponse.json({ error: "Invalid pxpipeAllowedModels" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
       body.pxpipeAllowedModels = Array.from(new Set(raw.map((m) => m.trim()).filter(Boolean)));
@@ -149,18 +150,18 @@ export async function PATCH(request) {
       const overrides = body.retryDelayByProvider;
       const maxSeconds = MAX_RATE_LIMIT_COOLDOWN_MS / 1000;
       const prototype = overrides == null ? null : Object.getPrototypeOf(overrides);
-      if (!overrides || typeof overrides !== "object" || Array.isArray(overrides) || (prototype !== Object.prototype && prototype !== null)) {
+      if (!overrides || !isObject(overrides) || Array.isArray(overrides) || prototype !== Object.prototype && prototype !== null) {
         return NextResponse.json({ error: "Invalid retryDelayByProvider" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
       for (const [providerId, seconds] of Object.entries(overrides)) {
-        if (!providerId || (seconds !== "auto" && (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0 || seconds > maxSeconds))) {
+        if (!providerId || seconds !== "auto" && (!isNumber(seconds) || !Number.isFinite(seconds) || seconds <= 0 || seconds > maxSeconds)) {
           return NextResponse.json({ error: "Invalid retryDelayByProvider" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
         }
       }
     }
     if (Object.prototype.hasOwnProperty.call(body, "disabledFreeProviders")) {
       const ids = body.disabledFreeProviders;
-      if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+      if (!Array.isArray(ids) || ids.some((id) => !isString(id))) {
         return NextResponse.json({ error: "Invalid disabledFreeProviders" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
       const unknown = ids.filter((id) => !FREE_NO_AUTH_PROVIDER_IDS.includes(id));
@@ -172,7 +173,7 @@ export async function PATCH(request) {
     /** Validate decolua/9router#3203 per-provider RPM overrides at the settings boundary. */
     if (Object.prototype.hasOwnProperty.call(body, "rpmByProvider")) {
       const overrides = body.rpmByProvider;
-      if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
+      if (!overrides || !isObject(overrides) || Array.isArray(overrides)) {
         return NextResponse.json({ error: "Invalid rpmByProvider" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
       for (const [providerId, rpm] of Object.entries(overrides)) {
@@ -191,15 +192,15 @@ export async function PATCH(request) {
     if (Object.prototype.hasOwnProperty.call(body, "comboStrategies")) {
       const cs = body.comboStrategies;
       const bad = () => NextResponse.json({ error: "Invalid comboStrategies.contextRequirements" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
-      if (!cs || typeof cs !== "object" || Array.isArray(cs)) return bad();
+      if (!cs || !isObject(cs) || Array.isArray(cs)) return bad();
       const ALLOWED_KEYS = new Set(["minContextWindow", "preferLargeContext", "contextFilterMode"]);
       for (const cfg of Object.values(cs)) {
-        if (!cfg || typeof cfg !== "object" || !Object.prototype.hasOwnProperty.call(cfg, "contextRequirements")) continue;
+        if (!cfg || !isObject(cfg) || !Object.prototype.hasOwnProperty.call(cfg, "contextRequirements")) continue;
         const cr = cfg.contextRequirements;
         // Upstream `.strict().optional()`: absent key is fine, but an explicit
         // null is rejected (it is not a valid optional object).
         if (cr === undefined) continue;
-        if (cr === null || typeof cr !== "object" || Array.isArray(cr)) return bad();
+        if (cr === null || !isObject(cr) || Array.isArray(cr)) return bad();
         for (const k of Object.keys(cr)) if (!ALLOWED_KEYS.has(k)) return bad();
         if (Object.prototype.hasOwnProperty.call(cr, "minContextWindow")) {
           // Upstream z.coerce.number() accepts numeric strings; coerce then bound.
@@ -207,7 +208,7 @@ export async function PATCH(request) {
           if (!Number.isSafeInteger(v) || v < 0 || v > 10_000_000) return bad();
           cr.minContextWindow = v; // store the coerced number
         }
-        if (Object.prototype.hasOwnProperty.call(cr, "preferLargeContext") && typeof cr.preferLargeContext !== "boolean") return bad();
+        if (Object.prototype.hasOwnProperty.call(cr, "preferLargeContext") && !isBoolean(cr.preferLargeContext)) return bad();
         if (Object.prototype.hasOwnProperty.call(cr, "contextFilterMode") && cr.contextFilterMode !== "strict" && cr.contextFilterMode !== "lenient") return bad();
       }
     }
@@ -215,9 +216,9 @@ export async function PATCH(request) {
     const willChangePassword = body.password !== undefined;
     let settings;
     try {
-      settings = willChangePassword
-        ? await updateSettingsWithPasswordEpoch(body, expectedPasswordSessionEpoch)
-        : await updateSettings(body);
+      settings = willChangePassword ?
+      await updateSettingsWithPasswordEpoch(body, expectedPasswordSessionEpoch) :
+      await updateSettings(body);
     } catch (error) {
       if (error instanceof PasswordEpochMismatchError) {
         return NextResponse.json({ error: "Password change conflict, please retry" }, { status: 409, headers: SETTINGS_RESPONSE_HEADERS });
@@ -241,19 +242,19 @@ export async function PATCH(request) {
 
     // Apply outbound proxy settings immediately (no restart required)
     if (
-      Object.prototype.hasOwnProperty.call(body, "outboundProxyEnabled") ||
-      Object.prototype.hasOwnProperty.call(body, "outboundProxyUrl") ||
-      Object.prototype.hasOwnProperty.call(body, "outboundNoProxy")
-    ) {
+    Object.prototype.hasOwnProperty.call(body, "outboundProxyEnabled") ||
+    Object.prototype.hasOwnProperty.call(body, "outboundProxyUrl") ||
+    Object.prototype.hasOwnProperty.call(body, "outboundNoProxy"))
+    {
       applyOutboundProxyEnv(settings);
     }
 
     // Invalidate combo rotation state when strategy settings change
     if (
-      Object.prototype.hasOwnProperty.call(body, "comboStrategy") ||
-      Object.prototype.hasOwnProperty.call(body, "comboStickyRoundRobinLimit") ||
-      Object.prototype.hasOwnProperty.call(body, "comboStrategies")
-    ) {
+    Object.prototype.hasOwnProperty.call(body, "comboStrategy") ||
+    Object.prototype.hasOwnProperty.call(body, "comboStickyRoundRobinLimit") ||
+    Object.prototype.hasOwnProperty.call(body, "comboStrategies"))
+    {
       resetComboRotation();
       resetComboScoring();
     }

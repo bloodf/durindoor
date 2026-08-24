@@ -1,4 +1,4 @@
-function modelType(model) {
+import { isString } from "@/shared/utils/typeChecks.js";function modelType(model) {
   return model?.kind || model?.type || "llm";
 }
 
@@ -8,7 +8,7 @@ export function getProviderCustomModelRows({
   providerAlias,
   builtInModels = [],
   type = "llm",
-  includeLegacyAliases = true,
+  includeLegacyAliases = true
 }) {
   const builtInIds = new Set(builtInModels.map((model) => model.id));
   const seenFullModels = new Set();
@@ -29,7 +29,7 @@ export function getProviderCustomModelRows({
       fullModel,
       source: "custom",
       type: rowType,
-      capabilities: model.capabilities || {},
+      capabilities: model.capabilities || {}
     });
   }
 
@@ -37,7 +37,7 @@ export function getProviderCustomModelRows({
 
   const prefix = `${providerAlias}/`;
   for (const [alias, fullModel] of Object.entries(modelAliases || {})) {
-    if (typeof fullModel !== "string" || !fullModel.startsWith(prefix)) continue;
+    if (!isString(fullModel) || !fullModel.startsWith(prefix)) continue;
     const id = fullModel.slice(prefix.length);
     if (!id || builtInIds.has(id) || seenFullModels.has(fullModel)) continue;
 
@@ -47,7 +47,7 @@ export function getProviderCustomModelRows({
       alias,
       fullModel,
       source: "legacyAlias",
-      type: type || "llm",
+      type: type || "llm"
     });
   }
 

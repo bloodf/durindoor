@@ -1,4 +1,4 @@
-/**
+import { isString } from "@/shared/utils/typeChecks.js"; /**
  * rendered as an <img> src by ProviderIcon.js). Used by create/update
  * provider-node API routes. The browser never fetches a URL server-side;
  * validation confines persisted image sources to safe supported schemes.
@@ -23,7 +23,7 @@ const DATA_IMAGE_RE = /^data:image\/(png|jpe?g|gif|webp|x-icon|vnd\.microsoft\.i
 const BASE64_RE = /^[a-z0-9+/]+={0,2}$/i;
 
 export function isValidProviderIconUrl(value) {
-  if (typeof value !== "string") return false;
+  if (!isString(value)) return false;
   const trimmed = value.trim();
 
   if (trimmed === "") return true;
@@ -35,9 +35,9 @@ export function isValidProviderIconUrl(value) {
     const payload = match[2];
     if (!BASE64_RE.test(payload) || payload.length % 4 !== 0) return false;
     const decoded = Buffer.from(payload, "base64");
-    return decoded.length > 0
-      && decoded.length <= MAX_PROVIDER_ICON_DATA_BYTES
-      && decoded.toString("base64") === payload;
+    return decoded.length > 0 &&
+    decoded.length <= MAX_PROVIDER_ICON_DATA_BYTES &&
+    decoded.toString("base64") === payload;
   }
 
   if (trimmed.length > MAX_PROVIDER_ICON_URL_LENGTH) return false;

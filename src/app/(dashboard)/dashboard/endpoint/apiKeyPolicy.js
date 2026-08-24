@@ -1,14 +1,14 @@
-export function emptyApiKeyPolicyDraft() {
+import { isObject, isString } from "@/shared/utils/typeChecks.js";export function emptyApiKeyPolicyDraft() {
   return { accessMode: "all", allowedModels: [], maxTokens: "", maxCostUsd: "" };
 }
 
 export function isEditableApiKeyPolicy(policy) {
   if (policy == null) return true;
-  if (typeof policy !== "object" || Array.isArray(policy)) return false;
+  if (!isObject(policy) || Array.isArray(policy)) return false;
   if (Object.hasOwn(policy, "allowedModels") && (
-    !Array.isArray(policy.allowedModels)
-    || policy.allowedModels.some((model) => typeof model !== "string" || !model.trim())
-  )) return false;
+  !Array.isArray(policy.allowedModels) ||
+  policy.allowedModels.some((model) => !isString(model) || !model.trim())))
+  return false;
   if (Object.hasOwn(policy, "maxTokens") && policy.maxTokens != null && policy.maxTokens !== "") {
     const value = Number(policy.maxTokens);
     if (!Number.isSafeInteger(value) || value < 0) return false;
@@ -26,7 +26,7 @@ export function apiKeyPolicyToDraft(policy) {
     accessMode: allowedModels.length > 0 ? "selected" : "all",
     allowedModels,
     maxTokens: policy?.maxTokens == null ? "" : String(policy.maxTokens),
-    maxCostUsd: policy?.maxCostUsd == null ? "" : String(policy.maxCostUsd),
+    maxCostUsd: policy?.maxCostUsd == null ? "" : String(policy.maxCostUsd)
   };
 }
 
@@ -53,8 +53,8 @@ export function apiKeyPolicyPatchFromDraft(draft, dirty) {
 
 export function toggleApiKeyPolicyModel(draft, modelId) {
   const selected = new Set(draft.allowedModels || []);
-  if (selected.has(modelId)) selected.delete(modelId);
-  else selected.add(modelId);
+  if (selected.has(modelId)) selected.delete(modelId);else
+  selected.add(modelId);
   return { ...draft, allowedModels: [...selected] };
 }
 
@@ -66,15 +66,15 @@ export function formatPolicyUsage(usage, policy) {
   const remainingTokens = maxTokens == null ? null : Math.max(0, maxTokens - totalTokens);
   const remainingCostUsd = maxCostUsd == null ? null : Math.max(0, maxCostUsd - totalCost);
   return {
-    tokens: maxTokens == null
-      ? `${totalTokens.toLocaleString()} used`
-      : `${totalTokens.toLocaleString()} / ${maxTokens.toLocaleString()} (${remainingTokens.toLocaleString()} remaining)`,
-    cost: maxCostUsd == null
-      ? `$${totalCost.toFixed(4)} used`
-      : `$${totalCost.toFixed(4)} / $${maxCostUsd.toFixed(4)} ($${remainingCostUsd.toFixed(4)} remaining)`,
+    tokens: maxTokens == null ?
+    `${totalTokens.toLocaleString()} used` :
+    `${totalTokens.toLocaleString()} / ${maxTokens.toLocaleString()} (${remainingTokens.toLocaleString()} remaining)`,
+    cost: maxCostUsd == null ?
+    `$${totalCost.toFixed(4)} used` :
+    `$${totalCost.toFixed(4)} / $${maxCostUsd.toFixed(4)} ($${remainingCostUsd.toFixed(4)} remaining)`,
     remainingTokens,
     remainingCostUsd,
     tokensExceeded: maxTokens != null && totalTokens >= maxTokens,
-    costExceeded: maxCostUsd != null && totalCost >= maxCostUsd,
+    costExceeded: maxCostUsd != null && totalCost >= maxCostUsd
   };
 }

@@ -4,8 +4,8 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import useThemeStore from "@/store/themeStore";
 
 // Subscribe to system theme changes
-function subscribeToSystemTheme(callback) {
-  if (typeof window === "undefined") return () => {};
+import { isBrowser } from "@/shared/utils/typeChecks.js";function subscribeToSystemTheme(callback) {
+  if (!isBrowser()) return () => {};
   const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
   mediaQuery.addEventListener("change", callback);
   return () => mediaQuery.removeEventListener("change", callback);
@@ -13,7 +13,7 @@ function subscribeToSystemTheme(callback) {
 
 // Get current system theme preference
 function getSystemThemeSnapshot() {
-  if (typeof window === "undefined") return false;
+  if (!isBrowser()) return false;
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
@@ -48,13 +48,12 @@ export function useTheme() {
   }, [theme, initTheme]);
 
   // Compute isDark from current state (no effect needed)
-  const isDark = theme === "dark" || (theme === "system" && systemPrefersDark);
+  const isDark = theme === "dark" || theme === "system" && systemPrefersDark;
 
   return {
     theme,
     setTheme,
     toggleTheme,
-    isDark,
+    isDark
   };
 }
-

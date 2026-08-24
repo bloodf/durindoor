@@ -11,8 +11,8 @@ import {
   hasExceededStartupBudget,
   isUpdaterFailure,
   isUpdaterStatusCurrent,
-  isUpdaterSuccess,
-} from "@/shared/utils/updaterStatus";
+  isUpdaterSuccess } from
+"@/shared/utils/updaterStatus";
 
 /**
  * One-click update panel (port of decolua/9router #2575).
@@ -24,12 +24,12 @@ import {
  * Unlike upstream, the status poll is bounded (`hasExceededStartupBudget`):
  * if the detached updater never comes up or wedges mid-phase, the panel
  * fails over to manual install instead of polling forever.
- */
+ */import { isBrowser } from "@/shared/utils/typeChecks.js";
 export default function UpdatePanel({
   currentVersion,
   latestVersion,
   installCmd,
-  onClose,
+  onClose
 }) {
   const [mode, setMode] = useState("auto"); // "auto" | "manual"
   const [phase, setPhase] = useState("idle"); // idle | starting | running | success | failed
@@ -74,7 +74,7 @@ export default function UpdatePanel({
 
   const startStatusPoll = useCallback(() => {
     clearTimers();
-    const origin = typeof window !== "undefined" ? window.location.origin : null;
+    const origin = isBrowser() ? window.location.origin : null;
     const url = getUpdaterStatusUrl(UPDATER_CONFIG.statusPort, origin);
     const poll = async () => {
       if (cancelledRef.current) return;
@@ -113,7 +113,7 @@ export default function UpdatePanel({
                   globalThis.location.reload();
                   return;
                 }
-              } catch { /* server still coming up */ }
+              } catch {/* server still coming up */}
             };
             let attempts = 0;
             const maxAttempts = 30; // ~60s at 2s interval, within budget
@@ -138,9 +138,9 @@ export default function UpdatePanel({
           failToManual(data.error || "Install failed");
         }
       } catch {
+
         // Status server not up yet, or transient network blip after parent exit — keep polling (bounded above)
-      }
-    };
+      }};
     // Assign interval BEFORE first poll: a terminal state clears pollRef,
     // so polling first would leak the interval (decolua/9router #2575 race fix).
     pollRef.current = setInterval(poll, UPDATER_CONFIG.statusPollIntervalMs);
@@ -188,7 +188,7 @@ export default function UpdatePanel({
   const handleCopyAndShutdown = async () => {
     try {
       await navigator.clipboard.writeText(installCmd);
-    } catch { /* clipboard blocked */ }
+    } catch {/* clipboard blocked */}
     setCopied(true);
     let remaining = UPDATER_CONFIG.shutdownCountdownSec;
     setCountdown(remaining);
@@ -206,14 +206,14 @@ export default function UpdatePanel({
 
   const progress = getUpdaterProgressPercent(status || { phase: phase === "starting" ? "starting" : null });
   const phaseLabel =
-    phase === "starting"
-      ? "Contacting updater…"
-      : phase === "success"
-        ? "Update complete — reloading when app is ready…"
-        : getUpdaterPhaseLabel(status?.phase, {
-            attempt: status?.attempt,
-            maxRetries: status?.maxRetries,
-          });
+  phase === "starting" ?
+  "Contacting updater…" :
+  phase === "success" ?
+  "Update complete — reloading when app is ready…" :
+  getUpdaterPhaseLabel(status?.phase, {
+    attempt: status?.attempt,
+    maxRetries: status?.maxRetries
+  });
   const logTail = Array.isArray(status?.logTail) ? status.logTail : [];
   const busy = phase === "starting" || phase === "running" || phase === "success";
   const title = `Update ${APP_CONFIG.name}${latestVersion ? ` to v${latestVersion}` : ""}`;
@@ -236,8 +236,8 @@ export default function UpdatePanel({
           </div>
         </div>
 
-        {phase === "idle" && (
-          <>
+        {phase === "idle" &&
+        <>
             <ul className="text-xs text-white/70 space-y-1.5 list-disc list-inside mb-4">
               <li>Works with the production <code className="px-1 rounded bg-white/10">{UPDATER_CONFIG.npmPackageName}</code> CLI install</li>
               <li>Takes about 1–2 minutes (npm global install + restart)</li>
@@ -252,17 +252,17 @@ export default function UpdatePanel({
               </Button>
             </div>
             <button
-              type="button"
-              onClick={() => setMode("manual")}
-              className="mt-3 w-full text-center text-[11px] text-white/50 hover:text-white/80 transition-colors"
-            >
+            type="button"
+            onClick={() => setMode("manual")}
+            className="mt-3 w-full text-center text-[11px] text-white/50 hover:text-white/80 transition-colors">
+            
               Prefer manual install instead?
             </button>
           </>
-        )}
+        }
 
-        {busy && (
-          <>
+        {busy &&
+        <>
             <div className="mb-3">
               <div className="flex items-center justify-between text-xs mb-1.5">
                 <span className="text-white/80">{phaseLabel}</span>
@@ -270,48 +270,48 @@ export default function UpdatePanel({
               </div>
               <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
                 <div
-                  className="h-full bg-green-500 transition-all duration-500"
-                  style={{ width: `${Math.min(100, progress)}%` }}
-                />
+                className="h-full bg-green-500 transition-all duration-500"
+                style={{ width: `${Math.min(100, progress)}%` }} />
+              
               </div>
             </div>
 
-            {logTail.length > 0 && (
-              <div className="mb-3 max-h-32 overflow-y-auto rounded bg-black/40 px-2 py-1.5 font-mono text-[10px] text-white/60 space-y-0.5">
-                {logTail.map((line, i) => (
-                  <div key={`${i}-${line.slice(0, 24)}`} className="truncate">{line}</div>
-                ))}
-              </div>
+            {logTail.length > 0 &&
+          <div className="mb-3 max-h-32 overflow-y-auto rounded bg-black/40 px-2 py-1.5 font-mono text-[10px] text-white/60 space-y-0.5">
+                {logTail.map((line, i) =>
+            <div key={`${i}-${line.slice(0, 24)}`} className="truncate">{line}</div>
             )}
+              </div>
+          }
 
-            {phase === "success" ? (
-              <p className="text-xs text-green-400/90 mb-3">
+            {phase === "success" ?
+          <p className="text-xs text-green-400/90 mb-3">
                 Install succeeded. Waiting for the app to come back, then reloading…
-              </p>
-            ) : (
-              <p className="text-xs text-white/50 mb-3">
+              </p> :
+
+          <p className="text-xs text-white/50 mb-3">
                 Keep this tab open. Do not close the browser until the update finishes.
               </p>
-            )}
+          }
 
-            {phase !== "success" && (
-              <button
-                type="button"
-                onClick={() => {
-                  clearTimers();
-                  setMode("manual");
-                  setPhase("failed");
-                }}
-                className="w-full text-center text-[11px] text-white/50 hover:text-white/80 transition-colors"
-              >
+            {phase !== "success" &&
+          <button
+            type="button"
+            onClick={() => {
+              clearTimers();
+              setMode("manual");
+              setPhase("failed");
+            }}
+            className="w-full text-center text-[11px] text-white/50 hover:text-white/80 transition-colors">
+            
                 Stuck? Switch to manual install
               </button>
-            )}
+          }
           </>
-        )}
+        }
 
-        {phase === "failed" && mode === "auto" && (
-          <>
+        {phase === "failed" && mode === "auto" &&
+        <>
             <div className="mb-3 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
               {error || "Auto-update failed."}
             </div>
@@ -319,9 +319,9 @@ export default function UpdatePanel({
               Open manual install
             </Button>
           </>
-        )}
-      </div>
-    );
+        }
+      </div>);
+
   }
 
   // ── Manual fallback ──────────────────────────────────────────────────────
@@ -335,22 +335,22 @@ export default function UpdatePanel({
         <div>
           <h2 className="text-lg font-semibold">{title}</h2>
           <p className="text-xs text-white/60">
-            {isDisconnected
-              ? "Server stopped. Paste the command into a terminal to install."
-              : isCountingDown
-                ? `Command copied. Server will stop in ${countdown}s...`
-                : error
-                  ? "Auto-update unavailable — install manually."
-                  : `Copy the install command, stop the server, then re-run ${UPDATER_CONFIG.npmPackageName}.`}
+            {isDisconnected ?
+            "Server stopped. Paste the command into a terminal to install." :
+            isCountingDown ?
+            `Command copied. Server will stop in ${countdown}s...` :
+            error ?
+            "Auto-update unavailable — install manually." :
+            `Copy the install command, stop the server, then re-run ${UPDATER_CONFIG.npmPackageName}.`}
           </p>
         </div>
       </div>
 
-      {error && (
-        <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+      {error &&
+      <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
           {error}
         </div>
-      )}
+      }
 
       <p className="text-sm text-white/80 mb-2">Install command:</p>
       <div className="w-full px-3 py-2 rounded bg-white/5 mb-4">
@@ -363,49 +363,49 @@ export default function UpdatePanel({
         <li>Run <code className="px-1 rounded bg-white/10 text-green-400">{UPDATER_CONFIG.npmPackageName}</code> again after install.</li>
       </ol>
 
-      {isDisconnected ? (
-        <Button variant="secondary" fullWidth onClick={() => globalThis.location.reload()}>
+      {isDisconnected ?
+      <Button variant="secondary" fullWidth onClick={() => globalThis.location.reload()}>
           Reload Page
-        </Button>
-      ) : (
-        <div className="flex flex-col sm:flex-row gap-2">
+        </Button> :
+
+      <div className="flex flex-col sm:flex-row gap-2">
           <Button
-            variant="secondary"
-            onClick={() => {
-              if (!busy) onClose();
-            }}
-            disabled={isCountingDown}
-            className="sm:w-auto"
-          >
+          variant="secondary"
+          onClick={() => {
+            if (!busy) onClose();
+          }}
+          disabled={isCountingDown}
+          className="sm:w-auto">
+          
             Cancel
           </Button>
           <Button variant="primary" fullWidth onClick={handleCopyAndShutdown} disabled={isCountingDown}>
             {copied ? "✓ Copied — shutting down..." : isCountingDown ? `Shutting down in ${countdown}s` : "Copy & Shutdown"}
           </Button>
         </div>
-      )}
+      }
 
-      {!isDisconnected && !isCountingDown && (
-        <button
-          type="button"
-          onClick={() => {
-            setMode("auto");
-            setPhase("idle");
-            setError(null);
-            setStatus(null);
-          }}
-          className="mt-3 w-full text-center text-[11px] text-white/50 hover:text-white/80 transition-colors"
-        >
+      {!isDisconnected && !isCountingDown &&
+      <button
+        type="button"
+        onClick={() => {
+          setMode("auto");
+          setPhase("idle");
+          setError(null);
+          setStatus(null);
+        }}
+        className="mt-3 w-full text-center text-[11px] text-white/50 hover:text-white/80 transition-colors">
+        
           Try automatic update instead
         </button>
-      )}
-    </div>
-  );
+      }
+    </div>);
+
 }
 
 UpdatePanel.propTypes = {
   currentVersion: PropTypes.string,
   latestVersion: PropTypes.string,
   installCmd: PropTypes.string.isRequired,
-  onClose: PropTypes.func.isRequired,
+  onClose: PropTypes.func.isRequired
 };

@@ -8,30 +8,31 @@ import Pagination from "@/shared/components/Pagination";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { cn } from "@/shared/utils/cn";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
+import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const REQUEST_TABS = [
-  { value: "clientRequest", label: "1. Client Request (Input)", icon: "input" },
-  { value: "providerRequest", label: "2. Provider Request (Translated)", icon: "translate" },
-];
+{ value: "clientRequest", label: "1. Client Request (Input)", icon: "input" },
+{ value: "providerRequest", label: "2. Provider Request (Translated)", icon: "translate" }];
+
 
 const RESPONSE_TABS = [
-  { value: "providerResponse", label: "3. Provider Response (Raw)", icon: "data_object" },
-  { value: "clientResponse", label: "4. Client Response (Final)", icon: "output" },
-];
+{ value: "providerResponse", label: "3. Provider Response (Raw)", icon: "data_object" },
+{ value: "clientResponse", label: "4. Client Response (Final)", icon: "output" }];
+
 
 function getTabValue(detail, tab) {
   switch (tab) {
-    case "clientRequest": return detail?.request ?? null;
-    case "providerRequest": return detail?.providerRequest ?? null;
-    case "providerResponse": return detail?.providerResponse ?? null;
-    case "clientResponse": return detail?.response ?? null;
-    default: return null;
+    case "clientRequest":return detail?.request ?? null;
+    case "providerRequest":return detail?.providerRequest ?? null;
+    case "providerResponse":return detail?.providerResponse ?? null;
+    case "clientResponse":return detail?.response ?? null;
+    default:return null;
   }
 }
 
 function stringifyTabValue(value) {
   if (value === null || value === undefined) return "";
-  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return isString(value) ? value : JSON.stringify(value, null, 2);
 }
 
 let providerNameCache = null;
@@ -65,7 +66,7 @@ function getProviderName(providerId, cache) {
 
   const cached = cache[providerId];
 
-  if (typeof cached === 'string') {
+  if (isString(cached)) {
     return cached;
   }
 
@@ -79,14 +80,14 @@ function getProviderName(providerId, cache) {
 
 function CollapsibleSection({ title, children, defaultOpen = false, icon = null }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  
+
   return (
     <div className="border border-black/5 dark:border-white/5 rounded-lg overflow-hidden">
-      <button 
+      <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-3 bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors"
-      >
+        className="w-full flex items-center justify-between p-3 bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors">
+        
         <div className="flex items-center gap-2">
           {icon && <span className="material-symbols-outlined text-[18px] text-text-muted">{icon}</span>}
           <span className="font-semibold text-sm text-text-main">{title}</span>
@@ -99,13 +100,13 @@ function CollapsibleSection({ title, children, defaultOpen = false, icon = null 
         </span>
       </button>
       
-      {isOpen && (
-        <div className="p-4 border-t border-black/5 dark:border-white/5">
+      {isOpen &&
+      <div className="p-4 border-t border-black/5 dark:border-white/5">
           {children}
         </div>
-      )}
-    </div>
-  );
+      }
+    </div>);
+
 }
 
 function getCachedTokens(tokens) {
@@ -133,27 +134,27 @@ function getCacheWriteTokens(tokens) {
 
 // Cache read/hit tokens (Claude: cache_read_input_tokens; OpenAI: cached_tokens).
 function getCacheReadTokens(tokens) {
-  return tokens?.cache_read_input_tokens
-    || tokens?.cached_tokens
-    || tokens?.prompt_tokens_details?.cached_tokens
-    || 0;
+  return tokens?.cache_read_input_tokens ||
+  tokens?.cached_tokens ||
+  tokens?.prompt_tokens_details?.cached_tokens ||
+  0;
 }
 
 // Coerce a tab value into a JSON object/array for tree rendering.
 // Returns null for plain (non-JSON) strings or empty values so the caller
 // can fall back to raw text.
 function coerceJson(value) {
-  if (value && typeof value === "object") return value;
-  if (typeof value === "string") {
+  if (value && isObject(value)) return value;
+  if (isString(value)) {
     const trimmed = value.trim();
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       try {
         const parsed = JSON.parse(trimmed);
-        if (parsed && typeof parsed === "object") return parsed;
+        if (parsed && isObject(parsed)) return parsed;
       } catch {
+
         // not valid JSON — fall through to raw text
-      }
-    }
+      }}
   }
   return null;
 }
@@ -161,10 +162,9 @@ function coerceJson(value) {
 // Render a primitive JSON value with type-based coloring.
 function JsonPrimitive({ value }) {
   if (value === null) return <span className="text-rose-500 dark:text-rose-400">null</span>;
-  const type = typeof value;
-  if (type === "string") return <span className="whitespace-pre-wrap break-words text-emerald-600 dark:text-emerald-400">&quot;{value}&quot;</span>;
-  if (type === "number") return <span className="text-blue-600 dark:text-blue-400">{String(value)}</span>;
-  if (type === "boolean") return <span className="text-purple-600 dark:text-purple-400">{String(value)}</span>;
+  if (isString(value)) return <span className="whitespace-pre-wrap break-words text-emerald-600 dark:text-emerald-400">&quot;{value}&quot;</span>;
+  if (isNumber(value)) return <span className="text-blue-600 dark:text-blue-400">{String(value)}</span>;
+  if (isBoolean(value)) return <span className="text-purple-600 dark:text-purple-400">{String(value)}</span>;
   return <span className="break-words text-text-main">{String(value)}</span>;
 }
 
@@ -172,15 +172,15 @@ function JsonPrimitive({ value }) {
 // top level is expanded by default and nested nodes start collapsed so large
 // payloads (messages, tools) can be drilled into on demand.
 function JsonNode({ name, value, depth = 0 }) {
-  const isCollection = value !== null && typeof value === "object";
+  const isCollection = value !== null && isObject(value);
   const [open, setOpen] = useState(depth < 1);
 
-  const label = name !== undefined && (
-    <span className="text-sky-700 dark:text-sky-300" data-i18n-skip="true">
-      {typeof name === "number" ? name : `"${name}"`}
+  const label = name !== undefined &&
+  <span className="text-sky-700 dark:text-sky-300" data-i18n-skip="true">
+      {isNumber(name) ? name : `"${name}"`}
       <span className="text-text-muted">: </span>
-    </span>
-  );
+    </span>;
+
 
   // Leaf: primitive value on a single indented line.
   if (!isCollection) {
@@ -188,8 +188,8 @@ function JsonNode({ name, value, depth = 0 }) {
       <div className="break-words" style={{ paddingLeft: depth * 14 }}>
         {label}
         <JsonPrimitive value={value} />
-      </div>
-    );
+      </div>);
+
   }
 
   const isArray = Array.isArray(value);
@@ -203,8 +203,8 @@ function JsonNode({ name, value, depth = 0 }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-start gap-1 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
-      >
+        className="flex w-full items-start gap-1 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.03]">
+        
         <span className={cn(
           "material-symbols-outlined mt-0.5 shrink-0 text-[14px] text-text-muted transition-transform duration-200",
           open ? "rotate-90" : ""
@@ -217,17 +217,17 @@ function JsonNode({ name, value, depth = 0 }) {
           {!open && <span className="text-text-muted opacity-60"> {summary} {closeBrace}</span>}
         </span>
       </button>
-      {open && (
-        <>
-          {entries.map(([k, v]) => (
-            <JsonNode key={k} name={k} value={v} depth={depth + 1} />
-          ))}
+      {open &&
+      <>
+          {entries.map(([k, v]) =>
+        <JsonNode key={k} name={k} value={v} depth={depth + 1} />
+        )}
           {/* Closing brace aligned under the opening node */}
           <div className="text-text-muted" style={{ paddingLeft: depth * 14 }}>{closeBrace}</div>
         </>
-      )}
-    </div>
-  );
+      }
+    </div>);
+
 }
 
 // Collapsible JSON tree view for request/response bodies.
@@ -235,8 +235,8 @@ function JsonViewer({ data }) {
   return (
     <div className="custom-scrollbar max-h-[400px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs leading-relaxed text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
       <JsonNode value={data} depth={0} />
-    </div>
-  );
+    </div>);
+
 }
 
 function TabbedDetailCard({ title, icon, tabs, detail, copyKey, defaultTab }) {
@@ -257,22 +257,22 @@ function TabbedDetailCard({ title, icon, tabs, detail, copyKey, defaultTab }) {
     <CollapsibleSection title={title} defaultOpen={true} icon={icon}>
       <div className="mb-3 space-y-2">
         <div className="grid grid-cols-2 gap-1 rounded-[10px] bg-surface-2 p-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => setActiveTab(tab.value)}
-              className={cn(
-                "flex min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 py-1.5 text-xs font-medium transition-all",
-                activeTab === tab.value
-                  ? "bg-surface text-text-main shadow-sm"
-                  : "text-text-muted hover:text-text-main"
-              )}
-            >
+          {tabs.map((tab) =>
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => setActiveTab(tab.value)}
+            className={cn(
+              "flex min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-2 py-1.5 text-xs font-medium transition-all",
+              activeTab === tab.value ?
+              "bg-surface text-text-main shadow-sm" :
+              "text-text-muted hover:text-text-main"
+            )}>
+            
               <span className="material-symbols-outlined shrink-0 text-[14px]">{tab.icon}</span>
               <span className="truncate">{tab.label}</span>
             </button>
-          ))}
+          )}
         </div>
 
         <div className="flex justify-end">
@@ -281,15 +281,15 @@ function TabbedDetailCard({ title, icon, tabs, detail, copyKey, defaultTab }) {
             size="sm"
             icon={copied === copyKey ? "check" : "content_copy"}
             onClick={() => copy(text, copyKey)}
-            disabled={!text}
-          >
+            disabled={!text}>
+            
             {copied === copyKey ? "Copied" : "Copy"}
           </Button>
         </div>
       </div>
 
-      {showThinking && (
-        <div className="mb-4">
+      {showThinking &&
+      <div className="mb-4">
           <h4 className="font-semibold text-text-main mb-2 flex items-center gap-2 text-xs uppercase tracking-wide opacity-70">
             <span className="material-symbols-outlined text-[16px]">psychology</span>
             Thinking Process
@@ -298,23 +298,23 @@ function TabbedDetailCard({ title, icon, tabs, detail, copyKey, defaultTab }) {
             {detail.response.thinking}
           </pre>
         </div>
-      )}
+      }
 
-      {text ? (
-        jsonData ? (
-          <JsonViewer data={jsonData} />
-        ) : (
-          <pre className="custom-scrollbar max-h-[400px] max-w-full overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
+      {text ?
+      jsonData ?
+      <JsonViewer data={jsonData} /> :
+
+      <pre className="custom-scrollbar max-h-[400px] max-w-full overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
             {text}
-          </pre>
-        )
-      ) : (
-        <div className="p-8 text-center text-sm text-text-muted">
+          </pre> :
+
+
+      <div className="p-8 text-center text-sm text-text-muted">
           No data available
         </div>
-      )}
-    </CollapsibleSection>
-  );
+      }
+    </CollapsibleSection>);
+
 }
 
 export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
@@ -364,7 +364,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
       const data = await res.json();
 
       setDetails(data.details || []);
-      setPagination(prev => ({ ...prev, ...data.pagination }));
+      setPagination((prev) => ({ ...prev, ...data.pagination }));
     } catch (error) {
       console.error("Failed to fetch request details:", error);
     } finally {
@@ -386,11 +386,11 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
   };
 
   const handlePageChange = (newPage) => {
-    setPagination(prev => ({ ...prev, page: newPage }));
+    setPagination((prev) => ({ ...prev, page: newPage }));
   };
 
   const handlePageSizeChange = (newPageSize) => {
-    setPagination(prev => ({ ...prev, pageSize: newPageSize, page: 1 }));
+    setPagination((prev) => ({ ...prev, pageSize: newPageSize, page: 1 }));
   };
 
   const handleClearFilters = () => {
@@ -412,14 +412,14 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 "text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20",
                 "w-full min-w-0 cursor-pointer"
               )}
-              style={{ colorScheme: 'auto' }}
-            >
+              style={{ colorScheme: 'auto' }}>
+              
               <option value="">All Providers</option>
-              {providers.map((provider) => (
-                <option key={provider.id} value={provider.id}>
+              {providers.map((provider) =>
+              <option key={provider.id} value={provider.id}>
                   {provider.name}
                 </option>
-              ))}
+              )}
             </select>
           </div>
           
@@ -433,8 +433,8 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
               className={cn(
                 "h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface",
                 "w-full min-w-0 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20"
-              )}
-            />
+              )} />
+            
           </div>
 
           <div className="flex min-w-0 flex-col gap-2">
@@ -447,8 +447,8 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
               className={cn(
                 "h-9 px-3 rounded-lg border border-black/10 dark:border-white/10 bg-surface",
                 "w-full min-w-0 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary/20"
-              )}
-            />
+              )} />
+            
           </div>
           
           <div className="flex min-w-0 flex-col gap-2 sm:col-span-2 lg:col-span-1">
@@ -458,8 +458,8 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 variant="ghost"
                 onClick={handleClearFilters}
                 disabled={!filters.provider && !filters.startDate && !filters.endDate}
-                className="flex-1"
-              >
+                className="flex-1">
+                
                 Clear Filters
               </Button>
               {/* Manually re-fetch the current page of request details */}
@@ -468,8 +468,8 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 icon="refresh"
                 onClick={fetchDetails}
                 loading={loading}
-                aria-label="Refresh"
-              >
+                aria-label="Refresh">
+                
                 Refresh
               </Button>
             </div>
@@ -494,27 +494,27 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr>
+              {loading ?
+              <tr>
                   <td colSpan="7" className="p-8 text-center text-text-muted">
                     <div className="flex items-center justify-center gap-2">
                       <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
                       Loading...
                     </div>
                   </td>
-                </tr>
-              ) : details.length === 0 ? (
-                <tr>
+                </tr> :
+              details.length === 0 ?
+              <tr>
                   <td colSpan="7" className="p-8 text-center text-text-muted">
                     No request details found
                   </td>
-                </tr>
-              ) : (
-                details.map((detail, index) => (
-                  <tr
-                    key={`${detail.id}-${index}`}
-                    className="border-b border-black/5 dark:border-white/5 last:border-b-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
-                  >
+                </tr> :
+
+              details.map((detail, index) =>
+              <tr
+                key={`${detail.id}-${index}`}
+                className="border-b border-black/5 dark:border-white/5 last:border-b-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+                
                     <td className="whitespace-nowrap p-4 text-sm text-text-main">
                       {new Date(detail.timestamp).toLocaleString()}
                     </td>
@@ -546,41 +546,41 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                     </td>
                     <td className="p-4 text-center">
                       <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleViewDetail(detail)}
-                      >
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleViewDetail(detail)}>
+                    
                         Detail
                       </Button>
                     </td>
                   </tr>
-                ))
-              )}
+              )
+              }
             </tbody>
           </table>
         </div>
 
-        {!loading && details.length > 0 && (
-          <div className="border-t border-black/5 dark:border-white/5">
+        {!loading && details.length > 0 &&
+        <div className="border-t border-black/5 dark:border-white/5">
             <Pagination
-              currentPage={pagination.page}
-              pageSize={pagination.pageSize}
-              totalItems={pagination.totalItems}
-              onPageChange={handlePageChange}
-              onPageSizeChange={handlePageSizeChange}
-            />
+            currentPage={pagination.page}
+            pageSize={pagination.pageSize}
+            totalItems={pagination.totalItems}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange} />
+          
           </div>
-        )}
+        }
       </Card>
 
       <Drawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         title="Request Details"
-        width="lg"
-      >
-        {selectedDetail && (
-          <div className="space-y-4">
+        width="lg">
+        
+        {selectedDetail &&
+        <div className="space-y-4">
             <CollapsibleSection title="Summary" defaultOpen={true} icon="info">
               <div className="grid min-w-0 grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <div>
@@ -602,9 +602,9 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 <div>
                   <span className="text-text-muted">Status:</span>{" "}
                   <span className={cn(
-                    "font-medium",
-                    selectedDetail.status === "success" ? "text-green-600" : "text-red-600"
-                  )}>
+                  "font-medium",
+                  selectedDetail.status === "success" ? "text-green-600" : "text-red-600"
+                )}>
                     {selectedDetail.status}
                   </span>
                 </div>
@@ -641,22 +641,22 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
               </div>
             </CollapsibleSection>
 
-            {selectedDetail.pxpipe && (
-              <div className="rounded-lg border border-border p-4">
+            {selectedDetail.pxpipe &&
+          <div className="rounded-lg border border-border p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="material-symbols-outlined text-[18px] text-text-muted">image</span>
                   <span className="font-semibold text-sm text-text-main">PXPIPE</span>
                   <span className={cn(
-                    "text-xs px-2 py-0.5 rounded",
-                    selectedDetail.pxpipe.applied
-                      ? "bg-success/15 text-success"
-                      : "bg-warning/15 text-warning"
-                  )}>
+                "text-xs px-2 py-0.5 rounded",
+                selectedDetail.pxpipe.applied ?
+                "bg-success/15 text-success" :
+                "bg-warning/15 text-warning"
+              )}>
                     {selectedDetail.pxpipe.applied ? "Activated" : "Skipped"}
                   </span>
                 </div>
-                {selectedDetail.pxpipe.applied ? (
-                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                {selectedDetail.pxpipe.applied ?
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                     <div>
                       <span className="text-text-muted block text-xs">Original (est.)</span>
                       <span className="font-mono">{(selectedDetail.pxpipe.tokensBeforeEst || 0).toLocaleString()} tokens</span>
@@ -673,36 +673,36 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                       <span className="text-text-muted block text-xs">Images</span>
                       <span className="font-mono">{selectedDetail.pxpipe.imageCount || 0} ({selectedDetail.pxpipe.durationMs || 0}ms)</span>
                     </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-text-muted">
+                  </div> :
+
+            <p className="text-sm text-text-muted">
                     Reason: <span className="font-mono">{selectedDetail.pxpipe.reason}</span>
                     {selectedDetail.pxpipe.detail ? ` — ${selectedDetail.pxpipe.detail}` : ""}
                   </p>
-                )}
+            }
               </div>
-            )}
+          }
 
             <TabbedDetailCard
-              title="Request"
-              icon="input"
-              tabs={REQUEST_TABS}
-              detail={selectedDetail}
-              copyKey="request"
-              defaultTab="clientRequest"
-            />
+            title="Request"
+            icon="input"
+            tabs={REQUEST_TABS}
+            detail={selectedDetail}
+            copyKey="request"
+            defaultTab="clientRequest" />
+          
 
             <TabbedDetailCard
-              title="Response"
-              icon="output"
-              tabs={RESPONSE_TABS}
-              detail={selectedDetail}
-              copyKey="response"
-              defaultTab="clientResponse"
-            />
+            title="Response"
+            icon="output"
+            tabs={RESPONSE_TABS}
+            detail={selectedDetail}
+            copyKey="response"
+            defaultTab="clientResponse" />
+          
           </div>
-        )}
+        }
       </Drawer>
-    </div>
-  );
+    </div>);
+
 }

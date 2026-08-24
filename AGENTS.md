@@ -239,7 +239,7 @@ npm run dev            # Dev server on port 20127
 # test
 cd tests && npm install && npm run test:ci
 
-# lint (eslint src + required anti-slop/oxlint baseline gate)
+# lint (eslint src + required anti-slop/oxlint clean-tree gate)
 npm run lint
 npm run lint:anti-slop
 

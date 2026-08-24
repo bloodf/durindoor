@@ -1,4 +1,4 @@
-/**
+import { isBoolean, isObject, isString } from "@/shared/utils/typeChecks.js"; /**
  * ClinePass response-envelope helpers.
  *
  * Cline's `/api/v1/chat/completions` endpoint wraps every body in a
@@ -26,19 +26,19 @@
  */
 export function unwrapClinepassEnvelope(body, provider) {
   if (provider !== "clinepass") return { body, error: null };
-  if (!body || typeof body !== "object" || typeof body.success !== "boolean") {
+  if (!body || !isObject(body) || !isBoolean(body.success)) {
     return { body, error: null };
   }
   if (body.success === true) {
-    return "data" in body && body.data !== null && typeof body.data === "object"
-      ? { body: body.data, error: null }
-      : { body, error: null };
+    return "data" in body && body.data !== null && isObject(body.data) ?
+    { body: body.data, error: null } :
+    { body, error: null };
   }
 
   const err = body.error;
   let message = "";
-  if (typeof err === "string") message = err;
-  else if (err && typeof err === "object") message = err.message || err.code || "";
-  if (!message && typeof body.message === "string") message = body.message;
+  if (isString(err)) message = err;else
+  if (err && isObject(err)) message = err.message || err.code || "";
+  if (!message && isString(body.message)) message = body.message;
   return { body, error: { message: message || "ClinePass request failed" } };
 }

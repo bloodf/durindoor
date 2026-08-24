@@ -1,5 +1,6 @@
 import { getAdapter, getAdapterSync } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
@@ -10,7 +11,7 @@ const DEFAULT_QUOTA_TRACKER_STATE = {
   quotaSortMode: "default",
   expiringFirst: false,
   pageSize: 20,
-  page: 1,
+  page: 1
 };
 
 const DEFAULT_SETTINGS = {
@@ -94,7 +95,7 @@ const DEFAULT_SETTINGS = {
   disabledFreeProviders: [],
   // #10372: opt-in only — fresh installs (or rows missing the persisted
   // key) must not run in debug mode; a persisted `true` is preserved.
-  debugMode: false,
+  debugMode: false
 };
 
 async function readRaw() {
@@ -118,15 +119,15 @@ function mergeWithDefaults(raw) {
   const merged = { ...DEFAULT_SETTINGS, ...(raw || {}) };
   merged.quotaTrackerState = {
     ...DEFAULT_QUOTA_TRACKER_STATE,
-    ...((raw || {}).quotaTrackerState || {}),
+    ...((raw || {}).quotaTrackerState || {})
   };
   for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
     if (merged[key] !== undefined) continue;
     if (
-      key === "outboundProxyEnabled" &&
-      typeof merged.outboundProxyUrl === "string" &&
-      merged.outboundProxyUrl.trim()
-    ) {
+    key === "outboundProxyEnabled" && isString(
+      merged.outboundProxyUrl) &&
+    merged.outboundProxyUrl.trim())
+    {
       merged[key] = true;
     } else {
       merged[key] = defVal;
@@ -199,8 +200,8 @@ export async function getCloudUrl() {
     settings.cloudUrl ||
     process.env.CLOUD_URL ||
     process.env.NEXT_PUBLIC_CLOUD_URL ||
-    ""
-  );
+    "");
+
 }
 
 export async function exportSettings() {

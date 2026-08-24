@@ -1,8 +1,8 @@
 import {
   getRefreshLeadMs,
   isUnrecoverableRefreshError,
-  refreshTokenByProvider,
-} from "./tokenRefresh.js";
+  refreshTokenByProvider } from
+"./tokenRefresh.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 import { serializeRefresh } from "./refreshSerializer.js";
 import { PROVIDER_OAUTH } from "../providers/index.js";
@@ -10,13 +10,13 @@ import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 
 // Single source: codex.oauth.maxRefreshAgeMs (8 days) — proactive refresh window
-export const CODEX_MAX_REFRESH_AGE_MS = PROVIDER_OAUTH["codex"]?.maxRefreshAgeMs;
+import { isNumber, isObject } from "@/shared/utils/typeChecks.js";export const CODEX_MAX_REFRESH_AGE_MS = PROVIDER_OAUTH["codex"]?.maxRefreshAgeMs;
 
 const refreshLocks = new Map();
 
 function deleteRefreshLock(key, expectedEntry = null) {
   const current = refreshLocks.get(key);
-  if (!current || (expectedEntry && current !== expectedEntry)) return false;
+  if (!current || expectedEntry && current !== expectedEntry) return false;
   if (current.timer) clearTimeout(current.timer);
   refreshLocks.delete(key);
   return true;
@@ -39,7 +39,7 @@ function makeRoomForRefreshLock() {
 
 function parseTimeMs(value) {
   if (value === undefined || value === null || value === "") return null;
-  if (typeof value === "number") {
+  if (isNumber(value)) {
     return value < 1e12 ? value * 1000 : value;
   }
 
@@ -87,10 +87,10 @@ export function shouldRefreshCredentials(provider, credentials, nowMs = Date.now
 }
 
 export function mergeProviderSpecificData(existing, next) {
-  if (!next || typeof next !== "object") return existing;
+  if (!next || !isObject(next)) return existing;
   return {
     ...(existing || {}),
-    ...next,
+    ...next
   };
 }
 
@@ -134,13 +134,13 @@ export function mergeRefreshedCredentials(provider, currentCredentials, refreshe
 
   // trackRefreshAt providers (e.g. codex) always stamp lastRefreshAt for staleness tracking
   if (
-    PROVIDER_OAUTH[provider]?.trackRefreshAt ||
-    next.accessToken ||
-    next.apiKey ||
-    next.token ||
-    next.refreshToken ||
-    next.copilotToken
-  ) {
+  PROVIDER_OAUTH[provider]?.trackRefreshAt ||
+  next.accessToken ||
+  next.apiKey ||
+  next.token ||
+  next.refreshToken ||
+  next.copilotToken)
+  {
     next.lastRefreshAt = refreshedCredentials.lastRefreshAt || nowIso;
   }
 
@@ -160,47 +160,47 @@ export function mergeRefreshedCredentials(provider, currentCredentials, refreshe
  */
 export function resolveCredentialProxyOptions(credentials, explicitProxyOptions = null) {
   const data = credentials?.providerSpecificData || {};
-  const oauthProxy = data.oauthProxy && typeof data.oauthProxy === "object"
-    ? data.oauthProxy
-    : {};
-  const explicit = explicitProxyOptions && typeof explicitProxyOptions === "object"
-    ? explicitProxyOptions
-    : {};
+  const oauthProxy = data.oauthProxy && isObject(data.oauthProxy) ?
+  data.oauthProxy :
+  {};
+  const explicit = explicitProxyOptions && isObject(explicitProxyOptions) ?
+  explicitProxyOptions :
+  {};
 
   const options = {
     oauthProxy,
     proxyMode: oauthProxy.mode || data.proxyMode || "legacy",
     proxyPoolId:
-      oauthProxy.poolId ||
-      data.proxyPoolId ||
-      data.connectionProxyPoolId ||
-      null,
+    oauthProxy.poolId ||
+    data.proxyPoolId ||
+    data.connectionProxyPoolId ||
+    null,
     connectionProxyPoolId:
-      data.connectionProxyPoolId ||
-      data.proxyPoolId ||
-      oauthProxy.poolId ||
-      null,
+    data.connectionProxyPoolId ||
+    data.proxyPoolId ||
+    oauthProxy.poolId ||
+    null,
     connectionProxyEnabled: data.connectionProxyEnabled === true,
     connectionProxyUrl: data.connectionProxyUrl || "",
     connectionNoProxy: data.connectionNoProxy || "",
     vercelRelayUrl: data.vercelRelayUrl || "",
     strictProxy: data.strictProxy === true,
     disableEnvProxy: data.disableEnvProxy === true,
-    ...explicit,
+    ...explicit
   };
   // Persisted metadata is the authority. Request-local options may supply a
   // resolved endpoint but may not replace a stored mode or pool identity.
   if (oauthProxy.mode) options.oauthProxy = oauthProxy;
   options.proxyMode = options.oauthProxy?.mode || options.proxyMode;
   options.proxyPoolId =
-    options.oauthProxy?.poolId ||
-    options.proxyPoolId ||
-    options.connectionProxyPoolId ||
-    null;
+  options.oauthProxy?.poolId ||
+  options.proxyPoolId ||
+  options.connectionProxyPoolId ||
+  null;
   options.connectionProxyPoolId =
-    options.connectionProxyPoolId ||
-    options.proxyPoolId ||
-    null;
+  options.connectionProxyPoolId ||
+  options.proxyPoolId ||
+  null;
 
   // A caller cannot weaken the durable direct/strict-pool contract by omitting
   // or replacing request-local booleans. Legacy mode intentionally remains
@@ -224,17 +224,17 @@ export function resolveCredentialProxyOptions(credentials, explicitProxyOptions 
 
 function getRefreshLockKey(provider, credentials, proxyOptions) {
   const stableId =
-    credentials?.connectionId ||
-    credentials?.id ||
-    credentials?.email ||
-    credentials?.name ||
-    credentials?.refreshToken?.slice?.(-16) ||
-    "default";
+  credentials?.connectionId ||
+  credentials?.id ||
+  credentials?.email ||
+  credentials?.name ||
+  credentials?.refreshToken?.slice?.(-16) ||
+  "default";
   return digestMemoryKey(
     "credential-refresh-lock",
     provider,
     stableId,
-    proxyRouteFingerprint(proxyOptions),
+    proxyRouteFingerprint(proxyOptions)
   );
 }
 
@@ -247,11 +247,11 @@ export async function withCredentialRefreshLock(provider, credentials, refreshFn
   makeRoomForRefreshLock();
   const entry = { promise: null, expiresAt: Date.now() + MEMORY_CONFIG.refreshDedupInFlightTtlMs, timer: null };
 
-  const pending = Promise.resolve()
-    .then(refreshFn)
-    .finally(() => {
-      deleteRefreshLock(key, entry);
-    });
+  const pending = Promise.resolve().
+  then(refreshFn).
+  finally(() => {
+    deleteRefreshLock(key, entry);
+  });
 
   entry.promise = pending;
   refreshLocks.set(key, entry);
@@ -267,7 +267,7 @@ export function __getCredentialRefreshLockSnapshotForTesting() {
     keys: [...refreshLocks.keys()],
     size: refreshLocks.size,
     maxSize: MEMORY_CONFIG.refreshDedupMaxSize,
-    ttlMs: MEMORY_CONFIG.refreshDedupInFlightTtlMs,
+    ttlMs: MEMORY_CONFIG.refreshDedupInFlightTtlMs
   };
 }
 
@@ -293,12 +293,12 @@ export async function refreshProviderCredentials(provider, credentials, log, pro
     // dedup above cannot see cross-account collisions; non-rotating providers
     // pass straight through serializeRefresh with no locking.
     const refreshed = await serializeRefresh(provider, () =>
-      refreshTokenByProvider(
-        provider,
-        credentials,
-        log,
-        effectiveProxyOptions
-      )
+    refreshTokenByProvider(
+      provider,
+      credentials,
+      log,
+      effectiveProxyOptions
+    )
     );
     return mergeRefreshedCredentials(provider, credentials, refreshed);
   }, effectiveProxyOptions);

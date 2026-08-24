@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 // convergence modes" — converges Codex OAuth requests onto a stable,
 // account-scoped installation/session/thread identity instead of leaking the
 // caller's own client identity upstream (reduces account-flagging risk).
-const CODEX_INSTALLATION_SALT = "durindoor-codex-installation";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";const CODEX_INSTALLATION_SALT = "durindoor-codex-installation";
 const CODEX_SESSION_SEED_PREFIX = "durindoor:codex-session-id:v1:";
 const CODEX_THREAD_SEED_PREFIX = "durindoor:codex-thread-id:v1:";
 
@@ -12,7 +12,7 @@ export const CODEX_FINGERPRINT_MODES = ["off", "device", "session", "full"];
 export const CODEX_FINGERPRINT_MODE_KEY = "codexFingerprintMode";
 
 function nonEmptyString(value) {
-  if (typeof value !== "string") return null;
+  if (!isString(value)) return null;
   const normalized = value.trim();
   return normalized || null;
 }
@@ -22,7 +22,7 @@ function readNamedHeader(headers, name) {
   if (headers instanceof Headers) return headers.get(name)?.trim() || "";
   const wanted = name.toLowerCase();
   for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === wanted && typeof value === "string" && value.trim()) {
+    if (key.toLowerCase() === wanted && isString(value) && value.trim()) {
       return value.trim();
     }
   }
@@ -33,15 +33,15 @@ function readNamedHeader(headers, name) {
 export function deriveStableUUIDv4(seed) {
   const digest = createHash("sha256").update(seed).digest();
   const bytes = Buffer.from(digest.subarray(0, 16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  bytes[6] = bytes[6] & 0x0f | 0x40;
+  bytes[8] = bytes[8] & 0x3f | 0x80;
   return [
-    bytes.subarray(0, 4).toString("hex"),
-    bytes.subarray(4, 6).toString("hex"),
-    bytes.subarray(6, 8).toString("hex"),
-    bytes.subarray(8, 10).toString("hex"),
-    bytes.subarray(10, 16).toString("hex"),
-  ].join("-");
+  bytes.subarray(0, 4).toString("hex"),
+  bytes.subarray(4, 6).toString("hex"),
+  bytes.subarray(6, 8).toString("hex"),
+  bytes.subarray(8, 10).toString("hex"),
+  bytes.subarray(10, 16).toString("hex")].
+  join("-");
 }
 
 export function accountSeed(providerSpecificData, accountKey) {
@@ -51,42 +51,42 @@ export function accountSeed(providerSpecificData, accountKey) {
     nonEmptyString(providerSpecificData?.workspaceId) ||
     nonEmptyString(providerSpecificData?.accountId) ||
     nonEmptyString(providerSpecificData?.email) ||
-    "default"
-  );
+    "default");
+
 }
 
 export function isCodexOAuthCredentials(credentials) {
   return Boolean(
-    nonEmptyString(credentials?.accessToken) || nonEmptyString(credentials?.refreshToken),
+    nonEmptyString(credentials?.accessToken) || nonEmptyString(credentials?.refreshToken)
   );
 }
 
 export function getCodexFingerprintMode(providerSpecificData, isOAuth = true) {
   if (!isOAuth) return "off";
   const raw = (
-    nonEmptyString(providerSpecificData?.[CODEX_FINGERPRINT_MODE_KEY]) ||
-    nonEmptyString(providerSpecificData?.codex_fingerprint_mode) ||
-    ""
-  ).toLowerCase();
+  nonEmptyString(providerSpecificData?.[CODEX_FINGERPRINT_MODE_KEY]) ||
+  nonEmptyString(providerSpecificData?.codex_fingerprint_mode) ||
+  "").
+  toLowerCase();
   return CODEX_FINGERPRINT_MODES.includes(raw) ? raw : "session";
 }
 
 function getCodexInstallationId(providerSpecificData, accountKey) {
   return deriveStableUUIDv4(
-    `${CODEX_INSTALLATION_SALT}:${accountSeed(providerSpecificData, accountKey)}`,
+    `${CODEX_INSTALLATION_SALT}:${accountSeed(providerSpecificData, accountKey)}`
   );
 }
 
 function getCodexConvergedSessionId(providerSpecificData, accountKey) {
   return deriveStableUUIDv4(
-    `${CODEX_SESSION_SEED_PREFIX}${accountSeed(providerSpecificData, accountKey)}`,
+    `${CODEX_SESSION_SEED_PREFIX}${accountSeed(providerSpecificData, accountKey)}`
   );
 }
 
 function getCodexConvergedThreadId(clientSessionId, providerSpecificData, accountKey) {
   if (!nonEmptyString(clientSessionId)) return "";
   return deriveStableUUIDv4(
-    `${CODEX_THREAD_SEED_PREFIX}${accountSeed(providerSpecificData, accountKey)}:${clientSessionId}`,
+    `${CODEX_THREAD_SEED_PREFIX}${accountSeed(providerSpecificData, accountKey)}:${clientSessionId}`
   );
 }
 
@@ -95,7 +95,7 @@ function getCodexClientSessionId(headers) {
 }
 
 function isCompactRequestEndpoint(path) {
-  if (typeof path !== "string") return false;
+  if (!isString(path)) return false;
   const normalized = path.trim().toLowerCase().replace(/\\/g, "/");
   return normalized === "/compact" || /(?:^|\/)responses\/compact(?:\/|$)/.test(normalized);
 }
@@ -117,15 +117,15 @@ export function createCodexClientIdentity(clientSessionId, providerSpecificData,
       threadId: "",
       turnId: "",
       windowId: "",
-      turnStartedAtUnixMs: Date.now(),
+      turnStartedAtUnixMs: Date.now()
     };
   }
 
   const sessionId = getCodexConvergedSessionId(providerSpecificData, options.accountKey);
   const threadId =
-    mode === "full"
-      ? sessionId
-      : getCodexConvergedThreadId(clientSessionId, providerSpecificData, options.accountKey) || sessionId;
+  mode === "full" ?
+  sessionId :
+  getCodexConvergedThreadId(clientSessionId, providerSpecificData, options.accountKey) || sessionId;
 
   return {
     mode,
@@ -134,22 +134,22 @@ export function createCodexClientIdentity(clientSessionId, providerSpecificData,
     threadId,
     turnId: randomUUID(),
     windowId: `${threadId}:0`,
-    turnStartedAtUnixMs: Date.now(),
+    turnStartedAtUnixMs: Date.now()
   };
 }
 
 const CODEX_IDENTITY_HEADER_NAMES = [
-  "session-id",
-  "session_id",
-  "thread-id",
-  "thread_id",
-  "x-client-request-id",
-  "x-codex-installation-id",
-  "x-codex-parent-thread-id",
-  "x-codex-turn-state",
-  "x-codex-window-id",
-  "x-codex-turn-metadata",
-];
+"session-id",
+"session_id",
+"thread-id",
+"thread_id",
+"x-client-request-id",
+"x-codex-installation-id",
+"x-codex-parent-thread-id",
+"x-codex-turn-state",
+"x-codex-window-id",
+"x-codex-turn-metadata"];
+
 
 function removeCodexIdentityCarriers(target) {
   for (const key of Object.keys(target)) {
@@ -181,17 +181,17 @@ export function resolveCodexOriginalIdentityHeaders({ credentials, clientHeaders
 function mergeTurnMetadata(raw, identity, includeSessionFields) {
   let metadata = {};
   let hadExisting = false;
-  if (typeof raw === "string" && raw.trim()) {
+  if (isString(raw) && raw.trim()) {
     try {
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      if (parsed && isObject(parsed) && !Array.isArray(parsed)) {
         metadata = parsed;
         hadExisting = true;
       }
     } catch {
+
       // Replace malformed metadata when a complete carrier is required.
-    }
-  }
+    }}
   if (!hadExisting && includeSessionFields) {
     metadata.thread_source = "user";
     metadata.sandbox = "none";
@@ -211,7 +211,7 @@ function mergeTurnMetadata(raw, identity, includeSessionFields) {
 export function applyCodexOriginalIdentityHeaders(headers, original) {
   if (!original) return headers;
   for (const name of CODEX_IDENTITY_HEADER_NAMES) {
-    if (typeof original[name] === "string" && original[name]) headers[name] = original[name];
+    if (isString(original[name]) && original[name]) headers[name] = original[name];
   }
   return headers;
 }
@@ -226,7 +226,7 @@ export function resolveCodexFingerprintIdentity({ credentials, clientHeaders, re
 
   return createCodexClientIdentity(getCodexClientSessionId(clientHeaders), providerSpecificData, {
     accountKey: credentials.connectionId ?? null,
-    isOAuth,
+    isOAuth
   });
 }
 
@@ -236,12 +236,12 @@ export function withCodexFingerprintCredentials(credentials, clientHeaders, requ
   const requestCredentials = {
     ...credentials,
     providerSpecificData,
-    ...(requestEndpointPath ? { requestEndpointPath } : {}),
+    ...(requestEndpointPath ? { requestEndpointPath } : null)
   };
   const identity = resolveCodexFingerprintIdentity({
     credentials: requestCredentials,
     clientHeaders,
-    requestEndpointPath,
+    requestEndpointPath
   });
   const original = resolveCodexOriginalIdentityHeaders({ credentials: requestCredentials, clientHeaders });
   if (!identity && !original) return requestCredentials;
@@ -249,9 +249,9 @@ export function withCodexFingerprintCredentials(credentials, clientHeaders, requ
     ...requestCredentials,
     providerSpecificData: {
       ...providerSpecificData,
-      ...(identity ? { codexClientIdentity: identity } : {}),
-      ...(original ? { codexOriginalIdentityHeaders: original } : {}),
-    },
+      ...(identity ? { codexClientIdentity: identity } : null),
+      ...(original ? { codexOriginalIdentityHeaders: original } : null)
+    }
   };
 }
 
@@ -279,9 +279,9 @@ export function applyCodexClientIdentityHeaders(headers, identity) {
 export function applyCodexClientMetadata(body, identity) {
   if (!identity) return body;
   const existing =
-    body.client_metadata && typeof body.client_metadata === "object" && !Array.isArray(body.client_metadata)
-      ? { ...body.client_metadata }
-      : {};
+  body.client_metadata && isObject(body.client_metadata) && !Array.isArray(body.client_metadata) ?
+  { ...body.client_metadata } :
+  {};
   if (identity.mode !== "device") removeCodexIdentityCarriers(existing);
   existing["x-codex-installation-id"] = identity.installationId;
   if (identity.mode === "device") {

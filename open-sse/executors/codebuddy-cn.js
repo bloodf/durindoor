@@ -1,5 +1,6 @@
 import { DefaultExecutor } from "./default.js";
 import { OPENAI_BLOCK, ROLE } from "../translator/schema/index.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const DEFAULT_SYSTEM_PROMPT_MAX_LEN = 2000;
 const NEUTRAL_PROMPT = "You are a helpful AI assistant that helps with software engineering tasks.";
@@ -19,9 +20,9 @@ function systemPromptMaxLen() {
 }
 
 function flattenText(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (!Array.isArray(content)) return "";
-  return content.map((block) => (typeof block?.text === "string" ? block.text : "")).join("\n");
+  return content.map((block) => isString(block?.text) ? block.text : "").join("\n");
 }
 
 /**
@@ -53,15 +54,15 @@ export class CodeBuddyExecutor extends DefaultExecutor {
         if (!matchedIdentity && !matchedLength) return message;
 
         console.warn(
-          matchedIdentity
-            ? "[codebuddy-cn] system prompt replaced: IDENTITY rule"
-            : `[codebuddy-cn] system prompt replaced: LENGTH rule (${text.length} > CODEBUDDY_SYSTEM_PROMPT_MAX_LEN=${maxLen})`,
+          matchedIdentity ?
+          "[codebuddy-cn] system prompt replaced: IDENTITY rule" :
+          `[codebuddy-cn] system prompt replaced: LENGTH rule (${text.length} > CODEBUDDY_SYSTEM_PROMPT_MAX_LEN=${maxLen})`
         );
         return {
           ...message,
-          content: typeof message.content === "string"
-            ? NEUTRAL_PROMPT
-            : [{ type: OPENAI_BLOCK.TEXT, text: NEUTRAL_PROMPT }],
+          content: isString(message.content) ?
+          NEUTRAL_PROMPT :
+          [{ type: OPENAI_BLOCK.TEXT, text: NEUTRAL_PROMPT }]
         };
       });
     }

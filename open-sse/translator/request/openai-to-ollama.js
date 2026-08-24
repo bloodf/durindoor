@@ -17,7 +17,7 @@ import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
  * - Content must be string, not array
  * - Multimodal images should be mapped to `message.images[]` (raw base64, no data: prefix)
  * - tool role maps to tool (Ollama supports tool messages)
- */
+ */import { isString } from "@/shared/utils/typeChecks.js";
 export function openaiToOllamaRequest(model, body, stream) {
   const result = {
     model: model,
@@ -100,16 +100,16 @@ function normalizeMessages(messages) {
     // Handle assistant messages with tool_calls
     if (msg.role === ROLE.ASSISTANT && msg.tool_calls) {
       const content = normalizeContent(msg.content) || "";
-      
+
       // Convert OpenAI tool_calls format to Ollama format
-      const ollamaToolCalls = msg.tool_calls.map(tc => ({
+      const ollamaToolCalls = msg.tool_calls.map((tc) => ({
         type: OPENAI_BLOCK.FUNCTION,
         function: {
           index: tc.index || 0,
           name: tc.function?.name || "",
-          arguments: typeof tc.function?.arguments === "string" 
-            ? safeParseJSON(tc.function.arguments || "{}", {})
-            : tc.function?.arguments || {}
+          arguments: isString(tc.function?.arguments) ?
+          safeParseJSON(tc.function.arguments || "{}", {}) :
+          tc.function?.arguments || {}
         }
       }));
 
@@ -158,15 +158,15 @@ function normalizeMessages(messages) {
  * Ollama only accepts string content
  */
 function normalizeContent(content) {
-  if (typeof content === "string") {
+  if (isString(content)) {
     return content;
   }
 
   if (Array.isArray(content)) {
     // Extract text from content array
-    const textParts = content
-      .filter(block => block && block.type === OPENAI_BLOCK.TEXT && block.text)
-      .map(block => block.text);
+    const textParts = content.
+    filter((block) => block && block.type === OPENAI_BLOCK.TEXT && block.text).
+    map((block) => block.text);
 
     return textParts.join("\n") || "";
   }
@@ -188,8 +188,8 @@ function extractImagesFromContent(content) {
   for (const block of content) {
     if (!block || block.type !== OPENAI_BLOCK.IMAGE_URL) continue;
 
-    const url = typeof block.image_url === "string" ? block.image_url : block.image_url?.url;
-    if (typeof url !== "string" || !url) continue;
+    const url = isString(block.image_url) ? block.image_url : block.image_url?.url;
+    if (!isString(url) || !url) continue;
 
     const parsed = parseDataUri(url);
     if (!parsed) continue;

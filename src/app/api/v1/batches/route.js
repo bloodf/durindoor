@@ -4,15 +4,16 @@ import { makeDefaultExecutor } from "open-sse/handlers/localBatchExecutor.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "*",
+  "Access-Control-Allow-Headers": "*"
 };
 
 const json = (body, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
+new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
 
 export async function OPTIONS() {
   return new Response(null, { headers: CORS });
@@ -47,7 +48,7 @@ export async function POST(request) {
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
-  if (!body || typeof body.input_file_id !== "string") {
+  if (!body || !isString(body.input_file_id)) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "input_file_id is required");
   }
   try {

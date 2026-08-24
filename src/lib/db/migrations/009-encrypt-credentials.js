@@ -18,25 +18,26 @@
 
 import {
   encryptField,
-  isEncryptedBlob,
-} from "../../crypto/columnCrypto.js";
+  isEncryptedBlob } from
+"../../crypto/columnCrypto.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "../repos/connectionsRepo.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const migration = {
   version: 9,
   name: "encrypt-credentials",
   up(db) {
     const tableRow = db.get(
-      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'providerConnections'`,
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'providerConnections'`
     );
     if (!tableRow) return;
     const colRow = db.get(
-      `SELECT name FROM pragma_table_info('providerConnections') WHERE name = 'data'`,
+      `SELECT name FROM pragma_table_info('providerConnections') WHERE name = 'data'`
     );
     if (!colRow) return;
     const rows = db.all(`SELECT id, data FROM providerConnections`);
     for (const row of rows) {
-      if (typeof row.data !== "string" || row.data.length === 0) continue;
+      if (!isString(row.data) || row.data.length === 0) continue;
       let parsed = null;
       try {
         parsed = JSON.parse(row.data);
@@ -45,11 +46,11 @@ const migration = {
         // surface the real corruption.
         continue;
       }
-      if (!parsed || typeof parsed !== "object") continue;
+      if (!parsed || !isObject(parsed)) continue;
       let dirty = false;
       for (const field of SENSITIVE_CONNECTION_FIELDS) {
         const value = parsed[field];
-        if (typeof value !== "string" || value.length === 0) continue;
+        if (!isString(value) || value.length === 0) continue;
         if (isEncryptedBlob(value)) continue;
         parsed[field] = encryptField(value, row.id);
         dirty = true;
@@ -57,11 +58,11 @@ const migration = {
       if (dirty) {
         db.run(
           `UPDATE providerConnections SET data = ? WHERE id = ?`,
-          [JSON.stringify(parsed), row.id],
+          [JSON.stringify(parsed), row.id]
         );
       }
     }
-  },
+  }
 };
 
 export default migration;

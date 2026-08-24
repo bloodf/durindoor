@@ -1,4 +1,5 @@
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 export const WEBSESSION_FETCH_TIMEOUT_MS = 30_000;
 
@@ -6,7 +7,7 @@ export function mergeAbortSignals(...signals) {
   const live = signals.filter(Boolean);
   if (live.length === 0) return undefined;
   if (live.length === 1) return live[0];
-  if (typeof AbortSignal.any === "function") return AbortSignal.any(live);
+  if (isFunction(AbortSignal.any)) return AbortSignal.any(live);
 
   const controller = new AbortController();
   const abort = (event) => controller.abort(event?.target?.reason);
@@ -47,11 +48,11 @@ export async function fetchWithTimeout(input, init, { timeoutMs = WEBSESSION_FET
 }
 
 export function stripCookieInputPrefix(value = "") {
-  return String(value || "")
-    .trim()
-    .replace(/^cookie:\s*/i, "")
-    .replace(/^Cookie:\s*/i, "")
-    .trim();
+  return String(value || "").
+  trim().
+  replace(/^cookie:\s*/i, "").
+  replace(/^Cookie:\s*/i, "").
+  trim();
 }
 
 export function extractCookieValue(cookieHeader = "", name) {
@@ -69,16 +70,16 @@ export function normalizeSessionCookieHeader(value = "", defaultCookieName) {
 }
 
 export function normalizeSessionCookieHeaders(values = [], defaultCookieName) {
-  return values
-    .map((value) => normalizeSessionCookieHeader(value, defaultCookieName))
-    .filter(Boolean);
+  return values.
+  map((value) => normalizeSessionCookieHeader(value, defaultCookieName)).
+  filter(Boolean);
 }
 
 export function sanitizeErrorMessage(value = "") {
-  return String(value || "")
-    .replace(/(Bearer|token|cookie|api[_-]?key)\s+[^\s,;]+/gi, "$1 [redacted]")
-    .replace(/([?&](?:key|token|auth|cookie)=)[^&\s]+/gi, "$1[redacted]")
-    .slice(0, 2000);
+  return String(value || "").
+  replace(/(Bearer|token|cookie|api[_-]?key)\s+[^\s,;]+/gi, "$1 [redacted]").
+  replace(/([?&](?:key|token|auth|cookie)=)[^&\s]+/gi, "$1[redacted]").
+  slice(0, 2000);
 }
 
 export async function readTextStream(body, signal) {
@@ -100,19 +101,19 @@ export async function readTextStream(body, signal) {
 }
 
 export function extractTextFromContent(content) {
-  if (typeof content === "string") return content.trim();
+  if (isString(content)) return content.trim();
   if (!Array.isArray(content)) return "";
-  return content
-    .map((part) => {
-      if (!part || typeof part !== "object") return "";
-      if ((part.type === "text" || part.type === "input_text") && typeof part.text === "string") {
-        return part.text;
-      }
-      return "";
-    })
-    .filter((part) => part.trim().length > 0)
-    .join("\n")
-    .trim();
+  return content.
+  map((part) => {
+    if (!part || !isObject(part)) return "";
+    if ((part.type === "text" || part.type === "input_text") && isString(part.text)) {
+      return part.text;
+    }
+    return "";
+  }).
+  filter((part) => part.trim().length > 0).
+  join("\n").
+  trim();
 }
 
 export function estimateTokens(text = "") {
@@ -122,7 +123,7 @@ export function estimateTokens(text = "") {
 export function jsonResponse(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: { "Content-Type": "application/json", ...headers }
   });
 }
 
@@ -131,9 +132,9 @@ export function errorJson(status, message, type = "upstream_error", extra = {}) 
 }
 
 export function mergeUpstreamExtraHeaders(headers, extraHeaders) {
-  if (!extraHeaders || typeof extraHeaders !== "object") return headers;
+  if (!extraHeaders || !isObject(extraHeaders)) return headers;
   for (const [key, value] of Object.entries(extraHeaders)) {
-    if (typeof value === "string" && value.trim()) headers[key] = value;
+    if (isString(value) && value.trim()) headers[key] = value;
   }
   return headers;
 }

@@ -1,20 +1,21 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const MINIMAX_VOICE_ENDPOINTS = {
   minimax: "https://api.minimax.io/v1/get_voice",
-  "minimax-cn": "https://api.minimaxi.com/v1/get_voice",
+  "minimax-cn": "https://api.minimaxi.com/v1/get_voice"
 };
 
 const VOICE_GROUPS = [
-  { key: "system_voice", label: "System" },
-  { key: "voice_cloning", label: "Cloned" },
-  { key: "voice_generation", label: "Generated" },
-  { key: "music_generation", label: "Music" },
-];
+{ key: "system_voice", label: "System" },
+{ key: "voice_cloning", label: "Cloned" },
+{ key: "voice_generation", label: "Generated" },
+{ key: "music_generation", label: "Music" }];
+
 
 function inferLanguage(voiceId) {
-  const value = typeof voiceId === "string" ? voiceId.trim() : "";
+  const value = isString(voiceId) ? voiceId.trim() : "";
   if (!value.includes("_")) return "Custom";
   return value.split("_")[0] || "Custom";
 }
@@ -40,7 +41,7 @@ function normalizeMiniMaxVoices(data) {
         id: voiceId,
         name: group.key === "system_voice" ? voiceName : `${voiceName} · ${group.label}`,
         lang,
-        category: group.key,
+        category: group.key
       });
     }
   }
@@ -79,15 +80,15 @@ export async function GET(request) {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify({ voice_type: voiceType }),
+      body: JSON.stringify({ voice_type: voiceType })
     });
 
     const rawText = await res.text();
     let data = {};
     if (rawText) {
-      try { data = JSON.parse(rawText); } catch { data = {}; }
+      try {data = JSON.parse(rawText);} catch {data = {};}
     }
 
     const baseResp = data.base_resp || data.baseResp || {};

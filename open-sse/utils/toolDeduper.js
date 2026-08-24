@@ -1,39 +1,39 @@
-/**
+import { isString } from "@/shared/utils/typeChecks.js"; /**
  * Normalize outbound tools for upstream PR #3333.
  * Claude clients lose configured built-ins shadowed by MCP tools; DeepSeek
  * models retain only the first exact-name definition because duplicates 400.
  */
 
 const DEDUP_RULES = [
-  {
-    // Exa MCP present → drop built-in web tools (Exa is preferred).
-    triggers: ["mcp__exa__web_search_exa", "mcp__exa__web_fetch_exa"],
-    strip: ["WebSearch", "WebFetch", "mcp__workspace__web_fetch"],
-  },
-  {
-    // Tavily MCP present → drop built-in web tools.
-    triggers: ["mcp__tavily__tavily_search", "mcp__tavily__tavily_extract"],
-    strip: ["WebSearch", "WebFetch", "mcp__workspace__web_fetch"],
-  },
-  {
-    // Browser MCP present → drop Cowork's duplicate Claude_in_Chrome connector.
-    triggers: [/^mcp__browsermcp__/],
-    strip: [/^mcp__Claude_in_Chrome__/],
-  },
-];
+{
+  // Exa MCP present → drop built-in web tools (Exa is preferred).
+  triggers: ["mcp__exa__web_search_exa", "mcp__exa__web_fetch_exa"],
+  strip: ["WebSearch", "WebFetch", "mcp__workspace__web_fetch"]
+},
+{
+  // Tavily MCP present → drop built-in web tools.
+  triggers: ["mcp__tavily__tavily_search", "mcp__tavily__tavily_extract"],
+  strip: ["WebSearch", "WebFetch", "mcp__workspace__web_fetch"]
+},
+{
+  // Browser MCP present → drop Cowork's duplicate Claude_in_Chrome connector.
+  triggers: [/^mcp__browsermcp__/],
+  strip: [/^mcp__Claude_in_Chrome__/]
+}];
+
 
 function getToolName(t) {
   return t?.name || t?.function?.name || "";
 }
 
 function matches(name, pattern) {
-  if (typeof pattern === "string") return name === pattern;
+  if (isString(pattern)) return name === pattern;
   return pattern instanceof RegExp ? pattern.test(name) : false;
 }
 
 /** Match DeepSeek by the case-insensitive final catalog-id segment. */
 function isDeepSeekModel(model) {
-  if (typeof model !== "string") return false;
+  if (!isString(model)) return false;
   return /^deepseek-/i.test(model.slice(model.lastIndexOf("/") + 1));
 }
 
@@ -64,15 +64,15 @@ function dedupeTools(tools, { clientTool, model } = {}) {
     const seen = new Set();
     for (let i = 0; i < names.length; i += 1) {
       if (!names[i]) continue;
-      if (seen.has(names[i])) toDrop.add(i);
-      else seen.add(names[i]);
+      if (seen.has(names[i])) toDrop.add(i);else
+      seen.add(names[i]);
     }
   }
 
   if (toStrip.size === 0 && toDrop.size === 0) return { tools, stripped: [] };
   return {
     tools: tools.filter((tool, index) => !toDrop.has(index) && !toStrip.has(getToolName(tool))),
-    stripped: [...toDrop].map((index) => names[index]).concat([...toStrip]),
+    stripped: [...toDrop].map((index) => names[index]).concat([...toStrip])
   };
 }
 

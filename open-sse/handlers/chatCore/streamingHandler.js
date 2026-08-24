@@ -13,12 +13,12 @@ import { createErrorResult, readBoundedResponseText, sanitizeErrorMessage } from
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
-const CODEX_SOURCE_TO_TARGET = {
+import { isFunction } from "@/shared/utils/typeChecks.js";const CODEX_SOURCE_TO_TARGET = {
   [FORMATS.OPENAI_RESPONSES]: FORMATS.OPENAI_RESPONSES,
   [FORMATS.CLAUDE]: FORMATS.CLAUDE,
   [FORMATS.ANTIGRAVITY]: FORMATS.ANTIGRAVITY,
   [FORMATS.GEMINI]: FORMATS.ANTIGRAVITY,
-  [FORMATS.GEMINI_CLI]: FORMATS.ANTIGRAVITY,
+  [FORMATS.GEMINI_CLI]: FORMATS.ANTIGRAVITY
 };
 
 /**
@@ -43,21 +43,21 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
     const codexTarget = CODEX_SOURCE_TO_TARGET[sourceFormat] || FORMATS.OPENAI;
     return {
       stream: createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody),
-      emittedFormat: codexTarget,
+      emittedFormat: codexTarget
     };
   }
 
   if (needsTranslation(targetFormat, sourceFormat)) {
     return {
       stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody),
-      emittedFormat: sourceFormat,
+      emittedFormat: sourceFormat
     };
   }
 
   // Passthrough: the provider's own frames reach the client unchanged.
   return {
     stream: createPassthroughStreamWithLogger(provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, targetFormat, onCoherentTerminal, providerBody),
-    emittedFormat: targetFormat,
+    emittedFormat: targetFormat
   };
 }
 
@@ -98,14 +98,14 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     const titleMatch = bodyText.match(/<title>([^<]+)<\/title>/i);
     const sanitizedTitle = (titleMatch?.[1] || '').replace(/<[^>]*>/g, '').replace(/[\r\n]+/g, ' ').trim().slice(0, 160);
     const shortMsg = sanitizeErrorMessage(
-      sanitizedTitle
-      || (bodyText.length < 200
-        ? bodyText.replace(/<[^>]*>/g, '').trim().slice(0, 160)
-        : `Upstream returned non-SSE response (${upstreamContentType})`),
+      sanitizedTitle || (
+      bodyText.length < 200 ?
+      bodyText.replace(/<[^>]*>/g, '').trim().slice(0, 160) :
+      `Upstream returned non-SSE response (${upstreamContentType})`)
     );
     const status = providerResponse.status || 502;
-    if (log?.errorLine) log.errorLine(reqTag, "✗", `BLOCKED ${status} · ${provider}/${model} · non-SSE (${upstreamContentType})\n    ${shortMsg}`);
-    else console.warn(`[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`);
+    if (log?.errorLine) log.errorLine(reqTag, "✗", `BLOCKED ${status} · ${provider}/${model} · non-SSE (${upstreamContentType})\n    ${shortMsg}`);else
+    console.warn(`[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`);
     streamController?.handleError?.(new Error(`upstream non-SSE: ${status}`));
     // Use the shared error-result shape (status/error/response) so callers like
     // handleSingleModelChat can correctly log and fall back — a locally built
@@ -139,7 +139,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     response: { content: "[Streaming in progress...]", thinking: null, type: "streaming" },
     pxpipe,
     status: "success"
-  }, { id: streamDetailId })).catch(err => {
+  }, { id: streamDetailId })).catch((err) => {
     console.error("[RequestDetail] Failed to save streaming request:", err.message);
   });
 
@@ -168,14 +168,14 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
 
   const onCoherentTerminal = () => {
     if (
-      coherentTerminalHandled
-      || typeof onRequestSuccess !== "function"
-      || !["upstream", "validated"].includes(terminalProvenance)
-    ) return;
+    coherentTerminalHandled || !isFunction(
+      onRequestSuccess) ||
+    !["upstream", "validated"].includes(terminalProvenance))
+    return;
     coherentTerminalHandled = true;
-    const attemptStartedAt = typeof getProviderAttemptStartedAt === "function"
-      ? getProviderAttemptStartedAt()
-      : null;
+    const attemptStartedAt = isFunction(getProviderAttemptStartedAt) ?
+    getProviderAttemptStartedAt() :
+    null;
     try {
       Promise.resolve(onRequestSuccess({ attemptStartedAt })).catch(() => {
         // Runtime health cleanup is fail-open and must not break a completed
@@ -207,7 +207,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       response: { content: safeContent, thinking: safeThinking, type: "streaming" },
       pxpipe,
       status: "success"
-    }, { id: streamDetailId })).catch(err => {
+    }, { id: streamDetailId })).catch((err) => {
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });
 
@@ -241,7 +241,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       response: { content: detail, thinking: null, type: "streaming" },
       pxpipe,
       status: "cancelled"
-    }, { id: streamDetailId })).catch(err => {
+    }, { id: streamDetailId })).catch((err) => {
       console.error("[RequestDetail] Failed to finalize interrupted stream:", err.message);
     });
   };

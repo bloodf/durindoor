@@ -1,4 +1,4 @@
-// HTTP status codes
+import { isNumber, isString } from "@/shared/utils/typeChecks.js"; // HTTP status codes
 export const HTTP_STATUS = {
   BAD_REQUEST: 400,
   UNAUTHORIZED: 401,
@@ -32,8 +32,8 @@ export const MAX_REALTIME_FRAME_BYTES = realtimeLimits.MAX_REALTIME_FRAME_BYTES;
 
 // Cache TTLs (seconds)
 export const CACHE_TTL = {
-  userInfo: 300,    // 5 minutes
-  modelAlias: 3600  // 1 hour
+  userInfo: 300, // 5 minutes
+  modelAlias: 3600 // 1 hour
 };
 
 // Memory management config
@@ -44,7 +44,7 @@ export const MEMORY_CONFIG = {
   proxyDispatchersMaxSize: 20,
   refreshDedupMaxSize: 256,
   refreshDedupInFlightTtlMs: 2 * 60 * 1000,
-  refreshDedupResultTtlMs: 10 * 1000,
+  refreshDedupResultTtlMs: 10 * 1000
 };
 
 /** Shared undici pool limits for direct and proxy provider traffic. */
@@ -55,7 +55,7 @@ export const PROXY_FETCH_POOL_CONFIG = Object.freeze({
   proxyMaxCachedSessions: 32,
   keepAliveTimeoutMs: 4_000,
   keepAliveMaxTimeoutMs: 60_000,
-  pipelining: 1,
+  pipelining: 1
 });
 
 // Client opt-out for reasoning_content on non-streaming responses.
@@ -131,7 +131,7 @@ export const MAX_COMPRESS_BODY_BYTES = 256 * 1024;
 // quota lease. The five-minute ceiling remains below the default lease.
 export const CODEX_SSE_PEEK_TIMEOUT_MS = Math.min(
   envMs("CODEX_SSE_PEEK_TIMEOUT_MS", 30 * 1000),
-  5 * 60 * 1000,
+  5 * 60 * 1000
 );
 
 // Gemini native TTS fetch timeout: abort if Google does not return response headers in time.
@@ -159,7 +159,7 @@ export const DEFAULT_RETRY_CONFIG = {
 // Normalize a retry entry to { attempts, delayMs }
 export function resolveRetryEntry(entry) {
   if (entry == null) return { attempts: 0, delayMs: RETRY_CONFIG.delayMs };
-  if (typeof entry === "number") return { attempts: entry, delayMs: RETRY_CONFIG.delayMs };
+  if (isNumber(entry)) return { attempts: entry, delayMs: RETRY_CONFIG.delayMs };
   return {
     attempts: entry.attempts || 0,
     delayMs: entry.delayMs != null ? entry.delayMs : RETRY_CONFIG.delayMs
@@ -189,11 +189,11 @@ export function resolveRetryEntry(entry) {
 // for the settings/caller layer; NOT auto-applied by the executor.
 export const DEFAULT_MAX_TRANSPORT_ATTEMPTS = 2;
 export const DEFAULT_PROVIDER_SKIP_RULES = [
-  // The legacy Antigravity capacity skip ships as an ordinary seeded rule the
-  // user can edit/delete. `sweep` asks the account loop to re-try the whole
-  // pool after exhausting it (momentary saturation recovery).
-  { provider: "antigravity", match: { status: 503, contains: "capacity" }, action: "skip", sweep: true },
-];
+// The legacy Antigravity capacity skip ships as an ordinary seeded rule the
+// user can edit/delete. `sweep` asks the account loop to re-try the whole
+// pool after exhausting it (momentary saturation recovery).
+{ provider: "antigravity", match: { status: 503, contains: "capacity" }, action: "skip", sweep: true }];
+
 
 /**
  * Find the FIRST rule (array order) matching this failure for `provider`, and
@@ -211,7 +211,7 @@ export function findMatchingSkipRule(provider, failure = {}, skipRules = []) {
   if (!Array.isArray(skipRules)) return null;
   const status = failure.status != null ? Number(failure.status) : null;
   const errorKind = failure.errorKind || null;
-  const text = typeof failure.text === "string" ? failure.text.toLowerCase() : "";
+  const text = isString(failure.text) ? failure.text.toLowerCase() : "";
 
   for (const r of skipRules) {
     if (!r || r.provider !== provider || !r.match) continue;
@@ -292,7 +292,7 @@ export function resolveRequestRetryPolicy(provider, requestPolicy = null) {
   // Whether any rule for THIS provider matches on error body text. Only then
   // does the transport tier pay to clone+read an error response body.
   const hasContainsRule = Array.isArray(skipRules) && skipRules.some(
-    r => r && r.provider === provider && r.match?.contains != null && r.match?.contains !== ""
+    (r) => r && r.provider === provider && r.match?.contains != null && r.match?.contains !== ""
   );
   return { maxTransportAttempts, skipRules, headerTimeoutMs, hasContainsRule };
 }
@@ -312,7 +312,7 @@ export const LOCAL_PROVIDER_URLS_ENV = "OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS";
 
 const _TRUE_ENV = new Set(["1", "true", "yes", "on"]);
 function _isTrueEnv(raw) {
-  return typeof raw === "string" && _TRUE_ENV.has(raw.trim().toLowerCase());
+  return isString(raw) && _TRUE_ENV.has(raw.trim().toLowerCase());
 }
 
 // Full opt-out: allow every private URL (and legacy OUTBOUND_SSRF_GUARD_ENABLED=false
@@ -320,7 +320,7 @@ function _isTrueEnv(raw) {
 export function arePrivateProviderUrlsAllowed() {
   if (_isTrueEnv(process.env[PRIVATE_PROVIDER_URLS_ENV])) return true;
   const legacy = process.env.OUTBOUND_SSRF_GUARD_ENABLED;
-  if (typeof legacy === "string" && ["false", "0", "no", "off"].includes(legacy.trim().toLowerCase())) {
+  if (isString(legacy) && ["false", "0", "no", "off"].includes(legacy.trim().toLowerCase())) {
     return true;
   }
   return false;
@@ -332,7 +332,7 @@ export function arePrivateProviderUrlsAllowed() {
 // blocked while a guard mode is active. Exported (matches source).
 export function areLocalProviderUrlsAllowed() {
   const v = process.env[LOCAL_PROVIDER_URLS_ENV];
-  if (typeof v === "string" && v !== "") return _isTrueEnv(v);
+  if (isString(v) && v !== "") return _isTrueEnv(v);
   return true;
 }
 
@@ -351,5 +351,4 @@ export function getProviderValidationGuard() {
 
 // Requests containing these texts will bypass provider
 export const SKIP_PATTERNS = [
-  "Please write a 5-10 word title for the following conversation:"
-];
+"Please write a 5-10 word title for the following conversation:"];

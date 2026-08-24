@@ -6,7 +6,7 @@ import { collapseTextParts } from "../concerns/message.js";
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK } from "../schema/index.js";
 
 // Convert Gemini request to OpenAI format
-export function geminiToOpenAIRequest(model, body, stream) {
+import { isString } from "@/shared/utils/typeChecks.js";export function geminiToOpenAIRequest(model, body, stream) {
   const result = {
     model: model,
     messages: [],
@@ -74,7 +74,7 @@ export function geminiToOpenAIRequest(model, body, stream) {
 // Convert Gemini content to OpenAI message
 function convertGeminiContent(content) {
   const role = content.role === GEMINI_ROLE.USER ? ROLE.USER : ROLE.ASSISTANT;
-  
+
   if (!content.parts || !Array.isArray(content.parts)) {
     return null;
   }
@@ -155,9 +155,9 @@ function convertGeminiContent(content) {
 
 // Extract text from Gemini content
 function extractGeminiText(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (content.parts && Array.isArray(content.parts)) {
-    return content.parts.map(p => p.text || "").join("");
+    return content.parts.map((p) => p.text || "").join("");
   }
   return "";
 }
@@ -186,7 +186,7 @@ function geminiToOpenAIRequestFixed(model, body, stream) {
       continue;
     }
 
-    const hasFunctionResponse = content.parts.some(p => p && p.functionResponse);
+    const hasFunctionResponse = content.parts.some((p) => p && p.functionResponse);
     if (!hasFunctionResponse) {
       splitContents.push(content);
       continue;
@@ -197,7 +197,7 @@ function geminiToOpenAIRequestFixed(model, body, stream) {
         splitContents.push({ ...content, parts: [part] });
       }
     }
-    const nonFRParts = content.parts.filter(p => !(p && p.functionResponse));
+    const nonFRParts = content.parts.filter((p) => !(p && p.functionResponse));
     if (nonFRParts.length > 0) {
       splitContents.push({ ...content, parts: nonFRParts });
     }

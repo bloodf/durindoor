@@ -11,6 +11,7 @@ import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, ANTIGRAVITY_LOAD_CODE_ASSIST_
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { readBoundedResponseText, sanitizeErrorMessage } from "../utils/error.js";
+import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const PROJECT_RESPONSE_MAX_BYTES = 256 * 1024;
 const PROJECT_RESPONSE_TIMEOUT_MS = 30_000;
@@ -37,43 +38,43 @@ let _cleanupTimer = null;
 
 /** Run one sweep immediately: evict stale cache entries and abort orphaned pending fetches. */
 export function cleanupNow() {
-    const now = Date.now();
+  const now = Date.now();
 
-    for (const [id, entry] of projectIdCache) {
-        if (!entry || now - entry.fetchedAt >= CACHE_TTL_MS) {
-            projectIdCache.delete(id);
-        }
+  for (const [id, entry] of projectIdCache) {
+    if (!entry || now - entry.fetchedAt >= CACHE_TTL_MS) {
+      projectIdCache.delete(id);
     }
+  }
 
-    for (const [id, item] of pendingFetches) {
-        if (!item || typeof item.startedAt !== "number") {
-            pendingFetches.delete(id);
-            continue;
-        }
-        if (now - item.startedAt > PENDING_TTL_MS) {
-            try { item.controller.abort(); } catch (_) { /* ignore */ }
-            pendingFetches.delete(id);
-        }
+  for (const [id, item] of pendingFetches) {
+    if (!item || !isNumber(item.startedAt)) {
+      pendingFetches.delete(id);
+      continue;
     }
+    if (now - item.startedAt > PENDING_TTL_MS) {
+      try {item.controller.abort();} catch (_) {/* ignore */}
+      pendingFetches.delete(id);
+    }
+  }
 }
 
 /** Start the periodic background cleanup (idempotent). Called automatically on module load. */
 export function startCacheCleanup() {
-    if (_cleanupTimer) return;
-    _cleanupTimer = setInterval(() => {
-        try { cleanupNow(); } catch (e) {
-            console.warn("[ProjectId] cleanup sweep error:", sanitizeErrorMessage(e?.message ?? e));
-        }
-    }, CLEANUP_INTERVAL_MS);
-    // Unref so the timer doesn't prevent Node from exiting when it is otherwise idle
-    _cleanupTimer?.unref?.();
+  if (_cleanupTimer) return;
+  _cleanupTimer = setInterval(() => {
+    try {cleanupNow();} catch (e) {
+      console.warn("[ProjectId] cleanup sweep error:", sanitizeErrorMessage(e?.message ?? e));
+    }
+  }, CLEANUP_INTERVAL_MS);
+  // Unref so the timer doesn't prevent Node from exiting when it is otherwise idle
+  _cleanupTimer?.unref?.();
 }
 
 /** Stop the periodic background cleanup (e.g. during graceful shutdown). */
 export function stopCacheCleanup() {
-    if (!_cleanupTimer) return;
-    clearInterval(_cleanupTimer);
-    _cleanupTimer = null;
+  if (!_cleanupTimer) return;
+  clearInterval(_cleanupTimer);
+  _cleanupTimer = null;
 }
 
 // Start automatically when the module is first imported
@@ -90,82 +91,82 @@ startCacheCleanup();
  * @returns {Promise<string|null>} Real project ID or null
  */
 function projectAbortError(reason) {
-    if (reason instanceof Error && reason.name === "AbortError") return reason;
-    return new DOMException("Project discovery aborted", "AbortError");
+  if (reason instanceof Error && reason.name === "AbortError") return reason;
+  return new DOMException("Project discovery aborted", "AbortError");
 }
 
 function subscribeToPending(entry, signal) {
-    if (signal?.aborted) return Promise.reject(projectAbortError(signal.reason));
-    const subscriber = {};
-    entry.subscribers.add(subscriber);
-    return new Promise((resolve, reject) => {
-        let settled = false;
-        const finish = (callback, value) => {
-            if (settled) return;
-            settled = true;
-            signal?.removeEventListener?.("abort", onAbort);
-            entry.subscribers.delete(subscriber);
-            callback(value);
-        };
-        const onAbort = () => {
-            finish(reject, projectAbortError(signal?.reason));
-            if (entry.subscribers.size === 0 && !entry.settled) {
-                entry.controller.abort(projectAbortError(signal?.reason));
-            }
-        };
-        signal?.addEventListener?.("abort", onAbort, { once: true });
-        entry.promise.then(
-            (value) => finish(resolve, value),
-            (error) => finish(reject, error),
-        );
-    });
+  if (signal?.aborted) return Promise.reject(projectAbortError(signal.reason));
+  const subscriber = {};
+  entry.subscribers.add(subscriber);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener?.("abort", onAbort);
+      entry.subscribers.delete(subscriber);
+      callback(value);
+    };
+    const onAbort = () => {
+      finish(reject, projectAbortError(signal?.reason));
+      if (entry.subscribers.size === 0 && !entry.settled) {
+        entry.controller.abort(projectAbortError(signal?.reason));
+      }
+    };
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+    entry.promise.then(
+      (value) => finish(resolve, value),
+      (error) => finish(reject, error)
+    );
+  });
 }
 
 export async function getProjectIdForConnection(connectionId, accessToken, proxyOptions = null, signal = null, provider = null) {
-    if (!connectionId || !accessToken) return null;
-    if (signal?.aborted) throw projectAbortError(signal.reason);
+  if (!connectionId || !accessToken) return null;
+  if (signal?.aborted) throw projectAbortError(signal.reason);
 
-    // Return cached value if still fresh
-    const cached = projectIdCache.get(connectionId);
-    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-        return cached.projectId;
+  // Return cached value if still fresh
+  const cached = projectIdCache.get(connectionId);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.projectId;
+  }
+
+  // Deduplicate concurrent fetches for the same connection
+  const pendingKey = `${connectionId}:${proxyRouteFingerprint(proxyOptions)}`;
+  const pending = pendingFetches.get(pendingKey);
+  if (pending?.controller?.signal?.aborted) {
+    pendingFetches.delete(pendingKey);
+  } else if (pending) {
+    return subscribeToPending(pending, signal);
+  }
+
+  // Each fetch gets its own AbortController so it can be canceled via removeConnection()
+  const controller = new AbortController();
+
+  const entry = { promise: null, controller, startedAt: Date.now(), subscribers: new Set(), settled: false };
+  entry.promise = (async () => {
+    try {
+      const projectId = await fetchProjectId(accessToken, controller.signal, proxyOptions, provider);
+      if (projectId && !controller.signal.aborted) {
+        projectIdCache.set(connectionId, { projectId, fetchedAt: Date.now() });
+        return projectId;
+      }
+      console.warn("[ProjectId] could not fetch projectId for connection", connectionId.slice(0, 8));
+      return null;
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        console.warn(`[ProjectId] Error fetching project ID: ${sanitizeErrorMessage(error?.message || error)}`);
+      }
+      return null;
+    } finally {
+      entry.settled = true;
+      if (pendingFetches.get(pendingKey) === entry) pendingFetches.delete(pendingKey);
     }
+  })();
 
-    // Deduplicate concurrent fetches for the same connection
-    const pendingKey = `${connectionId}:${proxyRouteFingerprint(proxyOptions)}`;
-    const pending = pendingFetches.get(pendingKey);
-    if (pending?.controller?.signal?.aborted) {
-        pendingFetches.delete(pendingKey);
-    } else if (pending) {
-        return subscribeToPending(pending, signal);
-    }
-
-    // Each fetch gets its own AbortController so it can be canceled via removeConnection()
-    const controller = new AbortController();
-
-    const entry = { promise: null, controller, startedAt: Date.now(), subscribers: new Set(), settled: false };
-    entry.promise = (async () => {
-        try {
-            const projectId = await fetchProjectId(accessToken, controller.signal, proxyOptions, provider);
-            if (projectId && !controller.signal.aborted) {
-                projectIdCache.set(connectionId, {projectId, fetchedAt: Date.now()});
-                return projectId;
-            }
-            console.warn("[ProjectId] could not fetch projectId for connection", connectionId.slice(0, 8));
-            return null;
-        } catch (error) {
-            if (error?.name !== "AbortError") {
-                console.warn(`[ProjectId] Error fetching project ID: ${sanitizeErrorMessage(error?.message || error)}`);
-            }
-            return null;
-        } finally {
-            entry.settled = true;
-            if (pendingFetches.get(pendingKey) === entry) pendingFetches.delete(pendingKey);
-        }
-    })();
-
-    pendingFetches.set(pendingKey, entry);
-    return subscribeToPending(entry, signal);
+  pendingFetches.set(pendingKey, entry);
+  return subscribeToPending(entry, signal);
 }
 
 /**
@@ -173,12 +174,12 @@ export async function getProjectIdForConnection(connectionId, accessToken, proxy
  * Call this when a connection's credentials are fully revoked or refreshed.
  */
 export function invalidateProjectId(connectionId) {
-    projectIdCache.delete(connectionId);
-    for (const [key, pending] of pendingFetches) {
-        if (!key.startsWith(`${connectionId}:`)) continue;
-        try { pending.controller.abort(new DOMException("Project credentials changed", "AbortError")); } catch { /* noop */ }
-        pendingFetches.delete(key);
-    }
+  projectIdCache.delete(connectionId);
+  for (const [key, pending] of pendingFetches) {
+    if (!key.startsWith(`${connectionId}:`)) continue;
+    try {pending.controller.abort(new DOMException("Project credentials changed", "AbortError"));} catch {/* noop */}
+    pendingFetches.delete(key);
+  }
 }
 
 /**
@@ -188,13 +189,13 @@ export function invalidateProjectId(connectionId) {
  * @param {string} connectionId
  */
 export function removeConnection(connectionId) {
-    if (!connectionId) return;
-    projectIdCache.delete(connectionId);
-    for (const [key, pending] of pendingFetches) {
-        if (!key.startsWith(`${connectionId}:`)) continue;
-        try { pending.controller.abort(); } catch (_) { /* ignore */ }
-        pendingFetches.delete(key);
-    }
+  if (!connectionId) return;
+  projectIdCache.delete(connectionId);
+  for (const [key, pending] of pendingFetches) {
+    if (!key.startsWith(`${connectionId}:`)) continue;
+    try {pending.controller.abort();} catch (_) {/* ignore */}
+    pendingFetches.delete(key);
+  }
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -208,44 +209,44 @@ export function removeConnection(connectionId) {
  * @returns {Promise<string|null>}
  */
 async function fetchProjectId(accessToken, signal, proxyOptions, provider = null) {
-    // Antigravity must not carry the Gemini CLI's Google-client fingerprints:
-    // the backend refuses to provision a project when it sees them.
-    const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
-    const response = await proxyAwareFetch(CLOUD_CODE_API.loadCodeAssist, {
-        method: "POST",
-        headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
-        body: JSON.stringify({ metadata: LOAD_CODE_ASSIST_METADATA }),
-        signal
-    }, proxyOptions);
+  // Antigravity must not carry the Gemini CLI's Google-client fingerprints:
+  // the backend refuses to provision a project when it sees them.
+  const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
+  const response = await proxyAwareFetch(CLOUD_CODE_API.loadCodeAssist, {
+    method: "POST",
+    headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
+    body: JSON.stringify({ metadata: LOAD_CODE_ASSIST_METADATA }),
+    signal
+  }, proxyOptions);
 
-    const responseText = await readBoundedResponseText(response, {
-        signal,
-        maxBytes: PROJECT_RESPONSE_MAX_BYTES,
-        timeoutMs: PROJECT_RESPONSE_TIMEOUT_MS,
-    });
-    if (!response.ok) {
-        const errorText = responseText;
-        throw new Error(`loadCodeAssist failed: HTTP ${response.status} ${sanitizeErrorMessage(errorText)}`);
-    }
+  const responseText = await readBoundedResponseText(response, {
+    signal,
+    maxBytes: PROJECT_RESPONSE_MAX_BYTES,
+    timeoutMs: PROJECT_RESPONSE_TIMEOUT_MS
+  });
+  if (!response.ok) {
+    const errorText = responseText;
+    throw new Error(`loadCodeAssist failed: HTTP ${response.status} ${sanitizeErrorMessage(errorText)}`);
+  }
 
-    const data = JSON.parse(responseText);
-    const projectId = extractProjectId(data);
-    if (projectId) return projectId;
+  const data = JSON.parse(responseText);
+  const projectId = extractProjectId(data);
+  if (projectId) return projectId;
 
-    // Determine the tier to use for onboarding
-    let tierID = "legacy-tier";
-    if (Array.isArray(data.allowedTiers)) {
-        for (const tier of data.allowedTiers) {
-            if (tier && typeof tier === "object" && tier.isDefault === true) {
-                if (tier.id && typeof tier.id === "string" && tier.id.trim()) {
-                    tierID = tier.id.trim();
-                    break;
-                }
-            }
+  // Determine the tier to use for onboarding
+  let tierID = "legacy-tier";
+  if (Array.isArray(data.allowedTiers)) {
+    for (const tier of data.allowedTiers) {
+      if (tier && isObject(tier) && tier.isDefault === true) {
+        if (tier.id && isString(tier.id) && tier.id.trim()) {
+          tierID = tier.id.trim();
+          break;
         }
+      }
     }
+  }
 
-    return onboardUser(accessToken, tierID, signal, proxyOptions, provider);
+  return onboardUser(accessToken, tierID, signal, proxyOptions, provider);
 }
 
 /**
@@ -257,134 +258,134 @@ async function fetchProjectId(accessToken, signal, proxyOptions, provider = null
  * @returns {Promise<string|null>}
  */
 async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, provider = null) {
-    console.log(`[ProjectId] Onboarding user with tier: ${tierID}`);
+  console.log(`[ProjectId] Onboarding user with tier: ${tierID}`);
 
-    const reqBody = { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
-    // Same fingerprint scoping as loadCodeAssist above.
-    const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
-    const MAX_ATTEMPTS = 5;
+  const reqBody = { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
+  // Same fingerprint scoping as loadCodeAssist above.
+  const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
+  const MAX_ATTEMPTS = 5;
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        // Bail out immediately if the connection was removed
-        if (externalSignal?.aborted) return null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    // Bail out immediately if the connection was removed
+    if (externalSignal?.aborted) return null;
 
-        // Per-attempt timeout controller; forwards external abort as well
-        const localCtrl = new AbortController();
-        const timeoutId = setTimeout(() => localCtrl.abort(), 30_000);
-        const forwardAbort = () => localCtrl.abort();
-        externalSignal?.addEventListener("abort", forwardAbort);
+    // Per-attempt timeout controller; forwards external abort as well
+    const localCtrl = new AbortController();
+    const timeoutId = setTimeout(() => localCtrl.abort(), 30_000);
+    const forwardAbort = () => localCtrl.abort();
+    externalSignal?.addEventListener("abort", forwardAbort);
 
-        try {
-            const response = await proxyAwareFetch(CLOUD_CODE_API.onboardUser, {
-                method: "POST",
-                headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
-                body: JSON.stringify(reqBody),
-                signal: localCtrl.signal
-            }, proxyOptions);
+    try {
+      const response = await proxyAwareFetch(CLOUD_CODE_API.onboardUser, {
+        method: "POST",
+        headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
+        body: JSON.stringify(reqBody),
+        signal: localCtrl.signal
+      }, proxyOptions);
 
-            const responseText = await readBoundedResponseText(response, {
-                signal: localCtrl.signal,
-                maxBytes: PROJECT_RESPONSE_MAX_BYTES,
-                timeoutMs: PROJECT_RESPONSE_TIMEOUT_MS,
-            });
+      const responseText = await readBoundedResponseText(response, {
+        signal: localCtrl.signal,
+        maxBytes: PROJECT_RESPONSE_MAX_BYTES,
+        timeoutMs: PROJECT_RESPONSE_TIMEOUT_MS
+      });
 
-            if (!response.ok) {
-                const errorText = responseText;
-                throw new Error(`onboardUser HTTP ${response.status}: ${sanitizeErrorMessage(errorText)}`);
-            }
+      if (!response.ok) {
+        const errorText = responseText;
+        throw new Error(`onboardUser HTTP ${response.status}: ${sanitizeErrorMessage(errorText)}`);
+      }
 
-            const data = JSON.parse(responseText);
+      const data = JSON.parse(responseText);
 
-            if (data.done === true) {
-                const projectId = extractProjectIdFromOnboard(data);
-                if (projectId) {
-                    console.log(`[ProjectId] Successfully onboarded, project ID: ${projectId}`);
-                    return projectId;
-                }
-                throw new Error("onboardUser done but no project_id in response");
-            }
-
-            // Server not done yet – wait and retry
-            console.log(`[ProjectId] Onboard attempt ${attempt}/${MAX_ATTEMPTS}: not done yet, waiting...`);
-            await waitForProjectRetry(2000, externalSignal);
-
-        } catch (error) {
-            clearTimeout(timeoutId);
-            if (error.name === "AbortError") {
-                console.warn(`[ProjectId] onboardUser attempt ${attempt} aborted (timeout or connection removed)`);
-                if (externalSignal?.aborted) return null;   // connection gone – stop retrying
-                continue;
-            }
-            if (attempt === MAX_ATTEMPTS) {
-                console.warn(
-                    `[ProjectId] onboardUser failed after ${MAX_ATTEMPTS} attempts: ${sanitizeErrorMessage(error?.message || error)}`,
-                );
-                return null;
-            }
-            // Continue to next attempt instead of throwing (which would skip remaining retries)
-            console.warn(
-                `[ProjectId] onboardUser attempt ${attempt} failed: ${sanitizeErrorMessage(error?.message || error)}, retrying...`,
-            );
-            await waitForProjectRetry(2000, externalSignal);
-        } finally {
-            clearTimeout(timeoutId);
-            externalSignal?.removeEventListener("abort", forwardAbort);
+      if (data.done === true) {
+        const projectId = extractProjectIdFromOnboard(data);
+        if (projectId) {
+          console.log(`[ProjectId] Successfully onboarded, project ID: ${projectId}`);
+          return projectId;
         }
-    }
+        throw new Error("onboardUser done but no project_id in response");
+      }
 
-    return null;
+      // Server not done yet – wait and retry
+      console.log(`[ProjectId] Onboard attempt ${attempt}/${MAX_ATTEMPTS}: not done yet, waiting...`);
+      await waitForProjectRetry(2000, externalSignal);
+
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === "AbortError") {
+        console.warn(`[ProjectId] onboardUser attempt ${attempt} aborted (timeout or connection removed)`);
+        if (externalSignal?.aborted) return null; // connection gone – stop retrying
+        continue;
+      }
+      if (attempt === MAX_ATTEMPTS) {
+        console.warn(
+          `[ProjectId] onboardUser failed after ${MAX_ATTEMPTS} attempts: ${sanitizeErrorMessage(error?.message || error)}`
+        );
+        return null;
+      }
+      // Continue to next attempt instead of throwing (which would skip remaining retries)
+      console.warn(
+        `[ProjectId] onboardUser attempt ${attempt} failed: ${sanitizeErrorMessage(error?.message || error)}, retrying...`
+      );
+      await waitForProjectRetry(2000, externalSignal);
+    } finally {
+      clearTimeout(timeoutId);
+      externalSignal?.removeEventListener("abort", forwardAbort);
+    }
+  }
+
+  return null;
 }
 
 function waitForProjectRetry(delayMs, signal) {
-    if (signal?.aborted) return Promise.reject(projectAbortError(signal.reason));
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => finish(resolve), delayMs);
-        const onAbort = () => finish(reject, projectAbortError(signal?.reason));
-        const finish = (callback, value) => {
-            clearTimeout(timer);
-            signal?.removeEventListener?.("abort", onAbort);
-            callback(value);
-        };
-        signal?.addEventListener?.("abort", onAbort, { once: true });
-    });
+  if (signal?.aborted) return Promise.reject(projectAbortError(signal.reason));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => finish(resolve), delayMs);
+    const onAbort = () => finish(reject, projectAbortError(signal?.reason));
+    const finish = (callback, value) => {
+      clearTimeout(timer);
+      signal?.removeEventListener?.("abort", onAbort);
+      callback(value);
+    };
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
 }
 
 /**
  * Extract project ID from loadCodeAssist response.
  */
 function extractProjectId(data) {
-    if (!data) return null;
+  if (!data) return null;
 
-    if (typeof data.cloudaicompanionProject === "string") {
-        const id = data.cloudaicompanionProject.trim();
-        if (id) return id;
-    }
+  if (isString(data.cloudaicompanionProject)) {
+    const id = data.cloudaicompanionProject.trim();
+    if (id) return id;
+  }
 
-    if (data.cloudaicompanionProject && typeof data.cloudaicompanionProject === "object") {
-        const id = data.cloudaicompanionProject.id;
-        if (typeof id === "string" && id.trim()) return id.trim();
-    }
+  if (data.cloudaicompanionProject && isObject(data.cloudaicompanionProject)) {
+    const id = data.cloudaicompanionProject.id;
+    if (isString(id) && id.trim()) return id.trim();
+  }
 
-    return null;
+  return null;
 }
 
 /**
  * Extract project ID from onboardUser response.
  */
 function extractProjectIdFromOnboard(data) {
-    if (!data?.response) return null;
+  if (!data?.response) return null;
 
-    const project = data.response.cloudaicompanionProject;
+  const project = data.response.cloudaicompanionProject;
 
-    if (typeof project === "string") {
-        const id = project.trim();
-        if (id) return id;
-    }
+  if (isString(project)) {
+    const id = project.trim();
+    if (id) return id;
+  }
 
-    if (project && typeof project === "object") {
-        const id = project.id;
-        if (typeof id === "string" && id.trim()) return id.trim();
-    }
+  if (project && isObject(project)) {
+    const id = project.id;
+    if (isString(id) && id.trim()) return id.trim();
+  }
 
-    return null;
+  return null;
 }

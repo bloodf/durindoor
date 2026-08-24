@@ -12,6 +12,7 @@ import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
+import { isUndefined } from "@/shared/utils/typeChecks.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -19,7 +20,7 @@ function guardBlockedResponse(err) {
   if (err) console.log("Provider URL blocked by SSRF guard:", err?.message, "url=", err?.url);
   return NextResponse.json(
     { valid: false, error: CLIENT_VALIDATION_ERROR, blocked: true },
-    { status: 403 },
+    { status: 403 }
   );
 }
 
@@ -40,14 +41,14 @@ function applyConfiguredAuthHeader(headers, cfg, apiKey) {
 }
 
 export async function probeNoAuthLocalProvider(baseUrl, apiKey = undefined) {
-  const normalized = String(baseUrl || "")
-    .replace(/\/$/, "")
-    .replace(/\/api\/chat$/, "");
+  const normalized = String(baseUrl || "").
+  replace(/\/$/, "").
+  replace(/\/api\/chat$/, "");
   if (!normalized) return { valid: false, error: "Base URL required for no-auth provider" };
   try {
     const res = await guardedProbeFetch(`${normalized}/models`, {
-      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
-      signal: AbortSignal.timeout(8000),
+      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : null),
+      signal: AbortSignal.timeout(8000)
     });
     return { valid: res.ok, error: res.ok ? null : "Endpoint unreachable or rejected" };
   } catch (err) {
@@ -76,15 +77,15 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
 
   // Apply auth based on authHeader
   switch (cfg.authHeader) {
-    case "bearer":              headers["Authorization"] = `Bearer ${apiKey}`; break;
-    case "x-api-key":           headers["x-api-key"] = apiKey; break;
-    case "x-subscription-token":headers["x-subscription-token"] = apiKey; break;
-    case "key": {
-      const cx = providerSpecificData?.cx || providerSpecificData?.searchEngineId || body?.cx || body?.searchEngineId;
-      url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=${encodeURIComponent(cx || "test")}`;
-      break;
-    }
-    case "api_key":             url += `?api_key=${encodeURIComponent(apiKey)}&q=ping&engine=google`; break; // searchapi
+    case "bearer":headers["Authorization"] = `Bearer ${apiKey}`;break;
+    case "x-api-key":headers["x-api-key"] = apiKey;break;
+    case "x-subscription-token":headers["x-subscription-token"] = apiKey;break;
+    case "key":{
+        const cx = providerSpecificData?.cx || providerSpecificData?.searchEngineId || body?.cx || body?.searchEngineId;
+        url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=${encodeURIComponent(cx || "test")}`;
+        break;
+      }
+    case "api_key":url += `?api_key=${encodeURIComponent(apiKey)}&q=ping&engine=google`;break; // searchapi
   }
 
   // Minimal body for POST endpoints; GET sends nothing
@@ -115,14 +116,14 @@ async function probeMediaProvider(provider, apiKey) {
   const headers = { "Content-Type": "application/json", ...(cfg.extraHeaders || {}) };
 
   switch (cfg.authHeader) {
-    case "bearer":     headers["Authorization"] = `Bearer ${apiKey}`; break;
-    case "key":        headers["Authorization"] = `Key ${apiKey}`; break;
-    case "x-api-key":  headers["x-api-key"] = apiKey; break;
-    case "x-key":      headers["x-key"] = apiKey; break;
-    case "xi-api-key": headers["xi-api-key"] = apiKey; break;
-    case "token":      headers["Authorization"] = `Token ${apiKey}`; break;
-    case "basic":      headers["Authorization"] = `Basic ${apiKey}`; break;
-    default: return null;
+    case "bearer":headers["Authorization"] = `Bearer ${apiKey}`;break;
+    case "key":headers["Authorization"] = `Key ${apiKey}`;break;
+    case "x-api-key":headers["x-api-key"] = apiKey;break;
+    case "x-key":headers["x-key"] = apiKey;break;
+    case "xi-api-key":headers["xi-api-key"] = apiKey;break;
+    case "token":headers["Authorization"] = `Token ${apiKey}`;break;
+    case "basic":headers["Authorization"] = `Basic ${apiKey}`;break;
+    default:return null;
   }
 
   const method = cfg.method || "POST";
@@ -130,7 +131,7 @@ async function probeMediaProvider(provider, apiKey) {
     method,
     headers,
     body: method === "GET" ? undefined : JSON.stringify({ input: "ping", text: "ping", prompt: "ping", model: getDefaultModel(provider) || "test" }),
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(8000)
   });
   return res.status !== 401 && res.status !== 403;
 }
@@ -143,10 +144,10 @@ async function exchangeGigaChatApiKey(apiKey) {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
       Authorization: `Basic ${apiKey}`,
-      RqUID: crypto.randomUUID(),
+      RqUID: crypto.randomUUID()
     },
     body: new URLSearchParams({ scope: cfg.tokenScope || "GIGACHAT_API_PERS" }),
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(8000)
   });
 
   if (!res.ok) return null;
@@ -163,7 +164,7 @@ export async function POST(request) {
 
     const providerInfo = AI_PROVIDERS[provider] || {};
     const isNoAuth = providerInfo.noAuth === true;
-    if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {
+    if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
     if (isNoAuth && !apiKey) {
@@ -184,7 +185,7 @@ export async function POST(request) {
         let res;
         try {
           res = await guardedProbeFetch(modelsUrl, {
-            headers: { "Authorization": `Bearer ${apiKey}` },
+            headers: { "Authorization": `Bearer ${apiKey}` }
           });
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
@@ -193,7 +194,7 @@ export async function POST(request) {
         isValid = res.ok;
         return NextResponse.json({
           valid: isValid,
-          error: isValid ? null : "Invalid API key",
+          error: isValid ? null : "Invalid API key"
         });
       }
 
@@ -220,7 +221,7 @@ export async function POST(request) {
         try {
           modelsRes = await guardedProbeFetch(modelsUrl, {
             headers: { "Authorization": `Bearer ${apiKey}` },
-            redirect: "manual",
+            redirect: "manual"
           });
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
@@ -240,7 +241,7 @@ export async function POST(request) {
             method: "POST",
             headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({ model: "test", input: "ping" }),
-            redirect: "manual",
+            redirect: "manual"
           });
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
@@ -250,7 +251,7 @@ export async function POST(request) {
         isValid = embedRes.status !== 401 && embedRes.status !== 403;
         return NextResponse.json({
           valid: isValid,
-          error: isValid ? null : "Invalid API key",
+          error: isValid ? null : "Invalid API key"
         });
       }
 
@@ -279,13 +280,13 @@ export async function POST(request) {
               "x-api-key": apiKey,
               "anthropic-version": "2023-06-01",
               "content-type": "application/json",
-              "Authorization": `Bearer ${apiKey}`,
+              "Authorization": `Bearer ${apiKey}`
             },
             body: JSON.stringify({
               model,
               max_tokens: 1,
-              messages: [{ role: "user", content: "test" }],
-            }),
+              messages: [{ role: "user", content: "test" }]
+            })
           });
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
@@ -296,7 +297,7 @@ export async function POST(request) {
         isValid = res.status !== 401 && res.status !== 403;
         return NextResponse.json({
           valid: isValid,
-          error: isValid ? null : "Invalid API key",
+          error: isValid ? null : "Invalid API key"
         });
       }
 
@@ -313,13 +314,13 @@ export async function POST(request) {
           body: JSON.stringify({
             model: getDefaultModel("cloudflare-ai"),
             messages: [{ role: "user", content: "test" }],
-            max_tokens: 1,
-          }),
+            max_tokens: 1
+          })
         });
         isValid = cfRes.status !== 401 && cfRes.status !== 403 && cfRes.status !== 404;
         return NextResponse.json({
           valid: isValid,
-          error: isValid ? null : "Invalid API token or Account ID",
+          error: isValid ? null : "Invalid API token or Account ID"
         });
       }
 
@@ -330,12 +331,12 @@ export async function POST(request) {
         }
         const res = await fetch(PROVIDERS.gigachat.modelsUrl || "https://gigachat.devices.sberbank.ru/api/v1/models", {
           headers: { Authorization: `Bearer ${accessToken}` },
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(8000)
         });
         isValid = res.status !== 401 && res.status !== 403;
         return NextResponse.json({
           valid: isValid,
-          error: isValid ? null : "Invalid API key",
+          error: isValid ? null : "Invalid API key"
         });
       }
 
@@ -355,14 +356,14 @@ export async function POST(request) {
           body: JSON.stringify({
             model: getDefaultModel("snowflake") || "llama3.1-70b",
             messages: [{ role: "user", content: "test" }],
-            max_tokens: 1,
+            max_tokens: 1
           }),
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(10000)
         });
         isValid = snowflakeRes.status !== 401 && snowflakeRes.status !== 403;
         return NextResponse.json({
           valid: isValid,
-          error: isValid ? null : "Invalid API token or Account ID",
+          error: isValid ? null : "Invalid API token or Account ID"
         });
       }
 
@@ -376,7 +377,7 @@ export async function POST(request) {
         const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
         const headers = {
           "api-key": apiKey,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         };
         if (organization) headers["OpenAI-Organization"] = organization;
 
@@ -388,8 +389,8 @@ export async function POST(request) {
             headers,
             body: JSON.stringify({
               messages: [{ role: "user", content: "test" }],
-              max_tokens: 1,
-            }),
+              max_tokens: 1
+            })
           });
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
@@ -398,7 +399,7 @@ export async function POST(request) {
         isValid = azureRes.status !== 401 && azureRes.status !== 403;
         return NextResponse.json({
           valid: isValid,
-          error: isValid ? null : "Invalid API key or Azure configuration",
+          error: isValid ? null : "Invalid API key or Azure configuration"
         });
       }
 
@@ -407,7 +408,7 @@ export async function POST(request) {
       if (webResult !== null) {
         return NextResponse.json({
           valid: webResult,
-          error: webResult ? null : "Invalid API key",
+          error: webResult ? null : "Invalid API key"
         });
       }
 
@@ -416,21 +417,21 @@ export async function POST(request) {
       if (mediaResult !== null) {
         return NextResponse.json({
           valid: mediaResult,
-          error: mediaResult ? null : "Invalid API key",
+          error: mediaResult ? null : "Invalid API key"
         });
       }
 
       switch (provider) {
         case "openai":
           const openaiRes = await fetch("https://api.openai.com/v1/models", {
-            headers: { "Authorization": `Bearer ${apiKey}` },
+            headers: { "Authorization": `Bearer ${apiKey}` }
           });
           isValid = openaiRes.ok;
           break;
 
         case "vercel-ai-gateway":
           const vercelAiGatewayRes = await fetch("https://ai-gateway.vercel.sh/v1/models", {
-            headers: { "Authorization": `Bearer ${apiKey}` },
+            headers: { "Authorization": `Bearer ${apiKey}` }
           });
           isValid = vercelAiGatewayRes.ok;
           break;
@@ -441,13 +442,13 @@ export async function POST(request) {
             headers: {
               "x-api-key": apiKey,
               "anthropic-version": "2023-06-01",
-              "content-type": "application/json",
+              "content-type": "application/json"
             },
             body: JSON.stringify({
               model: "claude-3-haiku-20240307",
               max_tokens: 1,
-              messages: [{ role: "user", content: "test" }],
-            }),
+              messages: [{ role: "user", content: "test" }]
+            })
           });
           isValid = anthropicRes.status !== 401;
           break;
@@ -459,7 +460,7 @@ export async function POST(request) {
 
         case "openrouter":
           const openrouterRes = await fetch("https://openrouter.ai/api/v1/models", {
-            headers: { "Authorization": `Bearer ${apiKey}` },
+            headers: { "Authorization": `Bearer ${apiKey}` }
           });
           isValid = openrouterRes.ok;
           break;
@@ -472,54 +473,54 @@ export async function POST(request) {
         case "alicode-intl":
         case "alicode":
         case "bailian-coding-plan":
-        case "agentrouter": {
-          // Use baseUrl from PROVIDERS (DRY); separate openai-format vs claude-format flow
-          const cfg = PROVIDERS[provider];
-          const isOpenAiFormat = provider === "glm-cn" || provider === "alicode" || provider === "alicode-intl";
+        case "agentrouter":{
+            // Use baseUrl from PROVIDERS (DRY); separate openai-format vs claude-format flow
+            const cfg = PROVIDERS[provider];
+            const isOpenAiFormat = provider === "glm-cn" || provider === "alicode" || provider === "alicode-intl";
 
-          if (isOpenAiFormat) {
-            const testModel = getDefaultModel(provider);
-            const res = await fetch(cfg.baseUrl, {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
-              body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
-            });
-            isValid = res.status !== 401 && res.status !== 403;
-          } else {
-            const testModel = getDefaultModel(provider) || "claude-sonnet-4-20250514";
-            const isBearer = provider === "bailian-coding-plan";
-            const res = await fetch(cfg.baseUrl, {
+            if (isOpenAiFormat) {
+              const testModel = getDefaultModel(provider);
+              const res = await fetch(cfg.baseUrl, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+                body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+              });
+              isValid = res.status !== 401 && res.status !== 403;
+            } else {
+              const testModel = getDefaultModel(provider) || "claude-sonnet-4-20250514";
+              const isBearer = provider === "bailian-coding-plan";
+              const res = await fetch(cfg.baseUrl, {
+                method: "POST",
+                headers: {
+                  ...(isBearer ? { "Authorization": `Bearer ${apiKey}` } : { "x-api-key": apiKey }),
+                  "anthropic-version": "2023-06-01",
+                  "content-type": "application/json",
+                  ...(cfg.headers || {})
+                },
+                body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+              });
+              // 400 = model resolution error but auth passed (e.g. agentrouter "no available channel")
+              isValid = res.status !== 401 && res.status !== 403;
+            }
+            break;
+          }
+        case "volcengine-ark":
+        case "byteplus":{
+            const res = await fetch(PROVIDERS[provider]?.baseUrl, {
               method: "POST",
               headers: {
-                ...(isBearer ? { "Authorization": `Bearer ${apiKey}` } : { "x-api-key": apiKey }),
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-                ...(cfg.headers || {}),
+                "Authorization": `Bearer ${apiKey}`,
+                "content-type": "application/json"
               },
-              body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
+              body: JSON.stringify({
+                model: getDefaultModel(provider),
+                max_tokens: 1,
+                messages: [{ role: "user", content: "test" }]
+              })
             });
-            // 400 = model resolution error but auth passed (e.g. agentrouter "no available channel")
             isValid = res.status !== 401 && res.status !== 403;
+            break;
           }
-          break;
-        }
-        case "volcengine-ark":
-        case "byteplus": {
-          const res = await fetch(PROVIDERS[provider]?.baseUrl, {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${apiKey}`,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              model: getDefaultModel(provider),
-              max_tokens: 1,
-              messages: [{ role: "user", content: "test" }],
-            }),
-          });
-          isValid = res.status !== 401 && res.status !== 403;
-          break;
-        }
 
         case "deepseek":
         case "groq":
@@ -541,314 +542,314 @@ export async function POST(request) {
         case "chutes":
         case "xiaomi-mimo":
         case "xiaomi-tokenplan":
-        case "nvidia": {
-          const endpoints = {
-            ...Object.fromEntries(
-              Object.entries(PROVIDERS).filter(([, t]) => t.validateUrl).map(([id, t]) => [id, t.validateUrl])
-            ),
-            // dynamic URLs (depend on providerSpecificData) — kept inline
-            "ollama-local": `${resolveOllamaLocalHost({ providerSpecificData })}/api/tags`,
-            "xiaomi-tokenplan": `${resolveXiaomiTokenplanBaseUrl({ providerSpecificData })}/models`,
-          };
-          const headers = {};
-          if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-          const res = await fetch(endpoints[provider], { headers, signal: AbortSignal.timeout(8000) });
-          // xai returns 400 for bad key, 403 for valid-but-no-credit. Other providers use 401.
-          if (provider === "xai") {
-            isValid = res.status === 200 || res.status === 403;
-          } else if (provider === "xiaomi-tokenplan") {
-            // /models returns 403 for valid keys lacking list permission; only 401 means invalid
-            isValid = res.status !== 401;
-          } else {
-            isValid = res.ok;
+        case "nvidia":{
+            const endpoints = {
+              ...Object.fromEntries(
+                Object.entries(PROVIDERS).filter(([, t]) => t.validateUrl).map(([id, t]) => [id, t.validateUrl])
+              ),
+              // dynamic URLs (depend on providerSpecificData) — kept inline
+              "ollama-local": `${resolveOllamaLocalHost({ providerSpecificData })}/api/tags`,
+              "xiaomi-tokenplan": `${resolveXiaomiTokenplanBaseUrl({ providerSpecificData })}/models`
+            };
+            const headers = {};
+            if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+            const res = await fetch(endpoints[provider], { headers, signal: AbortSignal.timeout(8000) });
+            // xai returns 400 for bad key, 403 for valid-but-no-credit. Other providers use 401.
+            if (provider === "xai") {
+              isValid = res.status === 200 || res.status === 403;
+            } else if (provider === "xiaomi-tokenplan") {
+              // /models returns 403 for valid keys lacking list permission; only 401 means invalid
+              isValid = res.status !== 401;
+            } else {
+              isValid = res.ok;
+            }
+            break;
           }
-          break;
-        }
 
-        case "opencode-go": {
-          /** Guard the authenticated usage probe and keep transient failures distinct from invalid keys. */
-          const res = await guardedProbeFetch(OPENCODE_GO_USAGE_URL, {
-            headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
-            signal: AbortSignal.timeout(8000),
-          });
-          const result = classifyOpenCodeGoValidation(res, await res.text().catch(() => ""));
-          isValid = result.valid;
-          error = result.error;
-          break;
-        }
+        case "opencode-go":{
+            /** Guard the authenticated usage probe and keep transient failures distinct from invalid keys. */
+            const res = await guardedProbeFetch(OPENCODE_GO_USAGE_URL, {
+              headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+              signal: AbortSignal.timeout(8000)
+            });
+            const result = classifyOpenCodeGoValidation(res, await res.text().catch(() => ""));
+            isValid = result.valid;
+            error = result.error;
+            break;
+          }
 
         case "commandcode":
-        case "command-code": {
-          const cfg = PROVIDERS[provider];
-          const modelKey = provider === "command-code" ? "cmd" : "commandcode";
-          const model = cfg.validationModelId || getDefaultModel(modelKey);
-          const payload = openaiToCommandCodeRequest(model, {
-            messages: [{ role: "user", content: "ping" }],
-            max_tokens: 1,
-            stream: false,
-          }, false);
-          const res = await fetch(cfg.baseUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(cfg.headers || {}),
-              "x-session-id": crypto.randomUUID(),
-              "Authorization": `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify(payload),
-          });
-          // A schema/rate-limit response proves the key reached Command Code.
-          // Missing endpoints, unsupported methods, and upstream failures do
-          // not prove either credential validity or a usable integration.
-          isValid = res.status >= 200 && res.status < 300
-            || res.status === 400
-            || res.status === 422
-            || res.status === 429;
-          break;
-        }
-
-        case "deepgram": {
-          const res = await fetch("https://api.deepgram.com/v1/projects", {
-            headers: { "Authorization": `Token ${apiKey}` },
-          });
-          isValid = res.ok;
-          break;
-        }
-
-        case "blackbox": {
-          const res = await fetch("https://api.blackbox.ai/chat/completions", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "gpt-4o",
-              messages: [{ role: "user", content: "test" }],
-              max_tokens: 10,
-            }),
-          });
-          // Returns 401 for invalid key, 200 for valid, 400 for malformed
-          isValid = res.status === 200 || res.status === 400;
-          break;
-        }
-
-        case "vertex": {
-          // Raw key: probe global endpoint (always 404 for unknown model, never 401)
-          // SA JSON: validate its signing key locally
-          const saJson = (() => { try { const p = JSON.parse(apiKey); return p.type === "service_account" ? p : null; } catch { return null; } })();
-          if (saJson) {
-            error = validateVertexSaKey(saJson);
-            isValid = !error;
-          } else {
-            const probeRes = await fetch(
-              `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
-              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-            );
-            isValid = probeRes.status !== 401 && probeRes.status !== 403;
+        case "command-code":{
+            const cfg = PROVIDERS[provider];
+            const modelKey = provider === "command-code" ? "cmd" : "commandcode";
+            const model = cfg.validationModelId || getDefaultModel(modelKey);
+            const payload = openaiToCommandCodeRequest(model, {
+              messages: [{ role: "user", content: "ping" }],
+              max_tokens: 1,
+              stream: false
+            }, false);
+            const res = await fetch(cfg.baseUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(cfg.headers || {}),
+                "x-session-id": crypto.randomUUID(),
+                "Authorization": `Bearer ${apiKey}`
+              },
+              body: JSON.stringify(payload)
+            });
+            // A schema/rate-limit response proves the key reached Command Code.
+            // Missing endpoints, unsupported methods, and upstream failures do
+            // not prove either credential validity or a usable integration.
+            isValid = res.status >= 200 && res.status < 300 ||
+            res.status === 400 ||
+            res.status === 422 ||
+            res.status === 429;
+            break;
           }
-          break;
-        }
 
-        case "vertex-partner": {
-          const saJson = (() => { try { const p = JSON.parse(apiKey); return p.type === "service_account" ? p : null; } catch { return null; } })();
-          if (saJson) {
-            error = validateVertexSaKey(saJson);
-            isValid = !error;
-          } else {
-            const probeRes = await fetch(
-              `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
-              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-            );
-            isValid = probeRes.status !== 401 && probeRes.status !== 403;
+        case "deepgram":{
+            const res = await fetch("https://api.deepgram.com/v1/projects", {
+              headers: { "Authorization": `Token ${apiKey}` }
+            });
+            isValid = res.ok;
+            break;
           }
-          break;
-        }
 
-        case "grok-web": {
-          const token = apiKey.startsWith("sso=") ? apiKey.slice(4) : apiKey;
-          // Cloudflare-bypass: send POST with same browser fingerprint headers as GrokWebExecutor
-          const randomHex = (n) => {
-            const a = new Uint8Array(n);
-            crypto.getRandomValues(a);
-            return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
-          };
-          const statsigId = Buffer.from("e:TypeError: Cannot read properties of null (reading 'children')").toString("base64");
-          const traceId = randomHex(16);
-          const spanId = randomHex(8);
-          const res = await fetch("https://grok.com/rest/app-chat/conversations/new", {
-            method: "POST",
-            headers: {
-              Accept: "*/*",
-              "Accept-Encoding": "gzip, deflate, br, zstd",
-              "Accept-Language": "en-US,en;q=0.9",
-              "Cache-Control": "no-cache",
-              "Content-Type": "application/json",
-              Cookie: `sso=${token}`,
-              Origin: "https://grok.com",
-              Pragma: "no-cache",
-              Referer: "https://grok.com/",
-              "Sec-Ch-Ua": '"Google Chrome";v="136", "Chromium";v="136", "Not(A:Brand";v="24"',
-              "Sec-Ch-Ua-Mobile": "?0",
-              "Sec-Ch-Ua-Platform": '"macOS"',
-              "Sec-Fetch-Dest": "empty",
-              "Sec-Fetch-Mode": "cors",
-              "Sec-Fetch-Site": "same-origin",
-              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-              "x-statsig-id": statsigId,
-              "x-xai-request-id": crypto.randomUUID(),
-              traceparent: `00-${traceId}-${spanId}-00`,
-            },
-            body: JSON.stringify({
-              temporary: true, modelName: "grok-4", modelMode: "MODEL_MODE_GROK_4", message: "ping",
-              fileAttachments: [], imageAttachments: [],
-              disableSearch: false, enableImageGeneration: false, returnImageBytes: false,
-              returnRawGrokInXaiRequest: false, enableImageStreaming: false, imageGenerationCount: 0,
-              forceConcise: false, toolOverrides: {}, enableSideBySide: true, sendFinalMetadata: true,
-              isReasoning: false, disableTextFollowUps: true, disableMemory: true,
-              forceSideBySide: false, isAsyncChat: false, disableSelfHarmShortCircuit: false,
-            }),
-          });
-          // Cookie valid = any non-401/403 response (200, 400, 429 all mean cookie accepted)
-          if (res.status === 401 || res.status === 403) {
-            isValid = false;
-            error = "Invalid SSO cookie — re-paste from grok.com DevTools → Cookies → sso";
-          } else {
-            isValid = true;
+        case "blackbox":{
+            const res = await fetch("https://api.blackbox.ai/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                model: "gpt-4o",
+                messages: [{ role: "user", content: "test" }],
+                max_tokens: 10
+              })
+            });
+            // Returns 401 for invalid key, 200 for valid, 400 for malformed
+            isValid = res.status === 200 || res.status === 400;
+            break;
           }
-          break;
-        }
 
-        case "copilot-web": {
-          const credential = String(apiKey || "").trim();
-          const token =
+        case "vertex":{
+            // Raw key: probe global endpoint (always 404 for unknown model, never 401)
+            // SA JSON: validate its signing key locally
+            const saJson = (() => {try {const p = JSON.parse(apiKey);return p.type === "service_account" ? p : null;} catch {return null;}})();
+            if (saJson) {
+              error = validateVertexSaKey(saJson);
+              isValid = !error;
+            } else {
+              const probeRes = await fetch(
+                `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
+                { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+              );
+              isValid = probeRes.status !== 401 && probeRes.status !== 403;
+            }
+            break;
+          }
+
+        case "vertex-partner":{
+            const saJson = (() => {try {const p = JSON.parse(apiKey);return p.type === "service_account" ? p : null;} catch {return null;}})();
+            if (saJson) {
+              error = validateVertexSaKey(saJson);
+              isValid = !error;
+            } else {
+              const probeRes = await fetch(
+                `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
+                { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+              );
+              isValid = probeRes.status !== 401 && probeRes.status !== 403;
+            }
+            break;
+          }
+
+        case "grok-web":{
+            const token = apiKey.startsWith("sso=") ? apiKey.slice(4) : apiKey;
+            // Cloudflare-bypass: send POST with same browser fingerprint headers as GrokWebExecutor
+            const randomHex = (n) => {
+              const a = new Uint8Array(n);
+              crypto.getRandomValues(a);
+              return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
+            };
+            const statsigId = Buffer.from("e:TypeError: Cannot read properties of null (reading 'children')").toString("base64");
+            const traceId = randomHex(16);
+            const spanId = randomHex(8);
+            const res = await fetch("https://grok.com/rest/app-chat/conversations/new", {
+              method: "POST",
+              headers: {
+                Accept: "*/*",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-Control": "no-cache",
+                "Content-Type": "application/json",
+                Cookie: `sso=${token}`,
+                Origin: "https://grok.com",
+                Pragma: "no-cache",
+                Referer: "https://grok.com/",
+                "Sec-Ch-Ua": '"Google Chrome";v="136", "Chromium";v="136", "Not(A:Brand";v="24"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"macOS"',
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+                "x-statsig-id": statsigId,
+                "x-xai-request-id": crypto.randomUUID(),
+                traceparent: `00-${traceId}-${spanId}-00`
+              },
+              body: JSON.stringify({
+                temporary: true, modelName: "grok-4", modelMode: "MODEL_MODE_GROK_4", message: "ping",
+                fileAttachments: [], imageAttachments: [],
+                disableSearch: false, enableImageGeneration: false, returnImageBytes: false,
+                returnRawGrokInXaiRequest: false, enableImageStreaming: false, imageGenerationCount: 0,
+                forceConcise: false, toolOverrides: {}, enableSideBySide: true, sendFinalMetadata: true,
+                isReasoning: false, disableTextFollowUps: true, disableMemory: true,
+                forceSideBySide: false, isAsyncChat: false, disableSelfHarmShortCircuit: false
+              })
+            });
+            // Cookie valid = any non-401/403 response (200, 400, 429 all mean cookie accepted)
+            if (res.status === 401 || res.status === 403) {
+              isValid = false;
+              error = "Invalid SSO cookie — re-paste from grok.com DevTools → Cookies → sso";
+            } else {
+              isValid = true;
+            }
+            break;
+          }
+
+        case "copilot-web":{
+            const credential = String(apiKey || "").trim();
+            const token =
             credential.match(/access_token=([^;]+)/)?.[1] ||
             credential.match(/[Bb]earer\s+(.+)/)?.[1] ||
             credential;
-          if (!token) {
-            isValid = false;
-            error = "Paste your access_token from copilot.microsoft.com";
-            break;
-          }
-          const res = await fetch("https://copilot.microsoft.com/c/api/start", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-              Origin: "https://copilot.microsoft.com",
-              Referer: "https://copilot.microsoft.com/",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              timeZone: "America/New_York",
-              startNewConversation: true,
-              teenSupportEnabled: false,
-            }),
-          });
-          if (res.status === 401 || res.status === 403) {
-            isValid = false;
-            error = "Invalid or expired access_token from copilot.microsoft.com";
-          } else {
-            isValid = true;
-          }
-          break;
-        }
-
-        case "copilot-m365-web": {
-          const params = resolveConnectionParams({ apiKey, providerSpecificData });
-          isValid = !("error" in params);
-          error = isValid ? null : params.error;
-          break;
-        }
-
-        case "perplexity-web": {
-          let sessionToken = apiKey;
-          if (sessionToken.startsWith("__Secure-next-auth.session-token=")) {
-            sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
-          }
-          const tz = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
-          const res = await fetch("https://www.perplexity.ai/rest/sse/perplexity_ask", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "text/event-stream",
-              Origin: "https://www.perplexity.ai",
-              Referer: "https://www.perplexity.ai/",
-              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-              "X-App-ApiClient": "default",
-              "X-App-ApiVersion": "2.18",
-              Cookie: `__Secure-next-auth.session-token=${sessionToken}`,
-            },
-            body: JSON.stringify({
-              query_str: "ping",
-              params: {
-                query_str: "ping", search_focus: "internet", mode: "concise", model_preference: "pplx_pro",
-                sources: ["web"], attachments: [],
-                frontend_uuid: crypto.randomUUID(), frontend_context_uuid: crypto.randomUUID(),
-                version: "2.18", language: "en-US", timezone: tz,
-                search_recency_filter: null, is_incognito: true, use_schematized_api: true, last_backend_uuid: null,
+            if (!token) {
+              isValid = false;
+              error = "Paste your access_token from copilot.microsoft.com";
+              break;
+            }
+            const res = await fetch("https://copilot.microsoft.com/c/api/start", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+                Origin: "https://copilot.microsoft.com",
+                Referer: "https://copilot.microsoft.com/",
+                Authorization: `Bearer ${token}`
               },
-            }),
-          });
-          if (res.status === 401 || res.status === 403) {
-            isValid = false;
-            error = "Invalid session cookie — re-paste __Secure-next-auth.session-token from perplexity.ai";
-          } else {
-            isValid = true;
-          }
-          break;
-        }
-
-        case "zenmux-free": {
-          const cookie = normalizeZenmuxCookie(apiKey);
-          const ctoken = extractZenmuxCtoken(cookie);
-          if (!ctoken) {
-            isValid = false;
-            error = "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken";
+              body: JSON.stringify({
+                timeZone: "America/New_York",
+                startNewConversation: true,
+                teenSupportEnabled: false
+              })
+            });
+            if (res.status === 401 || res.status === 403) {
+              isValid = false;
+              error = "Invalid or expired access_token from copilot.microsoft.com";
+            } else {
+              isValid = true;
+            }
             break;
           }
-          const url = new URL(ZENMUX_FREE_CHAT_URL);
-          url.searchParams.set("ctoken", ctoken);
-          const res = await fetch(url.toString(), {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-              Accept: "text/event-stream",
-              Origin: "https://zenmux.ai",
-              Referer: "https://zenmux.ai/platform/chat",
-              "anthropic-version": "2023-06-01",
-              "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
-              "x-zenmux-accept-processing": "true, true",
-              "x-zenmux-apikey-source": "subscription",
-              Cookie: cookie,
-            },
-            body: JSON.stringify(buildZenmuxAnthropicBody({
-              model: getDefaultModel("zenmux-free") || "deepseek/deepseek-chat",
-              max_tokens: 1,
-              messages: [{ role: "user", content: "ping" }],
-            }, getDefaultModel("zenmux-free") || "deepseek/deepseek-chat")),
-            signal: AbortSignal.timeout(10000),
-          });
-          if (res.status === 401 || res.status === 403) {
-            isValid = false;
-            error = "Invalid ZenMux cookie - re-paste cookies from zenmux.ai";
-          } else {
-            isValid = true;
-          }
-          break;
-        }
 
-        default: {
-          // Generic registry probe covers OpenAI-compatible and Claude-format providers.
-          const registryResult = await probeRegistryProvider(provider, apiKey, fetch, providerSpecificData || {});
-          if (!registryResult) {
-            return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
+        case "copilot-m365-web":{
+            const params = resolveConnectionParams({ apiKey, providerSpecificData });
+            isValid = !("error" in params);
+            error = isValid ? null : params.error;
+            break;
           }
-          isValid = registryResult.valid;
-          if (!isValid && registryResult.error) error = registryResult.error;
-          break;
-        }
+
+        case "perplexity-web":{
+            let sessionToken = apiKey;
+            if (sessionToken.startsWith("__Secure-next-auth.session-token=")) {
+              sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
+            }
+            const tz = !isUndefined(Intl) ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+            const res = await fetch("https://www.perplexity.ai/rest/sse/perplexity_ask", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "text/event-stream",
+                Origin: "https://www.perplexity.ai",
+                Referer: "https://www.perplexity.ai/",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+                "X-App-ApiClient": "default",
+                "X-App-ApiVersion": "2.18",
+                Cookie: `__Secure-next-auth.session-token=${sessionToken}`
+              },
+              body: JSON.stringify({
+                query_str: "ping",
+                params: {
+                  query_str: "ping", search_focus: "internet", mode: "concise", model_preference: "pplx_pro",
+                  sources: ["web"], attachments: [],
+                  frontend_uuid: crypto.randomUUID(), frontend_context_uuid: crypto.randomUUID(),
+                  version: "2.18", language: "en-US", timezone: tz,
+                  search_recency_filter: null, is_incognito: true, use_schematized_api: true, last_backend_uuid: null
+                }
+              })
+            });
+            if (res.status === 401 || res.status === 403) {
+              isValid = false;
+              error = "Invalid session cookie — re-paste __Secure-next-auth.session-token from perplexity.ai";
+            } else {
+              isValid = true;
+            }
+            break;
+          }
+
+        case "zenmux-free":{
+            const cookie = normalizeZenmuxCookie(apiKey);
+            const ctoken = extractZenmuxCtoken(cookie);
+            if (!ctoken) {
+              isValid = false;
+              error = "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken";
+              break;
+            }
+            const url = new URL(ZENMUX_FREE_CHAT_URL);
+            url.searchParams.set("ctoken", ctoken);
+            const res = await fetch(url.toString(), {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+                Accept: "text/event-stream",
+                Origin: "https://zenmux.ai",
+                Referer: "https://zenmux.ai/platform/chat",
+                "anthropic-version": "2023-06-01",
+                "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
+                "x-zenmux-accept-processing": "true, true",
+                "x-zenmux-apikey-source": "subscription",
+                Cookie: cookie
+              },
+              body: JSON.stringify(buildZenmuxAnthropicBody({
+                model: getDefaultModel("zenmux-free") || "deepseek/deepseek-chat",
+                max_tokens: 1,
+                messages: [{ role: "user", content: "ping" }]
+              }, getDefaultModel("zenmux-free") || "deepseek/deepseek-chat")),
+              signal: AbortSignal.timeout(10000)
+            });
+            if (res.status === 401 || res.status === 403) {
+              isValid = false;
+              error = "Invalid ZenMux cookie - re-paste cookies from zenmux.ai";
+            } else {
+              isValid = true;
+            }
+            break;
+          }
+
+        default:{
+            // Generic registry probe covers OpenAI-compatible and Claude-format providers.
+            const registryResult = await probeRegistryProvider(provider, apiKey, fetch, providerSpecificData || {});
+            if (!registryResult) {
+              return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
+            }
+            isValid = registryResult.valid;
+            if (!isValid && registryResult.error) error = registryResult.error;
+            break;
+          }
       }
     } catch (err) {
       console.log("provider validation probe error:", err?.message);
@@ -858,7 +859,7 @@ export async function POST(request) {
 
     return NextResponse.json({
       valid: isValid,
-      error: isValid ? null : (error || "Invalid API key"),
+      error: isValid ? null : error || "Invalid API key"
     });
   } catch (error) {
     console.log("Error validating API key:", error);

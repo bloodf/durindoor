@@ -16,9 +16,9 @@ import { toOpenAIFinish } from "../concerns/finishReason.js";
  * OpenAI format:
  * {"id": "...", "object": "chat.completion.chunk", "created": 123, "model": "...",
  *  "choices": [{"index": 0, "delta": {"content": "..."}, "finish_reason": null}]}
- */
+ */import { isObject, isString } from "@/shared/utils/typeChecks.js";
 export function ollamaToOpenAIResponse(chunk, state) {
-  if (!chunk || typeof chunk !== "object") return null;
+  if (!chunk || !isObject(chunk)) return null;
 
   // Initialize state on first chunk
   if (!state.ollama) {
@@ -36,14 +36,14 @@ export function ollamaToOpenAIResponse(chunk, state) {
   // empty or unterminated success stream (mirrors the gemini-to-openai pattern).
   if ("error" in chunk) {
     const error = chunk.error;
-    state.upstreamError = typeof error === "string" ? { message: error } : error;
+    state.upstreamError = isString(error) ? { message: error } : error;
     state.finishReason = OPENAI_FINISH.ERROR;
     return buildChunk({ id, created, model }, {}, OPENAI_FINISH.ERROR);
   }
 
   const message = chunk.message;
-  const content = typeof message?.content === "string" ? message.content : "";
-  const thinking = typeof message?.thinking === "string" ? message.thinking : "";
+  const content = isString(message?.content) ? message.content : "";
+  const thinking = isString(message?.thinking) ? message.thinking : "";
   const toolCalls = Array.isArray(message?.tool_calls) && message.tool_calls.length > 0 ? message.tool_calls : null;
 
   // Skip empty non-terminal chunks. Terminal chunks still need translation so
@@ -61,7 +61,7 @@ export function ollamaToOpenAIResponse(chunk, state) {
   const delta = {};
   if (content) delta.content = content;
   if (thinking) delta.reasoning_content = thinking;
-  
+
   // Convert Ollama tool_calls to OpenAI format
   if (toolCalls) {
     state.hadToolCalls = true;
@@ -102,9 +102,9 @@ function convertToolCalls(toolCalls) {
     type: OPENAI_BLOCK.FUNCTION,
     function: {
       name: tc.function?.name || "",
-      arguments: typeof tc.function?.arguments === "string"
-        ? tc.function.arguments
-        : JSON.stringify(tc.function?.arguments || {})
+      arguments: isString(tc.function?.arguments) ?
+      tc.function.arguments :
+      JSON.stringify(tc.function?.arguments || {})
     }
   }));
 }

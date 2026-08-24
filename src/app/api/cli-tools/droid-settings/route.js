@@ -7,6 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 
@@ -18,9 +19,9 @@ const checkDroidInstalled = async () => {
   try {
     const isWindows = os.platform() === "win32";
     const command = isWindows ? "where droid" : "which droid";
-    const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
-      : process.env;
+    const env = isWindows ?
+    { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` } :
+    process.env;
     await execAsync(command, { windowsHide: true, env });
     return true;
   } catch {
@@ -50,19 +51,19 @@ const readSettings = async () => {
 // Check if settings has DurinDoor customModels
 const has9RouterConfig = (settings) => {
   if (!settings || !settings.customModels) return false;
-  return settings.customModels.some(m => m.id?.startsWith("custom:9Router"));
+  return settings.customModels.some((m) => m.id?.startsWith("custom:9Router"));
 };
 
 // GET - Check droid CLI and read current settings
 export async function GET() {
   try {
     const isInstalled = await checkDroidInstalled();
-    
+
     if (!isInstalled) {
       return NextResponse.json({
         installed: false,
         settings: null,
-        message: "Factory Droid CLI is not installed",
+        message: "Factory Droid CLI is not installed"
       });
     }
 
@@ -72,7 +73,7 @@ export async function GET() {
       installed: true,
       settings: redactSecrets(settings),
       has9Router: has9RouterConfig(settings),
-      settingsPath: getDroidSettingsPath(),
+      settingsPath: getDroidSettingsPath()
     });
   } catch (error) {
     console.log("Error checking droid settings:", error);
@@ -86,10 +87,10 @@ export async function GET() {
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, model, models, activeModel } = await request.json();
-    
+
     // Accept either `models` (array) or `model` (string, legacy)
-    const modelsArray = Array.isArray(models) ? models.slice() : (typeof model === "string" ? [model] : []);
-    
+    const modelsArray = Array.isArray(models) ? models.slice() : isString(model) ? [model] : [];
+
     if (!baseUrl || modelsArray.length === 0) {
       return NextResponse.json({ error: "baseUrl and at least one model are required" }, { status: 400 });
     }
@@ -105,7 +106,7 @@ export async function POST(request) {
     try {
       const existingSettings = await fs.readFile(settingsPath, "utf-8");
       settings = JSON.parse(existingSettings);
-    } catch { /* No existing settings */ }
+    } catch {/* No existing settings */}
 
     // Ensure customModels array exists
     if (!settings.customModels) {
@@ -114,7 +115,7 @@ export async function POST(request) {
     const existingKey = settings.customModels.find((m) => m.id?.startsWith("custom:9Router"))?.apiKey;
 
     // Remove all existing DurinDoor configs
-    settings.customModels = settings.customModels.filter(m => !m.id?.startsWith("custom:9Router"));
+    settings.customModels = settings.customModels.filter((m) => !m.id?.startsWith("custom:9Router"));
 
     // Normalize baseUrl to ensure /v1 suffix
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
@@ -123,7 +124,7 @@ export async function POST(request) {
     // Determine active model: prefer explicit activeModel, else first of modelsArray
     // If activeModel is explicitly empty string, no model will be set as default
     let defaultIndex = 0;
-    if (typeof activeModel === "string") {
+    if (isString(activeModel)) {
       if (activeModel === "") {
         defaultIndex = -1; // signal: don't set a default
       } else {
@@ -136,7 +137,7 @@ export async function POST(request) {
     // The first one (index 0) will be the default if defaultIndex >= 0
     for (let i = 0; i < modelsArray.length; i++) {
       const m = modelsArray[i];
-      if (!m || typeof m !== "string") continue;
+      if (!m || !isString(m)) continue;
       settings.customModels.push({
         model: m,
         id: `custom:9Router-${i}`,
@@ -146,7 +147,7 @@ export async function POST(request) {
         displayName: m,
         maxOutputTokens: 131072,
         noImageSupport: false,
-        provider: "openai",
+        provider: "openai"
       });
     }
 
@@ -156,7 +157,7 @@ export async function POST(request) {
       const [defaultEntry] = settings.customModels.splice(defaultIndex, 1);
       settings.customModels.unshift({ ...defaultEntry, index: 0 });
       // Re-index the rest
-      settings.customModels.forEach((m, i) => { m.index = i; });
+      settings.customModels.forEach((m, i) => {m.index = i;});
     }
 
     // Write settings
@@ -165,7 +166,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       message: "Factory Droid settings applied successfully!",
-      settingsPath,
+      settingsPath
     });
   } catch (error) {
     console.log("Error updating droid settings:", error);
@@ -187,7 +188,7 @@ export async function DELETE() {
       if (error.code === "ENOENT") {
         return NextResponse.json({
           success: true,
-          message: "No settings file to reset",
+          message: "No settings file to reset"
         });
       }
       throw error;
@@ -195,8 +196,8 @@ export async function DELETE() {
 
     // Remove DurinDoor customModels
     if (settings.customModels) {
-      settings.customModels = settings.customModels.filter(m => !m.id?.startsWith("custom:9Router"));
-      
+      settings.customModels = settings.customModels.filter((m) => !m.id?.startsWith("custom:9Router"));
+
       // Remove customModels array if empty
       if (settings.customModels.length === 0) {
         delete settings.customModels;
@@ -208,7 +209,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: "DurinDoor settings removed successfully",
+      message: "DurinDoor settings removed successfully"
     });
   } catch (error) {
     console.log("Error resetting droid settings:", error);

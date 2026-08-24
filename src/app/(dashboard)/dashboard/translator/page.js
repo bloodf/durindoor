@@ -4,19 +4,20 @@ import { useState } from "react";
 import { Card, Button } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import dynamic from "next/dynamic";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
 // 7 steps matching requestLogger files exactly
 const STEPS = [
-  { id: 1, label: "Client Request",         file: "1_req_client.json",  lang: "json", desc: "Raw request from client" },
-  { id: 2, label: "Source Body",            file: "2_req_source.json",  lang: "json", desc: "After initial conversion" },
-  { id: 3, label: "OpenAI Intermediate",    file: "3_req_openai.json",  lang: "json", desc: "source → openai" },
-  { id: 4, label: "Target Request",         file: "4_req_target.json",  lang: "json", desc: "openai → target + URL + headers" },
-  { id: 5, label: "Provider Response",      file: "5_res_provider.txt", lang: "text", desc: "Raw SSE from provider" },
-  { id: 6, label: "OpenAI Response",        file: "6_res_openai.txt",   lang: "text", desc: "target → openai (response)" },
-  { id: 7, label: "Client Response",        file: "7_res_client.txt",   lang: "text", desc: "Final response to client" },
-];
+{ id: 1, label: "Client Request", file: "1_req_client.json", lang: "json", desc: "Raw request from client" },
+{ id: 2, label: "Source Body", file: "2_req_source.json", lang: "json", desc: "After initial conversion" },
+{ id: 3, label: "OpenAI Intermediate", file: "3_req_openai.json", lang: "json", desc: "source → openai" },
+{ id: 4, label: "Target Request", file: "4_req_target.json", lang: "json", desc: "openai → target + URL + headers" },
+{ id: 5, label: "Provider Response", file: "5_res_provider.txt", lang: "text", desc: "Raw SSE from provider" },
+{ id: 6, label: "OpenAI Response", file: "6_res_openai.txt", lang: "text", desc: "target → openai (response)" },
+{ id: 7, label: "Client Response", file: "7_res_client.txt", lang: "text", desc: "Final response to client" }];
+
 
 const EDITOR_OPTIONS = {
   minimap: { enabled: false },
@@ -24,7 +25,7 @@ const EDITOR_OPTIONS = {
   lineNumbers: "on",
   scrollBeyondLastLine: false,
   wordWrap: "on",
-  automaticLayout: true,
+  automaticLayout: true
 };
 
 export default function TranslatorPage() {
@@ -34,20 +35,20 @@ export default function TranslatorPage() {
   // Detected from step 1: { provider, model, sourceFormat, targetFormat }
   const [meta, setMeta] = useState(null);
 
-  const setLoad = (key, val) => setLoading(prev => ({ ...prev, [key]: val }));
-  const setContent = (id, val) => setContents(prev => ({ ...prev, [id]: val }));
-  const toggle = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+  const setLoad = (key, val) => setLoading((prev) => ({ ...prev, [key]: val }));
+  const setContent = (id, val) => setContents((prev) => ({ ...prev, [id]: val }));
+  const toggle = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  const openNext = (nextId) => setExpanded(prev => {
+  const openNext = (nextId) => setExpanded((prev) => {
     const next = {};
-    STEPS.forEach(s => { next[s.id] = false; });
+    STEPS.forEach((s) => {next[s.id] = false;});
     next[nextId] = true;
     return next;
   });
 
   // Load file from logs/translator/
   const handleLoad = async (stepId) => {
-    const step = STEPS.find(s => s.id === stepId);
+    const step = STEPS.find((s) => s.id === stepId);
     setLoad(`load-${stepId}`, true);
     try {
       const res = await fetch(`/api/translator/load?file=${step.file}`);
@@ -67,7 +68,7 @@ export default function TranslatorPage() {
   // Step 1: detect provider/format from model field
   const detectMeta = async (rawContent) => {
     try {
-      const body = typeof rawContent === "string" ? JSON.parse(rawContent) : rawContent;
+      const body = isString(rawContent) ? JSON.parse(rawContent) : rawContent;
       const res = await fetch("/api/translator/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,7 +76,7 @@ export default function TranslatorPage() {
       });
       const data = await res.json();
       if (data.success) setMeta(data.result);
-    } catch { /* ignore */ }
+    } catch {/* ignore */}
   };
 
   const save = (file, content) => fetch("/api/translator/save", {
@@ -100,11 +101,11 @@ export default function TranslatorPage() {
         body: JSON.stringify({ step: 2, body })
       });
       const data = await res.json();
-      if (!data.success) { alert(data.error); return; }
+      if (!data.success) {alert(data.error);return;}
       const str = JSON.stringify(data.result.body, null, 2);
       setContent(3, str);
       openNext(3);
-    } catch (e) { alert(e.message); }
+    } catch (e) {alert(e.message);}
     setLoad("toOpenAI", false);
   };
 
@@ -123,12 +124,12 @@ export default function TranslatorPage() {
         body: JSON.stringify({ step: 3, body: { ...openaiBody, provider: meta?.provider, model: meta?.model } })
       });
       const data = await res.json();
-      if (!data.success) { alert(data.error); return; }
+      if (!data.success) {alert(data.error);return;}
       // Embed provider + model so Send works even without meta
       const step4Content = { ...data.result, provider: meta?.provider, model: meta?.model };
       setContent(4, JSON.stringify(step4Content, null, 2));
       openNext(4);
-    } catch (e) { alert(e.message); }
+    } catch (e) {alert(e.message);}
     setLoad("toTarget", false);
   };
 
@@ -199,7 +200,7 @@ export default function TranslatorPage() {
     try {
       const obj = JSON.parse(contents[id]);
       setContent(id, JSON.stringify(obj, null, 2));
-    } catch { /* not JSON, skip */ }
+    } catch {/* not JSON, skip */}
   };
 
   // Render action button per step
@@ -218,15 +219,15 @@ export default function TranslatorPage() {
           <h1 className="text-2xl font-bold text-text-main">Translator Debug</h1>
           <p className="text-sm text-text-muted mt-1">Replay request flow — matches log files</p>
         </div>
-        {meta && (
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+        {meta &&
+        <div className="flex items-center gap-2 flex-wrap justify-end">
             <MetaBadge label="src" value={meta.sourceFormat} color="blue" />
             <span className="material-symbols-outlined text-text-muted text-[14px]">arrow_forward</span>
             <MetaBadge label="dst" value={meta.targetFormat} color="orange" />
             <MetaBadge label="provider" value={meta.provider} color="green" />
             <MetaBadge label="model" value={meta.model} color="purple" />
           </div>
-        )}
+        }
       </div>
 
       {STEPS.map((step) => {
@@ -248,29 +249,29 @@ export default function TranslatorPage() {
                   <span className="text-xs text-text-muted/60 font-mono">{step.file}</span>
                   {content && <span className="text-xs text-green-500">({content.length} chars)</span>}
                 </button>
-                {!isExpanded && (
-                  <div className="flex gap-1 shrink-0">
+                {!isExpanded &&
+                <div className="flex gap-1 shrink-0">
                     <Button size="sm" variant="ghost" icon="folder_open" loading={loading[`load-${step.id}`]} onClick={() => handleLoad(step.id)} />
                     {action}
                   </div>
-                )}
+                }
               </div>
 
               {/* Expanded content */}
-              {isExpanded && (
-                <>
+              {isExpanded &&
+              <>
                   <div className="border border-border rounded-lg overflow-hidden">
                     <Editor
-                      height="400px"
-                      defaultLanguage={step.lang === "text" ? "plaintext" : "json"}
-                      value={content}
-                      onChange={(v) => {
-                        setContent(step.id, v || "");
-                        if (step.id === 1) detectMeta(v || "");
-                      }}
-                      theme="vs-dark"
-                      options={EDITOR_OPTIONS}
-                    />
+                    height="400px"
+                    defaultLanguage={step.lang === "text" ? "plaintext" : "json"}
+                    value={content}
+                    onChange={(v) => {
+                      setContent(step.id, v || "");
+                      if (step.id === 1) detectMeta(v || "");
+                    }}
+                    theme="vs-dark"
+                    options={EDITOR_OPTIONS} />
+                  
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <Button size="sm" variant="outline" icon="folder_open" loading={loading[`load-${step.id}`]} onClick={() => handleLoad(step.id)}>Load</Button>
@@ -279,13 +280,13 @@ export default function TranslatorPage() {
                     {action}
                   </div>
                 </>
-              )}
+              }
             </div>
-          </Card>
-        );
+          </Card>);
+
       })}
-    </div>
-  );
+    </div>);
+
 }
 
 function MetaBadge({ label, value, color }) {
@@ -293,11 +294,11 @@ function MetaBadge({ label, value, color }) {
     blue: "bg-blue-500/10 text-blue-500",
     orange: "bg-orange-500/10 text-orange-500",
     green: "bg-green-500/10 text-green-500",
-    purple: "bg-purple-500/10 text-purple-500",
+    purple: "bg-purple-500/10 text-purple-500"
   };
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono ${colors[color]}`}>
       <span className="text-text-muted/70 font-sans text-[10px]">{label}:</span>{value}
-    </span>
-  );
+    </span>);
+
 }

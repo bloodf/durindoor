@@ -2,6 +2,7 @@
 // library API (transformAnthropicMessages). Fail-open like every token saver:
 // any error/timeout returns { body: null, summary } and leaves the request untouched.
 import { FORMATS } from "../translator/formats.js";
+import { isFunction, isNumber } from "@/shared/utils/typeChecks.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MIN_CHARS = 25000;
@@ -113,7 +114,7 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     if (diagnostics) diagnostics.reason = r.reason;
     return r;
   }
-  if (typeof transform !== "function") {
+  if (!isFunction(transform)) {
     // pxpipe-stage contract: when allowed model but no transform, prefer
     // not_profitable so the caller treats it as a profitability skip.
     // Legacy callers still get not_installed.
@@ -132,30 +133,30 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
 
   let timeoutId = null;
   try {
-    const transformBody = isOpenAiFable
-      ? { ...body, model: String(model).slice("blackboxai/anthropic/".length) }
-      : body;
+    const transformBody = isOpenAiFable ?
+    { ...body, model: String(model).slice("blackboxai/anthropic/".length) } :
+    body;
     const encoded = new TextEncoder().encode(JSON.stringify(transformBody));
     const budget = Number(timeoutMs) > 0 ? Number(timeoutMs) : DEFAULT_TIMEOUT_MS;
     // timer and discard the result if it loses (input body is never mutated).
     const result = await Promise.race([
-      transform({
-        body: encoded,
-        model,
-        format,
-        options: { minCompressChars: threshold },
-      }),
-      new Promise((resolve) => {
-        timeoutId = setTimeout(() => resolve(null), budget);
-        timeoutId.unref?.();
-      }),
-    ]);
+    transform({
+      body: encoded,
+      model,
+      format,
+      options: { minCompressChars: threshold }
+    }),
+    new Promise((resolve) => {
+      timeoutId = setTimeout(() => resolve(null), budget);
+      timeoutId.unref?.();
+    })]
+    );
     if (!result) return skipped("timeout", { originalChars, durationMs: Date.now() - startedAt });
     if (!result.applied) {
       return skipped(result.reason || "passthrough", {
         detail: result.detail,
         originalChars,
-        durationMs: Date.now() - startedAt,
+        durationMs: Date.now() - startedAt
       });
     }
 
@@ -168,8 +169,8 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
     // images bill by pixels (Anthropic: pixels/750), not by encoded length. So the
     // after-estimate is remaining-text tokens + image tokens — never chars/4 of the
     // new body. Provider-billed usage recorded per request stays the ground truth.
-    const imageTokensEst = info.imageTokens
-      || (info.imagePixels ? Math.round(info.imagePixels / 750) : (info.imageCount || 0) * 4761);
+    const imageTokensEst = info.imageTokens || (
+    info.imagePixels ? Math.round(info.imagePixels / 750) : (info.imageCount || 0) * 4761);
     const summary = {
       applied: true,
       reason: "applied",
@@ -181,12 +182,12 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
       tokensBeforeEst: info.baselineTokens || estTokens(originalChars),
       tokensAfterEst: estTokens(Math.max(0, originalChars - imagedChars)) + imageTokensEst,
       durationMs: Date.now() - startedAt,
-      cacheOwnsControl: result.cache?.ownsCacheControl === true,
+      cacheOwnsControl: result.cache?.ownsCacheControl === true
     };
     summary.tokensSavedEst = Math.max(0, summary.tokensBeforeEst - summary.tokensAfterEst);
-    summary.savedPct = summary.tokensBeforeEst > 0
-      ? +((summary.tokensSavedEst / summary.tokensBeforeEst) * 100).toFixed(2)
-      : 0;
+    summary.savedPct = summary.tokensBeforeEst > 0 ?
+    +(summary.tokensSavedEst / summary.tokensBeforeEst * 100).toFixed(2) :
+    0;
     // Return shape: { body, summary, applied, reason, info, originalChars, durationMs }
     // so tests can read res.applied, res.reason, res.info directly.
     const flat = {
@@ -196,10 +197,10 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
       info: {
         origChars: originalChars,
         compressedChars: compressedBodyChars,
-        imageCount: summary.imageCount,
+        imageCount: summary.imageCount
       },
       originalChars,
-      durationMs: summary.durationMs,
+      durationMs: summary.durationMs
     };
     return { ...flat, summary };
   } catch (e) {
@@ -212,10 +213,10 @@ export async function compressWithPxpipe(body, { enabled, format, model, minChar
 export function formatPxpipeLog(summary) {
   if (!summary) return null;
   const info = summary.info;
-  if (info && typeof info.origChars === "number" && typeof info.compressedChars === "number") {
-    return `${info.origChars}→${info.compressedChars} chars, ${typeof info.imageCount === "number" ? info.imageCount : 0} image(s)`;
+  if (info && isNumber(info.origChars) && isNumber(info.compressedChars)) {
+    return `${info.origChars}→${info.compressedChars} chars, ${isNumber(info.imageCount) ? info.imageCount : 0} image(s)`;
   }
-  if (summary.applied && typeof summary.compressedBodyChars === "number") {
+  if (summary.applied && isNumber(summary.compressedBodyChars)) {
     return `${summary.originalChars}→${summary.compressedBodyChars} chars, ${summary.imageCount || 0} image(s)`;
   }
   return null;

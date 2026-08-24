@@ -4,30 +4,30 @@ import { safeParseJSON } from "../concerns/json.js";
 import { OPENAI_BLOCK } from "../schema/index.js";
 
 // Unsupported JSON Schema constraints that should be removed for Antigravity
-export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
-  // Basic constraints (not supported by Gemini API)
-  "minLength", "maxLength", "exclusiveMinimum", "exclusiveMaximum",
-  "minItems", "maxItems", "multipleOf", "format",
-  // Claude rejects these in VALIDATED mode
-  "default", "examples",
-  // JSON Schema meta keywords ($ref/$defs are resolved by resolveJsonSchemaRefs in Phase 0;
-  // these remain as fallback cleanup for any unresolved remnants)
-  "$schema", "$defs", "definitions", "const", "$ref", "$comment",
-  // Annotation keywords (rejected by Gemini/Antigravity - e.g. MCP tool schemas set these)
-  "deprecated", "readOnly", "writeOnly",
-  "encrypted",
-  // Object validation keywords (not supported)
-  "additionalProperties", "propertyNames", "patternProperties", "enumDescriptions",
-  // Complex schema keywords (handled by flattenAnyOfOneOf/mergeAllOf)
-  "anyOf", "oneOf", "allOf", "not",
-  // Dependency keywords (not supported)
-  "dependencies", "dependentSchemas", "dependentRequired",
-  // Other unsupported keywords
-  "title", "optional", "deprecated", "if", "then", "else", "contentMediaType", "contentEncoding",
-  // UI/Styling properties (from Cursor tools - NOT JSON Schema standard)
-  "cornerRadius", "fillColor", "fontFamily", "fontSize", "fontWeight",
-  "gap", "padding", "strokeColor", "strokeThickness", "textColor"
-];
+import { isObject, isString } from "@/shared/utils/typeChecks.js";export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
+// Basic constraints (not supported by Gemini API)
+"minLength", "maxLength", "exclusiveMinimum", "exclusiveMaximum",
+"minItems", "maxItems", "multipleOf", "format",
+// Claude rejects these in VALIDATED mode
+"default", "examples",
+// JSON Schema meta keywords ($ref/$defs are resolved by resolveJsonSchemaRefs in Phase 0;
+// these remain as fallback cleanup for any unresolved remnants)
+"$schema", "$defs", "definitions", "const", "$ref", "$comment",
+// Annotation keywords (rejected by Gemini/Antigravity - e.g. MCP tool schemas set these)
+"deprecated", "readOnly", "writeOnly",
+"encrypted",
+// Object validation keywords (not supported)
+"additionalProperties", "propertyNames", "patternProperties", "enumDescriptions",
+// Complex schema keywords (handled by flattenAnyOfOneOf/mergeAllOf)
+"anyOf", "oneOf", "allOf", "not",
+// Dependency keywords (not supported)
+"dependencies", "dependentSchemas", "dependentRequired",
+// Other unsupported keywords
+"title", "optional", "deprecated", "if", "then", "else", "contentMediaType", "contentEncoding",
+// UI/Styling properties (from Cursor tools - NOT JSON Schema standard)
+"cornerRadius", "fillColor", "fontFamily", "fontSize", "fontWeight",
+"gap", "padding", "strokeColor", "strokeThickness", "textColor"];
+
 
 /**
  * Non-schema keys to remove only from schema nodes, never from user-defined
@@ -41,13 +41,13 @@ const STRAY_SCHEMA_KEYS = new Set(["value"]);
 const MAX_REF_DEPTH = 10;
 
 function resolveJsonSchemaRefs(schema) {
-  if (!schema || typeof schema !== "object") return;
+  if (!schema || !isObject(schema)) return;
 
   // Collect definitions from $defs or definitions
   const defs = schema.$defs || schema.definitions || {};
 
   function lookupRef(ref) {
-    if (typeof ref !== "string") return null;
+    if (!isString(ref)) return null;
     // Support #/$defs/Name and #/definitions/Name
     const match = ref.match(/^#\/(\$defs|definitions)\/(.+)$/);
     if (!match) return null;
@@ -56,11 +56,11 @@ function resolveJsonSchemaRefs(schema) {
   }
 
   function resolve(obj, depth) {
-    if (!obj || typeof obj !== "object" || depth > MAX_REF_DEPTH) return;
+    if (!obj || !isObject(obj) || depth > MAX_REF_DEPTH) return;
 
     if (Array.isArray(obj)) {
       for (let i = 0; i < obj.length; i++) {
-        if (obj[i] && typeof obj[i] === "object" && obj[i].$ref) {
+        if (obj[i] && isObject(obj[i]) && obj[i].$ref) {
           const resolved = lookupRef(obj[i].$ref);
           if (resolved) {
             obj[i] = structuredClone(resolved);
@@ -75,7 +75,7 @@ function resolveJsonSchemaRefs(schema) {
 
     for (const key of Object.keys(obj)) {
       const val = obj[key];
-      if (val && typeof val === "object") {
+      if (val && isObject(val)) {
         if (val.$ref) {
           const resolved = lookupRef(val.$ref);
           if (resolved) {
@@ -104,11 +104,11 @@ function resolveJsonSchemaRefs(schema) {
 
 // Default safety settings
 export const DEFAULT_SAFETY_SETTINGS = [
-  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
-  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" },
-  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
-  { category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" }
-];
+{ category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
+{ category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" },
+{ category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
+{ category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" }];
+
 
 /**
  * Convert OpenAI-style content into Gemini/Antigravity parts.
@@ -128,7 +128,7 @@ export const DEFAULT_SAFETY_SETTINGS = [
 export function convertOpenAIContentToParts(content) {
   const parts = [];
 
-  if (typeof content === "string") {
+  if (isString(content)) {
     parts.push({ text: content });
   } else if (Array.isArray(content)) {
     for (const item of content) {
@@ -169,28 +169,28 @@ export function convertOpenAIContentToParts(content) {
         }
       } else if (item.type === OPENAI_BLOCK.FILE) {
         const rawDataStr =
-          item.data ||
-          item.file_data ||
-          item.fileData ||
-          item.file?.data ||
-          item.file?.file_data ||
-          item.file?.fileData ||
-          item.document?.data ||
-          item.document?.file_data ||
-          item.document?.fileData;
+        item.data ||
+        item.file_data ||
+        item.fileData ||
+        item.file?.data ||
+        item.file?.file_data ||
+        item.file?.fileData ||
+        item.document?.data ||
+        item.document?.file_data ||
+        item.document?.fileData;
 
         const explicitMimeType =
-          item.mime_type ||
-          item.mimeType ||
-          item.media_type ||
-          item.file?.mime_type ||
-          item.file?.mimeType ||
-          item.file?.media_type ||
-          item.document?.mime_type ||
-          item.document?.mimeType ||
-          item.document?.media_type;
+        item.mime_type ||
+        item.mimeType ||
+        item.media_type ||
+        item.file?.mime_type ||
+        item.file?.mimeType ||
+        item.file?.media_type ||
+        item.document?.mime_type ||
+        item.document?.mimeType ||
+        item.document?.media_type;
 
-        if (typeof rawDataStr === "string" && !rawDataStr.startsWith("http")) {
+        if (isString(rawDataStr) && !rawDataStr.startsWith("http")) {
           let mimeType = explicitMimeType;
           let data = rawDataStr;
 
@@ -205,8 +205,8 @@ export function convertOpenAIContentToParts(content) {
           parts.push({
             inlineData: {
               mimeType: String(mimeType || "application/pdf"),
-              data,
-            },
+              data
+            }
           });
         }
       }
@@ -218,9 +218,9 @@ export function convertOpenAIContentToParts(content) {
 
 // Extract text content from OpenAI content
 export function extractTextContent(content, separator = "") {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (Array.isArray(content)) {
-    return content.filter(c => c.type === OPENAI_BLOCK.TEXT).map(c => c.text).join(separator);
+    return content.filter((c) => c.type === OPENAI_BLOCK.TEXT).map((c) => c.text).join(separator);
   }
   return "";
 }
@@ -244,7 +244,7 @@ const MAX_FUNCTION_RESPONSE_SANITIZE_DEPTH = 32;
  * @returns {unknown} Sanitized JSON value.
  */
 export function sanitizeFunctionResponseResult(value, depth = 0) {
-  if (!value || typeof value !== "object" || depth >= MAX_FUNCTION_RESPONSE_SANITIZE_DEPTH) return value;
+  if (!value || !isObject(value) || depth >= MAX_FUNCTION_RESPONSE_SANITIZE_DEPTH) return value;
   if (Array.isArray(value)) return value.map((nestedValue) => sanitizeFunctionResponseResult(nestedValue, depth + 1));
 
   const entries = Object.entries(value);
@@ -292,7 +292,7 @@ export function generateProjectId() {
  * in a `properties` name-map and recursing into that map's values.
  */
 function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || !isObject(obj)) return;
 
   if (Array.isArray(obj)) {
     for (const item of obj) removeUnsupportedKeywords(item, keywords);
@@ -302,12 +302,12 @@ function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
   const isSchemaNode = obj.type !== undefined || obj.properties !== undefined || obj.items !== undefined;
   for (const key of Object.keys(obj)) {
     const value = obj[key];
-    if (!isPropertiesMap && (keywords.includes(key) || key.startsWith("x-") || (isSchemaNode && STRAY_SCHEMA_KEYS.has(key)))) {
+    if (!isPropertiesMap && (keywords.includes(key) || key.startsWith("x-") || isSchemaNode && STRAY_SCHEMA_KEYS.has(key))) {
       delete obj[key];
       continue;
     }
 
-    if (value && typeof value === "object") {
+    if (value && isObject(value)) {
       removeUnsupportedKeywords(value, keywords, !isPropertiesMap && key === "properties");
     }
   }
@@ -315,7 +315,7 @@ function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
 
 // Convert const to enum
 function convertConstToEnum(obj) {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || !isObject(obj)) return;
 
   if (obj.const !== undefined && !obj.enum) {
     obj.enum = [obj.const];
@@ -323,7 +323,7 @@ function convertConstToEnum(obj) {
   }
 
   for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
+    if (value && isObject(value)) {
       convertConstToEnum(value);
     }
   }
@@ -331,10 +331,10 @@ function convertConstToEnum(obj) {
 
 // Convert enum values to strings (Gemini requires string enum values + explicit type:"string")
 function convertEnumValuesToStrings(obj) {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || !isObject(obj)) return;
 
   if (obj.enum && Array.isArray(obj.enum)) {
-    obj.enum = obj.enum.map(v => String(v));
+    obj.enum = obj.enum.map((v) => String(v));
     // Gemini API requires type:"string" when enum is present — without it returns 400
     if (!obj.type) {
       obj.type = "string";
@@ -342,7 +342,7 @@ function convertEnumValuesToStrings(obj) {
   }
 
   for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
+    if (value && isObject(value)) {
       convertEnumValuesToStrings(value);
     }
   }
@@ -350,7 +350,7 @@ function convertEnumValuesToStrings(obj) {
 
 // Merge allOf schemas
 function mergeAllOf(obj) {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || !isObject(obj)) return;
 
   if (obj.allOf && Array.isArray(obj.allOf)) {
     const merged = {};
@@ -376,7 +376,7 @@ function mergeAllOf(obj) {
   }
 
   for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
+    if (value && isObject(value)) {
       mergeAllOf(value);
     }
   }
@@ -411,10 +411,10 @@ function selectBest(items) {
 
 // Flatten anyOf/oneOf
 function flattenAnyOfOneOf(obj) {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || !isObject(obj)) return;
 
   if (obj.anyOf && Array.isArray(obj.anyOf) && obj.anyOf.length > 0) {
-    const nonNullSchemas = obj.anyOf.filter(s => s && s.type !== "null");
+    const nonNullSchemas = obj.anyOf.filter((s) => s && s.type !== "null");
     if (nonNullSchemas.length > 0) {
       const bestIdx = selectBest(nonNullSchemas);
       const selected = nonNullSchemas[bestIdx];
@@ -424,7 +424,7 @@ function flattenAnyOfOneOf(obj) {
   }
 
   if (obj.oneOf && Array.isArray(obj.oneOf) && obj.oneOf.length > 0) {
-    const nonNullSchemas = obj.oneOf.filter(s => s && s.type !== "null");
+    const nonNullSchemas = obj.oneOf.filter((s) => s && s.type !== "null");
     if (nonNullSchemas.length > 0) {
       const bestIdx = selectBest(nonNullSchemas);
       const selected = nonNullSchemas[bestIdx];
@@ -434,7 +434,7 @@ function flattenAnyOfOneOf(obj) {
   }
 
   for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
+    if (value && isObject(value)) {
       flattenAnyOfOneOf(value);
     }
   }
@@ -442,15 +442,15 @@ function flattenAnyOfOneOf(obj) {
 
 // Flatten type arrays
 function flattenTypeArrays(obj) {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || !isObject(obj)) return;
 
   if (obj.type && Array.isArray(obj.type)) {
-    const nonNullTypes = obj.type.filter(t => t !== "null");
+    const nonNullTypes = obj.type.filter((t) => t !== "null");
     obj.type = nonNullTypes.length > 0 ? nonNullTypes[0] : "string";
   }
 
   for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
+    if (value && isObject(value)) {
       flattenTypeArrays(value);
     }
   }
@@ -471,22 +471,22 @@ function flattenTypeArrays(obj) {
  * @returns {void}
  */
 function ensureObjectType(obj) {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || !isObject(obj)) return;
   if (obj.properties && !obj.type) obj.type = "object";
   // Recurse only into valid schema nodes: the values of the `properties` map and
   // the `items` schema. Walking every value via Object.values(obj) is wrong: when a
   // schema property is itself named "properties", the properties-map dictionary would
   // be mistaken for a schema node and gain `type: "object"`, turning one of the
   // property values into the literal string "object" -> Gemini 400.
-  if (obj.properties && typeof obj.properties === "object") {
-    for (const v of Object.values(obj.properties)) if (v && typeof v === "object") ensureObjectType(v);
+  if (obj.properties && isObject(obj.properties)) {
+    for (const v of Object.values(obj.properties)) if (v && isObject(v)) ensureObjectType(v);
   }
-  if (obj.items && typeof obj.items === "object") ensureObjectType(obj.items);
+  if (obj.items && isObject(obj.items)) ensureObjectType(obj.items);
 }
 
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
 export function cleanJSONSchemaForAntigravity(schema) {
-  if (!schema || typeof schema !== "object") return schema;
+  if (!schema || !isObject(schema)) return schema;
 
   // Mutate directly (schema is only used once per request)
   let cleaned = schema;
@@ -517,11 +517,11 @@ export function cleanJSONSchemaForAntigravity(schema) {
   // and the `items` schema. The name-map keys under `properties` are
   // user-chosen parameter names, not schema keywords (#2884).
   function cleanupRequired(obj) {
-    if (!obj || typeof obj !== "object") return;
+    if (!obj || !isObject(obj)) return;
 
     if (obj.required && Array.isArray(obj.required) && obj.properties) {
-      const validRequired = obj.required.filter(field =>
-        Object.prototype.hasOwnProperty.call(obj.properties, field)
+      const validRequired = obj.required.filter((field) =>
+      Object.prototype.hasOwnProperty.call(obj.properties, field)
       );
       if (validRequired.length === 0) {
         delete obj.required;
@@ -530,12 +530,12 @@ export function cleanJSONSchemaForAntigravity(schema) {
       }
     }
 
-    if (obj.properties && typeof obj.properties === "object") {
+    if (obj.properties && isObject(obj.properties)) {
       for (const v of Object.values(obj.properties)) {
-        if (v && typeof v === "object") cleanupRequired(v);
+        if (v && isObject(v)) cleanupRequired(v);
       }
     }
-    if (obj.items && typeof obj.items === "object") cleanupRequired(obj.items);
+    if (obj.items && isObject(obj.items)) cleanupRequired(obj.items);
   }
 
   cleanupRequired(cleaned);
@@ -545,7 +545,7 @@ export function cleanJSONSchemaForAntigravity(schema) {
   // and the `items` schema. The name-map keys under `properties` are
   // user-chosen parameter names, not schema keywords (#2884).
   function addPlaceholders(obj) {
-    if (!obj || typeof obj !== "object") return;
+    if (!obj || !isObject(obj)) return;
 
     // Empty schema {} (no type, no properties) after $ref removal — treat as object with placeholder
     if (Object.keys(obj).length === 0) {
@@ -572,16 +572,15 @@ export function cleanJSONSchemaForAntigravity(schema) {
       }
     }
 
-    if (obj.properties && typeof obj.properties === "object") {
+    if (obj.properties && isObject(obj.properties)) {
       for (const v of Object.values(obj.properties)) {
-        if (v && typeof v === "object") addPlaceholders(v);
+        if (v && isObject(v)) addPlaceholders(v);
       }
     }
-    if (obj.items && typeof obj.items === "object") addPlaceholders(obj.items);
+    if (obj.items && isObject(obj.items)) addPlaceholders(obj.items);
   }
 
   addPlaceholders(cleaned);
 
   return cleaned;
 }
-

@@ -6,8 +6,8 @@ import {
   buildPrompt,
   buildWsUrl,
   redactWsUrl,
-  resolveConnectionParams,
-} from "./copilot-m365-connection.js";
+  resolveConnectionParams } from
+"./copilot-m365-connection.js";
 import {
   accumulateBotContent,
   buildChatInvocation,
@@ -18,8 +18,9 @@ import {
   isCompletionFrame,
   keepaliveFrame,
   parseFrame,
-  splitFrames,
-} from "./copilot-m365-frames.js";
+  splitFrames } from
+"./copilot-m365-frames.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 let WebSocketCtor = WebSocket;
 
@@ -37,14 +38,14 @@ function makeSseChunk(model, delta, finishReason = null) {
     object: "chat.completion.chunk",
     created: Math.floor(Date.now() / 1000),
     model,
-    choices: [{ index: 0, delta, finish_reason: finishReason }],
+    choices: [{ index: 0, delta, finish_reason: finishReason }]
   })}\n\n`;
 }
 
 function jsonError(message, status = 502) {
   return new Response(JSON.stringify({ error: { message } }), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" }
   });
 }
 
@@ -73,7 +74,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         const cleanup = () => {
           clearTimeout(timeout);
           if (ws) {
-            try { ws.close(); } catch { /* ignore */ }
+            try {ws.close();} catch {/* ignore */}
             ws = null;
           }
         };
@@ -93,7 +94,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           settled = true;
           cleanup();
           controller.enqueue(encoder.encode(
-            `data: ${JSON.stringify({ error: { message: sanitizeErrorMessage(reason) } })}\n\n`,
+            `data: ${JSON.stringify({ error: { message: sanitizeErrorMessage(reason) } })}\n\n`
           ));
           controller.close();
         };
@@ -115,8 +116,8 @@ export class CopilotM365WebExecutor extends BaseExecutor {
             headers: {
               Origin: "https://m365.cloud.microsoft",
               "User-Agent":
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-            },
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+            }
           });
 
           const sendChat = () => {
@@ -125,7 +126,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
               text: input.prompt,
               traceId,
               sessionId,
-              isStartOfSession: true,
+              isStartOfSession: true
             })));
           };
 
@@ -181,16 +182,16 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           ws.on("close", () => {
             clearTimeout(timeout);
             if (settled) return;
-            if (completionReceived) finish();
-            else abort(handshakeComplete
-              ? "Microsoft 365 Copilot WebSocket closed before completion"
-              : "Microsoft 365 Copilot WebSocket closed before handshake");
+            if (completionReceived) finish();else
+            abort(handshakeComplete ?
+            "Microsoft 365 Copilot WebSocket closed before completion" :
+            "Microsoft 365 Copilot WebSocket closed before handshake");
           });
         } catch (err) {
           clearTimeout(timeout);
           abort(err instanceof Error ? err.message : "Failed to connect to Microsoft 365 Copilot");
         }
-      },
+      }
     }, { highWaterMark: 16384 });
   }
 
@@ -205,7 +206,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         response: jsonError("No user message provided", 400),
         url: "wss://substrate.office.com/m365Copilot/Chathub",
         headers: {},
-        transformedBody: null,
+        transformedBody: null
       };
     }
 
@@ -215,7 +216,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         response: jsonError(connectionParams.error, 400),
         url: "wss://substrate.office.com/m365Copilot/Chathub",
         headers: {},
-        transformedBody: { model, prompt: prompt.slice(0, 100) },
+        transformedBody: { model, prompt: prompt.slice(0, 100) }
       };
     }
 
@@ -225,11 +226,11 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     if (stream) {
       return {
         response: new Response(wsStream, {
-          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
         }),
         url: redactWsUrl(wsUrl),
         headers: {},
-        transformedBody: { model, prompt: prompt.slice(0, 100) },
+        transformedBody: { model, prompt: prompt.slice(0, 100) }
       };
     }
 
@@ -250,15 +251,15 @@ export class CopilotM365WebExecutor extends BaseExecutor {
               response: sseErrorResponse(parsed.error),
               url: redactWsUrl(wsUrl),
               headers: {},
-              transformedBody: { model, prompt: prompt.slice(0, 100) },
+              transformedBody: { model, prompt: prompt.slice(0, 100) }
             };
           }
           const content = parsed.choices?.[0]?.delta?.content;
-          if (typeof content === "string") fullText += content;
+          if (isString(content)) fullText += content;
         } catch {
+
           // Skip malformed SSE lines.
-        }
-      }
+        }}
     }
 
     return {
@@ -268,11 +269,11 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         created: Math.floor(Date.now() / 1000),
         model,
         choices: [{ index: 0, message: { role: "assistant", content: fullText || "(empty response)" }, finish_reason: "stop" }],
-        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
       }), { headers: { "Content-Type": "application/json" } }),
       url: redactWsUrl(wsUrl),
       headers: {},
-      transformedBody: { model, prompt: prompt.slice(0, 100) },
+      transformedBody: { model, prompt: prompt.slice(0, 100) }
     };
   }
 }

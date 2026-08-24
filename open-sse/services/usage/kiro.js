@@ -24,7 +24,7 @@ function parseKiroQuotaData(data) {
       total,
       remaining: total - used,
       resetAt,
-      unlimited: false,
+      unlimited: false
     };
 
     // Add free trial if available
@@ -37,14 +37,14 @@ function parseKiroQuotaData(data) {
         total: freeTotal,
         remaining: freeTotal - freeUsed,
         resetAt: parseResetTime(breakdown.freeTrialInfo.freeTrialExpiry || resetAt),
-        unlimited: false,
+        unlimited: false
       };
     }
   });
 
   return {
     plan: data.subscriptionInfo?.subscriptionTitle || "Kiro",
-    quotas: quotaInfo,
+    quotas: quotaInfo
   };
 }
 
@@ -62,14 +62,14 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
   // For api-key auth, never inject the shared default placeholder profileArn —
   // CodeWhisperer 403s a request whose profileArn isn't owned by the key's
   // account. Only send a profileArn actually resolved for this connection.
-  const profileArn = isApiKey
-    ? (providerSpecificData?.profileArn || "")
-    : (providerSpecificData?.profileArn || resolveDefaultProfileArn(authMethod));
+  const profileArn = isApiKey ?
+  providerSpecificData?.profileArn || "" :
+  providerSpecificData?.profileArn || resolveDefaultProfileArn(authMethod);
 
   const getUsageParams = new URLSearchParams({
     isEmailRequired: "true",
     origin: "AI_EDITOR",
-    resourceType: "AGENTIC_REQUEST",
+    resourceType: "AGENTIC_REQUEST"
   });
 
   // Region-aware usage hosts. us-east-1 keeps the historical codewhisperer/q
@@ -82,63 +82,63 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
 
   // For compatibility, try multiple known Kiro usage endpoints
   const attempts = [
-    {
-      name: "codewhisperer-get",
-      run: async () => proxyAwareFetch(
-        `${cwHost}${limitsPath}?${getUsageParams.toString()}`,
-        {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Accept": "application/json",
-            "x-amz-user-agent": "aws-sdk-js/1.0.0 KiroIDE",
-            "user-agent": "aws-sdk-js/1.0.0 KiroIDE",
-            ...apiKeyHeaders,
-            ...externalIdpHeaders,
-          },
-        },
-        proxyOptions
-      ),
-    },
-    {
-      name: "codewhisperer-post",
-      run: async () => proxyAwareFetch(cwHost, {
-        method: "POST",
+  {
+    name: "codewhisperer-get",
+    run: async () => proxyAwareFetch(
+      `${cwHost}${limitsPath}?${getUsageParams.toString()}`,
+      {
+        method: "GET",
         headers: {
           "Authorization": `Bearer ${accessToken}`,
-          "Content-Type": "application/x-amz-json-1.0",
-          "x-amz-target": "AmazonCodeWhispererService.GetUsageLimits",
+          "Accept": "application/json",
+          "x-amz-user-agent": "aws-sdk-js/1.0.0 KiroIDE",
+          "user-agent": "aws-sdk-js/1.0.0 KiroIDE",
+          ...apiKeyHeaders,
+          ...externalIdpHeaders
+        }
+      },
+      proxyOptions
+    )
+  },
+  {
+    name: "codewhisperer-post",
+    run: async () => proxyAwareFetch(cwHost, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/x-amz-json-1.0",
+        "x-amz-target": "AmazonCodeWhispererService.GetUsageLimits",
+        "Accept": "application/json",
+        ...apiKeyHeaders,
+        ...externalIdpHeaders
+      },
+      body: JSON.stringify({
+        origin: "AI_EDITOR",
+        ...(profileArn ? { profileArn } : null),
+        resourceType: "AGENTIC_REQUEST"
+      })
+    }, proxyOptions)
+  },
+  {
+    name: "q-get",
+    run: async () => {
+      const params = new URLSearchParams({
+        origin: "AI_EDITOR",
+        ...(profileArn ? { profileArn } : null),
+        resourceType: "AGENTIC_REQUEST"
+      });
+      return proxyAwareFetch(`${qHost}${limitsPath}?${params}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
           "Accept": "application/json",
           ...apiKeyHeaders,
-          ...externalIdpHeaders,
-        },
-        body: JSON.stringify({
-          origin: "AI_EDITOR",
-          ...(profileArn ? { profileArn } : {}),
-          resourceType: "AGENTIC_REQUEST",
-        }),
-      }, proxyOptions),
-    },
-    {
-      name: "q-get",
-      run: async () => {
-        const params = new URLSearchParams({
-          origin: "AI_EDITOR",
-          ...(profileArn ? { profileArn } : {}),
-          resourceType: "AGENTIC_REQUEST",
-        });
-        return proxyAwareFetch(`${qHost}${limitsPath}?${params}`, {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Accept": "application/json",
-            ...apiKeyHeaders,
-            ...externalIdpHeaders,
-          },
-        }, proxyOptions);
-      },
-    },
-  ];
+          ...externalIdpHeaders
+        }
+      }, proxyOptions);
+    }
+  }];
+
 
   let sawAuthError = false;
   const errors = [];
@@ -165,7 +165,7 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
   if (sawAuthError && authMethod === "idc") {
     return {
       message: "Kiro quota API is unavailable for the current AWS IAM Identity Center session. Chat may still work. If this persists after renewing your session, reconnect Kiro.",
-      quotas: {},
+      quotas: {}
     };
   }
 
@@ -173,24 +173,24 @@ export async function getKiroUsage(accessToken, providerSpecificData, proxyOptio
   if (sawAuthError && (authMethod === "google" || authMethod === "github")) {
     return {
       message: "Kiro quota API authentication expired. Chat may still work.",
-      quotas: {},
+      quotas: {}
     };
   }
 
   if (sawAuthError) {
     return {
       message: "Kiro quota API rejected the current token. Chat may still work.",
-      quotas: {},
+      quotas: {}
     };
   }
 
   const fallbackMessage =
-    errors.length > 0
-      ? `Unable to fetch Kiro usage right now. (${errors[errors.length - 1]})`
-      : "Unable to fetch Kiro usage right now.";
+  errors.length > 0 ?
+  `Unable to fetch Kiro usage right now. (${errors[errors.length - 1]})` :
+  "Unable to fetch Kiro usage right now.";
 
   return {
     message: fallbackMessage,
-    quotas: {},
+    quotas: {}
   };
 }

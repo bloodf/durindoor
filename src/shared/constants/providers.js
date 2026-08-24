@@ -1,13 +1,14 @@
 // Provider definitions
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const MEDIA_ENTRY_KEYS = [
-  "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
-  "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
-  "searchViaChat", "searchConfig", "fetchConfig",
-  "modelsFetcher", "mediaPriority", "hiddenKinds",
-];
+"serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
+"imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
+"searchViaChat", "searchConfig", "fetchConfig",
+"modelsFetcher", "mediaPriority", "hiddenKinds"];
+
 
 // Build provider UI object from registry entry
 function buildProviderEntry(r) {
@@ -22,29 +23,29 @@ function buildProviderEntry(r) {
     ...display,
     id: r.id,
     alias: r.uiAlias || r.alias,
-    ...(r.hidden ? { hidden: true } : {}),
+    ...(r.hidden ? { hidden: true } : null),
     ...mediaFields,
-    ...(r.priority !== undefined ? { priority: r.priority } : {}),
-    ...(r.hasFree ? { hasFree: true } : {}),
-    ...(r.thinkingConfig ? { thinkingConfig: r.thinkingConfig } : {}),
-    ...(r.regions ? { regions: r.regions, defaultRegion: r.defaultRegion } : {}),
-    ...(r.hasProviderSpecificData ? { hasProviderSpecificData: true } : {}),
-    ...(r.noAuth ? { noAuth: true } : {}),
-    ...(r.oauth ? { oauth: true } : {}),
-    ...(r.transport?.baseUrl ? { defaultBaseUrl: r.transport.baseUrl } : {}),
-    ...(r.passthroughModels ? { passthroughModels: true } : {}),
-    ...(r.passthroughConnectionWideErrors ? { passthroughConnectionWideErrors: true } : {}),
-    ...(r.hasOAuth ? { hasOAuth: true } : {}),
-    ...(r.authModes ? { authModes: r.authModes } : {}),
-    ...(r.authType ? { authType: r.authType } : {}),
-    ...(r.authHint ? { authHint: r.authHint } : {}),
-    ...(r.aliases ? { aliases: r.aliases } : {}),
-    ...(r.oauth?.flowType ? { flowType: r.oauth.flowType } : {}),
+    ...(r.priority !== undefined ? { priority: r.priority } : null),
+    ...(r.hasFree ? { hasFree: true } : null),
+    ...(r.thinkingConfig ? { thinkingConfig: r.thinkingConfig } : null),
+    ...(r.regions ? { regions: r.regions, defaultRegion: r.defaultRegion } : null),
+    ...(r.hasProviderSpecificData ? { hasProviderSpecificData: true } : null),
+    ...(r.noAuth ? { noAuth: true } : null),
+    ...(r.oauth ? { oauth: true } : null),
+    ...(r.transport?.baseUrl ? { defaultBaseUrl: r.transport.baseUrl } : null),
+    ...(r.passthroughModels ? { passthroughModels: true } : null),
+    ...(r.passthroughConnectionWideErrors ? { passthroughConnectionWideErrors: true } : null),
+    ...(r.hasOAuth ? { hasOAuth: true } : null),
+    ...(r.authModes ? { authModes: r.authModes } : null),
+    ...(r.authType ? { authType: r.authType } : null),
+    ...(r.authHint ? { authHint: r.authHint } : null),
+    ...(r.aliases ? { aliases: r.aliases } : null),
+    ...(r.oauth?.flowType ? { flowType: r.oauth.flowType } : null)
   };
 }
 
 const byCategory = (cat) => Object.fromEntries(
-  REGISTRY.filter(r => r.category === cat).map(r => [r.id, buildProviderEntry(r)])
+  REGISTRY.filter((r) => r.category === cat).map((r) => [r.id, buildProviderEntry(r)])
 );
 
 export const FREE_PROVIDERS = byCategory("free");
@@ -75,28 +76,28 @@ export const WEB_COOKIE_PROVIDERS = byCategory("webCookie");
 
 // Media provider kinds — each kind maps to a route and endpoint config
 export const MEDIA_PROVIDER_KINDS = [
-  { id: "embedding",   label: "Embedding",      icon: "data_array",        endpoint: { method: "POST", path: "/v1/embeddings" } },
-  { id: "rerank",      label: "Rerank",         icon: "sort",              endpoint: { method: "POST", path: "/v1/rerank" } },
-  { id: "image",       label: "Text to Image",  icon: "brush",             endpoint: { method: "POST", path: "/v1/images/generations" } },
-  { id: "imageToText", label: "Image to Text",  icon: "image_search",      endpoint: { method: "POST", path: "/v1/images/understanding" } },
-  { id: "tts",         label: "Text To Speech", icon: "record_voice_over", endpoint: { method: "POST", path: "/v1/audio/speech" } },
-  { id: "stt",         label: "Speech To Text", icon: "mic",               endpoint: { method: "POST", path: "/v1/audio/transcriptions" } },
-  { id: "webSearch",   label: "Web Search",     icon: "travel_explore",    endpoint: { method: "POST", path: "/v1/search" } },
-  { id: "webFetch",    label: "Web Fetch",      icon: "language",          endpoint: { method: "POST", path: "/v1/web/fetch" } },
-  { id: "video",       label: "Video",          icon: "movie",             endpoint: { method: "POST", path: "/v1/video/generations" } },
-  { id: "music",       label: "Music",          icon: "music_note",        endpoint: { method: "POST", path: "/v1/audio/music" } },
-];
+{ id: "embedding", label: "Embedding", icon: "data_array", endpoint: { method: "POST", path: "/v1/embeddings" } },
+{ id: "rerank", label: "Rerank", icon: "sort", endpoint: { method: "POST", path: "/v1/rerank" } },
+{ id: "image", label: "Text to Image", icon: "brush", endpoint: { method: "POST", path: "/v1/images/generations" } },
+{ id: "imageToText", label: "Image to Text", icon: "image_search", endpoint: { method: "POST", path: "/v1/images/understanding" } },
+{ id: "tts", label: "Text To Speech", icon: "record_voice_over", endpoint: { method: "POST", path: "/v1/audio/speech" } },
+{ id: "stt", label: "Speech To Text", icon: "mic", endpoint: { method: "POST", path: "/v1/audio/transcriptions" } },
+{ id: "webSearch", label: "Web Search", icon: "travel_explore", endpoint: { method: "POST", path: "/v1/search" } },
+{ id: "webFetch", label: "Web Fetch", icon: "language", endpoint: { method: "POST", path: "/v1/web/fetch" } },
+{ id: "video", label: "Video", icon: "movie", endpoint: { method: "POST", path: "/v1/video/generations" } },
+{ id: "music", label: "Music", icon: "music_note", endpoint: { method: "POST", path: "/v1/audio/music" } }];
+
 
 export const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
 export const ANTHROPIC_COMPATIBLE_PREFIX = "anthropic-compatible-";
 export const CUSTOM_EMBEDDING_PREFIX = "custom-embedding-";
 
 export function isOpenAICompatibleProvider(providerId) {
-  return typeof providerId === "string" && providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
+  return isString(providerId) && providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
 }
 
 export function isAnthropicCompatibleProvider(providerId) {
-  return typeof providerId === "string" && providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX);
+  return isString(providerId) && providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX);
 }
 
 export function isLocalOllamaProvider(providerId) {
@@ -104,7 +105,7 @@ export function isLocalOllamaProvider(providerId) {
 }
 
 export function isCustomEmbeddingProvider(providerId) {
-  return typeof providerId === "string" && providerId.startsWith(CUSTOM_EMBEDDING_PREFIX);
+  return isString(providerId) && providerId.startsWith(CUSTOM_EMBEDDING_PREFIX);
 }
 
 /**
@@ -113,7 +114,7 @@ export function isCustomEmbeddingProvider(providerId) {
  * @returns {"free" | "freeTier" | null}
  */
 export function classifyFreeProvider(providerId) {
-  if (typeof providerId !== "string") return null;
+  if (!isString(providerId)) return null;
   if (FREE_PROVIDERS[providerId]) return "free";
   if (FREE_TIER_PROVIDERS[providerId]) return "freeTier";
   return null;
@@ -126,7 +127,7 @@ export const AI_PROVIDERS = { ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...OAUT
 export const AUTH_METHODS = {
   oauth: { id: "oauth" },
   apikey: { id: "apikey" },
-  cookie: { id: "cookie" },
+  cookie: { id: "cookie" }
 };
 
 // Helper: Get provider by alias
@@ -191,22 +192,22 @@ export function isHiddenProvider(providerId) {
 // Helper: Get providers by service kind (e.g. "tts", "embedding", "image")
 // Providers without serviceKinds default to ["llm"]
 export function getProvidersByKind(kind) {
-  return Object.values(AI_PROVIDERS)
-    .filter((p) => {
-      const kinds = p.serviceKinds ?? ["llm"];
-      if (!kinds.includes(kind)) return false;
-      if (p.hidden) return false;
-      if (p.hiddenKinds?.includes(kind)) return false;
-      return true;
-    })
-    .sort((a, b) => (a.priority ?? a.mediaPriority ?? 999) - (b.priority ?? b.mediaPriority ?? 999));
+  return Object.values(AI_PROVIDERS).
+  filter((p) => {
+    const kinds = p.serviceKinds ?? ["llm"];
+    if (!kinds.includes(kind)) return false;
+    if (p.hidden) return false;
+    if (p.hiddenKinds?.includes(kind)) return false;
+    return true;
+  }).
+  sort((a, b) => (a.priority ?? a.mediaPriority ?? 999) - (b.priority ?? b.mediaPriority ?? 999));
 }
 
 // Derive từ registry features flags
-export const USAGE_SUPPORTED_PROVIDERS = REGISTRY
-  .filter(r => r.features?.usage)
-  .map(r => r.id);
+export const USAGE_SUPPORTED_PROVIDERS = REGISTRY.
+filter((r) => r.features?.usage).
+map((r) => r.id);
 
-export const USAGE_APIKEY_PROVIDERS = REGISTRY
-  .filter(r => r.features?.usageApikey)
-  .map(r => r.id);
+export const USAGE_APIKEY_PROVIDERS = REGISTRY.
+filter((r) => r.features?.usageApikey).
+map((r) => r.id);

@@ -5,11 +5,11 @@ import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPi
 // Mutate one connection entry atomically. The provider and settings key are
 // derived from the stored connection so clients cannot write another object's
 // auto-ping map or bypass OAuth/provider eligibility.
-export async function PATCH(request, { params }) {
+import { isBoolean } from "@/shared/utils/typeChecks.js";export async function PATCH(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    if (typeof body?.enabled !== "boolean") {
+    if (!isBoolean(body?.enabled)) {
       return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
     }
 

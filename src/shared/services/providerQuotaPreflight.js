@@ -4,8 +4,9 @@ import { quotaScopedKey } from "open-sse/services/quota/normalize.js";
 import {
   QUOTA_IDENTITY_DEFAULTS,
   QUOTA_MAX_CLOCK_SKEW_MS,
-  QUOTA_MAX_RETRY_DELAY_MS,
-} from "@/shared/constants/quota";
+  QUOTA_MAX_RETRY_DELAY_MS } from
+"@/shared/constants/quota";
+import { isFunction, isNumber, isString } from "@/shared/utils/typeChecks.js";
 
 const BLOCKING_STATES = new Set(["exhausted", "cooldown"]);
 const POSITIVE_STATES = new Set(["available", "low"]);
@@ -20,7 +21,7 @@ const MISSING_DECISION = Object.freeze({
   sourceId: null,
   matchedIdentity: null,
   shouldRefresh: false,
-  quotaProfile: null,
+  quotaProfile: null
 });
 
 function timestamp(value) {
@@ -35,15 +36,15 @@ function safeIdentity(snapshot) {
     connectionId: identity.connectionId,
     provider: identity.provider,
     resourceKey: identity.resourceKey,
-    dimensionKey: identity.dimensionKey,
+    dimensionKey: identity.dimensionKey
   };
 }
 
 function retryDeadline(snapshot, now) {
-  const candidates = (snapshot?.state === "cooldown"
-    ? [snapshot?.timing?.cooldownUntil]
-    : [snapshot?.timing?.resetAt]
-  ).filter((value) => {
+  const candidates = (snapshot?.state === "cooldown" ?
+  [snapshot?.timing?.cooldownUntil] :
+  [snapshot?.timing?.resetAt]).
+  filter((value) => {
     const parsed = timestamp(value);
     return parsed !== null && parsed > now;
   });
@@ -57,9 +58,9 @@ function decisionFromRows(rows, { now, shouldRefresh, retryMode = "latest" }) {
     // Every applicable constraint must clear before this connection is usable.
     // A missing deadline is intentionally not fabricated.
     const deadlines = blockers.map((row) => retryDeadline(row, now)).filter(Boolean);
-    const retryAt = deadlines.length === blockers.length
-      ? deadlines.sort((a, b) => retryMode === "earliest" ? Date.parse(a) - Date.parse(b) : Date.parse(b) - Date.parse(a))[0]
-      : null;
+    const retryAt = deadlines.length === blockers.length ?
+    deadlines.sort((a, b) => retryMode === "earliest" ? Date.parse(a) - Date.parse(b) : Date.parse(b) - Date.parse(a))[0] :
+    null;
     const selected = blockers.find((row) => row.state === "cooldown") || blockers[0];
     return {
       eligible: false,
@@ -69,7 +70,7 @@ function decisionFromRows(rows, { now, shouldRefresh, retryMode = "latest" }) {
       retryAt,
       sourceId: selected.provenance?.sourceId || null,
       matchedIdentity: safeIdentity(selected),
-      shouldRefresh,
+      shouldRefresh
     };
   }
 
@@ -82,15 +83,15 @@ function decisionFromRows(rows, { now, shouldRefresh, retryMode = "latest" }) {
     retryAt: null,
     sourceId: selected?.provenance?.sourceId || null,
     matchedIdentity: safeIdentity(selected),
-    shouldRefresh,
+    shouldRefresh
   };
 }
 
 function normalizeResourceKeys(resourceKeys = []) {
   return new Set(
-    [...resourceKeys]
-      .filter((value) => typeof value === "string" && value.length > 0)
-      .slice(0, 16),
+    [...resourceKeys].
+    filter((value) => isString(value) && value.length > 0).
+    slice(0, 16)
   );
 }
 
@@ -106,17 +107,17 @@ function isFresh(snapshot, now) {
 }
 
 function namespaceOf(value) {
-  return typeof value === "string" && value.includes(":") ? value.slice(0, value.indexOf(":")) : null;
+  return isString(value) && value.includes(":") ? value.slice(0, value.indexOf(":")) : null;
 }
 
 function selectorMatches(row, selector, exactResources) {
   const resource = row?.identity?.resourceKey;
   const dimension = row?.identity?.dimensionKey;
   let resourceMatch = false;
-  if (selector.resource === "account") resourceMatch = resource === QUOTA_IDENTITY_DEFAULTS.resourceKey;
-  else if (selector.resource === "requested") resourceMatch = exactResources.has(resource);
-  else if (selector.resourceKey) resourceMatch = resource === selector.resourceKey;
-  else if (selector.resourceNamespace) resourceMatch = namespaceOf(resource) === selector.resourceNamespace;
+  if (selector.resource === "account") resourceMatch = resource === QUOTA_IDENTITY_DEFAULTS.resourceKey;else
+  if (selector.resource === "requested") resourceMatch = exactResources.has(resource);else
+  if (selector.resourceKey) resourceMatch = resource === selector.resourceKey;else
+  if (selector.resourceNamespace) resourceMatch = namespaceOf(resource) === selector.resourceNamespace;
   if (!resourceMatch) return false;
 
   const keys = Array.isArray(selector.dimensionKeys) ? selector.dimensionKeys : [];
@@ -127,24 +128,24 @@ function selectorMatches(row, selector, exactResources) {
 
 function rowRatio(row) {
   const explicit = row?.amounts?.remainingRatio;
-  if (typeof explicit === "number" && Number.isFinite(explicit) && explicit >= 0 && explicit <= 1) return explicit;
+  if (isNumber(explicit) && Number.isFinite(explicit) && explicit >= 0 && explicit <= 1) return explicit;
   const limit = row?.amounts?.limit;
   const remaining = row?.amounts?.remaining;
-  if (typeof limit === "number" && Number.isFinite(limit) && limit > 0
-      && typeof remaining === "number" && Number.isFinite(remaining) && remaining >= 0 && remaining <= limit) {
+  if (isNumber(limit) && Number.isFinite(limit) && limit > 0 && isNumber(
+    remaining) && Number.isFinite(remaining) && remaining >= 0 && remaining <= limit) {
     return remaining / limit;
   }
   return null;
 }
 
 function isRequestCapacityRow(row) {
-  return namespaceOf(row?.identity?.dimensionKey) === "requests"
-    && (row?.amounts?.unit == null || row.amounts.unit === "requests")
-    && row?.amounts?.limitKind === "bounded"
-    && typeof row?.amounts?.limit === "number"
-    && Number.isFinite(row.amounts.limit)
-    && typeof row?.amounts?.remaining === "number"
-    && Number.isFinite(row.amounts.remaining);
+  return namespaceOf(row?.identity?.dimensionKey) === "requests" && (
+  row?.amounts?.unit == null || row.amounts.unit === "requests") &&
+  row?.amounts?.limitKind === "bounded" && isNumber(
+    row?.amounts?.limit) &&
+  Number.isFinite(row.amounts.limit) && isNumber(
+    row?.amounts?.remaining) &&
+  Number.isFinite(row.amounts.remaining);
 }
 
 function reservationItem(row) {
@@ -156,7 +157,7 @@ function reservationItem(row) {
     limitValue: row.amounts.limit,
     remainingValue: row.amounts.remaining,
     basisObservedAt: row.timing.observedAt,
-    basisResetAt: row.timing.resetAt || null,
+    basisResetAt: row.timing.resetAt || null
   };
 }
 
@@ -167,30 +168,30 @@ function routingWindow(row) {
     resourceKey: row.identity.resourceKey,
     dimensionKey: row.identity.dimensionKey,
     unit: row.amounts.unit || namespaceOf(row.identity.dimensionKey) || null,
-    ratio,
+    ratio
   };
 }
 
 function comparisonKeyForRows(rows, gate) {
-  const dimensions = rows
-    .filter((row) => rowRatio(row) !== null)
-    .map((row) => {
-      const resource = row?.identity?.resourceKey || "resource";
-      // Normalize concrete model/feature identifiers to their configured
-      // namespace so equivalent cross-provider resources can share a cohort,
-      // while account/model/balance/project pools never compare accidentally.
-      const resourceClass = resource === QUOTA_IDENTITY_DEFAULTS.resourceKey
-        ? resource
-        : (namespaceOf(resource) || resource);
-      const dimension = row?.identity?.dimensionKey || "dimension";
-      const unit = row?.amounts?.unit || namespaceOf(dimension) || "unit";
-      return `${resourceClass}:${dimension}:${unit}`;
-    })
-    .sort();
+  const dimensions = rows.
+  filter((row) => rowRatio(row) !== null).
+  map((row) => {
+    const resource = row?.identity?.resourceKey || "resource";
+    // Normalize concrete model/feature identifiers to their configured
+    // namespace so equivalent cross-provider resources can share a cohort,
+    // while account/model/balance/project pools never compare accidentally.
+    const resourceClass = resource === QUOTA_IDENTITY_DEFAULTS.resourceKey ?
+    resource :
+    namespaceOf(resource) || resource;
+    const dimension = row?.identity?.dimensionKey || "dimension";
+    const unit = row?.amounts?.unit || namespaceOf(dimension) || "unit";
+    return `${resourceClass}:${dimension}:${unit}`;
+  }).
+  sort();
   if (dimensions.length === 0) return null;
-  const mode = gate?.choose === "first-present"
-    ? "first-present"
-    : gate?.aggregate === "any-sufficient" ? "any-sufficient" : "all-required";
+  const mode = gate?.choose === "first-present" ?
+  "first-present" :
+  gate?.aggregate === "any-sufficient" ? "any-sufficient" : "all-required";
   return `${mode}|${dimensions.join("+")}`;
 }
 
@@ -210,19 +211,19 @@ function combineReservationAlternatives(left = [], right = []) {
 
 function quotaProfileForGate(result, gate, now) {
   const freshDefinitive = result.selected.filter(
-    (row) => isFresh(row, now) && DEFINITIVE_STATES.has(row.state),
+    (row) => isFresh(row, now) && DEFINITIVE_STATES.has(row.state)
   );
   if (freshDefinitive.length === 0) return null;
   const positive = freshDefinitive.filter((row) => POSITIVE_STATES.has(row.state));
   const aggregate = gate?.aggregate === "any-sufficient" ? "any-sufficient" : "all-required";
   const ratios = freshDefinitive.map(rowRatio).filter((ratio) => ratio !== null);
-  const unreservedRatios = freshDefinitive
-    .filter((row) => !isRequestCapacityRow(row))
-    .map(rowRatio)
-    .filter((ratio) => ratio !== null);
-  const effectiveRatio = ratios.length === 0
-    ? null
-    : aggregate === "any-sufficient" ? Math.max(...ratios) : Math.min(...ratios);
+  const unreservedRatios = freshDefinitive.
+  filter((row) => !isRequestCapacityRow(row)).
+  map(rowRatio).
+  filter((ratio) => ratio !== null);
+  const effectiveRatio = ratios.length === 0 ?
+  null :
+  aggregate === "any-sufficient" ? Math.max(...ratios) : Math.min(...ratios);
   let reservationAlternatives = [];
   if (aggregate === "any-sufficient") {
     const requestCapacityRows = positive.filter(isRequestCapacityRow);
@@ -230,9 +231,9 @@ function quotaProfileForGate(result, gate, now) {
     // The provider may consume any positive pool. If one alternative cannot be
     // represented as an atomic request debit, choosing only a request pool
     // would falsely fail closed when the unreservable pool remains usable.
-    reservationAlternatives = hasUnreservableAlternative
-      ? []
-      : requestCapacityRows.map((row) => [reservationItem(row)]);
+    reservationAlternatives = hasUnreservableAlternative ?
+    [] :
+    requestCapacityRows.map((row) => [reservationItem(row)]);
   } else {
     const requestCapacityRows = positive.filter(isRequestCapacityRow);
     if (requestCapacityRows.length > 0) {
@@ -247,26 +248,26 @@ function quotaProfileForGate(result, gate, now) {
     freshness: "fresh",
     gateMode: gate?.choose === "first-present" ? "first-present" : aggregate,
     effectiveRatio,
-    unreservedEffectiveRatio: unreservedRatios.length === 0
-      ? null
-      : aggregate === "any-sufficient" ? Math.max(...unreservedRatios) : Math.min(...unreservedRatios),
+    unreservedEffectiveRatio: unreservedRatios.length === 0 ?
+    null :
+    aggregate === "any-sufficient" ? Math.max(...unreservedRatios) : Math.min(...unreservedRatios),
     comparisonKey: comparisonKeyForRows(freshDefinitive, gate),
     routingWindows: freshDefinitive.map(routingWindow).filter(Boolean),
     reservationAlternatives,
-    reason: result.decision?.skip ? result.decision.reason : (result.decision?.reason || "available"),
+    reason: result.decision?.skip ? result.decision.reason : result.decision?.reason || "available"
   };
 }
 
 function evaluateGate(rows, gate, exactResources, now, { connectionWide = false } = {}) {
   const selectors = (gate?.selectors || []).filter(
-    (selector) => !(connectionWide && selector.resource === "requested"),
+    (selector) => !(connectionWide && selector.resource === "requested")
   );
   if (selectors.length === 0) return { decision: null, selected: [], gate };
   let selected = [];
   if (gate.choose === "first-present") {
     for (const selector of selectors) {
       const matches = rows.filter((row) => selectorMatches(row, selector, exactResources));
-      if (matches.length > 0) { selected = matches; break; }
+      if (matches.length > 0) {selected = matches;break;}
     }
   } else {
     selected = rows.filter((row) => selectors.some((selector) => selectorMatches(row, selector, exactResources)));
@@ -286,7 +287,7 @@ function evaluateGate(rows, gate, exactResources, now, { connectionWide = false 
       return {
         decision: decisionFromRows(selected, { now, shouldRefresh: false, retryMode: "earliest" }),
         selected,
-        gate,
+        gate
       };
     }
   } else {
@@ -313,14 +314,14 @@ function failedFetchDecision(fetchState, now, refreshSupported) {
   const attemptedAt = timestamp(fetchState.attemptedAt);
   if (attemptedAt === null || attemptedAt > now + QUOTA_MAX_CLOCK_SKEW_MS) return null;
   const retryAt = timestamp(fetchState.retryAt);
-  const validRetryAt = retryAt !== null
-    && retryAt >= attemptedAt
-    && retryAt <= attemptedAt + QUOTA_MAX_RETRY_DELAY_MS
-    ? retryAt
-    : null;
+  const validRetryAt = retryAt !== null &&
+  retryAt >= attemptedAt &&
+  retryAt <= attemptedAt + QUOTA_MAX_RETRY_DELAY_MS ?
+  retryAt :
+  null;
   const nextRefreshAt = validRetryAt || Math.min(
     attemptedAt + PROVIDER_QUOTA_DEFAULTS.cacheTtlMs,
-    attemptedAt + QUOTA_MAX_RETRY_DELAY_MS,
+    attemptedAt + QUOTA_MAX_RETRY_DELAY_MS
   );
   return {
     ...MISSING_DECISION,
@@ -328,7 +329,7 @@ function failedFetchDecision(fetchState, now, refreshSupported) {
     freshness: "fresh",
     retryAt: nextRefreshAt > now ? new Date(nextRefreshAt).toISOString() : null,
     sourceId: fetchState.sourceId || null,
-    shouldRefresh: refreshSupported && now >= nextRefreshAt,
+    shouldRefresh: refreshSupported && now >= nextRefreshAt
   };
 }
 
@@ -339,7 +340,7 @@ function failedFetchDecision(fetchState, now, refreshSupported) {
 export function buildQuotaResourceKeys({ provider, modelCandidates = [], quotaFamily = null } = {}) {
   const keys = new Set();
   for (const model of [...modelCandidates].slice(0, 8)) {
-    if (typeof model === "string" && model.trim()) keys.add(quotaScopedKey("model", model));
+    if (isString(model) && model.trim()) keys.add(quotaScopedKey("model", model));
   }
 
   const config = getProviderQuotaConfig(provider);
@@ -369,22 +370,22 @@ export function evaluateProviderQuotaPreflight(snapshots = [], {
   trackerError = false,
   fetchState = null,
   refreshSupported = false,
-  connectionWide = false,
+  connectionWide = false
 } = {}) {
   const clock = Number(now);
   const safeNow = Number.isFinite(clock) ? clock : Date.now();
   const exactResources = normalizeResourceKeys(resourceKeys);
-  const forConnection = Array.isArray(snapshots)
-    ? snapshots.filter((snapshot) => !connectionId || snapshot?.identity?.connectionId === connectionId)
-    : [];
+  const forConnection = Array.isArray(snapshots) ?
+  snapshots.filter((snapshot) => !connectionId || snapshot?.identity?.connectionId === connectionId) :
+  [];
 
   const runtimeRows = forConnection.filter((snapshot) =>
-    snapshot?.provenance?.sourceType === "response_headers"
-    && isApplicable(snapshot, exactResources)
-    && (!connectionWide || snapshot?.identity?.resourceKey === QUOTA_IDENTITY_DEFAULTS.resourceKey),
+  snapshot?.provenance?.sourceType === "response_headers" &&
+  isApplicable(snapshot, exactResources) && (
+  !connectionWide || snapshot?.identity?.resourceKey === QUOTA_IDENTITY_DEFAULTS.resourceKey)
   );
   const freshRuntimeBlockers = runtimeRows.filter(
-    (row) => isFresh(row, safeNow) && BLOCKING_STATES.has(row.state),
+    (row) => isFresh(row, safeNow) && BLOCKING_STATES.has(row.state)
   );
   if (freshRuntimeBlockers.length > 0) {
     return decisionFromRows(freshRuntimeBlockers, { now: safeNow, shouldRefresh: false });
@@ -393,41 +394,41 @@ export function evaluateProviderQuotaPreflight(snapshots = [], {
   const resolvedProvider = provider || forConnection[0]?.identity?.provider || null;
   const config = getProviderQuotaConfig(resolvedProvider);
   const providerRows = forConnection.filter((snapshot) =>
-    snapshot?.provenance?.sourceType === "provider_api"
-    && snapshot?.provenance?.sourceId === config?.sourceId,
+  snapshot?.provenance?.sourceType === "provider_api" &&
+  snapshot?.provenance?.sourceId === config?.sourceId
   );
   const gateResults = (config?.preflightPolicy?.gates || []).map((gate) =>
-    evaluateGate(providerRows, gate, exactResources, safeNow, { connectionWide }),
+  evaluateGate(providerRows, gate, exactResources, safeNow, { connectionWide })
   );
   const blocking = gateResults.map((result) => result.decision).filter((decision) => decision?.skip);
   if (blocking.length > 0) {
     const rows = blocking.map((decision) => ({
       state: decision.reason,
-      timing: decision.reason === "cooldown"
-        ? { cooldownUntil: decision.retryAt }
-        : { resetAt: decision.retryAt },
+      timing: decision.reason === "cooldown" ?
+      { cooldownUntil: decision.retryAt } :
+      { resetAt: decision.retryAt },
       identity: decision.matchedIdentity,
-      provenance: { sourceId: decision.sourceId },
+      provenance: { sourceId: decision.sourceId }
     }));
     const decision = decisionFromRows(rows, { now: safeNow, shouldRefresh: false });
     const sourceResult = gateResults.find((result) => result.decision?.skip);
     return {
       ...decision,
-      quotaProfile: sourceResult ? quotaProfileForGate(sourceResult, sourceResult.gate, safeNow) : null,
+      quotaProfile: sourceResult ? quotaProfileForGate(sourceResult, sourceResult.gate, safeNow) : null
     };
   }
   const decisive = gateResults.map((result) => result.decision).filter(Boolean);
   const hasConfiguredRows = gateResults.some((result) => result.selected.length > 0);
   if (decisive.length > 0 && decisive.every((decision) =>
-    decision.freshness === "fresh"
-    && !decision.skip
-    && POSITIVE_STATES.has(decision.reason),
+  decision.freshness === "fresh" &&
+  !decision.skip &&
+  POSITIVE_STATES.has(decision.reason)
   )) {
     const low = decisive.find((decision) => decision.reason === "low");
     const decision = low || decisive[0];
-    const profiles = gateResults
-      .map((result) => quotaProfileForGate(result, result.gate, safeNow))
-      .filter((profile) => profile?.tracked);
+    const profiles = gateResults.
+    map((result) => quotaProfileForGate(result, result.gate, safeNow)).
+    filter((profile) => profile?.tracked);
     const profile = profiles.length === 0 ? null : profiles.reduce((combined, current) => {
       if (!combined) return current;
       const ratios = [combined.effectiveRatio, current.effectiveRatio].filter((ratio) => ratio !== null);
@@ -441,9 +442,9 @@ export function evaluateProviderQuotaPreflight(snapshots = [], {
         routingWindows: [...(combined.routingWindows || []), ...(current.routingWindows || [])],
         reservationAlternatives: combineReservationAlternatives(
           combined.reservationAlternatives,
-          current.reservationAlternatives,
+          current.reservationAlternatives
         ),
-        reason: combined.reason === "low" || current.reason === "low" ? "low" : "available",
+        reason: combined.reason === "low" || current.reason === "low" ? "low" : "available"
       };
     }, null);
     return { ...decision, quotaProfile: profile };
@@ -454,9 +455,9 @@ export function evaluateProviderQuotaPreflight(snapshots = [], {
   }
   const fetchFailure = failedFetchDecision(fetchState, safeNow, refreshSupported);
   if (fetchFailure) return fetchFailure;
-  const staleDecision = decisive.find((decision) => decision.reason === "tracker_error")
-    || decisive.find((decision) => decision.reason === "unknown")
-    || decisive.find((decision) => decision.reason === "stale");
+  const staleDecision = decisive.find((decision) => decision.reason === "tracker_error") ||
+  decisive.find((decision) => decision.reason === "unknown") ||
+  decisive.find((decision) => decision.reason === "stale");
   if (staleDecision) return { ...staleDecision, shouldRefresh: refreshSupported };
   if (runtimeRows.length > 0 || hasConfiguredRows) {
     return { ...MISSING_DECISION, reason: "stale", freshness: "stale", shouldRefresh: refreshSupported };
@@ -471,7 +472,7 @@ export async function inspectProviderQuota(connections, {
   now = Date.now(),
   connectionWide = false,
   snapshotsLoader = null,
-  fetchStateLoader = null,
+  fetchStateLoader = null
 } = {}) {
   const config = getProviderQuotaConfig(provider);
   const refreshSupported = Boolean(config);
@@ -481,20 +482,20 @@ export async function inspectProviderQuota(connections, {
   try {
     const loader = snapshotsLoader || (async (query) => {
       const db = await import("@/lib/localDb");
-      if (typeof db.listProviderQuotaSnapshots !== "function") return [];
+      if (!isFunction(db.listProviderQuotaSnapshots)) return [];
       return db.listProviderQuotaSnapshots(query);
     });
     snapshots = await loader({ provider, includeStale: true, now });
     if (config?.sourceId) {
       const loadFetchState = fetchStateLoader || (snapshotsLoader ? async () => null : async (query) => {
         const db = await import("@/lib/localDb");
-        if (typeof db.getQuotaFetchState !== "function") return null;
+        if (!isFunction(db.getQuotaFetchState)) return null;
         return db.getQuotaFetchState(query, { now });
       });
       const entries = await Promise.all((connections || []).map(async (connection) => [
-        connection.id,
-        await loadFetchState({ connectionId: connection.id, provider, sourceId: config.sourceId }, { now }),
-      ]));
+      connection.id,
+      await loadFetchState({ connectionId: connection.id, provider, sourceId: config.sourceId }, { now })]
+      ));
       fetchStates = new Map(entries);
     }
   } catch {
@@ -502,16 +503,16 @@ export async function inspectProviderQuota(connections, {
   }
 
   return new Map((connections || []).map((connection) => [
-    connection.id,
-    evaluateProviderQuotaPreflight(snapshots, {
-      connectionId: connection.id,
-      provider,
-      resourceKeys,
-      now,
-      trackerError,
-      fetchState: fetchStates.get(connection.id) || null,
-      refreshSupported,
-      connectionWide,
-    }),
-  ]));
+  connection.id,
+  evaluateProviderQuotaPreflight(snapshots, {
+    connectionId: connection.id,
+    provider,
+    resourceKeys,
+    now,
+    trackerError,
+    fetchState: fetchStates.get(connection.id) || null,
+    refreshSupported,
+    connectionWide
+  })]
+  ));
 }

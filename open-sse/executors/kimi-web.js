@@ -16,13 +16,14 @@ import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { extractKimiJwt } from "@/lib/providers/webCookieAuth";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 export { extractKimiJwt };
 
 const BASE_URL = "https://www.kimi.com";
 const CHAT_URL = `${BASE_URL}/apiv2/kimi.gateway.chat.v1.ChatService/Chat`;
 const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 /**
  * Map a Kimi model id (the `key` field from `GetAvailableModels`) to the
@@ -46,9 +47,9 @@ export function frameConnectMessage(json) {
   const framed = new Uint8Array(5 + payload.length);
   framed[0] = 0; // flags: 0 = uncompressed
   const len = payload.length;
-  framed[1] = (len >>> 24) & 0xff;
-  framed[2] = (len >>> 16) & 0xff;
-  framed[3] = (len >>> 8) & 0xff;
+  framed[1] = len >>> 24 & 0xff;
+  framed[2] = len >>> 16 & 0xff;
+  framed[3] = len >>> 8 & 0xff;
   framed[4] = len & 0xff;
   framed.set(payload, 5);
   return framed;
@@ -67,10 +68,10 @@ export function decodeConnectFrame(buf, byteOffset) {
   if (byteOffset + 5 > buf.length) return { consumed: 0, frame: null };
   const flags = buf[byteOffset];
   const len =
-    (buf[byteOffset + 1] << 24) |
-    (buf[byteOffset + 2] << 16) |
-    (buf[byteOffset + 3] << 8) |
-    buf[byteOffset + 4];
+  buf[byteOffset + 1] << 24 |
+  buf[byteOffset + 2] << 16 |
+  buf[byteOffset + 3] << 8 |
+  buf[byteOffset + 4];
   const msgLen = len < 0 ? len + 0x100000000 : len;
   if (msgLen > MAX_FRAME_LEN) return { consumed: -1, frame: null };
   if (byteOffset + 5 + msgLen > buf.length) return { consumed: 0, frame: null };
@@ -132,10 +133,10 @@ export function isEndOfStream(msg) {
   if (!msg) return false;
   const message = msg.message || null;
   if (
-    message &&
-    String(message.status || "") === "MESSAGE_STATUS_COMPLETED" &&
-    String(message.role || "") === "assistant"
-  ) {
+  message &&
+  String(message.status || "") === "MESSAGE_STATUS_COMPLETED" &&
+  String(message.role || "") === "assistant")
+  {
     return true;
   }
   return false;
@@ -155,7 +156,7 @@ export function getConnectError(flags, msg) {
   if (((flags || 0) & 0x02) === 0) return null;
   const err = msg && (msg.error || msg.Error);
   if (!err) return null;
-  const detail = typeof err === "string" ? err : (err.message || err.msg || err.code || "upstream error");
+  const detail = isString(err) ? err : err.message || err.msg || err.code || "upstream error";
   return String(detail);
 }
 
@@ -168,18 +169,18 @@ export function getConnectError(flags, msg) {
  * @returns {string}
  */
 export function contentToText(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (!Array.isArray(content)) return JSON.stringify(content ?? "");
-  return content
-    .map((part) => {
-      if (part && typeof part === "object") {
-        if (part.type === "text" && typeof part.text === "string") return part.text;
-        return `[unsupported-part: ${part.type ?? "unknown"}]`;
-      }
-      return typeof part === "string" ? part : "";
-    })
-    .filter(Boolean)
-    .join("\n");
+  return content.
+  map((part) => {
+    if (part && isObject(part)) {
+      if (part.type === "text" && isString(part.text)) return part.text;
+      return `[unsupported-part: ${part.type ?? "unknown"}]`;
+    }
+    return isString(part) ? part : "";
+  }).
+  filter(Boolean).
+  join("\n");
 }
 
 /**
@@ -226,7 +227,7 @@ export class KimiWebExecutor extends BaseExecutor {
       "User-Agent": USER_AGENT,
       Origin: BASE_URL,
       Referer: `${BASE_URL}/`,
-      "connect-protocol-version": "1",
+      "connect-protocol-version": "1"
     };
     if (jwt) {
       headers.Authorization = `Bearer ${jwt}`;
@@ -248,9 +249,9 @@ export class KimiWebExecutor extends BaseExecutor {
       message: {
         role: "user",
         blocks: [{ message_id: "", text: { content: prompt } }],
-        scenario,
+        scenario
       },
-      options: { thinking: wantThinking, enable_plugin: true },
+      options: { thinking: wantThinking, enable_plugin: true }
     });
   }
 
@@ -276,7 +277,7 @@ export class KimiWebExecutor extends BaseExecutor {
         ),
         url: CHAT_URL,
         headers: {},
-        transformedBody: bodyObj,
+        transformedBody: bodyObj
       };
     }
 
@@ -300,11 +301,11 @@ export class KimiWebExecutor extends BaseExecutor {
     const connectCtrl = new AbortController();
     const connectTimer = setTimeout(
       () => connectCtrl.abort(new Error("fetch connect timeout")),
-      FETCH_CONNECT_TIMEOUT_MS,
+      FETCH_CONNECT_TIMEOUT_MS
     );
-    const mergedSignal = signal
-      ? AbortSignal.any([signal, connectCtrl.signal])
-      : connectCtrl.signal;
+    const mergedSignal = signal ?
+    AbortSignal.any([signal, connectCtrl.signal]) :
+    connectCtrl.signal;
 
     let upstream;
     try {
@@ -312,14 +313,14 @@ export class KimiWebExecutor extends BaseExecutor {
         method: "POST",
         headers: reqHeaders,
         body: new Uint8Array(framedBody),
-        signal: mergedSignal,
+        signal: mergedSignal
       }, proxyOptions);
     } catch (err) {
       return {
         response: errorResponse(502, `Kimi fetch failed: ${err instanceof Error ? err.message : "unknown"}`),
         url: CHAT_URL,
         headers: {},
-        transformedBody: bodyObj,
+        transformedBody: bodyObj
       };
     } finally {
       // Headers have arrived (or fetch rejected) — stop the connect timer so it
@@ -337,7 +338,7 @@ export class KimiWebExecutor extends BaseExecutor {
         response: errorResponse(upstream.status, `Kimi error: ${sanitizeErrorMessage(scrubbed)}`),
         url: CHAT_URL,
         headers: reqHeaders,
-        transformedBody: bodyObj,
+        transformedBody: bodyObj
       };
     }
 
@@ -351,7 +352,7 @@ export class KimiWebExecutor extends BaseExecutor {
         object: "chat.completion.chunk",
         created,
         model: modelId,
-        choices: [{ index: 0, delta, finish_reason: finish }],
+        choices: [{ index: 0, delta, finish_reason: finish }]
       };
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
     };
@@ -432,11 +433,11 @@ export class KimiWebExecutor extends BaseExecutor {
               try {
                 controller.error(err);
               } catch {
-                /* controller already closed */
-              }
+
+                /* controller already closed */}
             }
           }
-        },
+        }
       });
 
       return {
@@ -444,12 +445,12 @@ export class KimiWebExecutor extends BaseExecutor {
           headers: {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-          },
+            Connection: "keep-alive"
+          }
         }),
         url: CHAT_URL,
         headers: reqHeaders,
-        transformedBody: JSON.parse(reqBody),
+        transformedBody: JSON.parse(reqBody)
       };
     }
 
@@ -482,7 +483,7 @@ export class KimiWebExecutor extends BaseExecutor {
               response: errorResponse(503, "kimi-web oversized frame"),
               url: CHAT_URL,
               headers: reqHeaders,
-              transformedBody: JSON.parse(reqBody),
+              transformedBody: JSON.parse(reqBody)
             };
           }
           if (consumed === 0) break;
@@ -498,8 +499,8 @@ export class KimiWebExecutor extends BaseExecutor {
           if (!frame?.message) continue;
           const delta = extractDelta(frame.message);
           if (delta) {
-            if (delta.kind === "think") reasoning += delta.text;
-            else answer += delta.text;
+            if (delta.kind === "think") reasoning += delta.text;else
+            answer += delta.text;
           }
           if (isEndOfStream(frame.message)) {
             // Stop the OUTER read loop too: once the assistant message is
@@ -512,8 +513,8 @@ export class KimiWebExecutor extends BaseExecutor {
         buffer = completed ? buffer : buffer.subarray(offset);
       }
     } catch {
-      /* best-effort — return what we have */
-    } finally {
+
+      /* best-effort — return what we have */} finally {
       // Release the upstream connection promptly when we stop early.
       await reader.cancel().catch(() => {});
     }
@@ -524,7 +525,7 @@ export class KimiWebExecutor extends BaseExecutor {
         response: errorResponse(502, `Kimi error: ${sanitizeErrorMessage(scrubbed)}`),
         url: CHAT_URL,
         headers: reqHeaders,
-        transformedBody: JSON.parse(reqBody),
+        transformedBody: JSON.parse(reqBody)
       };
     }
 
@@ -535,15 +536,15 @@ export class KimiWebExecutor extends BaseExecutor {
       object: "chat.completion",
       created,
       model: modelId,
-      choices: [{ index: 0, message, finish_reason: "stop" }],
+      choices: [{ index: 0, message, finish_reason: "stop" }]
     };
     return {
       response: new Response(JSON.stringify(completion), {
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" }
       }),
       url: CHAT_URL,
       headers: reqHeaders,
-      transformedBody: JSON.parse(reqBody),
+      transformedBody: JSON.parse(reqBody)
     };
   }
 }

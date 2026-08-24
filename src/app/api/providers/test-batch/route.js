@@ -5,9 +5,10 @@ import {
   OAUTH_PROVIDERS,
   APIKEY_PROVIDERS,
   OPENAI_COMPATIBLE_PREFIX,
-  ANTHROPIC_COMPATIBLE_PREFIX,
-} from "@/shared/constants/providers";
+  ANTHROPIC_COMPATIBLE_PREFIX } from
+"@/shared/constants/providers";
 import { testSingleConnection } from "../[id]/test/testUtils.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 function getAuthGroup(providerId, connection = null) {
   // Prioritize authType from connection if available
@@ -19,24 +20,24 @@ function getAuthGroup(providerId, connection = null) {
     }
     return connection.authType;
   }
-  
+
   // Fallback to constants
   if (FREE_PROVIDERS[providerId]) return "free";
   if (OAUTH_PROVIDERS[providerId]) return "oauth";
   if (APIKEY_PROVIDERS[providerId]) return "apikey";
   if (
-    typeof providerId === "string" &&
-    (providerId.startsWith(OPENAI_COMPATIBLE_PREFIX) || providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX))
-  )
-    return "compatible";
+  isString(providerId) && (
+  providerId.startsWith(OPENAI_COMPATIBLE_PREFIX) || providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX)))
+
+  return "compatible";
   return "apikey";
 }
 
 function isCompatibleProvider(providerId) {
   return (
-    typeof providerId === "string" &&
-    (providerId.startsWith(OPENAI_COMPATIBLE_PREFIX) || providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX))
-  );
+    isString(providerId) && (
+    providerId.startsWith(OPENAI_COMPATIBLE_PREFIX) || providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX)));
+
 }
 
 // POST /api/providers/test-batch - Test multiple connections by group
@@ -77,7 +78,7 @@ export async function POST(request) {
         providerId: providerId || null,
         results: [],
         summary: { total: 0, passed: 0, failed: 0 },
-        testedAt: new Date().toISOString(),
+        testedAt: new Date().toISOString()
       });
     }
 
@@ -95,7 +96,7 @@ export async function POST(request) {
           error: data.error || null,
           diagnosis: data.diagnosis || null,
           statusCode: data.statusCode || null,
-          testedAt: data.testedAt || new Date().toISOString(),
+          testedAt: data.testedAt || new Date().toISOString()
         });
       } catch (error) {
         results.push({
@@ -108,7 +109,7 @@ export async function POST(request) {
           error: error.message,
           diagnosis: { type: "network_error", source: "local", code: null, message: error.message },
           statusCode: null,
-          testedAt: new Date().toISOString(),
+          testedAt: new Date().toISOString()
         });
       }
     }
@@ -121,8 +122,8 @@ export async function POST(request) {
       summary: {
         total: results.length,
         passed: results.filter((r) => r.valid).length,
-        failed: results.filter((r) => !r.valid).length,
-      },
+        failed: results.filter((r) => !r.valid).length
+      }
     });
   } catch (error) {
     console.log("Error in batch test:", error);

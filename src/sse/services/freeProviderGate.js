@@ -1,11 +1,12 @@
 import { FREE_NO_AUTH_PROVIDER_IDS, isFreeNoAuthProviderById } from "@/shared/constants/freeNoAuthProviders";
 import { resolveProviderId } from "@/shared/constants/providers.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 function disabledSet(settings) {
   return new Set(
-    Array.isArray(settings?.disabledFreeProviders)
-      ? settings.disabledFreeProviders
-      : []
+    Array.isArray(settings?.disabledFreeProviders) ?
+    settings.disabledFreeProviders :
+    []
   );
 }
 
@@ -18,7 +19,7 @@ function disabledSet(settings) {
  * @returns {boolean}
  */
 export function isFreeNoAuthProviderDisabled(providerIdOrAlias, settings) {
-  if (!providerIdOrAlias || typeof providerIdOrAlias !== "string") return false;
+  if (!providerIdOrAlias || !isString(providerIdOrAlias)) return false;
   const providerId = resolveProviderId(providerIdOrAlias);
   if (!isFreeNoAuthProviderById(providerId)) return false;
   return disabledSet(settings).has(providerId);

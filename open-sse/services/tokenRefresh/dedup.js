@@ -1,5 +1,6 @@
 import { MEMORY_CONFIG } from "../../config/runtimeConfig.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
+import { isObject } from "@/shared/utils/typeChecks.js";
 
 const refreshDedupCache = new Map();
 
@@ -14,7 +15,7 @@ function clearEntryTimer(entry) {
 
 function deleteEntry(key, expectedEntry = null) {
   const current = refreshDedupCache.get(key);
-  if (!current || (expectedEntry && current !== expectedEntry)) return false;
+  if (!current || expectedEntry && current !== expectedEntry) return false;
   clearEntryTimer(current);
   refreshDedupCache.delete(key);
   return true;
@@ -48,7 +49,7 @@ function refreshCacheKey(provider, oldToken, proxyOptions) {
     "oauth-refresh-dedup",
     provider,
     oldToken,
-    proxyRouteFingerprint(proxyOptions),
+    proxyRouteFingerprint(proxyOptions)
   );
 }
 
@@ -70,24 +71,24 @@ function providerLogLabel(provider) {
  */
 export function proxyRouteFingerprint(proxyOptions = null) {
   const options = proxyOptions || {};
-  const oauthProxy = options.oauthProxy && typeof options.oauthProxy === "object"
-    ? options.oauthProxy
-    : {};
+  const oauthProxy = options.oauthProxy && isObject(options.oauthProxy) ?
+  options.oauthProxy :
+  {};
 
   const route = JSON.stringify([
-    normalizeRouteValue(oauthProxy.mode || options.proxyMode),
-    normalizeRouteValue(
-      oauthProxy.poolId ||
-      options.proxyPoolId ||
-      options.connectionProxyPoolId
-    ),
-    options.enabled === true || options.connectionProxyEnabled === true,
-    normalizeRouteValue(options.url ?? options.connectionProxyUrl),
-    normalizeRouteValue(options.noProxy ?? options.connectionNoProxy),
-    normalizeRouteValue(options.vercelRelayUrl),
-    options.strictProxy === true,
-    options.disableEnvProxy === true,
-  ]);
+  normalizeRouteValue(oauthProxy.mode || options.proxyMode),
+  normalizeRouteValue(
+    oauthProxy.poolId ||
+    options.proxyPoolId ||
+    options.connectionProxyPoolId
+  ),
+  options.enabled === true || options.connectionProxyEnabled === true,
+  normalizeRouteValue(options.url ?? options.connectionProxyUrl),
+  normalizeRouteValue(options.noProxy ?? options.connectionNoProxy),
+  normalizeRouteValue(options.vercelRelayUrl),
+  options.strictProxy === true,
+  options.disableEnvProxy === true]
+  );
 
   return digestMemoryKey("oauth-proxy-route", route);
 }
@@ -130,21 +131,21 @@ export async function dedupRefresh(provider, oldToken, fn, log, proxyOptions = n
 
   makeRoomForEntry();
   const entry = { promise: null, expiresAt: 0, timer: null };
-  const promise = Promise.resolve()
-    .then(fn)
-    .then((result) => {
-      if (refreshDedupCache.get(key) === entry) {
-        deleteEntry(key, entry);
-        const resultEntry = { result, expiresAt: 0, timer: null };
-        refreshDedupCache.set(key, resultEntry);
-        scheduleEntryExpiry(key, resultEntry, MEMORY_CONFIG.refreshDedupResultTtlMs);
-      }
-      return result;
-    })
-    .catch((error) => {
+  const promise = Promise.resolve().
+  then(fn).
+  then((result) => {
+    if (refreshDedupCache.get(key) === entry) {
       deleteEntry(key, entry);
-      throw error;
-    });
+      const resultEntry = { result, expiresAt: 0, timer: null };
+      refreshDedupCache.set(key, resultEntry);
+      scheduleEntryExpiry(key, resultEntry, MEMORY_CONFIG.refreshDedupResultTtlMs);
+    }
+    return result;
+  }).
+  catch((error) => {
+    deleteEntry(key, entry);
+    throw error;
+  });
 
   entry.promise = promise;
   refreshDedupCache.set(key, entry);
@@ -158,7 +159,7 @@ export function __getRefreshDedupCacheSnapshotForTesting() {
     size: refreshDedupCache.size,
     maxSize: MEMORY_CONFIG.refreshDedupMaxSize,
     resultTtlMs: MEMORY_CONFIG.refreshDedupResultTtlMs,
-    inFlightTtlMs: MEMORY_CONFIG.refreshDedupInFlightTtlMs,
+    inFlightTtlMs: MEMORY_CONFIG.refreshDedupInFlightTtlMs
   };
 }
 

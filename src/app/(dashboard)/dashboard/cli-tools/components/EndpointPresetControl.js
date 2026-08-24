@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { isBrowser } from "@/shared/utils/typeChecks.js";
 
 const STORAGE_KEY = "durindoor.cliToolEndpointPresets";
 
@@ -16,7 +17,7 @@ function normalizePresets(value) {
 }
 
 function readPresets() {
-  if (typeof window === "undefined") return [];
+  if (!isBrowser()) return [];
   try {
     return normalizePresets(JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]"));
   } catch {
@@ -25,7 +26,7 @@ function readPresets() {
 }
 
 function writePresets(presets) {
-  if (typeof window === "undefined") return;
+  if (!isBrowser()) return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizePresets(presets)));
 }
 
@@ -33,7 +34,7 @@ export default function EndpointPresetControl({
   baseUrl,
   apiKey,
   onBaseUrlChange,
-  onApiKeyChange,
+  onApiKeyChange
 }) {
   const [presets, setPresets] = useState([]);
   const [selectedName, setSelectedName] = useState("");
@@ -71,9 +72,9 @@ export default function EndpointPresetControl({
 
     const nextPreset = { name: name.trim(), baseUrl: trimmedBaseUrl, apiKey: trimmedApiKey };
     const nextPresets = [
-      ...presets.filter((preset) => preset.name !== nextPreset.name),
-      nextPreset,
-    ].sort((a, b) => a.name.localeCompare(b.name));
+    ...presets.filter((preset) => preset.name !== nextPreset.name),
+    nextPreset].
+    sort((a, b) => a.name.localeCompare(b.name));
 
     setPresets(nextPresets);
     setSelectedName(nextPreset.name);
@@ -95,34 +96,34 @@ export default function EndpointPresetControl({
       <select
         value={selectedName}
         onChange={(event) => handleSelect(event.target.value)}
-        className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
-      >
+        className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50">
+        
         <option value="">Manual / current endpoint</option>
-        {presets.map((preset) => (
-          <option key={preset.name} value={preset.name}>
+        {presets.map((preset) =>
+        <option key={preset.name} value={preset.name}>
             {preset.name} - {preset.baseUrl} ({maskApiKey(preset.apiKey)})
           </option>
-        ))}
+        )}
       </select>
       <button
         type="button"
         onClick={handleSave}
         disabled={!baseUrl || !apiKey}
         className="px-2 py-1.5 rounded border text-xs bg-surface border-border text-text-main hover:border-primary disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-        title="Save current Base URL and API key as a browser-local preset"
-      >
+        title="Save current Base URL and API key as a browser-local preset">
+        
         Save
       </button>
-      {selectedPreset && (
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="p-1 text-text-muted hover:text-red-500 rounded transition-colors"
-          title="Delete selected preset"
-        >
+      {selectedPreset &&
+      <button
+        type="button"
+        onClick={handleDelete}
+        className="p-1 text-text-muted hover:text-red-500 rounded transition-colors"
+        title="Delete selected preset">
+        
           <span className="material-symbols-outlined text-[14px]">delete</span>
         </button>
-      )}
-    </div>
-  );
+      }
+    </div>);
+
 }

@@ -21,12 +21,13 @@
  */
 
 import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const RESPONSES_LIFECYCLE_EVENTS = new Set([
-  "response.created",
-  "response.in_progress",
-  "response.completed",
-]);
+"response.created",
+"response.in_progress",
+"response.completed"]
+);
 
 /**
  * Rewrite a complete Responses SSE frame's lifecycle-event `response.model`
@@ -58,12 +59,12 @@ function rewriteResponsesSseFrame(frame, echoModel) {
       // (no `event:` header) are rewritten exactly like annotated ones.
       if (!RESPONSES_LIFECYCLE_EVENTS.has(parsed?.type)) return line;
       const nested = parsed?.response;
-      if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      if (nested && isObject(nested) && !Array.isArray(nested)) {
         nested.model = echoModel;
         changed = true;
         return `data: ${JSON.stringify(parsed)}`;
       }
-    } catch { /* unparseable payloads pass through unchanged */ }
+    } catch {/* unparseable payloads pass through unchanged */}
     return line;
   });
   return changed ? lines.join(eol) : frame;
@@ -85,7 +86,7 @@ export function createResponsesModelEchoStream(echoModel) {
 
   return new TransformStream({
     transform(chunk, controller) {
-      buffer += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+      buffer += isString(chunk) ? chunk : decoder.decode(chunk, { stream: true });
       const batch = extractCompleteSseFrames(buffer);
       buffer = batch.remainder;
       for (const frame of batch.frames) {
@@ -103,7 +104,7 @@ export function createResponsesModelEchoStream(echoModel) {
         controller.enqueue(encoder.encode(rewriteResponsesSseFrame(buffer, echoModel)));
         buffer = "";
       }
-    },
+    }
   });
 }
 
@@ -142,21 +143,21 @@ export async function applyResponseModelEcho(result, echoModel) {
     } catch {
       // Unparseable JSON — return the original body untouched.
       return { ...result, response: new Response(bodyText, {
-        status: result.response.status,
-        statusText: result.response.statusText,
-        headers,
-      }) };
+          status: result.response.status,
+          statusText: result.response.statusText,
+          headers
+        }) };
     }
     // Only touch real Responses payloads (`object: "response"`) or bodies
     // that already carry a string `model`. Other JSON (e.g. an error object
     // returned with success:true) is left byte-for-byte identical — upstream
     // rewrites only existing model fields, never invents one.
     const isResponsesObject = parsed?.object === "response";
-    const hasStringModel = typeof parsed?.model === "string";
+    const hasStringModel = isString(parsed?.model);
     if (
-      parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      && (isResponsesObject || hasStringModel)
-    ) {
+    parsed && isObject(parsed) && !Array.isArray(parsed) && (
+    isResponsesObject || hasStringModel))
+    {
       parsed.model = echoModel;
       headers.delete("content-length");
       return {
@@ -164,16 +165,16 @@ export async function applyResponseModelEcho(result, echoModel) {
         response: new Response(JSON.stringify(parsed), {
           status: result.response.status,
           statusText: result.response.statusText,
-          headers,
-        }),
+          headers
+        })
       };
     }
     // Not a Responses payload — return the body untouched.
     return { ...result, response: new Response(bodyText, {
-      status: result.response.status,
-      statusText: result.response.statusText,
-      headers,
-    }) };
+        status: result.response.status,
+        statusText: result.response.statusText,
+        headers
+      }) };
   }
 
   if (contentType.includes("text/event-stream")) {
@@ -185,9 +186,9 @@ export async function applyResponseModelEcho(result, echoModel) {
         {
           status: result.response.status,
           statusText: result.response.statusText,
-          headers,
-        },
-      ),
+          headers
+        }
+      )
     };
   }
 
@@ -208,6 +209,6 @@ export async function applyResponseModelEcho(result, echoModel) {
  */
 export function resolveResponsesEchoModel(clientRawRequest) {
   const fromBody = clientRawRequest?.body?.model;
-  if (typeof fromBody === "string" && fromBody) return fromBody;
+  if (isString(fromBody) && fromBody) return fromBody;
   return null;
 }

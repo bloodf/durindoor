@@ -2,26 +2,26 @@ import { mergeProviderSpecificData } from "@/lib/db/helpers/mergeProviderMetadat
 import { exchangeTokens } from "@/lib/oauth/providers.js";
 import {
   buildOAuthProxyMetadataPatch,
-  resolveOAuthProxySelection,
-} from "@/lib/oauth/proxySelection.js";
+  resolveOAuthProxySelection } from
+"@/lib/oauth/proxySelection.js";
 import {
   createProviderConnection,
   getProviderConnectionById,
-  updateProviderConnection,
-} from "@/models";
+  updateProviderConnection } from
+"@/models";
 import { isOAuthFlowClaimActive } from "@/lib/oauth/flowStore.js";
 
-/** Merge durable OAuth routing without erasing provider-owned metadata. */
+/** Merge durable OAuth routing without erasing provider-owned metadata. */import { isObject, isString } from "@/shared/utils/typeChecks.js";
 export function withOAuthProxyMetadata(providerSpecificData, proxySelection) {
   const metadataPatch = proxySelection?.metadataPatch ||
-    buildOAuthProxyMetadataPatch(proxySelection);
+  buildOAuthProxyMetadataPatch(proxySelection);
   return mergeProviderSpecificData(providerSpecificData || {}, metadataPatch);
 }
 
 /** Re-resolve an immutable flow selection at the moment it is used. */
 export function resolveFlowProxySelection(flowClaim) {
   return resolveOAuthProxySelection(
-    flowClaim?.payload?.proxySelection || { mode: "legacy" },
+    flowClaim?.payload?.proxySelection || { mode: "legacy" }
   );
 }
 
@@ -34,20 +34,20 @@ export function resolveFlowProxySelection(flowClaim) {
  * OAuth row. This clears any durable `reauth_required` state on success.
  */
 export async function saveOAuthConnection(
-  provider,
-  tokenData,
-  resolvedProxy,
-  extra = {},
-  flowClaim = null,
-) {
+provider,
+tokenData,
+resolvedProxy,
+extra = {},
+flowClaim = null)
+{
   const { connectionId = null, ...extraFields } = extra || {};
   const providerSpecificData = withOAuthProxyMetadata(
     tokenData?.providerSpecificData,
-    resolvedProxy,
+    resolvedProxy
   );
-  const expiresAt = tokenData?.expiresIn
-    ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
-    : null;
+  const expiresAt = tokenData?.expiresIn ?
+  new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() :
+  null;
 
   if (connectionId) {
     const existing = await getProviderConnectionById(connectionId);
@@ -72,22 +72,22 @@ export async function saveOAuthConnection(
       testStatus: "active",
       lastError: null,
       errorCode: null,
-      lastErrorAt: null,
+      lastErrorAt: null
     };
-    const commit = flowClaim
-      ? await updateProviderConnection(connectionId, updateData, {
-          shouldCommit: () => isOAuthFlowClaimActive(flowClaim),
-          returnCommitResult: true,
-        })
-      : await updateProviderConnection(connectionId, updateData, { returnCommitResult: true });
+    const commit = flowClaim ?
+    await updateProviderConnection(connectionId, updateData, {
+      shouldCommit: () => isOAuthFlowClaimActive(flowClaim),
+      returnCommitResult: true
+    }) :
+    await updateProviderConnection(connectionId, updateData, { returnCommitResult: true });
     if (commit === null) {
       const error = new Error("Reconnect target connection no longer exists");
       error.code = "OAUTH_RECONNECT_TARGET_MISSING";
       throw error;
     }
-    return commit && typeof commit === "object" && Object.hasOwn(commit, "connection")
-      ? commit.connection
-      : commit;
+    return commit && isObject(commit) && Object.hasOwn(commit, "connection") ?
+    commit.connection :
+    commit;
   }
 
   const connectionData = {
@@ -97,13 +97,13 @@ export async function saveOAuthConnection(
     ...extraFields,
     providerSpecificData,
     expiresAt,
-    testStatus: "active",
+    testStatus: "active"
   };
-  return flowClaim
-    ? createProviderConnection(connectionData, {
-        shouldCommit: () => isOAuthFlowClaimActive(flowClaim),
-      })
-    : createProviderConnection(connectionData);
+  return flowClaim ?
+  createProviderConnection(connectionData, {
+    shouldCommit: () => isOAuthFlowClaimActive(flowClaim)
+  }) :
+  createProviderConnection(connectionData);
 }
 
 /**
@@ -122,13 +122,13 @@ export async function exchangeAndSaveAuthorizationCode(provider, code, state, fl
       payload.codeVerifier,
       state,
       payload.meta,
-      resolvedProxy.proxyOptions,
+      resolvedProxy.proxyOptions
     );
   } catch (error) {
-    if (typeof error?.code === "string" && error.code.startsWith("OAUTH_")) throw error;
+    if (isString(error?.code) && error.code.startsWith("OAUTH_")) throw error;
     const upstreamError = new Error(
       error?.message || "OAuth provider request failed",
-      { cause: error },
+      { cause: error }
     );
     upstreamError.code = "OAUTH_UPSTREAM_FAILURE";
     throw upstreamError;
@@ -136,7 +136,7 @@ export async function exchangeAndSaveAuthorizationCode(provider, code, state, fl
   if (provider === "codex" && payload.codexFingerprintMode) {
     tokenData.providerSpecificData = {
       ...tokenData.providerSpecificData,
-      codexFingerprintMode: payload.codexFingerprintMode,
+      codexFingerprintMode: payload.codexFingerprintMode
     };
   }
   const connection = await saveOAuthConnection(
@@ -146,7 +146,7 @@ export async function exchangeAndSaveAuthorizationCode(provider, code, state, fl
     // The Reconnect flow stamps the target connection id into the claimed flow
     // payload; a normal Add flow leaves it absent and creates a fresh row.
     payload.connectionId ? { connectionId: payload.connectionId } : {},
-    flowClaim,
+    flowClaim
   );
   return { connection, resolvedProxy };
 }

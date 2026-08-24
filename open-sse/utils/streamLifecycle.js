@@ -1,4 +1,4 @@
-/**
+import { isString } from "@/shared/utils/typeChecks.js"; /**
  * Local stream lifecycle classifier (ported from OmniRoute #7907/#7908).
  *
  * When the caller drops the connection mid-stream (combo race loser, model
@@ -14,19 +14,19 @@
  */
 export function isLocalStreamLifecycleError(error) {
   if (!error) return false;
-  const name = typeof error?.name === "string" ? error.name : "";
+  const name = isString(error?.name) ? error.name : "";
   if (name === "AbortError") return true;
   const message =
-    typeof error === "string"
-      ? error
-      : typeof error?.message === "string"
-        ? error.message
-        : "";
+  isString(error) ?
+  error :
+  isString(error?.message) ?
+  error.message :
+  "";
   if (!message) return false;
   return (
     /controller is already closed/i.test(message) ||
     /request_signal_aborted/i.test(message) ||
     /client disconnected/i.test(message) ||
-    /operation was aborted/i.test(message)
-  );
+    /operation was aborted/i.test(message));
+
 }

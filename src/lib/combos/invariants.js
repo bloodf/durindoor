@@ -1,4 +1,4 @@
-// Declarative combo invariants (port of OmniRoute #8304).
+import { isObject, isString } from "@/shared/utils/typeChecks.js"; // Declarative combo invariants (port of OmniRoute #8304).
 //
 // A combo MAY constrain which providers and/or model families its targets are
 // allowed to use. When set, every non-combo-ref target is validated on
@@ -9,18 +9,18 @@
 export class ComboInvariantError extends Error {}
 
 const FAMILY_PATTERNS = [
-  ["gpt", /^gpt(?:-|$)/i],
-  ["claude", /^claude(?:-|$)/i],
-  ["gemini", /^gemini(?:-|$)/i],
-  ["glm", /^glm(?:-|$)/i],
-  ["kimi", /^kimi(?:-|$)/i],
-  ["llama", /^llama(?:-|$)/i],
-  ["minimax", /^minimax(?:-|$)/i],
-  ["mistral", /^(?:mistral|mixtral)(?:-|$)/i],
-];
+["gpt", /^gpt(?:-|$)/i],
+["claude", /^claude(?:-|$)/i],
+["gemini", /^gemini(?:-|$)/i],
+["glm", /^glm(?:-|$)/i],
+["kimi", /^kimi(?:-|$)/i],
+["llama", /^llama(?:-|$)/i],
+["minimax", /^minimax(?:-|$)/i],
+["mistral", /^(?:mistral|mixtral)(?:-|$)/i]];
+
 
 function strings(value) {
-  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+  return Array.isArray(value) ? value.filter((item) => isString(item)) : [];
 }
 
 function modelFamily(model) {
@@ -36,38 +36,38 @@ function modelFamily(model) {
  */
 export function validateComboInvariant(combo) {
   const invariant =
-    combo.invariant && typeof combo.invariant === "object" && !Array.isArray(combo.invariant)
-      ? combo.invariant
-      : {};
+  combo.invariant && isObject(combo.invariant) && !Array.isArray(combo.invariant) ?
+  combo.invariant :
+  {};
   const providers = new Set([
-    ...strings(combo.allowedProviders),
-    ...strings(invariant.allowedProviders),
-  ]);
+  ...strings(combo.allowedProviders),
+  ...strings(invariant.allowedProviders)]
+  );
   const families = new Set([
-    ...strings(combo.allowedModelFamilies),
-    ...strings(invariant.allowedModelFamilies),
-  ]);
+  ...strings(combo.allowedModelFamilies),
+  ...strings(invariant.allowedModelFamilies)]
+  );
   if (providers.size === 0 && families.size === 0) return;
 
   const targets = Array.isArray(combo.models) ? combo.models : [];
   targets.forEach((value, index) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    if (!value || !isObject(value) || Array.isArray(value)) return;
     const target = value;
     if (target.kind === "combo-ref") return;
-    const model = typeof target.model === "string" ? target.model : "";
+    const model = isString(target.model) ? target.model : "";
     const provider =
-      typeof target.providerId === "string"
-        ? target.providerId
-        : typeof target.provider === "string"
-          ? target.provider
-          : model.includes("/")
-            ? model.slice(0, model.indexOf("/"))
-            : "";
+    isString(target.providerId) ?
+    target.providerId :
+    isString(target.provider) ?
+    target.provider :
+    model.includes("/") ?
+    model.slice(0, model.indexOf("/")) :
+    "";
     const family = modelFamily(model);
     if (
-      (providers.size > 0 && !providers.has(provider)) ||
-      (families.size > 0 && (!family || !families.has(family)))
-    ) {
+    providers.size > 0 && !providers.has(provider) ||
+    families.size > 0 && (!family || !families.has(family)))
+    {
       throw new ComboInvariantError(
         `Combo "${String(combo.name ?? "unnamed")}" target ${index + 1} (${provider}/${model}) violates its invariant`
       );

@@ -1,6 +1,6 @@
-/** Return a stable management label without returning the credential itself. */
+import { isString } from "@/shared/utils/typeChecks.js"; /** Return a stable management label without returning the credential itself. */
 export function maskApiKeySecret(secret) {
-  if (typeof secret !== "string" || !secret.startsWith("sk-")) return "***";
+  if (!isString(secret) || !secret.startsWith("sk-")) return "***";
   // Do not expose suffix bytes: legacy sk-<8 hex> credentials have too little
   // entropy for partial revelation to be a safe management identifier.
   return "sk-••••••••";
@@ -16,6 +16,6 @@ export function toApiKeyManagementView(record) {
   const { key, ...safe } = record;
   return {
     ...safe,
-    maskedKey: maskApiKeySecret(key),
+    maskedKey: maskApiKeySecret(key)
   };
 }

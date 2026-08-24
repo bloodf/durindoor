@@ -2,7 +2,7 @@ import { DefaultExecutor } from "./default.js";
 import { PROVIDERS } from "../config/providers.js";
 import { refreshProviderCredentials } from "../services/oauthCredentialManager.js";
 
-/** portal.qwen.ai — static fingerprint matching stable Qwen Code release */
+/** portal.qwen.ai — static fingerprint matching stable Qwen Code release */import { isObject } from "@/shared/utils/typeChecks.js";
 const QWEN_USER_AGENT = "QwenCode/0.12.3 (linux; x64)";
 const QWEN_STAINLESS = {
   os: "Linux",
@@ -19,7 +19,7 @@ const QWEN_DEFAULT_SYSTEM_MESSAGE = {
 };
 
 function ensureQwenSystemMessage(body) {
-  if (!body || typeof body !== "object") return body;
+  if (!body || !isObject(body)) return body;
   const next = { ...body };
   if (Array.isArray(next.messages)) {
     next.messages = [QWEN_DEFAULT_SYSTEM_MESSAGE, ...next.messages];
@@ -32,14 +32,14 @@ function ensureQwenSystemMessage(body) {
 function isQwenThinkingActive(body) {
   const thinking = body?.thinking;
   if (thinking === true || body?.enable_thinking === true) return true;
-  return typeof thinking === "object" && thinking !== null && !Array.isArray(thinking) && thinking.type === "enabled";
+  return isObject(thinking) && thinking !== null && !Array.isArray(thinking) && thinking.type === "enabled";
 }
 
 // Qwen rejects tool_choice="required" or object forms when thinking is active; neutralize to "auto".
 function sanitizeQwenThinkingToolChoice(body) {
   if (!isQwenThinkingActive(body)) return body;
   const tc = body.tool_choice;
-  const incompatible = tc === "required" || (typeof tc === "object" && tc !== null);
+  const incompatible = tc === "required" || isObject(tc) && tc !== null;
   if (!incompatible) return body;
   return { ...body, tool_choice: "auto" };
 }
@@ -86,7 +86,7 @@ export class QwenExecutor extends DefaultExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
-    let next = body && typeof body === "object" ? { ...body } : body;
+    let next = body && isObject(body) ? { ...body } : body;
     if (stream && next?.messages && !next.stream_options && !next.thinking && !next.enable_thinking && next.stream !== false) {
       next.stream_options = { include_usage: true };
     }

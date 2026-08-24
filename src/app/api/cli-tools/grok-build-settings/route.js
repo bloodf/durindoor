@@ -20,6 +20,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 
@@ -85,7 +86,7 @@ const parseModelSection = (toml) => {
     model: getTomlField(body, "model"),
     base_url: getTomlField(body, "base_url"),
     name: getTomlField(body, "name"),
-    api_backend: getTomlField(body, "api_backend"),
+    api_backend: getTomlField(body, "api_backend")
   };
 };
 
@@ -101,18 +102,18 @@ const parseModelsDefault = (toml) => {
   if (!match) return null;
   const body = match[1] || "";
   const m = body.match(/^[ \t]*default[ \t]*=[ \t]*"([^"]*)"|^[ \t]*default[ \t]*=[ \t]*'([^']*)'/m);
-  return m ? (m[1] ?? m[2]) : null;
+  return m ? m[1] ?? m[2] : null;
 };
 
 const buildModelSection = (model, baseUrl, apiKey) => {
   const lines = [
-    `[model.${MODEL_SLOT}]`,
-    `model = "${model}"`,
-    `base_url = "${baseUrl}"`,
-    `name = "${PROVIDER_NAME}"`,
-    `description = "Routed via ${PROVIDER_NAME} gateway"`,
-    `api_backend = "chat_completions"`,
-  ];
+  `[model.${MODEL_SLOT}]`,
+  `model = "${model}"`,
+  `base_url = "${baseUrl}"`,
+  `name = "${PROVIDER_NAME}"`,
+  `description = "Routed via ${PROVIDER_NAME} gateway"`,
+  `api_backend = "chat_completions"`];
+
   if (apiKey) lines.push(`api_key = "${apiKey}"`);
   return `${lines.join("\n")}\n`;
 };
@@ -124,7 +125,7 @@ const upsertModelSection = (toml, section) => {
 };
 
 const removeModelSection = (toml) =>
-  toml.replace(MODEL_SECTION_RE, "").replace(/\n{3,}/g, "\n\n");
+toml.replace(MODEL_SECTION_RE, "").replace(/\n{3,}/g, "\n\n");
 
 // Set or insert default = "..." inside existing [models], or create the section
 const setModelsDefault = (toml, value) => {
@@ -198,7 +199,7 @@ export async function GET() {
       return NextResponse.json({
         installed: false,
         settings: null,
-        message: "Grok Build is not installed",
+        message: "Grok Build is not installed"
       });
     }
 
@@ -210,10 +211,10 @@ export async function GET() {
       installed: true,
       settings: {
         model,
-        default: defaultModel,
+        default: defaultModel
       },
       has9Router: hasRouterConfig(model, defaultModel),
-      configPath: getGrokConfigPath(),
+      configPath: getGrokConfigPath()
     });
   } catch (error) {
     console.log("Error checking grok-build settings:", error);
@@ -227,13 +228,13 @@ export async function POST(request) {
     if (!baseUrl || !model) {
       return NextResponse.json({ error: "baseUrl and model are required" }, { status: 400 });
     }
-    if (typeof baseUrl !== "string") {
+    if (!isString(baseUrl)) {
       return NextResponse.json({ error: "baseUrl must be a string" }, { status: 400 });
     }
-    if (typeof model !== "string" || !isSafeTomlString(model)) {
+    if (!isString(model) || !isSafeTomlString(model)) {
       return NextResponse.json({ error: "model contains characters unsafe for TOML" }, { status: 400 });
     }
-    if (apiKey != null && (typeof apiKey !== "string" || !isSafeTomlString(apiKey))) {
+    if (apiKey != null && (!isString(apiKey) || !isSafeTomlString(apiKey))) {
       return NextResponse.json({ error: "apiKey contains characters unsafe for TOML" }, { status: 400 });
     }
     const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
@@ -258,7 +259,7 @@ export async function POST(request) {
       success: true,
       message: "Grok Build settings applied successfully!",
       configPath: getGrokConfigPath(),
-      modelSlot: MODEL_SLOT,
+      modelSlot: MODEL_SLOT
     });
   } catch (error) {
     console.log("Error updating grok-build settings:", error);
@@ -286,7 +287,7 @@ export async function DELETE() {
     return NextResponse.json({
       success: true,
       message: `${PROVIDER_NAME} model slot removed from Grok Build`,
-      configPath,
+      configPath
     });
   } catch (error) {
     console.log("Error resetting grok-build settings:", error);

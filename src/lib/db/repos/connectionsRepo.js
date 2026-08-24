@@ -11,30 +11,30 @@ import { QUOTA_MAX_CLOCK_SKEW_MS } from "@/shared/constants/quota";
 import {
   encryptField,
   decryptField,
-  isEncryptedBlob,
-} from "@/lib/crypto/columnCrypto.js";
+  isEncryptedBlob } from
+"@/lib/crypto/columnCrypto.js";
 
 // SEC-B-02: credential fields that must be AES-256-GCM-encrypted at rest
 // inside providerConnections.data. All other fields stay plaintext.
-export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
-  "accessToken",
-  "refreshToken",
-  "apiKey",
-  "idToken",
-  "firecrawlHeaders",
-]);
+import { isBoolean, isFunction, isNumber, isString } from "@/shared/utils/typeChecks.js";export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
+"accessToken",
+"refreshToken",
+"apiKey",
+"idToken",
+"firecrawlHeaders"]
+);
 
 const OPTIONAL_FIELDS = [
-  "displayName", "email", "globalPriority", "defaultModel",
-  "accessToken", "refreshToken", "expiresAt", "tokenType",
-  "scope", "projectId", "apiKey", "testStatus", "firecrawlHeaders",
-  "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
-  "consecutiveUseCount", "idToken", "lastRefreshAt",
-];
+"displayName", "email", "globalPriority", "defaultModel",
+"accessToken", "refreshToken", "expiresAt", "tokenType",
+"scope", "projectId", "apiKey", "testStatus", "firecrawlHeaders",
+"lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
+"consecutiveUseCount", "idToken", "lastRefreshAt"];
+
 
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
-  codex: "codexAutoPing",
+  codex: "codexAutoPing"
 };
 
 function updateAutoPingEntryInTx(db, provider, connectionId, enabled) {
@@ -44,12 +44,12 @@ function updateAutoPingEntryInTx(db, provider, connectionId, enabled) {
   const current = row ? parseJson(row.data, {}) : {};
   const currentConfig = current[settingsKey] || {};
   const connections = { ...(currentConfig.connections || {}) };
-  if (enabled === true) connections[connectionId] = true;
-  else delete connections[connectionId];
+  if (enabled === true) connections[connectionId] = true;else
+  delete connections[connectionId];
   const config = { ...currentConfig, connections };
   db.run(
     `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
-    [stringifyJson({ ...current, [settingsKey]: config })],
+    [stringifyJson({ ...current, [settingsKey]: config })]
   );
   return { settingsKey, config };
 }
@@ -76,7 +76,7 @@ function rowToConn(row) {
     priority: row.priority,
     isActive: row.isActive === 1 || row.isActive === true,
     createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    updatedAt: row.updatedAt
   };
 }
 
@@ -86,7 +86,7 @@ function connToRow(c) {
   // pass through so re-writes from rowToConn don't double-encrypt.
   for (const field of SENSITIVE_CONNECTION_FIELDS) {
     const value = rest[field];
-    if (typeof value === "string" && value.length > 0 && !isEncryptedBlob(value)) {
+    if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
       rest[field] = encryptField(value, id);
     }
   }
@@ -100,7 +100,7 @@ function connToRow(c) {
     isActive: isActive === false ? 0 : 1,
     data: stringifyJson(rest),
     createdAt,
-    updatedAt,
+    updatedAt
   };
 }
 
@@ -131,11 +131,11 @@ function upsert(db, c) {
  */
 function deriveConnectionName(data, fallbackName) {
   if (data.provider === "github") {
-    return data.providerSpecificData?.githubLogin
-      || data.providerSpecificData?.githubEmail
-      || data.email
-      || data.providerSpecificData?.githubName
-      || fallbackName;
+    return data.providerSpecificData?.githubLogin ||
+    data.providerSpecificData?.githubEmail ||
+    data.email ||
+    data.providerSpecificData?.githubName ||
+    fallbackName;
   }
   return fallbackName;
 }
@@ -158,8 +158,8 @@ export async function getProviderConnections(filter = {}) {
   const db = await getAdapter();
   const where = [];
   const params = [];
-  if (filter.provider) { where.push("provider = ?"); params.push(filter.provider); }
-  if (filter.isActive !== undefined) { where.push("isActive = ?"); params.push(filter.isActive ? 1 : 0); }
+  if (filter.provider) {where.push("provider = ?");params.push(filter.provider);}
+  if (filter.isActive !== undefined) {where.push("isActive = ?");params.push(filter.isActive ? 1 : 0);}
   const sql = `SELECT * FROM providerConnections${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`;
   const rows = db.all(sql, params);
   const list = rows.map(rowToConn);
@@ -191,7 +191,7 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
   // OAuth flows can be cancelled while an upstream exchange is in flight.
   // Check after the async adapter lookup and immediately before the synchronous
   // transaction so a superseded flow cannot persist a late credential.
-  if (typeof shouldCommit === "function" && !shouldCommit()) {
+  if (isFunction(shouldCommit) && !shouldCommit()) {
     throw new Error("OAuth flow was cancelled or superseded before commit");
   }
   const now = new Date().toISOString();
@@ -204,7 +204,7 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     if (data.authType === "oauth" && data.email) {
       const incomingUsername = data.providerSpecificData?.username;
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
-      existing = all.find(c => {
+      existing = all.find((c) => {
         if (c.authType !== "oauth" || c.email !== data.email) return false;
         // Codex/OpenAI can issue multiple OAuth grants for the same email.
         // Refresh tokens are rotated single-use; collapsing a new login onto an
@@ -213,7 +213,7 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
         // existing Codex row when both rows expose the same resolved account ID.
         if (data.provider === "codex") {
           if (hasConflictingCodexAccountIds(data.providerSpecificData) ||
-              hasConflictingCodexAccountIds(c.providerSpecificData)) return false;
+          hasConflictingCodexAccountIds(c.providerSpecificData)) return false;
           const incomingId = resolveCodexAccountId(data.providerSpecificData);
           const existingId = resolveCodexAccountId(c.providerSpecificData);
           return !!incomingId && !!existingId && incomingId === existingId;
@@ -239,10 +239,10 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     }
     if (!existing && data.provider === "cursor" && data.providerSpecificData?.userId) {
       existing = all.find(
-        (c) => c.providerSpecificData?.userId === data.providerSpecificData.userId,
+        (c) => c.providerSpecificData?.userId === data.providerSpecificData.userId
       );
     } else if (data.authType === "apikey" && data.name) {
-      existing = all.find(c => c.authType === "apikey" && c.name === data.name);
+      existing = all.find((c) => c.authType === "apikey" && c.name === data.name);
     }
     // access_token: never dedup — user manages duplicates manually
 
@@ -266,9 +266,9 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
         error.code = "PROVIDER_CONNECTION_ALREADY_EXISTS";
         throw error;
       }
-      const merged = data.provider === "codex" && data.authType === "oauth" && data.accessToken
-        ? mergeCodexReauthorization(existing, data, now)
-        : { ...mergeProviderConnection(existing, data), updatedAt: now };
+      const merged = data.provider === "codex" && data.authType === "oauth" && data.accessToken ?
+      mergeCodexReauthorization(existing, data, now) :
+      { ...mergeProviderConnection(existing, data), updatedAt: now };
       upsert(db, merged);
       result = merged;
       return;
@@ -291,7 +291,7 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
       priority: connectionPriority,
       isActive: data.isActive !== undefined ? data.isActive : true,
       createdAt: now,
-      updatedAt: now,
+      updatedAt: now
     };
     for (const f of OPTIONAL_FIELDS) {
       if (data[f] !== undefined && data[f] !== null) conn[f] = data[f];
@@ -315,13 +315,13 @@ export async function updateProviderConnection(id, data, {
   expectedRefreshContext = null,
   returnCommitResult = false,
   signal = null,
-  shouldCommit = null,
+  shouldCommit = null
 } = {}) {
   const db = await getAdapter();
   let result;
   db.transaction(() => {
     if (signal?.aborted) throw new DOMException("Provider connection update aborted", "AbortError");
-    if (typeof shouldCommit === "function" && !shouldCommit()) {
+    if (isFunction(shouldCommit) && !shouldCommit()) {
       const error = new Error("Provider connection update superseded");
       error.code = "PROVIDER_CONNECTION_UPDATE_SUPERSEDED";
       throw error;
@@ -332,7 +332,7 @@ export async function updateProviderConnection(id, data, {
     const lock = db.run(QUOTA_WRITE_LOCK_SQL);
     if ((lock.changes || 0) !== 1) throw new Error("Provider credential update requires an initialized schema");
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
-    if (!row) { result = null; return; }
+    if (!row) {result = null;return;}
     const existing = rowToConn(row);
     if (expectedUpdatedAt && existing.updatedAt !== expectedUpdatedAt) {
       const error = new Error("Provider connection changed during credential refresh");
@@ -365,14 +365,14 @@ function boundedModelScope(provider, model) {
 }
 
 function eventTimestamp(value, now = Date.now()) {
-  const parsed = typeof value === "number" ? value : Date.parse(value || "");
+  const parsed = isNumber(value) ? value : Date.parse(value || "");
   const clock = Number(now);
   if (
-    !Number.isSafeInteger(parsed)
-    || parsed <= 0
-    || !Number.isFinite(clock)
-    || parsed > clock + QUOTA_MAX_CLOCK_SKEW_MS
-  ) throw new TypeError("Provider fallback event timestamp is invalid");
+  !Number.isSafeInteger(parsed) ||
+  parsed <= 0 ||
+  !Number.isFinite(clock) ||
+  parsed > clock + QUOTA_MAX_CLOCK_SKEW_MS)
+  throw new TypeError("Provider fallback event timestamp is invalid");
   return parsed;
 }
 
@@ -392,7 +392,7 @@ export async function recordProviderConnectionFallbackState(id, {
   reasonCode = "provider_error",
   cooldownMs,
   backoffLevel = 0,
-  observedAt,
+  observedAt
 } = {}, { signal = null, now = Date.now() } = {}) {
   const eventMs = eventTimestamp(observedAt, now);
   if (!Number.isSafeInteger(cooldownMs) || cooldownMs < 0 || cooldownMs > 7 * 24 * 60 * 60 * 1000) {
@@ -402,7 +402,7 @@ export async function recordProviderConnectionFallbackState(id, {
     rate_limited: "Rate limited",
     authentication_error: "Authentication failed",
     provider_error: "Provider unavailable",
-    network_error: "Provider network error",
+    network_error: "Provider network error"
   };
   const reason = safeReasons[reasonCode] || safeReasons.provider_error;
   const db = await getAdapter();
@@ -437,7 +437,7 @@ export async function recordProviderConnectionFallbackState(id, {
       // Runtime health is not a credential revision. Keeping updatedAt stable
       // prevents successful/failing traffic from invalidating quota fetch
       // dedupe and OAuth compare-and-swap keys.
-      updatedAt: existing.updatedAt,
+      updatedAt: existing.updatedAt
     };
     upsert(db, merged);
     result = { applied: true, connection: merged };
@@ -452,7 +452,7 @@ export async function recordProviderConnectionFallbackState(id, {
  */
 export async function clearProviderConnectionFallbackState(id, {
   model = null,
-  observedAt,
+  observedAt
 } = {}, { signal = null, now = Date.now() } = {}) {
   const eventMs = eventTimestamp(observedAt, now);
   const db = await getAdapter();
@@ -491,7 +491,7 @@ export async function clearProviderConnectionFallbackState(id, {
       if (Date.parse(value || "") <= eventMs) merged[key] = null;
     }
     const activeLocks = Object.entries(merged).some(
-      ([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) && activeTimestamp(value, eventMs),
+      ([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) && activeTimestamp(value, eventMs)
     );
     // A durable reauth_required state means the OAuth refresh token is dead and
     // only a fresh OAuth reconnect can revive the account. Ordinary request
@@ -505,7 +505,7 @@ export async function clearProviderConnectionFallbackState(id, {
         lastError: null,
         lastErrorAt: null,
         errorCode: null,
-        backoffLevel: 0,
+        backoffLevel: 0
       });
     }
     merged.updatedAt = existing.updatedAt;
@@ -531,17 +531,17 @@ export async function deleteProviderConnection(id) {
 }
 
 export async function setProviderConnectionAutoPing(id, enabled) {
-  if (typeof enabled !== "boolean") throw new TypeError("enabled must be a boolean");
+  if (!isBoolean(enabled)) throw new TypeError("enabled must be a boolean");
   const db = await getAdapter();
   let result = null;
   db.transaction(() => {
     const row = db.get(
       `SELECT id, provider, authType, isActive FROM providerConnections WHERE id = ?`,
-      [id],
+      [id]
     );
     if (!row) return;
     const settingsKey = AUTO_PING_SETTINGS_KEYS[row.provider];
-    if (!settingsKey || row.authType !== "oauth" || (enabled === true && row.isActive !== 1)) {
+    if (!settingsKey || row.authType !== "oauth" || enabled === true && row.isActive !== 1) {
       const error = new Error("Auto-ping is available only for active Claude or Codex OAuth connections");
       error.code = "AUTO_PING_INELIGIBLE";
       throw error;
@@ -552,7 +552,7 @@ export async function setProviderConnectionAutoPing(id, enabled) {
       provider: row.provider,
       enabled,
       settingsKey,
-      config: updated.config,
+      config: updated.config
     };
   });
   return result;
@@ -600,12 +600,12 @@ export async function reorderProviderConnectionsByIds(providerId, orderedIds) {
 export async function cleanupProviderConnections() {
   const db = await getAdapter();
   const fieldsToCheck = [
-    "displayName", "email", "globalPriority", "defaultModel",
-    "accessToken", "refreshToken", "expiresAt", "tokenType",
-    "scope", "projectId", "apiKey", "testStatus",
-    "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn",
-    "consecutiveUseCount",
-  ];
+  "displayName", "email", "globalPriority", "defaultModel",
+  "accessToken", "refreshToken", "expiresAt", "tokenType",
+  "scope", "projectId", "apiKey", "testStatus",
+  "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn",
+  "consecutiveUseCount"];
+
   let cleaned = 0;
   db.transaction(() => {
     const rows = db.all(`SELECT * FROM providerConnections`);
@@ -614,7 +614,7 @@ export async function cleanupProviderConnections() {
       let dirty = false;
       for (const f of fieldsToCheck) {
         if (conn[f] === null || conn[f] === undefined) {
-          if (f in conn) { delete conn[f]; cleaned++; dirty = true; }
+          if (f in conn) {delete conn[f];cleaned++;dirty = true;}
         }
       }
       if (conn.providerSpecificData && Object.keys(conn.providerSpecificData).length === 0) {

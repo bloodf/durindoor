@@ -1,4 +1,4 @@
-/**
+import { isString } from "@/shared/utils/typeChecks.js"; /**
  * Kiro regional topology — SINGLE SOURCE OF TRUTH.
  *
  * Kiro / AWS CodeWhisperer is region-scoped: the access token, its profileArn,
@@ -32,17 +32,17 @@ const GENERATE_PATH = "/generateAssistantResponse";
  * To add/adjust Kiro's regional topology, edit ONLY this table.
  */
 const KIRO_RUNTIME_HOSTS = [
-  { host: (r) => `runtime.${r}.kiro.dev`, availableIn: "all" },
-  { host: (r) => `codewhisperer.${r}.amazonaws.com`, availableIn: [KIRO_DEFAULT_REGION] },
-  { host: (r) => `q.${r}.amazonaws.com`, availableIn: "all" },
-];
+{ host: (r) => `runtime.${r}.kiro.dev`, availableIn: "all" },
+{ host: (r) => `codewhisperer.${r}.amazonaws.com`, availableIn: [KIRO_DEFAULT_REGION] },
+{ host: (r) => `q.${r}.amazonaws.com`, availableIn: "all" }];
+
 
 function hostAvailable(entry, region) {
   return entry.availableIn === "all" || entry.availableIn.includes(region);
 }
 
 export function normalizeKiroRegion(region) {
-  const normalized = typeof region === "string" ? region.trim().toLowerCase() : "";
+  const normalized = isString(region) ? region.trim().toLowerCase() : "";
   if (!KIRO_REGION_PATTERN.test(normalized)) {
     throw new Error("Invalid Kiro AWS region");
   }
@@ -51,7 +51,7 @@ export function normalizeKiroRegion(region) {
 
 /** Extract the AWS region from a CodeWhisperer profileArn, or null if absent. */
 export function regionFromProfileArn(profileArn) {
-  if (typeof profileArn !== "string") return null;
+  if (!isString(profileArn)) return null;
   // arn:aws:codewhisperer:<region>:<account>:profile/<id>
   const parts = profileArn.split(":");
   if (parts[0] !== "arn" || parts[2] !== "codewhisperer" || !parts[3]) return null;
@@ -77,9 +77,9 @@ export function resolveKiroRegion(credentials) {
  */
 export function buildKiroBaseUrls(region = KIRO_DEFAULT_REGION) {
   const r = normalizeKiroRegion(region || KIRO_DEFAULT_REGION);
-  return KIRO_RUNTIME_HOSTS
-    .filter((e) => hostAvailable(e, r))
-    .map((e) => `https://${e.host(r)}${GENERATE_PATH}`);
+  return KIRO_RUNTIME_HOSTS.
+  filter((e) => hostAvailable(e, r)).
+  map((e) => `https://${e.host(r)}${GENERATE_PATH}`);
 }
 
 /**
@@ -90,10 +90,10 @@ export function buildKiroBaseUrls(region = KIRO_DEFAULT_REGION) {
  */
 export function buildKiroProfileEndpoint(region = KIRO_DEFAULT_REGION) {
   const r = normalizeKiroRegion(region || KIRO_DEFAULT_REGION);
-  const amazonHost = KIRO_RUNTIME_HOSTS
-    .filter((e) => hostAvailable(e, r) && e.host(r).includes("amazonaws.com"))
-    .map((e) => e.host(r))
-    .find(Boolean);
+  const amazonHost = KIRO_RUNTIME_HOSTS.
+  filter((e) => hostAvailable(e, r) && e.host(r).includes("amazonaws.com")).
+  map((e) => e.host(r)).
+  find(Boolean);
   return `https://${amazonHost}`;
 }
 

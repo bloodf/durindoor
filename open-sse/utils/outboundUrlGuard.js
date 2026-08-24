@@ -45,8 +45,8 @@ import {
   PRIVATE_PROVIDER_URLS_ENV,
   LOCAL_PROVIDER_URLS_ENV,
   MEMORY_CONFIG,
-  getProviderValidationGuard,
-} from "../config/runtimeConfig.js";
+  getProviderValidationGuard } from
+"../config/runtimeConfig.js";
 
 export const PROVIDER_URL_BLOCKED_MESSAGE = "Blocked private or local provider URL";
 export const CLOUD_METADATA_BLOCKED_MESSAGE = "Blocked cloud-metadata endpoint";
@@ -79,23 +79,23 @@ function ipv6ToWords(host) {
   const left = halves[0] ? halves[0].split(":") : [];
   const right = halves[1] ? halves[1].split(":") : [];
   const missing = 8 - left.length - right.length;
-  if (missing < 0 || (halves.length === 1 && missing !== 0)) return null;
-  const parts = halves.length === 2
-    ? [...left, ...Array(missing).fill("0"), ...right]
-    : left;
+  if (missing < 0 || halves.length === 1 && missing !== 0) return null;
+  const parts = halves.length === 2 ?
+  [...left, ...Array(missing).fill("0"), ...right] :
+  left;
   if (parts.length !== 8 || parts.some((part) => !/^[0-9a-f]{1,4}$/.test(part))) return null;
   return parts.map((part) => Number.parseInt(part, 16));
 }
 
 function wordsToIpv4(words) {
-  const value = ((words[6] << 16) | words[7]) >>> 0;
-  return `${value >>> 24}.${(value >>> 16) & 255}.${(value >>> 8) & 255}.${value & 255}`;
+  const value = (words[6] << 16 | words[7]) >>> 0;
+  return `${value >>> 24}.${value >>> 16 & 255}.${value >>> 8 & 255}.${value & 255}`;
 }
 
 function embeddedIpv4Address(host, includeCompatible = false) {
   const words = ipv6ToWords(host);
   if (!words || !words.slice(0, 5).every((word) => word === 0)) return null;
-  if (words[5] === 0xffff || (includeCompatible && words[5] === 0)) return wordsToIpv4(words);
+  if (words[5] === 0xffff || includeCompatible && words[5] === 0) return wordsToIpv4(words);
   return null;
 }
 
@@ -104,11 +104,11 @@ export function isPrivateHost(hostname) {
   if (!normalized) return true;
 
   if (
-    normalized === "localhost" ||
-    normalized.endsWith(".localhost") ||
-    normalized.endsWith(".local") ||
-    normalized.endsWith(".internal")
-  ) {
+  normalized === "localhost" ||
+  normalized.endsWith(".localhost") ||
+  normalized.endsWith(".local") ||
+  normalized.endsWith(".internal"))
+  {
     return true;
   }
 
@@ -136,19 +136,19 @@ export function isPrivateHost(hostname) {
       (first & 0xffc0) === 0xfe80 ||
       (first & 0xffc0) === 0xfec0 ||
       (first & 0xff00) === 0xff00 ||
-      (first === 0x2001 && words[1] === 0x0db8)
-    );
+      first === 0x2001 && words[1] === 0x0db8);
+
   }
 
   return false;
 }
 
 const CLOUD_METADATA_HOSTNAMES = new Set([
-  "169.254.169.254", // AWS / GCP / Azure / Oracle IMDS
-  "metadata.google.internal", // GCP
-  "metadata.goog", // GCP
-  "100.100.100.200", // Alibaba Cloud
-  "fd00:ec2::254", // AWS IPv6 IMDS
+"169.254.169.254", // AWS / GCP / Azure / Oracle IMDS
+"metadata.google.internal", // GCP
+"metadata.goog", // GCP
+"100.100.100.200", // Alibaba Cloud
+"fd00:ec2::254" // AWS IPv6 IMDS
 ]);
 
 
@@ -170,7 +170,7 @@ function resolvedAddressError(address, message) {
   return new OutboundUrlGuardError(message, {
     code: "OUTBOUND_URL_GUARD_BLOCKED",
     url: String(address),
-    hostname: String(address),
+    hostname: String(address)
   });
 }
 
@@ -187,7 +187,7 @@ export function assertResolvedAddressAllowed(address, guard) {
   if (guard === "block-metadata" ? isCloudMetadataHost(address) : isPrivateHost(address)) {
     throw resolvedAddressError(
       address,
-      guard === "block-metadata" ? CLOUD_METADATA_BLOCKED_MESSAGE : PROVIDER_URL_BLOCKED_MESSAGE,
+      guard === "block-metadata" ? CLOUD_METADATA_BLOCKED_MESSAGE : PROVIDER_URL_BLOCKED_MESSAGE
     );
   }
 }
@@ -254,7 +254,7 @@ export function createGuardedProbeDispatcher(guard, lookup = dnsLookup, options 
   const dispatcher = new Agent({
     ...options,
     maxOrigins: GUARDED_PROBE_MAX_ORIGINS,
-    connect: createOutboundUrlConnector(guard, lookup),
+    connect: createOutboundUrlConnector(guard, lookup)
   });
   guardedProbeDispatchers.set(dispatcher, guard);
   return dispatcher;
@@ -285,7 +285,7 @@ export function parseOutboundUrl(input) {
   } catch {
     throw new OutboundUrlGuardError(`Invalid outbound URL: ${String(input)}`, {
       code: "OUTBOUND_URL_INVALID",
-      url: String(input),
+      url: String(input)
     });
   }
 
@@ -293,7 +293,7 @@ export function parseOutboundUrl(input) {
     throw new OutboundUrlGuardError(`Invalid outbound URL protocol for ${url.toString()}`, {
       code: "OUTBOUND_URL_INVALID",
       url: url.toString(),
-      hostname: url.hostname || null,
+      hostname: url.hostname || null
     });
   }
 
@@ -301,7 +301,7 @@ export function parseOutboundUrl(input) {
     throw new OutboundUrlGuardError("Blocked outbound URL with embedded credentials", {
       code: "OUTBOUND_URL_GUARD_BLOCKED",
       url: url.toString(),
-      hostname: url.hostname || null,
+      hostname: url.hostname || null
     });
   }
 
@@ -335,7 +335,7 @@ export function assertOutboundUrlAllowed(input, guard = getProviderValidationGua
       throw new OutboundUrlGuardError(CLOUD_METADATA_BLOCKED_MESSAGE, {
         code: "OUTBOUND_URL_GUARD_BLOCKED",
         url: url.toString(),
-        hostname: url.hostname || null,
+        hostname: url.hostname || null
       });
     }
     return url;
@@ -346,7 +346,7 @@ export function assertOutboundUrlAllowed(input, guard = getProviderValidationGua
     throw new OutboundUrlGuardError(PROVIDER_URL_BLOCKED_MESSAGE, {
       code: "OUTBOUND_URL_GUARD_BLOCKED",
       url: url.toString(),
-      hostname: url.hostname || null,
+      hostname: url.hostname || null
     });
   }
   return url;
@@ -371,9 +371,9 @@ export function assertOutboundUrlAllowed(input, guard = getProviderValidationGua
 export function guardedProbeFetch(url, init = {}, guard = getProviderValidationGuard(), fetcher = fetch) {
   assertOutboundUrlAllowed(url, guard);
   const dispatcher = getGuardedDispatcher(guard);
-  return fetcher(url, { ...init, ...(dispatcher ? { dispatcher } : {}), redirect: "manual" })
-    .catch((error) => {
-      if (error?.cause instanceof OutboundUrlGuardError) throw error.cause;
-      throw error;
-    });
+  return fetcher(url, { ...init, ...(dispatcher ? { dispatcher } : null), redirect: "manual" }).
+  catch((error) => {
+    if (error?.cause instanceof OutboundUrlGuardError) throw error.cause;
+    throw error;
+  });
 }

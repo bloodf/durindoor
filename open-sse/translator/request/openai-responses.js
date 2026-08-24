@@ -10,8 +10,8 @@ import { normalizeResponsesInput } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
 // Responses API enforces max 64 chars on call_id (#393)
-const MAX_CALL_ID_LEN = 64;
-const clampCallId = (id) => (typeof id === "string" && id.length > MAX_CALL_ID_LEN ? id.substring(0, MAX_CALL_ID_LEN) : id);
+import { isString } from "@/shared/utils/typeChecks.js";const MAX_CALL_ID_LEN = 64;
+const clampCallId = (id) => isString(id) && id.length > MAX_CALL_ID_LEN ? id.substring(0, MAX_CALL_ID_LEN) : id;
 
 /**
  * Scan a Responses API `input[]` and collect every `call_id` declared by a
@@ -23,7 +23,7 @@ const clampCallId = (id) => (typeof id === "string" && id.length > MAX_CALL_ID_L
 function collectKnownCallIds(input) {
   const knownCallIds = new Set();
   for (const item of input) {
-    if (item?.type === RESPONSES_ITEM.FUNCTION_CALL && typeof item.call_id === "string") {
+    if (item?.type === RESPONSES_ITEM.FUNCTION_CALL && isString(item.call_id)) {
       knownCallIds.add(item.call_id);
     }
   }
@@ -53,9 +53,9 @@ function stripOrphanedToolOutputs(input) {
   const knownCallIds = collectKnownCallIds(input);
 
   const stripped = [];
-  const deduped = input.filter(item => {
+  const deduped = input.filter((item) => {
     if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) return true;
-    const hasMatch = typeof item.call_id === "string" && knownCallIds.has(item.call_id);
+    const hasMatch = isString(item.call_id) && knownCallIds.has(item.call_id);
     if (!hasMatch) {
       console.warn(`[Translator] Stripped orphaned function_call_output (call_id=${item.call_id}) — no matching function_call in input`);
       stripped.push(item.call_id);
@@ -90,11 +90,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // Extract reasoning text from summary[].text or encrypted_content fallback
   const extractReasoningText = (item) => {
     if (Array.isArray(item.summary)) {
-      const txt = item.summary.map(s => s?.text || "").filter(Boolean).join("\n");
+      const txt = item.summary.map((s) => s?.text || "").filter(Boolean).join("\n");
       if (txt) return txt;
     }
     if (Array.isArray(item.content)) {
-      const txt = item.content.map(c => c?.text || "").filter(Boolean).join("\n");
+      const txt = item.content.map((c) => c?.text || "").filter(Boolean).join("\n");
       if (txt) return txt;
     }
     return "";
@@ -120,17 +120,17 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
 
       // Convert content: input_text → text, output_text → text, input_image → image_url
-      const content = Array.isArray(item.content)
-        ? item.content.map(c => {
-          if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
-          if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
-          if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
-            const url = c.image_url || c.file_id || "";
-            return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
-          }
-          return c;
-        })
-        : item.content;
+      const content = Array.isArray(item.content) ?
+      item.content.map((c) => {
+        if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
+        if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
+        if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
+          const url = c.image_url || c.file_id || "";
+          return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
+        }
+        return c;
+      }) :
+      item.content;
       const msg = { role: item.role, content };
       // Attach buffered reasoning to assistant turn (required by xiaomi-mimo thinking mode)
       if (item.role === ROLE.ASSISTANT && pendingReasoning) {
@@ -138,8 +138,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       pendingReasoning = "";
       result.messages.push(msg);
-    }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
+    } else
+    if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
       // Start or append to assistant message with tool_calls
       if (!currentAssistantMsg) {
         currentAssistantMsg = {
@@ -153,7 +153,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         }
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
-      if (!item.name || typeof item.name !== "string" || item.name.trim() === "") continue;
+      if (!item.name || !isString(item.name) || item.name.trim() === "") continue;
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
@@ -162,8 +162,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           arguments: item.arguments
         }
       });
-    }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+    } else
+    if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
       // Flush assistant message first if exists
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);
@@ -180,10 +180,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       result.messages.push({
         role: ROLE.TOOL,
         tool_call_id: item.call_id,
-        content: typeof item.output === "string" ? item.output : JSON.stringify(item.output)
+        content: isString(item.output) ? item.output : JSON.stringify(item.output)
       });
-    }
-    else if (itemType === RESPONSES_ITEM.REASONING) {
+    } else
+    if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call
       const txt = extractReasoningText(item);
       if (txt) pendingReasoning = pendingReasoning ? `${pendingReasoning}\n${txt}` : txt;
@@ -212,62 +212,62 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
    */
   const customToolNames = new Set();
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools
-      .flatMap(tool => {
-        // Already in Chat Completions format: { type: "function", function: { name, ... } }
-        if (tool.function) return tool;
-        // Responses namespace tools have no Chat equivalent. Expand each declared
-        // subtool; response state keeps the namespace for the reverse projection.
-        if (tool.type === "namespace" && Array.isArray(tool.tools)) {
-          const namespace = typeof tool.name === "string" ? tool.name : "";
-          return tool.tools
-            .filter(subtool => typeof subtool?.name === "string" && subtool.name.trim() !== "")
-            .map(subtool => ({
-              type: OPENAI_BLOCK.FUNCTION,
-              function: {
-                name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
-                description: String(subtool.description || tool.description || ""),
-                parameters: normalizeToolParameters(subtool.parameters),
-                strict: subtool.strict
-              }
-            }));
-        }
-        // Responses API custom (freeform) tool: { type: "custom", name, description }.
-        // Chat Completions has no custom-tool type, so normalize it to a function
-        // tool whose single parameter is the raw `input` string. The response
-        // translator re-emits it as a custom_tool_call by name (OmniRoute #7905).
-        if (tool.type === "custom" && typeof tool.name === "string" && tool.name.trim() !== "") {
-          customToolNames.add(tool.name);
-          return {
-            type: OPENAI_BLOCK.FUNCTION,
-            function: {
-              name: tool.name,
-              description: String(tool.description || ""),
-              parameters: {
-                type: "object",
-                properties: { input: { type: "string" } },
-                required: ["input"],
-                additionalProperties: false,
-              },
-              strict: tool.strict,
-            },
-          };
-        }
-        // Responses API function tool: { type: "function", name, description, parameters }
-        // Only convert when a non-empty name is present; skip hosted tools without one.
-        const name = tool.name;
-        if (!name || typeof name !== "string" || name.trim() === "") return null;
+    result.tools = body.tools.
+    flatMap((tool) => {
+      // Already in Chat Completions format: { type: "function", function: { name, ... } }
+      if (tool.function) return tool;
+      // Responses namespace tools have no Chat equivalent. Expand each declared
+      // subtool; response state keeps the namespace for the reverse projection.
+      if (tool.type === "namespace" && Array.isArray(tool.tools)) {
+        const namespace = isString(tool.name) ? tool.name : "";
+        return tool.tools.
+        filter((subtool) => isString(subtool?.name) && subtool.name.trim() !== "").
+        map((subtool) => ({
+          type: OPENAI_BLOCK.FUNCTION,
+          function: {
+            name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
+            description: String(subtool.description || tool.description || ""),
+            parameters: normalizeToolParameters(subtool.parameters),
+            strict: subtool.strict
+          }
+        }));
+      }
+      // Responses API custom (freeform) tool: { type: "custom", name, description }.
+      // Chat Completions has no custom-tool type, so normalize it to a function
+      // tool whose single parameter is the raw `input` string. The response
+      // translator re-emits it as a custom_tool_call by name (OmniRoute #7905).
+      if (tool.type === "custom" && isString(tool.name) && tool.name.trim() !== "") {
+        customToolNames.add(tool.name);
         return {
           type: OPENAI_BLOCK.FUNCTION,
           function: {
-            name,
+            name: tool.name,
             description: String(tool.description || ""),
-            parameters: normalizeToolParameters(tool.parameters),
+            parameters: {
+              type: "object",
+              properties: { input: { type: "string" } },
+              required: ["input"],
+              additionalProperties: false
+            },
             strict: tool.strict
           }
         };
-      })
-      .filter(Boolean);
+      }
+      // Responses API function tool: { type: "function", name, description, parameters }
+      // Only convert when a non-empty name is present; skip hosted tools without one.
+      const name = tool.name;
+      if (!name || !isString(name) || name.trim() === "") return null;
+      return {
+        type: OPENAI_BLOCK.FUNCTION,
+        function: {
+          name,
+          description: String(tool.description || ""),
+          parameters: normalizeToolParameters(tool.parameters),
+          strict: tool.strict
+        }
+      };
+    }).
+    filter(Boolean);
   }
   if (customToolNames.size > 0) result._customToolNames = [...customToolNames];
 
@@ -307,8 +307,8 @@ function normalizeToolParameters(params) {
  */
 function normalizeResponsesOutputLimit(source, target) {
   if (target.max_output_tokens === undefined) {
-    if (source.max_output_tokens !== undefined) target.max_output_tokens = source.max_output_tokens;
-    else if (source.max_tokens !== undefined) target.max_output_tokens = source.max_tokens;
+    if (source.max_output_tokens !== undefined) target.max_output_tokens = source.max_output_tokens;else
+    if (source.max_tokens !== undefined) target.max_output_tokens = source.max_tokens;
   }
   delete target.max_tokens;
   return target;
@@ -344,7 +344,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       // Use the first instruction-bearing message as instructions.
       // OpenAI recommends role="developer" for GPT-5/Codex as the system-level prompt.
       if (!hasSystemMessage) {
-        result.instructions = typeof msg.content === "string" ? msg.content : "";
+        result.instructions = isString(msg.content) ? msg.content : "";
         hasSystemMessage = true;
       }
       continue; // Skip instruction messages in input
@@ -361,24 +361,24 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       }
 
       const contentType = msg.role === ROLE.USER ? RESPONSES_ITEM.INPUT_TEXT : RESPONSES_ITEM.OUTPUT_TEXT;
-      const content = typeof msg.content === "string"
-        ? [{ type: contentType, text: msg.content }]
-        : Array.isArray(msg.content)
-          ? msg.content.map(c => {
-            if (c.type === OPENAI_BLOCK.TEXT) return { type: contentType, text: c.text };
-            // Convert Chat Completions image_url → Responses API input_image
-            // Responses API expects: { type: "input_image", image_url: "<url string>" }
-            // Chat Completions sends: { type: "image_url", image_url: { url: "...", detail: "..." } }
-            if (c.type === OPENAI_BLOCK.IMAGE_URL) {
-              const url = typeof c.image_url === "string" ? c.image_url : c.image_url?.url;
-              return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
-            }
-            if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
-            // Serialize any unknown type (tool_use, tool_result, thinking, etc.) as text
-            const text = c.text || c.content || JSON.stringify(c);
-            return { type: contentType, text: typeof text === "string" ? text : JSON.stringify(text) };
-          })
-          : [];
+      const content = isString(msg.content) ?
+      [{ type: contentType, text: msg.content }] :
+      Array.isArray(msg.content) ?
+      msg.content.map((c) => {
+        if (c.type === OPENAI_BLOCK.TEXT) return { type: contentType, text: c.text };
+        // Convert Chat Completions image_url → Responses API input_image
+        // Responses API expects: { type: "input_image", image_url: "<url string>" }
+        // Chat Completions sends: { type: "image_url", image_url: { url: "...", detail: "..." } }
+        if (c.type === OPENAI_BLOCK.IMAGE_URL) {
+          const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
+          return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
+        }
+        if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
+        // Serialize any unknown type (tool_use, tool_result, thinking, etc.) as text
+        const text = c.text || c.content || JSON.stringify(c);
+        return { type: contentType, text: isString(text) ? text : JSON.stringify(text) };
+      }) :
+      [];
 
       // Only push a message block if content is non-empty.
       // Assistant messages with only tool_calls have content: null — skip the
@@ -406,11 +406,11 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
     // Convert tool results - output must be a string for Responses API
     if (msg.role === ROLE.TOOL) {
-      const output = typeof msg.content === "string"
-        ? msg.content
-        : Array.isArray(msg.content)
-          ? msg.content.map(c => c.text || JSON.stringify(c)).join("")
-          : JSON.stringify(msg.content);
+      const output = isString(msg.content) ?
+      msg.content :
+      Array.isArray(msg.content) ?
+      msg.content.map((c) => c.text || JSON.stringify(c)).join("") :
+      JSON.stringify(msg.content);
       result.input.push({
         type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
         call_id: clampCallId(msg.tool_call_id),
@@ -426,7 +426,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
   // Convert tools format
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map(tool => {
+    result.tools = body.tools.map((tool) => {
       if (tool.type === OPENAI_BLOCK.FUNCTION) {
         return {
           type: OPENAI_BLOCK.FUNCTION,

@@ -4,9 +4,10 @@ import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 function stripAnthropicBillingHeader(text) {
-  if (typeof text !== "string") return "";
+  if (!isString(text)) return "";
   return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
 }
 
@@ -41,10 +42,10 @@ export function claudeToOpenAIRequest(model, body, stream) {
 
   // System message
   if (body.system) {
-    const systemContent = Array.isArray(body.system)
-      ? body.system.map(s => stripAnthropicBillingHeader(s.text || "")).filter(Boolean).join("\n")
-      : stripAnthropicBillingHeader(body.system);
-    
+    const systemContent = Array.isArray(body.system) ?
+    body.system.map((s) => stripAnthropicBillingHeader(s.text || "")).filter(Boolean).join("\n") :
+    stripAnthropicBillingHeader(body.system);
+
     if (systemContent) {
       result.messages.push({
         role: ROLE.SYSTEM,
@@ -76,7 +77,7 @@ export function claudeToOpenAIRequest(model, body, stream) {
 
   // Tools
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map(tool => ({
+    result.tools = body.tools.map((tool) => ({
       type: OPENAI_BLOCK.FUNCTION,
       function: {
         name: tool.name,
@@ -105,7 +106,7 @@ export function claudeToOpenAIRequest(model, body, stream) {
 
   // Anthropic metadata.user_id → OpenAI `user` (non-empty strings only).
   const userId = body.metadata?.user_id;
-  if (typeof userId === "string" && userId.length > 0) {
+  if (isString(userId) && userId.length > 0) {
     result.user = userId;
   }
 
@@ -117,8 +118,8 @@ function fixMissingToolResponsesOpenAI(messages) {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if (msg.role === ROLE.ASSISTANT && msg.tool_calls && msg.tool_calls.length > 0) {
-      const toolCallIds = msg.tool_calls.map(tc => tc.id);
-      
+      const toolCallIds = msg.tool_calls.map((tc) => tc.id);
+
       // Collect all tool response IDs that IMMEDIATELY follow this assistant message
       const respondedIds = new Set();
       let insertPosition = i + 1;
@@ -131,12 +132,12 @@ function fixMissingToolResponsesOpenAI(messages) {
           break;
         }
       }
-      
+
       // Find missing responses and insert them
-      const missingIds = toolCallIds.filter(id => !respondedIds.has(id));
-      
+      const missingIds = toolCallIds.filter((id) => !respondedIds.has(id));
+
       if (missingIds.length > 0) {
-        const missingResponses = missingIds.map(id => ({
+        const missingResponses = missingIds.map((id) => ({
           role: ROLE.TOOL,
           tool_call_id: id,
           content: "[No response received]"
@@ -151,9 +152,9 @@ function fixMissingToolResponsesOpenAI(messages) {
 // Wrap mid-conversation system text so it ends as a user turn (avoids Anthropic prefill 400).
 // Uses <instructions> tags that Claude models treat as authoritative directives.
 function systemReminderText(content) {
-  const parts = Array.isArray(content)
-    ? content.filter(c => c?.type === CLAUDE_BLOCK.TEXT).map(c => c.text || "")
-    : [typeof content === "string" ? content : ""];
+  const parts = Array.isArray(content) ?
+  content.filter((c) => c?.type === CLAUDE_BLOCK.TEXT).map((c) => c.text || "") :
+  [isString(content) ? content : ""];
   const text = parts.filter(Boolean).join("\n");
   if (!text.trim()) return "";
   return `<instructions>\n${text}\n</instructions>`;
@@ -169,7 +170,7 @@ function attachRedactedThinking(message, redactedThinking) {
     value: redactedThinking,
     enumerable: false,
     writable: false,
-    configurable: false,
+    configurable: false
   });
   return message;
 }
@@ -183,9 +184,9 @@ function convertClaudeMessage(msg) {
   }
 
   const role = msg.role === ROLE.USER || msg.role === ROLE.TOOL ? ROLE.USER : ROLE.ASSISTANT;
-  
+
   // Simple string content
-  if (typeof msg.content === "string") {
+  if (isString(msg.content)) {
     return { role, content: msg.content };
   }
 
@@ -212,7 +213,7 @@ function convertClaudeMessage(msg) {
         // would leak encrypted bytes as plain text. Only well-formed blocks
         // (type + string data) survive the bridge.
         case CLAUDE_BLOCK.REDACTED_THINKING:
-          if (typeof block.data === "string") redactedThinking.push({ ...block });
+          if (isString(block.data)) redactedThinking.push({ ...block });
           break;
 
         case CLAUDE_BLOCK.IMAGE:
@@ -235,14 +236,14 @@ function convertClaudeMessage(msg) {
               // A string `input` is already serialized JSON (e.g. produced by a
               // prior bridge pass) — pass it through verbatim; re-stringifying
               // would double-encode it into a quoted blob downstream.
-              arguments: typeof block.input === "string" ? block.input : JSON.stringify(block.input || {})
+              arguments: isString(block.input) ? block.input : JSON.stringify(block.input || {})
             }
           });
           break;
 
         case CLAUDE_BLOCK.TOOL_RESULT:
           let resultContent = "";
-          if (typeof block.content === "string") {
+          if (isString(block.content)) {
             resultContent = block.content;
           } else if (Array.isArray(block.content)) {
             // Keep text in the tool message; lift any images out as a following user
@@ -262,12 +263,12 @@ function convertClaudeMessage(msg) {
                 hasImage = true;
               }
             }
-            resultContent = textParts.join("\n")
-              || (hasImage ? "[tool returned an image; see attached]" : JSON.stringify(block.content));
+            resultContent = textParts.join("\n") || (
+            hasImage ? "[tool returned an image; see attached]" : JSON.stringify(block.content));
           } else if (block.content) {
             resultContent = JSON.stringify(block.content);
           }
-          
+
           toolResults.push({
             role: ROLE.TOOL,
             tool_call_id: block.tool_use_id,
@@ -310,7 +311,7 @@ function convertClaudeMessage(msg) {
       }
       return attachRedactedThinking(result2, redactedThinking);
     }
-    
+
     // Empty content array
     if (msg.content.length === 0) {
       return attachRedactedThinking({ role, content: "" }, redactedThinking);
@@ -323,13 +324,13 @@ function convertClaudeMessage(msg) {
 // Convert tool choice
 function convertToolChoice(choice) {
   if (!choice) return "auto";
-  if (typeof choice === "string") return choice;
-  
+  if (isString(choice)) return choice;
+
   switch (choice.type) {
-    case "auto": return "auto";
-    case "any": return "required";
-    case "tool": return { type: OPENAI_BLOCK.FUNCTION, function: { name: choice.name } };
-    default: return "auto";
+    case "auto":return "auto";
+    case "any":return "required";
+    case "tool":return { type: OPENAI_BLOCK.FUNCTION, function: { name: choice.name } };
+    default:return "auto";
   }
 }
 

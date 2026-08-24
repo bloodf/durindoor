@@ -12,7 +12,7 @@ import { PROVIDERS } from "../providers/index.js";
 // Registry for translators. Lazy-init guards against circular-import order:
 // translator modules call register() (side-effect) before this module's body runs.
 // var (not let): hoisted as undefined so register() can run during circular import (no TDZ).
-var requestRegistry;
+import { isObject, isString } from "@/shared/utils/typeChecks.js";var requestRegistry;
 var responseRegistry;
 
 // Register translator
@@ -43,7 +43,7 @@ function stripContentTypes(body, stripList = []) {
   };
   for (const msg of body.messages) {
     if (!Array.isArray(msg.content)) continue;
-    msg.content = msg.content.filter(part => !shouldStrip(part.type));
+    msg.content = msg.content.filter((part) => !shouldStrip(part.type));
     if (msg.content.length === 0) msg.content = "";
   }
 }
@@ -76,16 +76,16 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
    * earlier would re-apply a budget the request no longer carries.
    */
   const claudeGeminiBudgetIntent =
-    sourceFormat === FORMATS.CLAUDE
-    && targetFormat === FORMATS.GEMINI
-    && result.thinking?.type === "enabled"
-    && result.thinking.budget_tokens !== undefined
-      ? { mode: "budget", budget: result.thinking.budget_tokens }
-      : null;
+  sourceFormat === FORMATS.CLAUDE &&
+  targetFormat === FORMATS.GEMINI &&
+  result.thinking?.type === "enabled" &&
+  result.thinking.budget_tokens !== undefined ?
+  { mode: "budget", budget: result.thinking.budget_tokens } :
+  null;
 
   // Always ensure tool_calls have id (some providers require it)
   ensureToolCallIds(result);
-  
+
   // Fix missing tool responses (insert empty tool_result if needed)
   fixMissingToolResponses(result);
 
@@ -103,20 +103,20 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // all. Responses API function_call_output is structural-stripped separately
   // inside openai-responses.js.
   const skipSalvage =
-    sourceFormat === FORMATS.GEMINI ||
-    sourceFormat === FORMATS.GEMINI_CLI ||
-    sourceFormat === FORMATS.ANTIGRAVITY ||
-    sourceFormat === FORMATS.VERTEX;
+  sourceFormat === FORMATS.GEMINI ||
+  sourceFormat === FORMATS.GEMINI_CLI ||
+  sourceFormat === FORMATS.ANTIGRAVITY ||
+  sourceFormat === FORMATS.VERTEX;
   if (!skipSalvage) {
     salvageOrphanedToolResults(result);
   }
 
   // Capture thinking intent from the original (pre-translation) body, before any
   // format conversion strips/renames the fields. Applied after translation.
-  const thinkingIntent = translationContext?.thinkingIntent
-    ?? parsedModel.override
-    ?? claudeGeminiBudgetIntent
-    ?? captureThinking(result);
+  const thinkingIntent = translationContext?.thinkingIntent ??
+  parsedModel.override ??
+  claudeGeminiBudgetIntent ??
+  captureThinking(result);
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
@@ -124,7 +124,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     ...(translationContext || {}),
     provider,
     thinkingIntent,
-    clientSessionId,
+    clientSessionId
   });
   let finalizeTranslatedRequest;
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
@@ -167,11 +167,11 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // recognized suffix. Keep same-format translations safe as well; unknown
   // parenthesized IDs have no override and remain untouched.
   if (
-    parsedModel.override
-    && result
-    && typeof result === "object"
-    && Object.prototype.hasOwnProperty.call(result, "model")
-  ) {
+  parsedModel.override &&
+  result && isObject(
+    result) &&
+  Object.prototype.hasOwnProperty.call(result, "model"))
+  {
     result.model = translationModel;
   }
 
@@ -182,7 +182,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     result,
     provider,
     thinkingIntent,
-    resolvedTranslationContext.modelCapabilities,
+    resolvedTranslationContext.modelCapabilities
   );
   // Translator-local guards run after centralized thinking normalization.
   finalizeTranslatedRequest?.(translationModel, result);
@@ -193,28 +193,28 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)
   if (targetFormat === FORMATS.OPENAI) {
     result = filterToOpenAIFormat(result, {
-      preserveCacheControl: !!PROVIDERS[provider]?.quirks?.preserveCacheControl,
+      preserveCacheControl: !!PROVIDERS[provider]?.quirks?.preserveCacheControl
     });
   }
 
   // MiniMax-M3's OpenAI transport does not support forced tool_choice values
   // ("required" or function objects); clamp to "auto" to keep tools enabled.
   if (
-    targetFormat === FORMATS.OPENAI
-    && (provider === "minimax" || provider === "minimax-cn")
-    && translationModel === "MiniMax-M3"
-  ) {
+  targetFormat === FORMATS.OPENAI && (
+  provider === "minimax" || provider === "minimax-cn") &&
+  translationModel === "MiniMax-M3")
+  {
     const tc = result?.tool_choice;
-    if (tc === "required" || (tc && typeof tc === "object")) {
+    if (tc === "required" || tc && isObject(tc)) {
       result.tool_choice = "auto";
     }
   }
 
   // Final step: prepare request for Claude format endpoints
   if (targetFormat === FORMATS.CLAUDE) {
-    const normalizesNativeClaudeTransport = PROVIDERS[provider]?.quirks?.normalizeNativeClaudeTransport
-      || provider === "ollama"
-      || provider === "ollama-local";
+    const normalizesNativeClaudeTransport = PROVIDERS[provider]?.quirks?.normalizeNativeClaudeTransport ||
+    provider === "ollama" ||
+    provider === "ollama-local";
     if (normalizesNativeClaudeTransport) {
       // Ollama implements the Messages wire contract but not Anthropic's
       // model-specific beta matrix. Normalize system turns without applying
@@ -269,7 +269,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   const directFn = responseRegistry.get(`${targetFormat}:${sourceFormat}`);
   if (directFn) {
     const converted = directFn(chunk, state);
-    return converted ? (Array.isArray(converted) ? converted : [converted]) : [];
+    return converted ? Array.isArray(converted) ? converted : [converted] : [];
   }
 
   // Step 1: target -> openai (if target is not openai)
@@ -332,14 +332,14 @@ export function initState(sourceFormat, requestBody) {
   const plainToolNames = new Set();
   if (Array.isArray(requestBody?.tools)) {
     for (const tool of requestBody.tools) {
-      const type = typeof tool?.type === "string" ? tool.type : "";
-      const name = typeof tool?.function?.name === "string"
-        ? tool.function.name
-        : (typeof tool?.name === "string" ? tool.name : "");
+      const type = isString(tool?.type) ? tool.type : "";
+      const name = isString(tool?.function?.name) ?
+      tool.function.name :
+      isString(tool?.name) ? tool.name : "";
       if (name && type) toolTypes[name] = type;
       if (type === "namespace" && name && Array.isArray(tool.tools)) {
         for (const subtool of tool.tools) {
-          if (typeof subtool?.name === "string" && subtool.name) {
+          if (isString(subtool?.name) && subtool.name) {
             // Only the dotted form is mapped. A bare subtool name (e.g. "click")
             // can collide with an unrelated plain function tool of the same name;
             // namespace restoration must rely on the provider-translated dotted

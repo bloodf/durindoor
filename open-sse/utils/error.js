@@ -1,8 +1,8 @@
 import {
   ERROR_TYPES,
   DEFAULT_ERROR_MESSAGES,
-  MAX_RATE_LIMIT_COOLDOWN_MS,
-} from "../config/errorConfig.js";
+  MAX_RATE_LIMIT_COOLDOWN_MS } from
+"../config/errorConfig.js";
 import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
 
 /**
@@ -10,12 +10,12 @@ import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
  * @returns {object} Error response object
- */
+ */import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 export function buildErrorBody(statusCode, message) {
-  const errorInfo = ERROR_TYPES[statusCode] || 
-    (statusCode >= 500 
-      ? { type: "server_error", code: "internal_server_error" }
-      : { type: "invalid_request_error", code: "" });
+  const errorInfo = ERROR_TYPES[statusCode] || (
+  statusCode >= 500 ?
+  { type: "server_error", code: "internal_server_error" } :
+  { type: "invalid_request_error", code: "" });
 
   // Root seam (OmniRoute #6886): every non-streaming (`errorResponse`) and
   // SSE (`writeStreamError`) API error body built here routes its
@@ -63,13 +63,13 @@ export function authErrorResponse(endpoint, message) {
   if (endpoint?.includes("/v1/messages")) {
     return new Response(JSON.stringify({
       type: "error",
-      error: { type: "authentication_error", message },
+      error: { type: "authentication_error", message }
     }), {
       status: 401,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
+        "Access-Control-Allow-Origin": "*"
+      }
     });
   }
   return errorResponse(401, message);
@@ -88,20 +88,20 @@ export async function writeStreamError(writer, statusCode, message) {
 }
 
 const RESET_HEADERS = Object.freeze([
-  "x-ratelimit-reset",
-  "x-ratelimit-reset-requests",
-  "x-ratelimit-reset-tokens",
-]);
+"x-ratelimit-reset",
+"x-ratelimit-reset-requests",
+"x-ratelimit-reset-tokens"]
+);
 const RELATIVE_MILLISECOND_FIELDS = new Set(["retry_after_ms", "retryafterms"]);
 const RELATIVE_SECOND_FIELDS = new Set(["retryafter", "retry_after"]);
 const ABSOLUTE_RESET_FIELDS = new Set(["reset_at", "resets_at", "resetat", "resetsat"]);
 const EXPLICIT_QUOTA_TEXT = /(?:\bquota\b[^\n]{0,48}\b(?:reached|exceeded|exhausted|depleted|reset)\b|\b(?:reached|exceeded|exhausted|depleted)\b[^\n]{0,48}\bquota\b|\b(?:weekly|daily|session|usage)\b[^\n]{0,48}\blimit\b[^\n]{0,48}\b(?:reached|exceeded|exhausted)\b|\b(?:reached|exceeded|exhausted)\b[^\n]{0,48}\b(?:weekly|daily|session|usage)\b[^\n]{0,48}\blimit\b|\blimit\b[^\n]{0,48}\b(?:weekly|daily|session|usage)\b[^\n]{0,48}\b(?:reached|exceeded|exhausted)\b)/i;
 const STRUCTURED_QUOTA_EXHAUSTION_CODES = new Set([
-  "billing_hard_limit_reached",
-  "insufficient_quota",
-  "quota_exceeded",
-  "usage_limit_reached",
-]);
+"billing_hard_limit_reached",
+"insufficient_quota",
+"quota_exceeded",
+"usage_limit_reached"]
+);
 
 function boundedAbsoluteReset(value, now, maxDelayMs) {
   const reset = Number(value);
@@ -110,33 +110,33 @@ function boundedAbsoluteReset(value, now, maxDelayMs) {
 }
 
 function absoluteFromEpoch(value, now, maxDelayMs) {
-  if (typeof value === "string" && !/^\d{1,16}$/.test(value.trim())) return null;
+  if (isString(value) && !/^\d{1,16}$/.test(value.trim())) return null;
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return null;
   return boundedAbsoluteReset(number < 1e12 ? number * 1000 : number, now, maxDelayMs);
 }
 
 function absoluteFromIso(value, now, maxDelayMs) {
-  if (typeof value !== "string" || !value.trim() || value.length > 128) return null;
+  if (!isString(value) || !value.trim() || value.length > 128) return null;
   return boundedAbsoluteReset(Date.parse(value), now, maxDelayMs);
 }
 
 function relativeReset(value, multiplier, now, maxDelayMs) {
-  if (typeof value === "string" && !/^\d{1,12}$/.test(value.trim())) return null;
+  if (isString(value) && !/^\d{1,12}$/.test(value.trim())) return null;
   const duration = Number(value) * multiplier;
   if (!Number.isSafeInteger(duration) || duration <= 0 || duration > maxDelayMs) return null;
   return now + duration;
 }
 
 function retryAfterReset(value, now, maxDelayMs) {
-  if (typeof value !== "string" || !value.trim() || value.length > 128) return null;
+  if (!isString(value) || !value.trim() || value.length > 128) return null;
   const text = value.trim();
   if (/^\d{1,9}$/.test(text)) return relativeReset(text, 1000, now, maxDelayMs);
   return absoluteFromIso(text, now, maxDelayMs);
 }
 
 function durationHeaderReset(value, now, maxDelayMs) {
-  if (typeof value !== "string" || !value.trim() || value.length > 64) return null;
+  if (!isString(value) || !value.trim() || value.length > 64) return null;
   const compact = value.trim().replace(/\s+/g, "");
   if (!/^(?:\d{1,6}(?:ms|[wdhms]))+$/i.test(compact)) return null;
   const factors = { w: 604_800_000, d: 86_400_000, h: 3_600_000, m: 60_000, s: 1_000, ms: 1 };
@@ -155,12 +155,12 @@ function durationHeaderReset(value, now, maxDelayMs) {
 function findJsonReset(value, now, maxDelayMs) {
   let visited = 0;
   const visit = (node, depth) => {
-    if (depth > 4 || visited++ > 100 || !node || typeof node !== "object") return null;
+    if (depth > 4 || visited++ > 100 || !node || !isObject(node)) return null;
     for (const [rawKey, item] of Object.entries(node).slice(0, 50)) {
       const key = rawKey.toLowerCase();
       let reset = null;
-      if (RELATIVE_MILLISECOND_FIELDS.has(key)) reset = relativeReset(item, 1, now, maxDelayMs);
-      else if (RELATIVE_SECOND_FIELDS.has(key)) {
+      if (RELATIVE_MILLISECOND_FIELDS.has(key)) reset = relativeReset(item, 1, now, maxDelayMs);else
+      if (RELATIVE_SECOND_FIELDS.has(key)) {
         reset = relativeReset(item, 1000, now, maxDelayMs) || absoluteFromIso(item, now, maxDelayMs);
       } else if (ABSOLUTE_RESET_FIELDS.has(key)) {
         reset = absoluteFromEpoch(item, now, maxDelayMs) || absoluteFromIso(item, now, maxDelayMs);
@@ -175,12 +175,12 @@ function findJsonReset(value, now, maxDelayMs) {
 }
 
 function hasStructuredQuotaExhaustion(text) {
-  if (typeof text !== "string" || text.length > 64 * 1024) return false;
+  if (!isString(text) || text.length > 64 * 1024) return false;
   let root;
-  try { root = JSON.parse(text); } catch { return false; }
+  try {root = JSON.parse(text);} catch {return false;}
   let visited = 0;
   const visit = (node, depth) => {
-    if (depth > 4 || visited++ > 100 || !node || typeof node !== "object") return false;
+    if (depth > 4 || visited++ > 100 || !node || !isObject(node)) return false;
     for (const [key, value] of Object.entries(node).slice(0, 50)) {
       if (["code", "type", "reason"].includes(key.toLowerCase())) {
         const normalized = String(value || "").trim().toLowerCase();
@@ -194,7 +194,7 @@ function hasStructuredQuotaExhaustion(text) {
 }
 
 function durationResetFromText(text, now, maxDelayMs) {
-  if (typeof text !== "string" || text.length > 64 * 1024) return null;
+  if (!isString(text) || text.length > 64 * 1024) return null;
   const unitMs = {
     w: 7 * 24 * 60 * 60 * 1000,
     week: 7 * 24 * 60 * 60 * 1000,
@@ -210,7 +210,7 @@ function durationResetFromText(text, now, maxDelayMs) {
     minutes: 60 * 1000,
     s: 1000,
     second: 1000,
-    seconds: 1000,
+    seconds: 1000
   };
   const durations = new Set();
   const clausePattern = /\b(?:retry|retrying|reset|resets|resetting)\b[^\r\n]{0,32}?\b(?:in|after)\s+((?:\d{1,6}\s*(?:weeks?|days?|hours?|minutes?|seconds?|[wdhms])\s*){1,6})/gi;
@@ -240,13 +240,13 @@ export function parseRateLimitEvidence({
   bodyText = "",
   executorResetAtMs = null,
   now = Date.now(),
-  maxDelayMs = MAX_RATE_LIMIT_COOLDOWN_MS,
+  maxDelayMs = MAX_RATE_LIMIT_COOLDOWN_MS
 } = {}) {
   if (Number(status) !== 429) return null;
   const clock = Number(now);
   const safeNow = Number.isFinite(clock) ? clock : Date.now();
-  const explicitQuota = EXPLICIT_QUOTA_TEXT.test(String(bodyText || ""))
-    || hasStructuredQuotaExhaustion(bodyText);
+  const explicitQuota = EXPLICIT_QUOTA_TEXT.test(String(bodyText || "")) ||
+  hasStructuredQuotaExhaustion(bodyText);
 
   let resetAtMs = boundedAbsoluteReset(executorResetAtMs, safeNow, maxDelayMs);
   let source = resetAtMs ? "executor" : null;
@@ -255,21 +255,21 @@ export function parseRateLimitEvidence({
     if (resetAtMs) source = "retry_after";
   }
   if (!resetAtMs) {
-    const headerDeadlines = RESET_HEADERS
-      .map((header) => {
-        const value = headers?.get?.(header);
-        return absoluteFromEpoch(value, safeNow, maxDelayMs) || durationHeaderReset(value, safeNow, maxDelayMs);
-      })
-      .filter(Number.isFinite)
-      .sort((left, right) => right - left);
+    const headerDeadlines = RESET_HEADERS.
+    map((header) => {
+      const value = headers?.get?.(header);
+      return absoluteFromEpoch(value, safeNow, maxDelayMs) || durationHeaderReset(value, safeNow, maxDelayMs);
+    }).
+    filter(Number.isFinite).
+    sort((left, right) => right - left);
     resetAtMs = headerDeadlines[0] || null;
     if (resetAtMs) source = "reset_header";
   }
-  if (!resetAtMs && typeof bodyText === "string" && bodyText.length <= 64 * 1024) {
+  if (!resetAtMs && isString(bodyText) && bodyText.length <= 64 * 1024) {
     try {
       resetAtMs = findJsonReset(JSON.parse(bodyText), safeNow, maxDelayMs);
       if (resetAtMs) source = "structured_body";
-    } catch { /* non-JSON provider body */ }
+    } catch {/* non-JSON provider body */}
   }
   if (!resetAtMs) {
     resetAtMs = durationResetFromText(bodyText, safeNow, maxDelayMs);
@@ -279,7 +279,7 @@ export function parseRateLimitEvidence({
   return {
     state: explicitQuota ? "exhausted" : "cooldown",
     resetAtMs,
-    source: source || "local_policy",
+    source: source || "local_policy"
   };
 }
 
@@ -293,49 +293,49 @@ export async function readBoundedResponseText(response, {
   signal = null,
   maxBytes = 64 * 1024,
   timeoutMs = 2_000,
-  throwOnTimeout = false,
+  throwOnTimeout = false
 } = {}) {
   const timeoutFailure = () => {
     const error = new Error("Provider response body timed out");
     error.name = "TimeoutError";
     return error;
   };
-  const abortFailure = () => signal?.reason instanceof Error && signal.reason.name === "AbortError"
-    ? signal.reason
-    : new DOMException("Request aborted", "AbortError");
+  const abortFailure = () => signal?.reason instanceof Error && signal.reason.name === "AbortError" ?
+  signal.reason :
+  new DOMException("Request aborted", "AbortError");
   if (signal?.aborted) throw abortFailure();
   const reader = response?.body?.getReader?.();
   if (!reader) {
-    const readCompatibilityBody = typeof response?.text === "function"
-      ? () => response.text()
-      : typeof response?.json === "function"
-        ? async () => JSON.stringify(await response.json())
-        : null;
+    const readCompatibilityBody = isFunction(response?.text) ?
+    () => response.text() :
+    isFunction(response?.json) ?
+    async () => JSON.stringify(await response.json()) :
+    null;
     if (!readCompatibilityBody) return "";
     let timeout = null;
     let onAbort = null;
     const timeoutPromise = new Promise((resolve) => {
       timeout = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
     });
-    const abortPromise = signal
-      ? new Promise((_, reject) => {
-          onAbort = () => reject(abortFailure());
-          signal.addEventListener("abort", onAbort, { once: true });
-          if (signal.aborted) onAbort();
-        })
-      : new Promise(() => {});
+    const abortPromise = signal ?
+    new Promise((_, reject) => {
+      onAbort = () => reject(abortFailure());
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    }) :
+    new Promise(() => {});
     try {
       const result = await Promise.race([
-        Promise.resolve().then(readCompatibilityBody).then((text) => ({ text })),
-        timeoutPromise,
-        abortPromise,
-      ]);
+      Promise.resolve().then(readCompatibilityBody).then((text) => ({ text })),
+      timeoutPromise,
+      abortPromise]
+      );
       if (signal?.aborted) throw abortFailure();
       if (result?.timedOut) {
         if (throwOnTimeout) throw timeoutFailure();
         return "";
       }
-      if (typeof result?.text !== "string") return "";
+      if (!isString(result?.text)) return "";
       return new TextEncoder().encode(result.text).byteLength <= maxBytes ? result.text : "";
     } finally {
       if (timeout) clearTimeout(timeout);
@@ -349,16 +349,16 @@ export async function readBoundedResponseText(response, {
   const timeoutPromise = new Promise((resolve) => {
     timeout = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
   });
-  const abortPromise = signal
-    ? new Promise((_, reject) => {
-        onAbort = () => {
-          reject(abortFailure());
-          void reader.cancel("provider error body aborted").catch(() => {});
-        };
-        signal.addEventListener("abort", onAbort, { once: true });
-        if (signal.aborted) onAbort();
-      })
-    : new Promise(() => {});
+  const abortPromise = signal ?
+  new Promise((_, reject) => {
+    onAbort = () => {
+      reject(abortFailure());
+      void reader.cancel("provider error body aborted").catch(() => {});
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  }) :
+  new Promise(() => {});
   try {
     while (true) {
       const result = await Promise.race([reader.read(), timeoutPromise, abortPromise]);
@@ -379,12 +379,12 @@ export async function readBoundedResponseText(response, {
     }
     const joined = new Uint8Array(total);
     let offset = 0;
-    for (const chunk of chunks) { joined.set(chunk, offset); offset += chunk.byteLength; }
+    for (const chunk of chunks) {joined.set(chunk, offset);offset += chunk.byteLength;}
     return new TextDecoder().decode(joined);
   } finally {
     if (timeout) clearTimeout(timeout);
     if (onAbort) signal?.removeEventListener?.("abort", onAbort);
-    try { reader.releaseLock(); } catch { /* already released */ }
+    try {reader.releaseLock();} catch {/* already released */}
   }
 }
 
@@ -403,13 +403,13 @@ export async function parseUpstreamError(response, executor = null, options = {}
   // plain value is a no-op, so both shapes work. Credentials/proxyOptions are
   // threaded through options for parsers that need a follow-up lookup.
   let executorParsed = null;
-  if (executor && typeof executor.parseError === "function") {
+  if (executor && isFunction(executor.parseError)) {
     try {
       const parsed = await executor.parseError(response, bodyText, options?.credentials ?? null, options?.proxyOptions ?? null);
-      if (parsed && typeof parsed === "object") {
+      if (parsed && isObject(parsed)) {
         executorParsed = parsed;
       }
-    } catch { /* fall through to default parsing */ }
+    } catch {/* fall through to default parsing */}
   }
 
   const effectiveStatus = executorParsed?.status || response.status;
@@ -418,16 +418,16 @@ export async function parseUpstreamError(response, executor = null, options = {}
     headers: response.headers,
     bodyText,
     executorResetAtMs: executorParsed?.resetsAtMs,
-    now: options?.now ?? Date.now(),
+    now: options?.now ?? Date.now()
   });
   if (executorParsed) {
     const parsedMessage = executorParsed.message || DEFAULT_ERROR_MESSAGES[effectiveStatus] || `Upstream error: ${effectiveStatus}`;
     // A 429 evidence object is the bounded authority, including an intentional
     // null reset. Falling back on null would resurrect a rejected raw executor
     // deadline and let downstream compatibility code turn it into a long lock.
-    const normalizedResetAtMs = rateLimitEvidence
-      ? rateLimitEvidence.resetAtMs
-      : executorParsed.resetsAtMs;
+    const normalizedResetAtMs = rateLimitEvidence ?
+    rateLimitEvidence.resetAtMs :
+    executorParsed.resetsAtMs;
     return {
       statusCode: effectiveStatus,
       // A raw 429 body can contain request/account material. The client gets a
@@ -436,7 +436,7 @@ export async function parseUpstreamError(response, executor = null, options = {}
       message: effectiveStatus === 429 ? DEFAULT_ERROR_MESSAGES[429] : sanitizeErrorMessage(parsedMessage),
       resetsAtMs: normalizedResetAtMs,
       errorBody: effectiveStatus === 429 ? undefined : executorParsed.errorBody,
-      rateLimitEvidence,
+      rateLimitEvidence
     };
   }
 
@@ -457,7 +457,7 @@ export async function parseUpstreamError(response, executor = null, options = {}
     message = bodyText;
   }
 
-  const messageStr = typeof message === "string" ? message : JSON.stringify(message);
+  const messageStr = isString(message) ? message : JSON.stringify(message);
   const finalMessage = messageStr || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
 
   return {
@@ -465,7 +465,7 @@ export async function parseUpstreamError(response, executor = null, options = {}
     message: response.status === 429 ? DEFAULT_ERROR_MESSAGES[429] : sanitizeErrorMessage(finalMessage),
     resetsAtMs: rateLimitEvidence?.resetAtMs,
     errorBody: response.status === 429 ? undefined : errorBody,
-    rateLimitEvidence,
+    rateLimitEvidence
   };
 }
 
@@ -473,11 +473,11 @@ const SENSITIVE_ERROR_BODY_KEY = /^(?:access[-_]?token|refresh[-_]?token|id[-_]?
 
 function collectCredentialSecrets(value, key = "", inheritedSensitive = false, secrets = [], seen = new WeakSet()) {
   const sensitive = inheritedSensitive || SENSITIVE_ERROR_BODY_KEY.test(key);
-  if (typeof value === "string") {
+  if (isString(value)) {
     if (sensitive && value) secrets.push(value);
     return secrets;
   }
-  if (!value || typeof value !== "object" || seen.has(value)) return secrets;
+  if (!value || !isObject(value) || seen.has(value)) return secrets;
   seen.add(value);
   for (const [nestedKey, nestedValue] of Object.entries(value)) {
     collectCredentialSecrets(nestedValue, nestedKey, sensitive, secrets, seen);
@@ -486,14 +486,14 @@ function collectCredentialSecrets(value, key = "", inheritedSensitive = false, s
 }
 
 function sanitizeStructuredErrorBody(value, secrets = []) {
-  if (typeof value === "string") return sanitizeErrorMessageWithSecrets(value, secrets);
+  if (isString(value)) return sanitizeErrorMessageWithSecrets(value, secrets);
   if (Array.isArray(value)) return value.map((nested) => sanitizeStructuredErrorBody(nested, secrets));
-  if (!value || typeof value !== "object") return value;
+  if (!value || !isObject(value)) return value;
 
   return Object.fromEntries(Object.entries(value).map(([key, nested]) => [
-    key,
-    SENSITIVE_ERROR_BODY_KEY.test(key) ? "[redacted]" : sanitizeStructuredErrorBody(nested, secrets),
-  ]));
+  key,
+  SENSITIVE_ERROR_BODY_KEY.test(key) ? "[redacted]" : sanitizeStructuredErrorBody(nested, secrets)]
+  ));
 }
 
 /**
@@ -518,17 +518,17 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
     status: statusCode,
     error: safeMessage,
     resetsAtMs,
-    ...(rateLimitEvidence ? { rateLimitEvidence } : {}),
-    ...(safeBody ? { errorBody: safeBody } : {}),
-    response: safeBody
-      ? new Response(JSON.stringify(safeBody), {
-          status: statusCode,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
-        })
-      : errorResponse(statusCode, safeMessage),
+    ...(rateLimitEvidence ? { rateLimitEvidence } : null),
+    ...(safeBody ? { errorBody: safeBody } : null),
+    response: safeBody ?
+    new Response(JSON.stringify(safeBody), {
+      status: statusCode,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      }
+    }) :
+    errorResponse(statusCode, safeMessage)
   };
 }
 
@@ -543,9 +543,9 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
 export function unavailableResponse(statusCode, message, retryAfter, retryAfterHuman) {
   const retryAfterMs = new Date(retryAfter).getTime();
   const hasRetryDeadline = Number.isFinite(retryAfterMs) && retryAfterMs > Date.now();
-  const retryAfterSec = hasRetryDeadline
-    ? Math.max(Math.ceil((retryAfterMs - Date.now()) / 1000), 1)
-    : null;
+  const retryAfterSec = hasRetryDeadline ?
+  Math.max(Math.ceil((retryAfterMs - Date.now()) / 1000), 1) :
+  null;
   // Sanitize at this shared builder too (OmniRoute #6886) — unavailableResponse
   // bypasses buildErrorBody. The human retry suffix is appended after
   // sanitizing the base message so it survives verbatim.
@@ -569,7 +569,7 @@ export function unavailableResponse(statusCode, message, retryAfter, retryAfterH
     JSON.stringify({ error }),
     {
       status: statusCode,
-      headers,
+      headers
     }
   );
 }
@@ -588,7 +588,7 @@ export function formatProviderError(error, provider, model, statusCode) {
   // Expose low-level cause (e.g. UND_ERR_SOCKET, ECONNRESET, ETIMEDOUT) for diagnosing fetch failures
   const causeCode = error.cause?.code;
   const causeMsg = error.cause?.message ? sanitizeErrorMessage(error.cause.message) : null;
-  const safeCauseCode = typeof causeCode === "string" && /^[A-Z0-9_]{1,64}$/.test(causeCode) ? causeCode : null;
+  const safeCauseCode = isString(causeCode) && /^[A-Z0-9_]{1,64}$/.test(causeCode) ? causeCode : null;
   const causeStr = safeCauseCode || causeMsg ? ` (cause: ${[safeCauseCode, causeMsg].filter(Boolean).join(": ")})` : "";
   return `[${code}]: ${message}${causeStr}`;
 }
@@ -628,10 +628,10 @@ function maskSourcePaths(line) {
     // nothing changes, so a path at any JSON depth is detected.
     let core = parts[i];
     for (;;) {
-      const next = core
-        .replace(/^[("'{]+|[)"',.;:}]+$/g, "")
-        .replace(/^[A-Za-z0-9_-]+":"/, "")
-        .replace(/^[A-Za-z0-9_-]+=/, "");
+      const next = core.
+      replace(/^[("'{]+|[)"',.;:}]+$/g, "").
+      replace(/^[A-Za-z0-9_-]+":"/, "").
+      replace(/^[A-Za-z0-9_-]+=/, "");
       if (next === core) break;
       core = next;
     }
@@ -681,30 +681,30 @@ export function sanitizeErrorMessage(message) {
   const raw = full.slice(0, 4096);
   const firstLineCut = full.length > 4096 && !raw.includes("\n") && !raw.includes("\r");
   const firstLine = raw.split(/\r?\n/)[0].trim();
-  let out = maskQuotedPaths(maskSourcePaths(firstLine))
-    .replace(/\b(https?|socks5h?):\/\/[^@\s/]+@/gi, "$1://[redacted]@")
-    // Complete non-HTTP credential URLs (db/redis/…): `scheme://[user:]<token>@host`.
-    .replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/(?:[^@\s/:]+:)?[^@\s/]+@/gi, "$1://[redacted]@")
-    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
-    .replace(/\b(?:sk[-_][A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9._-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/gi, "[redacted]")
-    .replace(
-      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*"/gi,
-      '$1[redacted]"',
-    )
-    .replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]")
-    .replace(
-      /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code|code[-_]?verifier|state|oauth[-_]?state|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&;\s]+/gi,
-      "$1[redacted]",
-    )
-    // Inline key=value assignments (e.g. `provider rejected api_key=SECRET` or
-    // `password = SECRET`) using the same explicit credential-key list as the
-    // JSON/query redactors so non-secret words containing `key` stay readable.
-    .replace(
-      /\b(access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)\b(\s*=\s*)[^\s&;]+/gi,
-      "$1$2[redacted]",
-    )
-    .replace(/file:\/\/\S+/g, "[path]")
-    .replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]");
+  let out = maskQuotedPaths(maskSourcePaths(firstLine)).
+  replace(/\b(https?|socks5h?):\/\/[^@\s/]+@/gi, "$1://[redacted]@")
+  // Complete non-HTTP credential URLs (db/redis/…): `scheme://[user:]<token>@host`.
+  .replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/(?:[^@\s/:]+:)?[^@\s/]+@/gi, "$1://[redacted]@").
+  replace(/\bBearer\s+\S+/gi, "Bearer [redacted]").
+  replace(/\b(?:sk[-_][A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9._-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/gi, "[redacted]").
+  replace(
+    /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*"/gi,
+    '$1[redacted]"'
+  ).
+  replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]").
+  replace(
+    /((?:[?&;#]\s*|^)(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code|code[-_]?verifier|state|oauth[-_]?state|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)=)[^&;\s]+/gi,
+    "$1[redacted]"
+  )
+  // Inline key=value assignments (e.g. `provider rejected api_key=SECRET` or
+  // `password = SECRET`) using the same explicit credential-key list as the
+  // JSON/query redactors so non-secret words containing `key` stay readable.
+  .replace(
+    /\b(access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)\b(\s*=\s*)[^\s&;]+/gi,
+    "$1$2[redacted]"
+  ).
+  replace(/file:\/\/\S+/g, "[path]").
+  replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]");
   if (firstLineCut) {
     // The 4096 cut may have removed a credential's closing delimiter, leaving
     // an unredacted secret prefix at the end of the capped text. Redact an
@@ -712,12 +712,12 @@ export function sanitizeErrorMessage(message) {
     // (`user:secret` shape, no `@`; a purely numeric second segment is a
     // port, not a password) — anchored to the end so complete,
     // delimiter-closed forms above are never double-touched (Codex P1).
-    out = out
-      .replace(
-        /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]+$/i,
-        '$1[redacted]"',
-      )
-      .replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/[^@\s/:]+:(?![0-9]+$)[^@\s/]+$/i, "$1://[redacted]@");
+    out = out.
+    replace(
+      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]+$/i,
+      '$1[redacted]"'
+    ).
+    replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/[^@\s/:]+:(?![0-9]+$)[^@\s/]+$/i, "$1://[redacted]@");
     // Token-only URL userinfo cut at the cap (`scheme://TOKEN`, no `:`/`@` in
     // the kept text). Capped text alone cannot tell a truncated credential from
     // a safe dotless host (`https://localhost…`), so redact only when the
@@ -743,7 +743,7 @@ export function sanitizeErrorMessage(message) {
 export function sanitizeErrorMessageWithSecrets(message, secrets = []) {
   let out = String(message || "Upstream provider error");
   for (const secret of secrets) {
-    if (typeof secret === "string" && secret) out = out.split(secret).join("[redacted]");
+    if (isString(secret) && secret) out = out.split(secret).join("[redacted]");
   }
   return sanitizeErrorMessage(out);
 }

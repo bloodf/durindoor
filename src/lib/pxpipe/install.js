@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DATA_DIR } from "../dataDir.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 export const PXPIPE_DIR = path.join(DATA_DIR, "pxpipe");
 
@@ -10,7 +11,7 @@ export const PXPIPE_MISSING_CODE = "DEPENDENCY_MISSING";
 const MISSING_REASONS = {
   not_resolved: "Bundled pxpipe-proxy dependency is missing; reinstall DurinDoor",
   not_found: "Bundled pxpipe-proxy dependency is present but library entry is missing",
-  not_loaded: "Bundled pxpipe-proxy dependency is present but failed to load",
+  not_loaded: "Bundled pxpipe-proxy dependency is present but failed to load"
 };
 
 const STANDALONE_ROOT_ENV = "DURINDOOR_STANDALONE_ROOT";
@@ -20,12 +21,12 @@ const PXPIPE_TRANSFORM_SUBPATH = "./transform";
 
 function getExportedEntry(pkg, subpath) {
   const exportDef = pkg?.exports?.[subpath];
-  if (typeof exportDef === "string") {
+  if (isString(exportDef)) {
     return exportDef.startsWith("./") ? exportDef : `./${exportDef}`;
   }
-  if (!exportDef || typeof exportDef !== "object") return null;
+  if (!exportDef || !isObject(exportDef)) return null;
   const importPath = exportDef.import;
-  if (typeof importPath !== "string" || !importPath.endsWith(".js")) return null;
+  if (!isString(importPath) || !importPath.endsWith(".js")) return null;
   return importPath;
 }
 
@@ -100,4 +101,3 @@ export function getInstallInfo() {
     return { installed: false, version: null, path: root, reason: MISSING_REASONS.not_loaded, code: PXPIPE_MISSING_CODE };
   }
 }
-

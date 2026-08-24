@@ -1,4 +1,4 @@
-/**
+import { isNumber } from "../../../../src/shared/utils/typeChecks.js"; /**
  * Truncate text with ellipsis
  * @param {string} text - Text to truncate
  * @param {number} maxLength - Maximum length
@@ -52,7 +52,7 @@ function formatDate(date) {
  * @returns {string} Formatted number
  */
 function formatNumber(num) {
-  if (typeof num !== "number" || isNaN(num)) {
+  if (!isNumber(num) || isNaN(num)) {
     return "0";
   }
   return num.toLocaleString("en-US");
@@ -64,7 +64,7 @@ function formatNumber(num) {
  * @returns {string} Formatted size string
  */
 function formatBytes(bytes) {
-  if (typeof bytes !== "number" || isNaN(bytes) || bytes < 0) {
+  if (!isNumber(bytes) || isNaN(bytes) || bytes < 0) {
     return "0 B";
   }
 

@@ -7,6 +7,7 @@ import { retryWithBackoff } from "./retry";
 import { isJsonRpcResponse, isRecord } from "./guards";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { updateInstance, getInstanceById } from "@/lib/localDb";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const TIMEOUT_MS = 30_000;
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
@@ -35,7 +36,7 @@ function getSessionEntry(instance) {
       protocolVersion: null,
       serverInfo: null,
       initPromise: null,
-      nextRequestId: INITIALIZE_ID + 1,
+      nextRequestId: INITIALIZE_ID + 1
     });
   }
   return store.get(instance.id);
@@ -58,7 +59,7 @@ export class McpAuthError extends Error {
 
 function safeParseJson(s) {
   if (!s) return null;
-  try { return JSON.parse(s); } catch { return null; }
+  try {return JSON.parse(s);} catch {return null;}
 }
 
 function parseResponsePayload(res, text) {
@@ -78,16 +79,16 @@ function parseResponsePayload(res, text) {
 
 function readAuthFromInstance(instance) {
   const t = instance?.oauthTokens;
-  if (!t || typeof t !== "object") return null;
+  if (!t || !isObject(t)) return null;
   if (t.needsReauth) return null;
   const tok = t.access_token ?? t.accessToken;
-  return typeof tok === "string" ? tok : null;
+  return isString(tok) ? tok : null;
 }
 
 function markNeedsReauth(instance) {
   return {
     ...instance,
-    oauthTokens: { ...(instance.oauthTokens ?? {}), needsReauth: true },
+    oauthTokens: { ...(instance.oauthTokens ?? {}), needsReauth: true }
   };
 }
 
@@ -100,9 +101,9 @@ async function buildHeaders(instance) {
   const headers = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/event-stream",
-    "MCP-Protocol-Version": DEFAULT_PROTOCOL_VERSION,
+    "MCP-Protocol-Version": DEFAULT_PROTOCOL_VERSION
   };
-  if (instance.headers && typeof instance.headers === "object") {
+  if (instance.headers && isObject(instance.headers)) {
     for (const [k, v] of Object.entries(instance.headers)) {
       const kl = k.toLowerCase();
       if (kl === "content-type" || kl === "accept" || kl.startsWith("mcp-")) continue;
@@ -153,7 +154,7 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
       if (currentInstance.oauthTokens?.needsReauth) {
         throw new McpAuthError(`upstream requires re-login: ${currentInstance.slug}`, {
           status: 401,
-          ...(currentInstance.slug !== undefined ? { slug: currentInstance.slug } : {}),
+          ...(currentInstance.slug !== undefined ? { slug: currentInstance.slug } : null)
         });
       }
       if (currentInstance.url) url = currentInstance.url;
@@ -189,7 +190,7 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
             headers: currentHeaders,
             body: JSON.stringify(jsonRpc),
             signal: ac.signal,
-            redirect: "manual",
+            redirect: "manual"
           });
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) {
@@ -240,16 +241,16 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
           const sentToken = readAuthFromInstance(currentInstance);
           const latestRow = await getInstanceById(currentInstance.id).catch(() => null);
           const latestTokens = latestRow?.oauthTokens;
-          const latestToken = typeof latestTokens?.access_token === "string" ? latestTokens.access_token : null;
+          const latestToken = isString(latestTokens?.access_token) ? latestTokens.access_token : null;
           // If another request has already refreshed and persisted a newer
           // usable token, do not clobber it with needsReauth. Hand the fresh
           // token up to the retry loop instead.
           if (latestToken && latestToken !== sentToken && !latestTokens.needsReauth) {
             throw new McpAuthError(`upstream ${res.status} for ${currentInstance.slug}`, {
               status: res.status,
-              ...(currentInstance.slug !== undefined ? { slug: currentInstance.slug } : {}),
+              ...(currentInstance.slug !== undefined ? { slug: currentInstance.slug } : null),
               body: body.slice(0, 500),
-              freshTokens: latestTokens,
+              freshTokens: latestTokens
             });
           }
           // Do not persist needsReauth on the first 401; a concurrent
@@ -260,23 +261,23 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
           if (persistAuthFailure) {
             const finalRow = await getInstanceById(currentInstance.id).catch(() => null);
             const finalTokens = finalRow?.oauthTokens;
-            const finalToken = typeof finalTokens?.access_token === "string" ? finalTokens.access_token : null;
+            const finalToken = isString(finalTokens?.access_token) ? finalTokens.access_token : null;
             if (!finalToken || finalToken === sentToken || finalTokens.needsReauth) {
               const challenge = res.headers.get("www-authenticate");
               await updateInstance(currentInstance.id, {
                 oauthTokens: {
                   ...(currentInstance.oauthTokens ?? {}),
                   needsReauth: true,
-                  ...(challenge ? { _lastChallenge: challenge } : {}),
-                },
+                  ...(challenge ? { _lastChallenge: challenge } : null)
+                }
               }).catch(() => {});
             }
           }
         }
         throw new McpAuthError(`upstream ${res.status} for ${currentInstance.slug}`, {
           status: res.status,
-          ...(currentInstance.slug !== undefined ? { slug: currentInstance.slug } : {}),
-          body: body.slice(0, 500),
+          ...(currentInstance.slug !== undefined ? { slug: currentInstance.slug } : null),
+          body: body.slice(0, 500)
         });
       }
       if (!res.ok) {
@@ -362,7 +363,7 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
     onRetry: (err, attempt, delayMs) => {
       const msg = err instanceof Error ? err.message : String(err);
       console.log(`[mcp-http:${instance.slug}] transient retry ${attempt + 1} after ${delayMs}ms: ${msg}`);
-    },
+    }
   });
 }
 
@@ -379,7 +380,7 @@ export async function ensureInitialized(instance, opts = {}) {
     return {
       protocolVersion: entry.protocolVersion,
       serverInfo: entry.serverInfo,
-      sessionId: entry.sessionId,
+      sessionId: entry.sessionId
     };
   }
 
@@ -392,39 +393,39 @@ export async function ensureInitialized(instance, opts = {}) {
       const initParams = {
         protocolVersion: opts.protocolVersion ?? DEFAULT_PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: "9router-gateway", version: "1" },
+        clientInfo: { name: "9router-gateway", version: "1" }
       };
       const resp = await mcpRequest(instance, {
-        jsonrpc: "2.0", id: INITIALIZE_ID, method: "initialize", params: initParams,
+        jsonrpc: "2.0", id: INITIALIZE_ID, method: "initialize", params: initParams
       });
 
       if ("error" in resp && resp.error !== undefined) {
         const errVal = resp.error;
-        const msg = isRecord(errVal) && typeof errVal.message === "string" ? errVal.message : JSON.stringify(errVal);
+        const msg = isRecord(errVal) && isString(errVal.message) ? errVal.message : JSON.stringify(errVal);
         throw new Error(`initialize failed for ${instance.slug}: ${msg}`);
       }
 
       await mcpRequest(instance, {
-        jsonrpc: "2.0", method: "notifications/initialized", params: {},
-      }, { ...(resp.sessionId ? { sessionId: resp.sessionId } : {}), timeoutMs: 5000, skipRetry: true }).catch(() => {});
+        jsonrpc: "2.0", method: "notifications/initialized", params: {}
+      }, { ...(resp.sessionId ? { sessionId: resp.sessionId } : null), timeoutMs: 5000, skipRetry: true }).catch(() => {});
 
       const resultVal = "result" in resp ? resp.result : null;
       const resultObj = isRecord(resultVal) ? resultVal : null;
       const serverInfoRaw = resultObj?.serverInfo;
       const info = {
-        protocolVersion: (isRecord(resultObj) && typeof resultObj.protocolVersion === "string" ? resultObj.protocolVersion : null) ?? initParams.protocolVersion,
-        serverInfo: isRecord(serverInfoRaw) && typeof serverInfoRaw.name === "string"
-          ? { name: serverInfoRaw.name, ...(typeof serverInfoRaw.version === "string" ? { version: serverInfoRaw.version } : {}) }
-          : null,
-        ...(resp.sessionId ? { sessionId: resp.sessionId } : {}),
+        protocolVersion: (isRecord(resultObj) && isString(resultObj.protocolVersion) ? resultObj.protocolVersion : null) ?? initParams.protocolVersion,
+        serverInfo: isRecord(serverInfoRaw) && isString(serverInfoRaw.name) ?
+        { name: serverInfoRaw.name, ...(isString(serverInfoRaw.version) ? { version: serverInfoRaw.version } : null) } :
+        null,
+        ...(resp.sessionId ? { sessionId: resp.sessionId } : null)
       };
 
-    // Commit session state before clearing initPromise, so a concurrent
-    // caller that awaited our initPromise sees a fully initialized entry.
-    entry.sessionId = info.sessionId ?? null;
-    entry.protocolVersion = info.protocolVersion;
-    entry.serverInfo = info.serverInfo;
-    entry.initPromise = null;
+      // Commit session state before clearing initPromise, so a concurrent
+      // caller that awaited our initPromise sees a fully initialized entry.
+      entry.sessionId = info.sessionId ?? null;
+      entry.protocolVersion = info.protocolVersion;
+      entry.serverInfo = info.serverInfo;
+      entry.initPromise = null;
 
       return info;
     } catch (e) {
@@ -440,11 +441,11 @@ export async function listTools(instance, opts = {}) {
   const init = await ensureInitialized(instance, opts);
   const entry = getSessionEntry(instance);
   const resp = await mcpRequest(instance, {
-    jsonrpc: "2.0", id: entry.nextRequestId++, method: "tools/list", params: opts.params ?? {},
-  }, { ...(init.sessionId !== undefined ? { sessionId: init.sessionId } : {}) });
+    jsonrpc: "2.0", id: entry.nextRequestId++, method: "tools/list", params: opts.params ?? {}
+  }, { ...(init.sessionId !== undefined ? { sessionId: init.sessionId } : null) });
   if ("error" in resp && resp.error !== undefined) {
     const errVal = resp.error;
-    const msg = isRecord(errVal) && typeof errVal.message === "string" ? errVal.message : JSON.stringify(errVal);
+    const msg = isRecord(errVal) && isString(errVal.message) ? errVal.message : JSON.stringify(errVal);
     throw new Error(`tools/list failed for ${instance.slug}: ${msg}`);
   }
   const result = "result" in resp ? resp.result : undefined;
@@ -458,11 +459,11 @@ export async function callTool(instance, name, args, opts = {}) {
     jsonrpc: "2.0",
     id: entry.nextRequestId++,
     method: "tools/call",
-    params: { name, arguments: args ?? {} },
-  }, { ...(init.sessionId !== undefined ? { sessionId: init.sessionId } : {}) });
+    params: { name, arguments: args ?? {} }
+  }, { ...(init.sessionId !== undefined ? { sessionId: init.sessionId } : null) });
   if ("error" in resp && resp.error !== undefined) {
     const errVal = resp.error;
-    const errMsg = isRecord(errVal) && typeof errVal.message === "string" ? errVal.message : `tools/call failed for ${instance.slug}`;
+    const errMsg = isRecord(errVal) && isString(errVal.message) ? errVal.message : `tools/call failed for ${instance.slug}`;
     const e = new Error(errMsg);
     if (isRecord(errVal) && errVal.code !== undefined) e.code = errVal.code;
     if (isRecord(errVal) && errVal.data !== undefined) e.data = errVal.data;
@@ -474,5 +475,5 @@ export async function callTool(instance, name, args, opts = {}) {
 export const __test__ = {
   getSessionStore,
   getSessionEntry,
-  clearSessionEntry,
+  clearSessionEntry
 };

@@ -7,6 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
+import { isObject } from "@/shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 
@@ -22,7 +23,7 @@ const setNestedSection = (obj, dottedKey, value) => {
   const keys = dottedKey.split(".");
   let cur = obj;
   for (let i = 0; i < keys.length - 1; i++) {
-    if (cur[keys[i]] == null || typeof cur[keys[i]] !== "object") {
+    if (cur[keys[i]] == null || !isObject(cur[keys[i]])) {
       cur[keys[i]] = {};
     }
     cur = cur[keys[i]];
@@ -46,9 +47,9 @@ const checkCodexInstalled = async () => {
   try {
     const isWindows = os.platform() === "win32";
     const command = isWindows ? "where codex" : "which codex";
-    const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
-      : process.env;
+    const env = isWindows ?
+    { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` } :
+    process.env;
     await execAsync(command, { windowsHide: true, env });
     return true;
   } catch {
@@ -83,12 +84,12 @@ const has9RouterConfig = (config) => {
 export async function GET() {
   try {
     const isInstalled = await checkCodexInstalled();
-    
+
     if (!isInstalled) {
       return NextResponse.json({
         installed: false,
         config: null,
-        message: "Codex CLI is not installed",
+        message: "Codex CLI is not installed"
       });
     }
 
@@ -98,7 +99,7 @@ export async function GET() {
       installed: true,
       config,
       has9Router: has9RouterConfig(config),
-      configPath: getCodexConfigPath(),
+      configPath: getCodexConfigPath()
     });
   } catch (error) {
     console.log("Error checking codex settings:", error);
@@ -110,7 +111,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, model, subagentModel } = await request.json();
-    
+
     if (!baseUrl || !apiKey || !model) {
       return NextResponse.json({ error: "baseUrl, apiKey and model are required" }, { status: 400 });
     }
@@ -126,7 +127,7 @@ export async function POST(request) {
     try {
       const existingConfig = await fs.readFile(configPath, "utf-8");
       parsed = parsedToWritable(parseTOML(existingConfig));
-    } catch { /* No existing config */ }
+    } catch {/* No existing config */}
 
     // Update only DurinDoor related fields (api_key goes to auth.json, not config.toml)
     parsed.model = model;
@@ -138,13 +139,13 @@ export async function POST(request) {
     setNestedSection(parsed, "model_providers.9router", {
       name: "DurinDoor",
       base_url: normalizedBaseUrl,
-      wire_api: "responses",
+      wire_api: "responses"
     });
 
     // Add subagent configuration
     const effectiveSubagentModel = subagentModel || model;
     setNestedSection(parsed, "agents.subagent", {
-      model: effectiveSubagentModel,
+      model: effectiveSubagentModel
     });
 
     // Write merged config
@@ -157,8 +158,8 @@ export async function POST(request) {
     try {
       const existingAuth = await fs.readFile(authPath, "utf-8");
       authData = JSON.parse(existingAuth);
-    } catch { /* No existing auth */ }
-    
+    } catch {/* No existing auth */}
+
     // Force apikey mode (keep existing tokens untouched for ChatGPT login reuse)
     authData.OPENAI_API_KEY = apiKey;
     authData.auth_mode = "apikey";
@@ -167,7 +168,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       message: "Codex settings applied successfully!",
-      configPath,
+      configPath
     });
   } catch (error) {
     console.log("Error updating codex settings:", error);
@@ -189,7 +190,7 @@ export async function DELETE() {
       if (error.code === "ENOENT") {
         return NextResponse.json({
           success: true,
-          message: "No config file to reset",
+          message: "No config file to reset"
         });
       }
       throw error;
@@ -225,11 +226,11 @@ export async function DELETE() {
       } else {
         await fs.writeFile(authPath, JSON.stringify(authData, null, 2));
       }
-    } catch { /* No auth file */ }
+    } catch {/* No auth file */}
 
     return NextResponse.json({
       success: true,
-      message: "DurinDoor settings removed successfully",
+      message: "DurinDoor settings removed successfully"
     });
   } catch (error) {
     console.log("Error resetting codex settings:", error);

@@ -5,22 +5,22 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
 
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
-const projectIdCache = new Map();
+import { isString } from "@/shared/utils/typeChecks.js";const projectIdCache = new Map();
 
 /**
  * Parse Google ADC user credential JSON from apiKey string.
  * This is the format produced by `gcloud auth application-default login`.
  */
 function parseVertexAdcJson(apiKey) {
-  if (typeof apiKey !== "string") return null;
+  if (!isString(apiKey)) return null;
   try {
     const parsed = JSON.parse(apiKey);
     if (
-      parsed.type === "authorized_user" &&
-      parsed.client_id &&
-      parsed.client_secret &&
-      parsed.refresh_token
-    ) {
+    parsed.type === "authorized_user" &&
+    parsed.client_id &&
+    parsed.client_secret &&
+    parsed.refresh_token)
+    {
       return parsed;
     }
     return null;
@@ -70,9 +70,9 @@ export class VertexExecutor extends BaseExecutor {
     const usesOAuth = !!saJson || !!adcJson || !!credentials?.accessToken;
     const rawKey = !usesOAuth ? credentials?.apiKey : null;
     const projectId =
-      saJson?.project_id ||
-      adcJson?.quota_project_id ||
-      credentials?.providerSpecificData?.projectId;
+    saJson?.project_id ||
+    adcJson?.quota_project_id ||
+    credentials?.providerSpecificData?.projectId;
 
     if (this.provider === "vertex-partner") {
       // Partner models require project_id in path regardless of auth method
@@ -166,14 +166,14 @@ export class VertexExecutor extends BaseExecutor {
     const headers = this.buildHeaders(effectiveCredentials, stream);
     const transformedBody = this.clampCustomMaxOutput(
       this.transformRequest(model, body, stream, effectiveCredentials),
-      requestContext,
+      requestContext
     );
 
     const response = await proxyAwareFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
-      signal,
+      signal
     }, proxyOptions);
 
     return {
@@ -182,7 +182,7 @@ export class VertexExecutor extends BaseExecutor {
       headers,
       transformedBody,
       attemptStartedAt: getCurrentProviderAttemptTimestamp(),
-      terminalProvenance: "upstream",
+      terminalProvenance: "upstream"
     };
   }
 }

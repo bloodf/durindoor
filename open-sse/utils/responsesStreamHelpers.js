@@ -3,19 +3,19 @@ import { FORMATS } from "../translator/formats.js";
 import { formatSSE } from "./streamHelpers.js";
 
 // Responses API events that signal the stream has reached a terminal state
-const OPENAI_RESPONSES_TERMINAL_EVENTS = new Set([
-  "response.completed",
-  "response.done",
-  "response.incomplete",
-  "response.failed",
-  "response.cancelled",
-  "response.canceled",
-  "error"
-]);
+import { isString } from "@/shared/utils/typeChecks.js";const OPENAI_RESPONSES_TERMINAL_EVENTS = new Set([
+"response.completed",
+"response.done",
+"response.incomplete",
+"response.failed",
+"response.cancelled",
+"response.canceled",
+"error"]
+);
 
 export function getOpenAIResponsesEventName(eventName, chunk) {
   if (eventName) return eventName;
-  if (chunk && typeof chunk.type === "string") return chunk.type;
+  if (chunk && isString(chunk.type)) return chunk.type;
   return null;
 }
 

@@ -4,12 +4,12 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 
 // Alias→id derived from registry single-source: id→id, alias→id, aliases[]→id.
 // Media-only providers without a registry transport entry keep explicit aliases here.
-const MEDIA_ONLY_ALIASES = {
+import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";const MEDIA_ONLY_ALIASES = {
   el: "elevenlabs",
   jina: "jina-ai",
   "jina-ai": "jina-ai",
   polly: "aws-polly",
-  "aws-polly": "aws-polly",
+  "aws-polly": "aws-polly"
 };
 
 const ALIAS_TO_PROVIDER_ID = { ...MEDIA_ONLY_ALIASES };
@@ -36,11 +36,11 @@ for (const entry of REGISTRY) {
  * @returns {string} model with one redundant leading `${nodePrefix}/` removed
  */
 export function stripRedundantNodePrefix(model, nodePrefix) {
-  if (typeof nodePrefix !== "string" || !nodePrefix) return model;
+  if (!isString(nodePrefix) || !nodePrefix) return model;
   const redundant = `${nodePrefix}/`;
-  return typeof model === "string" && model.startsWith(redundant)
-    ? model.slice(redundant.length)
-    : model;
+  return isString(model) && model.startsWith(redundant) ?
+  model.slice(redundant.length) :
+  model;
 }
 
 /**
@@ -72,7 +72,7 @@ export function parseModel(modelStr) {
     provider: null,
     model: modelStr,
     isAlias: true,
-    providerAlias: null,
+    providerAlias: null
   };
 }
 
@@ -88,20 +88,20 @@ export function resolveModelAliasFromMap(alias, aliases) {
   if (!resolved) return null;
 
   // Resolved value is "provider/model" format
-  if (typeof resolved === "string" && resolved.includes("/")) {
+  if (isString(resolved) && resolved.includes("/")) {
     const firstSlash = resolved.indexOf("/");
     const providerOrAlias = resolved.slice(0, firstSlash);
     return {
       provider: resolveProviderAlias(providerOrAlias),
-      model: resolved.slice(firstSlash + 1),
+      model: resolved.slice(firstSlash + 1)
     };
   }
 
   // Or object { provider, model }
-  if (typeof resolved === "object" && resolved.provider && resolved.model) {
+  if (isObject(resolved) && resolved.provider && resolved.model) {
     return {
       provider: resolveProviderAlias(resolved.provider),
-      model: resolved.model,
+      model: resolved.model
     };
   }
 
@@ -119,15 +119,15 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
   if (!parsed.isAlias) {
     return {
       provider: parsed.provider,
-      model: parsed.model,
+      model: parsed.model
     };
   }
 
   // Get aliases (from object or function)
   const aliases =
-    typeof aliasesOrGetter === "function"
-      ? await aliasesOrGetter()
-      : aliasesOrGetter;
+  isFunction(aliasesOrGetter) ?
+  await aliasesOrGetter() :
+  aliasesOrGetter;
 
   // Resolve alias
   const resolved = resolveModelAliasFromMap(parsed.model, aliases);
@@ -138,18 +138,18 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
   // Fallback: infer provider from model name prefix
   return {
     provider: inferProviderFromModelName(parsed.model),
-    model: parsed.model,
+    model: parsed.model
   };
 }
 
 // Config-driven prefix → provider inference (first match wins, fallback "openai").
 const MODEL_PREFIX_PROVIDERS = [
-  [/^claude-/, "anthropic"],
-  [/^gemini-/, "gemini"],
-  [/^gpt-/, "openai"],
-  [/^o[134]/, "openai"],
-  [/^deepseek-/, "openrouter"],
-];
+[/^claude-/, "anthropic"],
+[/^gemini-/, "gemini"],
+[/^gpt-/, "openai"],
+[/^o[134]/, "openai"],
+[/^deepseek-/, "openrouter"]];
+
 
 /**
  * Infer provider from model name prefix
@@ -168,7 +168,7 @@ function inferProviderFromModelName(modelName) {
  * strip them downstream. Returns the normalized id or null when invalid.
  */
 function validateVisionTarget(target, targetCapabilities = null) {
-  if (typeof target !== "string") return null;
+  if (!isString(target)) return null;
   const trimmed = target.trim();
   if (!trimmed) return null;
   const parsed = parseModel(trimmed);
@@ -197,7 +197,7 @@ function validateVisionTarget(target, targetCapabilities = null) {
  * @returns {{ body: object, modelStr: string, rerouted: boolean, fromModel?: string, toModel?: string }}
  */
 export function applyVisionBridgeReroute({ body, modelStr, settings, capabilities = null, targetCapabilities = null } = {}) {
-  if (!body || typeof body !== "object" || typeof modelStr !== "string") {
+  if (!body || !isObject(body) || !isString(modelStr)) {
     return { body, modelStr, rerouted: false };
   }
   if (settings?.visionBridgeEnabled !== true) {
@@ -236,6 +236,6 @@ export function applyVisionBridgeReroute({ body, modelStr, settings, capabilitie
     modelStr: target,
     rerouted: true,
     fromModel: modelStr,
-    toModel: target,
+    toModel: target
   };
 }

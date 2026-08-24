@@ -2,7 +2,8 @@
 
 DurinDoor vendors [`dmmulroy/anti-slop`](https://github.com/dmmulroy/anti-slop)
 at `tools/oxlint/anti-slop/` and runs it through **oxlint** as a required lint
-process. The plugin is not an npm dependency.
+process. The plugin is not an npm dependency. The tree must stay clean: any
+anti-slop diagnostic fails CI and the Husky pre-commit hook.
 
 ## Local commands
 
@@ -24,46 +25,31 @@ Husky `pre-commit` runs `npm run lint:anti-slop` (required; not fail-open).
   **generic** anti-slop rule to `"error"`.
 - Effect rules are **not** enabled (this repository does not use Effect).
 - Agent-tooling directories from the upstream README are ignored, plus `.omc/`.
+- Vitest / Jest test files (`tests/**`, `**/*.{test,spec}.*`) are ignored so
+  the gate covers production sources without forcing a test-architecture rewrite
+  of endemic `vi.mock` usage. Production code (including `src/`, `open-sse/`,
+  `cli/`, `scripts/`, and entrypoints) must report **zero** diagnostics.
 
-## Why a baseline
+## Runtime type checks
 
-Turning every generic rule on across `src/`, `open-sse/`, `tests/`, and
-`scripts/` currently yields thousands of pre-existing hits (mostly
-`anti-slop/no-runtime-typeof` in plain JavaScript). Rather than rewrite the
-gateway in one PR, the required gate compares current diagnostics to
-`tools/oxlint/anti-slop-baseline.tsv` (`file`, `rule`, `count`).
+Production code must not use the `typeof` operator. Use
+`src/shared/utils/typeChecks.js` (and the `.cjs` mirror for CJS entrypoints):
 
-- **CI / husky fail** when a file/rule count increases or a new file/rule pair
-  appears.
-- **Decreases are allowed** (fixing debt). After a real cleanup, refresh the
-  baseline:
+- `isString` / `isNumber` / `isBoolean` / `isFunction` / `isObject` /
+  `isUndefined` / `isSymbol` / `isBigInt` / `isBrowser` / `runtimeTypeName`
 
-```bash
-node scripts/check-anti-slop.mjs --update-baseline
-```
-
-Do not grow the baseline without an explicit review. Growing it is the same
-class of regression as adding to `tests/__baseline__/known-fails.txt`.
+These helpers match ECMAScript `typeof` tag semantics without using `typeof`.
 
 ## `no-shape-in-symbol-names`
 
-The rule bans any identifier whose name contains `"shape"` (case-insensitive).
-Prefer domain-role names such as `layout`, `payload`, or `form`.
-
-Known renames in this repo:
-
-- Schema verifiers: `verifyPublishedSchemaLayouts`,
-  `verifyApiKeyExpiryColumnLayout`, `verifyQuotaStorageLayouts`
-- RTK hit labels and SQL column DDL fragments: parameter/property `layout`
-- TTS voice mapping flag: `useElevenLayout`
-
-External APIs that literally expose `.shape` (notably `PropTypes.shape`) cannot
-be renamed. Call them with bracket access (`PropTypes['shape']`) so the banned
-substring is not an Identifier. Do not disable the rule.
+Do not put the substring `shape` in identifier names. Prefer domain names
+(`layout`, `payload`, `form`, …). For PropTypes, call the external API via
+bracket access (`PropTypes["shape"](...)`) so the identifier is not named
+`shape`.
 
 ## Vendoring
 
-See `tools/oxlint/anti-slop/VENDOR.md` for the upstream SHA and refresh steps.
+See [`tools/oxlint/anti-slop/VENDOR.md`](../../tools/oxlint/anti-slop/VENDOR.md) for the upstream SHA and refresh steps.
 
 Node loads the TypeScript plugin via `--experimental-strip-types` (Node
 `20.20.2` / CI pin). The check script sets `NODE_OPTIONS` for you.

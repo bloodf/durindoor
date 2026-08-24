@@ -5,8 +5,8 @@ import { NextResponse } from "next/server";
 
 import {
   beginOAuthFlowIntent,
-  createOAuthFlow,
-} from "@/lib/oauth/flowStore.js";
+  createOAuthFlow } from
+"@/lib/oauth/flowStore.js";
 import { resolveOAuthProxySelection } from "@/lib/oauth/proxySelection.js";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { generatePKCE } from "@/lib/oauth/utils/pkce";
@@ -30,7 +30,7 @@ async function beginSocialAuthorization(input) {
   const authUrl = new KiroService().buildSocialLoginUrl(
     socialProvider,
     codeChallenge,
-    state,
+    state
   );
 
   const flow = createOAuthFlow({
@@ -40,16 +40,16 @@ async function beginSocialAuthorization(input) {
     payload: {
       codeVerifier,
       socialProvider,
-      proxySelection: resolvedProxy.selection,
+      proxySelection: resolvedProxy.selection
     },
-    intent,
+    intent
   });
   return {
     authUrl,
     state,
     flowId: flow.flowId,
     expiresAt: flow.expiresAt,
-    provider: socialProvider,
+    provider: socialProvider
   };
 }
 
@@ -60,8 +60,8 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     return NextResponse.json(await beginSocialAuthorization({
       provider: searchParams.get("provider"),
-      ...(searchParams.has("proxyMode") ? { proxyMode: searchParams.get("proxyMode") } : {}),
-      ...(searchParams.has("proxyPoolId") ? { proxyPoolId: searchParams.get("proxyPoolId") } : {}),
+      ...(searchParams.has("proxyMode") ? { proxyMode: searchParams.get("proxyMode") } : null),
+      ...(searchParams.has("proxyPoolId") ? { proxyPoolId: searchParams.get("proxyPoolId") } : null)
     }));
   } catch (error) {
     const message = sanitizeErrorMessage(error?.message || "Social authorization failed");

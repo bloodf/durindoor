@@ -1,4 +1,4 @@
-const { selectMenu } = require("./input");
+import { isFunction } from "../../../../src/shared/utils/typeChecks.js";const { selectMenu } = require("./input");
 
 /**
  * Show a menu with back button at top and handle selection
@@ -36,17 +36,17 @@ async function showMenuWithBack(config) {
 
     // Build menu items with back at top
     const menuItems = [
-      { label: backLabel, icon: "☆" },
-      ...items.map(item => ({
-        label: typeof item.label === "function" ? item.label(refreshedData) : item.label,
-        icon: "☆"
-      }))
-    ];
+    { label: backLabel, icon: "☆" },
+    ...items.map((item) => ({
+      label: isFunction(item.label) ? item.label(refreshedData) : item.label,
+      icon: "☆"
+    }))];
+
 
     // Resolve headerContent if it's a function
-    const resolvedHeader = typeof headerContent === "function" 
-      ? await headerContent(refreshedData) 
-      : headerContent;
+    const resolvedHeader = isFunction(headerContent) ?
+    await headerContent(refreshedData) :
+    headerContent;
 
     const selected = await selectMenu(
       title,
@@ -65,7 +65,7 @@ async function showMenuWithBack(config) {
     // Execute action for selected item
     const actionIndex = selected - 1;
     const item = items[actionIndex];
-    
+
     if (item && item.action) {
       const shouldContinue = await item.action(refreshedData);
       // If action returns false, exit menu
@@ -113,19 +113,19 @@ async function showListMenu(config) {
 
     // Build menu items
     const menuItems = [{ label: backLabel, icon: "☆" }];
-    
+
     if (createAction) {
       menuItems.push({ label: createAction.label, icon: "☆" });
     }
 
-    items.forEach(item => {
+    items.forEach((item) => {
       const formatted = formatItem(item);
       menuItems.push({ label: formatted, icon: "☆" });
     });
 
-    const header = typeof headerContent === "function" 
-      ? await headerContent(metadata) 
-      : headerContent;
+    const header = isFunction(headerContent) ?
+    await headerContent(metadata) :
+    headerContent;
 
     const selected = await selectMenu(title, menuItems, 0, "", header, breadcrumb);
 
@@ -143,7 +143,7 @@ async function showListMenu(config) {
     // Select item
     const offset = createAction ? 2 : 1;
     const itemIndex = selected - offset;
-    
+
     if (itemIndex >= 0 && itemIndex < items.length) {
       await onSelect(items[itemIndex]);
     }

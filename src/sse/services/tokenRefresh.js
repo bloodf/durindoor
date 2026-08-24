@@ -4,8 +4,8 @@ import { updateProviderConnection } from "../../lib/localDb.js";
 import {
   getProjectIdForConnection,
   invalidateProjectId,
-  removeConnection,
-} from "open-sse/services/projectId.js";
+  removeConnection } from
+"open-sse/services/projectId.js";
 import {
   TOKEN_EXPIRY_BUFFER_MS as BUFFER_MS,
   refreshAccessToken as _refreshAccessToken,
@@ -21,59 +21,59 @@ import {
   formatProviderCredentials as _formatProviderCredentials,
   getAllAccessTokens as _getAllAccessTokens,
   refreshKiroToken as _refreshKiroToken,
-  getRefreshLeadMs as _getRefreshLeadMs
-} from "open-sse/services/tokenRefresh.js";
+  getRefreshLeadMs as _getRefreshLeadMs } from
+"open-sse/services/tokenRefresh.js";
 import {
   refreshProviderCredentials as _refreshProviderCredentials,
   resolveCredentialProxyOptions as _resolveCredentialProxyOptions,
-  shouldRefreshCredentials as _shouldRefreshCredentials,
-} from "open-sse/services/oauthCredentialManager.js";
+  shouldRefreshCredentials as _shouldRefreshCredentials } from
+"open-sse/services/oauthCredentialManager.js";
 
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
 
 // ─── Re-exports wrapped with local logger ─────────────────────────────────────
 
 export const refreshAccessToken = (provider, refreshToken, credentials, proxyOptions = null) =>
-  _refreshAccessToken(provider, refreshToken, credentials, log, proxyOptions);
+_refreshAccessToken(provider, refreshToken, credentials, log, proxyOptions);
 
 export const refreshClaudeOAuthToken = (refreshToken, proxyOptions = null) =>
-  _refreshClaudeOAuthToken(refreshToken, log, proxyOptions);
+_refreshClaudeOAuthToken(refreshToken, log, proxyOptions);
 
 export const refreshGoogleToken = (refreshToken, clientId, clientSecret, proxyOptions = null) =>
-  _refreshGoogleToken(refreshToken, clientId, clientSecret, log, proxyOptions);
+_refreshGoogleToken(refreshToken, clientId, clientSecret, log, proxyOptions);
 
 export const refreshQwenToken = (refreshToken, proxyOptions = null) =>
-  _refreshQwenToken(refreshToken, log, proxyOptions);
+_refreshQwenToken(refreshToken, log, proxyOptions);
 
 export const refreshCodexToken = (refreshToken, proxyOptions = null) =>
-  _refreshCodexToken(refreshToken, log, proxyOptions);
+_refreshCodexToken(refreshToken, log, proxyOptions);
 
 export const refreshIflowToken = (refreshToken, proxyOptions = null) =>
-  _refreshIflowToken(refreshToken, log, proxyOptions);
+_refreshIflowToken(refreshToken, log, proxyOptions);
 
 export const refreshGitHubToken = (refreshToken, proxyOptions = null) =>
-  _refreshGitHubToken(refreshToken, log, proxyOptions);
+_refreshGitHubToken(refreshToken, log, proxyOptions);
 
 export const refreshCopilotToken = (githubAccessToken, proxyOptions = null) =>
-  _refreshCopilotToken(githubAccessToken, log, proxyOptions);
+_refreshCopilotToken(githubAccessToken, log, proxyOptions);
 
 export const refreshKiroToken = (refreshToken, providerSpecificData, proxyOptions = null) =>
-  _refreshKiroToken(refreshToken, providerSpecificData, log, proxyOptions);
+_refreshKiroToken(refreshToken, providerSpecificData, log, proxyOptions);
 
 export const getAccessToken = (provider, credentials, proxyOptions = null) =>
-  _getAccessToken(provider, credentials, log, proxyOptions);
+_getAccessToken(provider, credentials, log, proxyOptions);
 
 export const refreshTokenByProvider = (provider, credentials, proxyOptions = null) =>
-  _refreshTokenByProvider(provider, credentials, log, proxyOptions);
+_refreshTokenByProvider(provider, credentials, log, proxyOptions);
 
 export const formatProviderCredentials = (provider, credentials) =>
-  _formatProviderCredentials(provider, credentials, log);
+_formatProviderCredentials(provider, credentials, log);
 
 export const getAllAccessTokens = (userInfo) =>
-  _getAllAccessTokens(userInfo, log);
+_getAllAccessTokens(userInfo, log);
 
 export const shouldRefreshCredentials = (provider, credentials) =>
-  _shouldRefreshCredentials(provider, credentials);
+_shouldRefreshCredentials(provider, credentials);
 
 // ─── Lifecycle hook ───────────────────────────────────────────────────────────
 
@@ -132,22 +132,22 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
   // Evict the stale cached entry so getProjectIdForConnection does a real fetch
   invalidateProjectId(connectionId);
 
-  getProjectIdForConnection(connectionId, accessToken, proxyOptions, null, provider)
-    .then((projectId) => {
-      if (!projectId) return;
-      updateProviderCredentials(connectionId, { projectId }).catch((err) => {
-        log.debug("TOKEN_REFRESH", "Failed to persist refreshed projectId", {
-          connectionId,
-          error: err?.message ?? err,
-        });
-      });
-    })
-    .catch((err) => {
-      log.debug("TOKEN_REFRESH", "Failed to fetch projectId after token refresh", {
+  getProjectIdForConnection(connectionId, accessToken, proxyOptions, null, provider).
+  then((projectId) => {
+    if (!projectId) return;
+    updateProviderCredentials(connectionId, { projectId }).catch((err) => {
+      log.debug("TOKEN_REFRESH", "Failed to persist refreshed projectId", {
         connectionId,
-        error: err?.message ?? err,
+        error: err?.message ?? err
       });
     });
+  }).
+  catch((err) => {
+    log.debug("TOKEN_REFRESH", "Failed to fetch projectId after token refresh", {
+      connectionId,
+      error: err?.message ?? err
+    });
+  });
 }
 
 // ─── Local-specific: persist credentials to localDb ──────────────────────────
@@ -164,11 +164,11 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
   try {
     const updates = {};
 
-    if (newCredentials.accessToken)         updates.accessToken  = newCredentials.accessToken;
-    if (newCredentials.refreshToken)        updates.refreshToken = newCredentials.refreshToken;
-    if (newCredentials.idToken)             updates.idToken = newCredentials.idToken;
-    if (newCredentials.lastRefreshAt)       updates.lastRefreshAt = newCredentials.lastRefreshAt;
-    if (newCredentials.expiresAt)           updates.expiresAt = newCredentials.expiresAt;
+    if (newCredentials.accessToken) updates.accessToken = newCredentials.accessToken;
+    if (newCredentials.refreshToken) updates.refreshToken = newCredentials.refreshToken;
+    if (newCredentials.idToken) updates.idToken = newCredentials.idToken;
+    if (newCredentials.lastRefreshAt) updates.lastRefreshAt = newCredentials.lastRefreshAt;
+    if (newCredentials.expiresAt) updates.expiresAt = newCredentials.expiresAt;
     if (newCredentials.expiresIn) {
       updates.expiresAt = toExpiresAt(newCredentials.expiresIn);
       updates.expiresIn = newCredentials.expiresIn;
@@ -182,17 +182,17 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
     if (newCredentials.providerSpecificData) {
       updates.providerSpecificData = {
         ...(newCredentials.existingProviderSpecificData || {}),
-        ...newCredentials.providerSpecificData,
+        ...newCredentials.providerSpecificData
       };
     }
     if (newCredentials.copilotToken || newCredentials.copilotTokenExpiresAt) {
       updates.providerSpecificData = {
         ...(updates.providerSpecificData || newCredentials.existingProviderSpecificData || {}),
-        ...(newCredentials.copilotToken ? { copilotToken: newCredentials.copilotToken } : {}),
-        ...(newCredentials.copilotTokenExpiresAt ? { copilotTokenExpiresAt: newCredentials.copilotTokenExpiresAt } : {}),
+        ...(newCredentials.copilotToken ? { copilotToken: newCredentials.copilotToken } : null),
+        ...(newCredentials.copilotTokenExpiresAt ? { copilotTokenExpiresAt: newCredentials.copilotTokenExpiresAt } : null)
       };
     }
-    if (newCredentials.projectId)            updates.projectId = newCredentials.projectId;
+    if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
 
     const result = await updateProviderConnection(connectionId, updates);
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
@@ -203,7 +203,7 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
   } catch (error) {
     log.error("TOKEN_REFRESH", "Error updating credentials in localDb", {
       connectionId,
-      error: error.message,
+      error: error.message
     });
     return false;
   }
@@ -241,14 +241,14 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       provider,
       expiresIn: remaining === null ? null : Math.round(remaining / 1000),
       refreshLeadMs: refreshLead,
-      lastRefreshAt: creds.lastRefreshAt || null,
+      lastRefreshAt: creds.lastRefreshAt || null
     });
 
     const newCreds = await _refreshProviderCredentials(provider, creds, log, effectiveProxyOptions);
     if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
       const mergedCreds = {
         ...newCreds,
-        existingProviderSpecificData: creds.providerSpecificData,
+        existingProviderSpecificData: creds.providerSpecificData
       };
 
       // Persist to DB (non-blocking path continues below)
@@ -257,12 +257,12 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       creds = {
         ...creds,
         ...newCreds,
-        expiresAt: newCreds.expiresIn
-          ? toExpiresAt(newCreds.expiresIn)
-          : normalizeExpiresAt(newCreds.expiresAt) || newCreds.expiresAt || creds.expiresAt,
-        providerSpecificData: newCreds.providerSpecificData
-          ? { ...creds.providerSpecificData, ...newCreds.providerSpecificData }
-          : creds.providerSpecificData,
+        expiresAt: newCreds.expiresIn ?
+        toExpiresAt(newCreds.expiresIn) :
+        normalizeExpiresAt(newCreds.expiresAt) || newCreds.expiresAt || creds.expiresAt,
+        providerSpecificData: newCreds.providerSpecificData ?
+        { ...creds.providerSpecificData, ...newCreds.providerSpecificData } :
+        creds.providerSpecificData
       };
 
       // Non-blocking: refresh projectId with the new access token
@@ -273,28 +273,28 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
   // ── 2. GitHub Copilot token expiry ────────────────────────────────────────
   if (provider === "github") {
     const copilotToken = creds.providerSpecificData?.copilotToken;
-    const copilotExpiresAt = creds.providerSpecificData?.copilotTokenExpiresAt
-      ? creds.providerSpecificData.copilotTokenExpiresAt * 1000
-      : 0;
-    const now              = Date.now();
-    const remaining        = copilotExpiresAt - now;
+    const copilotExpiresAt = creds.providerSpecificData?.copilotTokenExpiresAt ?
+    creds.providerSpecificData.copilotTokenExpiresAt * 1000 :
+    0;
+    const now = Date.now();
+    const remaining = copilotExpiresAt - now;
 
     if (!copilotToken || remaining < TOKEN_EXPIRY_BUFFER_MS) {
       log.info("TOKEN_REFRESH", "Copilot token expiring soon or missing, refreshing proactively", {
         provider,
-        expiresIn: copilotToken ? Math.round(remaining / 1000) : "missing",
+        expiresIn: copilotToken ? Math.round(remaining / 1000) : "missing"
       });
 
       const copilotTokenResult = await refreshCopilotToken(creds.accessToken, effectiveProxyOptions);
       if (copilotTokenResult) {
         const updatedSpecific = {
           ...creds.providerSpecificData,
-          copilotToken:          copilotTokenResult.token,
-          copilotTokenExpiresAt: copilotTokenResult.expiresAt,
+          copilotToken: copilotTokenResult.token,
+          copilotTokenExpiresAt: copilotTokenResult.expiresAt
         };
 
         await updateProviderCredentials(creds.connectionId, {
-          providerSpecificData: updatedSpecific,
+          providerSpecificData: updatedSpecific
         });
 
         creds.providerSpecificData = updatedSpecific;
@@ -326,8 +326,8 @@ export async function refreshGitHubAndCopilotTokens(credentials, proxyOptions = 
   return {
     ...newGitHubCreds,
     providerSpecificData: {
-      copilotToken:          copilotToken.token,
-      copilotTokenExpiresAt: copilotToken.expiresAt,
-    },
+      copilotToken: copilotToken.token,
+      copilotTokenExpiresAt: copilotToken.expiresAt
+    }
   };
 }

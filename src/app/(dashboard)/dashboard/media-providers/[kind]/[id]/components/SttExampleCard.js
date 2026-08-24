@@ -7,6 +7,7 @@ import { getModelKind } from "@/shared/constants/models";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { Row } from "./exampleShared";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 export function SttExampleCard({ providerId }) {
   const providerAlias = getProviderAlias(providerId);
@@ -36,18 +37,18 @@ export function SttExampleCard({ providerId }) {
 
   useEffect(() => {
     setLocalEndpoint(window.location.origin);
-    fetch("/api/tunnel/status")
-      .then((r) => r.json())
-      .then((d) => { if (d.publicUrl) setTunnelEndpoint(d.publicUrl); })
-      .catch(() => {});
+    fetch("/api/tunnel/status").
+    then((r) => r.json()).
+    then((d) => {if (d.publicUrl) setTunnelEndpoint(d.publicUrl);}).
+    catch(() => {});
     const loadCustom = () => {
-      fetch("/api/models/custom", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => {
-          const list = (d.models || []).filter((m) => getModelKind(m) === "stt" && m.providerAlias === providerAlias);
-          setCustomSttModels(list);
-        })
-        .catch(() => {});
+      fetch("/api/models/custom", { cache: "no-store" }).
+      then((r) => r.json()).
+      then((d) => {
+        const list = (d.models || []).filter((m) => getModelKind(m) === "stt" && m.providerAlias === providerAlias);
+        setCustomSttModels(list);
+      }).
+      catch(() => {});
     };
     loadCustom();
     window.addEventListener("focus", loadCustom);
@@ -99,35 +100,35 @@ export function SttExampleCard({ providerId }) {
     }
   };
 
-  const resultStr = typeof result === "string" ? result : (result ? JSON.stringify(result, null, 2) : `{\n  "text": "Hello world..."\n}`);
+  const resultStr = isString(result) ? result : result ? JSON.stringify(result, null, 2) : `{\n  "text": "Hello world..."\n}`;
 
   return (
     <Card>
       <h2 className="text-lg font-semibold mb-4">Example</h2>
       <div className="flex flex-col gap-2.5">
         {/* Model */}
-        {sttModels.length > 0 ? (
-          <Row label="Model">
+        {sttModels.length > 0 ?
+        <Row label="Model">
             <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-            >
-              {sttModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.name || m.id}</option>
-              ))}
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary">
+            
+              {sttModels.map((m) =>
+            <option key={m.id} value={m.id}>{m.name || m.id}</option>
+            )}
             </select>
-          </Row>
-        ) : (
-          <Row label="Model">
+          </Row> :
+
+        <Row label="Model">
             <input
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              placeholder="Enter model id"
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
-            />
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            placeholder="Enter model id"
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono" />
+          
           </Row>
-        )}
+        }
 
         {/* Endpoint */}
         <Row label="Endpoint">
@@ -135,18 +136,18 @@ export function SttExampleCard({ providerId }) {
             <span className="w-full min-w-0 flex-1 px-3 py-1.5 text-sm font-mono text-text-main bg-sidebar rounded-lg truncate">
               {endpoint}/v1/audio/transcriptions
             </span>
-            {tunnelEndpoint && (
-              <button
-                onClick={() => setUseTunnel((v) => !v)}
-                title={useTunnel ? "Using tunnel" : "Using local"}
-                className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
-                  useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
-                }`}
-              >
+            {tunnelEndpoint &&
+            <button
+              onClick={() => setUseTunnel((v) => !v)}
+              title={useTunnel ? "Using tunnel" : "Using local"}
+              className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
+              useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"}`
+              }>
+              
                 <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
                 Tunnel
               </button>
-            )}
+            }
           </div>
         </Row>
 
@@ -158,8 +159,8 @@ export function SttExampleCard({ providerId }) {
             onChange={(event) => setApiKey(event.target.value)}
             autoComplete="off"
             placeholder="Paste a saved API key secret"
-            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
-          />
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono" />
+          
         </Row>
 
         {/* Audio file */}
@@ -169,64 +170,64 @@ export function SttExampleCard({ providerId }) {
               type="file"
               accept="audio/*,video/mp4,.m4a,.mp3,.wav,.ogg,.flac,.webm,.opus"
               onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
-              className="w-full text-xs text-text-muted file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border file:border-border file:bg-background file:text-text-main hover:file:bg-sidebar file:cursor-pointer"
-            />
-            {audioFile && (
-              <span className="text-xs text-text-muted font-mono">
+              className="w-full text-xs text-text-muted file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border file:border-border file:bg-background file:text-text-main hover:file:bg-sidebar file:cursor-pointer" />
+            
+            {audioFile &&
+            <span className="text-xs text-text-muted font-mono">
                 {audioFile.name} · {(audioFile.size / 1024).toFixed(1)} KB
               </span>
-            )}
+            }
           </div>
         </Row>
 
         {/* Language (if model supports) */}
-        {allowedParams.includes("language") && (
-          <Row label="Language">
+        {allowedParams.includes("language") &&
+        <Row label="Language">
             <input
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              placeholder="e.g. en, vi, ja (auto-detect if empty)"
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
-            />
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            placeholder="e.g. en, vi, ja (auto-detect if empty)"
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono" />
+          
           </Row>
-        )}
+        }
 
         {/* Prompt (if model supports) */}
-        {allowedParams.includes("prompt") && (
-          <Row label="Prompt">
+        {allowedParams.includes("prompt") &&
+        <Row label="Prompt">
             <input
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="optional context to improve accuracy"
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-            />
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="optional context to improve accuracy"
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" />
+          
           </Row>
-        )}
+        }
 
         {/* Temperature (if model supports) */}
-        {allowedParams.includes("temperature") && (
-          <Row label="Temperature">
+        {allowedParams.includes("temperature") &&
+        <Row label="Temperature">
             <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="1"
-              value={temperature}
-              onChange={(e) => setTemperature(e.target.value)}
-              placeholder="0 - 1 (default 0)"
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-            />
+            type="number"
+            step="0.1"
+            min="0"
+            max="1"
+            value={temperature}
+            onChange={(e) => setTemperature(e.target.value)}
+            placeholder="0 - 1 (default 0)"
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" />
+          
           </Row>
-        )}
+        }
 
         {/* Response format (if model supports) */}
-        {allowedParams.includes("response_format") && (
-          <Row label="Response Format">
+        {allowedParams.includes("response_format") &&
+        <Row label="Response Format">
             <select
-              value={responseFormat}
-              onChange={(e) => setResponseFormat(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-            >
+            value={responseFormat}
+            onChange={(e) => setResponseFormat(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary">
+            
               <option value="json">json</option>
               <option value="text">text</option>
               <option value="srt">srt</option>
@@ -234,7 +235,7 @@ export function SttExampleCard({ providerId }) {
               <option value="vtt">vtt</option>
             </select>
           </Row>
-        )}
+        }
 
         {/* Curl + Run */}
         <div className="mt-1">
@@ -243,16 +244,16 @@ export function SttExampleCard({ providerId }) {
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               <button
                 onClick={() => copyCurl(curlSnippet)}
-                className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
-              >
+                className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
+                
                 <span className="material-symbols-outlined text-[14px]">{copiedCurl ? "check" : "content_copy"}</span>
                 {copiedCurl ? "Copied" : "Copy"}
               </button>
               <button
                 onClick={handleRun}
                 disabled={running || !audioFile || !modelFull}
-                className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+                className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                
                 <span className="material-symbols-outlined text-[14px]" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
                   play_arrow
                 </span>
@@ -271,21 +272,21 @@ export function SttExampleCard({ providerId }) {
             <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
               Response {result && latency && <span className="font-normal normal-case">&#9889; {latency}ms</span>}
             </span>
-            {result && (
-              <button
-                onClick={() => copyRes(resultStr)}
-                className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
-              >
+            {result &&
+            <button
+              onClick={() => copyRes(resultStr)}
+              className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
+              
                 <span className="material-symbols-outlined text-[14px]">{copiedRes ? "check" : "content_copy"}</span>
                 {copiedRes ? "Copied" : "Copy"}
               </button>
-            )}
+            }
           </div>
           <pre className="bg-sidebar rounded-lg px-3 py-2.5 text-xs font-mono text-text-main overflow-x-auto whitespace-pre-wrap break-all opacity-70">
             {resultStr}
           </pre>
         </div>
       </div>
-    </Card>
-  );
+    </Card>);
+
 }

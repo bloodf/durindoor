@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { retryWithBackoff } from "./retry";
 import { isRecord } from "./guards";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const STDIO_KEY = "__9routerGatewayStdio";
 const STDIO_PROTOCOL_VERSION = "2025-06-18";
@@ -21,21 +22,21 @@ function getStore() {
 
 function parseArgs(args) {
   if (Array.isArray(args)) return args;
-  if (typeof args === "string") {
+  if (isString(args)) {
     if (!args.trim()) return [];
-    try { const v = JSON.parse(args); return Array.isArray(v) ? v : []; }
-    catch { return args.split(/\s+/).filter(Boolean); }
+    try {const v = JSON.parse(args);return Array.isArray(v) ? v : [];}
+    catch {return args.split(/\s+/).filter(Boolean);}
   }
   return [];
 }
 
 function parseEnv(env) {
   if (!env) return {};
-  if (typeof env === "string") {
-    try { const v = JSON.parse(env); return v && typeof v === "object" ? v : {}; }
-    catch { return {}; }
+  if (isString(env)) {
+    try {const v = JSON.parse(env);return v && isObject(v) ? v : {};}
+    catch {return {};}
   }
-  if (typeof env === "object") return env;
+  if (isObject(env)) return env;
   return {};
 }
 
@@ -84,7 +85,7 @@ class StdioEntry {
             },
             onRetry: (err, attempt, delayMs) => {
               console.log(`[mcp-stdio:${this.instance.slug}] spawn retry ${attempt + 1} after ${delayMs}ms: ${err instanceof Error ? err.message : String(err)}`);
-            },
+            }
           }
         );
       } finally {
@@ -108,7 +109,7 @@ class StdioEntry {
     try {
       proc = spawn(command, argv, {
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ...extraEnv },
+        env: { ...process.env, ...extraEnv }
       });
     } catch (e) {
       const err = new Error(`failed to spawn ${command}: ${e instanceof Error ? e.message : String(e)}`);
@@ -175,7 +176,7 @@ class StdioEntry {
       this.buffer = this.buffer.slice(idx + 1);
       if (!raw) continue;
       let parsed;
-      try { parsed = JSON.parse(raw); } catch { continue; }
+      try {parsed = JSON.parse(raw);} catch {continue;}
       if (isRecord(parsed) && parsed.id !== undefined && this.pending.has(parsed.id)) {
         const entry = this.pending.get(parsed.id);
         if (!entry) continue;
@@ -219,7 +220,7 @@ class StdioEntry {
       baseDelayMs: 50,
       onRetry: (err, attempt, delayMs) => {
         console.log(`[mcp-stdio:${this.instance.slug}] request retry ${attempt + 1} after ${delayMs}ms: ${err instanceof Error ? err.message : String(err)}`);
-      },
+      }
     });
   }
 
@@ -232,17 +233,17 @@ class StdioEntry {
         const init = await this.request("initialize", {
           protocolVersion: STDIO_PROTOCOL_VERSION,
           capabilities: {},
-          clientInfo: { name: "9router-gateway", version: "1" },
+          clientInfo: { name: "9router-gateway", version: "1" }
         }, { timeoutMs: STDIO_INIT_TIMEOUT_MS });
         if (init.error) {
           throw new Error(`initialize failed: ${init.error.message || JSON.stringify(init.error)}`);
         }
         try {
           this.proc.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} })}\n`);
-        } catch { /* ignore */ }
+        } catch {/* ignore */}
         this.initInfo = {
           protocolVersion: init.result?.protocolVersion || STDIO_PROTOCOL_VERSION,
-          serverInfo: init.result?.serverInfo || null,
+          serverInfo: init.result?.serverInfo || null
         };
         this.initialized = true;
         return this.initInfo;

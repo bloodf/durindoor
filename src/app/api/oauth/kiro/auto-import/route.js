@@ -12,7 +12,7 @@ import { resolveKiroCredentialsFromSsoCache } from "open-sse/services/kiroModels
 export async function GET() {
   try {
     const { refreshToken, source, clientId, clientSecret, region, authMethod, profileArn, rawAuth } =
-      await resolveKiroCredentialsFromSsoCache();
+    await resolveKiroCredentialsFromSsoCache();
 
     return NextResponse.json({
       found: true,
@@ -25,7 +25,7 @@ export async function GET() {
       profileArn,
       // Full CLIProxyAPI-shaped auth payload for external_idp tokens so the
       // import handoff carries clientId/tokenEndpoint/scopes (#2615).
-      ...(rawAuth ? { rawAuth } : {}),
+      ...(rawAuth ? { rawAuth } : null)
     });
   } catch (error) {
     // Cache unreadable or no Kiro token cached: report found:false with 200,
@@ -33,7 +33,7 @@ export async function GET() {
     console.log("Kiro auto-import:", error?.message || error);
     return NextResponse.json({
       found: false,
-      error: error?.message || String(error),
+      error: error?.message || String(error)
     });
   }
 }

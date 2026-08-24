@@ -1,4 +1,4 @@
-/**
+import { isObject, isString } from "@/shared/utils/typeChecks.js"; /**
  * Early SSE keepalive wrapper for streaming route handlers.
  *
  * Strict HTTP clients (e.g. Codex CLI's `reqwest`, Claude Code/Anthropic SDK)
@@ -23,14 +23,14 @@ export const ANTHROPIC_PING_FRAME = ENCODER.encode(
 );
 const ERROR_FRAME = ENCODER.encode(
   `event: error\ndata: ${JSON.stringify({
-    error: { message: "Upstream stream failed before completion.", type: "stream_error" },
+    error: { message: "Upstream stream failed before completion.", type: "stream_error" }
   })}\n\n`
 );
 
 function normalizeError(maybeError) {
   if (maybeError instanceof Error) return maybeError;
   return new Error(
-    typeof maybeError === "string" ? maybeError : "Upstream handler failed"
+    isString(maybeError) ? maybeError : "Upstream handler failed"
   );
 }
 
@@ -56,11 +56,11 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
 
   let timer;
   const raced = await Promise.race([
-    settled.then((result) => ({ kind: "settled", result })),
-    new Promise((resolve) => {
-      timer = setTimeout(() => resolve({ kind: "timeout" }), thresholdMs);
-    }),
-  ]);
+  settled.then((result) => ({ kind: "settled", result })),
+  new Promise((resolve) => {
+    timer = setTimeout(() => resolve({ kind: "timeout" }), thresholdMs);
+  })]
+  );
   if (timer) clearTimeout(timer);
 
   if (raced.kind === "settled") {
@@ -84,14 +84,14 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
           clearInterval(interval);
         }
       }, intervalMs);
-      if (interval && typeof interval === "object" && "unref" in interval) {
+      if (interval && isObject(interval) && "unref" in interval) {
         interval.unref?.();
       }
       try {
         controller.enqueue(keepaliveFrame);
       } catch {
-        /* consumer already gone */
-      }
+
+        /* consumer already gone */}
 
       stopKeepalive = () => {
         stopped = true;
@@ -105,8 +105,8 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
         try {
           controller.close();
         } catch {
-          /* already closed */
-        }
+
+          /* already closed */}
       };
       signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -130,14 +130,14 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
               if (value) controller.enqueue(value);
             }
           } else {
-            const text = response.body
-              ? await response.text().catch(() => "")
-              : "";
+            const text = response.body ?
+            await response.text().catch(() => "") :
+            "";
             const dataLine =
-              text.trim() ||
-              JSON.stringify({
-                error: { message: "stream_error", type: "stream_error" },
-              });
+            text.trim() ||
+            JSON.stringify({
+              error: { message: "stream_error", type: "stream_error" }
+            });
             controller.enqueue(ENCODER.encode(`event: error\ndata: ${dataLine}\n\n`));
           }
         }
@@ -146,8 +146,8 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
           try {
             controller.enqueue(ERROR_FRAME);
           } catch {
-            /* consumer gone */
-          }
+
+            /* consumer gone */}
         }
       } finally {
         stopKeepalive();
@@ -155,15 +155,15 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
         try {
           controller.close();
         } catch {
-          /* already closed */
-        }
+
+          /* already closed */}
       }
     },
     cancel() {
       aborted = true;
       stopKeepalive();
       upstreamReader?.cancel().catch(() => {});
-    },
+    }
   });
 
   return new Response(stream, {
@@ -171,7 +171,7 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
+      Connection: "keep-alive"
+    }
   });
 }

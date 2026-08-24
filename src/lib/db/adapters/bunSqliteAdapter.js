@@ -2,6 +2,7 @@
 // Loaded only when process.versions.bun is present.
 import { PRAGMA_SQL } from "../schema.js";
 import { assertCheckpointComplete } from "../helpers/checkpoint.js";
+import { isFunction } from "@/shared/utils/typeChecks.js";
 
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
@@ -22,18 +23,18 @@ export async function createBunSqliteAdapter(filePath) {
   }
 
   const checkpointTimer = setInterval(() => {
-    try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
+    try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
   }, CHECKPOINT_INTERVAL_MS);
-  if (typeof checkpointTimer.unref === "function") checkpointTimer.unref();
+  if (isFunction(checkpointTimer.unref)) checkpointTimer.unref();
 
   function gracefulClose() {
-    try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
-    try { stmtCache.clear(); } catch {}
-    try { db.close(); } catch {}
+    try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
+    try {stmtCache.clear();} catch {}
+    try {db.close();} catch {}
   }
   const onSignal = () => {
     // Keep the repository available until the central MITM cleanup finishes.
-    try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
+    try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
   };
   process.once("beforeExit", gracefulClose);
   process.once("SIGINT", onSignal);
@@ -52,7 +53,7 @@ export async function createBunSqliteAdapter(filePath) {
     all(sql, params = []) {
       return prepare(sql).all(...params);
     },
-    exec(sql) { return db.exec(sql); },
+    exec(sql) {return db.exec(sql);},
     transaction(fn) {
       // bun:sqlite has db.transaction() API (similar to better-sqlite3)
       const tx = db.transaction(fn);
@@ -66,6 +67,6 @@ export async function createBunSqliteAdapter(filePath) {
       clearInterval(checkpointTimer);
       gracefulClose();
     },
-    raw: db,
+    raw: db
   };
 }

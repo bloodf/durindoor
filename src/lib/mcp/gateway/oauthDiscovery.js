@@ -1,15 +1,16 @@
 // OAuth 2.0 discovery helpers for upstream MCP servers (RFC 9728 + 8414).
 
 import { isRecord } from "./guards";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const META_PATHS = [
-  "/.well-known/oauth-protected-resource",
-  "/.well-known/oauth-authorization-server",
-];
+"/.well-known/oauth-protected-resource",
+"/.well-known/oauth-authorization-server"];
+
 
 function safeParse(s) {
   if (!s) return null;
-  try { return JSON.parse(s); } catch { return null; }
+  try {return JSON.parse(s);} catch {return null;}
 }
 
 function tryFetchJson(url, timeoutMs = 8000) {
@@ -18,11 +19,11 @@ function tryFetchJson(url, timeoutMs = 8000) {
   return fetch(url, {
     method: "GET",
     headers: { Accept: "application/json" },
-    signal: ac.signal,
-  })
-    .then((r) => (r.ok ? r.json().catch(() => null) : null))
-    .catch(() => null)
-    .finally(() => clearTimeout(timer));
+    signal: ac.signal
+  }).
+  then((r) => r.ok ? r.json().catch(() => null) : null).
+  catch(() => null).
+  finally(() => clearTimeout(timer));
 }
 
 /**
@@ -32,7 +33,7 @@ function tryFetchJson(url, timeoutMs = 8000) {
  * @returns {string | null}
  */
 export function parseResourceMetadataFromChallenge(wwwAuth) {
-  if (!wwwAuth || typeof wwwAuth !== "string") return null;
+  if (!wwwAuth || !isString(wwwAuth)) return null;
   const m = wwwAuth.match(/resource_metadata\s*=\s*"([^"]+)"/i);
   if (m) return m[1];
   const m2 = wwwAuth.match(/resource_metadata\s*=\s*([^\s,]+)/i);
@@ -68,7 +69,7 @@ export async function discoverAuth(instanceUrl, opts = {}) {
   const candidates = [];
   if (challengeUrl) candidates.push(challengeUrl);
   for (const p of META_PATHS) {
-    try { candidates.push(new URL(p, instanceUrl).toString()); } catch { /* bad base */ }
+    try {candidates.push(new URL(p, instanceUrl).toString());} catch {/* bad base */}
   }
 
   let resourceDoc = null;
@@ -82,9 +83,9 @@ export async function discoverAuth(instanceUrl, opts = {}) {
   if (!resourceDoc) return null;
 
   const authServers = resourceDoc.authorization_servers;
-  const asList = Array.isArray(authServers) && authServers.length > 0
-    ? authServers
-    : [new URL("/.well-known/oauth-authorization-server", instanceUrl).toString()];
+  const asList = Array.isArray(authServers) && authServers.length > 0 ?
+  authServers :
+  [new URL("/.well-known/oauth-authorization-server", instanceUrl).toString()];
 
   for (const asUrl of asList) {
     const wellKnown = resolveWellKnownUrl(asUrl);
@@ -98,7 +99,7 @@ export async function discoverAuth(instanceUrl, opts = {}) {
         registration_endpoint: meta.registration_endpoint || resourceDoc.registration_endpoint,
         resource: resourceDoc.resource || instanceUrl,
         authorization_servers: asList,
-        _discovery: { protectedResource: resourceDoc._source, as: wellKnown },
+        _discovery: { protectedResource: resourceDoc._source, as: wellKnown }
       };
     }
   }

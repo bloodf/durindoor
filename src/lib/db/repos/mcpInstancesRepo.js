@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { isObject } from "@/shared/utils/typeChecks.js";
 
 const JSON_COLS = ["args", "env", "headers", "oauthTokens"];
 
@@ -26,7 +27,7 @@ function instanceToRow(i) {
 }
 
 function isUniqueViolation(e) {
-  const msg = e && typeof e === "object" && "message" in e ? String(e.message) : "";
+  const msg = e && isObject(e) && "message" in e ? String(e.message) : "";
   return /UNIQUE constraint failed/i.test(msg);
 }
 
@@ -51,7 +52,7 @@ export async function getEnabledInstancesByIds(ids) {
   const placeholders = ids.map(() => "?").join(",");
   return db.all(
     `SELECT * FROM mcpInstances WHERE enabled = 1 AND id IN (${placeholders})`,
-    ids,
+    ids
   ).map(rowToInstance).filter((i) => i !== null);
 }
 
@@ -63,14 +64,14 @@ export async function createInstance(data) {
     id: data.id ?? uuidv4(),
     enabled: data.enabled !== false,
     oauth: data.oauth === true,
-    createdAt: now,
+    createdAt: now
   };
   const r = instanceToRow(inst);
   try {
     db.run(
       `INSERT INTO mcpInstances(id, slug, title, kind, transport, url, command, args, env, headers, oauth, oauthTokens, providerConnectionId, enabled, createdAt)
        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [r.id, r.slug, r.title ?? null, r.kind, r.transport, r.url ?? null, r.command ?? null, r.args ?? null, r.env ?? null, r.headers ?? null, r.oauth, r.oauthTokens ?? null, r.providerConnectionId ?? null, r.enabled, r.createdAt],
+      [r.id, r.slug, r.title ?? null, r.kind, r.transport, r.url ?? null, r.command ?? null, r.args ?? null, r.env ?? null, r.headers ?? null, r.oauth, r.oauthTokens ?? null, r.providerConnectionId ?? null, r.enabled, r.createdAt]
     );
   } catch (e) {
     if (isUniqueViolation(e)) throw new Error(`Slug '${inst.slug}' already exists`);
@@ -91,7 +92,7 @@ export async function updateInstance(id, data) {
     try {
       db.run(
         `UPDATE mcpInstances SET slug=?, title=?, kind=?, transport=?, url=?, command=?, args=?, env=?, headers=?, oauth=?, oauthTokens=?, providerConnectionId=?, enabled=? WHERE id=?`,
-        [r.slug, r.title ?? null, r.kind, r.transport, r.url ?? null, r.command ?? null, r.args ?? null, r.env ?? null, r.headers ?? null, r.oauth, r.oauthTokens ?? null, r.providerConnectionId ?? null, r.enabled, id],
+        [r.slug, r.title ?? null, r.kind, r.transport, r.url ?? null, r.command ?? null, r.args ?? null, r.env ?? null, r.headers ?? null, r.oauth, r.oauthTokens ?? null, r.providerConnectionId ?? null, r.enabled, id]
       );
     } catch (e) {
       if (isUniqueViolation(e)) throw new Error(`Slug '${r.slug}' already exists`);

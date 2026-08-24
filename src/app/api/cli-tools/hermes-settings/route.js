@@ -6,6 +6,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
 
@@ -19,12 +20,12 @@ const getHermesEnvPath = () => path.join(getHermesDir(), ".env");
 // Match top-level "model:" block (until next non-indented, non-empty line)
 const MODEL_BLOCK_RE = /^model:[ \t]*\r?\n((?:[ \t]+.*\r?\n?|[ \t]*\r?\n)*)/m;
 
-const escapeYamlString = (value) => String(value)
-  .replace(/\\/g, "\\\\")
-  .replace(/"/g, '\\"')
-  .replace(/\r/g, "\\r")
-  .replace(/\n/g, "\\n")
-  .replace(/\t/g, "\\t");
+const escapeYamlString = (value) => String(value).
+replace(/\\/g, "\\\\").
+replace(/"/g, '\\"').
+replace(/\r/g, "\\r").
+replace(/\n/g, "\\n").
+replace(/\t/g, "\\t");
 
 const validateInput = (value, field) => {
   if (!value.trim()) return { error: `${field} must not be blank` };
@@ -50,7 +51,7 @@ const parseModelBlock = (yaml) => {
   return {
     default: get("default"),
     provider: get("provider"),
-    base_url: get("base_url"),
+    base_url: get("base_url")
   };
 };
 
@@ -143,7 +144,7 @@ export async function GET() {
       installed: true,
       settings: { model },
       has9Router: has9RouterConfig(model),
-      configPath: getHermesConfigPath(),
+      configPath: getHermesConfigPath()
     });
   } catch {
     console.log("Hermes settings read failed");
@@ -154,15 +155,15 @@ export async function GET() {
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, model } = await request.json();
-    if (typeof baseUrl !== "string" || typeof model !== "string") {
+    if (!isString(baseUrl) || !isString(model)) {
       return NextResponse.json({ error: "baseUrl and model are required" }, { status: 400 });
     }
-    if (apiKey != null && typeof apiKey !== "string") {
+    if (apiKey != null && !isString(apiKey)) {
       return NextResponse.json({ error: "apiKey must be a non-empty string when provided" }, { status: 400 });
     }
     const invalidBaseUrl = validateInput(baseUrl, "baseUrl");
     const invalidModel = validateInput(model, "model");
-    const invalidApiKey = apiKey == null ? null : (validateInput(apiKey, "apiKey") || (/\s/u.test(apiKey) ? { error: "apiKey must not contain whitespace" } : null));
+    const invalidApiKey = apiKey == null ? null : validateInput(apiKey, "apiKey") || (/\s/u.test(apiKey) ? { error: "apiKey must not contain whitespace" } : null);
     if (invalidBaseUrl || invalidModel || invalidApiKey) {
       return NextResponse.json(invalidBaseUrl || invalidModel || invalidApiKey, { status: 400 });
     }
@@ -187,7 +188,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       message: "Hermes settings applied successfully!",
-      configPath: getHermesConfigPath(),
+      configPath: getHermesConfigPath()
     });
   } catch (error) {
     console.log("Hermes settings update failed");

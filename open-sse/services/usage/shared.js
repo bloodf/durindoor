@@ -6,7 +6,7 @@ import { PROVIDERS } from "../../providers/index.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 
 // usage endpoints: single source from registry transport.usage
-export const U = (id) => PROVIDERS[id]?.usage || {};
+import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";export const U = (id) => PROVIDERS[id]?.usage || {};
 
 /**
  * Parse reset date/time to ISO string
@@ -22,12 +22,12 @@ export function parseResetTime(resetValue) {
     }
 
     // Unix timestamps from provider APIs may be seconds or milliseconds.
-    if (typeof resetValue === 'number') {
+    if (isNumber(resetValue)) {
       return new Date(resetValue < 1e12 ? resetValue * 1000 : resetValue).toISOString();
     }
 
     // If it's a numeric string, treat it like a Unix timestamp too.
-    if (typeof resetValue === 'string') {
+    if (isString(resetValue)) {
       if (/^\d+$/.test(resetValue)) {
         const timestamp = Number(resetValue);
         return new Date(timestamp < 1e12 ? timestamp * 1000 : timestamp).toISOString();
@@ -43,8 +43,8 @@ export function parseResetTime(resetValue) {
 }
 
 export function toFiniteNumber(value, fallback = 0) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
+  if (isNumber(value) && Number.isFinite(value)) return value;
+  if (isString(value) && value.trim()) {
     const parsed = Number(value);
     if (Number.isFinite(parsed)) return parsed;
   }
@@ -52,8 +52,8 @@ export function toFiniteNumber(value, fallback = 0) {
 }
 
 export function normalizeCloudCodeProjectId(project) {
-  if (typeof project === "string") return project.trim() || null;
-  if (project && typeof project === "object" && typeof project.id === "string") {
+  if (isString(project)) return project.trim() || null;
+  if (project && isObject(project) && isString(project.id)) {
     return project.id.trim() || null;
   }
   return null;
@@ -73,13 +73,13 @@ function waitWithAbort(promise, signal, onAbort) {
   if (signal.aborted) return Promise.reject(signal.reason || new DOMException("Request aborted", "AbortError"));
   return new Promise((resolve, reject) => {
     const aborted = () => {
-      try { onAbort?.(); } catch { /* best effort */ }
+      try {onAbort?.();} catch {/* best effort */}
       reject(signal.reason || new DOMException("Request aborted", "AbortError"));
     };
     signal.addEventListener("abort", aborted, { once: true });
     promise.then(
-      (value) => { signal.removeEventListener("abort", aborted); resolve(value); },
-      (error) => { signal.removeEventListener("abort", aborted); reject(error); },
+      (value) => {signal.removeEventListener("abort", aborted);resolve(value);},
+      (error) => {signal.removeEventListener("abort", aborted);reject(error);}
     );
   });
 }

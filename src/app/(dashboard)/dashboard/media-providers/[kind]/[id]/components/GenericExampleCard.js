@@ -6,6 +6,7 @@ import { MEDIA_PROVIDER_KINDS, getProviderAlias, resolveProviderId } from "@/sha
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { Row, KIND_EXAMPLE_CONFIG } from "./exampleShared";
+import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const CLOUDFLARE_TEST_IMAGE_URL = "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog.png";
 const CLOUDFLARE_TEST_MASK_URL = "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog-mask.png";
@@ -22,7 +23,7 @@ function getImageEditDefaults(providerId, modelId) {
 }
 
 function toImagePreviewSrc(value) {
-  const trimmed = typeof value === "string" ? value.trim() : "";
+  const trimmed = isString(value) ? value.trim() : "";
   if (!trimmed) return "";
   if (/^(data:image\/|https?:\/\/)/i.test(trimmed)) return trimmed;
   return `data:image/png;base64,${trimmed}`;
@@ -51,7 +52,7 @@ export function GenericExampleCard({ providerId, kind }) {
   const [refImage, setRefImage] = useState("");
   const [maskImage, setMaskImage] = useState("");
   const [extraValues, setExtraValues] = useState(() =>
-    (safeExConfig.extraFields || []).reduce((acc, f) => { acc[f.key] = f.default ?? ""; return acc; }, {})
+  (safeExConfig.extraFields || []).reduce((acc, f) => {acc[f.key] = f.default ?? "";return acc;}, {})
   );
   const [apiKey, setApiKey] = useState("");
   const [useTunnel, setUseTunnel] = useState(false);
@@ -71,31 +72,31 @@ export function GenericExampleCard({ providerId, kind }) {
 
   useEffect(() => {
     setLocalEndpoint(window.location.origin);
-    fetch("/api/tunnel/status")
-      .then((r) => r.json())
-      .then((d) => { if (d.publicUrl) setTunnelEndpoint(d.publicUrl); })
-      .catch(() => {});
+    fetch("/api/tunnel/status").
+    then((r) => r.json()).
+    then((d) => {if (d.publicUrl) setTunnelEndpoint(d.publicUrl);}).
+    catch(() => {});
     // Load active connections of this provider for pinning
-    fetch("/api/providers/client")
-      .then((r) => r.json())
-      .then((d) => {
-        const conns = (d.connections || []).filter((c) => c.provider === providerId && c.isActive !== false);
-        setConnections(conns);
-      })
-      .catch(() => {});
+    fetch("/api/providers/client").
+    then((r) => r.json()).
+    then((d) => {
+      const conns = (d.connections || []).filter((c) => c.provider === providerId && c.isActive !== false);
+      setConnections(conns);
+    }).
+    catch(() => {});
   }, [providerId]);
 
   // Safe to early-return now that all hooks are declared
   if (!kindConfig || !exConfig) return null;
 
   const endpoint = useTunnel ? tunnelEndpoint : localEndpoint;
-  const apiPath = providerId === "xai" && kind === "video"
-    ? "/v1/videos/generations"
-    : kindConfig.endpoint.path;
+  const apiPath = providerId === "xai" && kind === "video" ?
+  "/v1/videos/generations" :
+  kindConfig.endpoint.path;
   // webSearch/webFetch: use safeProviderAlias only. Other kinds: append model when present.
-  const modelFull = !needsModel
-    ? safeProviderAlias
-    : (selectedModel ? `${safeProviderAlias}/${selectedModel}` : (allowManualModel ? "" : safeProviderAlias));
+  const modelFull = !needsModel ?
+  safeProviderAlias :
+  selectedModel ? `${safeProviderAlias}/${selectedModel}` : allowManualModel ? "" : safeProviderAlias;
   const imageEditDefaults = getImageEditDefaults(providerId, selectedModel);
   const effectiveRefImage = refImage.trim() || imageEditDefaults.image || "";
   const effectiveMaskImage = maskImage.trim() || imageEditDefaults.mask_image || "";
@@ -105,7 +106,7 @@ export function GenericExampleCard({ providerId, kind }) {
   // Build request body with optional extra fields (only non-empty values)
   const extraBodyFromFields = Object.entries(extraValues).reduce((acc, [k, v]) => {
     if (v === "" || v === null || v === undefined) return acc;
-    if (typeof v === "number" && Number.isNaN(v)) return acc;
+    if (isNumber(v) && Number.isNaN(v)) return acc;
     acc[k] = v;
     return acc;
   }, {});
@@ -114,8 +115,8 @@ export function GenericExampleCard({ providerId, kind }) {
     [exConfig.bodyKey]: input,
     ...exConfig.extraBody,
     ...extraBodyFromFields,
-    ...(supportsEdit && effectiveRefImage ? { image: effectiveRefImage } : {}),
-    ...(supportsMask && effectiveMaskImage ? { mask_image: effectiveMaskImage } : {}),
+    ...(supportsEdit && effectiveRefImage ? { image: effectiveRefImage } : null),
+    ...(supportsMask && effectiveMaskImage ? { mask_image: effectiveMaskImage } : null)
   };
 
   // Streaming supported for codex image (Plus/Pro accounts) — disabled when binary output requested
@@ -134,7 +135,7 @@ export function GenericExampleCard({ providerId, kind }) {
     setResult(null);
     setProgress(null);
     setPartialImage(null);
-    if (binaryImageUrl) { try { URL.revokeObjectURL(binaryImageUrl); } catch {} setBinaryImageUrl(""); }
+    if (binaryImageUrl) {try {URL.revokeObjectURL(binaryImageUrl);} catch {}setBinaryImageUrl("");}
     const start = Date.now();
     try {
       const headers = { "Content-Type": "application/json" };
@@ -145,7 +146,7 @@ export function GenericExampleCard({ providerId, kind }) {
       const res = await fetch(`/api${apiPathWithQuery}`, {
         method: kindConfig.endpoint.method,
         headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify(body)
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -177,23 +178,23 @@ export function GenericExampleCard({ providerId, kind }) {
           while ((sep = buf.indexOf("\n\n")) !== -1) {
             const block = buf.slice(0, sep);
             buf = buf.slice(sep + 2);
-            let evt = null, dataStr = "";
+            let evt = null,dataStr = "";
             for (const line of block.split("\n")) {
-              if (line.startsWith("event:")) evt = line.slice(6).trim();
-              else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+              if (line.startsWith("event:")) evt = line.slice(6).trim();else
+              if (line.startsWith("data:")) dataStr += line.slice(5).trim();
             }
             if (!evt) continue;
             try {
               const payload = dataStr ? JSON.parse(dataStr) : {};
-              if (evt === "progress") setProgress(payload);
-              else if (evt === "partial_image") setPartialImage(payload);
-              else if (evt === "done") finalData = payload;
-              else if (evt === "error") streamErr = payload?.message || "Stream error";
+              if (evt === "progress") setProgress(payload);else
+              if (evt === "partial_image") setPartialImage(payload);else
+              if (evt === "done") finalData = payload;else
+              if (evt === "error") streamErr = payload?.message || "Stream error";
             } catch {}
           }
         }
         const latencyMs = Date.now() - start;
-        if (streamErr) { setError(streamErr); return; }
+        if (streamErr) {setError(streamErr);return;}
         if (finalData) setResult({ data: finalData, latencyMs });
       } else {
         const data = await res.json();
@@ -209,13 +210,13 @@ export function GenericExampleCard({ providerId, kind }) {
 
   // Mask large b64_json strings in JSON view to keep it readable
   const maskB64 = (obj) => {
-    if (!obj || typeof obj !== "object") return obj;
+    if (!obj || !isObject(obj)) return obj;
     if (Array.isArray(obj)) return obj.map(maskB64);
     const out = {};
     for (const [k, v] of Object.entries(obj)) {
-      out[k] = (k === "b64_json" && typeof v === "string" && v.length > 100)
-        ? `<${v.length} chars base64>`
-        : maskB64(v);
+      out[k] = k === "b64_json" && isString(v) && v.length > 100 ?
+      `<${v.length} chars base64>` :
+      maskB64(v);
     }
     return out;
   };
@@ -226,28 +227,28 @@ export function GenericExampleCard({ providerId, kind }) {
       <h2 className="text-lg font-semibold mb-4">Example</h2>
       <div className="flex flex-col gap-2.5">
         {/* Model selector — dropdown if presets exist, else manual input for media kinds */}
-        {kindModels.length > 0 ? (
-          <Row label="Model">
+        {kindModels.length > 0 ?
+        <Row label="Model">
             <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-            >
-              {kindModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.name || m.id}</option>
-              ))}
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary">
+            
+              {kindModels.map((m) =>
+            <option key={m.id} value={m.id}>{m.name || m.id}</option>
+            )}
             </select>
-          </Row>
-        ) : allowManualModel ? (
-          <Row label="Model">
+          </Row> :
+        allowManualModel ?
+        <Row label="Model">
             <input
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              placeholder="Enter model id (provider-specific)"
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
-            />
-          </Row>
-        ) : null}
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            placeholder="Enter model id (provider-specific)"
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono" />
+          
+          </Row> :
+        null}
 
         {/* Endpoint */}
         <Row label="Endpoint">
@@ -255,18 +256,18 @@ export function GenericExampleCard({ providerId, kind }) {
             <span className="w-full min-w-0 flex-1 px-3 py-1.5 text-sm font-mono text-text-main bg-sidebar rounded-lg truncate">
               {endpoint}{apiPath}
             </span>
-            {tunnelEndpoint && (
-              <button
-                onClick={() => setUseTunnel((v) => !v)}
-                title={useTunnel ? "Using tunnel" : "Using local"}
-                className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
-                  useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
-                }`}
-              >
+            {tunnelEndpoint &&
+            <button
+              onClick={() => setUseTunnel((v) => !v)}
+              title={useTunnel ? "Using tunnel" : "Using local"}
+              className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
+              useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"}`
+              }>
+              
                 <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
                 Tunnel
               </button>
-            )}
+            }
           </div>
         </Row>
 
@@ -278,31 +279,31 @@ export function GenericExampleCard({ providerId, kind }) {
             onChange={(event) => setApiKey(event.target.value)}
             autoComplete="off"
             placeholder="Paste a saved API key secret"
-            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
-          />
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono" />
+          
         </Row>
 
         {/* Connection picker - only show when 2+ connections (or any with email) */}
-        {connections.length > 0 && (
-          <Row label="Connection">
+        {connections.length > 0 &&
+        <Row label="Connection">
             <select
-              value={pinnedConnectionId}
-              onChange={(e) => setPinnedConnectionId(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-            >
+            value={pinnedConnectionId}
+            onChange={(e) => setPinnedConnectionId(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary">
+            
               <option value="">Auto (by priority)</option>
               {connections.map((c) => {
-                const plan = c.providerSpecificData?.chatgptPlanType;
-                const label = c.email || c.name || c.id.slice(0, 8);
-                return (
-                  <option key={c.id} value={c.id}>
+              const plan = c.providerSpecificData?.chatgptPlanType;
+              const label = c.email || c.name || c.id.slice(0, 8);
+              return (
+                <option key={c.id} value={c.id}>
                     {label}{plan ? ` [${plan}]` : ""}
-                  </option>
-                );
-              })}
+                  </option>);
+
+            })}
             </select>
           </Row>
-        )}
+        }
 
         {/* Input */}
         <Row label={exConfig.inputLabel}>
@@ -311,136 +312,136 @@ export function GenericExampleCard({ providerId, kind }) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={exConfig.inputPlaceholder}
-              className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-            />
-            {input && (
-              <button
-                type="button"
-                onClick={() => setInput("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
-              >
+              className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" />
+            
+            {input &&
+            <button
+              type="button"
+              onClick={() => setInput("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors">
+              
                 <span className="material-symbols-outlined text-[14px]">close</span>
               </button>
-            )}
+            }
           </div>
         </Row>
 
         {/* Reference image (only for edit-capable image models) */}
-        {supportsEdit && (
-          <Row label="Ref Image (URL)">
+        {supportsEdit &&
+        <Row label="Ref Image (URL)">
             <div className="flex flex-col gap-2">
               <div className="relative">
                 <input
-                  value={refImage}
-                  onChange={(e) => setRefImage(e.target.value)}
-                  placeholder={imageEditDefaults.image || "https://example.com/source.png"}
-                  className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-                />
-                {refImage && (
-                  <button
-                    type="button"
-                    onClick={() => setRefImage("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
-                  >
+                value={refImage}
+                onChange={(e) => setRefImage(e.target.value)}
+                placeholder={imageEditDefaults.image || "https://example.com/source.png"}
+                className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" />
+              
+                {refImage &&
+              <button
+                type="button"
+                onClick={() => setRefImage("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors">
+                
                     <span className="material-symbols-outlined text-[14px]">close</span>
                   </button>
-                )}
+              }
               </div>
-              {refImagePreviewSrc && (
-                <img
-                  src={refImagePreviewSrc}
-                  alt="Reference"
-                  className="max-h-40 rounded-lg border border-border object-contain bg-sidebar"
-                  onError={(e) => { e.currentTarget.style.display = "none"; }}
-                  onLoad={(e) => { e.currentTarget.style.display = "block"; }}
-                />
-              )}
-            </div>
-          </Row>
-        )}
+              {refImagePreviewSrc &&
+            <img
+              src={refImagePreviewSrc}
+              alt="Reference"
+              className="max-h-40 rounded-lg border border-border object-contain bg-sidebar"
+              onError={(e) => {e.currentTarget.style.display = "none";}}
+              onLoad={(e) => {e.currentTarget.style.display = "block";}} />
 
-        {supportsMask && (
-          <Row label="Mask (URL)">
+            }
+            </div>
+          </Row>
+        }
+
+        {supportsMask &&
+        <Row label="Mask (URL)">
             <div className="flex flex-col gap-2">
               <div className="relative">
                 <input
-                  value={maskImage}
-                  onChange={(e) => setMaskImage(e.target.value)}
-                  placeholder={imageEditDefaults.mask_image || "https://example.com/mask.png"}
-                  className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-                />
-                {maskImage && (
-                  <button
-                    type="button"
-                    onClick={() => setMaskImage("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
-                  >
+                value={maskImage}
+                onChange={(e) => setMaskImage(e.target.value)}
+                placeholder={imageEditDefaults.mask_image || "https://example.com/mask.png"}
+                className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" />
+              
+                {maskImage &&
+              <button
+                type="button"
+                onClick={() => setMaskImage("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors">
+                
                     <span className="material-symbols-outlined text-[14px]">close</span>
                   </button>
-                )}
+              }
               </div>
-              {maskImagePreviewSrc && (
-                <img
-                  src={maskImagePreviewSrc}
-                  alt="Mask"
-                  className="max-h-40 rounded-lg border border-border object-contain bg-sidebar"
-                  onError={(e) => { e.currentTarget.style.display = "none"; }}
-                  onLoad={(e) => { e.currentTarget.style.display = "block"; }}
-                />
-              )}
+              {maskImagePreviewSrc &&
+            <img
+              src={maskImagePreviewSrc}
+              alt="Mask"
+              className="max-h-40 rounded-lg border border-border object-contain bg-sidebar"
+              onError={(e) => {e.currentTarget.style.display = "none";}}
+              onLoad={(e) => {e.currentTarget.style.display = "block";}} />
+
+            }
             </div>
           </Row>
-        )}
+        }
 
         {/* Extra fields — for kinds without model concept (webSearch/webFetch), show all; otherwise filter by model.params */}
-        {(exConfig.extraFields || [])
-          .filter((f) => kindModels.length === 0 || (Array.isArray(selectedModelObj?.params) && selectedModelObj.params.includes(f.key)))
-          .map((f) => (
-          <Row key={f.key} label={f.label}>
-            {f.type === "select" ? (
-              <select
-                value={extraValues[f.key] ?? ""}
-                onChange={(e) => setExtraValues((s) => ({ ...s, [f.key]: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              >
-                {(f.options || []).map((opt) => (
-                  <option key={opt} value={opt}>{opt === "" ? "(default)" : opt}</option>
-                ))}
-              </select>
-            ) : f.type === "text" ? (
-              <input
-                type="text"
-                value={extraValues[f.key] ?? ""}
-                placeholder={f.placeholder}
-                onChange={(e) => setExtraValues((s) => ({ ...s, [f.key]: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              />
-            ) : (
-              <input
-                type="number"
-                value={extraValues[f.key] ?? ""}
-                min={f.min}
-                max={f.max}
-                onChange={(e) => setExtraValues((s) => ({ ...s, [f.key]: e.target.value === "" ? "" : Number(e.target.value) }))}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              />
+        {(exConfig.extraFields || []).
+        filter((f) => kindModels.length === 0 || Array.isArray(selectedModelObj?.params) && selectedModelObj.params.includes(f.key)).
+        map((f) =>
+        <Row key={f.key} label={f.label}>
+            {f.type === "select" ?
+          <select
+            value={extraValues[f.key] ?? ""}
+            onChange={(e) => setExtraValues((s) => ({ ...s, [f.key]: e.target.value }))}
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary">
+            
+                {(f.options || []).map((opt) =>
+            <option key={opt} value={opt}>{opt === "" ? "(default)" : opt}</option>
             )}
+              </select> :
+          f.type === "text" ?
+          <input
+            type="text"
+            value={extraValues[f.key] ?? ""}
+            placeholder={f.placeholder}
+            onChange={(e) => setExtraValues((s) => ({ ...s, [f.key]: e.target.value }))}
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" /> :
+
+
+          <input
+            type="number"
+            value={extraValues[f.key] ?? ""}
+            min={f.min}
+            max={f.max}
+            onChange={(e) => setExtraValues((s) => ({ ...s, [f.key]: e.target.value === "" ? "" : Number(e.target.value) }))}
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" />
+
+          }
           </Row>
-        ))}
+        )}
 
         {/* Output Format toggle (image only) — last */}
-        {kind === "image" && (
-          <Row label="Output Format">
+        {kind === "image" &&
+        <Row label="Output Format">
             <select
-              value={imageOutputFormat}
-              onChange={(e) => setImageOutputFormat(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-            >
+            value={imageOutputFormat}
+            onChange={(e) => setImageOutputFormat(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary">
+            
               <option value="json">JSON (Base64)</option>
               <option value="binary">Binary File</option>
             </select>
           </Row>
-        )}
+        }
 
         {/* Curl + Run */}
         <div className="mt-1">
@@ -449,16 +450,16 @@ export function GenericExampleCard({ providerId, kind }) {
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               <button
                 onClick={() => copyCurl(curlSnippet)}
-                className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
-              >
+                className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
+                
                 <span className="material-symbols-outlined text-[14px]">{copiedCurl ? "check" : "content_copy"}</span>
                 {copiedCurl ? "Copied" : "Copy"}
               </button>
             <button
-              onClick={handleRun}
-              disabled={running || !input.trim() || !modelFull}
-              className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+                onClick={handleRun}
+                disabled={running || !input.trim() || !modelFull}
+                className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                
                 <span className="material-symbols-outlined text-[14px]" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
                   play_arrow
                 </span>
@@ -470,8 +471,8 @@ export function GenericExampleCard({ providerId, kind }) {
         </div>
 
         {/* Streaming progress */}
-        {(running || progress) && useStreaming && (
-          <div className="flex flex-col gap-2 px-3 py-2 rounded-lg bg-sidebar border border-border sm:flex-row sm:items-center sm:gap-3">
+        {(running || progress) && useStreaming &&
+        <div className="flex flex-col gap-2 px-3 py-2 rounded-lg bg-sidebar border border-border sm:flex-row sm:items-center sm:gap-3">
             <span className="material-symbols-outlined text-[16px] text-primary" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
               {running ? "progress_activity" : "check_circle"}
             </span>
@@ -480,19 +481,19 @@ export function GenericExampleCard({ providerId, kind }) {
               {!running && progress?.bytesReceived ? ` · ${(progress.bytesReceived / 1024).toFixed(1)} KB` : ""}
             </span>
           </div>
-        )}
+        }
 
         {/* Partial image preview (codex stream) */}
-        {partialImage?.b64_json && !result && (
-          <div>
+        {partialImage?.b64_json && !result &&
+        <div>
             <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Partial preview</span>
             <img
-              src={`data:image/png;base64,${partialImage.b64_json}`}
-              alt="Partial"
-              className="max-w-full rounded-lg border border-border mt-1.5 opacity-80"
-            />
+            src={`data:image/png;base64,${partialImage.b64_json}`}
+            alt="Partial"
+            className="max-w-full rounded-lg border border-border mt-1.5 opacity-80" />
+          
           </div>
-        )}
+        }
 
         {/* Error */}
         {error && <p className="text-xs text-red-500 break-words">{error}</p>}
@@ -503,40 +504,40 @@ export function GenericExampleCard({ providerId, kind }) {
             <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
               Response {result && <span className="font-normal normal-case">&#9889; {result.latencyMs}ms</span>}
             </span>
-            {result && (
-              <button
-                onClick={() => copyRes(resultJson)}
-                className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
-              >
+            {result &&
+            <button
+              onClick={() => copyRes(resultJson)}
+              className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
+              
                 <span className="material-symbols-outlined text-[14px]">{copiedRes ? "check" : "content_copy"}</span>
                 {copiedRes ? "Copied" : "Copy"}
               </button>
-            )}
+            }
           </div>
           <pre className="bg-sidebar rounded-lg px-3 py-2.5 text-xs font-mono text-text-main overflow-x-auto whitespace-pre-wrap break-all opacity-70">
             {result ? resultJson : exConfig.defaultResponse}
           </pre>
-          {kind === "image" && (binaryImageUrl || result?.data?.data?.[0]) && (
-            <div className="mt-2">
+          {kind === "image" && (binaryImageUrl || result?.data?.data?.[0]) &&
+          <div className="mt-2">
               <div className="flex items-center justify-end mb-1.5">
                 <a
-                  href={binaryImageUrl || (result?.data?.data?.[0]?.b64_json ? `data:image/png;base64,${result.data.data[0].b64_json}` : result?.data?.data?.[0]?.url || "")}
-                  download="image.png"
-                  className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
-                >
+                href={binaryImageUrl || (result?.data?.data?.[0]?.b64_json ? `data:image/png;base64,${result.data.data[0].b64_json}` : result?.data?.data?.[0]?.url || "")}
+                download="image.png"
+                className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
+                
                   <span className="material-symbols-outlined text-[14px]">download</span>
                   Download
                 </a>
               </div>
               <img
-                src={binaryImageUrl || (result?.data?.data?.[0]?.b64_json ? `data:image/png;base64,${result.data.data[0].b64_json}` : result?.data?.data?.[0]?.url)}
-                alt="Generated"
-                className="max-w-full rounded-lg border border-border"
-              />
+              src={binaryImageUrl || (result?.data?.data?.[0]?.b64_json ? `data:image/png;base64,${result.data.data[0].b64_json}` : result?.data?.data?.[0]?.url)}
+              alt="Generated"
+              className="max-w-full rounded-lg border border-border" />
+            
             </div>
-          )}
+          }
         </div>
       </div>
-    </Card>
-  );
+    </Card>);
+
 }

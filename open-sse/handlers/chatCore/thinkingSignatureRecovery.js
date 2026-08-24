@@ -1,4 +1,4 @@
-/**
+import { isObject, isString } from "@/shared/utils/typeChecks.js"; /**
  * Anthropic thinking-signature one-shot recovery (ported from OmniRoute #7906).
  *
  * Anthropic occasionally rejects a request whose COMPLETED historical assistant
@@ -12,7 +12,7 @@
  */
 
 function isThinkingBlock(block) {
-  if (!block || typeof block !== "object") return false;
+  if (!block || !isObject(block)) return false;
   const { type } = block;
   return type === "thinking" || type === "redacted_thinking";
 }
@@ -21,8 +21,8 @@ function hasBlock(message, type) {
   return (
     !!message &&
     Array.isArray(message.content) &&
-    message.content.some((block) => !!block && typeof block === "object" && block.type === type)
-  );
+    message.content.some((block) => !!block && isObject(block) && block.type === type));
+
 }
 
 /**
@@ -32,9 +32,9 @@ function hasBlock(message, type) {
  */
 export function isAnthropicThinkingSignatureError({ provider, status, message } = {}) {
   const isAnthropicTarget =
-    provider === "claude" ||
-    (typeof provider === "string" && provider.startsWith("anthropic-compatible-"));
-  if (!isAnthropicTarget || Number(status) !== 400 || typeof message !== "string") return false;
+  provider === "claude" ||
+  isString(provider) && provider.startsWith("anthropic-compatible-");
+  if (!isAnthropicTarget || Number(status) !== 400 || !isString(message)) return false;
   return /invalid\s+[`'"]?signature[`'"]?\s+in\s+[`'"]?thinking[`'"]?\s+block/i.test(message);
 }
 
@@ -48,7 +48,7 @@ export function isAnthropicThinkingSignatureError({ provider, status, message } 
  * possible.
  */
 export function stripHistoricalThinkingForSignatureRecovery(body) {
-  if (!body || typeof body !== "object" || Array.isArray(body)) return body;
+  if (!body || !isObject(body) || Array.isArray(body)) return body;
   if (!Array.isArray(body.messages)) return body;
 
   const messages = body.messages;
@@ -75,11 +75,11 @@ export function stripHistoricalThinkingForSignatureRecovery(body) {
   let changed = false;
   const recoveredMessages = messages.map((message, index) => {
     if (
-      !message ||
-      message.role !== "assistant" ||
-      !Array.isArray(message.content) ||
-      protectedAssistantIndexes.has(index)
-    ) {
+    !message ||
+    message.role !== "assistant" ||
+    !Array.isArray(message.content) ||
+    protectedAssistantIndexes.has(index))
+    {
       return message;
     }
     const content = message.content.filter((block) => !isThinkingBlock(block));

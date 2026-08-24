@@ -1,8 +1,8 @@
 import {
   QODER_DEVICE_TOKEN_URL,
   QODER_LOGIN_URL,
-  QODER_USERINFO_URL,
-} from "../../qoder/constants.js";
+  QODER_USERINFO_URL } from
+"../../qoder/constants.js";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 
@@ -26,14 +26,14 @@ import { v4 as uuidv4 } from "uuid";
 // Timeout for OAuth helper calls. The OAuth modal polls every 2s for up to
 // 5 minutes; an individual request that stalls beyond this is treated as a
 // failed poll attempt and the next poll iteration retries.
-const FETCH_TIMEOUT_MS = 15_000;
+import { isNumber, isString } from "@/shared/utils/typeChecks.js";const FETCH_TIMEOUT_MS = 15_000;
 
 function base64Url(buf) {
-  return buf
-    .toString("base64")
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+  return buf.
+  toString("base64").
+  replace(/=/g, "").
+  replace(/\+/g, "-").
+  replace(/\//g, "_");
 }
 
 /**
@@ -75,14 +75,14 @@ export class QoderService {
       challenge,
       challenge_method: "S256",
       machine_id: machineId,
-      nonce,
+      nonce
     });
 
     return {
       verificationUriComplete: `${QODER_LOGIN_URL}?${params.toString()}`,
       codeVerifier: verifier,
       nonce,
-      machineId,
+      machineId
     };
   }
 
@@ -104,9 +104,9 @@ export class QoderService {
       method: "GET",
       headers: {
         Accept: "application/json",
-        "User-Agent": "Go-http-client/2.0",
+        "User-Agent": "Go-http-client/2.0"
       },
-      proxyOptions,
+      proxyOptions
     });
 
     // Pending — server has registered the device code but the user hasn't
@@ -146,7 +146,7 @@ export class QoderService {
       refreshToken: body.refresh_token || "",
       userId: body.user_id || "",
       expireTime: expireMs,
-      rawResponse: body,
+      rawResponse: body
     };
   }
 
@@ -161,16 +161,16 @@ export class QoderService {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: "application/json",
-          "User-Agent": "Go-http-client/2.0",
+          "User-Agent": "Go-http-client/2.0"
         },
-        proxyOptions,
+        proxyOptions
       });
       if (!response.ok) return { name: "", email: "" };
       const body = await response.json();
       return {
         name: (body.name || body.username || "").trim(),
         email: (body.email || "").trim(),
-        organizationId: (body.organization_id || "").trim(),
+        organizationId: (body.organization_id || "").trim()
       };
     } catch {
       return { name: "", email: "" };
@@ -194,10 +194,10 @@ export class QoderService {
    * Static so callers (and tests) can use it without instantiating.
    */
   static parseExpiry(expiresAt, expiresInSeconds) {
-    if (typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt > 0) {
+    if (isNumber(expiresAt) && Number.isFinite(expiresAt) && expiresAt > 0) {
       return expiresAt;
     }
-    const trimmed = typeof expiresAt === "string" ? expiresAt.trim() : "";
+    const trimmed = isString(expiresAt) ? expiresAt.trim() : "";
     if (trimmed) {
       // Pure numeric string → ms-epoch (don't let Date.parse swallow short
       // numerics as years).
@@ -210,7 +210,7 @@ export class QoderService {
     }
     // expiresInSeconds === 0 means "already expired"; honor that by returning
     // the current time rather than fabricating a 30-day default.
-    if (typeof expiresInSeconds === "number" && Number.isFinite(expiresInSeconds) && expiresInSeconds >= 0) {
+    if (isNumber(expiresInSeconds) && Number.isFinite(expiresInSeconds) && expiresInSeconds >= 0) {
       return Date.now() + expiresInSeconds * 1000;
     }
     return Date.now() + 30 * 24 * 60 * 60 * 1000;

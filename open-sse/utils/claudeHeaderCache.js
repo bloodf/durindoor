@@ -1,30 +1,30 @@
-/**
+import { isObject } from "@/shared/utils/typeChecks.js"; /**
  * Singleton cache for real Claude Code client headers.
  * Captures headers from authentic Claude Code requests and makes them available
  * for forwarding to api.anthropic.com, replacing static hardcoded values.
  */
 
 const CLAUDE_IDENTITY_HEADERS = [
-  "user-agent",
-  "anthropic-beta",
-  "anthropic-version",
-  "anthropic-dangerous-direct-browser-access",
-  "x-app",
-  "x-stainless-helper-method",
-  "x-stainless-retry-count",
-  "x-stainless-runtime-version",
-  "x-stainless-package-version",
-  "x-stainless-runtime",
-  "x-stainless-lang",
-  "x-stainless-arch",
-  "x-stainless-os",
-  "x-stainless-timeout",
-  "x-claude-code-session-id",
-  "package-version",
-  "runtime-version",
-  "os",
-  "arch",
-];
+"user-agent",
+"anthropic-beta",
+"anthropic-version",
+"anthropic-dangerous-direct-browser-access",
+"x-app",
+"x-stainless-helper-method",
+"x-stainless-retry-count",
+"x-stainless-runtime-version",
+"x-stainless-package-version",
+"x-stainless-runtime",
+"x-stainless-lang",
+"x-stainless-arch",
+"x-stainless-os",
+"x-stainless-timeout",
+"x-claude-code-session-id",
+"package-version",
+"runtime-version",
+"os",
+"arch"];
+
 
 let cachedHeaders = null;
 
@@ -44,7 +44,7 @@ function isClaudeCodeClient(headers) {
  * @param {object} headers - Lowercase header key/value object (from request.headers.entries())
  */
 export function cacheClaudeHeaders(headers) {
-  if (!headers || typeof headers !== "object") return;
+  if (!headers || !isObject(headers)) return;
   if (!isClaudeCodeClient(headers)) return;
 
   const captured = {};

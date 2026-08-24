@@ -2,6 +2,7 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
+import { isObject } from "@/shared/utils/typeChecks.js";
 
 export function resolveCustomCapabilities(provider, model, requestPrefix, customModels) {
   if (!Array.isArray(customModels) || !model) return null;
@@ -20,14 +21,14 @@ export function resolveCustomCapabilities(provider, model, requestPrefix, custom
     if (alias === provider || alias === requestPrefix || alias === canonicalAlias) {
       const staticCaps = getCapabilitiesForModel(provider, String(cleanModel));
       const caps = m.capabilities;
-      const hasCaps = caps && typeof caps === "object" && !Array.isArray(caps) && Object.keys(caps).length > 0;
+      const hasCaps = caps && isObject(caps) && !Array.isArray(caps) && Object.keys(caps).length > 0;
       const merged = hasCaps ? { ...staticCaps, ...caps } : { ...staticCaps };
       // Consumers that must distinguish "explicitly persisted on the custom
       // row" from "inherited static/default" (e.g. strict context routing)
       // read this non-enumerable marker; spreads/JSON drop it harmlessly.
       Object.defineProperty(merged, "customKeys", {
         value: new Set(hasCaps ? Object.keys(caps) : []),
-        enumerable: false,
+        enumerable: false
       });
       return merged;
     }
@@ -49,9 +50,9 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
     // row, so retry with the node's prefix as the effective alias.
     if (provider && (provider.startsWith("openai-compatible") || provider.startsWith("anthropic-compatible") || /^[0-9a-f-]{16,}$/i.test(provider))) {
       const nodes = [
-        ...(await getProviderNodes({ type: "openai-compatible" })),
-        ...(await getProviderNodes({ type: "anthropic-compatible" })),
-      ];
+      ...(await getProviderNodes({ type: "openai-compatible" })),
+      ...(await getProviderNodes({ type: "anthropic-compatible" }))];
+
       const node = nodes.find((n) => n.id === provider);
       if (node?.prefix && node.prefix !== requestPrefix) {
         return resolveCustomCapabilities(provider, model, node.prefix, customModels);
@@ -71,8 +72,8 @@ import {
   getProviderNodes,
   getProviderConnections,
   getCustomModels,
-  getSettings,
-} from "@/lib/localDb";
+  getSettings } from
+"@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
@@ -84,7 +85,7 @@ import { PROVIDER_MODELS } from "open-sse/providers/index.js";
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
 const LOCAL_PROVIDER_ALIASES = {
   xmtp: "xiaomi-tokenplan",
-  "xiaomi-tokenplan": "xiaomi-tokenplan",
+  "xiaomi-tokenplan": "xiaomi-tokenplan"
 };
 
 const RESERVED_PROVIDER_PREFIXES = new Set(Object.keys(LOCAL_PROVIDER_ALIASES));

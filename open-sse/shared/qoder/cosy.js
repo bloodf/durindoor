@@ -23,19 +23,19 @@ import {
   QODER_LOGIN_VERSION,
   QODER_MACHINE_OS,
   QODER_MACHINE_TYPE,
-  QODER_RSA_PUBLIC_KEY,
-} from "./constants.js";
+  QODER_RSA_PUBLIC_KEY } from
+"./constants.js";
 
 // AES-128 wants a 16-byte key. Match qodercli/Veria: take the first 16 chars
 // of a fresh UUID's canonical string (hyphens included). The key is fresh
 // per request so even though the IV reuses the key bytes, each request still
 // has a unique IV.
-function generateAesKey() {
+import { isString } from "@/shared/utils/typeChecks.js";function generateAesKey() {
   return uuidv4().slice(0, 16);
 }
 
 function pkcs7Pad(data, blockSize) {
-  const padding = blockSize - (data.length % blockSize);
+  const padding = blockSize - data.length % blockSize;
   const padded = Buffer.alloc(data.length + padding, padding);
   data.copy(padded, 0);
   return padded;
@@ -57,7 +57,7 @@ function aesEncryptCbcBase64(plaintext, keyStr) {
 function rsaEncryptBase64(data) {
   const encrypted = crypto.publicEncrypt(
     { key: QODER_RSA_PUBLIC_KEY, padding: crypto.constants.RSA_PKCS1_PADDING },
-    Buffer.from(data, "utf8"),
+    Buffer.from(data, "utf8")
   );
   return encrypted.toString("base64");
 }
@@ -117,18 +117,18 @@ export function buildCosyHeaders(body, requestUrl, creds) {
   if (!creds?.userId) throw new Error("cosy: user id is empty");
   if (!creds?.authToken) throw new Error("cosy: auth token is empty");
 
-  const bodyBuf = Buffer.isBuffer(body)
-    ? body
-    : typeof body === "string"
-      ? Buffer.from(body, "latin1")
-      : Buffer.from(body || []);
+  const bodyBuf = Buffer.isBuffer(body) ?
+  body :
+  isString(body) ?
+  Buffer.from(body, "latin1") :
+  Buffer.from(body || []);
 
   const { cosyKey, info } = encryptUserInfo({
     uid: creds.userId,
     security_oauth_token: creds.authToken,
     name: creds.name || "",
     aid: "",
-    email: creds.email || "",
+    email: creds.email || ""
   });
 
   const timestamp = String(Math.floor(Date.now() / 1000));
@@ -139,7 +139,7 @@ export function buildCosyHeaders(body, requestUrl, creds) {
     requestId,
     info,
     cosyVersion: QODER_IDE_VERSION,
-    ideVersion: "",
+    ideVersion: ""
   });
   const payloadB64 = Buffer.from(payloadJson, "utf8").toString("base64");
 
@@ -170,6 +170,6 @@ export function buildCosyHeaders(body, requestUrl, creds) {
     "Cosy-Organization-Id": "",
     "Cosy-Organization-Tags": "",
     "Login-Version": QODER_LOGIN_VERSION,
-    "X-Request-Id": uuidv4(),
+    "X-Request-Id": uuidv4()
   };
 }

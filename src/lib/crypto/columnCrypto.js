@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { getDataDir } from "@/lib/dataDir";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const MASTER_KEY_BASENAME = "master-key";
 const MASTER_KEY_BYTES = 32;
@@ -30,7 +31,7 @@ let cachedKey = null;
 
 function loadMasterKey() {
   if (cachedKey) return cachedKey;
-  if (typeof process.env.DATA_DIR !== "string" || !process.env.DATA_DIR) {
+  if (!isString(process.env.DATA_DIR) || !process.env.DATA_DIR) {
     throw new Error("columnCrypto: DATA_DIR required to load master key");
   }
   const dataDir = getDataDir();
@@ -48,7 +49,7 @@ function loadMasterKey() {
   }
   if (raw && raw.length > 0) {
     throw new Error(
-      `columnCrypto: ${MASTER_KEY_BASENAME} must be exactly ${MASTER_KEY_BYTES} bytes`,
+      `columnCrypto: ${MASTER_KEY_BASENAME} must be exactly ${MASTER_KEY_BYTES} bytes`
     );
   }
   const generated = crypto.randomBytes(MASTER_KEY_BYTES);
@@ -69,27 +70,27 @@ function encodeAad(aad) {
  * @returns {{v:number, iv:string, ct:string}}
  */
 export function encryptField(plaintext, aad = null) {
-  if (typeof plaintext !== "string") {
+  if (!isString(plaintext)) {
     throw new TypeError("columnCrypto.encryptField: plaintext must be a string");
   }
   const key = loadMasterKey();
   const iv = crypto.randomBytes(IV_BYTES);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv, {
-    authTagLength: TAG_BYTES,
+    authTagLength: TAG_BYTES
   });
   const aadBuf = encodeAad(aad);
   if (aadBuf) cipher.setAAD(aadBuf);
   const ciphertext = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
+  cipher.update(plaintext, "utf8"),
+  cipher.final()]
+  );
   const tag = cipher.getAuthTag();
   // Pack ct+tag so the blob is self-contained.
   const packed = Buffer.concat([ciphertext, tag]);
   return {
     v: FORMAT_VERSION,
     iv: iv.toString("base64"),
-    ct: packed.toString("base64"),
+    ct: packed.toString("base64")
   };
 }
 
@@ -101,13 +102,13 @@ export function encryptField(plaintext, aad = null) {
  * @returns {string}
  */
 export function decryptField(blob, aad = null) {
-  if (!blob || typeof blob !== "object") {
+  if (!blob || !isObject(blob)) {
     throw new TypeError("columnCrypto.decryptField: blob must be an object");
   }
   if (blob.v !== FORMAT_VERSION) {
     throw new Error(`columnCrypto: unsupported blob version ${blob.v}`);
   }
-  if (typeof blob.iv !== "string" || typeof blob.ct !== "string") {
+  if (!isString(blob.iv) || !isString(blob.ct)) {
     throw new Error("columnCrypto: blob missing iv/ct");
   }
   const key = loadMasterKey();
@@ -119,7 +120,7 @@ export function decryptField(blob, aad = null) {
   const ciphertext = packed.subarray(0, packed.length - TAG_BYTES);
   const tag = packed.subarray(packed.length - TAG_BYTES);
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv, {
-    authTagLength: TAG_BYTES,
+    authTagLength: TAG_BYTES
   });
   const aadBuf = encodeAad(aad);
   if (aadBuf) decipher.setAAD(aadBuf);
@@ -136,12 +137,12 @@ export function decryptField(blob, aad = null) {
 /** Return true if `value` looks like an encrypted blob from encryptField. */
 export function isEncryptedBlob(value) {
   return (
-    !!value &&
-    typeof value === "object" &&
-    value.v === FORMAT_VERSION &&
-    typeof value.iv === "string" &&
-    typeof value.ct === "string"
-  );
+    !!value && isObject(
+      value) &&
+    value.v === FORMAT_VERSION && isString(
+      value.iv) && isString(
+      value.ct));
+
 }
 
 /** Test-only: clear cached key material so the next call re-reads disk. */

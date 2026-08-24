@@ -11,25 +11,25 @@ import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 
 /**
  * Process a single SSE message and update state accordingly.
- */
+ */import { isFunction, isNumber, isObject } from "@/shared/utils/typeChecks.js";
 function processSSEMessage(msg, state) {
   if (!msg.trim()) return;
   if (msg.trim().startsWith(":")) return;
 
   const dataMatch = msg.match(/^data:\s*(.+)$/m);
-  if (!dataMatch) { state.terminal.fail(); return; }
+  if (!dataMatch) {state.terminal.fail();return;}
   const dataStr = dataMatch[1].trim();
   const eventMatch = msg.match(/^event:\s*(.+)$/m);
   if (dataStr === "[DONE]") {
     state.terminal.observe({ rawDone: true, eventName: eventMatch?.[1]?.trim() || null });
     return;
   }
-  if (!eventMatch) { state.terminal.fail(); return; }
+  if (!eventMatch) {state.terminal.fail();return;}
   const eventType = eventMatch[1].trim();
 
   let parsed;
-  try { parsed = JSON.parse(dataStr); }
-  catch { state.terminal.fail(); return; }
+  try {parsed = JSON.parse(dataStr);}
+  catch {state.terminal.fail();return;}
 
   state.terminal.observe({ chunk: parsed, eventName: eventType });
 
@@ -39,14 +39,14 @@ function processSSEMessage(msg, state) {
   } else if (eventType === "response.output_item.done") {
     const outputIndex = parsed.output_index ?? 0;
     if (
-      !Number.isSafeInteger(outputIndex)
-      || outputIndex < 0
-      || outputIndex >= MAX_RESPONSES_OUTPUT_ITEMS
-      || state.items.has(outputIndex)
-      || !parsed.item
-      || typeof parsed.item !== "object"
-      || Array.isArray(parsed.item)
-    ) {
+    !Number.isSafeInteger(outputIndex) ||
+    outputIndex < 0 ||
+    outputIndex >= MAX_RESPONSES_OUTPUT_ITEMS ||
+    state.items.has(outputIndex) ||
+    !parsed.item || !isObject(
+      parsed.item) ||
+    Array.isArray(parsed.item))
+    {
       state.terminal.fail();
       return;
     }
@@ -65,7 +65,7 @@ function processSSEMessage(msg, state) {
         if (u.cache_creation_input_tokens) state.usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
       }
       const details = u.input_tokens_details || u.prompt_tokens_details;
-      if (details && typeof details.cached_tokens === "number") {
+      if (details && isNumber(details.cached_tokens)) {
         state.usage.cache_read_input_tokens = details.cached_tokens;
       }
     }
@@ -80,7 +80,7 @@ const EMPTY_RESPONSE = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
  * @returns {Promise<Object>} Final JSON response in Responses API format
  */
 export async function convertResponsesStreamToJson(stream, options = {}) {
-  if (!stream || typeof stream.getReader !== "function") {
+  if (!stream || !isFunction(stream.getReader)) {
     return { id: `resp_${Date.now()}`, object: "response", created_at: Math.floor(Date.now() / 1000), status: "failed", output: [], usage: { ...EMPTY_RESPONSE } };
   }
 
@@ -90,7 +90,7 @@ export async function convertResponsesStreamToJson(stream, options = {}) {
     status: "in_progress",
     usage: { ...EMPTY_RESPONSE },
     items: new Map(),
-    terminal: createUpstreamTerminalTracker({ format: FORMATS.OPENAI_RESPONSES }),
+    terminal: createUpstreamTerminalTracker({ format: FORMATS.OPENAI_RESPONSES })
   };
 
   const raw = await readBoundedResponseText(new Response(stream), options);

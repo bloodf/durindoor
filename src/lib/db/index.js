@@ -7,29 +7,30 @@ import {
   canonicalizeQuotaNow,
   normalizeQuotaFetchState,
   normalizeQuotaSnapshot,
-  quotaIdentityKey,
-} from "@/shared/utils/quotaSnapshot";
+  quotaIdentityKey } from
+"@/shared/utils/quotaSnapshot";
 import {
   QUOTA_MAX_IMPORT_ROWS,
   QUOTA_MAX_SOURCE_SNAPSHOTS,
-  QUOTA_PORTABLE_VERSION,
-} from "@/shared/constants/quota";
+  QUOTA_PORTABLE_VERSION } from
+"@/shared/constants/quota";
 import { readQuotaPortableStateSync, writeQuotaPortableStateSync } from "./repos/quotaSnapshotsRepo.js";
 import { assertNoActiveQuotaReservationsSync } from "./repos/quotaReservationsRepo.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "./repos/connectionsRepo.js";
 import { isEncryptedBlob, decryptField, encryptField } from "../crypto/columnCrypto.js";
+import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
   for (const row of rows) {
     const value = row?.[field];
-    if (typeof value !== "string" || !value.trim()) {
+    if (!isString(value) || !value.trim()) {
       throw new Error(`${label} ${field} must be a non-empty string`);
     }
     if (seen.has(value)) {
-      throw new Error(revealDuplicate
-        ? `Duplicate ${label} ${field}: ${value}`
-        : `Duplicate ${label} ${field}`);
+      throw new Error(revealDuplicate ?
+      `Duplicate ${label} ${field}: ${value}` :
+      `Duplicate ${label} ${field}`);
     }
     seen.add(value);
   }
@@ -48,7 +49,7 @@ function validateApiKeyImport(payload) {
   // API-key secrets must never be copied into an import error or route log.
   assertUniqueNonEmpty(apiKeys, "key", "API key", { revealDuplicate: false });
   const normalizedApiKeys = apiKeys.map((key) => {
-    if (key.allowedCombos != null && (!Array.isArray(key.allowedCombos) || key.allowedCombos.some((combo) => typeof combo !== "string"))) {
+    if (key.allowedCombos != null && (!Array.isArray(key.allowedCombos) || key.allowedCombos.some((combo) => !isString(combo)))) {
       throw new Error(`API key ${key.id} allowedCombos must be an array of strings`);
     }
     if (key.dailyLimitTokens != null) {
@@ -70,13 +71,13 @@ function validateApiKeyImport(payload) {
     if (!ids.has(total.apiKeyId)) throw new Error(`API-key total references missing key: ${total.apiKeyId}`);
     for (const field of ["totalTokens", "totalCost", "totalRequests"]) {
       const value = total[field];
-      if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || (field !== "totalCost" && !Number.isSafeInteger(value))) {
+      if (!isNumber(value) || !Number.isFinite(value) || value < 0 || field !== "totalCost" && !Number.isSafeInteger(value)) {
         throw new Error(`API-key total ${total.apiKeyId} ${field} is invalid`);
       }
     }
     if (total.updatedAt != null) {
       const updatedAt = total.updatedAt;
-      const hasTimezone = typeof updatedAt === "string" && /(Z|[+-]\d{2}:\d{2})$/i.test(updatedAt);
+      const hasTimezone = isString(updatedAt) && /(Z|[+-]\d{2}:\d{2})$/i.test(updatedAt);
       if (!hasTimezone || !Number.isFinite(Date.parse(updatedAt))) {
         throw new Error(`API-key total ${total.apiKeyId} updatedAt is invalid`);
       }
@@ -90,7 +91,7 @@ function validateQuotaImport(payload, { now }) {
     return { present: false, quota: { version: QUOTA_PORTABLE_VERSION, snapshots: [], fetchStates: [] } };
   }
   const quota = payload.quota;
-  if (!quota || typeof quota !== "object" || Array.isArray(quota)) throw new Error("quota must be an object");
+  if (!quota || !isObject(quota) || Array.isArray(quota)) throw new Error("quota must be an object");
   const allowedKeys = new Set(["version", "snapshots", "fetchStates"]);
   for (const key of Object.keys(quota)) {
     if (!allowedKeys.has(key)) throw new Error("quota contains an unsupported field");
@@ -105,7 +106,7 @@ function validateQuotaImport(payload, { now }) {
   for (const snapshot of quota.snapshots) {
     const connectionId = snapshot?.identity?.connectionId;
     const sourceId = snapshot?.provenance?.sourceId;
-    if (typeof connectionId !== "string" || typeof sourceId !== "string") continue;
+    if (!isString(connectionId) || !isString(sourceId)) continue;
     const key = JSON.stringify([connectionId, sourceId]);
     const count = (rawSourceCounts.get(key) || 0) + 1;
     if (count > QUOTA_MAX_SOURCE_SNAPSHOTS) throw new Error("quota payload exceeds the per-source row safety limit");
@@ -116,8 +117,8 @@ function validateQuotaImport(payload, { now }) {
   if (!Array.isArray(connections)) throw new Error("providerConnections must be an array");
   const connectionProviders = new Map();
   for (const [index, connection] of connections.entries()) {
-    if (typeof connection?.id !== "string" || !connection.id.trim()) throw new Error(`Provider connection at index ${index} must have an id`);
-    if (typeof connection?.provider !== "string" || !connection.provider.trim()) throw new Error(`Provider connection at index ${index} must have a provider`);
+    if (!isString(connection?.id) || !connection.id.trim()) throw new Error(`Provider connection at index ${index} must have an id`);
+    if (!isString(connection?.provider) || !connection.provider.trim()) throw new Error(`Provider connection at index ${index} must have a provider`);
     if (connectionProviders.has(connection.id)) throw new Error(`Duplicate provider connection at index ${index}`);
     connectionProviders.set(connection.id, connection.provider);
   }
@@ -170,8 +171,8 @@ function validateQuotaImport(payload, { now }) {
 
 // Settings
 export {
-  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl, exportSettings,
-} from "./repos/settingsRepo.js";
+  getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl, exportSettings } from
+"./repos/settingsRepo.js";
 
 // Provider connections
 export {
@@ -179,36 +180,36 @@ export {
   createProviderConnection, updateProviderConnection,
   recordProviderConnectionFallbackState, clearProviderConnectionFallbackState,
   deleteProviderConnection, deleteProviderConnectionsByProvider, setProviderConnectionAutoPing,
-  reorderProviderConnections, reorderProviderConnectionsByIds, cleanupProviderConnections,
-} from "./repos/connectionsRepo.js";
+  reorderProviderConnections, reorderProviderConnectionsByIds, cleanupProviderConnections } from
+"./repos/connectionsRepo.js";
 
 // Provider nodes
 export {
   getProviderNodes, getProviderNodeById,
-  createProviderNode, updateProviderNode, deleteProviderNode,
-} from "./repos/nodesRepo.js";
+  createProviderNode, updateProviderNode, deleteProviderNode } from
+"./repos/nodesRepo.js";
 
 // Proxy pools
 export {
   getProxyPools, getProxyPoolById,
-  createProxyPool, updateProxyPool, deleteProxyPool,
-} from "./repos/proxyPoolsRepo.js";
+  createProxyPool, updateProxyPool, deleteProxyPool } from
+"./repos/proxyPoolsRepo.js";
 
 // API keys
 export {
-  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
-} from "./repos/apiKeysRepo.js";
+  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus } from
+"./repos/apiKeysRepo.js";
 export {
-  getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync,
-} from "./repos/apiKeyUsageTotalsRepo.js";
+  getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync } from
+"./repos/apiKeyUsageTotalsRepo.js";
 
 // Provider-reported quota snapshots (runtime-neutral persistence boundary)
 export {
   upsertProviderQuotaSnapshot, replaceProviderQuotaSnapshotsForSource,
   recordQuotaFetchFailure, getProviderQuotaSnapshot,
   listProviderQuotaSnapshots, getQuotaFetchState,
-  pruneProviderQuotaSnapshots,
-} from "./repos/quotaSnapshotsRepo.js";
+  pruneProviderQuotaSnapshots } from
+"./repos/quotaSnapshotsRepo.js";
 
 // Local operational quota reservations. These rows are deliberately excluded
 // from portable export/import because they describe one running process epoch.
@@ -218,41 +219,41 @@ export {
   reapExpiredQuotaReservations, getQuotaReservationPressure,
   hasActiveDispatchedQuotaReservations, hashQuotaRoute,
   assertNoActiveQuotaReservationsSync,
-  QuotaReservationError, QuotaCapacityUnavailableError,
-} from "./repos/quotaReservationsRepo.js";
+  QuotaReservationError, QuotaCapacityUnavailableError } from
+"./repos/quotaReservationsRepo.js";
 
 // Combos
 export {
   getCombos, getComboById, getComboByName, getComboForModel,
-  createCombo, updateCombo, deleteCombo,
-} from "./repos/combosRepo.js";
+  createCombo, updateCombo, deleteCombo } from
+"./repos/combosRepo.js";
 
 // MCP gateway: upstream instances, gateway API keys, per-key grants
 export {
   getInstances, getInstanceById, getInstanceBySlug, getEnabledInstancesByIds,
-  createInstance, updateInstance, deleteInstance,
-} from "./repos/mcpInstancesRepo.js";
+  createInstance, updateInstance, deleteInstance } from
+"./repos/mcpInstancesRepo.js";
 export {
   getGatewayKeys, getGatewayKeyById, createGatewayKey, deleteGatewayKey,
-  validateGatewayKey, getGrantsForKey, getGrantsForKeyDetailed, setGrants,
-} from "./repos/mcpGatewayRepo.js";
+  validateGatewayKey, getGrantsForKey, getGrantsForKeyDetailed, setGrants } from
+"./repos/mcpGatewayRepo.js";
 
 // Aliases (model + custom + mitm)
 export {
   getModelAliases, setModelAlias, deleteModelAlias,
   getCustomModels, addCustomModel, updateCustomModel, deleteCustomModel,
-  getMitmAlias, setMitmAliasAll,
-} from "./repos/aliasRepo.js";
+  getMitmAlias, setMitmAliasAll } from
+"./repos/aliasRepo.js";
 
 // Pricing
 export {
-  getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
-} from "./repos/pricingRepo.js";
+  getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing } from
+"./repos/pricingRepo.js";
 
 // Disabled models
 export {
-  getDisabledModels, getDisabledByProvider, disableModels, enableModels,
-} from "./repos/disabledModelsRepo.js";
+  getDisabledModels, getDisabledByProvider, disableModels, enableModels } from
+"./repos/disabledModelsRepo.js";
 
 // Usage
 export {
@@ -260,13 +261,13 @@ export {
   saveRequestUsage, getUsageHistory, getUsageStats, getChartData,
   appendRequestLog, getRecentLogs,
   recordTokenSaverEvent, getTokenSaverStats,
-  resetUsageHistory,
-} from "./repos/usageRepo.js";
+  resetUsageHistory } from
+"./repos/usageRepo.js";
 
 // Request details
 export {
-  saveRequestDetail, getRequestDetails, getRequestDetailById, getDistinctProviders,
-} from "./repos/requestDetailsRepo.js";
+  saveRequestDetail, getRequestDetails, getRequestDetailById, getDistinctProviders } from
+"./repos/requestDetailsRepo.js";
 
 // Export/import full DB
 export async function exportDb({ now = Date.now(), includeSecrets = false } = {}) {
@@ -275,73 +276,73 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
   return db.transaction(() => {
     const settingsRow = db.get(`SELECT data FROM settings WHERE id = 1`);
     const out = {
-    settings: settingsRow ? parseJson(settingsRow.data, {}) : {},
-    providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => {
-      const conn = { ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt };
-      if (!includeSecrets) {
-        // SEC-B-02: scrub plaintext credentials from portable backups unless
-        // explicitly opted-in. Encrypted blobs pass through but are still
-        // scrubbed here — backups must never contain either form by default.
-        for (const field of SENSITIVE_CONNECTION_FIELDS) delete conn[field];
-      } else {
-        // Opt-in mode: decrypt to plaintext so a backup can be re-imported
-        // into a different DATA_DIR (which has a different master key).
-        for (const field of SENSITIVE_CONNECTION_FIELDS) {
-          const value = conn[field];
-          if (isEncryptedBlob(value)) conn[field] = decryptField(value, r.id);
+      settings: settingsRow ? parseJson(settingsRow.data, {}) : {},
+      providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => {
+        const conn = { ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt };
+        if (!includeSecrets) {
+          // SEC-B-02: scrub plaintext credentials from portable backups unless
+          // explicitly opted-in. Encrypted blobs pass through but are still
+          // scrubbed here — backups must never contain either form by default.
+          for (const field of SENSITIVE_CONNECTION_FIELDS) delete conn[field];
+        } else {
+          // Opt-in mode: decrypt to plaintext so a backup can be re-imported
+          // into a different DATA_DIR (which has a different master key).
+          for (const field of SENSITIVE_CONNECTION_FIELDS) {
+            const value = conn[field];
+            if (isEncryptedBlob(value)) conn[field] = decryptField(value, r.id);
+          }
         }
-      }
-      return conn;
-    }),
-    providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
-    proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
-    apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => {
-      let ac = [];
-      try { ac = JSON.parse(r.allowedCombos); if (!Array.isArray(ac)) ac = []; } catch {}
-      let policy = null;
-      if (r.policy != null) {
+        return conn;
+      }),
+      providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => {
+        let ac = [];
+        try {ac = JSON.parse(r.allowedCombos);if (!Array.isArray(ac)) ac = [];} catch {}
+        let policy = null;
+        if (r.policy != null) {
+          try {
+            policy = normalizeApiKeyPolicy(JSON.parse(r.policy));
+          } catch {
+            // Never turn corrupt policy storage into an unrestricted backup.
+            // The error names only the non-secret row ID.
+            throw new Error(`API key ${r.id} has invalid policy JSON`);
+          }
+        }
+        let expiresAt;
         try {
-          policy = normalizeApiKeyPolicy(JSON.parse(r.policy));
+          expiresAt = canonicalizeApiKeyExpiresAt(r.expiresAt ?? null);
         } catch {
-          // Never turn corrupt policy storage into an unrestricted backup.
-          // The error names only the non-secret row ID.
-          throw new Error(`API key ${r.id} has invalid policy JSON`);
+          throw new Error(`API key ${r.id} has invalid expiresAt storage`);
         }
-      }
-      let expiresAt;
-      try {
-        expiresAt = canonicalizeApiKeyExpiresAt(r.expiresAt ?? null);
-      } catch {
-        throw new Error(`API key ${r.id} has invalid expiresAt storage`);
-      }
-      return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt, createdAt: r.createdAt };
-    }),
-    apiKeyUsageTotals: db.all(`SELECT * FROM apiKeyUsageTotals`).map((r) => ({
-      apiKeyId: r.apiKeyId,
-      totalTokens: Number(r.totalTokens) || 0,
-      totalCost: Number(r.totalCost) || 0,
-      totalRequests: Number(r.totalRequests) || 0,
-      updatedAt: r.updatedAt || null,
-    })),
-    quota: readQuotaPortableStateSync(db, { now: quotaNow }),
-    combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
-    modelAliases: {},
-    customModels: [],
-    mitmAlias: {},
-    pricing: {},
-  };
+        return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt, createdAt: r.createdAt };
+      }),
+      apiKeyUsageTotals: db.all(`SELECT * FROM apiKeyUsageTotals`).map((r) => ({
+        apiKeyId: r.apiKeyId,
+        totalTokens: Number(r.totalTokens) || 0,
+        totalCost: Number(r.totalCost) || 0,
+        totalRequests: Number(r.totalRequests) || 0,
+        updatedAt: r.updatedAt || null
+      })),
+      quota: readQuotaPortableStateSync(db, { now: quotaNow }),
+      combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      modelAliases: {},
+      customModels: [],
+      mitmAlias: {},
+      pricing: {}
+    };
 
-  for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) out.modelAliases[r.key] = parseJson(r.value);
-  for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'customModels'`)) out.customModels.push(parseJson(r.value));
-  for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'mitmAlias'`)) out.mitmAlias[r.key] = parseJson(r.value);
-  for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
+    for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`)) out.modelAliases[r.key] = parseJson(r.value);
+    for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'customModels'`)) out.customModels.push(parseJson(r.value));
+    for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'mitmAlias'`)) out.mitmAlias[r.key] = parseJson(r.value);
+    for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
 
     return out;
   });
 }
 
 export async function importDb(payload, { now = Date.now() } = {}) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+  if (!payload || !isObject(payload) || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
   // Validate before opening the transaction or deleting any existing rows.
@@ -392,7 +393,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
       for (const field of SENSITIVE_CONNECTION_FIELDS) {
         const value = rest[field];
-        if (typeof value === "string" && value.length > 0 && !isEncryptedBlob(value)) {
+        if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
           rest[field] = encryptField(value, id);
         }
       }
@@ -438,7 +439,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       for (const key of apiKeys) {
         db.run(
           `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, 0, 0, 0, NULL)`,
-          [key.id],
+          [key.id]
         );
       }
     }

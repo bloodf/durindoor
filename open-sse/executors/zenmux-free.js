@@ -7,20 +7,21 @@ import { toOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { applyThinking, captureThinking } from "../translator/concerns/thinkingUnified.js";
 import zenmuxFreeRegistry from "../providers/registry/zenmux-free.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const DEFAULT_MODEL = zenmuxFreeRegistry.models?.[0]?.id || "deepseek/deepseek-chat";
 
 export const ZENMUX_FREE_CHAT_URL = "https://zenmux.ai/api/anthropic/v1/messages";
 const USER_AGENT =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 export function normalizeZenmuxCookie(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^Cookie:\s*/i, "")
-    .replace(/\r?\n/g, "; ")
-    .replace(/;\s*;/g, ";")
-    .trim();
+  return String(value || "").
+  trim().
+  replace(/^Cookie:\s*/i, "").
+  replace(/\r?\n/g, "; ").
+  replace(/;\s*;/g, ";").
+  trim();
 }
 
 export function extractZenmuxCtoken(cookieHeader) {
@@ -34,17 +35,17 @@ export function extractZenmuxCtoken(cookieHeader) {
 }
 
 function textFromContent(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (!Array.isArray(content)) return JSON.stringify(content ?? "");
-  return content
-    .map((part) => {
-      if (!part || typeof part !== "object") return "";
-      if (part.type === "text" && typeof part.text === "string") return part.text;
-      if (part.type === "input_text" && typeof part.text === "string") return part.text;
-      return "";
-    })
-    .filter(Boolean)
-    .join("\n");
+  return content.
+  map((part) => {
+    if (!part || !isObject(part)) return "";
+    if (part.type === "text" && isString(part.text)) return part.text;
+    if (part.type === "input_text" && isString(part.text)) return part.text;
+    return "";
+  }).
+  filter(Boolean).
+  join("\n");
 }
 
 function messageContentFromOpenAI(content) {
@@ -74,15 +75,15 @@ function resolveMaxTokens(openAiBody) {
 
 export function buildZenmuxAnthropicBody(openAiBody = {}, modelId = DEFAULT_MODEL) {
   const messages = Array.isArray(openAiBody.messages) ? openAiBody.messages : [];
-  const systemText = messages
-    .filter((message) => message?.role === "system" || message?.role === "developer")
-    .map((message) => textFromContent(message.content))
-    .filter(Boolean)
-    .join("\n\n");
+  const systemText = messages.
+  filter((message) => message?.role === "system" || message?.role === "developer").
+  map((message) => textFromContent(message.content)).
+  filter(Boolean).
+  join("\n\n");
   const conversation = messages.filter((message) => message?.role === "user" || message?.role === "assistant");
   const anthropicMessages = mergeAdjacentMessages(conversation.map((message) => ({
     role: message.role,
-    content: messageContentFromOpenAI(message.content),
+    content: messageContentFromOpenAI(message.content)
   })));
 
   const jsonInstruction = buildJsonInstruction(openAiBody.response_format);
@@ -90,10 +91,10 @@ export function buildZenmuxAnthropicBody(openAiBody = {}, modelId = DEFAULT_MODE
   const body = {
     model: modelId,
     max_tokens: resolveMaxTokens(openAiBody),
-    messages: anthropicMessages.length > 0
-      ? anthropicMessages
-      : [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
-    stream: true,
+    messages: anthropicMessages.length > 0 ?
+    anthropicMessages :
+    [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
+    stream: true
   };
   if (systemText || jsonInstruction) {
     body.system = [systemText, jsonInstruction].filter(Boolean).join("\n\n");
@@ -111,7 +112,7 @@ export function buildZenmuxAnthropicBody(openAiBody = {}, modelId = DEFAULT_MODE
 }
 
 function buildJsonInstruction(responseFormat) {
-  if (!responseFormat || typeof responseFormat !== "object") return "";
+  if (!responseFormat || !isObject(responseFormat)) return "";
   if (responseFormat.type === "json_schema" && responseFormat.json_schema?.schema) {
     const schemaJson = JSON.stringify(responseFormat.json_schema.schema, null, 2);
     return `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text.`;
@@ -128,7 +129,7 @@ function openAiChunk({ id, created, model, delta, finishReason = null }) {
     object: "chat.completion.chunk",
     created,
     model,
-    choices: [{ index: 0, delta, finish_reason: finishReason }],
+    choices: [{ index: 0, delta, finish_reason: finishReason }]
   })}\n\n`;
 }
 
@@ -145,9 +146,9 @@ function parseAnthropicSseData(line) {
 }
 
 function abortReason(signal) {
-  return signal?.reason instanceof Error
-    ? signal.reason
-    : new DOMException("Request aborted", "AbortError");
+  return signal?.reason instanceof Error ?
+  signal.reason :
+  new DOMException("Request aborted", "AbortError");
 }
 
 async function collectText(body, signal) {
@@ -161,8 +162,8 @@ async function collectText(body, signal) {
   const onAbort = () => {
     reader.cancel(abortReason(signal)).catch(() => {});
   };
-  if (signal?.aborted) onAbort();
-  else signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();else
+  signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
     while (true) {
@@ -214,8 +215,8 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
       const onAbort = () => {
         reader.cancel(abortReason(signal)).catch(() => {});
       };
-      if (signal?.aborted) onAbort();
-      else signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();else
+      signal?.addEventListener("abort", onAbort, { once: true });
       controller.enqueue(encoder.encode(openAiChunk({ id: cid, created, model, delta: { role: "assistant" } })));
 
       try {
@@ -234,7 +235,7 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
             if (event.type === "error") {
               const errorBody = buildErrorBody(
                 502,
-                sanitizeErrorMessage(event.error?.message || "ZenMux streaming error"),
+                sanitizeErrorMessage(event.error?.message || "ZenMux streaming error")
               );
               errored = true;
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorBody)}\n\n`));
@@ -257,7 +258,7 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
                 created,
                 model,
                 delta: {},
-                finishReason: toOpenAIFinish(event.delta.stop_reason, "claude"),
+                finishReason: toOpenAIFinish(event.delta.stop_reason, "claude")
               })));
             }
           }
@@ -267,14 +268,14 @@ function buildStreamingResponse(upstream, model, cid, created, signal) {
         errored = true;
         // Aborts must settle the downstream stream too; suppressing the error
         // here leaves Response consumers pending forever after reader.cancel().
-        try { controller.error(error); } catch { /* consumer already closed */ }
+        try {controller.error(error);} catch {/* consumer already closed */}
       } finally {
         signal?.removeEventListener?.("abort", onAbort);
         reader.releaseLock();
         if (errored) return;
         controller.close();
       }
-    },
+    }
   });
 }
 
@@ -283,7 +284,7 @@ function makeErrorResult(status, message, body, url) {
     response: errorResponse(status, message),
     url,
     headers: {},
-    transformedBody: body,
+    transformedBody: body
   };
 }
 
@@ -321,7 +322,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
       "chat-request-id": randomUUID().replace(/-/g, ""),
       "x-zenmux-accept-processing": "true, true",
       "x-zenmux-apikey-source": "subscription",
-      Cookie: rawCookie,
+      Cookie: rawCookie
     };
     // Executor results are consumed by the optional on-disk request logger.
     // Keep the real cookie only in the fetch options and expose a safe summary.
@@ -333,7 +334,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
         method: "POST",
         headers,
         body: JSON.stringify(transformedBody),
-        signal,
+        signal
       }, proxyOptions);
     } catch (error) {
       if (error.name === "AbortError") {
@@ -343,7 +344,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
         502,
         `ZenMux Free fetch failed: ${sanitizeErrorMessage(error.message || "unknown")}`,
         body,
-        ZENMUX_FREE_CHAT_URL,
+        ZENMUX_FREE_CHAT_URL
       );
     }
 
@@ -359,7 +360,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
         upstream.status,
         `ZenMux Free error: ${sanitizeErrorMessage(errorText || upstream.statusText)}`,
         body,
-        ZENMUX_FREE_CHAT_URL,
+        ZENMUX_FREE_CHAT_URL
       );
     }
 
@@ -372,12 +373,12 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
           headers: {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-          },
+            Connection: "keep-alive"
+          }
         }),
         url: ZENMUX_FREE_CHAT_URL,
         headers: logHeaders,
-        transformedBody,
+        transformedBody
       };
     }
 
@@ -395,12 +396,12 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
           usage: {
             prompt_tokens: 0,
             completion_tokens: Math.ceil(text.length / 4),
-            total_tokens: Math.ceil(text.length / 4),
-          },
+            total_tokens: Math.ceil(text.length / 4)
+          }
         }), { headers: { "Content-Type": "application/json" } }),
         url: ZENMUX_FREE_CHAT_URL,
         headers: logHeaders,
-        transformedBody,
+        transformedBody
       };
     } catch (error) {
       if (signal?.aborted || error.name === "AbortError") {
@@ -410,7 +411,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
         502,
         sanitizeErrorMessage(error.message || "ZenMux Free streaming error"),
         body,
-        ZENMUX_FREE_CHAT_URL,
+        ZENMUX_FREE_CHAT_URL
       );
     }
   }
@@ -419,7 +420,7 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
 export const __test__ = {
   collectText,
   parseAnthropicSseData,
-  ZENMUX_FREE_CHAT_URL,
+  ZENMUX_FREE_CHAT_URL
 };
 
 export default ZenmuxFreeExecutor;

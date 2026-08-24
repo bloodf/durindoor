@@ -1,6 +1,7 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const REGISTRY_URL = "https://api.anthropic.com/mcp-registry/v0/servers";
 const VISIBILITY = "commercial,gsuite,gsuite-google";
@@ -14,7 +15,7 @@ function gcache() {
 
 // Filter out claude.ai-mediated servers (broken in 3p) and tenant-required entries.
 function isDirectConnect(url) {
-  if (!url || typeof url !== "string") return false;
+  if (!url || !isString(url)) return false;
   if (/^https?:\/\/[^/]*\bmcp\.claude\.com\b/i.test(url)) return false;
   if (/^https?:\/\/api\.anthropic\.com\/mcp\b/i.test(url)) return false;
   if (/[<{]/.test(url)) return false;
@@ -47,7 +48,7 @@ async function fetchAll() {
         oauth: !meta.isAuthless,
         toolNames,
         toolCount: toolNames.length,
-        iconUrl: meta.iconUrl || null,
+        iconUrl: meta.iconUrl || null
       });
     }
     cursor = j.metadata?.nextCursor;
@@ -55,7 +56,7 @@ async function fetchAll() {
   }
   // Dedupe by url
   const seen = new Set();
-  return out.filter((s) => (seen.has(s.url) ? false : (seen.add(s.url), true)));
+  return out.filter((s) => seen.has(s.url) ? false : (seen.add(s.url), true));
 }
 
 export async function GET(request) {

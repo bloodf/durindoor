@@ -9,22 +9,23 @@ import {
   COMMANDCODE_OVERLOAD_PATTERNS,
   COMMANDCODE_PREFLIGHT_MAX_BYTES,
   COMMANDCODE_PREFLIGHT_MAX_FRAMES,
-  COMMANDCODE_RATE_LIMIT_PATTERNS,
-} from "../config/commandcode.js";
+  COMMANDCODE_RATE_LIMIT_PATTERNS } from
+"../config/commandcode.js";
 import { COMMANDCODE_EVENT } from "../translator/schema/index.js";
 import { cancelAndReleaseReader, releaseReader } from "../utils/streamReader.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const COMMANDCODE_PREFLIGHT_PREAMBLE_EVENTS = new Set([
-  COMMANDCODE_EVENT.START,
-  COMMANDCODE_EVENT.START_STEP,
-  COMMANDCODE_EVENT.REASONING_START,
-  COMMANDCODE_EVENT.REASONING_END,
-  COMMANDCODE_EVENT.TEXT_START,
-  COMMANDCODE_EVENT.TEXT_END,
-  COMMANDCODE_EVENT.TOOL_INPUT_END,
-  COMMANDCODE_EVENT.PROVIDER_METADATA,
-  COMMANDCODE_EVENT.MESSAGE_METADATA,
-]);
+COMMANDCODE_EVENT.START,
+COMMANDCODE_EVENT.START_STEP,
+COMMANDCODE_EVENT.REASONING_START,
+COMMANDCODE_EVENT.REASONING_END,
+COMMANDCODE_EVENT.TEXT_START,
+COMMANDCODE_EVENT.TEXT_END,
+COMMANDCODE_EVENT.TOOL_INPUT_END,
+COMMANDCODE_EVENT.PROVIDER_METADATA,
+COMMANDCODE_EVENT.MESSAGE_METADATA]
+);
 
 /**
  * CommandCodeExecutor — talks to https://api.commandcode.ai/alpha/generate
@@ -44,10 +45,10 @@ export class CommandCodeExecutor extends BaseExecutor {
 
   transformRequest(model, body, stream, credentials) {
     if (!body.params) body.params = {};
-  
+
     body.stream = true;
     body.params.stream = true;
-  
+
     return body;
   }
 
@@ -55,7 +56,7 @@ export class CommandCodeExecutor extends BaseExecutor {
     const headers = {
       "Content-Type": "application/json",
       ...(this.config.headers || {}),
-      "x-session-id": randomUUID(),
+      "x-session-id": randomUUID()
     };
 
     const token = credentials?.apiKey || credentials?.accessToken;
@@ -80,7 +81,7 @@ export class CommandCodeExecutor extends BaseExecutor {
       return {
         status: response.status,
         message: parsed?.error?.message || parsed?.message || bodyText || response.statusText,
-        errorBody: parsed,
+        errorBody: parsed
       };
     } catch {
       return super.parseError(response, bodyText);
@@ -90,8 +91,8 @@ export class CommandCodeExecutor extends BaseExecutor {
 
 export {
   COMMANDCODE_PREFLIGHT_MAX_BYTES,
-  COMMANDCODE_PREFLIGHT_MAX_FRAMES,
-};
+  COMMANDCODE_PREFLIGHT_MAX_FRAMES };
+
 
 function explicitErrorStatus(event) {
   const error = event?.error;
@@ -104,18 +105,18 @@ function explicitErrorStatus(event) {
 
 function errorMessage(event) {
   const value = event?.error ?? event?.message;
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object") {
-    if (typeof value.message === "string") return value.message;
-    if (typeof value.error === "string") return value.error;
+  if (isString(value)) return value;
+  if (value && isObject(value)) {
+    if (isString(value.message)) return value.message;
+    if (isString(value.error)) return value.error;
     return JSON.stringify(value);
   }
   return "CommandCode upstream error";
 }
 
 function errorType(statusCode) {
-  return ERROR_TYPES[statusCode]?.type
-    || (statusCode >= HTTP_STATUS.SERVER_ERROR ? "server_error" : "invalid_request_error");
+  return ERROR_TYPES[statusCode]?.type || (
+  statusCode >= HTTP_STATUS.SERVER_ERROR ? "server_error" : "invalid_request_error");
 }
 
 /** Normalize an embedded CommandCode error event for HTTP fallback (upstream PR #3405). */
@@ -137,7 +138,7 @@ function parseCommandCodeFrame(line) {
   if (!trimmed) return null;
   const json = trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed;
   if (!json || json === "[DONE]") return null;
-  try { return JSON.parse(json); } catch { return null; }
+  try {return JSON.parse(json);} catch {return null;}
 }
 
 function isPreambleEvent(event) {
@@ -177,7 +178,7 @@ function replayCommandCodeBody(reader, chunks, alreadyDone) {
       if (finished) return;
       finished = true;
       await cancelAndReleaseReader(reader, reason);
-    },
+    }
   });
 }
 
@@ -185,7 +186,7 @@ function replayResponse(originalResponse, reader, chunks, done) {
   return new Response(replayCommandCodeBody(reader, chunks, done), {
     status: originalResponse.status,
     statusText: originalResponse.statusText,
-    headers: originalResponse.headers,
+    headers: originalResponse.headers
   });
 }
 
@@ -252,9 +253,9 @@ export async function preflightCommandCodeResponse(originalResponse) {
 /** Apply bounded PR #3405 error preflight before the existing NDJSON translator. */
 export async function inspectAndWrapCommandCodeResponse(originalResponse, model) {
   const preflighted = await preflightCommandCodeResponse(originalResponse);
-  return preflighted.ok && preflighted.body
-    ? wrapNdjsonAsOpenAISse(preflighted, model)
-    : preflighted;
+  return preflighted.ok && preflighted.body ?
+  wrapNdjsonAsOpenAISse(preflighted, model) :
+  preflighted;
 }
 
 export function wrapNdjsonAsOpenAISse(originalResponse, model) {
@@ -319,14 +320,14 @@ export function wrapNdjsonAsOpenAISse(originalResponse, model) {
       if (state.rawTerminalSeen && !state.failureSeen) {
         controller.enqueue(encoder.encode(SSE_DONE));
       }
-    },
+    }
   });
 
   const newBody = originalResponse.body.pipeThrough(transform);
   return new Response(newBody, {
     status: originalResponse.status,
     statusText: originalResponse.statusText,
-    headers: originalResponse.headers,
+    headers: originalResponse.headers
   });
 }
 

@@ -1,4 +1,4 @@
-/**
+import { isString } from "@/shared/utils/typeChecks.js"; /**
  * Model-family primitives for auto-combo (F-2).
  *
  * Pure, dependency-free primitives ported verbatim in shape from
@@ -13,34 +13,34 @@
  * family ("route to my z.ai backend"), distinct from `glm` ("any GLM backend").
  */
 export const MODEL_FAMILIES = Object.freeze([
-  "glm",
-  "minimax",
-  "mimo",
-  "zai",
-  "gemma",
-  "llama",
-  "gemini",
-]);
+"glm",
+"minimax",
+"mimo",
+"zai",
+"gemma",
+"llama",
+"gemini"]
+);
 
 const MODEL_FAMILY_SET = new Set(MODEL_FAMILIES);
 
 // Model-id prefix → family, matched against the bare id (provider prefix
 // stripped). Order matters: first match wins.
 const FAMILY_ID_PATTERNS = Object.freeze([
-  { family: "glm", pattern: /^glm-/i },
-  { family: "minimax", pattern: /^minimax-/i },
-  { family: "mimo", pattern: /^mimo-/i },
-  { family: "gemma", pattern: /^gemma-/i },
-  { family: "llama", pattern: /^llama-/i },
-  { family: "gemini", pattern: /^gemini-/i },
-]);
+{ family: "glm", pattern: /^glm-/i },
+{ family: "minimax", pattern: /^minimax-/i },
+{ family: "mimo", pattern: /^mimo-/i },
+{ family: "gemma", pattern: /^gemma-/i },
+{ family: "llama", pattern: /^llama-/i },
+{ family: "gemini", pattern: /^gemini-/i }]
+);
 
 // Advertised `auto/<family>` catalog ids (#6453), e.g. `auto/glm`, `auto/minimax`.
 export const AUTO_FAMILY_IDS = Object.freeze(MODEL_FAMILIES.map((f) => `auto/${f}`));
 
 /** @returns {boolean} whether `value` is a known family id (incl. `zai`). */
 export function isValidModelFamily(value) {
-  return typeof value === "string" && MODEL_FAMILY_SET.has(value);
+  return isString(value) && MODEL_FAMILY_SET.has(value);
 }
 
 /**
@@ -62,7 +62,7 @@ export function isProviderOverrideFamily(family) {
  * @returns {string|null} family id from MODEL_FAMILIES (never "zai"), or null
  */
 export function detectModelFamily(modelId) {
-  if (typeof modelId !== "string" || modelId.trim().length === 0) return null;
+  if (!isString(modelId) || modelId.trim().length === 0) return null;
   const bare = modelId.includes("/") ? modelId.slice(modelId.lastIndexOf("/") + 1) : modelId;
   for (const { family, pattern } of FAMILY_ID_PATTERNS) {
     if (pattern.test(bare)) return family;

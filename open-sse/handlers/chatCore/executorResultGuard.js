@@ -1,4 +1,4 @@
-// DurinDoor-adapted executor result guard (OmniRoute#10256, #10373).
+import { isBoolean, isFunction, isNumber } from "@/shared/utils/typeChecks.js"; // DurinDoor-adapted executor result guard (OmniRoute#10256, #10373).
 //
 // Upstream `normalizeExecutorResult` returns only five canonical keys
 // (`response`, `url`, `headers`, `transformedBody`, `transport`) and would
@@ -26,12 +26,12 @@ export function isResponseLike(value) {
   if (value == null) return false;
   if (value instanceof Response) return true;
   return (
-    typeof value.status === "number" &&
-    typeof value.ok === "boolean" &&
-    typeof value.headers?.get === "function" &&
-    typeof value.text === "function" &&
-    "body" in value
-  );
+    isNumber(value.status) && isBoolean(
+      value.ok) && isFunction(
+      value.headers?.get) && isFunction(
+      value.text) &&
+    "body" in value);
+
 }
 
 export function validateExecutorResult(result) {
@@ -46,6 +46,6 @@ export function validateExecutorResult(result) {
     response: result.response,
     url: result.url || "",
     headers: result.headers || {},
-    transformedBody: result.transformedBody ?? null,
+    transformedBody: result.transformedBody ?? null
   };
 }

@@ -1,37 +1,38 @@
 import { nowSec, urlToBase64 } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
+import { isString, isUndefined } from "@/shared/utils/typeChecks.js";
 
 const BASE_URL = PROVIDER_MEDIA["cloudflare-ai"]?.imageConfig?.baseUrl;
 
 const MULTIPART_MODELS = new Set([
-  "@cf/black-forest-labs/flux-2-dev",
-  "@cf/black-forest-labs/flux-2-klein-4b",
-  "@cf/black-forest-labs/flux-2-klein-9b",
-]);
+"@cf/black-forest-labs/flux-2-dev",
+"@cf/black-forest-labs/flux-2-klein-4b",
+"@cf/black-forest-labs/flux-2-klein-9b"]
+);
 
 const OPTIONAL_FIELDS = [
-  "negative_prompt",
-  "guidance",
-  "seed",
-  "num_steps",
-  "steps",
-  "strength",
-];
+"negative_prompt",
+"guidance",
+"seed",
+"num_steps",
+"steps",
+"strength"];
+
 
 function sizeToDimensions(size) {
   const match = /^(\d+)x(\d+)$/.exec(String(size || ""));
   if (!match) return {};
   return {
     width: Number(match[1]),
-    height: Number(match[2]),
+    height: Number(match[2])
   };
 }
 
 function getDimensions(body) {
   return {
     ...sizeToDimensions(body.size),
-    ...(Number.isFinite(Number(body.width)) ? { width: Number(body.width) } : {}),
-    ...(Number.isFinite(Number(body.height)) ? { height: Number(body.height) } : {}),
+    ...(Number.isFinite(Number(body.width)) ? { width: Number(body.width) } : null),
+    ...(Number.isFinite(Number(body.height)) ? { height: Number(body.height) } : null)
   };
 }
 
@@ -39,7 +40,7 @@ async function resolveImageInput(value) {
   if (Array.isArray(value)) {
     return { bytes: value, b64: Buffer.from(value).toString("base64") };
   }
-  if (typeof value !== "string") return null;
+  if (!isString(value)) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   if (/^https?:\/\//i.test(trimmed)) {
@@ -107,7 +108,7 @@ function buildMultipartBody(body) {
 }
 
 function imageItemFromString(value) {
-  if (typeof value !== "string" || !value) return null;
+  if (!isString(value) || !value) return null;
   if (/^data:image\/[^;]+;base64,/i.test(value)) {
     return { b64_json: value.replace(/^data:image\/[^;]+;base64,/i, "") };
   }
@@ -119,21 +120,21 @@ function normalizeCloudflareResponse(responseBody) {
   if (responseBody?.created && Array.isArray(responseBody?.data)) return responseBody;
 
   const result = responseBody?.result ?? responseBody;
-  const queuedResponse = Array.isArray(result?.responses)
-    ? result.responses.find((item) => item?.success !== false)?.result
-    : null;
+  const queuedResponse = Array.isArray(result?.responses) ?
+  result.responses.find((item) => item?.success !== false)?.result :
+  null;
   if (queuedResponse) return normalizeCloudflareResponse(queuedResponse);
 
   const image =
-    (typeof result === "string" ? result : null) ||
-    result?.image ||
-    result?.data?.[0]?.b64_json ||
-    result?.data?.[0]?.url;
+  (isString(result) ? result : null) ||
+  result?.image ||
+  result?.data?.[0]?.b64_json ||
+  result?.data?.[0]?.url;
 
   const item = imageItemFromString(image);
   return {
     created: nowSec(),
-    data: item ? [item] : [],
+    data: item ? [item] : []
   };
 }
 
@@ -146,7 +147,7 @@ export default {
 
   buildHeaders: (creds, requestBody) => {
     const headers = {};
-    const isMultipart = typeof FormData !== "undefined" && requestBody instanceof FormData;
+    const isMultipart = !isUndefined(FormData) && requestBody instanceof FormData;
     if (!isMultipart) {
       headers["Content-Type"] = "application/json";
     }
@@ -155,11 +156,11 @@ export default {
     return headers;
   },
 
-  buildBody: async (model, body) => (
-    MULTIPART_MODELS.has(model)
-      ? buildMultipartBody(body)
-      : await buildJsonBody(body)
-  ),
+  buildBody: async (model, body) =>
+  MULTIPART_MODELS.has(model) ?
+  buildMultipartBody(body) :
+  await buildJsonBody(body),
+
 
   async parseResponse(response) {
     const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
@@ -167,7 +168,7 @@ export default {
       const buf = await response.arrayBuffer();
       return {
         created: nowSec(),
-        data: [{ b64_json: Buffer.from(buf).toString("base64") }],
+        data: [{ b64_json: Buffer.from(buf).toString("base64") }]
       };
     }
 
@@ -175,5 +176,5 @@ export default {
     return normalizeCloudflareResponse(json);
   },
 
-  normalize: normalizeCloudflareResponse,
+  normalize: normalizeCloudflareResponse
 };

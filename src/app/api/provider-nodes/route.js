@@ -7,15 +7,15 @@ import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
 export const dynamic = "force-dynamic";
 
 const OPENAI_COMPATIBLE_DEFAULTS = {
-  baseUrl: "https://api.openai.com/v1",
+  baseUrl: "https://api.openai.com/v1"
 };
 
 const ANTHROPIC_COMPATIBLE_DEFAULTS = {
-  baseUrl: "https://api.anthropic.com/v1",
+  baseUrl: "https://api.anthropic.com/v1"
 };
 
 const CUSTOM_EMBEDDING_DEFAULTS = {
-  baseUrl: "https://api.openai.com/v1",
+  baseUrl: "https://api.openai.com/v1"
 };
 
 // GET /api/provider-nodes - List all provider nodes
@@ -61,7 +61,7 @@ export async function POST(request) {
         apiType,
         baseUrl: (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim(),
         name: name.trim(),
-        ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : {}),
+        ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : null)
       });
       return NextResponse.json({ node }, { status: 201 });
     }
@@ -79,7 +79,7 @@ export async function POST(request) {
         prefix: prefix.trim(),
         baseUrl: sanitizedBaseUrl,
         name: name.trim(),
-        ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : {}),
+        ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : null)
       });
       return NextResponse.json({ node }, { status: 201 });
     }
@@ -98,7 +98,7 @@ export async function POST(request) {
         prefix: prefix.trim(),
         baseUrl: sanitizedBaseUrl,
         name: name.trim(),
-        ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : {}),
+        ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : null)
       });
       return NextResponse.json({ node }, { status: 201 });
     }

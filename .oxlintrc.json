@@ -27,7 +27,14 @@
     ".next/**",
     "coverage/**",
     "cli/node_modules/**",
-    "tests/node_modules/**"
+    "tests/node_modules/**",
+    "tests/**",
+    "**/*.test.js",
+    "**/*.test.ts",
+    "**/*.test.mjs",
+    "**/*.test.cjs",
+    "**/*.spec.js",
+    "**/*.spec.ts"
   ],
   "jsPlugins": [
     {

@@ -1,12 +1,13 @@
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const STORED_ITEM_REFERENCE_PATTERN = /^(?:at|msg|amsg|rs|lsh|fc|tsc|fco|ctc|ctco|tso|ws|ig|cmp|resp)_/;
 const STATELESS_CALL_ITEM_TYPES = new Set([
-  RESPONSES_ITEM.FUNCTION_CALL,
-  RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
-  RESPONSES_ITEM.CUSTOM_TOOL_CALL,
-  RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT,
-]);
+RESPONSES_ITEM.FUNCTION_CALL,
+RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
+RESPONSES_ITEM.CUSTOM_TOOL_CALL,
+RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT]
+);
 
 /**
  * Remove stored references and optional item IDs from stateless Responses call replays.
@@ -18,8 +19,8 @@ export function normalizeStatelessResponseInput(input) {
   if (!Array.isArray(input)) return input;
 
   return input.flatMap((item) => {
-    if (typeof item === "string" && STORED_ITEM_REFERENCE_PATTERN.test(item)) return [];
-    if (!item || typeof item !== "object" || Array.isArray(item)) return [item];
+    if (isString(item) && STORED_ITEM_REFERENCE_PATTERN.test(item)) return [];
+    if (!item || !isObject(item) || Array.isArray(item)) return [item];
     if (item.type === RESPONSES_ITEM.ITEM_REFERENCE) return [];
     if (!STATELESS_CALL_ITEM_TYPES.has(item.type) || !Object.hasOwn(item, "id")) return [item];
 
@@ -38,7 +39,7 @@ export function normalizeStatelessResponseInput(input) {
  * @returns {Array|null} normalized array or null if invalid
  */
 export function normalizeResponsesInput(input) {
-  if (typeof input === "string") {
+  if (isString(input)) {
     const text = input.trim() === "" ? "..." : input;
     return [{ type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text }] }];
   }
@@ -96,20 +97,20 @@ export function convertResponsesApiFormat(body) {
       }
 
       // Convert content: input_text → text, output_text → text, input_image → image_url
-      const content = Array.isArray(item.content)
-        ? item.content.map(c => {
-          if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
-          if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
-          if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
-            const url = c.image_url || c.file_id || "";
-            return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
-          }
-          return c;
-        })
-        : item.content;
+      const content = Array.isArray(item.content) ?
+      item.content.map((c) => {
+        if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
+        if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
+        if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
+          const url = c.image_url || c.file_id || "";
+          return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
+        }
+        return c;
+      }) :
+      item.content;
       result.messages.push({ role: item.role, content });
-    }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
+    } else
+    if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
       // Start or append to assistant message with tool_calls
       if (!currentAssistantMsg) {
         currentAssistantMsg = {
@@ -119,7 +120,7 @@ export function convertResponsesApiFormat(body) {
         };
       }
       // Skip items with empty/missing name — upstream APIs reject nameless tool calls (#444)
-      if (!item.name || typeof item.name !== "string" || item.name.trim() === "") continue;
+      if (!item.name || !isString(item.name) || item.name.trim() === "") continue;
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
@@ -128,8 +129,8 @@ export function convertResponsesApiFormat(body) {
           arguments: item.arguments
         }
       });
-    }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+    } else
+    if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
       // Flush assistant message first if exists
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);
@@ -139,10 +140,10 @@ export function convertResponsesApiFormat(body) {
       pendingToolResults.push({
         role: ROLE.TOOL,
         tool_call_id: item.call_id,
-        content: typeof item.output === "string" ? item.output : JSON.stringify(item.output)
+        content: isString(item.output) ? item.output : JSON.stringify(item.output)
       });
-    }
-    else if (itemType === RESPONSES_ITEM.REASONING) {
+    } else
+    if (itemType === RESPONSES_ITEM.REASONING) {
       // Skip reasoning items - they are for display only
       continue;
     }

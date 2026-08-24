@@ -5,34 +5,34 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 
 // Each rule: optional provider string/regex, regex match on model, list of params to drop.
 // A param is removed only when it is present (!== undefined).
-const STRIP_RULES = [
-  /** All Claude models reject the deprecated temperature parameter upstream with HTTP 400. */
-  { match: /claude/i, drop: ["temperature"] },
-  // GitHub Copilot gpt-5.4: temperature unsupported.
-  { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
-  // GitHub Copilot Claude (except opus/sonnet 4.6): thinking + reasoning_effort rejected. #713
-  { provider: "github", match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m), drop: ["thinking", "reasoning_effort"] },
-  // xAI Grok Composer: rejects reasoningEffort entirely (including "none") — omit param upstream.
-  // Upstream: decolua/9router#2534.
-  { provider: "xai", match: /grok-composer/i, drop: ["thinking", "reasoning_effort", "reasoning"] },
-  // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
-  { provider: "cloudflare-ai", flattenContent: true },
-  // Mistral: rejects reasoning_content carried in assistant message history with
-  // 422 extra_forbidden. Reasoning models (DeepSeek R1, mimo, o-series, etc.) emit
-  // this field on assistant turns; it is only meaningful in streamed responses, not
-  // in request bodies. Strip it from every message before forwarding. #1649
-  { provider: "mistral", dropMessageFields: ["reasoning_content"] },
-  // NVIDIA NIM z-ai/glm-5.2 rejects both OpenAI-style `reasoning` and
-  // Claude-style `thinking` request fields on its OpenAI-compatible wrapper.
-  { provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },
-  { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
-];
+import { isFunction, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const STRIP_RULES = [
+/** All Claude models reject the deprecated temperature parameter upstream with HTTP 400. */
+{ match: /claude/i, drop: ["temperature"] },
+// GitHub Copilot gpt-5.4: temperature unsupported.
+{ provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
+// GitHub Copilot Claude (except opus/sonnet 4.6): thinking + reasoning_effort rejected. #713
+{ provider: "github", match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m), drop: ["thinking", "reasoning_effort"] },
+// xAI Grok Composer: rejects reasoningEffort entirely (including "none") — omit param upstream.
+// Upstream: decolua/9router#2534.
+{ provider: "xai", match: /grok-composer/i, drop: ["thinking", "reasoning_effort", "reasoning"] },
+// Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
+{ provider: "cloudflare-ai", flattenContent: true },
+// Mistral: rejects reasoning_content carried in assistant message history with
+// 422 extra_forbidden. Reasoning models (DeepSeek R1, mimo, o-series, etc.) emit
+// this field on assistant turns; it is only meaningful in streamed responses, not
+// in request bodies. Strip it from every message before forwarding. #1649
+{ provider: "mistral", dropMessageFields: ["reasoning_content"] },
+// NVIDIA NIM z-ai/glm-5.2 rejects both OpenAI-style `reasoning` and
+// Claude-style `thinking` request fields on its OpenAI-compatible wrapper.
+{ provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },
+{ provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true }];
+
 
 // Test a rule's match (regex or predicate) against the model id.
 // A rule with no match clause applies to every model for its provider.
 function matches(rule, model) {
   if (!rule.match) return true;
-  return typeof rule.match === "function" ? rule.match(model) : rule.match.test(model);
+  return isFunction(rule.match) ? rule.match(model) : rule.match.test(model);
 }
 
 /**
@@ -45,7 +45,7 @@ function matchesProvider(selector, provider) {
 }
 
 function clampNumber(body, key, ceiling) {
-  if (typeof body[key] === "number" && Number.isFinite(body[key]) && body[key] > ceiling) {
+  if (isNumber(body[key]) && Number.isFinite(body[key]) && body[key] > ceiling) {
     body[key] = ceiling;
   }
 }
@@ -58,7 +58,7 @@ function clampNumber(body, key, ceiling) {
  * `reasoning_effort` for `openai-compatible-*`.
  */
 export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES) {
-  if (!model || !body || typeof body !== "object") return body;
+  if (!model || !body || !isObject(body)) return body;
   for (const rule of rules) {
     if (rule.provider && !matchesProvider(rule.provider, provider)) continue;
     if (!matches(rule, model)) continue;
@@ -70,7 +70,7 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     // assistant reasoning_content with 422 extra_forbidden (#1649).
     if (Array.isArray(rule.dropMessageFields) && Array.isArray(body.messages)) {
       for (const msg of body.messages) {
-        if (!msg || typeof msg !== "object") continue;
+        if (!msg || !isObject(msg)) continue;
         for (const field of rule.dropMessageFields) {
           if (msg[field] !== undefined) delete msg[field];
         }
@@ -85,16 +85,16 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     if (rule.flattenContent && Array.isArray(body.messages)) {
       for (const msg of body.messages) {
         if (msg && Array.isArray(msg.content)) {
-          msg.content = msg.content
-            .map(b => {
-              if (b?.type === "text" && typeof b.text === "string") return b.text;
-              const got = typeof b?.type === "string" ? b.type : "unknown";
-              throw new Error(
-                "Cloudflare Workers AI chat endpoint does not accept image/non-text content parts " +
-                `(got type "${got}"). Remove image/file attachments or route this request to a vision-capable provider.`
-              );
-            })
-            .join("");
+          msg.content = msg.content.
+          map((b) => {
+            if (b?.type === "text" && isString(b.text)) return b.text;
+            const got = isString(b?.type) ? b.type : "unknown";
+            throw new Error(
+              "Cloudflare Workers AI chat endpoint does not accept image/non-text content parts " +
+              `(got type "${got}"). Remove image/file attachments or route this request to a vision-capable provider.`
+            );
+          }).
+          join("");
         }
       }
     }

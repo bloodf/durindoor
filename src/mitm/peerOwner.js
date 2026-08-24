@@ -1,4 +1,4 @@
-const fs = require("fs");
+import { isFunction } from "@/shared/utils/typeChecks.js";const fs = require("fs");
 const { execFile } = require("child_process");
 const { LSOF_BIN } = require("./config");
 const { resolveWindowsSystemBinary } = require("./trustedBinaries");
@@ -16,11 +16,11 @@ function parseProcTcpOwner(raw, { clientPort, targetPorts, ownerUid }) {
     const [localAddress, localPort] = (fields[1] || "").split(":");
     const [remoteAddress, remotePort] = (fields[2] || "").split(":");
     const uid = Number(fields[7]);
-    if (localAddress === "0100007F"
-      && remoteAddress === "0100007F"
-      && localPort === clientHex
-      && targetHex.has(remotePort)
-      && uid === ownerUid) return true;
+    if (localAddress === "0100007F" &&
+    remoteAddress === "0100007F" &&
+    localPort === clientHex &&
+    targetHex.has(remotePort) &&
+    uid === ownerUid) return true;
   }
   return false;
 }
@@ -30,9 +30,9 @@ function parseLsofOwner(raw, { clientPort, targetPorts, ownerUid }) {
   const targetPattern = targetPorts.join("|");
   const endpoint = new RegExp(`^(?:127\\.0\\.0\\.1|\\[::1\\]):${clientPort}->(?:127\\.0\\.0\\.1|\\[::1\\]):(?:${targetPattern})$`);
   for (const line of String(raw || "").split("\n")) {
-    if (line.startsWith("p")) uid = null;
-    else if (line.startsWith("u") && /^u\d+$/.test(line)) uid = Number(line.slice(1));
-    else if (line.startsWith("n") && uid === ownerUid && endpoint.test(line.slice(1))) return true;
+    if (line.startsWith("p")) uid = null;else
+    if (line.startsWith("u") && /^u\d+$/.test(line)) uid = Number(line.slice(1));else
+    if (line.startsWith("n") && uid === ownerUid && endpoint.test(line.slice(1))) return true;
   }
   return false;
 }
@@ -40,8 +40,8 @@ function parseLsofOwner(raw, { clientPort, targetPorts, ownerUid }) {
 function execFileText(command, args, { timeout = 3000, maxBuffer = 1024 * 1024 } = {}) {
   return new Promise((resolve, reject) => {
     execFile(command, args, { encoding: "utf8", windowsHide: true, timeout, maxBuffer }, (error, stdout) => {
-      if (error) reject(error);
-      else resolve(stdout);
+      if (error) reject(error);else
+      resolve(stdout);
     });
   });
 }
@@ -56,12 +56,12 @@ function createPeerOwnerVerifier({
   readFile = fs.readFileSync,
   execText = execFileText,
   lsofBin = LSOF_BIN,
-  targetPorts = [443, 8443],
+  targetPorts = [443, 8443]
 } = {}) {
   const verifiedSockets = new WeakSet();
-  const ownerUid = platform === "win32"
-    ? null
-    : typeof processImpl.geteuid === "function" ? processImpl.geteuid() : processImpl.getuid?.();
+  const ownerUid = platform === "win32" ?
+  null :
+  isFunction(processImpl.geteuid) ? processImpl.geteuid() : processImpl.getuid?.();
 
   return async function verifyPeerOwner(socket) {
     if (!socket || !isLoopbackAddress(socket.remoteAddress) || !isLoopbackAddress(socket.localAddress)) return false;
@@ -76,17 +76,17 @@ function createPeerOwnerVerifier({
         verified = parseProcTcpOwner(readFile("/proc/net/tcp", "utf8"), {
           clientPort,
           targetPorts,
-          ownerUid,
+          ownerUid
         });
       } else if (platform === "darwin") {
         if (!Number.isSafeInteger(ownerUid) || ownerUid < 0) return false;
         const output = await execText(lsofBin, [
-          "-nP",
-          "-a",
-          `-iTCP:${clientPort}`,
-          "-sTCP:ESTABLISHED",
-          "-Fpun",
-        ]);
+        "-nP",
+        "-a",
+        `-iTCP:${clientPort}`,
+        "-sTCP:ESTABLISHED",
+        "-Fpun"]
+        );
         verified = parseLsofOwner(output, { clientPort, targetPorts, ownerUid });
       } else if (platform === "win32") {
         const ports = targetPorts.join(",");
@@ -103,11 +103,11 @@ function createPeerOwnerVerifier({
           [Console]::Out.Write('verified')
         `;
         verified = (await execText(resolveWindowsSystemBinary("powershell.exe"), [
-          "-NoProfile",
-          "-NonInteractive",
-          "-ExecutionPolicy", "Bypass",
-          "-EncodedCommand", encodePowerShell(script),
-        ])).trim() === "verified";
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy", "Bypass",
+        "-EncodedCommand", encodePowerShell(script)]
+        )).trim() === "verified";
       }
     } catch {
       verified = false;
@@ -122,5 +122,5 @@ module.exports = {
   createPeerOwnerVerifier,
   isLoopbackAddress,
   parseLsofOwner,
-  parseProcTcpOwner,
+  parseProcTcpOwner
 };

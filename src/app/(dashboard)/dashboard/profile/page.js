@@ -9,12 +9,13 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
+import { isBrowser, isUndefined } from "@/shared/utils/typeChecks.js";
 
 function getLocaleFromCookie() {
-  if (typeof document === "undefined") return "en";
-  const cookie = document.cookie
-    .split(";")
-    .find((c) => c.trim().startsWith(`${LOCALE_COOKIE}=`));
+  if (isUndefined(globalThis.document)) return "en";
+  const cookie = document.cookie.
+  split(";").
+  find((c) => c.trim().startsWith(`${LOCALE_COOKIE}=`));
   const value = cookie ? decodeURIComponent(cookie.split("=")[1]) : "en";
   return normalizeLocale(value);
 }
@@ -39,7 +40,7 @@ export default function ProfilePage() {
     oidcIssuerUrl: "",
     oidcClientId: "",
     oidcScopes: "openid profile email",
-    oidcLoginLabel: "Sign in with OIDC",
+    oidcLoginLabel: "Sign in with OIDC"
   });
   const [oidcClientSecret, setOidcClientSecret] = useState("");
   const [oidcStatus, setOidcStatus] = useState({ type: "", message: "" });
@@ -52,7 +53,7 @@ export default function ProfilePage() {
   const [proxyForm, setProxyForm] = useState({
     outboundProxyEnabled: false,
     outboundProxyUrl: "",
-    outboundNoProxy: "",
+    outboundNoProxy: ""
   });
   const [firecrawlUrl, setFirecrawlUrl] = useState("");
   const [firecrawlUrlStatus, setFirecrawlUrlStatus] = useState({ type: "", message: "" });
@@ -66,35 +67,35 @@ export default function ProfilePage() {
   }, [langOpen]);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((res) => res.json())
-      .then((data) => {
-        setSettings(data);
-        setOidcForm({
-          authMode: data?.authMode || "password",
-          oidcIssuerUrl: data?.oidcIssuerUrl || "",
-          oidcClientId: data?.oidcClientId || "",
-          oidcScopes: data?.oidcScopes || "openid profile email",
-          oidcLoginLabel: data?.oidcLoginLabel || "Sign in with OIDC",
-        });
-        setOidcClientSecret("");
-        if (data?.authMode === "oidc" || data?.authMode === "both") setOidcExpanded(true);
-        setProxyForm({
-          outboundProxyEnabled: data?.outboundProxyEnabled === true,
-          outboundProxyUrl: data?.outboundProxyUrl || "",
-          outboundNoProxy: data?.outboundNoProxy || "",
-        });
-        setFirecrawlUrl(data?.firecrawlBaseUrl || "");
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to fetch settings:", err);
-        setLoading(false);
+    fetch("/api/settings").
+    then((res) => res.json()).
+    then((data) => {
+      setSettings(data);
+      setOidcForm({
+        authMode: data?.authMode || "password",
+        oidcIssuerUrl: data?.oidcIssuerUrl || "",
+        oidcClientId: data?.oidcClientId || "",
+        oidcScopes: data?.oidcScopes || "openid profile email",
+        oidcLoginLabel: data?.oidcLoginLabel || "Sign in with OIDC"
       });
+      setOidcClientSecret("");
+      if (data?.authMode === "oidc" || data?.authMode === "both") setOidcExpanded(true);
+      setProxyForm({
+        outboundProxyEnabled: data?.outboundProxyEnabled === true,
+        outboundProxyUrl: data?.outboundProxyUrl || "",
+        outboundNoProxy: data?.outboundNoProxy || ""
+      });
+      setFirecrawlUrl(data?.firecrawlBaseUrl || "");
+      setLoading(false);
+    }).
+    catch((err) => {
+      console.error("Failed to fetch settings:", err);
+      setLoading(false);
+    });
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (isBrowser()) {
       setOidcRedirectUri(`${window.location.origin}/api/auth/oidc/callback`);
     }
   }, []);
@@ -116,7 +117,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firecrawlBaseUrl: value || "" }),
+        body: JSON.stringify({ firecrawlBaseUrl: value || "" })
       });
       const data = await res.json();
       if (res.ok) {
@@ -145,8 +146,8 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           outboundProxyUrl: proxyForm.outboundProxyUrl,
-          outboundNoProxy: proxyForm.outboundNoProxy,
-        }),
+          outboundNoProxy: proxyForm.outboundNoProxy
+        })
       });
 
       const data = await res.json();
@@ -179,19 +180,19 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings/proxy-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proxyUrl }),
+        body: JSON.stringify({ proxyUrl })
       });
 
       const data = await res.json();
       if (res.ok && data?.ok) {
         setProxyStatus({
           type: "success",
-          message: `Proxy test OK (${data.status}) in ${data.elapsedMs}ms`,
+          message: `Proxy test OK (${data.status}) in ${data.elapsedMs}ms`
         });
       } else {
         setProxyStatus({
           type: "error",
-          message: data?.error || "Proxy test failed",
+          message: data?.error || "Proxy test failed"
         });
       }
     } catch (err) {
@@ -209,7 +210,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outboundProxyEnabled }),
+        body: JSON.stringify({ outboundProxyEnabled })
       });
 
       const data = await res.json();
@@ -218,7 +219,7 @@ export default function ProfilePage() {
         setProxyForm((prev) => ({ ...prev, outboundProxyEnabled: data?.outboundProxyEnabled === true }));
         setProxyStatus({
           type: "success",
-          message: outboundProxyEnabled ? "Proxy enabled" : "Proxy disabled",
+          message: outboundProxyEnabled ? "Proxy enabled" : "Proxy disabled"
         });
       } else {
         setProxyStatus({ type: "error", message: data.error || "Failed to update proxy settings" });
@@ -246,8 +247,8 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           currentPassword: passwords.current,
-          newPassword: passwords.new,
-        }),
+          newPassword: passwords.new
+        })
       });
 
       const data = await res.json();
@@ -274,10 +275,10 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fallbackStrategy: strategy }),
+        body: JSON.stringify({ fallbackStrategy: strategy })
       });
       if (res.ok) {
-        setSettings(prev => ({ ...prev, fallbackStrategy: strategy }));
+        setSettings((prev) => ({ ...prev, fallbackStrategy: strategy }));
       }
     } catch (err) {
       console.error("Failed to update settings:", err);
@@ -289,10 +290,10 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comboStrategy: strategy }),
+        body: JSON.stringify({ comboStrategy: strategy })
       });
       if (res.ok) {
-        setSettings(prev => ({ ...prev, comboStrategy: strategy }));
+        setSettings((prev) => ({ ...prev, comboStrategy: strategy }));
       }
     } catch (err) {
       console.error("Failed to update combo strategy:", err);
@@ -304,10 +305,10 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
+        body: JSON.stringify(patch)
       });
       if (res.ok) {
-        setSettings(prev => ({ ...prev, ...patch }));
+        setSettings((prev) => ({ ...prev, ...patch }));
       }
     } catch (err) {
       console.error("Failed to update Vision Bridge settings:", err);
@@ -321,14 +322,14 @@ export default function ProfilePage() {
     // (the helper passes through when visionBridgeModel is empty/invalid). Clear
     // any in-flight draft into the committed value first so a typed-but-not-
     // blurred target still enables.
-    const input = typeof document !== "undefined"
-      ? document.getElementById("vision-bridge-model-input")
-      : null;
+    const input = !isUndefined(globalThis.document) ?
+    document.getElementById("vision-bridge-model-input") :
+    null;
     const draft = (input?.value || "").trim();
     if (enabling && !target && !draft) return;
-    const patch = draft && draft !== target
-      ? { visionBridgeModel: draft, visionBridgeEnabled: enabling }
-      : { visionBridgeEnabled: enabling };
+    const patch = draft && draft !== target ?
+    { visionBridgeModel: draft, visionBridgeEnabled: enabling } :
+    { visionBridgeEnabled: enabling };
     await updateVisionBridge(patch);
   };
 
@@ -340,10 +341,10 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stickyRoundRobinLimit: numLimit }),
+        body: JSON.stringify({ stickyRoundRobinLimit: numLimit })
       });
       if (res.ok) {
-        setSettings(prev => ({ ...prev, stickyRoundRobinLimit: numLimit }));
+        setSettings((prev) => ({ ...prev, stickyRoundRobinLimit: numLimit }));
       }
     } catch (err) {
       console.error("Failed to update sticky limit:", err);
@@ -358,10 +359,10 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comboStickyRoundRobinLimit: numLimit }),
+        body: JSON.stringify({ comboStickyRoundRobinLimit: numLimit })
       });
       if (res.ok) {
-        setSettings(prev => ({ ...prev, comboStickyRoundRobinLimit: numLimit }));
+        setSettings((prev) => ({ ...prev, comboStickyRoundRobinLimit: numLimit }));
       }
     } catch (err) {
       console.error("Failed to update combo sticky limit:", err);
@@ -373,11 +374,11 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hidePaidModels }),
+        body: JSON.stringify({ hidePaidModels })
       });
       if (res.ok) {
         const data = await res.json();
-        setSettings(prev => ({ ...prev, hidePaidModels: data.hidePaidModels === true }));
+        setSettings((prev) => ({ ...prev, hidePaidModels: data.hidePaidModels === true }));
       }
     } catch (err) {
       console.error("Failed to update hide paid models:", err);
@@ -389,10 +390,10 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requireLogin }),
+        body: JSON.stringify({ requireLogin })
       });
       if (res.ok) {
-        setSettings(prev => ({ ...prev, requireLogin }));
+        setSettings((prev) => ({ ...prev, requireLogin }));
       }
     } catch (err) {
       console.error("Failed to update require login:", err);
@@ -425,7 +426,7 @@ export default function ProfilePage() {
         oidcIssuerUrl: issuerUrl,
         oidcClientId: clientId,
         oidcScopes: scopes || "openid profile email",
-        oidcLoginLabel: loginLabel || "Sign in with OIDC",
+        oidcLoginLabel: loginLabel || "Sign in with OIDC"
       };
       if (secret) {
         payload.oidcClientSecret = secret;
@@ -434,7 +435,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json();
@@ -445,17 +446,17 @@ export default function ProfilePage() {
           oidcIssuerUrl: data?.oidcIssuerUrl || issuerUrl,
           oidcClientId: data?.oidcClientId || clientId,
           oidcScopes: data?.oidcScopes || scopes || "openid profile email",
-          oidcLoginLabel: data?.oidcLoginLabel || loginLabel || "Sign in with OIDC",
+          oidcLoginLabel: data?.oidcLoginLabel || loginLabel || "Sign in with OIDC"
         });
         setOidcClientSecret("");
         setOidcStatus({
           type: "success",
           message:
-            authMode === "oidc"
-              ? "OIDC login enabled"
-              : authMode === "both"
-                ? "Password and OIDC login enabled"
-                : "OIDC settings saved",
+          authMode === "oidc" ?
+          "OIDC login enabled" :
+          authMode === "both" ?
+          "Password and OIDC login enabled" :
+          "OIDC settings saved"
         });
       } else {
         setOidcStatus({ type: "error", message: data.error || "Failed to save OIDC settings" });
@@ -492,15 +493,15 @@ export default function ProfilePage() {
           oidcClientId: clientId,
           oidcScopes: scopes || "openid profile email",
           oidcLoginLabel: oidcForm.oidcLoginLabel.trim() || "Sign in with OIDC",
-          ...(secret ? { oidcClientSecret: secret } : {}),
-        }),
+          ...(secret ? { oidcClientSecret: secret } : null)
+        })
       });
 
       const saved = await saveRes.json().catch(() => ({}));
       if (!saveRes.ok) {
         setOidcTestStatus({
           type: "error",
-          message: saved.error || "Failed to save OIDC settings before testing",
+          message: saved.error || "Failed to save OIDC settings before testing"
         });
         return;
       }
@@ -511,20 +512,20 @@ export default function ProfilePage() {
         body: JSON.stringify({
           issuerUrl: saved.oidcIssuerUrl || issuerUrl,
           clientId: saved.oidcClientId || clientId,
-          scopes: saved.oidcScopes || scopes || "openid profile email",
-        }),
+          scopes: saved.oidcScopes || scopes || "openid profile email"
+        })
       });
 
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.ok) {
-        const statusMessage = data.clientSecretTested
-          ? data.clientSecretValid === true
-            ? `Connection OK. Discovery loaded from ${data.issuerUrl}. Client secret validated too.`
-            : `Connection OK. Discovery loaded from ${data.issuerUrl}. Client secret was not checked.`
-          : `Connection OK. Discovery loaded from ${data.issuerUrl}.`;
+        const statusMessage = data.clientSecretTested ?
+        data.clientSecretValid === true ?
+        `Connection OK. Discovery loaded from ${data.issuerUrl}. Client secret validated too.` :
+        `Connection OK. Discovery loaded from ${data.issuerUrl}. Client secret was not checked.` :
+        `Connection OK. Discovery loaded from ${data.issuerUrl}.`;
         setOidcTestStatus({
           type: "success",
-          message: statusMessage,
+          message: statusMessage
         });
       } else {
         setOidcTestStatus({ type: "error", message: data.error || "OIDC connection test failed" });
@@ -541,10 +542,10 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enableObservability: enabled }),
+        body: JSON.stringify({ enableObservability: enabled })
       });
       if (res.ok) {
-        setSettings(prev => ({ ...prev, enableObservability: enabled }));
+        setSettings((prev) => ({ ...prev, enableObservability: enabled }));
       }
     } catch (err) {
       console.error("Failed to update enableObservability:", err);
@@ -567,7 +568,7 @@ export default function ProfilePage() {
     setDbStatus({ type: "", message: "" });
     try {
       const res = await fetch("/api/settings/database", {
-        headers: { "x-9r-password": password },
+        headers: { "x-9r-password": password }
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -615,7 +616,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings/database", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, password }),
+        body: JSON.stringify({ ...payload, password })
       });
 
       const data = await res.json().catch(() => ({}));
@@ -637,8 +638,8 @@ export default function ProfilePage() {
   const handleDbAuthConfirm = async () => {
     const { mode, password } = dbAuth;
     setDbAuth({ open: false, mode: "", password: "" });
-    if (mode === "export") await handleExportDatabase(password);
-    else if (mode === "import") await runImportDatabase(password);
+    if (mode === "export") await handleExportDatabase(password);else
+    if (mode === "import") await runImportDatabase(password);
   };
 
   const observabilityEnabled = settings.enableObservability === true;
@@ -648,9 +649,9 @@ export default function ProfilePage() {
     try {
       await fetch("/api/version/shutdown", { method: "POST" });
     } catch (e) {
+
       // Expected to fail as server shuts down; ignore error
-    }
-    setIsShuttingDown(false);
+    }setIsShuttingDown(false);
     setShutdownOpen(false);
   };
 
@@ -681,24 +682,24 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="inline-flex p-1 rounded-lg bg-black/5 dark:bg-white/5 w-full sm:w-auto">
-              {["light", "dark", "system"].map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setTheme(option)}
-                  className={cn(
-                    "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-all flex-1 sm:flex-initial",
-                    theme === option
-                      ? "bg-white dark:bg-white/10 text-text-main shadow-sm"
-                      : "text-text-muted hover:text-text-main"
-                  )}
-                >
+              {["light", "dark", "system"].map((option) =>
+              <button
+                key={option}
+                type="button"
+                onClick={() => setTheme(option)}
+                className={cn(
+                  "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-all flex-1 sm:flex-initial",
+                  theme === option ?
+                  "bg-white dark:bg-white/10 text-text-main shadow-sm" :
+                  "text-text-muted hover:text-text-main"
+                )}>
+                
                   <span className="material-symbols-outlined text-[18px]">
                     {option === "light" ? "light_mode" : option === "dark" ? "dark_mode" : "contrast"}
                   </span>
                   <span className="capitalize text-xs sm:text-sm">{option}</span>
                 </button>
-              ))}
+              )}
             </div>
           </div>
           <div className="flex flex-col gap-3 pt-4 border-t border-border">
@@ -714,8 +715,8 @@ export default function ProfilePage() {
                 icon="download"
                 onClick={() => setDbAuth({ open: true, mode: "export", password: "" })}
                 loading={dbLoading}
-                className="w-full sm:w-auto"
-              >
+                className="w-full sm:w-auto">
+                
                 Download Backup
               </Button>
               <Button
@@ -723,8 +724,8 @@ export default function ProfilePage() {
                 icon="upload"
                 onClick={() => importFileRef.current?.click()}
                 disabled={dbLoading}
-                className="w-full sm:w-auto"
-              >
+                className="w-full sm:w-auto">
+                
                 Import Backup
               </Button>
               <input
@@ -732,14 +733,14 @@ export default function ProfilePage() {
                 type="file"
                 accept="application/json,.json"
                 className="hidden"
-                onChange={handleImportDatabase}
-              />
+                onChange={handleImportDatabase} />
+              
             </div>
-            {dbStatus.message && (
-              <p className={`text-sm ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+            {dbStatus.message &&
+            <p className={`text-sm ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
                 {dbStatus.message}
               </p>
-            )}
+            }
           </div>
         </Card>
 
@@ -754,8 +755,8 @@ export default function ProfilePage() {
           <button
             onClick={() => setLangOpen(true)}
             className="flex items-center justify-between w-full p-3 rounded-lg bg-bg border border-border hover:border-primary/50 transition-colors"
-            data-i18n-skip="true"
-          >
+            data-i18n-skip="true">
+            
             <span className="text-sm text-text-muted">Display language</span>
             <span className="text-2xl">{LOCALE_FLAGS[locale] || "🌐"}</span>
           </button>
@@ -779,8 +780,8 @@ export default function ProfilePage() {
             <Toggle
               checked={settings.hidePaidModels === true}
               disabled={loading}
-              onChange={() => updateHidePaidModels(!(settings.hidePaidModels === true))}
-            />
+              onChange={() => updateHidePaidModels(!(settings.hidePaidModels === true))} />
+            
           </div>
         </Card>
 
@@ -803,59 +804,59 @@ export default function ProfilePage() {
               <Toggle
                 checked={settings.requireLogin === true}
                 onChange={() => updateRequireLogin(!settings.requireLogin)}
-                disabled={loading}
-              />
+                disabled={loading} />
+              
             </div>
-            {settings.requireLogin === true && (
-              <form onSubmit={handlePasswordChange} className="flex flex-col gap-4 pt-4 border-t border-border/50">
+            {settings.requireLogin === true &&
+            <form onSubmit={handlePasswordChange} className="flex flex-col gap-4 pt-4 border-t border-border/50">
                 <div className="flex flex-col gap-2">
                   <label className="text-xs sm:text-sm font-medium" htmlFor="profile-current-password">Current Password</label>
                   <Input
-                    id="profile-current-password"
-                    type="password"
-                    placeholder="Enter current password"
-                    value={passwords.current}
-                    onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                    required
-                  />
+                  id="profile-current-password"
+                  type="password"
+                  placeholder="Enter current password"
+                  value={passwords.current}
+                  onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                  required />
+                
                 </div>
                 {/* {!settings.hasPassword && (
-                  <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                    <p className="text-sm text-blue-600 dark:text-blue-400">
-                      Setting password for the first time. Leave current password empty or use default: <code className="bg-blue-500/20 px-1 rounded">123456</code>
-                    </p>
-                  </div>
+                 <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                   <p className="text-sm text-blue-600 dark:text-blue-400">
+                     Setting password for the first time. Leave current password empty or use default: <code className="bg-blue-500/20 px-1 rounded">123456</code>
+                   </p>
+                 </div>
                 )} */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
                     <label className="text-xs sm:text-sm font-medium" htmlFor="profile-new-password">New Password</label>
                     <Input
-                      id="profile-new-password"
-                      type="password"
-                      placeholder="Enter new password"
-                      value={passwords.new}
-                      onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-                      required
-                    />
+                    id="profile-new-password"
+                    type="password"
+                    placeholder="Enter new password"
+                    value={passwords.new}
+                    onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                    required />
+                  
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs sm:text-sm font-medium" htmlFor="profile-confirm-password">Confirm New Password</label>
                     <Input
-                      id="profile-confirm-password"
-                      type="password"
-                      placeholder="Confirm new password"
-                      value={passwords.confirm}
-                      onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-                      required
-                    />
+                    id="profile-confirm-password"
+                    type="password"
+                    placeholder="Confirm new password"
+                    value={passwords.confirm}
+                    onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                    required />
+                  
                   </div>
                 </div>
 
-                {passStatus.message && (
-                  <p className={`text-xs sm:text-sm ${passStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+                {passStatus.message &&
+              <p className={`text-xs sm:text-sm ${passStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
                     {passStatus.message}
                   </p>
-                )}
+              }
 
                 <div className="pt-2">
                   <Button type="submit" variant="primary" loading={passLoading} className="w-full sm:w-auto">
@@ -863,7 +864,7 @@ export default function ProfilePage() {
                   </Button>
                 </div>
               </form>
-            )}
+            }
           </div>
         </Card>
 
@@ -872,8 +873,8 @@ export default function ProfilePage() {
           <button
             type="button"
             onClick={() => setOidcExpanded((v) => !v)}
-            className="w-full flex items-center gap-3 text-left"
-          >
+            className="w-full flex items-center gap-3 text-left">
+            
             <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 shrink-0">
               <span className="material-symbols-outlined text-[20px]">lock_open</span>
             </div>
@@ -887,7 +888,7 @@ export default function ProfilePage() {
               {oidcExpanded ? "expand_less" : "expand_more"}
             </span>
           </button>
-          {oidcExpanded && (
+          {oidcExpanded &&
           <div className="flex flex-col gap-4 mt-4">
             <p className="text-xs sm:text-sm text-text-muted">
               Use Authentik or any OIDC provider to sign in to the dashboard. You can enable password-only, OIDC-only, or both for the dashboard; model API access still uses API keys.
@@ -897,22 +898,22 @@ export default function ProfilePage() {
               <label className="font-medium text-sm sm:text-base">Auth Mode</label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {[
-                  {
-                    value: "password",
-                    title: "Password only",
-                    desc: "Keep the legacy password login.",
-                  },
-                  {
-                    value: "oidc",
-                    title: "OIDC only",
-                    desc: "Require OIDC for dashboard access.",
-                  },
-                  {
-                    value: "both",
-                    title: "Both",
-                    desc: "Allow either password or OIDC.",
-                  },
-                ].map((option) => {
+                {
+                  value: "password",
+                  title: "Password only",
+                  desc: "Keep the legacy password login."
+                },
+                {
+                  value: "oidc",
+                  title: "OIDC only",
+                  desc: "Require OIDC for dashboard access."
+                },
+                {
+                  value: "both",
+                  title: "Both",
+                  desc: "Allow either password or OIDC."
+                }].
+                map((option) => {
                   const active = oidcForm.authMode === option.value;
                   return (
                     <button
@@ -921,16 +922,16 @@ export default function ProfilePage() {
                       onClick={() => updateOidcForm("authMode", option.value)}
                       className={cn(
                         "text-left rounded-lg border p-3 transition-colors",
-                        active
-                          ? "border-primary bg-primary/5"
-                          : "border-border bg-bg hover:bg-black/5 dark:hover:bg-white/5"
+                        active ?
+                        "border-primary bg-primary/5" :
+                        "border-border bg-bg hover:bg-black/5 dark:hover:bg-white/5"
                       )}
-                      disabled={loading || oidcLoading}
-                    >
+                      disabled={loading || oidcLoading}>
+                      
                       <p className="font-medium text-sm sm:text-base">{option.title}</p>
                       <p className="text-xs sm:text-sm text-text-muted mt-1">{option.desc}</p>
-                    </button>
-                  );
+                    </button>);
+
                 })}
               </div>
             </div>
@@ -942,8 +943,8 @@ export default function ProfilePage() {
                   placeholder="https://auth.example.com/application/o/durindoor/"
                   value={oidcForm.oidcIssuerUrl}
                   onChange={(e) => updateOidcForm("oidcIssuerUrl", e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
+                  disabled={loading || oidcLoading} />
+                
               </div>
 
               <div className="flex flex-col gap-2">
@@ -952,8 +953,8 @@ export default function ProfilePage() {
                   placeholder="durindoor-dashboard"
                   value={oidcForm.oidcClientId}
                   onChange={(e) => updateOidcForm("oidcClientId", e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
+                  disabled={loading || oidcLoading} />
+                
               </div>
 
               <div className="flex flex-col gap-2">
@@ -963,8 +964,8 @@ export default function ProfilePage() {
                   placeholder="Leave blank to keep existing secret"
                   value={oidcClientSecret}
                   onChange={(e) => setOidcClientSecret(e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
+                  disabled={loading || oidcLoading} />
+                
                 <p className="text-xs sm:text-sm text-text-muted">This value is write-only after saving.</p>
               </div>
 
@@ -974,8 +975,8 @@ export default function ProfilePage() {
                   placeholder="openid profile email"
                   value={oidcForm.oidcScopes}
                   onChange={(e) => updateOidcForm("oidcScopes", e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
+                  disabled={loading || oidcLoading} />
+                
               </div>
 
               <div className="flex flex-col gap-2">
@@ -984,8 +985,8 @@ export default function ProfilePage() {
                   placeholder="Sign in with OIDC"
                   value={oidcForm.oidcLoginLabel}
                   onChange={(e) => updateOidcForm("oidcLoginLabel", e.target.value)}
-                  disabled={loading || oidcLoading}
-                />
+                  disabled={loading || oidcLoading} />
+                
               </div>
             </div>
 
@@ -1003,31 +1004,31 @@ export default function ProfilePage() {
               </Button>
             </div>
 
-            {oidcTestStatus.message && (
-              <p className={`text-xs sm:text-sm ${oidcTestStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+            {oidcTestStatus.message &&
+            <p className={`text-xs sm:text-sm ${oidcTestStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
                 {oidcTestStatus.message}
               </p>
-            )}
+            }
 
-            {oidcStatus.message && (
-              <p className={`text-xs sm:text-sm ${oidcStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+            {oidcStatus.message &&
+            <p className={`text-xs sm:text-sm ${oidcStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
                 {oidcStatus.message}
               </p>
-            )}
+            }
 
-            {settings.authMode === "oidc" && (
-              <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+            {settings.authMode === "oidc" &&
+            <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
                 OIDC login is currently active. Password login is disabled until you switch back.
               </p>
-            )}
+            }
 
-            {settings.authMode === "both" && (
-              <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+            {settings.authMode === "both" &&
+            <p className="text-xs sm:text-sm text-amber-600 dark:text-amber-400">
                 Password and OIDC login are both active.
               </p>
-            )}
+            }
           </div>
-          )}
+          }
         </Card>
 
         {/* Routing Preferences */}
@@ -1049,13 +1050,13 @@ export default function ProfilePage() {
               <Toggle
                 checked={settings.fallbackStrategy === "round-robin"}
                 onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")}
-                disabled={loading}
-              />
+                disabled={loading} />
+              
             </div>
 
             {/* Sticky Round Robin Limit */}
-            {settings.fallbackStrategy === "round-robin" && (
-              <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
+            {settings.fallbackStrategy === "round-robin" &&
+            <div className="flex items-start sm:items-center justify-between gap-4 pt-2 border-t border-border/50">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm sm:text-base">Sticky Limit</p>
                   <p className="text-xs sm:text-sm text-text-muted">
@@ -1063,16 +1064,16 @@ export default function ProfilePage() {
                   </p>
                 </div>
                 <Input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={settings.stickyRoundRobinLimit || 3}
-                  onChange={(e) => updateStickyLimit(e.target.value)}
-                  disabled={loading}
-                  className="w-16 sm:w-20 text-center shrink-0"
-                />
+                type="number"
+                min="1"
+                max="10"
+                value={settings.stickyRoundRobinLimit || 3}
+                onChange={(e) => updateStickyLimit(e.target.value)}
+                disabled={loading}
+                className="w-16 sm:w-20 text-center shrink-0" />
+              
               </div>
-            )}
+            }
 
             {/* Combo Round Robin */}
             <div className="flex items-start sm:items-center justify-between gap-4 pt-4 border-t border-border/50">
@@ -1085,13 +1086,13 @@ export default function ProfilePage() {
               <Toggle
                 checked={settings.comboStrategy === "round-robin"}
                 onChange={() => updateComboStrategy(settings.comboStrategy === "round-robin" ? "fallback" : "round-robin")}
-                disabled={loading}
-              />
+                disabled={loading} />
+              
             </div>
 
             {/* Combo Sticky Round Robin Limit */}
-            {settings.comboStrategy === "round-robin" && (
-              <div className="flex items-center justify-between pt-2 border-t border-border/50">
+            {settings.comboStrategy === "round-robin" &&
+            <div className="flex items-center justify-between pt-2 border-t border-border/50">
                 <div>
                   <p className="font-medium">Combo Sticky Limit</p>
                   <p className="text-sm text-text-muted">
@@ -1099,16 +1100,16 @@ export default function ProfilePage() {
                   </p>
                 </div>
                 <Input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={settings.comboStickyRoundRobinLimit || 1}
-                  onChange={(e) => updateComboStickyLimit(e.target.value)}
-                  disabled={loading}
-                  className="w-20 text-center"
-                />
+                type="number"
+                min="1"
+                max="100"
+                value={settings.comboStickyRoundRobinLimit || 1}
+                onChange={(e) => updateComboStickyLimit(e.target.value)}
+                disabled={loading}
+                className="w-20 text-center" />
+              
               </div>
-            )}
+            }
 
             {/* Vision Bridge (#6640) */}
             <div className="flex flex-col gap-3 pt-4 border-t border-border/50">
@@ -1127,8 +1128,8 @@ export default function ProfilePage() {
                   defaultValue={settings.visionBridgeModel || ""}
                   onBlur={(e) => updateVisionBridge({ visionBridgeModel: e.target.value.trim() })}
                   disabled={loading}
-                  className="w-48 sm:w-64 shrink-0"
-                />
+                  className="w-48 sm:w-64 shrink-0" />
+                
               </div>
               <div className="flex items-start sm:items-center justify-between gap-4">
                 <div className="flex-1 min-w-0">
@@ -1140,18 +1141,18 @@ export default function ProfilePage() {
                 <Toggle
                   checked={settings.visionBridgeEnabled === true}
                   onChange={handleVisionBridgeToggle}
-                  disabled={loading}
-                />
+                  disabled={loading} />
+                
               </div>
             </div>
 
             <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
-              {settings.fallbackStrategy === "round-robin"
-                ? `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
-                : "Currently using accounts in priority order (Fill First)."}
-              {settings.comboStrategy === "round-robin"
-                ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
-                : " Combos always start with their first model."}
+              {settings.fallbackStrategy === "round-robin" ?
+              `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.` :
+              "Currently using accounts in priority order (Fill First)."}
+              {settings.comboStrategy === "round-robin" ?
+              ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.` :
+              " Combos always start with their first model."}
             </p>
           </div>
         </Card>
@@ -1174,43 +1175,43 @@ export default function ProfilePage() {
               <Toggle
                 checked={settings.outboundProxyEnabled === true}
                 onChange={() => updateOutboundProxyEnabled(!(settings.outboundProxyEnabled === true))}
-                disabled={loading || proxyLoading}
-              />
+                disabled={loading || proxyLoading} />
+              
             </div>
 
-            {settings.outboundProxyEnabled === true && (
-              <form onSubmit={updateOutboundProxy} className="flex flex-col gap-4 pt-2 border-t border-border/50">
+            {settings.outboundProxyEnabled === true &&
+            <form onSubmit={updateOutboundProxy} className="flex flex-col gap-4 pt-2 border-t border-border/50">
                 <div className="flex flex-col gap-2">
                   <label className="font-medium text-sm sm:text-base">Proxy URL</label>
                   <Input
-                    placeholder="http://127.0.0.1:7897"
-                    value={proxyForm.outboundProxyUrl}
-                    onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUrl: e.target.value }))}
-                    disabled={loading || proxyLoading}
-                  />
+                  placeholder="http://127.0.0.1:7897"
+                  value={proxyForm.outboundProxyUrl}
+                  onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUrl: e.target.value }))}
+                  disabled={loading || proxyLoading} />
+                
                   <p className="text-xs sm:text-sm text-text-muted">Leave empty to inherit existing env proxy (if any).</p>
                 </div>
 
                 <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
                   <label className="font-medium text-sm sm:text-base">No Proxy</label>
                   <Input
-                    placeholder="localhost,127.0.0.1"
-                    value={proxyForm.outboundNoProxy}
-                    onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundNoProxy: e.target.value }))}
-                    disabled={loading || proxyLoading}
-                  />
+                  placeholder="localhost,127.0.0.1"
+                  value={proxyForm.outboundNoProxy}
+                  onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundNoProxy: e.target.value }))}
+                  disabled={loading || proxyLoading} />
+                
                   <p className="text-xs sm:text-sm text-text-muted">Comma-separated hostnames/domains to bypass the proxy.</p>
                 </div>
 
                 <div className="pt-2 border-t border-border/50 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <Button
-                    type="button"
-                    variant="secondary"
-                    loading={proxyTestLoading}
-                    disabled={loading || proxyLoading}
-                    onClick={testOutboundProxy}
-                    className="w-full sm:w-auto"
-                  >
+                  type="button"
+                  variant="secondary"
+                  loading={proxyTestLoading}
+                  disabled={loading || proxyLoading}
+                  onClick={testOutboundProxy}
+                  className="w-full sm:w-auto">
+                  
                     Test proxy URL
                   </Button>
                   <Button type="submit" variant="primary" loading={proxyLoading} className="w-full sm:w-auto">
@@ -1218,13 +1219,13 @@ export default function ProfilePage() {
                   </Button>
                 </div>
               </form>
-            )}
+            }
 
-            {proxyStatus.message && (
-              <p className={`text-xs sm:text-sm ${proxyStatus.type === "error" ? "text-red-500" : "text-green-500"} pt-2 border-t border-border/50`}>
+            {proxyStatus.message &&
+            <p className={`text-xs sm:text-sm ${proxyStatus.type === "error" ? "text-red-500" : "text-green-500"} pt-2 border-t border-border/50`}>
                 {proxyStatus.message}
               </p>
-            )}
+            }
 
             {/* Firecrawl URL */}
             <form onSubmit={updateFirecrawlUrl} className="flex flex-col gap-2 pt-2 border-t border-border/50">
@@ -1233,19 +1234,19 @@ export default function ProfilePage() {
                 placeholder="https://api.firecrawl.dev"
                 value={firecrawlUrl}
                 onChange={(e) => setFirecrawlUrl(e.target.value)}
-                disabled={loading || firecrawlUrlLoading}
-              />
+                disabled={loading || firecrawlUrlLoading} />
+              
               <p className="text-xs sm:text-sm text-text-muted">Custom Firecrawl/self-hosted endpoint. Falls back to FIRECRAWL_BASE_URL env var, then the default URL.</p>
               <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <Button type="submit" variant="primary" loading={firecrawlUrlLoading} className="w-full sm:w-auto">
                   Save
                 </Button>
               </div>
-              {firecrawlUrlStatus.message && (
-                <p className={`text-xs sm:text-sm ${firecrawlUrlStatus.type === "error" ? "text-red-500" : "text-green-500"} pt-2`}>
+              {firecrawlUrlStatus.message &&
+              <p className={`text-xs sm:text-sm ${firecrawlUrlStatus.type === "error" ? "text-red-500" : "text-green-500"} pt-2`}>
                   {firecrawlUrlStatus.message}
                 </p>
-              )}
+              }
             </form>
           </div>
         </Card>
@@ -1268,8 +1269,8 @@ export default function ProfilePage() {
             <Toggle
               checked={observabilityEnabled}
               onChange={updateObservabilityEnabled}
-              disabled={loading}
-            />
+              disabled={loading} />
+            
           </div>
         </Card>
 
@@ -1280,16 +1281,16 @@ export default function ProfilePage() {
             fullWidth
             icon="power_settings_new"
             onClick={() => setShutdownOpen(true)}
-            className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
-          >
+            className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300">
+            
             Shutdown
           </Button>
           <Button
             variant="outline"
             fullWidth
             icon="logout"
-            onClick={handleLogout}
-          >
+            onClick={handleLogout}>
+            
             Logout
           </Button>
         </div>
@@ -1307,8 +1308,8 @@ export default function ProfilePage() {
         onClose={(next) => {
           setLangOpen(false);
           setLocale(next);
-        }}
-      />
+        }} />
+      
       <ConfirmModal
         isOpen={shutdownOpen}
         onClose={() => setShutdownOpen(false)}
@@ -1318,8 +1319,8 @@ export default function ProfilePage() {
         confirmText="Close"
         cancelText="Cancel"
         variant="danger"
-        loading={isShuttingDown}
-      />
+        loading={isShuttingDown} />
+      
 
       <Modal
         isOpen={dbAuth.open}
@@ -1327,7 +1328,7 @@ export default function ProfilePage() {
         title="Confirm Password"
         size="sm"
         footer={
-          <>
+        <>
             <Button variant="ghost" onClick={() => setDbAuth({ open: false, mode: "", password: "" })} disabled={dbLoading}>
               Cancel
             </Button>
@@ -1335,8 +1336,8 @@ export default function ProfilePage() {
               Confirm
             </Button>
           </>
-        }
-      >
+        }>
+        
         <p className="text-text-muted mb-3 text-sm">
           Enter your current password to {dbAuth.mode === "export" ? "export" : "import"} the database.
         </p>
@@ -1344,11 +1345,11 @@ export default function ProfilePage() {
           type="password"
           value={dbAuth.password}
           onChange={(e) => setDbAuth((s) => ({ ...s, password: e.target.value }))}
-          onKeyDown={(e) => { if (e.key === "Enter" && dbAuth.password) handleDbAuthConfirm(); }}
+          onKeyDown={(e) => {if (e.key === "Enter" && dbAuth.password) handleDbAuthConfirm();}}
           placeholder="Current password"
-          autoFocus
-        />
+          autoFocus />
+        
       </Modal>
-    </div>
-  );
+    </div>);
+
 }

@@ -1,8 +1,8 @@
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
   formatModelLifecycleMessage,
-  getModelLifecycleDecision,
-} from "../../services/modelLifecycle.js";
+  getModelLifecycleDecision } from
+"../../services/modelLifecycle.js";
 import { createErrorResult } from "../../utils/error.js";
 
 /**
@@ -22,17 +22,17 @@ import { createErrorResult } from "../../utils/error.js";
  * @param {{ warn?: (tag: string, message: string) => unknown }} [args.log]
  * @param {Date | number | string} [args.asOf]
  * @returns {ReturnType<typeof createErrorResult> | null}
- */
+ */import { isString } from "@/shared/utils/typeChecks.js";
 export function checkModelLifecycle({ provider, canonicalModel, upstreamModel, log, asOf = Date.now() } = {}) {
   const candidates = [];
-  if (typeof canonicalModel === "string" && canonicalModel) {
+  if (isString(canonicalModel) && canonicalModel) {
     candidates.push(canonicalModel);
   }
   if (
-    typeof upstreamModel === "string" &&
-    upstreamModel &&
-    upstreamModel !== canonicalModel
-  ) {
+  isString(upstreamModel) &&
+  upstreamModel &&
+  upstreamModel !== canonicalModel)
+  {
     candidates.push(upstreamModel);
   }
 
@@ -48,7 +48,7 @@ export function checkModelLifecycle({ provider, canonicalModel, upstreamModel, l
       HTTP_STATUS.GONE,
       message,
       null,
-      { error: { type: "invalid_request_error", code: "model_shutdown", message } },
+      { error: { type: "invalid_request_error", code: "model_shutdown", message } }
     );
   }
   return null;

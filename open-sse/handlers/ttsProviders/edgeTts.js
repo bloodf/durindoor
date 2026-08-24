@@ -13,7 +13,7 @@ async function getToken() {
   const now = Date.now();
   if (cache.token && now - cache.tokenTime < REFRESH_MS) return cache.token;
   const res = await fetch("https://www.bing.com/translator", {
-    headers: { "User-Agent": UA, "Accept-Language": "vi,en-US;q=0.9,en;q=0.8" },
+    headers: { "User-Agent": UA, "Accept-Language": "vi,en-US;q=0.9,en;q=0.8" }
   });
   if (!res.ok) throw new Error(`Bing translator fetch failed: ${res.status}`);
   const rawCookies = res.headers.getSetCookie?.() || [];
@@ -44,8 +44,8 @@ async function ttsRequest(text, voiceId, token) {
       "Origin": "https://www.bing.com",
       "Referer": "https://www.bing.com/translator",
       "User-Agent": UA,
-      ...(token.cookie ? { "Cookie": token.cookie } : {}),
-    },
+      ...(token.cookie ? { "Cookie": token.cookie } : null)
+    }
   });
 }
 
@@ -85,5 +85,5 @@ export default {
     const buf = await res.arrayBuffer();
     if (buf.byteLength < 1024) throw new Error("Bing TTS returned empty audio");
     return { base64: Buffer.from(buf).toString("base64"), format: "mp3" };
-  },
+  }
 };

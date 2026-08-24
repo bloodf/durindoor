@@ -9,12 +9,12 @@ import { CODEX_FINGERPRINT_MODES } from "open-sse/config/codexIdentity.js";
  * as a provider connection, bypassing OAuth refresh flow.
  *
  * Body: { accessToken: string, name?: string }
- */
+ */import { isString } from "@/shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { accessToken, name, codexFingerprintMode } = await request.json();
 
-    if (!accessToken || typeof accessToken !== "string") {
+    if (!accessToken || !isString(accessToken)) {
       return NextResponse.json(
         { error: "Access token is required" },
         { status: 400 }
@@ -37,7 +37,7 @@ export async function POST(request) {
       const parts = token.split(".");
       if (parts.length === 3) {
         const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-        const missingPadding = (4 - (base64.length % 4)) % 4;
+        const missingPadding = (4 - base64.length % 4) % 4;
         const padded = base64 + "=".repeat(missingPadding);
         const payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
 
@@ -59,9 +59,9 @@ export async function POST(request) {
         }
       }
     } catch {
+
       // Not a JWT or malformed — still allow import as raw token
     }
-
     // Also try extractCodexAccountInfo via id_token-style extraction
     // (the access token itself may contain the same claims)
     if (!email) {
@@ -81,7 +81,7 @@ export async function POST(request) {
       name: connectionName,
       email: email,
       providerSpecificData,
-      testStatus: "active",
+      testStatus: "active"
     });
 
     return NextResponse.json({
@@ -92,8 +92,8 @@ export async function POST(request) {
         email: connection.email,
         name: connection.name,
         workspace: providerSpecificData.chatgptAccountId || null,
-        plan: providerSpecificData.chatgptPlanType || null,
-      },
+        plan: providerSpecificData.chatgptPlanType || null
+      }
     });
   } catch (error) {
     console.log("Codex access token import error:", error);

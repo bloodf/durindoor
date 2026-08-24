@@ -1,15 +1,16 @@
 import { requestQuotaJson } from "./transport.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 export function connectionData(connection) {
   const data = connection?.providerSpecificData;
-  return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  return data && isObject(data) && !Array.isArray(data) ? data : {};
 }
 
 export function connectionCredential(connection, ...keys) {
   const providerData = connectionData(connection);
   for (const key of keys) {
     const value = connection?.[key] ?? providerData[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+    if (isString(value) && value.trim()) return value.trim();
   }
   return null;
 }
@@ -26,7 +27,7 @@ export function providerFailure(config, result, fallbackOutcome = "provider_erro
     outcome: result?.outcome || fallbackOutcome,
     sourceId: config.sourceId,
     attemptedAt: result?.attemptedAt || null,
-    retryAt: result?.retryAt || null,
+    retryAt: result?.retryAt || null
   };
 }
 
@@ -49,6 +50,6 @@ export function createProviderRequest(context) {
     signal: context.signal,
     now: context.now,
     timeoutMs: context.timeoutMs,
-    maxBytes: context.maxResponseBytes,
+    maxBytes: context.maxResponseBytes
   });
 }

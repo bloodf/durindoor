@@ -5,6 +5,7 @@ import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -15,22 +16,22 @@ export const parseOpenAIStyleModels = (data) => {
 
 const parseGeminiCliModels = (data) => {
   if (Array.isArray(data?.models)) {
-    return data.models
-      .map((item) => {
-        const id = item?.id || item?.model || item?.name;
-        if (!id) return null;
-        return { id, name: item?.displayName || item?.name || id };
-      })
-      .filter(Boolean);
+    return data.models.
+    map((item) => {
+      const id = item?.id || item?.model || item?.name;
+      if (!id) return null;
+      return { id, name: item?.displayName || item?.name || id };
+    }).
+    filter(Boolean);
   }
 
-  if (data?.models && typeof data.models === "object") {
-    return Object.entries(data.models)
-      .filter(([, info]) => !info?.isInternal)
-      .map(([id, info]) => ({
-        id,
-        name: info?.displayName || info?.name || id,
-      }));
+  if (data?.models && isObject(data.models)) {
+    return Object.entries(data.models).
+    filter(([, info]) => !info?.isInternal).
+    map(([id, info]) => ({
+      id,
+      name: info?.displayName || info?.name || id
+    }));
   }
 
   return [];
@@ -44,15 +45,15 @@ const appendCodexReviewModels = (models) => models.flatMap((model) => {
   const isChatModel = (model?.type || "llm") !== "image" && !id.toLowerCase().includes("embed");
   if (!isChatModel || id.endsWith("-review")) return [normalized];
   return [
-    normalized,
-    {
-      ...normalized,
-      id: `${id}-review`,
-      name: `${name} Review`,
-      upstreamModelId: id,
-      quotaFamily: "review",
-    },
-  ];
+  normalized,
+  {
+    ...normalized,
+    id: `${id}-review`,
+    name: `${name} Review`,
+    upstreamModelId: id,
+    quotaFamily: "review"
+  }];
+
 });
 
 const parseCodexModels = (data) => appendCodexReviewModels(parseOpenAIStyleModels(data));
@@ -69,7 +70,7 @@ export const createOpenAIModelsConfig = (url) => ({
 export const resolveQwenModelsUrl = (connection) => {
   const fallback = "https://portal.qwen.ai/v1/models";
   const raw = connection?.providerSpecificData?.resourceUrl;
-  if (!raw || typeof raw !== "string") return fallback;
+  if (!raw || !isString(raw)) return fallback;
   const value = raw.trim();
   if (!value) return fallback;
   if (value.startsWith("http://") || value.startsWith("https://")) {
@@ -79,11 +80,11 @@ export const resolveQwenModelsUrl = (connection) => {
 };
 
 export const getStaticProviderModels = (providerId) =>
-  getModelsByProviderId(providerId).map((model) => ({
-    ...model,
-    id: model.id,
-    name: model.name || model.id,
-  }));
+getModelsByProviderId(providerId).map((model) => ({
+  ...model,
+  id: model.id,
+  name: model.name || model.id
+}));
 
 // Generic custom resolver for OAuth providers that need refresh-on-401 + token persist.
 // Receives a `fetchFn(token)` and returns parsed models or throws.
@@ -101,7 +102,7 @@ const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) => asyn
         await updateProviderCredentials(connection.id, {
           accessToken: refreshed.accessToken,
           refreshToken: refreshed.refreshToken || refreshToken,
-          expiresIn: refreshed.expiresIn,
+          expiresIn: refreshed.expiresIn
         });
         connection.accessToken = refreshed.accessToken;
         if (refreshed.refreshToken) connection.refreshToken = refreshed.refreshToken;
@@ -183,16 +184,16 @@ export const PROVIDER_MODELS_CONFIG = {
     parseResponse: (data) => {
       if (!data?.data) return [];
       // Filter out embeddings, non-chat models, and disabled models
-      return data.data
-        .filter(m => m.capabilities?.type === "chat")
-        .filter(m => m.policy?.state !== "disabled") // Only return explicitly enabled models
-        .map(m => ({
-          id: m.id,
-          name: m.name || m.id,
-          version: m.version,
-          capabilities: m.capabilities,
-          isDefault: m.model_picker_enabled === true
-        }));
+      return data.data.
+      filter((m) => m.capabilities?.type === "chat").
+      filter((m) => m.policy?.state !== "disabled") // Only return explicitly enabled models
+      .map((m) => ({
+        id: m.id,
+        name: m.name || m.id,
+        version: m.version,
+        capabilities: m.capabilities,
+        isDefault: m.model_picker_enabled === true
+      }));
     }
   },
   openai: createOpenAIModelsConfig("https://api.openai.com/v1/models"),
@@ -253,14 +254,14 @@ export const PROVIDER_MODELS_CONFIG = {
       const result = await resolveKimchiModels({
         accessToken: connection.accessToken,
         apiKey: connection.apiKey,
-        providerSpecificData: connection.providerSpecificData || {},
+        providerSpecificData: connection.providerSpecificData || {}
       }, { forceRefresh: true, log: console });
       if (result?.models?.length) {
         return { models: result.models };
       }
       return {
         models: getStaticProviderModels("kimchi"),
-        warning: "Kimchi returned no live models; falling back to static catalog.",
+        warning: "Kimchi returned no live models; falling back to static catalog."
       };
     }
   },
@@ -282,7 +283,7 @@ export const PROVIDER_MODELS_CONFIG = {
               await updateProviderCredentials(connection.id, {
                 accessToken: refreshed.accessToken,
                 refreshToken: refreshed.refreshToken || connection.refreshToken,
-                expiresIn: refreshed.expiresIn,
+                expiresIn: refreshed.expiresIn
               });
               connection.accessToken = refreshed.accessToken;
               if (refreshed.refreshToken) connection.refreshToken = refreshed.refreshToken;
@@ -317,7 +318,7 @@ export const PROVIDER_MODELS_CONFIG = {
         refreshToken: connection.refreshToken,
         email: connection.email,
         displayName: connection.displayName,
-        providerSpecificData: connection.providerSpecificData || {},
+        providerSpecificData: connection.providerSpecificData || {}
       };
       let warning;
       try {
@@ -333,8 +334,8 @@ export const PROVIDER_MODELS_CONFIG = {
               isVL: m.isVL,
               isReasoning: m.isReasoning,
               maxOutputTokens: m.maxOutputTokens,
-              description: m.description,
-            })),
+              description: m.description
+            }))
           };
         }
         warning = "Qoder returned no models; falling back to static catalog.";
@@ -343,7 +344,7 @@ export const PROVIDER_MODELS_CONFIG = {
         console.log("Failed to fetch Qoder models dynamically, falling back to static:", error.message);
       }
       return { models: [], warning };
-    },
+    }
   },
   "gemini-cli": {
     customResolver: buildOAuthResolver({

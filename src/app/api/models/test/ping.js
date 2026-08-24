@@ -1,5 +1,6 @@
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const CLI_TOKEN_SALT = "9r-cli-auth";
 
@@ -8,7 +9,7 @@ function createSilentWavFile() {
   const channels = 1;
   const bitsPerSample = 16;
   const durationMs = 250;
-  const sampleCount = Math.max(1, Math.floor((sampleRate * durationMs) / 1000));
+  const sampleCount = Math.max(1, Math.floor(sampleRate * durationMs / 1000));
   const dataSize = sampleCount * channels * (bitsPerSample / 8);
   const buffer = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buffer);
@@ -51,12 +52,12 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       method: "POST",
       headers,
       body: JSON.stringify({ model, input: "test" }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(15000)
     });
     const latencyMs = Date.now() - start;
     const rawText = await res.text().catch(() => "");
     let parsed = null;
-    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+    try {parsed = rawText ? JSON.parse(rawText) : null;} catch {}
 
     if (!res.ok) {
       const detail = parsed?.error?.message || parsed?.error || rawText;
@@ -74,12 +75,12 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       method: "POST",
       headers,
       body: JSON.stringify({ model, prompt: "test" }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(15000)
     });
     const latencyMs = Date.now() - start;
     const rawText = await res.text().catch(() => "");
     let parsed = null;
-    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+    try {parsed = rawText ? JSON.parse(rawText) : null;} catch {}
 
     if (!res.ok) {
       const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
@@ -103,19 +104,19 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       method: "POST",
       headers: Object.fromEntries(Object.entries(headers).filter(([key]) => key.toLowerCase() !== "content-type")),
       body: form,
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(15000)
     });
     const latencyMs = Date.now() - start;
     const rawText = await res.text().catch(() => "");
     let parsed = null;
-    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+    try {parsed = rawText ? JSON.parse(rawText) : null;} catch {}
 
     if (!res.ok) {
       const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
       return { ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status };
     }
 
-    const text = typeof parsed?.text === "string" ? parsed.text : "";
+    const text = isString(parsed?.text) ? parsed.text : "";
     if (!text.trim()) {
       return { ok: false, latencyMs, status: res.status, error: "Provider returned no transcription text for this model" };
     }
@@ -130,23 +131,23 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
         model,
         query: "ping",
         documents: ["hello world"],
-        top_n: 1,
+        top_n: 1
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(15000)
     });
     const latencyMs = Date.now() - start;
     const rawText = await res.text().catch(() => "");
     let parsed = null;
-    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+    try {parsed = rawText ? JSON.parse(rawText) : null;} catch {}
 
     if (!res.ok) {
       const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
       return { ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status };
     }
 
-    const results = Array.isArray(parsed?.results) ? parsed.results
-      : Array.isArray(parsed?.data) ? parsed.data
-        : null;
+    const results = Array.isArray(parsed?.results) ? parsed.results :
+    Array.isArray(parsed?.data) ? parsed.data :
+    null;
     if (!results) {
       return { ok: false, latencyMs, status: res.status, error: "Provider returned no rerank results for this model" };
     }
@@ -164,15 +165,15 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       // See issue #3010.
       max_tokens: 1024,
       stream: false,
-      messages: [{ role: "user", content: "hi" }],
+      messages: [{ role: "user", content: "hi" }]
     }),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(15000)
   });
   const latencyMs = Date.now() - start;
 
   const rawText = await res.text().catch(() => "");
   let parsed = null;
-  try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+  try {parsed = rawText ? JSON.parse(rawText) : null;} catch {}
 
   if (!res.ok) {
     const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
@@ -181,18 +182,18 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
 
   const providerStatus = parsed?.status;
   const providerMsg = parsed?.msg || parsed?.message;
-  const hasProviderErrorStatus = providerStatus !== undefined
-    && providerStatus !== null
-    && String(providerStatus) !== "200"
-    && String(providerStatus) !== "0";
+  const hasProviderErrorStatus = providerStatus !== undefined &&
+  providerStatus !== null &&
+  String(providerStatus) !== "200" &&
+  String(providerStatus) !== "0";
   if (hasProviderErrorStatus) {
     return {
       ok: false,
       latencyMs,
       status: res.status,
-      error: providerMsg
-        ? `Provider status ${providerStatus}: ${String(providerMsg).slice(0, 240)}`
-        : `Provider status ${providerStatus}`,
+      error: providerMsg ?
+      `Provider status ${providerStatus}: ${String(providerMsg).slice(0, 240)}` :
+      `Provider status ${providerStatus}`
     };
   }
 
@@ -202,7 +203,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       ok: false,
       latencyMs,
       status: res.status,
-      error: String(providerError).slice(0, 240),
+      error: String(providerError).slice(0, 240)
     };
   }
 
@@ -212,7 +213,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       ok: false,
       latencyMs,
       status: res.status,
-      error: "Provider returned no completion choices for this model",
+      error: "Provider returned no completion choices for this model"
     };
   }
 
@@ -238,7 +239,7 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       ok: false,
       latencyMs,
       status: res.status,
-      error: "Provider returned empty completion content for this model",
+      error: "Provider returned empty completion content for this model"
     };
   }
 

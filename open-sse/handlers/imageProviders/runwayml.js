@@ -15,16 +15,16 @@ export default {
     return {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${key}`,
-      "X-Runway-Version": "2024-11-06",
+      "X-Runway-Version": "2024-11-06"
     };
   },
   buildBody: (model, body) => {
     const isVideo = !model.includes("image");
     const ratio = sizeToAspectRatio(body.size);
     if (isVideo) {
-      return { promptText: body.prompt, model, ratio, duration: 5, ...(body.image ? { promptImage: body.image } : {}) };
+      return { promptText: body.prompt, model, ratio, duration: 5, ...(body.image ? { promptImage: body.image } : null) };
     }
-    return { promptText: body.prompt, model, ratio, ...(body.image ? { referenceImages: [{ uri: body.image }] } : {}) };
+    return { promptText: body.prompt, model, ratio, ...(body.image ? { referenceImages: [{ uri: body.image }] } : null) };
   },
   async parseResponse(response, { headers }) {
     const { id } = await response.json();
@@ -44,5 +44,5 @@ export default {
   normalize: (responseBody) => {
     const outputs = Array.isArray(responseBody.output) ? responseBody.output : [];
     return { created: nowSec(), data: outputs.map((url) => ({ url })) };
-  },
+  }
 };

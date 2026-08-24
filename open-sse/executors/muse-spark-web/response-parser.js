@@ -1,5 +1,5 @@
-export function isRecord(value) {
-  return !!value && typeof value === "object" && !Array.isArray(value);
+import { isObject, isString } from "@/shared/utils/typeChecks.js";export function isRecord(value) {
+  return !!value && isObject(value) && !Array.isArray(value);
 }
 
 export function parseMetaSseFrames(text) {
@@ -38,21 +38,21 @@ export function readMetaJsonPayloads(text) {
       return [];
     }
   }
-  return parseMetaSseFrames(text)
-    .map((frame) => {
-      try {
-        const parsed = JSON.parse(frame.data);
-        return isRecord(parsed) ? parsed : null;
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
+  return parseMetaSseFrames(text).
+  map((frame) => {
+    try {
+      const parsed = JSON.parse(frame.data);
+      return isRecord(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }).
+  filter(Boolean);
 }
 
 function collectRendererTexts(value, seen = new Set(), depth = 0) {
   if (depth > 8) return [];
-  if (typeof value === "string") {
+  if (isString(value)) {
     const normalized = value.trim();
     if (!normalized || seen.has(normalized)) return [];
     seen.add(normalized);
@@ -61,7 +61,7 @@ function collectRendererTexts(value, seen = new Set(), depth = 0) {
   if (Array.isArray(value)) return value.flatMap((item) => collectRendererTexts(item, seen, depth + 1));
   if (!isRecord(value)) return [];
   const parts = [];
-  if (typeof value.text === "string") parts.push(...collectRendererTexts(value.text, seen, depth + 1));
+  if (isString(value.text)) parts.push(...collectRendererTexts(value.text, seen, depth + 1));
   for (const key of ["contentRenderer", "textContent", "message", "mediaContent", "unified_response", "unifiedResponseContent", "sections", "view_model", "primitive", "primitives", "nested_responses"]) {
     if (key in value) parts.push(...collectRendererTexts(value[key], seen, depth + 1));
   }
@@ -70,7 +70,7 @@ function collectRendererTexts(value, seen = new Set(), depth = 0) {
 
 function collectReasoningTexts(value, seen = new Set(), depth = 0, force = false) {
   if (depth > 8) return [];
-  if (typeof value === "string") {
+  if (isString(value)) {
     const normalized = value.trim();
     if (!force || !normalized || seen.has(normalized)) return [];
     seen.add(normalized);
@@ -78,10 +78,10 @@ function collectReasoningTexts(value, seen = new Set(), depth = 0, force = false
   }
   if (Array.isArray(value)) return value.flatMap((item) => collectReasoningTexts(item, seen, depth + 1, force));
   if (!isRecord(value)) return [];
-  const typename = typeof value.__typename === "string" ? value.__typename : "";
+  const typename = isString(value.__typename) ? value.__typename : "";
   const localForce = force || /reasoning|thinking|thought/i.test(typename);
   const parts = [];
-  if (typeof value.text === "string" && localForce) parts.push(...collectReasoningTexts(value.text, seen, depth + 1, true));
+  if (isString(value.text) && localForce) parts.push(...collectReasoningTexts(value.text, seen, depth + 1, true));
   for (const key of ["reasoning", "reasoningContent", "reasoning_content", "reasoningText", "thinking", "thinkingContent", "thinkingText", "thought", "thoughtText", "thoughts", "internalThoughts", "chainOfThought", "thinkingTrace", "thinking_trace"]) {
     if (key in value) parts.push(...collectReasoningTexts(value[key], seen, depth + 1, true));
   }
@@ -92,7 +92,7 @@ function collectReasoningTexts(value, seen = new Set(), depth = 0, force = false
 }
 
 function extractAssistantContent(message) {
-  if (typeof message.content === "string" && message.content.length > 0) return message.content;
+  if (isString(message.content) && message.content.length > 0) return message.content;
   return collectRendererTexts(isRecord(message.contentRenderer) ? message.contentRenderer : null).join("\n\n").trim();
 }
 
@@ -109,7 +109,7 @@ export function parseMetaAiResponseText(text, isThinkingModel) {
   let errorCode = null;
   for (const payload of readMetaJsonPayloads(text)) {
     if (Array.isArray(payload.errors) && payload.errors.length > 0) {
-      const first = payload.errors.find((item) => isRecord(item) && typeof item.message === "string");
+      const first = payload.errors.find((item) => isRecord(item) && isString(item.message));
       if (first) errorMessage = first.message.trim();
     }
     const stream = isRecord(payload.data?.sendMessageStream) ? payload.data.sendMessageStream : null;
@@ -127,8 +127,8 @@ export function parseMetaAiResponseText(text, isThinkingModel) {
       }
     }
     if (isRecord(stream.error)) {
-      errorCode = typeof stream.error.code === "string" ? stream.error.code : errorCode;
-      errorMessage = typeof stream.error.message === "string" ? stream.error.message.trim() : errorMessage;
+      errorCode = isString(stream.error.code) ? stream.error.code : errorCode;
+      errorMessage = isString(stream.error.message) ? stream.error.message.trim() : errorMessage;
     }
   }
   const combined = `${errorMessage || ""}\n${lastContent}`.trim();

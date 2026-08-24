@@ -1,4 +1,4 @@
-// F-1b production wiring for the chatCore compression seam.
+import { isObject, isString } from "@/shared/utils/typeChecks.js"; // F-1b production wiring for the chatCore compression seam.
 //
 // Settings (compressionV2Mode / compressionV2Stack) -> the per-engine toggle map
 // the chatCore seam hands to deriveDefaultPlan. Intensity rides along on each
@@ -23,13 +23,13 @@ export function enginesFromV2Settings(mode, stack) {
   if (mode === "stacked") {
     if (Array.isArray(stack)) {
       for (const entry of stack) {
-        const id = typeof entry === "string" ? entry : entry?.engine;
+        const id = isString(entry) ? entry : entry?.engine;
         if (!id) continue;
-        const intensity = typeof entry === "object" ? entry?.intensity : undefined;
+        const intensity = isObject(entry) ? entry?.intensity : undefined;
         engines[id] = intensity ? { enabled: true, level: intensity } : { enabled: true };
       }
     }
-  } else if (typeof mode === "string" && mode && mode !== "off") {
+  } else if (isString(mode) && mode && mode !== "off") {
     engines[mode] = { enabled: true };
   }
   return engines;

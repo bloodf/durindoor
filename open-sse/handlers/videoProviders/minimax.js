@@ -1,12 +1,13 @@
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+import { isBoolean, isString } from "@/shared/utils/typeChecks.js";
 
 const STATUS_MAP = {
   queued: "pending",
   running: "processing",
   succeeded: "done",
   failed: "failed",
-  cancelled: "cancelled",
+  cancelled: "cancelled"
 };
 
 const badRequest = (message) => ({ error: createErrorResult(HTTP_STATUS.BAD_REQUEST, message) });
@@ -18,7 +19,7 @@ export function prepareMinimaxVideoRequest(config, { action, requestId, rawBody,
       method: "GET",
       url: `${config.queryUrl.replace(/\/$/, "")}/${encodeURIComponent(requestId)}`,
       body: undefined,
-      contentType: null,
+      contentType: null
     };
   }
   if (action !== "generations") return badRequest("MiniMax video generation supports the generations action only");
@@ -31,7 +32,7 @@ export function prepareMinimaxVideoRequest(config, { action, requestId, rawBody,
     return badRequest("Invalid JSON body");
   }
 
-  const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
+  const prompt = isString(input.prompt) ? input.prompt.trim() : "";
   if (!prompt) return badRequest("MiniMax video generation requires a prompt");
   if (prompt.length > config.maxPromptCharacters) return badRequest(`MiniMax video generation prompts must not exceed ${config.maxPromptCharacters} characters`);
 
@@ -49,10 +50,10 @@ export function prepareMinimaxVideoRequest(config, { action, requestId, rawBody,
     content: [{ type: "text", text: prompt }],
     resolution: input.resolution,
     duration: input.duration,
-    ratio,
+    ratio
   };
-  if (typeof input.callback_url === "string" && input.callback_url) body.callback_url = input.callback_url;
-  if (config.supportsAigcWatermark && typeof input.aigc_watermark === "boolean") body.aigc_watermark = input.aigc_watermark;
+  if (isString(input.callback_url) && input.callback_url) body.callback_url = input.callback_url;
+  if (config.supportsAigcWatermark && isBoolean(input.aigc_watermark)) body.aigc_watermark = input.aigc_watermark;
   return { method: "POST", url: config.createUrl, body: JSON.stringify(body), contentType: "application/json" };
 }
 
@@ -66,9 +67,9 @@ export function normalizeMinimaxVideoResponse(bodyText, requestId = null) {
   }
 
   if (!requestId) {
-    return payload?.task_id
-      ? { bodyText: JSON.stringify({ request_id: payload.task_id }) }
-      : { error: createErrorResult(HTTP_STATUS.BAD_GATEWAY, "MiniMax did not return a video task id") };
+    return payload?.task_id ?
+    { bodyText: JSON.stringify({ request_id: payload.task_id }) } :
+    { error: createErrorResult(HTTP_STATUS.BAD_GATEWAY, "MiniMax did not return a video task id") };
   }
 
   const task = payload?.task;
@@ -77,9 +78,9 @@ export function normalizeMinimaxVideoResponse(bodyText, requestId = null) {
   if (task.content?.url) {
     normalized.video = {
       url: task.content.url,
-      ...(Number.isInteger(task.duration) ? { duration: task.duration } : {}),
-      ...(task.resolution ? { resolution: task.resolution } : {}),
-      ...(task.ratio ? { aspect_ratio: task.ratio } : {}),
+      ...(Number.isInteger(task.duration) ? { duration: task.duration } : null),
+      ...(task.resolution ? { resolution: task.resolution } : null),
+      ...(task.ratio ? { aspect_ratio: task.ratio } : null)
     };
   }
   if (task.error) normalized.error = task.error;

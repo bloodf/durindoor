@@ -20,6 +20,7 @@ import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
 import { estimateInputTokens } from "../utils/usageTracking.js";
 import crypto from "crypto";
+import { isNumber, isString } from "@/shared/utils/typeChecks.js";
 
 export class GithubExecutor extends BaseExecutor {
   constructor() {
@@ -69,24 +70,24 @@ export class GithubExecutor extends BaseExecutor {
     if (!body?.messages) return body;
 
     const sanitized = { ...body };
-    sanitized.messages = body.messages.map(msg => {
+    sanitized.messages = body.messages.map((msg) => {
       // assistant messages with only tool_calls have content: null — leave as-is
       if (!msg.content) return msg;
 
       // String content is always fine
-      if (typeof msg.content === "string") return msg;
+      if (isString(msg.content)) return msg;
 
       // Array content: filter/convert unsupported part types
       if (Array.isArray(msg.content)) {
-        const cleanContent = msg.content
-          .map(part => {
-            if (part.type === "text") return part;
-            if (part.type === "image_url") return part;
-            // Serialize tool_use, tool_result, thinking, etc. as text
-            const text = part.text || part.content || JSON.stringify(part);
-            return { type: "text", text: typeof text === "string" ? text : JSON.stringify(text) };
-          })
-          .filter(part => part.text !== ""); // remove empty text parts
+        const cleanContent = msg.content.
+        map((part) => {
+          if (part.type === "text") return part;
+          if (part.type === "image_url") return part;
+          // Serialize tool_use, tool_result, thinking, etc. as text
+          const text = part.text || part.content || JSON.stringify(part);
+          return { type: "text", text: isString(text) ? text : JSON.stringify(text) };
+        }).
+        filter((part) => part.text !== ""); // remove empty text parts
 
         // If all content was stripped (e.g. only tool_result with no text), drop content
         return { ...msg, content: cleanContent.length > 0 ? cleanContent : null };
@@ -175,7 +176,7 @@ export class GithubExecutor extends BaseExecutor {
       const errorBody = await readBoundedResponseText(result.response.clone(), {
         signal: options.signal,
         maxBytes: 64 * 1024,
-        timeoutMs: 2_000,
+        timeoutMs: 2_000
       });
 
       if (errorBody.includes("not accessible via the /chat/completions endpoint") || errorBody.includes("The requested model is not supported")) {
@@ -185,7 +186,7 @@ export class GithubExecutor extends BaseExecutor {
         try {
           const cancellation = result.response.body?.cancel?.("switching GitHub route");
           if (cancellation?.catch) void cancellation.catch(() => {});
-        } catch { /* noop */ }
+        } catch {/* noop */}
         return this.executeWithResponsesEndpoint(options);
       }
     }
@@ -243,9 +244,9 @@ export class GithubExecutor extends BaseExecutor {
      * system block with the same text is preserved because we drop strictly the
      * first block, only when it matches verbatim.
      */
-    if (detectClientTool(requestContext?.clientHeaders || {}, strippedBody) !== "claude"
-      && Array.isArray(transformedBody.system)
-      && transformedBody.system[0]?.text === CLAUDE_SYSTEM_PROMPT) {
+    if (detectClientTool(requestContext?.clientHeaders || {}, strippedBody) !== "claude" &&
+    Array.isArray(transformedBody.system) &&
+    transformedBody.system[0]?.text === CLAUDE_SYSTEM_PROMPT) {
       transformedBody.system = transformedBody.system.slice(1);
       if (transformedBody.system.length === 0) delete transformedBody.system;
     }
@@ -320,7 +321,7 @@ export class GithubExecutor extends BaseExecutor {
           method: "POST",
           headers: this.buildHeaders(credentials, false),
           body: JSON.stringify(transformedBody),
-          signal: countSignal,
+          signal: countSignal
         }, proxyOptions);
         if (countResponse.ok) {
           const inputTokens = Number((await countResponse.json())?.input_tokens);
@@ -330,14 +331,14 @@ export class GithubExecutor extends BaseExecutor {
                 message: `Prompt is ${inputTokens} tokens; maximum for ${model} is ${GITHUB_CLAUDE_MAX_PROMPT_TOKENS}.`,
                 type: "invalid_request_error",
                 param: "messages",
-                code: "context_length_exceeded",
-              },
+                code: "context_length_exceeded"
+              }
             };
             return {
               response: Response.json(errorBody, { status: HTTP_STATUS.BAD_REQUEST }),
               url: this.config.countTokensUrl,
               headers,
-              transformedBody,
+              transformedBody
             };
           }
         } else {
@@ -362,16 +363,16 @@ export class GithubExecutor extends BaseExecutor {
     const policy = resolveRequestRetryPolicy(this.provider, requestPolicy);
     const headerTimeoutMs = policy.headerTimeoutMs || this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
     const transientStatuses = new Set([
-      HTTP_STATUS.BAD_GATEWAY,        // 502
-      HTTP_STATUS.SERVICE_UNAVAILABLE, // 503
-      HTTP_STATUS.GATEWAY_TIMEOUT,     // 504
+    HTTP_STATUS.BAD_GATEWAY, // 502
+    HTTP_STATUS.SERVICE_UNAVAILABLE, // 503
+    HTTP_STATUS.GATEWAY_TIMEOUT // 504
     ]);
     const cap = policy.maxTransportAttempts != null ? Math.max(0, policy.maxTransportAttempts - 1) : null;
     const resolveAttempts = ({ statusKey, errorKind, text }) => {
       const base = resolveRetryEntry(baseRetry[statusKey]);
-      const rule = policy.skipRules
-        ? matchSkipRule(this.provider, { status: statusKey, errorKind, text }, policy.skipRules)
-        : null;
+      const rule = policy.skipRules ?
+      matchSkipRule(this.provider, { status: statusKey, errorKind, text }, policy.skipRules) :
+      null;
       if (rule?.action === "skip") return { ...base, attempts: 0 };
       if (rule?.action === "retry") {
         return { ...base, attempts: cap != null ? cap : base.attempts };
@@ -456,7 +457,7 @@ export class GithubExecutor extends BaseExecutor {
           try {
             const cancellation = response.body?.cancel?.("github /v1/messages transient retry");
             if (cancellation?.catch) void cancellation.catch(() => {});
-          } catch { /* body may already be locked or closed */ }
+          } catch {/* body may already be locked or closed */}
           await waitForRetryDelay(delayMs, signal);
           continue;
         }
@@ -494,7 +495,7 @@ export class GithubExecutor extends BaseExecutor {
       if (failureEmitted) return;
       failureEmitted = true;
       controller.enqueue(new TextEncoder().encode(
-        `data: ${JSON.stringify({ error: { message: "GitHub Messages stream failed", type: "stream_error" } })}\n\n`,
+        `data: ${JSON.stringify({ error: { message: "GitHub Messages stream failed", type: "stream_error" } })}\n\n`
       ));
     };
 
@@ -527,8 +528,8 @@ export class GithubExecutor extends BaseExecutor {
       // event:-named [DONE] is a framing mismatch the claude tracker rejects.
       // Reject an early, duplicate, or event-named [DONE].
       if (parsed.done) {
-        if (applicationTerminalSeen && !rawDoneSeen && !failureEmitted
-          && rawTerminal.outcome === "success" && currentEvent === null) {
+        if (applicationTerminalSeen && !rawDoneSeen && !failureEmitted &&
+        rawTerminal.outcome === "success" && currentEvent === null) {
           rawDoneSeen = true;
         } else {
           emitFailure(controller);
@@ -618,7 +619,7 @@ export class GithubExecutor extends BaseExecutor {
       headers,
       transformedBody,
       attemptStartedAt: getCurrentProviderAttemptTimestamp(),
-      terminalProvenance: "validated",
+      terminalProvenance: "validated"
     };
   }
 
@@ -665,7 +666,7 @@ export class GithubExecutor extends BaseExecutor {
       if (failureEmitted) return;
       failureEmitted = true;
       controller.enqueue(new TextEncoder().encode(
-        `data: ${JSON.stringify({ error: { message: "GitHub Responses stream failed", type: "stream_error" } })}\n\n`,
+        `data: ${JSON.stringify({ error: { message: "GitHub Responses stream failed", type: "stream_error" } })}\n\n`
       ));
     };
 
@@ -683,7 +684,7 @@ export class GithubExecutor extends BaseExecutor {
         currentEvent = null;
         return;
       }
-      if (rawDoneSeen || (applicationTerminalSeen && !parsed.done)) {
+      if (rawDoneSeen || applicationTerminalSeen && !parsed.done) {
         emitFailure(controller);
         currentEvent = null;
         return;
@@ -695,8 +696,8 @@ export class GithubExecutor extends BaseExecutor {
         return;
       }
       if (parsed.done) {
-        if (rawTerminal.outcome === "success" && !failureEmitted) rawDoneSeen = true;
-        else emitFailure(controller);
+        if (rawTerminal.outcome === "success" && !failureEmitted) rawDoneSeen = true;else
+        emitFailure(controller);
         return;
       }
       if (rawTerminal.outcome === "success") applicationTerminalSeen = true;
@@ -745,7 +746,7 @@ export class GithubExecutor extends BaseExecutor {
       headers,
       transformedBody,
       attemptStartedAt: getCurrentProviderAttemptTimestamp(),
-      terminalProvenance: "validated",
+      terminalProvenance: "validated"
     };
   }
 
@@ -762,7 +763,7 @@ export class GithubExecutor extends BaseExecutor {
         }
       }, proxyOptions);
       if (!response.ok) {
-        try { await response.body?.cancel?.(); } catch { /* best effort */ }
+        try {await response.body?.cancel?.();} catch {/* best effort */}
         log?.error?.("TOKEN", `Copilot token refresh failed with HTTP ${response.status}`);
         return null;
       }
@@ -780,7 +781,7 @@ export class GithubExecutor extends BaseExecutor {
       const params = {
         grant_type: "refresh_token",
         refresh_token: refreshToken,
-        client_id: this.config.clientId,
+        client_id: this.config.clientId
       };
       if (this.config.clientSecret) {
         params.client_secret = this.config.clientSecret;
@@ -792,7 +793,7 @@ export class GithubExecutor extends BaseExecutor {
         body: new URLSearchParams(params)
       }, proxyOptions);
       if (!response.ok) {
-        try { await response.body?.cancel?.(); } catch { /* best effort */ }
+        try {await response.body?.cancel?.();} catch {/* best effort */}
         return null;
       }
       const tokens = await response.json();
@@ -832,9 +833,9 @@ export class GithubExecutor extends BaseExecutor {
     if (credentials.copilotTokenExpiresAt) {
       // Handle both Unix timestamp (seconds) and ISO string
       let expiresAtMs = credentials.copilotTokenExpiresAt;
-      if (typeof expiresAtMs === "number" && expiresAtMs < 1e12) {
+      if (isNumber(expiresAtMs) && expiresAtMs < 1e12) {
         expiresAtMs = expiresAtMs * 1000; // Convert seconds to ms
-      } else if (typeof expiresAtMs === "string") {
+      } else if (isString(expiresAtMs)) {
         expiresAtMs = new Date(expiresAtMs).getTime();
       }
       if (expiresAtMs - Date.now() < 5 * 60 * 1000) return true;

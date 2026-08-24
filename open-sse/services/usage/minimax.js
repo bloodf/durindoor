@@ -6,14 +6,14 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U, parseResetTime } from "./shared.js";
 
 // MiniMax usage endpoints (try in order, fallback on transient errors)
-const MINIMAX_USAGE_URLS = {
+import { isObject } from "@/shared/utils/typeChecks.js";const MINIMAX_USAGE_URLS = {
   minimax: U("minimax").urls,
-  "minimax-cn": U("minimax-cn").urls,
+  "minimax-cn": U("minimax-cn").urls
 };
 
 // ── MiniMax helpers ──────────────────────────────────────────────────────
 function getMiniMaxField(model, snakeKey, camelKey) {
-  if (!model || typeof model !== "object") return null;
+  if (!model || !isObject(model)) return null;
   return model[snakeKey] ?? model[camelKey] ?? null;
 }
 
@@ -31,18 +31,18 @@ function formatMiniMaxQuotaName(model) {
   // asterisk or the vague "general" word to the UI.
   if (rawName === "MiniMax-M*" || rawName === "general") return "M-series";
 
-  return rawName
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (ch) => ch.toUpperCase())
-    .replace(/\bTo\b/g, "to")
-    .replace(/\bTts\b/g, "TTS")
-    .replace(/\bHd\b/g, "HD");
+  return rawName.
+  replace(/[_-]+/g, " ").
+  replace(/\s+/g, " ").
+  trim().
+  replace(/\b\w/g, (ch) => ch.toUpperCase()).
+  replace(/\bTo\b/g, "to").
+  replace(/\bTts\b/g, "TTS").
+  replace(/\bHd\b/g, "HD");
 }
 
 function getMiniMaxProvidedPercent(model, snakeKey, camelKey) {
-  if (!model || typeof model !== "object") return null;
+  if (!model || !isObject(model)) return null;
   const raw = model[snakeKey] ?? model[camelKey];
   if (raw === null || raw === undefined) return null;
   const num = Number(raw);
@@ -88,7 +88,7 @@ function buildMiniMaxQuota(total, count, resetAt, countMeansRemaining, providedP
     remaining,
     remainingPercentage,
     resetAt,
-    unlimited: false,
+    unlimited: false
   };
 }
 
@@ -96,7 +96,7 @@ function providedPercentage(provided, remaining, total) {
   if (provided !== null && provided !== undefined && Number.isFinite(provided)) {
     return Math.max(0, Math.min(100, provided));
   }
-  return total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
+  return total > 0 ? Math.max(0, Math.min(100, remaining / total * 100)) : 0;
 }
 
 function addMiniMaxQuota(quotas, key, model, getTotal, countSnake, countCamel, percentSnake, percentCamel, resetArgs, countMeansRemaining) {
@@ -114,9 +114,9 @@ function addMiniMaxQuota(quotas, key, model, getTotal, countSnake, countCamel, p
     // count has to match that semantic — otherwise the UI flips the percentage.
     effectiveTotal = 100;
     const pct = providedPercent;
-    effectiveCount = countMeansRemaining
-      ? Math.round(effectiveTotal * (pct / 100))
-      : Math.round(effectiveTotal * (1 - pct / 100));
+    effectiveCount = countMeansRemaining ?
+    Math.round(effectiveTotal * (pct / 100)) :
+    Math.round(effectiveTotal * (1 - pct / 100));
   }
   quotas[key] = buildMiniMaxQuota(
     effectiveTotal,
@@ -148,14 +148,14 @@ export async function getMiniMaxUsage(apiKey, provider, proxyOptions = null) {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           Accept: "application/json",
-          "Content-Type": "application/json",
-        },
+          "Content-Type": "application/json"
+        }
       }, proxyOptions);
 
       const rawText = await response.text();
       let payload = {};
       if (rawText) {
-        try { payload = JSON.parse(rawText); } catch { payload = {}; }
+        try {payload = JSON.parse(rawText);} catch {payload = {};}
       }
 
       const baseResp = (payload?.base_resp ?? payload?.baseResp) || {};

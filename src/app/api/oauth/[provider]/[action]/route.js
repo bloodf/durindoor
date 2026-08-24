@@ -6,8 +6,8 @@ import { NextResponse } from "next/server";
 import {
   exchangeAndSaveAuthorizationCode,
   saveOAuthConnection,
-  withOAuthProxyMetadata,
-} from "@/lib/oauth/flowCompletion.js";
+  withOAuthProxyMetadata } from
+"@/lib/oauth/flowCompletion.js";
 import {
   cancelOAuthFlow,
   beginOAuthFlowIntent,
@@ -16,15 +16,15 @@ import {
   createOAuthFlow,
   getOAuthFlow,
   isOAuthFlowClaimActive,
-  settleOAuthFlowClaim,
-} from "@/lib/oauth/flowStore.js";
+  settleOAuthFlowClaim } from
+"@/lib/oauth/flowStore.js";
 import {
   extractCodexAccountInfo,
   generateAuthData,
   getProvider,
   pollForToken,
-  requestDeviceCode,
-} from "@/lib/oauth/providers.js";
+  requestDeviceCode } from
+"@/lib/oauth/providers.js";
 import { resolveOAuthProxySelection } from "@/lib/oauth/proxySelection.js";
 import { ensureOutboundProxyInitialized } from "@/lib/network/initOutboundProxy";
 import {
@@ -37,36 +37,37 @@ import {
   startCodexProxy,
   startXaiProxy,
   stopCodexProxy,
-  stopXaiProxy,
-} from "@/lib/oauth/utils/server";
+  stopXaiProxy } from
+"@/lib/oauth/utils/server";
 import { createProviderConnection } from "@/models";
+import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const NO_PKCE_DEVICE_PROVIDERS = new Set([
-  "github",
-  "kiro",
-  "kimi-coding",
-  "kilocode",
-  "codebuddy-cn",
-  "qoder",
-  "grok-cli",
-]);
+"github",
+"kiro",
+"kimi-coding",
+"kilocode",
+"codebuddy-cn",
+"qoder",
+"grok-cli"]
+);
 
 const NO_PKCE_POLL_PROVIDERS = new Set([
-  "github",
-  "kimi-coding",
-  "kilocode",
-  "codebuddy-cn",
-]);
+"github",
+"kimi-coding",
+"kilocode",
+"codebuddy-cn"]
+);
 
 const PUBLIC_DEVICE_FIELDS = [
-  "user_code",
-  "verification_uri",
-  "verification_uri_complete",
-  "verification_url",
-  "verification_url_complete",
-  "expires_in",
-  "interval",
-];
+"user_code",
+"verification_uri",
+"verification_uri_complete",
+"verification_url",
+"verification_url_complete",
+"expires_in",
+"interval"];
+
 const fixedProxyOperations = new Map();
 const SAFE_GET_META_KEYS = new Set(["baseUrl", "clientId"]);
 const OAUTH_ERROR_STATUS = Object.freeze({
@@ -74,15 +75,15 @@ const OAUTH_ERROR_STATUS = Object.freeze({
   OAUTH_STATE_MISMATCH: 400,
   OAUTH_FLOW_CONFLICT: 409,
   OAUTH_SESSION_GONE: 410,
-  OAUTH_UPSTREAM_FAILURE: 502,
+  OAUTH_UPSTREAM_FAILURE: 502
 });
 
 const CODEX_FINGERPRINT_MODES = new Set(["off", "device", "session", "full"]);
 
 function codexFingerprintMode(input) {
-  return CODEX_FINGERPRINT_MODES.has(input?.codexFingerprintMode)
-    ? input.codexFingerprintMode
-    : "session";
+  return CODEX_FINGERPRINT_MODES.has(input?.codexFingerprintMode) ?
+  input.codexFingerprintMode :
+  "session";
 }
 
 class OAuthRouteError extends Error {
@@ -104,7 +105,7 @@ function requireOAuthProvider(provider) {
     throw oauthRouteError(
       "OAUTH_VALIDATION_FAILED",
       "Unsupported OAuth provider",
-      error,
+      error
     );
   }
 }
@@ -113,11 +114,11 @@ async function callOAuthUpstream(operation) {
   try {
     return await operation();
   } catch (error) {
-    if (typeof error?.code === "string" && error.code.startsWith("OAUTH_")) throw error;
+    if (isString(error?.code) && error.code.startsWith("OAUTH_")) throw error;
     throw oauthRouteError(
       "OAUTH_UPSTREAM_FAILURE",
       error?.message || "OAuth provider request failed",
-      error,
+      error
     );
   }
 }
@@ -130,7 +131,7 @@ function createBoundOAuthFlow(options) {
       throw oauthRouteError(
         "OAUTH_FLOW_CONFLICT",
         error.message,
-        error,
+        error
       );
     }
     throw error;
@@ -144,30 +145,30 @@ function claimBoundOAuthFlow({ flowId, state = null, provider, kind }) {
     if (unscoped && unscoped.provider !== provider) {
       throw oauthRouteError(
         "OAUTH_VALIDATION_FAILED",
-        "OAuth provider did not match this flow",
+        "OAuth provider did not match this flow"
       );
     }
     throw oauthRouteError(
       "OAUTH_SESSION_GONE",
-      "OAuth session expired, was cancelled, or was already used",
+      "OAuth session expired, was cancelled, or was already used"
     );
   }
   if (state && current.state !== state) {
     throw oauthRouteError(
       "OAUTH_STATE_MISMATCH",
-      "OAuth state did not match this flow",
+      "OAuth state did not match this flow"
     );
   }
   if (current.kind !== kind) {
     throw oauthRouteError(
       "OAUTH_VALIDATION_FAILED",
-      "OAuth flow type did not match this operation",
+      "OAuth flow type did not match this operation"
     );
   }
   if (current.status !== "active") {
     throw oauthRouteError(
       "OAUTH_FLOW_CONFLICT",
-      "OAuth flow is already being processed",
+      "OAuth flow is already being processed"
     );
   }
 
@@ -177,9 +178,9 @@ function claimBoundOAuthFlow({ flowId, state = null, provider, kind }) {
   const remaining = getOAuthFlow({ flowId, provider });
   throw oauthRouteError(
     remaining ? "OAUTH_FLOW_CONFLICT" : "OAUTH_SESSION_GONE",
-    remaining
-      ? "OAuth flow is already being processed"
-      : "OAuth session expired, was cancelled, or was already used",
+    remaining ?
+    "OAuth flow is already being processed" :
+    "OAuth session expired, was cancelled, or was already used"
   );
 }
 
@@ -225,9 +226,9 @@ function publicConnection(connection, includeIdentity = true) {
   return {
     id: connection.id,
     provider: connection.provider,
-    ...(includeIdentity
-      ? { email: connection.email, displayName: connection.displayName }
-      : {}),
+    ...(includeIdentity ?
+    { email: connection.email, displayName: connection.displayName } : null)
+
   };
 }
 
@@ -241,7 +242,7 @@ function publicDeviceData(deviceData, flow) {
 
 function internalDeviceData(deviceData) {
   const values = Object.fromEntries(
-    Object.entries(deviceData || {}).filter(([key]) => key.startsWith("_")),
+    Object.entries(deviceData || {}).filter(([key]) => key.startsWith("_"))
   );
   return Object.keys(values).length ? values : null;
 }
@@ -249,8 +250,8 @@ function internalDeviceData(deviceData) {
 function oauthErrorResponse(error, operation) {
   const message = sanitizeErrorMessage(error?.message || "OAuth request failed");
   console.error(`[OAuth] ${operation} failed: ${message}`);
-  const status = OAUTH_ERROR_STATUS[error?.code] ||
-    (typeof error?.code === "string" && error.code.startsWith("OAUTH_PROXY_") ? 400 : 500);
+  const status = OAUTH_ERROR_STATUS[error?.code] || (
+  isString(error?.code) && error.code.startsWith("OAUTH_PROXY_") ? 400 : 500);
   return NextResponse.json({ error: message }, { status });
 }
 
@@ -258,13 +259,13 @@ async function beginAuthorization(provider, input) {
   requireOAuthProvider(provider);
   const intent = beginOAuthFlowIntent(provider, input.ownerId);
   const redirectUri = input.redirectUri || input.redirect_uri || "http://localhost:8080/callback";
-  const meta = input.meta && typeof input.meta === "object" ? input.meta : undefined;
+  const meta = input.meta && isObject(input.meta) ? input.meta : undefined;
   const resolvedProxy = await resolveOAuthProxySelection(proxySelectionInput(input));
   const authData = await generateAuthData(
     provider,
     redirectUri,
     meta,
-    resolvedProxy.proxyOptions,
+    resolvedProxy.proxyOptions
   );
 
   // Reconnect flow: when the client supplies a target connection id, carry it
@@ -272,9 +273,9 @@ async function beginAuthorization(provider, input) {
   // creating a duplicate. Validated as a bounded string; the completion path
   // re-checks provider + authType before committing.
   const reconnectConnectionId =
-    typeof input.connectionId === "string" && input.connectionId.length > 0 && input.connectionId.length <= 128
-      ? input.connectionId
-      : undefined;
+  isString(input.connectionId) && input.connectionId.length > 0 && input.connectionId.length <= 128 ?
+  input.connectionId :
+  undefined;
 
   const flow = createBoundOAuthFlow({
     provider,
@@ -285,10 +286,10 @@ async function beginAuthorization(provider, input) {
       redirectUri,
       meta,
       proxySelection: resolvedProxy.selection,
-      ...(provider === "codex" ? { codexFingerprintMode: codexFingerprintMode(input) } : {}),
-      ...(reconnectConnectionId ? { connectionId: reconnectConnectionId } : {}),
+      ...(provider === "codex" ? { codexFingerprintMode: codexFingerprintMode(input) } : null),
+      ...(reconnectConnectionId ? { connectionId: reconnectConnectionId } : null)
     },
-    intent,
+    intent
   });
 
   return {
@@ -298,7 +299,7 @@ async function beginAuthorization(provider, input) {
     expiresAt: flow.expiresAt,
     flowType: authData.flowType,
     fixedPort: authData.fixedPort,
-    callbackPath: authData.callbackPath,
+    callbackPath: authData.callbackPath
   };
 }
 
@@ -307,31 +308,31 @@ async function beginDeviceCode(provider, input) {
   if (providerData.flowType !== "device_code") {
     throw oauthRouteError(
       "OAUTH_VALIDATION_FAILED",
-      "Provider does not support device code flow",
+      "Provider does not support device code flow"
     );
   }
   const intent = beginOAuthFlowIntent(provider, input.ownerId);
 
   const resolvedProxy = await resolveOAuthProxySelection(proxySelectionInput(input));
   const authData = await generateAuthData(provider, null, undefined, resolvedProxy.proxyOptions);
-  const deviceOptions = provider === "kiro"
-    ? {
-        ...(input.startUrl ? { startUrl: input.startUrl } : {}),
-        ...(input.region ? { region: input.region } : {}),
-        ...(input.authMethod ? { authMethod: input.authMethod } : {}),
-      }
-    : undefined;
+  const deviceOptions = provider === "kiro" ?
+  {
+    ...(input.startUrl ? { startUrl: input.startUrl } : null),
+    ...(input.region ? { region: input.region } : null),
+    ...(input.authMethod ? { authMethod: input.authMethod } : null)
+  } :
+  undefined;
   const deviceData = await callOAuthUpstream(() => requestDeviceCode(
-      provider,
-      NO_PKCE_DEVICE_PROVIDERS.has(provider) ? undefined : authData.codeChallenge,
-      deviceOptions,
-      resolvedProxy.proxyOptions,
-    ),
+    provider,
+    NO_PKCE_DEVICE_PROVIDERS.has(provider) ? undefined : authData.codeChallenge,
+    deviceOptions,
+    resolvedProxy.proxyOptions
+  )
   );
   if (!deviceData?.device_code) {
     throw oauthRouteError(
       "OAUTH_UPSTREAM_FAILURE",
-      "OAuth provider returned an invalid device response",
+      "OAuth provider returned an invalid device response"
     );
   }
 
@@ -344,9 +345,9 @@ async function beginDeviceCode(provider, input) {
       codeVerifier: deviceData?.codeVerifier || authData.codeVerifier,
       extraData: internalDeviceData(deviceData),
       proxySelection: resolvedProxy.selection,
-      ...(provider === "codex" ? { codexFingerprintMode: codexFingerprintMode(input) } : {}),
+      ...(provider === "codex" ? { codexFingerprintMode: codexFingerprintMode(input) } : null)
     },
-    intent,
+    intent
   });
   return publicDeviceData(deviceData, flow);
 }
@@ -356,24 +357,24 @@ async function completeAccessToken(provider, code, resolvedProxy, flowClaim) {
   let directPayload = {};
   try {
     const encoded = code.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
+    const padded = encoded + "=".repeat((4 - encoded.length % 4) % 4);
     directPayload = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
   } catch {
+
     // Token parsing is best-effort; the opaque token can still be imported.
   }
-
   const providerSpecificData = withOAuthProxyMetadata(
     {
       authMethod: "access_token",
-      ...(provider === "codex" ? { codexFingerprintMode: flowClaim?.payload?.codexFingerprintMode || "session" } : {}),
-      ...(info.chatgptAccountId || directPayload.account_id
-        ? { chatgptAccountId: info.chatgptAccountId || directPayload.account_id }
-        : {}),
-      ...(info.chatgptPlanType || directPayload.plan_type
-        ? { chatgptPlanType: info.chatgptPlanType || directPayload.plan_type }
-        : {}),
+      ...(provider === "codex" ? { codexFingerprintMode: flowClaim?.payload?.codexFingerprintMode || "session" } : null),
+      ...(info.chatgptAccountId || directPayload.account_id ?
+      { chatgptAccountId: info.chatgptAccountId || directPayload.account_id } : null),
+
+      ...(info.chatgptPlanType || directPayload.plan_type ?
+      { chatgptPlanType: info.chatgptPlanType || directPayload.plan_type } : null)
+
     },
-    resolvedProxy,
+    resolvedProxy
   );
   return createProviderConnection({
     provider,
@@ -381,16 +382,16 @@ async function completeAccessToken(provider, code, resolvedProxy, flowClaim) {
     accessToken: code,
     email: info.email || directPayload.email || null,
     providerSpecificData,
-    testStatus: "active",
+    testStatus: "active"
   }, {
-    shouldCommit: () => isOAuthFlowClaimActive(flowClaim),
+    shouldCommit: () => isOAuthFlowClaimActive(flowClaim)
   });
 }
 
 async function completeAuthorization(provider, input) {
-  const code = typeof input.code === "string" ? input.code.trim() : "";
-  const state = typeof input.state === "string" ? input.state.trim() : "";
-  const flowId = typeof input.flowId === "string" ? input.flowId.trim() : "";
+  const code = isString(input.code) ? input.code.trim() : "";
+  const state = isString(input.state) ? input.state.trim() : "";
+  const flowId = isString(input.flowId) ? input.flowId.trim() : "";
   if (!code || !state || !flowId) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Missing required fields");
   }
@@ -413,7 +414,7 @@ async function completeAuthorization(provider, input) {
 }
 
 async function pollDeviceCode(provider, input) {
-  const flowId = typeof input.flowId === "string" ? input.flowId.trim() : "";
+  const flowId = isString(input.flowId) ? input.flowId.trim() : "";
   if (!flowId) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Missing OAuth flow ID");
   }
@@ -426,35 +427,35 @@ async function pollDeviceCode(provider, input) {
     if (!deviceCode) {
       throw oauthRouteError(
         "OAUTH_VALIDATION_FAILED",
-        "OAuth device session is invalid",
+        "OAuth device session is invalid"
       );
     }
 
     let result;
     if (NO_PKCE_POLL_PROVIDERS.has(provider)) {
       result = await callOAuthUpstream(() =>
-        pollForToken(provider, deviceCode, null, null, resolvedProxy.proxyOptions));
+      pollForToken(provider, deviceCode, null, null, resolvedProxy.proxyOptions));
     } else if (provider === "kiro") {
       result = await callOAuthUpstream(() =>
-        pollForToken(provider, deviceCode, null, extraData, resolvedProxy.proxyOptions));
+      pollForToken(provider, deviceCode, null, extraData, resolvedProxy.proxyOptions));
     } else if (provider === "qoder") {
       if (!codeVerifier) {
         throw oauthRouteError(
           "OAUTH_VALIDATION_FAILED",
-          "OAuth device session is missing its verifier",
+          "OAuth device session is missing its verifier"
         );
       }
       result = await callOAuthUpstream(() =>
-        pollForToken(provider, deviceCode, codeVerifier, extraData, resolvedProxy.proxyOptions));
+      pollForToken(provider, deviceCode, codeVerifier, extraData, resolvedProxy.proxyOptions));
     } else {
       if (!codeVerifier) {
         throw oauthRouteError(
           "OAUTH_VALIDATION_FAILED",
-          "OAuth device session is missing its verifier",
+          "OAuth device session is missing its verifier"
         );
       }
       result = await callOAuthUpstream(() =>
-        pollForToken(provider, deviceCode, codeVerifier, null, resolvedProxy.proxyOptions));
+      pollForToken(provider, deviceCode, codeVerifier, null, resolvedProxy.proxyOptions));
     }
 
     if (result.success) {
@@ -463,7 +464,7 @@ async function pollDeviceCode(provider, input) {
         result.tokens,
         resolvedProxy,
         {},
-        claim,
+        claim
       );
       return { success: true, connection: publicConnection(connection, false) };
     }
@@ -471,13 +472,13 @@ async function pollDeviceCode(provider, input) {
     pending = Boolean(
       result.pending ||
       result.error === "authorization_pending" ||
-      result.error === "slow_down",
+      result.error === "slow_down"
     );
     return {
       success: false,
       error: result.error,
       errorDescription: sanitizeErrorMessage(result.errorDescription || result.error || "Authorization pending"),
-      pending,
+      pending
     };
   } catch (error) {
     throw normalizeOAuthCompletionError(error);
@@ -490,7 +491,7 @@ async function startFixedPortProxy(provider, input) {
   if (!["codex", "xai"].includes(provider)) {
     throw oauthRouteError(
       "OAUTH_VALIDATION_FAILED",
-      "Proxy only supported for codex/xai",
+      "Proxy only supported for codex/xai"
     );
   }
   const appPort = Number(input.appPort ?? input.app_port);
@@ -500,9 +501,9 @@ async function startFixedPortProxy(provider, input) {
 
   return withFixedProxyOperation(provider, async () => {
     const selector = {
-      flowId: typeof input.flowId === "string" ? input.flowId.trim() : undefined,
-      state: typeof input.state === "string" ? input.state.trim() : undefined,
-      provider,
+      flowId: isString(input.flowId) ? input.flowId.trim() : undefined,
+      state: isString(input.state) ? input.state.trim() : undefined,
+      provider
     };
     let flow = getOAuthFlow(selector);
     if (!flow && selector.flowId) {
@@ -513,12 +514,12 @@ async function startFixedPortProxy(provider, input) {
     }
     if (!flow || flow.kind !== "authorization" || !flow.state) {
       throw oauthRouteError(
-        flow && flow.kind !== "authorization"
-          ? "OAUTH_VALIDATION_FAILED"
-          : "OAUTH_SESSION_GONE",
-        flow && flow.kind !== "authorization"
-          ? "OAuth flow type did not match this operation"
-          : "OAuth session expired or was cancelled",
+        flow && flow.kind !== "authorization" ?
+        "OAUTH_VALIDATION_FAILED" :
+        "OAUTH_SESSION_GONE",
+        flow && flow.kind !== "authorization" ?
+        "OAuth flow type did not match this operation" :
+        "OAuth session expired or was cancelled"
       );
     }
 
@@ -530,19 +531,19 @@ async function startFixedPortProxy(provider, input) {
     if (!flow || flow.kind !== "authorization") {
       throw oauthRouteError(
         "OAUTH_SESSION_GONE",
-        "OAuth session was superseded before callback server startup",
+        "OAuth session was superseded before callback server startup"
       );
     }
     const result = await start(appPort);
     if (!result.success && result.reason === "port_busy") {
       throw oauthRouteError(
         "OAUTH_FLOW_CONFLICT",
-        "OAuth callback port is already in use",
+        "OAuth callback port is already in use"
       );
     }
-    const serverSide = result.success
-      ? register({ state: flow.state, flowId: flow.flowId })
-      : false;
+    const serverSide = result.success ?
+    register({ state: flow.state, flowId: flow.flowId }) :
+    false;
     if (result.success && !serverSide) await stop();
     return { ...result, serverSide, state: flow.state, flowId: flow.flowId };
   });
@@ -552,26 +553,26 @@ async function fixedPortStatus(provider, input) {
   if (!["codex", "xai"].includes(provider)) {
     throw oauthRouteError(
       "OAUTH_VALIDATION_FAILED",
-      "Poll only supported for codex/xai",
+      "Poll only supported for codex/xai"
     );
   }
-  const requestedFlowId = typeof input.flowId === "string" ? input.flowId.trim() : "";
+  const requestedFlowId = isString(input.flowId) ? input.flowId.trim() : "";
   if (!requestedFlowId) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Missing OAuth flow ID");
   }
   const flow = getOAuthFlow({
     flowId: requestedFlowId,
-    state: typeof input.state === "string" ? input.state.trim() : undefined,
-    provider,
+    state: isString(input.state) ? input.state.trim() : undefined,
+    provider
   });
   if (!flow) {
     const flowById = getOAuthFlow({ flowId: requestedFlowId, provider });
-    const requestedState = typeof input.state === "string" ? input.state.trim() : "";
+    const requestedState = isString(input.state) ? input.state.trim() : "";
     if (flowById && requestedState && flowById.state !== requestedState) {
       throw oauthRouteError("OAUTH_STATE_MISMATCH", "OAuth state did not match this flow");
     }
   }
-  const state = flow?.state || (typeof input.state === "string" ? input.state.trim() : "");
+  const state = flow?.state || (isString(input.state) ? input.state.trim() : "");
   if (!state) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Missing OAuth state");
   }
@@ -579,13 +580,13 @@ async function fixedPortStatus(provider, input) {
   if (!status || status.flowId !== requestedFlowId) return { status: "unknown" };
   const response = {
     status: status.status,
-    ...(status.connectionId ? { connectionId: status.connectionId } : {}),
-    ...(status.email ? { email: status.email } : {}),
-    ...(status.error ? { error: sanitizeErrorMessage(status.error) } : {}),
+    ...(status.connectionId ? { connectionId: status.connectionId } : null),
+    ...(status.email ? { email: status.email } : null),
+    ...(status.error ? { error: sanitizeErrorMessage(status.error) } : null)
   };
   if (status.status === "done" || status.status === "error") {
-    if (provider === "xai") clearXaiSession(state);
-    else clearCodexSession(state);
+    if (provider === "xai") clearXaiSession(state);else
+    clearCodexSession(state);
   }
   return response;
 }
@@ -594,48 +595,48 @@ async function stopFixedPortProxy(provider, input) {
   if (!["codex", "xai"].includes(provider)) {
     throw oauthRouteError(
       "OAUTH_VALIDATION_FAILED",
-      "Proxy only supported for codex/xai",
+      "Proxy only supported for codex/xai"
     );
   }
   return withFixedProxyOperation(provider, async () => {
     const selector = {
-      flowId: typeof input.flowId === "string" ? input.flowId.trim() : undefined,
-      state: typeof input.state === "string" ? input.state.trim() : undefined,
-      provider,
+      flowId: isString(input.flowId) ? input.flowId.trim() : undefined,
+      state: isString(input.state) ? input.state.trim() : undefined,
+      provider
     };
     const flow = getOAuthFlow(selector);
     const state = flow?.state || selector.state;
-    const session = state
-      ? (provider === "xai" ? getXaiSessionStatus(state) : getCodexSessionStatus(state))
-      : null;
+    const session = state ?
+    provider === "xai" ? getXaiSessionStatus(state) : getCodexSessionStatus(state) :
+    null;
     const ownsSession = Boolean(selector.flowId && session?.flowId === selector.flowId);
     if (!ownsSession) return { success: true, stopped: false };
     if (flow) cancelOAuthFlow({ flowId: flow.flowId, provider });
     if (state) {
-      if (provider === "xai") clearXaiSession(state);
-      else clearCodexSession(state);
+      if (provider === "xai") clearXaiSession(state);else
+      clearCodexSession(state);
     }
-    if (provider === "xai") await stopXaiProxy();
-    else await stopCodexProxy();
+    if (provider === "xai") await stopXaiProxy();else
+    await stopCodexProxy();
     return { success: true, stopped: true };
   });
 }
 
 function cancelServerOAuthFlow(provider, input) {
-  const flowId = typeof input.flowId === "string" ? input.flowId.trim() : "";
-  const state = typeof input.state === "string" ? input.state.trim() : undefined;
+  const flowId = isString(input.flowId) ? input.flowId.trim() : "";
+  const state = isString(input.state) ? input.state.trim() : undefined;
   if (!flowId) return { success: true, cancelled: false };
   const flow = getOAuthFlow({ flowId, state, provider });
   return {
     success: true,
-    cancelled: flow ? cancelOAuthFlow({ flowId, state, provider }) : false,
+    cancelled: flow ? cancelOAuthFlow({ flowId, state, provider }) : false
   };
 }
 
 async function completeXaiManualCode(input) {
-  const code = typeof input.code === "string" ? input.code.trim() : "";
-  const state = typeof input.state === "string" ? input.state.trim() : "";
-  const flowId = typeof input.flowId === "string" ? input.flowId.trim() : "";
+  const code = isString(input.code) ? input.code.trim() : "";
+  const state = isString(input.state) ? input.state.trim() : "";
+  const flowId = isString(input.flowId) ? input.flowId.trim() : "";
   if (!code || !state || !flowId) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Missing required fields");
   }
@@ -643,14 +644,14 @@ async function completeXaiManualCode(input) {
   if (session?.flowId !== flowId) {
     throw oauthRouteError(
       "OAUTH_SESSION_GONE",
-      "xAI OAuth session not found; restart the login flow and paste the code again",
+      "xAI OAuth session not found; restart the login flow and paste the code again"
     );
   }
   const claim = claimBoundOAuthFlow({
     flowId,
     state,
     provider: "xai",
-    kind: "authorization",
+    kind: "authorization"
   });
   try {
     const { connection } = await exchangeAndSaveAuthorizationCode("xai", code, state, claim);
@@ -671,10 +672,10 @@ async function completeXaiManualCode(input) {
 
 async function importToken(provider, body) {
   const providerData = requireOAuthProvider(provider);
-  if (providerData.flowType !== "import_token" || typeof providerData.mapTokens !== "function") {
+  if (providerData.flowType !== "import_token" || !isFunction(providerData.mapTokens)) {
     throw oauthRouteError(
       "OAUTH_VALIDATION_FAILED",
-      `Provider ${provider} does not support import-token`,
+      `Provider ${provider} does not support import-token`
     );
   }
   const rawToken = body.accessToken ?? body.token ?? body.authJson ?? body;
@@ -691,10 +692,10 @@ async function importToken(provider, body) {
     provider,
     authType: "oauth",
     ...tokenData,
-    expiresAt: tokenData.expiresIn
-      ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
-      : null,
-    testStatus: "active",
+    expiresAt: tokenData.expiresIn ?
+    new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() :
+    null,
+    testStatus: "active"
   });
 }
 
@@ -714,7 +715,7 @@ export async function GET(request, { params }) {
         if (!reserved.has(key) && !SAFE_GET_META_KEYS.has(key)) {
           throw oauthRouteError(
             "OAUTH_VALIDATION_FAILED",
-            "OAuth metadata must be submitted in a POST body",
+            "OAuth metadata must be submitted in a POST body"
           );
         }
         if (!reserved.has(key)) meta[key] = value;
@@ -723,7 +724,7 @@ export async function GET(request, { params }) {
         redirectUri: searchParams.get("redirect_uri"),
         ownerId: searchParams.get("ownerId"),
         ...searchProxySelection(searchParams),
-        ...(Object.keys(meta).length ? { meta } : {}),
+        ...(Object.keys(meta).length ? { meta } : null)
       }));
     }
     if (action === "device-code") {
@@ -732,26 +733,26 @@ export async function GET(request, { params }) {
         ownerId: searchParams.get("ownerId"),
         startUrl: searchParams.get("start_url"),
         region: searchParams.get("region"),
-        authMethod: searchParams.get("auth_method"),
+        authMethod: searchParams.get("auth_method")
       }));
     }
     if (action === "start-proxy") {
       return NextResponse.json(await startFixedPortProxy(provider, {
         appPort: searchParams.get("app_port"),
         flowId: searchParams.get("flowId"),
-        state: searchParams.get("state"),
+        state: searchParams.get("state")
       }));
     }
     if (action === "poll-status") {
       return NextResponse.json(await fixedPortStatus(provider, {
         flowId: searchParams.get("flowId"),
-        state: searchParams.get("state"),
+        state: searchParams.get("state")
       }));
     }
     if (action === "stop-proxy") {
       return NextResponse.json(await stopFixedPortProxy(provider, {
         flowId: searchParams.get("flowId"),
-        state: searchParams.get("state"),
+        state: searchParams.get("state")
       }));
     }
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
@@ -773,7 +774,7 @@ export async function POST(request, { params }) {
     } catch {
       return NextResponse.json({ error: "Invalid or empty request body" }, { status: 400 });
     }
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    if (!body || !isObject(body) || Array.isArray(body)) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 

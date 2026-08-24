@@ -1,12 +1,13 @@
 import { BaseExecutor } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { errorJson, jsonResponse, sanitizeErrorMessage } from "./websession-utils.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const BASE_URL = "https://veoaifree.com";
 const AJAX_URL = `${BASE_URL}/wp-admin/admin-ajax.php`;
 const TTS_URL = `${BASE_URL}/video/googletts.php`;
 const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 const POLL_INTERVAL_MS = 20_000;
 const MAX_POLLS = 30;
 const FETCH_TIMEOUT_MS = 30_000;
@@ -19,14 +20,14 @@ function withTimeout(signal) {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason || new Error("Request aborted"));
   const timeout = setTimeout(() => controller.abort(new Error("VeoAIFree request timed out")), FETCH_TIMEOUT_MS);
-  if (signal?.aborted) abort();
-  else signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();else
+  signal?.addEventListener("abort", abort, { once: true });
   return {
     signal: controller.signal,
     cleanup: () => {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", abort);
-    },
+    }
   };
 }
 
@@ -68,7 +69,7 @@ async function postAjax(nonce, params, signal, proxyOptions = null) {
   const res = await fetchWithTimeout(AJAX_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT, Origin: BASE_URL, Referer: `${BASE_URL}/` },
-    body: body.toString(),
+    body: body.toString()
   }, { signal, proxyOptions });
   return res.text();
 }
@@ -112,7 +113,7 @@ async function handleTTS(prompt, voice, lang, signal, proxyOptions = null) {
   const res = await fetchWithTimeout(TTS_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": USER_AGENT, Origin: BASE_URL, Referer: `${BASE_URL}/free-ai-text-to-speech/` },
-    body: JSON.stringify({ text: prompt.slice(0, 10000), voice: voice || "en-US-AvaNeural", lang: lang || "en-US", pitch: "0", speed: "1.0" }),
+    body: JSON.stringify({ text: prompt.slice(0, 10000), voice: voice || "en-US-AvaNeural", lang: lang || "en-US", pitch: "0", speed: "1.0" })
   }, { signal, proxyOptions });
   if (!res.ok) return errorJson(502, `TTS failed (${res.status})`);
   const contentType = res.headers.get("content-type") || "";
@@ -136,15 +137,15 @@ async function handleEnhance(nonce, prompt, signal, proxyOptions = null) {
 }
 
 function promptFromBody(body = {}) {
-  if (typeof body.prompt === "string") return body.prompt;
-  if (typeof body.input === "string") return body.input;
+  if (isString(body.prompt)) return body.prompt;
+  if (isString(body.input)) return body.input;
   const userMsg = Array.isArray(body.messages) ? body.messages.filter((m) => m.role === "user").pop() : null;
-  return typeof userMsg?.content === "string" ? userMsg.content : "";
+  return isString(userMsg?.content) ? userMsg.content : "";
 }
 
 function systemFromBody(body = {}) {
   const systemMsg = Array.isArray(body.messages) ? body.messages.filter((m) => m.role === "system").pop() : null;
-  return typeof systemMsg?.content === "string" ? systemMsg.content : "";
+  return isString(systemMsg?.content) ? systemMsg.content : "";
 }
 
 export class VeoAIFreeWebExecutor extends BaseExecutor {
@@ -175,11 +176,11 @@ export class VeoAIFreeWebExecutor extends BaseExecutor {
     }
 
     const aspectRatio = systemText.match(/aspect[_-]?ratio:\s*(\S+)/i)?.[1] || body.aspect_ratio || body.aspectRatio || "VIDEO_ASPECT_RATIO_LANDSCAPE";
-    const response = intent === "image"
-      ? await handleImage(nonce, prompt, String(aspectRatio).replace("VIDEO_", "IMAGE_"), input.signal, proxyOptions)
-      : intent === "enhance"
-        ? await handleEnhance(nonce, prompt, input.signal, proxyOptions)
-        : await handleVideo(nonce, prompt, aspectRatio, input.signal, proxyOptions);
+    const response = intent === "image" ?
+    await handleImage(nonce, prompt, String(aspectRatio).replace("VIDEO_", "IMAGE_"), input.signal, proxyOptions) :
+    intent === "enhance" ?
+    await handleEnhance(nonce, prompt, input.signal, proxyOptions) :
+    await handleVideo(nonce, prompt, aspectRatio, input.signal, proxyOptions);
     return { response, url: AJAX_URL, headers: {}, transformedBody: { intent, model } };
   }
 }

@@ -2,8 +2,8 @@ import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
-  resolveClientApiKey,
-} from "../services/auth.js";
+  resolveClientApiKey } from
+"../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleImageEditCore } from "open-sse/handlers/imageEditCore.js";
@@ -15,7 +15,7 @@ import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 // Allow large image uploads (mask + image can be several MB).
-export const maxDuration = 300;
+import { isString } from "@/shared/utils/typeChecks.js";export const maxDuration = 300;
 
 /**
  * Handle image-edit request — OpenAI /v1/images/edits multipart passthrough.
@@ -31,17 +31,17 @@ export async function handleImageEdit(request) {
   }
 
   const modelField = formData.get("model");
-  const modelStr = typeof modelField === "string" ? modelField : null;
+  const modelStr = isString(modelField) ? modelField : null;
   const url = new URL(request.url);
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
   const settings = await getSettings();
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+    required: settings.requireApiKey === true
   });
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
+    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key"
   );
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
@@ -99,9 +99,9 @@ async function handleSingleModelImageEdit(modelStr, formData, request, apiKey) {
         log,
         onRequestSuccess: async () => {
           await clearAccountError(credentials.connectionId, credentials, model);
-        },
+        }
       }),
-      "Image edit failed",
+      "Image edit failed"
     );
 
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });

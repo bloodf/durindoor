@@ -13,23 +13,23 @@ import { getModelCapabilityOverride } from "./db/repos/modelCapabilityOverridesR
  * @param {string | { provider?: string | null, model?: string | null }} input
  *   Either a "provider/model" string or an object with provider/model fields.
  * @returns {Promise<{ provider: string | null, model: string | null, maxOutputTokens: number | null }>}
- */
+ */import { isObject, isString } from "@/shared/utils/typeChecks.js";
 export async function getResolvedModelCapabilities(input) {
   let provider = null;
   let model = null;
 
-  if (typeof input === "string") {
+  if (isString(input)) {
     const parsed = parseModel(input);
     provider = parsed.provider;
     model = parsed.model;
-  } else if (input && typeof input === "object") {
+  } else if (input && isObject(input)) {
     provider = input.provider ? resolveProviderAlias(input.provider) : null;
     model = input.model || null;
   }
 
   const base = getCapabilitiesForModel(provider, model);
   const maxOutputTokens =
-    (await getModelCapabilityOverride(provider, model, "max_token")) ?? base.maxOutput ?? null;
+  (await getModelCapabilityOverride(provider, model, "max_token")) ?? base.maxOutput ?? null;
 
   return { provider, model, maxOutputTokens };
 }

@@ -2,93 +2,94 @@
 
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const KNOWN_SVGS = new Set([
-  "anthropic",
-  "api-airforce",
-  "assemblyai",
-  "auggie",
-  "azure",
-  "bluesminds",
-  "brave-search",
-  "byteplus",
-  "bytez",
-  "cartesia",
-  "cerebras",
-  "charm-hyper",
-  "chipotle",
-  "chutes",
-  "claude",
-  "cline",
-  "codex",
-  "cohere",
-  "comfyui",
-  "continue",
-  "copilot",
-  "crof",
-  "cursor",
-  "deepgram",
-  "deepseek",
-  "dgrid",
-  "digitalocean",
-  "dit",
-  "droid",
-  "duckduckgo-web",
-  "elevenlabs",
-  "exa",
-  "factory",
-  "fireworks",
-  "freeaiapikey",
-  "freemodel-dev",
-  "galadriel",
-  "gemini",
-  "gitlawb",
-  "groq",
-  "hackclub",
-  "haiper",
-  "hcnsec",
-  "huggingface",
-  "hyperbolic",
-  "ideogram",
-  "inworld",
-  "kenari",
-  "kilocode",
-  "kimchi",
-  "kimi",
-  "kiro",
-  "leonardo",
-  "llm7",
-  "minimax",
-  "mistral",
-  "nebius",
-  "nube",
-  "nvidia",
-  "ollama",
-  "openai",
-  "openclaw",
-  "opencode",
-  "openrouter",
-  "perplexity",
-  "playht",
-  "qiniu",
-  "qwen",
-  "recraft",
-  "requesty",
-  "searchapi",
-  "sumopod",
-  "t3-web",
-  "tavily",
-  "theoldllm",
-  "tokenrouter",
-  "uncloseai",
-  "veoaifree-web",
-  "wafer",
-  "x5lab",
-  "xai",
-  "yuanbao-web",
-  "zenmux",
-  "zenmux-free",
-]);
+"anthropic",
+"api-airforce",
+"assemblyai",
+"auggie",
+"azure",
+"bluesminds",
+"brave-search",
+"byteplus",
+"bytez",
+"cartesia",
+"cerebras",
+"charm-hyper",
+"chipotle",
+"chutes",
+"claude",
+"cline",
+"codex",
+"cohere",
+"comfyui",
+"continue",
+"copilot",
+"crof",
+"cursor",
+"deepgram",
+"deepseek",
+"dgrid",
+"digitalocean",
+"dit",
+"droid",
+"duckduckgo-web",
+"elevenlabs",
+"exa",
+"factory",
+"fireworks",
+"freeaiapikey",
+"freemodel-dev",
+"galadriel",
+"gemini",
+"gitlawb",
+"groq",
+"hackclub",
+"haiper",
+"hcnsec",
+"huggingface",
+"hyperbolic",
+"ideogram",
+"inworld",
+"kenari",
+"kilocode",
+"kimchi",
+"kimi",
+"kiro",
+"leonardo",
+"llm7",
+"minimax",
+"mistral",
+"nebius",
+"nube",
+"nvidia",
+"ollama",
+"openai",
+"openclaw",
+"opencode",
+"openrouter",
+"perplexity",
+"playht",
+"qiniu",
+"qwen",
+"recraft",
+"requesty",
+"searchapi",
+"sumopod",
+"t3-web",
+"tavily",
+"theoldllm",
+"tokenrouter",
+"uncloseai",
+"veoaifree-web",
+"wafer",
+"x5lab",
+"xai",
+"yuanbao-web",
+"zenmux",
+"zenmux-free"]
+);
 
 export default function ProviderIcon({
   src,
@@ -96,7 +97,7 @@ export default function ProviderIcon({
   size = 32,
   className = "",
   fallbackText = "?",
-  fallbackColor,
+  fallbackColor
 }) {
   const [stage, setStage] = useState(0);
 
@@ -105,7 +106,7 @@ export default function ProviderIcon({
   }, [src]);
 
   const candidates = [src];
-  const pngMatch = typeof src === "string" && src.match(/^\/providers\/([^/]+)\.png$/i);
+  const pngMatch = isString(src) && src.match(/^\/providers\/([^/]+)\.png$/i);
   if (pngMatch && KNOWN_SVGS.has(pngMatch[1])) {
     candidates.unshift(`/providers/${pngMatch[1]}.svg`);
   }
@@ -118,12 +119,12 @@ export default function ProviderIcon({
           width: size,
           height: size,
           color: fallbackColor || undefined,
-          fontSize: Math.max(10, Math.floor(size * 0.38)),
-        }}
-      >
+          fontSize: Math.max(10, Math.floor(size * 0.38))
+        }}>
+        
         {fallbackText}
-      </span>
-    );
+      </span>);
+
   }
 
   return (
@@ -134,9 +135,9 @@ export default function ProviderIcon({
       height={size}
       style={{ maxWidth: size, maxHeight: size }}
       className={className}
-      onError={() => setStage(s => s + 1)}
-    />
-  );
+      onError={() => setStage((s) => s + 1)} />);
+
+
 }
 
 ProviderIcon.propTypes = {
@@ -145,5 +146,5 @@ ProviderIcon.propTypes = {
   size: PropTypes.number,
   className: PropTypes.string,
   fallbackText: PropTypes.string,
-  fallbackColor: PropTypes.string,
+  fallbackColor: PropTypes.string
 };

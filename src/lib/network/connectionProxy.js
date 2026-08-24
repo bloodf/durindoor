@@ -1,4 +1,5 @@
 import { getProxyPoolById } from "@/models";
+import { isObject } from "@/shared/utils/typeChecks.js";
 
 const OAUTH_PROXY_MODES = new Set(["legacy", "direct", "strict-pool"]);
 
@@ -22,7 +23,7 @@ function directProxyConfig() {
     connectionNoProxy: "",
     vercelRelayUrl: "",
     strictProxy: false,
-    disableEnvProxy: true,
+    disableEnvProxy: true
   };
 }
 
@@ -37,7 +38,7 @@ function failedStrictProxyConfig(proxyPoolId, reason) {
     connectionNoProxy: "",
     vercelRelayUrl: "",
     strictProxy: true,
-    disableEnvProxy: true,
+    disableEnvProxy: true
   };
 }
 
@@ -73,7 +74,7 @@ export function pickProxyPoolId(poolIds, strategy, providerId) {
  */
 function normalizeLegacyProxy(providerSpecificData = {}) {
   const connectionProxyEnabled =
-    providerSpecificData?.connectionProxyEnabled === true;
+  providerSpecificData?.connectionProxyEnabled === true;
 
   const connectionProxyUrl = normalizeString(
     providerSpecificData?.connectionProxyUrl
@@ -86,7 +87,7 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
   return {
     connectionProxyEnabled,
     connectionProxyUrl,
-    connectionNoProxy,
+    connectionNoProxy
   };
 }
 
@@ -101,10 +102,10 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
  * proxy, then no configured proxy.
  */
 export async function resolveConnectionProxyConfig(
-  providerSpecificData = {}
-) {
+providerSpecificData = {})
+{
   const oauthProxy = providerSpecificData?.oauthProxy;
-  const hasOAuthMode = oauthProxy && typeof oauthProxy === "object" && hasOwn(oauthProxy, "mode");
+  const hasOAuthMode = oauthProxy && isObject(oauthProxy) && hasOwn(oauthProxy, "mode");
   const oauthMode = hasOAuthMode ? normalizeString(oauthProxy.mode) : null;
 
   if (hasOAuthMode && !OAUTH_PROXY_MODES.has(oauthMode)) {
@@ -117,11 +118,11 @@ export async function resolveConnectionProxyConfig(
 
   try {
     const strictOAuthPool = oauthMode === "strict-pool";
-    const proxyPoolIdRaw = strictOAuthPool
-      ? normalizeString(oauthProxy?.poolId)
-      : oauthMode === "legacy"
-        ? ""
-        : normalizeString(providerSpecificData?.proxyPoolId);
+    const proxyPoolIdRaw = strictOAuthPool ?
+    normalizeString(oauthProxy?.poolId) :
+    oauthMode === "legacy" ?
+    "" :
+    normalizeString(providerSpecificData?.proxyPoolId);
 
     if (strictOAuthPool && (!proxyPoolIdRaw || proxyPoolIdRaw === "__none__")) {
       return failedStrictProxyConfig(null, "proxy_pool_unavailable");
@@ -143,9 +144,9 @@ export async function resolveConnectionProxyConfig(
       const noProxy = normalizeString(proxyPool?.noProxy);
 
       const isValidPool =
-        proxyPool &&
-        proxyPool.isActive === true &&
-        proxyUrl;
+      proxyPool &&
+      proxyPool.isActive === true &&
+      proxyUrl;
 
       if (isValidPool) {
         /**
@@ -166,7 +167,7 @@ export async function resolveConnectionProxyConfig(
             strictProxy: strictOAuthPool || proxyPool.strictProxy === true,
             disableEnvProxy: strictOAuthPool,
 
-            vercelRelayUrl: proxyUrl, // Still mapped to vercelRelayUrl in the unified payload since they use the exact same header spec
+            vercelRelayUrl: proxyUrl // Still mapped to vercelRelayUrl in the unified payload since they use the exact same header spec
           };
         }
 
@@ -184,7 +185,7 @@ export async function resolveConnectionProxyConfig(
           connectionNoProxy: noProxy,
 
           strictProxy: strictOAuthPool || proxyPool.strictProxy === true,
-          disableEnvProxy: strictOAuthPool,
+          disableEnvProxy: strictOAuthPool
         };
       }
 
@@ -199,9 +200,9 @@ export async function resolveConnectionProxyConfig(
      * -----------------------------
      */
     if (oauthMode !== "direct" &&
-      legacy.connectionProxyEnabled &&
-      legacy.connectionProxyUrl
-    ) {
+    legacy.connectionProxyEnabled &&
+    legacy.connectionProxyUrl)
+    {
       return {
         source: "legacy",
 
@@ -210,7 +211,7 @@ export async function resolveConnectionProxyConfig(
 
         ...legacy,
         strictProxy: false,
-        disableEnvProxy: false,
+        disableEnvProxy: false
       };
     }
 
@@ -227,7 +228,7 @@ export async function resolveConnectionProxyConfig(
 
       ...legacy,
       strictProxy: false,
-      disableEnvProxy: false,
+      disableEnvProxy: false
     };
   } catch {
     if (oauthMode === "strict-pool") {
@@ -252,7 +253,7 @@ export async function resolveConnectionProxyConfig(
       connectionNoProxy: "",
 
       strictProxy: false,
-      disableEnvProxy: false,
+      disableEnvProxy: false
     };
   }
 }

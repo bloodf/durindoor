@@ -37,6 +37,7 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { REVIEWED_ORPHANS } from "../open-sse/config/catalogAllowlist.js";
+import { isString } from "../src/shared/utils/typeChecks.js";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -85,7 +86,7 @@ async function loadPricing() {
   return {
     model: mod.MODEL_PRICING || {},
     provider: mod.PROVIDER_PRICING || {},
-    pattern: mod.PATTERN_PRICING || [],
+    pattern: mod.PATTERN_PRICING || []
   };
 }
 
@@ -143,10 +144,10 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
 
     for (let i = 0; i < models.length; i++) {
       const raw = models[i];
-      const m = typeof raw === "string" ? { id: raw } : raw || {};
+      const m = isString(raw) ? { id: raw } : raw || {};
       const id = m.id;
 
-      if (typeof id !== "string" || id.length === 0) {
+      if (!isString(id) || id.length === 0) {
         addFinding(null, `[${provider}] model[${i}] has empty/non-string id (${JSON.stringify(id)})`);
         continue;
       }
@@ -194,10 +195,10 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
     const WIRE_ONLY_UPSTREAM_ID = /\((?:high|medium|low)\)$/;
     for (let i = 0; i < models.length; i++) {
       const raw = models[i];
-      const m = typeof raw === "string" ? { id: raw } : raw || {};
-      if (m.upstreamModelId != null
-        && !idSet.has(m.upstreamModelId)
-        && !WIRE_ONLY_UPSTREAM_ID.test(m.upstreamModelId)) {
+      const m = isString(raw) ? { id: raw } : raw || {};
+      if (m.upstreamModelId != null &&
+      !idSet.has(m.upstreamModelId) &&
+      !WIRE_ONLY_UPSTREAM_ID.test(m.upstreamModelId)) {
         addFinding(
           `${provider}:${m.id}`,
           `[${provider}] model "${m.id}" upstreamModelId "${m.upstreamModelId}" resolves to no id in this provider`
@@ -284,9 +285,9 @@ function modelArraySpans(source) {
         i++;
         continue;
       }
-      if (ch === '"' || ch === "'") inStr = ch;
-      else if (ch === "[") depth++;
-      else if (ch === "]") depth--;
+      if (ch === '"' || ch === "'") inStr = ch;else
+      if (ch === "[") depth++;else
+      if (ch === "]") depth--;
       i++;
     }
     spans.push([bodyStart, i - 1]); // excludes the closing ]
@@ -364,27 +365,27 @@ function providerFromPath(path, layout) {
 // up in the report (the plan names these as Phase-6 inputs). `bucket` is the
 // report section; `path` is the per-tree location (null when that tree has none).
 const EXTRA_SOURCES = [
-  {
-    bucket: "__pricing__",
-    ours: "open-sse/providers/pricing.js",
-    upstream: "open-sse/providers/pricing.js",
-    omniroute: "open-sse/services/providerCostData.ts",
-  },
-  {
-    bucket: "__capabilities__",
-    ours: "open-sse/providers/capabilities.js",
-    upstream: "open-sse/providers/capabilities.js",
-    omniroute: "open-sse/services/modelCapabilities.ts",
-  },
-  {
-    // Ingested per plan; concrete ids are rare here (mostly `pattern:` globs,
-    // which are excluded from comparison). Bucket may legitimately be empty.
-    bucket: "__thinking-levels__",
-    ours: "open-sse/providers/thinkingLevels.js",
-    upstream: "open-sse/providers/thinkingLevels.js",
-    omniroute: null,
-  },
-];
+{
+  bucket: "__pricing__",
+  ours: "open-sse/providers/pricing.js",
+  upstream: "open-sse/providers/pricing.js",
+  omniroute: "open-sse/services/providerCostData.ts"
+},
+{
+  bucket: "__capabilities__",
+  ours: "open-sse/providers/capabilities.js",
+  upstream: "open-sse/providers/capabilities.js",
+  omniroute: "open-sse/services/modelCapabilities.ts"
+},
+{
+  // Ingested per plan; concrete ids are rare here (mostly `pattern:` globs,
+  // which are excluded from comparison). Bucket may legitimately be empty.
+  bucket: "__thinking-levels__",
+  ours: "open-sse/providers/thinkingLevels.js",
+  upstream: "open-sse/providers/thinkingLevels.js",
+  omniroute: null
+}];
+
 
 function addExtras(map, ref, key) {
   for (const src of EXTRA_SOURCES) {
@@ -480,10 +481,10 @@ export function extractExtraIds(source, kind) {
  */
 export function renderReport({ ours, upstream = null, omniroute = null, shas, refs = {} }) {
   const providers = new Set([
-    ...ours.keys(),
-    ...(upstream ? upstream.keys() : []),
-    ...(omniroute ? omniroute.keys() : []),
-  ]);
+  ...ours.keys(),
+  ...(upstream ? upstream.keys() : []),
+  ...(omniroute ? omniroute.keys() : [])]
+  );
 
   const lines = [];
   lines.push("# Model Catalog Report");
@@ -500,8 +501,8 @@ export function renderReport({ ours, upstream = null, omniroute = null, shas, re
   const missingHere = [];
   for (const provider of [...providers].sort()) {
     const o = ours.get(provider) || new Set();
-    const u = (upstream && upstream.get(provider)) || new Set();
-    const om = (omniroute && omniroute.get(provider)) || new Set();
+    const u = upstream && upstream.get(provider) || new Set();
+    const om = omniroute && omniroute.get(provider) || new Set();
     const ids = new Set([...o, ...u, ...om]);
     if (ids.size === 0) continue;
 
@@ -513,7 +514,7 @@ export function renderReport({ ours, upstream = null, omniroute = null, shas, re
       lines.push(
         `| \`${id}\` | ${tick(o, id)} | ${upstream ? tick(u, id) : "—"} | ${omniroute ? tick(om, id) : "—"} |`
       );
-      if (!o.has(id) && ((upstream && u.has(id)) || (omniroute && om.has(id)))) {
+      if (!o.has(id) && (upstream && u.has(id) || omniroute && om.has(id))) {
         missingHere.push({ provider, id });
       }
     }
@@ -538,19 +539,19 @@ export async function comparisonReport(upstreamRef, omnirouteRef) {
   const omnirouteSha = omnirouteRef ? revParse(omnirouteRef) : null;
 
   const ours = await loadOurIdMap();
-  const upstream = upstreamRef
-    ? loadForeignIdMap(upstreamRef, UPSTREAM_REGISTRY_DIR, "upstream", ".js", "upstream")
-    : null;
-  const omniroute = omnirouteRef
-    ? loadForeignIdMap(omnirouteRef, OMN_ROUTE_REGISTRY_DIR, "omniroute", ".ts", "omniroute")
-    : null;
+  const upstream = upstreamRef ?
+  loadForeignIdMap(upstreamRef, UPSTREAM_REGISTRY_DIR, "upstream", ".js", "upstream") :
+  null;
+  const omniroute = omnirouteRef ?
+  loadForeignIdMap(omnirouteRef, OMN_ROUTE_REGISTRY_DIR, "omniroute", ".ts", "omniroute") :
+  null;
 
   const { markdown } = renderReport({
     ours,
     upstream,
     omniroute,
     shas: { ours: oursSha, upstream: upstreamSha, omniroute: omnirouteSha },
-    refs: { upstream: upstreamRef, omniroute: omnirouteRef },
+    refs: { upstream: upstreamRef, omniroute: omnirouteRef }
   });
   return markdown;
 }
@@ -560,11 +561,11 @@ function parseArgs(argv) {
   const out = { upstreamRef: null, omnirouteRef: null, out: "model-catalog-report.md", strict: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--upstream-ref") out.upstreamRef = argv[++i];
-    else if (a === "--omniroute-ref") out.omnirouteRef = argv[++i];
-    else if (a === "--out") out.out = argv[++i];
-    else if (a === "--strict") out.strict = true;
-    else if (a === "--help" || a === "-h") out.help = true;
+    if (a === "--upstream-ref") out.upstreamRef = argv[++i];else
+    if (a === "--omniroute-ref") out.omnirouteRef = argv[++i];else
+    if (a === "--out") out.out = argv[++i];else
+    if (a === "--strict") out.strict = true;else
+    if (a === "--help" || a === "-h") out.help = true;
   }
   return out;
 }
@@ -588,9 +589,9 @@ async function main() {
   // --strict shows everything. Exit 0 when no un-reviewed findings remain.
   const findings = await localAudit(undefined, undefined, undefined, { strict: args.strict });
   if (findings.length === 0) {
-    console.log(args.strict
-      ? "catalog audit: clean (no findings)"
-      : "catalog audit: clean (no unreviewed findings)");
+    console.log(args.strict ?
+    "catalog audit: clean (no findings)" :
+    "catalog audit: clean (no unreviewed findings)");
     process.exit(0);
   }
   console.error(`catalog audit: ${findings.length} finding(s):`);

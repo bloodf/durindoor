@@ -5,6 +5,7 @@ import { getMitmAlias, setMitmAliasAll } from "@/models";
 import { getMitmStatus } from "@/mitm/manager";
 import { writeAliasForTool } from "@/lib/mitmAliasCache";
 import aliasConfig from "@/mitm/aliasConfig";
+import { isObject } from "@/shared/utils/typeChecks.js";
 
 const { normalizeAliasMappings, hasInvalidReasoningEffort } = aliasConfig;
 
@@ -26,7 +27,7 @@ export async function PUT(request) {
   try {
     const { tool, mappings } = await request.json();
 
-    if (!tool || !mappings || typeof mappings !== "object" || Array.isArray(mappings)) {
+    if (!tool || !mappings || !isObject(mappings) || Array.isArray(mappings)) {
       return NextResponse.json({ error: "tool and mappings required" }, { status: 400 });
     }
     if (hasInvalidReasoningEffort(mappings)) {

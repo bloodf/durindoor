@@ -11,19 +11,19 @@ import { createProviderConnection } from "@/models";
  * - accessToken: string - Access token from cursorAuth/accessToken
  * - machineId: string - Machine ID from storage.serviceMachineId
  * - cachedEmail: string - Optional email from cursorAuth/cachedEmail
- */
+ */import { isString } from "@/shared/utils/typeChecks.js";
 export async function POST(request) {
   try {
     const { accessToken, machineId, cachedEmail: bodyCachedEmail } = await request.json();
 
-    if (!accessToken || typeof accessToken !== "string") {
+    if (!accessToken || !isString(accessToken)) {
       return NextResponse.json(
         { error: "Access token is required" },
         { status: 400 }
       );
     }
 
-    if (!machineId || typeof machineId !== "string") {
+    if (!machineId || !isString(machineId)) {
       return NextResponse.json(
         { error: "Machine ID is required" },
         { status: 400 }
@@ -38,19 +38,19 @@ export async function POST(request) {
       machineId.trim()
     );
 
-    let cachedEmail = typeof bodyCachedEmail === "string" ? bodyCachedEmail.trim() : null;
+    let cachedEmail = isString(bodyCachedEmail) ? bodyCachedEmail.trim() : null;
     if (!cachedEmail) {
       try {
         const localAuth = await findAndReadCursorLocalAuth();
         cachedEmail = localAuth?.cachedEmail || null;
       } catch {
+
         // Local DB lookup is best-effort.
-      }
-    }
+      }}
 
     const identity = cursorService.resolveIdentity({
       accessToken: tokenData.accessToken,
-      cachedEmail,
+      cachedEmail
     });
 
     // Save to database
@@ -67,9 +67,9 @@ export async function POST(request) {
         authMethod: "imported",
         provider: "Imported",
         userId: identity.userId,
-        ...(identity.email ? { cachedEmail: identity.email } : {}),
+        ...(identity.email ? { cachedEmail: identity.email } : null)
       },
-      testStatus: "active",
+      testStatus: "active"
     });
 
     return NextResponse.json({
@@ -77,8 +77,8 @@ export async function POST(request) {
       connection: {
         id: connection.id,
         provider: connection.provider,
-        email: connection.email,
-      },
+        email: connection.email
+      }
     });
   } catch (error) {
     console.log("Cursor import token error:", error);
@@ -99,18 +99,18 @@ export async function GET() {
     method: "import_token",
     instructions,
     requiredFields: [
-      {
-        name: "accessToken",
-        label: "Access Token",
-        description: "From cursorAuth/accessToken in state.vscdb",
-        type: "textarea",
-      },
-      {
-        name: "machineId",
-        label: "Machine ID",
-        description: "From storage.serviceMachineId in state.vscdb",
-        type: "text",
-      },
-    ],
+    {
+      name: "accessToken",
+      label: "Access Token",
+      description: "From cursorAuth/accessToken in state.vscdb",
+      type: "textarea"
+    },
+    {
+      name: "machineId",
+      label: "Machine ID",
+      description: "From storage.serviceMachineId in state.vscdb",
+      type: "text"
+    }]
+
   });
 }

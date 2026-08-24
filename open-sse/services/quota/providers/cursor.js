@@ -6,8 +6,8 @@ import {
   quotaMetadata,
   quotaPercent,
   quotaScopedKey,
-  ratioQuotaRow,
-} from "../normalize.js";
+  ratioQuotaRow } from
+"../normalize.js";
 import {
   connectionCredential,
   connectionData,
@@ -15,8 +15,9 @@ import {
   futureResetAt,
   missingCredential,
   providerFailure,
-  providerSuccess,
-} from "../providerHelpers.js";
+  providerSuccess } from
+"../providerHelpers.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 function decodeCursorUserId(token) {
   try {
@@ -24,14 +25,14 @@ function decodeCursorUserId(token) {
     if (parts.length !== 3) return null;
     const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const decoded = JSON.parse(Buffer.from(payload, "base64").toString("utf8"));
-    return typeof decoded.sub === "string" && decoded.sub.trim() ? decoded.sub.trim() : null;
+    return isString(decoded.sub) && decoded.sub.trim() ? decoded.sub.trim() : null;
   } catch {
     return null;
   }
 }
 
 function safeCursorUserId(value) {
-  return typeof value === "string" && /^[A-Za-z0-9._|:-]{1,256}$/.test(value.trim()) ? value.trim() : null;
+  return isString(value) && /^[A-Za-z0-9._|:-]{1,256}$/.test(value.trim()) ? value.trim() : null;
 }
 
 function cursorSession(connection, storedToken) {
@@ -40,15 +41,15 @@ function cursorSession(connection, storedToken) {
   const token = separator > 0 ? storedToken.slice(separator + 2) : storedToken;
   if (!token || /[\u0000-\u001f\u007f]/.test(token)) return null;
   const data = connectionData(connection);
-  const userId = safeCursorUserId(data.userId)
-    || safeCursorUserId(data.accountId)
-    || legacyUserId
-    || safeCursorUserId(decodeCursorUserId(token));
+  const userId = safeCursorUserId(data.userId) ||
+  safeCursorUserId(data.accountId) ||
+  legacyUserId ||
+  safeCursorUserId(decodeCursorUserId(token));
   if (!userId) return null;
   return {
     token,
     userId,
-    accountKey: quotaScopedKey("account", userId, { privateValue: true }),
+    accountKey: quotaScopedKey("account", userId, { privateValue: true })
   };
 }
 
@@ -63,14 +64,14 @@ function centsWindow({ used, limit, name, accountKey, resetAt, plan }) {
     used: usedCents / 100,
     unit: "usd",
     resetAt,
-    metadata: quotaMetadata({ plan }),
+    metadata: quotaMetadata({ plan })
   });
 }
 
 export function normalizeCursorDashboardQuota(payload, {
   accountKey = null,
   plan = null,
-  now = Date.now(),
+  now = Date.now()
 } = {}) {
   const data = asRecord(payload);
   if (!data) return null;
@@ -87,7 +88,7 @@ export function normalizeCursorDashboardQuota(payload, {
     name: "total",
     accountKey,
     resetAt,
-    plan,
+    plan
   });
   if (!total) return null;
   rows.push(total);
@@ -100,15 +101,15 @@ export function normalizeCursorDashboardQuota(payload, {
       dimensionKey: quotaScopedKey("requests", name),
       remainingRatio: 1 - usedRatio,
       resetAt,
-      metadata: quotaMetadata({ plan }),
+      metadata: quotaMetadata({ plan })
     });
     if (!row) return null;
     rows.push(row);
   }
   for (const [limitField, usedField, name] of [
-    ["individualLimit", "individualUsed", "on-demand-individual"],
-    ["pooledLimit", "pooledUsed", "on-demand-team"],
-  ]) {
+  ["individualLimit", "individualUsed", "on-demand-individual"],
+  ["pooledLimit", "pooledUsed", "on-demand-team"]])
+  {
     if (spend[limitField] === undefined) continue;
     const row = centsWindow({ used: spend[usedField], limit: spend[limitField], name, accountKey, resetAt, plan });
     if (!row) return null;
@@ -136,7 +137,7 @@ export function normalizeCursorFallbackQuota(payload, { accountKey = null, now =
       limit,
       used,
       unit: "requests",
-      resetAt,
+      resetAt
     }));
   }
   return rows.filter(Boolean);
@@ -156,15 +157,15 @@ export async function fetchCursorQuota(context) {
       Referer: config.referer,
       "Content-Type": "application/json",
       Accept: "application/json",
-      "User-Agent": config.userAgent,
+      "User-Agent": config.userAgent
     },
-    body: "{}",
+    body: "{}"
   });
   if (!result.ok) return providerFailure(config, result);
   const rows = normalizeCursorDashboardQuota(result.data, {
     accountKey: session.accountKey,
     plan: "Cursor Pro",
-    now: new Date(result.attemptedAt).getTime(),
+    now: new Date(result.attemptedAt).getTime()
   });
   if (rows === null) return providerFailure(config, { outcome: "malformed", attemptedAt: result.attemptedAt });
   return providerSuccess(config, rows, result.attemptedAt);

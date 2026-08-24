@@ -11,11 +11,11 @@ import { serviceStatus } from "./autoConfigureStatus.js";
 // Absence (pxpipe/firecrawl not present, headroom not reachable) must surface as "Unavailable"
 
 // Service display config keyed on report.services entries from runAutoConfigure.
-const SERVICE_META = {
+import { isString } from "@/shared/utils/typeChecks.js";const SERVICE_META = {
   headroom: { label: "Headroom", icon: "compress" },
   pxpipe: { label: "PxPipe", icon: "token" },
   firecrawl: { label: "Firecrawl", icon: "travel_explore" },
-  toggles: { label: "Toggles", icon: "toggle_on" },
+  toggles: { label: "Toggles", icon: "toggle_on" }
 };
 
 function isCommandAction(action) {
@@ -30,7 +30,7 @@ function ActionEntry({ action }) {
     return <SetupDiagnosticCard diagnostic={diagnostic} />;
   }
 
-  if (typeof action !== "string") return null;
+  if (!isString(action)) return null;
 
   if (!isCommandAction(action)) {
     return <span className="whitespace-pre-wrap break-words text-xs text-text-muted">{action}</span>;
@@ -42,8 +42,8 @@ function ActionEntry({ action }) {
       <Button variant="secondary" size="sm" onClick={() => copy(action, action)}>
         {copied === action ? "Copied" : "Copy"}
       </Button>
-    </div>
-  );
+    </div>);
+
 }
 
 
@@ -62,57 +62,57 @@ function ServiceRow({ name, svc, dryRun }) {
         </div>
         <Badge variant={st.variant} size="sm" dot>{st.label}</Badge>
       </div>
-      {actions.length > 0 && (
-        <ul className="mt-1 space-y-0.5">
-          {actions.map((action, i) => (
-            <li key={i}>
+      {actions.length > 0 &&
+      <ul className="mt-1 space-y-0.5">
+          {actions.map((action, i) =>
+        <li key={i}>
               <ActionEntry action={action} />
             </li>
-          ))}
+        )}
         </ul>
-      )}
-    </div>
-  );
+      }
+    </div>);
+
 }
 
 // Structured summary for either a dry-run status (page prop) or a run report.
 // Both share services + actions; reports add dryRun/changed.
 function ResultSummary({ title, services, actions, dryRun, changed }) {
   const entries = Object.entries(services || {});
-  const headline = dryRun
-    ? `Preview — ${changed ? "would apply changes" : "nothing to change"}`
-    : null;
+  const headline = dryRun ?
+  `Preview — ${changed ? "would apply changes" : "nothing to change"}` :
+  null;
   return (
     <div className="rounded-lg border border-border bg-surface/30 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-text-main">{title}</h2>
         {headline && <Badge variant={changed ? "warning" : "success"} size="sm" dot>{headline}</Badge>}
       </div>
-      {entries.length > 0 ? (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {entries.map(([name, svc]) => (
-            <ServiceRow key={name} name={name} svc={svc} dryRun={dryRun} />
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-text-muted">No services reported.</p>
-      )}
-      {Array.isArray(actions) && actions.length > 0 && (
-        <details className="mt-3">
+      {entries.length > 0 ?
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {entries.map(([name, svc]) =>
+        <ServiceRow key={name} name={name} svc={svc} dryRun={dryRun} />
+        )}
+        </div> :
+
+      <p className="text-xs text-text-muted">No services reported.</p>
+      }
+      {Array.isArray(actions) && actions.length > 0 &&
+      <details className="mt-3">
           <summary className="cursor-pointer text-xs font-medium text-text-muted">
             Action log ({actions.length})
           </summary>
           <ul className="mt-2 space-y-0.5">
-            {actions.map((action, i) => (
-              <li key={i}>
+            {actions.map((action, i) =>
+          <li key={i}>
                 <ActionEntry action={action} />
               </li>
-            ))}
+          )}
           </ul>
         </details>
-      )}
-    </div>
-  );
+      }
+    </div>);
+
 }
 
 export default function AutoConfigureClient({ status }) {
@@ -128,7 +128,7 @@ export default function AutoConfigureClient({ status }) {
       const res = await fetch("/api/settings/auto-configure", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ dryRun }),
+        body: JSON.stringify({ dryRun })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -156,45 +156,45 @@ export default function AutoConfigureClient({ status }) {
             type="checkbox"
             checked={dryRun}
             onChange={(e) => setDryRun(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
-          />
+            className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500" />
+          
           Dry run (preview only)
         </label>
 
         <button
           onClick={run}
           disabled={loading}
-          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+          
           {loading ? "Running..." : "Run auto-configure"}
         </button>
       </div>
 
-      {error && (
-        <div className="rounded border border-red-800 bg-red-900/30 p-4 text-red-200">
+      {error &&
+      <div className="rounded border border-red-800 bg-red-900/30 p-4 text-red-200">
           <span className="whitespace-pre-wrap break-words">{error}</span>
         </div>
-      )}
+      }
 
-      {status && !report && (
-        <ResultSummary
-          title="Status"
-          services={status.services}
-          actions={status.actions}
-          dryRun
-          changed={status.wouldChange}
-        />
-      )}
+      {status && !report &&
+      <ResultSummary
+        title="Status"
+        services={status.services}
+        actions={status.actions}
+        dryRun
+        changed={status.wouldChange} />
 
-      {report && (
-        <ResultSummary
-          title={report.dryRun ? "Dry run result" : "Result"}
-          services={report.services}
-          actions={report.actions}
-          dryRun={report.dryRun}
-          changed={report.dryRun ? report.wouldChange : report.changed}
-        />
-      )}
-    </div>
-  );
+      }
+
+      {report &&
+      <ResultSummary
+        title={report.dryRun ? "Dry run result" : "Result"}
+        services={report.services}
+        actions={report.actions}
+        dryRun={report.dryRun}
+        changed={report.dryRun ? report.wouldChange : report.changed} />
+
+      }
+    </div>);
+
 }

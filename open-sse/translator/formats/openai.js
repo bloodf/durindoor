@@ -3,7 +3,7 @@ import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, VALID_OPENAI_CONTENT_TYPES, VALID_OPE
 import { collapseTextParts } from "../concerns/message.js";
 
 // Re-export valid-type lists (moved to schema/blocks.js) to keep existing importers working.
-export { VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES };
+import { isObject, isString } from "@/shared/utils/typeChecks.js";export { VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES };
 
 // Filter messages to OpenAI standard format
 // Remove: thinking, redacted_thinking, signature, and other non-OpenAI blocks
@@ -17,7 +17,7 @@ export function filterToOpenAIFormat(body, opts = {}) {
     return keepCache && cache_control ? { ...rest, cache_control } : rest;
   }
 
-  body.messages = body.messages.map(msg => {
+  body.messages = body.messages.map((msg) => {
     // Normalize developer role to system (many providers don't support developer)
     if (msg.role === ROLE.DEVELOPER) msg = { ...msg, role: ROLE.SYSTEM };
 
@@ -28,7 +28,7 @@ export function filterToOpenAIFormat(body, opts = {}) {
     if (msg.role === ROLE.ASSISTANT && msg.tool_calls?.length) return msg;
 
     // Handle string content
-    if (typeof msg.content === "string") return msg;
+    if (isString(msg.content)) return msg;
 
     // Handle array content
     if (Array.isArray(msg.content)) {
@@ -49,30 +49,30 @@ export function filterToOpenAIFormat(body, opts = {}) {
           filteredContent.push(stripBlock(block));
         }
       }
-      
+
       // If all content was filtered, add empty text
       if (filteredContent.length === 0) {
         filteredContent.push({ type: OPENAI_BLOCK.TEXT, text: "" });
       }
-      
+
       return { ...msg, content: keepCache ? filteredContent : collapseTextParts(filteredContent) };
     }
-    
+
     return msg;
   });
-  
+
   // Filter out messages with only empty text (but NEVER filter tool messages)
-  body.messages = body.messages.filter(msg => {
+  body.messages = body.messages.filter((msg) => {
     // Always keep tool messages
     if (msg.role === ROLE.TOOL) return true;
     /** Retain otherwise-empty assistant messages only for populated tool calls. */
     if (msg.role === ROLE.ASSISTANT && msg.tool_calls?.length) return true;
-    
-    if (typeof msg.content === "string") return msg.content.trim() !== "";
+
+    if (isString(msg.content)) return msg.content.trim() !== "";
     if (Array.isArray(msg.content)) {
-      return msg.content.some(b => 
-        (b.type === OPENAI_BLOCK.TEXT && b.text?.trim()) ||
-        b.type !== OPENAI_BLOCK.TEXT
+      return msg.content.some((b) =>
+      b.type === OPENAI_BLOCK.TEXT && b.text?.trim() ||
+      b.type !== OPENAI_BLOCK.TEXT
       );
     }
     return true;
@@ -85,10 +85,10 @@ export function filterToOpenAIFormat(body, opts = {}) {
 
   // Normalize tools to OpenAI format (from Claude, Gemini, etc.)
   if (body.tools && Array.isArray(body.tools) && body.tools.length > 0) {
-    body.tools = body.tools.map(tool => {
+    body.tools = body.tools.map((tool) => {
       // Already OpenAI format
       if (tool.type === OPENAI_BLOCK.FUNCTION && tool.function) return tool;
-      
+
       // Claude format: {name, description, input_schema}
       if (tool.name && (tool.input_schema || tool.description)) {
         return {
@@ -100,10 +100,10 @@ export function filterToOpenAIFormat(body, opts = {}) {
           }
         };
       }
-      
+
       // Gemini format: {functionDeclarations: [{name, description, parameters}]}
       if (tool.functionDeclarations && Array.isArray(tool.functionDeclarations)) {
-        return tool.functionDeclarations.map(fn => ({
+        return tool.functionDeclarations.map((fn) => ({
           type: OPENAI_BLOCK.FUNCTION,
           function: {
             name: fn.name,
@@ -112,13 +112,13 @@ export function filterToOpenAIFormat(body, opts = {}) {
           }
         }));
       }
-      
+
       return tool;
     }).flat();
   }
 
   // Normalize tool_choice to OpenAI format
-  if (body.tool_choice && typeof body.tool_choice === "object") {
+  if (body.tool_choice && isObject(body.tool_choice)) {
     const choice = body.tool_choice;
     // Claude format: {type: "auto|any|tool", name?: "..."}
     if (choice.type === "auto") {

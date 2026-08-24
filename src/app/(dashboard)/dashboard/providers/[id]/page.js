@@ -31,25 +31,26 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
 import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
+import { isBrowser, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
-  codex: "codexAutoPing",
+  codex: "codexAutoPing"
 };
 /** Static retry delays offered by decolua/9router#2895; Auto keeps provider reset/backoff behavior. */
 const RETRY_DELAY_OPTIONS = [
-  ["auto", "Retry: Auto"],
-  ["15", "Retry: 15s"],
-  ["30", "Retry: 30s"],
-  ["60", "Retry: 1m"],
-  ["120", "Retry: 2m"],
-  ["300", "Retry: 5m"],
-  ["600", "Retry: 10m"],
-  ["1800", "Retry: 30m"],
-  ["3600", "Retry: 1h"],
-];
+["auto", "Retry: Auto"],
+["15", "Retry: 15s"],
+["30", "Retry: 30s"],
+["60", "Retry: 1m"],
+["120", "Retry: 2m"],
+["300", "Retry: 5m"],
+["600", "Retry: 10m"],
+["1800", "Retry: 30m"],
+["3600", "Retry: 1h"]];
+
 
 
 function sleep(ms) {
@@ -119,31 +120,31 @@ export default function ProviderDetailPage() {
   const [rpmLimit, setRpmLimit] = useState("");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
   const [autoPingQueue] = useState(() => createLatestIntentQueue({
-      write: async (_key, enabled, { connectionId }) => {
-        const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled }),
-        });
-        if (!response.ok) throw new Error(`Auto-ping update failed (${response.status})`);
-        return response.json();
-      },
-      onOptimistic: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
+    write: async (_key, enabled, { connectionId }) => {
+      const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled })
+      });
+      if (!response.ok) throw new Error(`Auto-ping update failed (${response.status})`);
+      return response.json();
+    },
+    onOptimistic: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
+      ...current,
+      connections: { ...current.connections, [connectionId]: enabled }
+    })),
+    onConfirmed: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
+      ...current,
+      connections: { ...current.connections, [connectionId]: enabled }
+    })),
+    onRollback: (_key, enabled, { connectionId }, error) => {
+      console.log("Error saving auto-ping config:", error);
+      setAutoPing((current) => ({
         ...current,
-        connections: { ...current.connections, [connectionId]: enabled },
-      })),
-      onConfirmed: (_key, enabled, { connectionId }) => setAutoPing((current) => ({
-        ...current,
-        connections: { ...current.connections, [connectionId]: enabled },
-      })),
-      onRollback: (_key, enabled, { connectionId }, error) => {
-        console.log("Error saving auto-ping config:", error);
-        setAutoPing((current) => ({
-          ...current,
-          connections: { ...current.connections, [connectionId]: enabled },
-        }));
-      },
-    }));
+        connections: { ...current.connections, [connectionId]: enabled }
+      }));
+    }
+  }));
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [syncingModels, setSyncingModels] = useState(false);
   const [modelsFetchedAt, setModelsFetchedAt] = useState(null);
@@ -172,7 +173,7 @@ export default function ProviderDetailPage() {
   };
 
   const triggerOAuthConnection = () => {
-    if (providerId === "antigravity" && typeof window !== "undefined") {
+    if (providerId === "antigravity" && isBrowser()) {
       const confirmed = window.localStorage.getItem(AG_RISK_STORAGE_KEY) === "true";
       if (!confirmed) {
         setShowAgRiskModal(true);
@@ -205,7 +206,7 @@ export default function ProviderDetailPage() {
   };
 
   const handleAgRiskConfirm = () => {
-    if (typeof window !== "undefined") {
+    if (isBrowser()) {
       window.localStorage.setItem(AG_RISK_STORAGE_KEY, "true");
     }
     setShowAgRiskModal(false);
@@ -216,18 +217,18 @@ export default function ProviderDetailPage() {
     triggerApiKeyConnection();
   };
 
-  const providerInfo = providerNode
-    ? {
-        id: providerNode.id,
-        name: providerNode.name || (providerNode.type === "anthropic-compatible" ? "Anthropic Compatible" : "OpenAI Compatible"),
-        color: providerNode.type === "anthropic-compatible" ? "#D97757" : "#10A37F",
-        textIcon: providerNode.type === "anthropic-compatible" ? "AC" : "OC",
-        apiType: providerNode.apiType,
-        baseUrl: providerNode.baseUrl,
-        type: providerNode.type,
-        ...(providerNode.iconUrl ? { iconUrl: providerNode.iconUrl } : {}),
-      }
-    : (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId] || WEB_COOKIE_PROVIDERS[providerId]);
+  const providerInfo = providerNode ?
+  {
+    id: providerNode.id,
+    name: providerNode.name || (providerNode.type === "anthropic-compatible" ? "Anthropic Compatible" : "OpenAI Compatible"),
+    color: providerNode.type === "anthropic-compatible" ? "#D97757" : "#10A37F",
+    textIcon: providerNode.type === "anthropic-compatible" ? "AC" : "OC",
+    apiType: providerNode.apiType,
+    baseUrl: providerNode.baseUrl,
+    type: providerNode.type,
+    ...(providerNode.iconUrl ? { iconUrl: providerNode.iconUrl } : null)
+  } :
+  OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId] || WEB_COOKIE_PROVIDERS[providerId];
   const authModes = providerInfo?.authModes || [];
   const isImportToken = providerInfo?.flowType === "import_token";
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || authModes.includes("oauth") || FREE_PROVIDERS[providerId]?.oauth;
@@ -237,17 +238,17 @@ export default function ProviderDetailPage() {
   const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
   const models = getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
-  
+
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
   const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
   const isCompatible = isOpenAICompatible || isAnthropicCompatible;
   const hasDualAuthModes = !isCompatible && isOAuth && supportsApiKeyAuth;
   const oauthConnectionLabel =
-    providerId === "xai"
-      ? "Grok Build OAuth"
-      : providerId === "grok-cli"
-        ? "Grok CLI Device Login"
-        : "OAuth";
+  providerId === "xai" ?
+  "Grok Build OAuth" :
+  providerId === "grok-cli" ?
+  "Grok CLI Device Login" :
+  "OAuth";
   const apiKeyConnectionLabel = providerId === "xai" ? "xAI API Key" : "API Key";
   // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
   // Upstream decolua/9router#2534: "none" suppresses the suffix (explicit strip, not a level label).
@@ -265,12 +266,12 @@ export default function ProviderDetailPage() {
     models,
     kiloFreeModels,
     customModels,
-    providerStorageAlias,
+    providerStorageAlias
   });
 
-  const providerDisplayAlias = isCompatible
-    ? (providerNode?.prefix || providerId)
-    : providerAlias;
+  const providerDisplayAlias = isCompatible ?
+  providerNode?.prefix || providerId :
+  providerAlias;
 
   const fetchDisabledModels = useCallback(async () => {
     try {
@@ -287,7 +288,7 @@ export default function ProviderDetailPage() {
       const res = await fetch("/api/models/disabled", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias: providerStorageAlias, ids: [modelId] }),
+        body: JSON.stringify({ providerAlias: providerStorageAlias, ids: [modelId] })
       });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
@@ -315,7 +316,7 @@ export default function ProviderDetailPage() {
           const res = await fetch("/api/models/disabled", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ providerAlias: providerStorageAlias, ids }),
+            body: JSON.stringify({ providerAlias: providerStorageAlias, ids })
           });
           if (res.ok) await fetchDisabledModels();
         } catch (error) {
@@ -362,25 +363,25 @@ export default function ProviderDetailPage() {
   // Fetch free models from Kilo API for kilocode provider
   useEffect(() => {
     if (providerId !== "kilocode") return;
-    fetch("/api/providers/kilo/free-models")
-      .then((res) => res.json())
-      .then((data) => { if (data.models?.length) setKiloFreeModels(data.models); })
-      .catch(() => {});
+    fetch("/api/providers/kilo/free-models").
+    then((res) => res.json()).
+    then((data) => {if (data.models?.length) setKiloFreeModels(data.models);}).
+    catch(() => {});
   }, [providerId]);
 
   const fetchConnections = useCallback(async () => {
     const requestProviderId = providerId;
     const requestGeneration = ++fetchConnectionsGenerationRef.current;
     const isCurrentRequest = () =>
-      fetchConnectionsGenerationRef.current === requestGeneration &&
-      currentProviderIdRef.current === requestProviderId;
+    fetchConnectionsGenerationRef.current === requestGeneration &&
+    currentProviderIdRef.current === requestProviderId;
     try {
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
-        fetch("/api/providers", { cache: "no-store" }),
-        fetch("/api/provider-nodes", { cache: "no-store" }),
-        fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
-        fetch("/api/settings", { cache: "no-store" }),
-      ]);
+      fetch("/api/providers", { cache: "no-store" }),
+      fetch("/api/provider-nodes", { cache: "no-store" }),
+      fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
+      fetch("/api/settings", { cache: "no-store" })]
+      );
       const connectionsData = await connectionsRes.json();
       const nodesData = await nodesRes.json();
       const proxyPoolsData = await proxyPoolsRes.json();
@@ -388,7 +389,7 @@ export default function ProviderDetailPage() {
       if (!isCurrentRequest()) return;
       if (connectionsRes.ok) {
         const allConnections = connectionsData.connections || [];
-        const filtered = allConnections.filter(c => c.provider === providerId);
+        const filtered = allConnections.filter((c) => c.provider === providerId);
 
         // Codex plan badges prefer the live usage plan; the connection's stored
         // OAuth metadata is only written at authorization time, so it goes stale
@@ -441,7 +442,7 @@ export default function ProviderDetailPage() {
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
       autoPingQueue.hydrate(
-        Object.entries(apCfg.connections || {}).map(([id, enabled]) => [`${providerId}:${id}`, enabled]),
+        Object.entries(apCfg.connections || {}).map(([id, enabled]) => [`${providerId}:${id}`, enabled])
       );
       setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
       if (nodesRes.ok) {
@@ -483,7 +484,7 @@ export default function ProviderDetailPage() {
         setProviderNode(node);
         await fetchConnections();
         setShowEditNodeModal(false);
-      },
+      }
     });
   };
 
@@ -510,7 +511,7 @@ export default function ProviderDetailPage() {
       await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerStrategies: updated }),
+        body: JSON.stringify({ providerStrategies: updated })
       });
     } catch (error) {
       console.log("Error saving provider strategy:", error);
@@ -519,7 +520,7 @@ export default function ProviderDetailPage() {
 
   const handleRoundRobinToggle = (enabled) => {
     const strategy = enabled ? "round-robin" : null;
-    const sticky = enabled ? (providerStickyLimit || "1") : providerStickyLimit;
+    const sticky = enabled ? providerStickyLimit || "1" : providerStickyLimit;
     if (enabled && !providerStickyLimit) setProviderStickyLimit("1");
     setProviderStrategy(strategy);
     saveProviderStrategy(strategy, sticky);
@@ -544,7 +545,7 @@ export default function ProviderDetailPage() {
       await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerThinking: updated }),
+        body: JSON.stringify({ providerThinking: updated })
       });
     } catch (error) {
       console.log("Error saving thinking config:", error);
@@ -571,7 +572,7 @@ export default function ProviderDetailPage() {
       await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerConcurrencyLimits: updated }),
+        body: JSON.stringify({ providerConcurrencyLimits: updated })
       });
     } catch (error) {
       console.log("Error saving concurrency limit:", error);
@@ -587,12 +588,12 @@ export default function ProviderDetailPage() {
       const settingsRes = await fetch("/api/settings", { cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const updated = { ...(settingsData.retryDelayByProvider || {}) };
-      if (value === "auto") delete updated[providerId];
-      else updated[providerId] = Number(value);
+      if (value === "auto") delete updated[providerId];else
+      updated[providerId] = Number(value);
       await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ retryDelayByProvider: updated }),
+        body: JSON.stringify({ retryDelayByProvider: updated })
       });
     } catch (error) {
       console.log("Error saving retry delay:", error);
@@ -611,12 +612,12 @@ export default function ProviderDetailPage() {
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const updated = { ...(settingsData.rpmByProvider || {}) };
       const trimmed = String(value ?? "").trim();
-      if (!trimmed) delete updated[providerId];
-      else updated[providerId] = Math.min(MAX_PROVIDER_RPM, Math.max(0, Number.parseInt(trimmed, 10) || 0));
+      if (!trimmed) delete updated[providerId];else
+      updated[providerId] = Math.min(MAX_PROVIDER_RPM, Math.max(0, Number.parseInt(trimmed, 10) || 0));
       await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rpmByProvider: updated }),
+        body: JSON.stringify({ rpmByProvider: updated })
       });
     } catch (error) {
       console.log("Error saving RPM limit:", error);
@@ -661,7 +662,7 @@ export default function ProviderDetailPage() {
       const res = await fetch("/api/models/alias", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: fullModel, alias }),
+        body: JSON.stringify({ model: fullModel, alias })
       });
       if (res.ok) {
         await fetchAliases();
@@ -677,7 +678,7 @@ export default function ProviderDetailPage() {
   const handleDeleteAlias = async (alias) => {
     try {
       const res = await fetch(`/api/models/alias?alias=${encodeURIComponent(alias)}`, {
-        method: "DELETE",
+        method: "DELETE"
       });
       if (res.ok) {
         await fetchAliases();
@@ -688,17 +689,17 @@ export default function ProviderDetailPage() {
   };
 
   const handleAddCustomModel = async (payload, type = "llm", providerAliasOverride = providerStorageAlias) => {
-    const modelId = typeof payload === "string" ? payload : payload.id;
-    const capabilities = typeof payload === "object" && payload !== null && !Array.isArray(payload) ? payload.capabilities : undefined;
+    const modelId = isString(payload) ? payload : payload.id;
+    const capabilities = isObject(payload) && payload !== null && !Array.isArray(payload) ? payload.capabilities : undefined;
     try {
       const res = await fetch("/api/models/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias: providerAliasOverride, id: modelId, type, capabilities }),
+        body: JSON.stringify({ providerAlias: providerAliasOverride, id: modelId, type, capabilities })
       });
       if (res.ok) {
         await fetchCustomModels();
-        if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
+        if (isBrowser()) window.dispatchEvent(new CustomEvent("customModelChanged"));
         return;
       }
       const data = await res.json().catch(() => ({}));
@@ -714,11 +715,11 @@ export default function ProviderDetailPage() {
       const res = await fetch("/api/models/custom", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias: providerStorageAlias, id, type: "llm", capabilities }),
+        body: JSON.stringify({ providerAlias: providerStorageAlias, id, type: "llm", capabilities })
       });
       if (res.ok) {
         await fetchCustomModels();
-        if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
+        if (isBrowser()) window.dispatchEvent(new CustomEvent("customModelChanged"));
         return;
       }
       const data = await res.json().catch(() => ({}));
@@ -735,7 +736,7 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/models/custom?${params}`, { method: "DELETE" });
       if (res.ok) {
         await fetchCustomModels();
-        if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
+        if (isBrowser()) window.dispatchEvent(new CustomEvent("customModelChanged"));
       }
     } catch (error) {
       console.log("Error deleting custom model:", error);
@@ -769,7 +770,7 @@ export default function ProviderDetailPage() {
       for (const model of models) {
         const modelId = model.id || model.name;
         if (!modelId) continue;
-        
+
         // Qoder model ID format may be "qoder/auto" or "auto", need to remove prefix
         const cleanModelId = modelId.replace(/^qoder\//, "");
         const alreadyExists = customModels.some(
@@ -782,7 +783,7 @@ export default function ProviderDetailPage() {
         await handleAddCustomModel(cleanModelId, "llm", providerStorageAlias);
         importedCount += 1;
       }
-      
+
       if (importedCount === 0) {
         alert(translate("All models already exist, no new models added"));
       } else {
@@ -800,7 +801,7 @@ export default function ProviderDetailPage() {
     if (oneByOneRunning || connections.length === 0) return;
 
     const queuedState = Object.fromEntries(
-      connections.map((connection) => [connection.id, { state: "queued", error: null }]),
+      connections.map((connection) => [connection.id, { state: "queued", error: null }])
     );
 
     stopOneByOneRef.current = false;
@@ -821,7 +822,7 @@ export default function ProviderDetailPage() {
             completed: index,
             passed,
             failed,
-            stopped: true,
+            stopped: true
           });
           break;
         }
@@ -830,7 +831,7 @@ export default function ProviderDetailPage() {
         setOneByOneCurrentConnectionId(connection.id);
         setOneByOneResults((prev) => ({
           ...prev,
-          [connection.id]: { state: "testing", error: null },
+          [connection.id]: { state: "testing", error: null }
         }));
 
         try {
@@ -848,8 +849,8 @@ export default function ProviderDetailPage() {
             ...prev,
             [connection.id]: {
               state: valid ? "success" : "failed",
-              error: valid ? null : (data.error || null),
-            },
+              error: valid ? null : data.error || null
+            }
           }));
         } catch (error) {
           failed += 1;
@@ -857,8 +858,8 @@ export default function ProviderDetailPage() {
             ...prev,
             [connection.id]: {
               state: "failed",
-              error: error.message || "Test failed",
-            },
+              error: error.message || "Test failed"
+            }
           }));
         }
 
@@ -867,7 +868,7 @@ export default function ProviderDetailPage() {
           completed: index + 1,
           passed,
           failed,
-          stopped: false,
+          stopped: false
         });
 
         if (index < connections.length - 1) {
@@ -897,7 +898,7 @@ export default function ProviderDetailPage() {
         try {
           const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
           if (res.ok) {
-            setConnections(prev => prev.filter(c => c.id !== id));
+            setConnections((prev) => prev.filter((c) => c.id !== id));
           }
         } catch (error) {
           console.log("Error deleting connection:", error);
@@ -925,7 +926,7 @@ export default function ProviderDetailPage() {
             failed += 1;
           }
         }
-        setConnections(prev => prev.filter(c => !idsToDelete.includes(c.id)));
+        setConnections((prev) => prev.filter((c) => !idsToDelete.includes(c.id)));
         setSelectedConnectionIds([]);
         if (failed > 0) alert(`Deleted ${idsToDelete.length - failed} connection(s), ${failed} failed.`);
       }
@@ -963,7 +964,7 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/oauth/${providerId}/import-token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -985,7 +986,7 @@ export default function ProviderDetailPage() {
       const res = await fetch("/api/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: providerId, ...formData }),
+        body: JSON.stringify({ provider: providerId, ...formData })
       });
 
       let data = null;
@@ -1013,7 +1014,7 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/providers/${selectedConnection.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(formData)
       });
       if (res.ok) {
         await fetchConnections();
@@ -1029,7 +1030,7 @@ export default function ProviderDetailPage() {
       const res = await fetch(`/api/providers/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive }),
+        body: JSON.stringify({ isActive })
       });
       if (res.ok) {
         const { connection } = await res.json();
@@ -1052,7 +1053,7 @@ export default function ProviderDetailPage() {
             const res = await fetch(`/api/providers/${id}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ isActive }),
+              body: JSON.stringify({ isActive })
             });
             if (!res.ok) return { id, ok: false };
             const { connection } = await res.json();
@@ -1064,9 +1065,9 @@ export default function ProviderDetailPage() {
         })
       );
 
-      const successfulConnections = results
-        .filter((result) => result.ok && result.connection)
-        .map((result) => result.connection);
+      const successfulConnections = results.
+      filter((result) => result.ok && result.connection).
+      map((result) => result.connection);
       const successfulIds = results.filter((result) => result.ok).map((result) => result.id);
       const failed = results.length - successfulIds.length;
 
@@ -1090,17 +1091,17 @@ export default function ProviderDetailPage() {
 
     try {
       await Promise.all([
-        fetch(`/api/providers/${newConnections[index1].id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index1 + 1 }),
-        }),
-        fetch(`/api/providers/${newConnections[index2].id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ priority: index2 + 1 }),
-        }),
-      ]);
+      fetch(`/api/providers/${newConnections[index1].id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority: index1 + 1 })
+      }),
+      fetch(`/api/providers/${newConnections[index2].id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority: index2 + 1 })
+      })]
+      );
     } catch (error) {
       console.log("Error swapping priority:", error);
       await fetchConnections();
@@ -1125,11 +1126,11 @@ export default function ProviderDetailPage() {
   const allSelected = connections.length > 0 && selectedConnectionIds.length === connections.length;
 
   const toggleSelectConnection = (connectionId) => {
-    setSelectedConnectionIds((prev) => (
-      prev.includes(connectionId)
-        ? prev.filter((id) => id !== connectionId)
-        : [...prev, connectionId]
-    ));
+    setSelectedConnectionIds((prev) =>
+    prev.includes(connectionId) ?
+    prev.filter((id) => id !== connectionId) :
+    [...prev, connectionId]
+    );
   };
 
   const toggleSelectAllConnections = () => {
@@ -1182,7 +1183,7 @@ export default function ProviderDetailPage() {
           const res = await fetch(`/api/providers/${connectionId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ proxyPoolId }),
+            body: JSON.stringify({ proxyPoolId })
           });
           if (!res.ok) failed += 1;
         } catch (e) {
@@ -1211,7 +1212,7 @@ export default function ProviderDetailPage() {
     }
     const targets = connections.map((c, i) => ({
       connectionId: c.id,
-      proxyPoolId: activePools[i % activePools.length].id,
+      proxyPoolId: activePools[i % activePools.length].id
     }));
     return applyProxyAssignments(targets);
   };
@@ -1219,108 +1220,108 @@ export default function ProviderDetailPage() {
 
   const isSelected = (connectionId) => selectedConnectionIds.includes(connectionId);
 
-  const connectionsList = (
-    <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
-      {connections
-        .map((conn, index) => (
-          <div key={conn.id} className="flex min-w-0 items-stretch">
+  const connectionsList =
+  <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
+      {connections.
+    map((conn, index) =>
+    <div key={conn.id} className="flex min-w-0 items-stretch">
             <div className="flex shrink-0 items-center pl-1 sm:pl-2">
               <input
-                type="checkbox"
-                checked={isSelected(conn.id)}
-                onChange={() => toggleSelectConnection(conn.id)}
-                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-              />
+          type="checkbox"
+          checked={isSelected(conn.id)}
+          onChange={() => toggleSelectConnection(conn.id)}
+          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+        
             </div>
             <div className="flex-1 min-w-0">
               <ConnectionRow
-                connection={conn}
-                plan={codexPlans[conn.id]}
-                proxyPools={proxyPools}
-                isOAuth={isOAuth}
-                isFirst={index === 0}
-                isLast={index === connections.length - 1}
-                onMoveUp={() => handleSwapPriority(index, index - 1)}
-                onMoveDown={() => handleSwapPriority(index, index + 1)}
-                onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
-                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
-                  on: autoPing.connections[conn.id] === true,
-                  onToggle: (on) => handleAutoPingConnection(conn.id, on),
-                  provider: providerId,
-                } : null}
-                onUpdateProxy={async (proxyPoolId) => {
-                  try {
-                    const res = await fetch(`/api/providers/${conn.id}`, {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ proxyPoolId: proxyPoolId || null }),
-                    });
-                    if (res.ok) {
-                      const { connection: updatedConnection } = await res.json();
-                      setConnections(prev => prev.map(c =>
-                        c.id === conn.id
-                          ? (updatedConnection || c)
-                          : c
-                      ));
-                    }
-                  } catch (error) {
-                    console.log("Error updating proxy:", error);
-                  }
-                }}
-                onEdit={() => {
-                  setSelectedConnection(conn);
-                  setShowEditModal(true);
-                }}
-                onDelete={() => handleDelete(conn.id)}
-                onReconnect={() => handleReconnect(conn)}
-                oneByOneStatus={oneByOneResults[conn.id] || null}
-              />
+          connection={conn}
+          plan={codexPlans[conn.id]}
+          proxyPools={proxyPools}
+          isOAuth={isOAuth}
+          isFirst={index === 0}
+          isLast={index === connections.length - 1}
+          onMoveUp={() => handleSwapPriority(index, index - 1)}
+          onMoveDown={() => handleSwapPriority(index, index + 1)}
+          onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
+          autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
+            on: autoPing.connections[conn.id] === true,
+            onToggle: (on) => handleAutoPingConnection(conn.id, on),
+            provider: providerId
+          } : null}
+          onUpdateProxy={async (proxyPoolId) => {
+            try {
+              const res = await fetch(`/api/providers/${conn.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ proxyPoolId: proxyPoolId || null })
+              });
+              if (res.ok) {
+                const { connection: updatedConnection } = await res.json();
+                setConnections((prev) => prev.map((c) =>
+                c.id === conn.id ?
+                updatedConnection || c :
+                c
+                ));
+              }
+            } catch (error) {
+              console.log("Error updating proxy:", error);
+            }
+          }}
+          onEdit={() => {
+            setSelectedConnection(conn);
+            setShowEditModal(true);
+          }}
+          onDelete={() => handleDelete(conn.id)}
+          onReconnect={() => handleReconnect(conn)}
+          oneByOneStatus={oneByOneResults[conn.id] || null} />
+        
             </div>
           </div>
-        ))}
-    </div>
-  );
+    )}
+    </div>;
+
 
   const activePools = proxyPools.filter((p) => p.isActive === true);
 
-  const bulkActionModal = (
-    <Modal
-      isOpen={showBulkProxyModal}
-      onClose={closeBulkProxyModal}
-      title={`Apply Proxy (${connections.length} connections)`}
-    >
+  const bulkActionModal =
+  <Modal
+    isOpen={showBulkProxyModal}
+    onClose={closeBulkProxyModal}
+    title={`Apply Proxy (${connections.length} connections)`}>
+    
       <div className="flex flex-col gap-3">
         <div className="flex flex-col">
           <button
-            onClick={handleApplyOneToOne}
-            disabled={bulkUpdatingProxy || activePools.length === 0}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          onClick={handleApplyOneToOne}
+          disabled={bulkUpdatingProxy || activePools.length === 0}
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50">
+          
             <span className="material-symbols-outlined text-text-muted text-[18px]">sync_alt</span>
             <span className="text-sm text-text-main">One-to-one (rotate)</span>
           </button>
           <button
-            onClick={() => handleApplySinglePool(null)}
-            disabled={bulkUpdatingProxy}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          onClick={() => handleApplySinglePool(null)}
+          disabled={bulkUpdatingProxy}
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50">
+          
             <span className="material-symbols-outlined text-text-muted text-[18px]">link_off</span>
             <span className="text-sm text-text-main">None (unbind all)</span>
           </button>
-          {proxyPools.map((pool) => (
-            <button
-              key={pool.id}
-              onClick={() => handleApplySinglePool(pool.id)}
-              disabled={bulkUpdatingProxy || pool.isActive !== true}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-            >
+          {proxyPools.map((pool) =>
+        <button
+          key={pool.id}
+          onClick={() => handleApplySinglePool(pool.id)}
+          disabled={bulkUpdatingProxy || pool.isActive !== true}
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50">
+          
               <span className="material-symbols-outlined text-text-muted text-[18px]">lan</span>
               <span className="truncate text-sm text-text-main">{pool.name}</span>
-              {pool.isActive !== true && (
-                <span className="text-[10px] text-text-muted">(inactive)</span>
-              )}
+              {pool.isActive !== true &&
+          <span className="text-[10px] text-text-muted">(inactive)</span>
+          }
             </button>
-          ))}
+        )}
         </div>
 
         {bulkUpdatingProxy && <p className="text-xs text-text-muted">Applying...</p>}
@@ -1329,8 +1330,8 @@ export default function ProviderDetailPage() {
           Cancel
         </Button>
       </div>
-    </Modal>
-  );
+    </Modal>;
+
 
   const handleTestModel = async (modelId) => {
     if (testingModelIds.has(modelId)) return;
@@ -1339,16 +1340,16 @@ export default function ProviderDetailPage() {
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` }),
+        body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` })
       });
       const data = await res.json();
       setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
-      setModelsTestError(data.ok ? "" : (data.error || "Model not reachable"));
+      setModelsTestError(data.ok ? "" : data.error || "Model not reachable");
     } catch {
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
       setModelsTestError("Network error");
     } finally {
-      setTestingModelIds((prev) => { const n = new Set(prev); n.delete(modelId); return n; });
+      setTestingModelIds((prev) => {const n = new Set(prev);n.delete(modelId);return n;});
     }
   };
 
@@ -1374,16 +1375,16 @@ export default function ProviderDetailPage() {
           }}
           onRefresh={() => Promise.all([fetchAliases(), fetchCustomModels()])}
           connections={connections}
-          isAnthropic={isAnthropicCompatible}
-        />
-      );
+          isAnthropic={isAnthropicCompatible} />);
+
+
     }
     // Combine hardcoded models with Kilo free models (deduplicated)
     // Exclude non-llm models (embedding, tts, etc.) — they have dedicated pages under media-providers
     const allModels = [
-      ...models,
-      ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-    ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; });
+    ...models,
+    ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id))].
+    filter((m) => {const k = getModelKind(m);return !k || k === "llm";});
     const disabledSet = new Set(disabledModelIds);
     const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
     const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
@@ -1392,38 +1393,38 @@ export default function ProviderDetailPage() {
       modelAliases,
       providerAlias: providerStorageAlias,
       builtInModels: models,
-      type: "llm",
+      type: "llm"
     });
 
     return (
       <div className="flex flex-wrap gap-3">
         {/* Custom models first */}
-        {customModelRows.map((model) => (
-          <ModelRow
-            key={`${model.source}-${model.fullModel}`}
-            model={{ id: model.id, name: model.name }}
-            fullModel={`${providerDisplayAlias}/${model.id}`}
-            alias={model.alias}
-            copied={copied}
-            onCopy={copy}
-            onSetAlias={() => {}}
-            onDeleteAlias={() => {
-              if (model.source === "custom") {
-                handleDeleteCustomModel(model.id, "llm", providerStorageAlias);
-              } else {
-                handleDeleteAlias(model.alias);
-              }
-            }}
-            testStatus={modelTestResults[model.id]}
-            onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
-            isTesting={testingModelIds.has(model.id)}
-            isCustom
-            isFree={false}
-            caps={getCustomModelCapabilities({ providerId, modelId: model.id, capabilities: model.capabilities })}
-            thinkingSuffix={resolveThinkingSuffix(model.id, model.capabilities)}
-            onEdit={model.source === "custom" ? () => setEditingCustomModel(model) : undefined}
-          />
-        ))}
+        {customModelRows.map((model) =>
+        <ModelRow
+          key={`${model.source}-${model.fullModel}`}
+          model={{ id: model.id, name: model.name }}
+          fullModel={`${providerDisplayAlias}/${model.id}`}
+          alias={model.alias}
+          copied={copied}
+          onCopy={copy}
+          onSetAlias={() => {}}
+          onDeleteAlias={() => {
+            if (model.source === "custom") {
+              handleDeleteCustomModel(model.id, "llm", providerStorageAlias);
+            } else {
+              handleDeleteAlias(model.alias);
+            }
+          }}
+          testStatus={modelTestResults[model.id]}
+          onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
+          isTesting={testingModelIds.has(model.id)}
+          isCustom
+          isFree={false}
+          caps={getCustomModelCapabilities({ providerId, modelId: model.id, capabilities: model.capabilities })}
+          thinkingSuffix={resolveThinkingSuffix(model.id, model.capabilities)}
+          onEdit={model.source === "custom" ? () => setEditingCustomModel(model) : undefined} />
+
+        )}
 
         {displayModels.map((model) => {
           const fullModel = `${providerStorageAlias}/${model.id}`;
@@ -1447,52 +1448,52 @@ export default function ProviderDetailPage() {
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
               caps={getCaps(`${providerId}/${model.id}`)}
-              thinkingSuffix={resolveThinkingSuffix(model.id)}
-            />
-          );
+              thinkingSuffix={resolveThinkingSuffix(model.id)} />);
+
+
         })}
 
         {/* Add model button — inline, same style as model chips */}
         <button
           onClick={() => setShowAddCustomModel(true)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2 text-xs text-primary transition-colors hover:border-primary hover:bg-primary/5 sm:w-auto"
-        >
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2 text-xs text-primary transition-colors hover:border-primary hover:bg-primary/5 sm:w-auto">
+          
           <span className="material-symbols-outlined text-sm">add</span>
           Add Model
         </button>
 
         {/* Import Qoder models button — only show for qoder provider */}
-        {providerId === "qoder" && connections.some((conn) => conn.isActive !== false) && (
-          <button
-            onClick={handleImportQoderModels}
-            disabled={importingQoderModels}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-blue-500/40 px-3 py-2 text-xs text-blue-600 dark:text-blue-400 transition-colors hover:border-blue-500 hover:bg-blue-500/5 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+        {providerId === "qoder" && connections.some((conn) => conn.isActive !== false) &&
+        <button
+          onClick={handleImportQoderModels}
+          disabled={importingQoderModels}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-blue-500/40 px-3 py-2 text-xs text-blue-600 dark:text-blue-400 transition-colors hover:border-blue-500 hover:bg-blue-500/5 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed">
+          
             <span className="material-symbols-outlined text-sm" style={importingQoderModels ? { animation: "spin 1s linear infinite" } : undefined}>
               {importingQoderModels ? "progress_activity" : "download"}
             </span>
             {importingQoderModels ? translate("Fetching...") : translate("Fetch Qoder Models")}
           </button>
-        )}
+        }
 
-        {(OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher && (
-          <button
-            onClick={handleSyncModels}
-            disabled={syncingModels}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2 text-xs text-primary transition-colors hover:bg-primary/5 sm:w-auto disabled:opacity-50"
-            title={modelsFetchedAt ? `Last synced ${modelsFetchedAt.toLocaleString()}` : "Fetch latest provider models"}
-          >
+        {(OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher &&
+        <button
+          onClick={handleSyncModels}
+          disabled={syncingModels}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2 text-xs text-primary transition-colors hover:bg-primary/5 sm:w-auto disabled:opacity-50"
+          title={modelsFetchedAt ? `Last synced ${modelsFetchedAt.toLocaleString()}` : "Fetch latest provider models"}>
+          
             <span className={`material-symbols-outlined text-sm ${syncingModels ? "animate-spin" : ""}`}>sync</span>
             {syncingModels ? "Syncing…" : "Sync models"}
           </button>
-        )}
+        }
 
         {/* Suggested models from provider API — show only models not yet added */}
         {suggestedModels.length > 0 && (() => {
           const addedFullModels = new Set([
-            ...Object.values(modelAliases),
-            ...customModelRows.map((model) => model.fullModel),
-          ]);
+          ...Object.values(modelAliases),
+          ...customModelRows.map((model) => model.fullModel)]
+          );
           const hardcodedIds = new Set(models.map((m) => m.id));
           const notAdded = suggestedModels.filter(
             (m) => !addedFullModels.has(`${providerStorageAlias}/${m.id}`) && !hardcodedIds.has(m.id)
@@ -1502,45 +1503,45 @@ export default function ProviderDetailPage() {
             <div className="w-full mt-2">
               <p className="text-xs text-text-muted mb-2">Suggested free models (≥200k context):</p>
               <div className="flex flex-wrap gap-2">
-                {notAdded.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={async () => {
-                      await handleAddCustomModel(m.id, "llm", providerStorageAlias);
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                    title={`${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx`}
-                  >
+                {notAdded.map((m) =>
+                <button
+                  key={m.id}
+                  onClick={async () => {
+                    await handleAddCustomModel(m.id, "llm", providerStorageAlias);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                  title={`${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx`}>
+                  
                     <span className="material-symbols-outlined text-[13px]">add</span>
                     {m.id.split("/").pop()}
                   </button>
-                ))}
+                )}
               </div>
-            </div>
-          );
+            </div>);
+
         })()}
 
         {/* Disabled models — restorable */}
-        {disabledDisplayModels.length > 0 && (
-          <div className="w-full mt-2">
+        {disabledDisplayModels.length > 0 &&
+        <div className="w-full mt-2">
             <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
             <div className="flex flex-wrap gap-2">
-              {disabledDisplayModels.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => handleEnableModel(m.id)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                  title="Restore model"
-                >
+              {disabledDisplayModels.map((m) =>
+            <button
+              key={m.id}
+              onClick={() => handleEnableModel(m.id)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+              title="Restore model">
+              
                   <span className="material-symbols-outlined text-[13px]">add</span>
                   {m.id}
                 </button>
-              ))}
+            )}
             </div>
           </div>
-        )}
-      </div>
-    );
+        }
+      </div>);
+
   };
 
   if (loading) {
@@ -1548,9 +1549,9 @@ export default function ProviderDetailPage() {
       <div className="flex flex-col gap-8">
         <CardSkeleton />
         <CardSkeleton />
-      </div>
-    );
-}
+      </div>);
+
+  }
 
   if (!providerInfo) {
     return (
@@ -1559,8 +1560,8 @@ export default function ProviderDetailPage() {
         <Link href="/dashboard/providers" className="text-primary mt-4 inline-block">
           Back to Providers
         </Link>
-      </div>
-    );
+      </div>);
+
   }
 
   // Determine icon path: OpenAI Compatible providers use specialized icons
@@ -1580,39 +1581,39 @@ export default function ProviderDetailPage() {
       <div className="min-w-0">
         <Link
           href="/dashboard/providers"
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
-        >
+          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4">
+          
           <span className="material-symbols-outlined text-lg">arrow_back</span>
           Back to Providers
         </Link>
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <div
             className="flex size-12 shrink-0 items-center justify-center rounded-lg"
-            style={{ backgroundColor: `${providerInfo.color}15` }}
-          >
+            style={{ backgroundColor: `${providerInfo.color}15` }}>
+            
             <ProviderIcon
               src={providerInfo.iconUrl || getHeaderIconPath()}
               alt={providerInfo.name}
               size={48}
               className="max-h-12 max-w-12 rounded-lg object-contain"
               fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
-              fallbackColor={providerInfo.color}
-            />
+              fallbackColor={providerInfo.color} />
+            
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{providerInfo.name}</h1>
-              {(providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website) && (
-                <a
-                  href={providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                >
+              {(providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website) &&
+              <a
+                href={providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary hover:underline inline-flex items-center gap-1">
+                
                   <span className="material-symbols-outlined text-sm">open_in_new</span>
                   {providerInfo.notice?.apiKeyUrl ? "Get API Key" : "Sign up / Learn more"}
                 </a>
-              )}
+              }
             </div>
             <p className="text-text-muted">
               {connections.length} connection{connections.length === 1 ? "" : "s"}
@@ -1630,372 +1631,372 @@ export default function ProviderDetailPage() {
               onChange={(event) => setRpmLimit(event.target.value)}
               onBlur={(event) => saveRpmLimit(event.target.value)}
               title="Maximum requests per minute per account. Blank uses provider default; 0 is unlimited."
-              className="w-16 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
-            />
+              className="w-16 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" />
+            
             <label htmlFor="provider-retry-delay" className="hidden text-xs text-text-muted sm:inline">Retry delay</label>
             <select
               id="provider-retry-delay"
               value={retryDelay}
               onChange={(event) => handleRetryDelayChange(event.target.value)}
               title="Static cooldown when the provider reports no reset deadline"
-              className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
-            >
-              {RETRY_DELAY_OPTIONS.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
+              className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none">
+              
+              {RETRY_DELAY_OPTIONS.map(([value, label]) =>
+              <option key={value} value={value}>{label}</option>
+              )}
             </select>
           </div>
         </div>
       </div>
 
-      {providerInfo.deprecated && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+      {providerInfo.deprecated &&
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
           <span className="material-symbols-outlined text-[16px] text-yellow-500 mt-0.5 shrink-0">warning</span>
           <p className="text-xs text-red-600 dark:text-yellow-400 leading-relaxed">{providerInfo.deprecationNotice}</p>
         </div>
-      )}
+      }
 
-      {providerInfo.notice?.text && !providerInfo.deprecated && (
-        <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
+      {providerInfo.notice?.text && !providerInfo.deprecated &&
+      <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
           <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">info</span>
           <p className="min-w-0 flex-1 text-xs leading-relaxed text-blue-600 dark:text-blue-400">{providerInfo.notice.text}</p>
-          {providerInfo.notice.apiKeyUrl && (
-            <a
-              href={providerInfo.notice.apiKeyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex justify-center rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 sm:py-0.5"
-            >
+          {providerInfo.notice.apiKeyUrl &&
+        <a
+          href={providerInfo.notice.apiKeyUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex justify-center rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 sm:py-0.5">
+          
               Get API Key →
             </a>
-          )}
+        }
         </div>
-      )}
+      }
 
-      {isCompatible && providerNode && (
-        <Card>
+      {isCompatible && providerNode &&
+      <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold">{isAnthropicCompatible ? "Anthropic Compatible Details" : "OpenAI Compatible Details"}</h2>
               <p className="break-all text-sm text-text-muted">
-                {isAnthropicCompatible ? "Messages API" : (providerNode.apiType === "responses" ? "Responses API" : "Chat Completions")} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/
-                {isAnthropicCompatible ? "messages" : (providerNode.apiType === "responses" ? "responses" : "chat/completions")}
+                {isAnthropicCompatible ? "Messages API" : providerNode.apiType === "responses" ? "Responses API" : "Chat Completions"} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/
+                {isAnthropicCompatible ? "messages" : providerNode.apiType === "responses" ? "responses" : "chat/completions"}
               </p>
             </div>
             <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
               <Button
-                size="sm"
-                icon="add"
-                onClick={() => {
-                  setAddConnectionError("");
-                  setShowAddApiKeyModal(true);
-                }}
-                className="w-full sm:w-auto"
-              >
+              size="sm"
+              icon="add"
+              onClick={() => {
+                setAddConnectionError("");
+                setShowAddApiKeyModal(true);
+              }}
+              className="w-full sm:w-auto">
+              
                 Add API Key
               </Button>
               <Button
-                size="sm"
-                variant="secondary"
-                icon="edit"
-                onClick={() => setShowEditNodeModal(true)}
-                className="w-full sm:w-auto"
-              >
+              size="sm"
+              variant="secondary"
+              icon="edit"
+              onClick={() => setShowEditNodeModal(true)}
+              className="w-full sm:w-auto">
+              
                 Edit
               </Button>
               <Button
-                size="sm"
-                variant="secondary"
-                icon="delete"
-                onClick={async () => {
-                  setConfirmState({
-                    title: "Delete Compatible Node",
-                    message: `Delete this ${isAnthropicCompatible ? "Anthropic" : "OpenAI"} Compatible node?`,
-                    onConfirm: async () => {
-                      setConfirmState(null);
-                      try {
-                        const res = await fetch(`/api/provider-nodes/${providerId}`, { method: "DELETE" });
-                        if (res.ok) {
-                          router.push("/dashboard/providers");
-                        }
-                      } catch (error) {
-                        console.log("Error deleting provider node:", error);
+              size="sm"
+              variant="secondary"
+              icon="delete"
+              onClick={async () => {
+                setConfirmState({
+                  title: "Delete Compatible Node",
+                  message: `Delete this ${isAnthropicCompatible ? "Anthropic" : "OpenAI"} Compatible node?`,
+                  onConfirm: async () => {
+                    setConfirmState(null);
+                    try {
+                      const res = await fetch(`/api/provider-nodes/${providerId}`, { method: "DELETE" });
+                      if (res.ok) {
+                        router.push("/dashboard/providers");
                       }
+                    } catch (error) {
+                      console.log("Error deleting provider node:", error);
                     }
-                  });
-                }}
-                className="w-full sm:w-auto"
-              >
+                  }
+                });
+              }}
+              className="w-full sm:w-auto">
+              
                 Delete
               </Button>
             </div>
           </div>
         </Card>
-      )}
+      }
 
       {/* Connections */}
-      {isFreeNoAuth && !isStoredNoAuth && (
-        <NoAuthProxyCard providerId={providerId} />
-      )}
-      {showConnections && (
-        <Card>
+      {isFreeNoAuth && !isStoredNoAuth &&
+      <NoAuthProxyCard providerId={providerId} />
+      }
+      {showConnections &&
+      <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold">Connections</h2>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              {connections.length > 0 && proxyPools.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="lan"
-                  onClick={() => setShowBulkProxyModal(true)}
-                >
+              {connections.length > 0 && proxyPools.length > 0 &&
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="lan"
+              onClick={() => setShowBulkProxyModal(true)}>
+              
                   Apply Proxy
                 </Button>
-              )}
-              {connections.length > 0 && (
-                <>
-                  {selectedConnectionIds.length > 0 && (
-                    <>
+            }
+              {connections.length > 0 &&
+            <>
+                  {selectedConnectionIds.length > 0 &&
+              <>
                       <Button
-                        size="sm"
-                        variant="secondary"
-                        icon="check_circle"
-                        onClick={() => handleBulkSetConnectionStatus(true)}
-                        disabled={bulkStatusAction !== null || selectedInactiveCount === 0}
-                      >
+                  size="sm"
+                  variant="secondary"
+                  icon="check_circle"
+                  onClick={() => handleBulkSetConnectionStatus(true)}
+                  disabled={bulkStatusAction !== null || selectedInactiveCount === 0}>
+                  
                         {bulkStatusAction === "on" ? "Turning On..." : `On Selected (${selectedConnectionIds.length})`}
                       </Button>
                       <Button
-                        size="sm"
-                        variant="secondary"
-                        icon="block"
-                        onClick={() => handleBulkSetConnectionStatus(false)}
-                        disabled={bulkStatusAction !== null || selectedActiveCount === 0}
-                      >
+                  size="sm"
+                  variant="secondary"
+                  icon="block"
+                  onClick={() => handleBulkSetConnectionStatus(false)}
+                  disabled={bulkStatusAction !== null || selectedActiveCount === 0}>
+                  
                         {bulkStatusAction === "off" ? "Turning Off..." : `Off Selected (${selectedConnectionIds.length})`}
                       </Button>
                       <Button
-                        size="sm"
-                        variant="danger"
-                        icon="delete"
-                        onClick={handleBulkDelete}
-                        disabled={bulkStatusAction !== null}
-                      >
+                  size="sm"
+                  variant="danger"
+                  icon="delete"
+                  onClick={handleBulkDelete}
+                  disabled={bulkStatusAction !== null}>
+                  
                         Delete Selected ({selectedConnectionIds.length})
                       </Button>
                     </>
-                  )}
+              }
                   <Button
-                    size="sm"
-                    variant="secondary"
-                    icon="sync"
-                    onClick={handleRunOneByOneTest}
-                    disabled={oneByOneRunning}
-                  >
+                size="sm"
+                variant="secondary"
+                icon="sync"
+                onClick={handleRunOneByOneTest}
+                disabled={oneByOneRunning}>
+                
                     {oneByOneRunning ? "Testing Connection One-by-One..." : "Test Connection One-by-One"}
                   </Button>
-                  {oneByOneRunning && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon="stop"
-                      onClick={handleStopOneByOneTest}
-                      disabled={oneByOneStopping}
-                    >
+                  {oneByOneRunning &&
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="stop"
+                onClick={handleStopOneByOneTest}
+                disabled={oneByOneStopping}>
+                
                       {oneByOneStopping ? "Stopping..." : "Stop"}
                     </Button>
-                  )}
+              }
                 </>
-              )}
-              {connections.length > 1 && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="swap_vert"
-                  onClick={handleReorderByStatus}
-                  title="Reorder by availability status"
-                >
+            }
+              {connections.length > 1 &&
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="swap_vert"
+              onClick={handleReorderByStatus}
+              title="Reorder by availability status">
+              
                   Reorder
                 </Button>
-              )}
+            }
               {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-text-muted font-medium">Round Robin</span>
                 <Toggle
-                  checked={providerStrategy === "round-robin"}
-                  onChange={handleRoundRobinToggle}
-                />
-                {providerStrategy === "round-robin" && (
-                  <div className="flex items-center gap-1.5">
+                checked={providerStrategy === "round-robin"}
+                onChange={handleRoundRobinToggle} />
+              
+                {providerStrategy === "round-robin" &&
+              <div className="flex items-center gap-1.5">
                     <span className="text-xs text-text-muted">Sticky:</span>
                     <input
-                      type="number"
-                      min={1}
-                      value={providerStickyLimit}
-                      onChange={(e) => handleStickyLimitChange(e.target.value)}
-                      placeholder="1"
-                      className="w-14 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary"
-                    />
+                  type="number"
+                  min={1}
+                  value={providerStickyLimit}
+                  onChange={(e) => handleStickyLimitChange(e.target.value)}
+                  placeholder="1"
+                  className="w-14 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary" />
+                
                   </div>
-                )}
+              }
               </div>
               {/* Per-provider concurrency limit */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-text-muted font-medium">Max Concurrent</span>
                 <input
-                  type="number"
-                  min={0}
-                  value={concurrencyLimit}
-                  onChange={(e) => handleConcurrencyLimitChange(e.target.value)}
-                  placeholder="∞"
-                  className="w-16 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary"
-                />
+                type="number"
+                min={0}
+                value={concurrencyLimit}
+                onChange={(e) => handleConcurrencyLimitChange(e.target.value)}
+                placeholder="∞"
+                className="w-16 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary" />
+              
               </div>
             </div>
           </div>
 
-          {connections.length === 0 ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {connections.length === 0 ?
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0">
                   <span className="material-symbols-outlined text-[18px]">{isOAuth ? "lock" : "key"}</span>
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm text-text-muted">No connections yet</p>
-                  {hasDualAuthModes && (
-                    <p className="text-xs text-text-muted">
+                  {hasDualAuthModes &&
+              <p className="text-xs text-text-muted">
                       Choose {oauthConnectionLabel} or {apiKeyConnectionLabel}.
                     </p>
-                  )}
+              }
                 </div>
               </div>
               <div className="flex gap-2">
-                {hasDualAuthModes ? (
-                  <>
+                {hasDualAuthModes ?
+            <>
                     <Button size="sm" icon="lock" variant="secondary" onClick={triggerOAuthConnection}>
                       {oauthConnectionLabel}
                     </Button>
                     <Button size="sm" icon="key" onClick={triggerApiKeyConnection}>
                       {apiKeyConnectionLabel}
                     </Button>
-                  </>
-                ) : (
-                  <>
-                    {!isCompatible && providerId === "iflow" && (
-                      <Button size="sm" icon="cookie" variant="secondary" onClick={() => setShowIFlowCookieModal(true)}>
+                  </> :
+
+            <>
+                    {!isCompatible && providerId === "iflow" &&
+              <Button size="sm" icon="cookie" variant="secondary" onClick={() => setShowIFlowCookieModal(true)}>
                         Cookie
                       </Button>
-                    )}
-                    {providerId === "codex" && (
-                      <Button size="sm" icon="playlist_add" variant="secondary" onClick={() => setShowBulkImportCodex(true)}>
+              }
+                    {providerId === "codex" &&
+              <Button size="sm" icon="playlist_add" variant="secondary" onClick={() => setShowBulkImportCodex(true)}>
                         {translate("Bulk Add")}
                       </Button>
-                    )}
+              }
                     <Button
-                      size="sm"
-                      icon="add"
-                      onClick={triggerAddConnection}
-                    >
-                      {isCompatible ? "Add API Key" : (providerId === "iflow" ? "OAuth" : "Add Connection")}
+                size="sm"
+                icon="add"
+                onClick={triggerAddConnection}>
+                
+                      {isCompatible ? "Add API Key" : providerId === "iflow" ? "OAuth" : "Add Connection"}
                     </Button>
                   </>
-                )}
+            }
               </div>
-            </div>
-          ) : (
-            <>
-              {oneByOneSummary && (
-                <div className="mb-4 rounded-lg border border-black/10 bg-black/[0.02] px-3 py-2 text-xs text-text-muted dark:border-white/10 dark:bg-white/[0.03]">
+            </div> :
+
+        <>
+              {oneByOneSummary &&
+          <div className="mb-4 rounded-lg border border-black/10 bg-black/[0.02] px-3 py-2 text-xs text-text-muted dark:border-white/10 dark:bg-white/[0.03]">
                   <div className="flex flex-wrap items-center gap-3">
                     <span>Total: {oneByOneSummary.total}</span>
                     <span>Completed: {oneByOneSummary.completed}</span>
                     <span>Passed: {oneByOneSummary.passed}</span>
                     <span>Failed: {oneByOneSummary.failed}</span>
-                    {oneByOneSummary.stopped && (
-                      <span className="text-amber-600 dark:text-amber-400">Stopped</span>
-                    )}
-                    {oneByOneRunning && oneByOneCurrentConnectionId && (
-                      <span>Running: {connections.find((conn) => conn.id === oneByOneCurrentConnectionId)?.name || oneByOneCurrentConnectionId}</span>
-                    )}
+                    {oneByOneSummary.stopped &&
+              <span className="text-amber-600 dark:text-amber-400">Stopped</span>
+              }
+                    {oneByOneRunning && oneByOneCurrentConnectionId &&
+              <span>Running: {connections.find((conn) => conn.id === oneByOneCurrentConnectionId)?.name || oneByOneCurrentConnectionId}</span>
+              }
                   </div>
                 </div>
-              )}
-              {connections.length > 0 && (
-                <div className="mb-3 flex items-center gap-2 border-b border-black/[0.03] pb-2 dark:border-white/[0.03]">
+          }
+              {connections.length > 0 &&
+          <div className="mb-3 flex items-center gap-2 border-b border-black/[0.03] pb-2 dark:border-white/[0.03]">
                   <label className="flex cursor-pointer items-center gap-1.5 text-xs text-text-muted hover:text-primary">
                     <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleSelectAllConnections}
-                      className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary"
-                    />
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAllConnections}
+                className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary" />
+              
                     Select All
                   </label>
                 </div>
-              )}
+          }
               {connectionsList}
-              {!isCompatible && (
-                <div className="mt-4 grid grid-cols-1 gap-2 sm:flex">
-                  {providerId === "iflow" && (
-                    <Button
-                      size="sm"
-                      icon="cookie"
-                      variant="secondary"
-                      onClick={() => setShowIFlowCookieModal(true)}
-                      title="Add connection using browser cookie"
-                      className="w-full sm:w-auto"
-                    >
+              {!isCompatible &&
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:flex">
+                  {providerId === "iflow" &&
+            <Button
+              size="sm"
+              icon="cookie"
+              variant="secondary"
+              onClick={() => setShowIFlowCookieModal(true)}
+              title="Add connection using browser cookie"
+              className="w-full sm:w-auto">
+              
                       Cookie
                     </Button>
-                  )}
-                  {providerId === "codex" && (
-                    <Button
-                      size="sm"
-                      icon="playlist_add"
-                      variant="secondary"
-                      onClick={() => setShowBulkImportCodex(true)}
-                      title={translate("Bulk import codex accounts from JSON")}
-                      className="w-full sm:w-auto"
-                    >
+            }
+                  {providerId === "codex" &&
+            <Button
+              size="sm"
+              icon="playlist_add"
+              variant="secondary"
+              onClick={() => setShowBulkImportCodex(true)}
+              title={translate("Bulk import codex accounts from JSON")}
+              className="w-full sm:w-auto">
+              
                       {translate("Bulk Add")}
                     </Button>
-                  )}
-                  {hasDualAuthModes ? (
-                    <>
+            }
+                  {hasDualAuthModes ?
+            <>
                       <Button
-                        size="sm"
-                        icon="lock"
-                        variant="secondary"
-                        onClick={triggerOAuthConnection}
-                        className="w-full sm:w-auto"
-                      >
+                size="sm"
+                icon="lock"
+                variant="secondary"
+                onClick={triggerOAuthConnection}
+                className="w-full sm:w-auto">
+                
                         {oauthConnectionLabel}
                       </Button>
                       <Button
-                        size="sm"
-                        icon="key"
-                        onClick={triggerApiKeyConnection}
-                        className="w-full sm:w-auto"
-                      >
+                size="sm"
+                icon="key"
+                onClick={triggerApiKeyConnection}
+                className="w-full sm:w-auto">
+                
                         {apiKeyConnectionLabel}
                       </Button>
-                    </>
-                  ) : (
-                    <Button
-                      size="sm"
-                      icon="add"
-                      onClick={triggerAddConnection}
-                      className="w-full sm:w-auto"
-                    >
+                    </> :
+
+            <Button
+              size="sm"
+              icon="add"
+              onClick={triggerAddConnection}
+              className="w-full sm:w-auto">
+              
                       Add
                     </Button>
-                  )}
+            }
                 </div>
-              )}
+          }
             </>
-          )}
+        }
         </Card>
-      )}
+      }
 
       {/* Models */}
       <Card>
@@ -2004,102 +2005,102 @@ export default function ProviderDetailPage() {
             <h2 className="text-lg font-semibold">
               {"Available Models"}
             </h2>
-            {providerThinkingLevels && (
-              <select
-                value={thinkingMode}
-                onChange={(e) => handleThinkingModeChange(e.target.value)}
-                title="Appends (level) suffix to copied model names"
-                className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
-              >
-                {providerThinkingLevels.map((opt) => (
-                  <option key={opt} value={opt}>{`Thinking: ${opt.charAt(0).toUpperCase() + opt.slice(1)}`}</option>
-                ))}
+            {providerThinkingLevels &&
+            <select
+              value={thinkingMode}
+              onChange={(e) => handleThinkingModeChange(e.target.value)}
+              title="Appends (level) suffix to copied model names"
+              className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none">
+              
+                {providerThinkingLevels.map((opt) =>
+              <option key={opt} value={opt}>{`Thinking: ${opt.charAt(0).toUpperCase() + opt.slice(1)}`}</option>
+              )}
               </select>
-            )}
+            }
           </div>
           {!isCompatible && (() => {
             const allIds = [
-              ...models,
-              ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-            ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; }).map((m) => m.id);
+            ...models,
+            ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id))].
+            filter((m) => {const k = getModelKind(m);return !k || k === "llm";}).map((m) => m.id);
             const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
             return (
               <div className="flex gap-2">
-                {disabledModelIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
+                {disabledModelIds.length > 0 &&
+                <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
                     Active All
                   </Button>
-                )}
-                {activeIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
+                }
+                {activeIds.length > 0 &&
+                <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
                     Disable All
                   </Button>
-                )}
-              </div>
-            );
+                }
+              </div>);
+
           })()}
         </div>
-        {!!modelsTestError && (
-          <p className="text-xs text-red-500 mb-3 break-words">{modelsTestError}</p>
-        )}
+        {!!modelsTestError &&
+        <p className="text-xs text-red-500 mb-3 break-words">{modelsTestError}</p>
+        }
         {renderModelsSection()}
       </Card>
 
       {bulkActionModal}
 
       {/* Modals */}
-      {providerId === "kiro" ? (
-        <KiroOAuthWrapper
-          isOpen={showOAuthModal}
-          providerInfo={providerInfo}
-          onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
-          proxyPools={proxyPools}
-          proxyPoolsReady={proxyPoolsReady}
-        />
-      ) : providerId === "cursor" ? (
-        <CursorAuthModal
-          isOpen={showOAuthModal}
-          onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
-        />
-      ) : providerId === "gitlab" || providerId === "gitlab-duo" ? (
-        <GitLabAuthModal
-          isOpen={showOAuthModal}
-          provider={providerId}
-          providerInfo={providerInfo}
-          onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
-          proxyPools={proxyPools}
-          proxyPoolsReady={proxyPoolsReady}
-        />
-      ) : isImportToken ? (
-        <ImportTokenModal
-          isOpen={showOAuthModal}
-          provider={providerId}
-          providerInfo={providerInfo}
-          onSuccess={handleOAuthSuccess}
-          onClose={() => setShowOAuthModal(false)}
-        />
-      ) : (
-        <OAuthModal
-          isOpen={showOAuthModal}
-          provider={providerId}
-          providerInfo={providerInfo}
-          onSuccess={handleOAuthSuccess}
-          onClose={() => { setShowOAuthModal(false); setReconnectConnectionId(null); }}
-          proxyPools={proxyPools}
-          proxyPoolsReady={proxyPoolsReady}
-          connectionId={reconnectConnectionId}
-        />
-      )}
-      {providerId === "iflow" && (
-        <IFlowCookieModal
-          isOpen={showIFlowCookieModal}
-          onSuccess={handleIFlowCookieSuccess}
-          onClose={() => setShowIFlowCookieModal(false)}
-        />
-      )}
+      {providerId === "kiro" ?
+      <KiroOAuthWrapper
+        isOpen={showOAuthModal}
+        providerInfo={providerInfo}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady} /> :
+
+      providerId === "cursor" ?
+      <CursorAuthModal
+        isOpen={showOAuthModal}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)} /> :
+
+      providerId === "gitlab" || providerId === "gitlab-duo" ?
+      <GitLabAuthModal
+        isOpen={showOAuthModal}
+        provider={providerId}
+        providerInfo={providerInfo}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady} /> :
+
+      isImportToken ?
+      <ImportTokenModal
+        isOpen={showOAuthModal}
+        provider={providerId}
+        providerInfo={providerInfo}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)} /> :
+
+
+      <OAuthModal
+        isOpen={showOAuthModal}
+        provider={providerId}
+        providerInfo={providerInfo}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => {setShowOAuthModal(false);setReconnectConnectionId(null);}}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady}
+        connectionId={reconnectConnectionId} />
+
+      }
+      {providerId === "iflow" &&
+      <IFlowCookieModal
+        isOpen={showIFlowCookieModal}
+        onSuccess={handleIFlowCookieSuccess}
+        onClose={() => setShowIFlowCookieModal(false)} />
+
+      }
       <Modal
         isOpen={showImportTokenModal}
         title="Import Grok CLI Token"
@@ -2110,27 +2111,27 @@ export default function ProviderDetailPage() {
           setShowImportTokenModal(false);
         }}
         footer={
-          <>
+        <>
             <Button
-              variant="ghost"
-              onClick={() => {
-                setImportTokenError("");
-                setShowImportTokenModal(false);
-              }}
-              disabled={importingToken}
-            >
+            variant="ghost"
+            onClick={() => {
+              setImportTokenError("");
+              setShowImportTokenModal(false);
+            }}
+            disabled={importingToken}>
+            
               Cancel
             </Button>
             <Button
-              icon="upload"
-              loading={importingToken}
-              onClick={handleImportTokenSubmit}
-            >
+            icon="upload"
+            loading={importingToken}
+            onClick={handleImportTokenSubmit}>
+            
               Import
             </Button>
           </>
-        }
-      >
+        }>
+        
         <div className="space-y-4">
           <p className="text-sm text-text-muted">
             Paste the contents of <code className="rounded bg-surface-2 px-1 py-0.5">~/.grok/auth.json</code>, a raw Grok JWT, or a structured <code className="rounded bg-surface-2 px-1 py-0.5">{"{ accessToken, refreshToken }"}</code> body.
@@ -2141,11 +2142,11 @@ export default function ProviderDetailPage() {
             rows={10}
             spellCheck={false}
             className="w-full rounded-[10px] border border-border bg-background px-3 py-2 font-mono text-xs text-text-main outline-none focus:border-primary"
-            placeholder='{"https://auth.x.ai::client":{"key":"eyJ...","refresh_token":"...","expires_at":"..."}}'
-          />
-          {!!importTokenError && (
-            <p className="text-sm text-red-500">{importTokenError}</p>
-          )}
+            placeholder='{"https://auth.x.ai::client":{"key":"eyJ...","refresh_token":"...","expires_at":"..."}}' />
+          
+          {!!importTokenError &&
+          <p className="text-sm text-red-500">{importTokenError}</p>
+          }
         </div>
       </Modal>
       <AddApiKeyModal
@@ -2165,53 +2166,53 @@ export default function ProviderDetailPage() {
         onClose={() => {
           setAddConnectionError("");
           setShowAddApiKeyModal(false);
-        }}
-      />
+        }} />
+      
       <EditConnectionModal
         isOpen={showEditModal}
         connection={selectedConnection}
         proxyPools={proxyPools}
         onSave={handleUpdateConnection}
-        onClose={() => setShowEditModal(false)}
-      />
-      {isCompatible && (
-        <EditCompatibleNodeModal
-          isOpen={showEditNodeModal}
-          node={providerNode}
-          onSave={handleUpdateNode}
-          onClose={() => setShowEditNodeModal(false)}
-          isAnthropic={isAnthropicCompatible}
-        />
-      )}
-      {(!isCompatible || editingCustomModel) && (
-        <AddCustomModelModal
-          isOpen={showAddCustomModel || Boolean(editingCustomModel)}
-          providerAlias={providerStorageAlias}
-          providerDisplayAlias={providerDisplayAlias}
-          initialModel={editingCustomModel}
-          onSave={async (payload) => {
-            if (editingCustomModel) {
-              await handleUpdateCustomModel(payload);
-            } else {
-              await handleAddCustomModel(payload, "llm", providerStorageAlias);
-            }
-            setShowAddCustomModel(false);
-            setEditingCustomModel(null);
-          }}
-          onClose={() => {
-            setShowAddCustomModel(false);
-            setEditingCustomModel(null);
-          }}
-        />
-      )}
+        onClose={() => setShowEditModal(false)} />
+      
+      {isCompatible &&
+      <EditCompatibleNodeModal
+        isOpen={showEditNodeModal}
+        node={providerNode}
+        onSave={handleUpdateNode}
+        onClose={() => setShowEditNodeModal(false)}
+        isAnthropic={isAnthropicCompatible} />
 
-      {providerId === "codex" && (
-        <BulkImportCodexModal
-          isOpen={showBulkImportCodex}
-          onClose={() => setShowBulkImportCodex(false)}
-          onSuccess={fetchConnections}
-        />
-      )}
+      }
+      {(!isCompatible || editingCustomModel) &&
+      <AddCustomModelModal
+        isOpen={showAddCustomModel || Boolean(editingCustomModel)}
+        providerAlias={providerStorageAlias}
+        providerDisplayAlias={providerDisplayAlias}
+        initialModel={editingCustomModel}
+        onSave={async (payload) => {
+          if (editingCustomModel) {
+            await handleUpdateCustomModel(payload);
+          } else {
+            await handleAddCustomModel(payload, "llm", providerStorageAlias);
+          }
+          setShowAddCustomModel(false);
+          setEditingCustomModel(null);
+        }}
+        onClose={() => {
+          setShowAddCustomModel(false);
+          setEditingCustomModel(null);
+        }} />
+
+      }
+
+      {providerId === "codex" &&
+      <BulkImportCodexModal
+        isOpen={showBulkImportCodex}
+        onClose={() => setShowBulkImportCodex(false)}
+        onSuccess={fetchConnections} />
+
+      }
 
       {/* AG Risk Confirmation Modal */}
       <ConfirmModal
@@ -2222,8 +2223,8 @@ export default function ProviderDetailPage() {
         message={providerInfo?.deprecationNotice}
         confirmText="I Understand, Continue"
         cancelText="Cancel"
-        variant="danger"
-      />
+        variant="danger" />
+      
 
       {/* Confirm Modal */}
       <ConfirmModal
@@ -2232,8 +2233,8 @@ export default function ProviderDetailPage() {
         onConfirm={confirmState?.onConfirm}
         title={confirmState?.title || "Confirm"}
         message={confirmState?.message}
-        variant="danger"
-      />
-    </div>
-  );
+        variant="danger" />
+      
+    </div>);
+
 }

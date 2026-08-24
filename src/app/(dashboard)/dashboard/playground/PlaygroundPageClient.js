@@ -9,6 +9,7 @@ import { createSseParser } from "@/lib/playground/sse";
 import { sanitizeErrorText } from "@/lib/playground/errors";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { getConnectionOptions, getModelReasoningOptions, groupModelsByProvider, normalizeReasoningEffort, paginateSessions } from "./playgroundHelpers";
+import { isBrowser, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -16,7 +17,7 @@ const STORAGE_KEYS = {
   activeProviderId: "basic-chat.activeProviderId",
   draft: "basic-chat.draft",
   reasoningEffort: "playground.reasoningEffort",
-  activeConnectionId: "playground.activeConnectionId",
+  activeConnectionId: "playground.activeConnectionId"
 };
 
 function createId() {
@@ -33,12 +34,12 @@ function safeParse(value, fallback) {
 }
 
 function textValue(value) {
-  if (typeof value === "string") return value;
+  if (isString(value)) return value;
   if (value == null) return "";
   if (Array.isArray(value)) return value.map(textValue).filter(Boolean).join(" ");
-  if (typeof value === "object") {
-    if (typeof value.message === "string") return value.message;
-    if (typeof value.error === "string") return value.error;
+  if (isObject(value)) {
+    if (isString(value.message)) return value.message;
+    if (isString(value.error)) return value.error;
     try {
       return JSON.stringify(value);
     } catch {
@@ -49,10 +50,10 @@ function textValue(value) {
 }
 
 function humanize(value = "") {
-  return String(value)
-    .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-    .trim() || "Unknown";
+  return String(value).
+  replace(/[-_]/g, " ").
+  replace(/\b\w/g, (char) => char.toUpperCase()).
+  trim() || "Unknown";
 }
 
 function formatRelativeTime(value) {
@@ -91,12 +92,12 @@ function buildUserContent(message) {
 }
 
 function readAssistantText(chunk) {
-  if (!chunk || typeof chunk !== "object") return "";
+  if (!chunk || !isObject(chunk)) return "";
   const choice = chunk.choices?.[0];
   const delta = choice?.delta || {};
-  const pieces = [delta.content, choice?.message?.content, chunk.output_text, chunk.text]
-    .map(textValue)
-    .filter(Boolean);
+  const pieces = [delta.content, choice?.message?.content, chunk.output_text, chunk.text].
+  map(textValue).
+  filter(Boolean);
   return pieces[0] || "";
 }
 
@@ -112,7 +113,7 @@ async function fileToDataUrl(file) {
 function cloneSession(session) {
   return {
     ...session,
-    messages: Array.isArray(session.messages) ? session.messages.map((message) => ({ ...message })) : [],
+    messages: Array.isArray(session.messages) ? session.messages.map((message) => ({ ...message })) : []
   };
 }
 
@@ -131,17 +132,17 @@ function normalizeStaticModel(model, connection) {
     name: model.name || model.id,
     providerId,
     providerName: connection.providerName || getProviderLabel(connection),
-    source: "static",
+    source: "static"
   };
 }
 
 function normalizeLiveModel(model, connection) {
-  const rawId = typeof model === "string" ? model : model?.id || model?.name || model?.model || "";
+  const rawId = isString(model) ? model : model?.id || model?.name || model?.model || "";
   if (!rawId) return null;
 
-  const displayName = typeof model === "string"
-    ? model
-    : model?.name || model?.displayName || rawId;
+  const displayName = isString(model) ?
+  model :
+  model?.name || model?.displayName || rawId;
 
   const providerId = connection.providerId || connection.provider || connection.id;
   let requestModel = rawId;
@@ -156,7 +157,7 @@ function normalizeLiveModel(model, connection) {
     name: displayName,
     providerId,
     providerName: connection.providerName || getProviderLabel(connection),
-    source: "live",
+    source: "live"
   };
 }
 
@@ -173,34 +174,34 @@ export default function PlaygroundPageClient() {
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sessions, setSessions] = useState(() => {
-    if (typeof window === "undefined") return [];
+    if (!isBrowser()) return [];
     try {
       const saved = safeParse(globalThis.localStorage.getItem(STORAGE_KEYS.sessions), []);
       return Array.isArray(saved) ? saved.map((session) => ({
         ...session,
-        messages: Array.isArray(session.messages) ? session.messages : [],
+        messages: Array.isArray(session.messages) ? session.messages : []
       })) : [];
-    } catch { return []; }
+    } catch {return [];}
   });
   const [activeSessionId, setActiveSessionId] = useState(() => {
-    if (typeof window === "undefined") return "";
+    if (!isBrowser()) return "";
     return globalThis.localStorage.getItem(STORAGE_KEYS.activeSessionId) || "";
   });
   const [activeProviderId, setActiveProviderId] = useState(() => {
-    if (typeof window === "undefined") return "";
+    if (!isBrowser()) return "";
     return globalThis.localStorage.getItem(STORAGE_KEYS.activeProviderId) || "";
   });
   const [activeModelId, setActiveModelId] = useState("");
   const [draft, setDraft] = useState(() => {
-    if (typeof window === "undefined") return "";
+    if (!isBrowser()) return "";
     return globalThis.localStorage.getItem(STORAGE_KEYS.draft) || "";
   });
   const [reasoningEffort, setReasoningEffort] = useState(() => {
-    if (typeof window === "undefined") return "auto";
+    if (!isBrowser()) return "auto";
     return globalThis.localStorage.getItem(STORAGE_KEYS.reasoningEffort) || "auto";
   });
   const [activeConnectionId, setActiveConnectionId] = useState(() => {
-    if (typeof window === "undefined") return "auto";
+    if (!isBrowser()) return "auto";
     return globalThis.localStorage.getItem(STORAGE_KEYS.activeConnectionId) || "auto";
   });
   const [attachments, setAttachments] = useState([]);
@@ -235,9 +236,9 @@ export default function PlaygroundPageClient() {
       try {
         const providersRes = await fetch("/api/providers", { cache: "no-store", signal: controller.signal });
         const providersData = await providersRes.json().catch(() => ({}));
-        const connections = Array.isArray(providersData.connections)
-          ? providersData.connections.filter((connection) => connection?.isActive !== false)
-          : [];
+        const connections = Array.isArray(providersData.connections) ?
+        providersData.connections.filter((connection) => connection?.isActive !== false) :
+        [];
 
         if (connections.length === 0) {
           if (!cancelled) {
@@ -253,9 +254,9 @@ export default function PlaygroundPageClient() {
               const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store", signal: controller.signal });
               const data = await response.json().catch(() => ({}));
               if (!response.ok) return { connection, models: [] };
-              const models = parseProviderModelsPayload(data)
-                .map((model) => normalizeLiveModel(model, connection))
-                .filter(Boolean);
+              const models = parseProviderModelsPayload(data).
+              map((model) => normalizeLiveModel(model, connection)).
+              filter(Boolean);
               return { connection, models };
             } catch {
               return { connection, models: [] };
@@ -270,22 +271,22 @@ export default function PlaygroundPageClient() {
             provider: connection.provider || connection.id,
             providerId,
             providerName: getProviderLabel(connection),
-            providerType: isOpenAICompatibleProvider(providerId)
-              ? "openai-compatible"
-              : isAnthropicCompatibleProvider(providerId)
-                ? "anthropic-compatible"
-                : providerId,
+            providerType: isOpenAICompatibleProvider(providerId) ?
+            "openai-compatible" :
+            isAnthropicCompatibleProvider(providerId) ?
+            "anthropic-compatible" :
+            providerId
           };
         });
 
         const normalizedModels = [
-          ...normalizedConnections.flatMap((connection) =>
-            getModelsByProviderId(connection.providerId)
-              .map((model) => normalizeStaticModel(model, connection))
-              .filter(Boolean)
-          ),
-          ...liveResults.flatMap((result) => result.models || []),
-        ];
+        ...normalizedConnections.flatMap((connection) =>
+        getModelsByProviderId(connection.providerId).
+        map((model) => normalizeStaticModel(model, connection)).
+        filter(Boolean)
+        ),
+        ...liveResults.flatMap((result) => result.models || [])];
+
 
         const normalized = groupModelsByProvider(normalizedConnections, normalizedModels);
 
@@ -339,7 +340,7 @@ export default function PlaygroundPageClient() {
         map.set(model.id, {
           ...model,
           providerId: group.providerId,
-          providerName: group.providerName,
+          providerName: group.providerName
         });
       }
     }
@@ -399,24 +400,24 @@ export default function PlaygroundPageClient() {
       globalThis.localStorage.setItem(STORAGE_KEYS.reasoningEffort, reasoningEffort);
       globalThis.localStorage.setItem(STORAGE_KEYS.activeConnectionId, activeConnectionId);
     } catch {
+
       // Ignore storage errors.
-    }
-  }, [isHydrated, sessions, activeSessionId, activeProviderId, draft, reasoningEffort, activeConnectionId]);
+    }}, [isHydrated, sessions, activeSessionId, activeProviderId, draft, reasoningEffort, activeConnectionId]);
 
   useEffect(() => {
     if (!isHydrated || loadingData || initializedRef.current) return;
     if (providerGroups.length === 0) return;
 
     const savedProvider = providerGroups.find((group) => group.providerId === activeProviderId) || providerGroups[0];
-    const savedModel = activeModelId && modelIndex.has(activeModelId)
-      ? modelIndex.get(activeModelId)
-      : savedProvider.models[0];
+    const savedModel = activeModelId && modelIndex.has(activeModelId) ?
+    modelIndex.get(activeModelId) :
+    savedProvider.models[0];
 
     if (sessions.length > 0) {
       const session = sessions.find((item) => item.id === activeSessionId) || sessions[0];
-      const sessionModel = session?.modelId && modelIndex.has(session.modelId)
-        ? modelIndex.get(session.modelId)
-        : savedModel;
+      const sessionModel = session?.modelId && modelIndex.has(session.modelId) ?
+      modelIndex.get(session.modelId) :
+      savedModel;
       initializedRef.current = true;
       setActiveSessionId(session.id);
       setActiveProviderId(sessionModel?.providerId || savedProvider.providerId);
@@ -433,7 +434,7 @@ export default function PlaygroundPageClient() {
       modelName: savedModel.name,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      messages: [],
+      messages: []
     };
 
     initializedRef.current = true;
@@ -444,7 +445,7 @@ export default function PlaygroundPageClient() {
   }, [isHydrated, loadingData, providerGroups, modelIndex, sessions, activeSessionId, activeProviderId, activeModelId]);
 
   const updateSession = (sessionId, updater) => {
-    setSessions((prev) => prev.map((session) => (session.id === sessionId ? updater(cloneSession(session)) : session)));
+    setSessions((prev) => prev.map((session) => session.id === sessionId ? updater(cloneSession(session)) : session));
   };
 
   const ensureSessionForModel = (model) => {
@@ -458,7 +459,7 @@ export default function PlaygroundPageClient() {
       modelName: model.name,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      messages: [],
+      messages: []
     };
   };
 
@@ -514,13 +515,13 @@ export default function PlaygroundPageClient() {
       setSessions((prev) => [session, ...prev]);
       setActiveSessionId(session.id);
     } else if (current) {
-      setSessions((prev) => prev.map((item) => (item.id === current.id ? {
+      setSessions((prev) => prev.map((item) => item.id === current.id ? {
         ...item,
         providerId: group.providerId,
         providerName: group.providerName,
         modelId: nextModel.id,
-        modelName: nextModel.name,
-      } : item)));
+        modelName: nextModel.name
+      } : item));
       setActiveSessionId(current.id);
     }
 
@@ -541,13 +542,13 @@ export default function PlaygroundPageClient() {
       setSessions((prev) => [session, ...prev]);
       setActiveSessionId(session.id);
     } else if (current) {
-      setSessions((prev) => prev.map((item) => (item.id === current.id ? {
+      setSessions((prev) => prev.map((item) => item.id === current.id ? {
         ...item,
         providerId: model.providerId,
         providerName: model.providerName,
         modelId: model.id,
-        modelName: model.name,
-      } : item)));
+        modelName: model.name
+      } : item));
       setActiveSessionId(current.id);
     } else {
       const session = ensureSessionForModel(model);
@@ -576,7 +577,7 @@ export default function PlaygroundPageClient() {
       name: file.name,
       type: file.type,
       size: file.size,
-      dataUrl: await fileToDataUrl(file),
+      dataUrl: await fileToDataUrl(file)
     })));
 
     setAttachments((prev) => [...prev, ...converted]);
@@ -596,7 +597,7 @@ export default function PlaygroundPageClient() {
     updateSession(sessionId, (session) => ({
       ...session,
       title: session.title === "New chat" ? title : session.title,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     }));
   };
 
@@ -625,9 +626,9 @@ export default function PlaygroundPageClient() {
         id: attachment.id,
         name: attachment.name,
         type: attachment.type,
-        dataUrl: attachment.dataUrl,
+        dataUrl: attachment.dataUrl
       })),
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     };
 
     const assistantMessageId = createId();
@@ -636,11 +637,11 @@ export default function PlaygroundPageClient() {
       role: "assistant",
       content: "",
       createdAt: new Date().toISOString(),
-      status: "streaming",
+      status: "streaming"
     };
 
     const nextMessages = [...(session.messages || []), userMessage, assistantMessage];
-    setSessions((prev) => prev.map((item) => (item.id === sessionId ? {
+    setSessions((prev) => prev.map((item) => item.id === sessionId ? {
       ...item,
       providerId: model.providerId,
       providerName: model.providerName,
@@ -648,8 +649,8 @@ export default function PlaygroundPageClient() {
       modelName: model.name,
       messages: nextMessages,
       updatedAt: new Date().toISOString(),
-      title: item.title === "New chat" ? makeSessionTitle(userText) : item.title,
-    } : item)));
+      title: item.title === "New chat" ? makeSessionTitle(userText) : item.title
+    } : item));
     setDraft("");
     setAttachments([]);
     setIsSending(true);
@@ -659,18 +660,18 @@ export default function PlaygroundPageClient() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const requestMessages = nextMessages
-      .filter((message) => !(message.role === "assistant" && message.id === assistantMessageId))
-      .map((message) => ({
-        role: message.role,
-        content: message.role === "user" ? buildUserContent(message) : message.content,
-      }));
+    const requestMessages = nextMessages.
+    filter((message) => !(message.role === "assistant" && message.id === assistantMessageId)).
+    map((message) => ({
+      role: message.role,
+      content: message.role === "user" ? buildUserContent(message) : message.content
+    }));
 
     try {
       const body = {
         model: model.requestModel || model.id,
         messages: requestMessages,
-        stream: true,
+        stream: true
       };
       if (reasoningEffort !== "auto") {
         body.reasoning_effort = reasoningEffort;
@@ -678,7 +679,7 @@ export default function PlaygroundPageClient() {
 
       const headers = {
         "Content-Type": "application/json",
-        Accept: "text/event-stream",
+        Accept: "text/event-stream"
       };
       if (connectionValue !== "auto") {
         headers["x-connection-id"] = connectionValue;
@@ -688,7 +689,7 @@ export default function PlaygroundPageClient() {
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: controller.signal,
+        signal: controller.signal
       });
 
       if (!response.ok) {
@@ -702,8 +703,8 @@ export default function PlaygroundPageClient() {
         const fallbackText = textValue(data?.choices?.[0]?.message?.content || data?.output_text || data?.error || data?.message || "");
         updateSession(sessionId, (currentSession) => ({
           ...currentSession,
-          messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: fallbackText, status: "done" } : message)),
-          updatedAt: new Date().toISOString(),
+          messages: currentSession.messages.map((message) => message.id === assistantMessageId ? { ...message, content: fallbackText, status: "done" } : message),
+          updatedAt: new Date().toISOString()
         }));
         return;
       }
@@ -725,8 +726,8 @@ export default function PlaygroundPageClient() {
         setStreamingText(assistantText);
         updateSession(sessionId, (currentSession) => ({
           ...currentSession,
-          messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: assistantText, status: "streaming" } : message)),
-          updatedAt: new Date().toISOString(),
+          messages: currentSession.messages.map((message) => message.id === assistantMessageId ? { ...message, content: assistantText, status: "streaming" } : message),
+          updatedAt: new Date().toISOString()
         }));
       });
 
@@ -740,8 +741,8 @@ export default function PlaygroundPageClient() {
 
       updateSession(sessionId, (currentSession) => ({
         ...currentSession,
-        messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: assistantText || message.content, status: "done" } : message)),
-        updatedAt: new Date().toISOString(),
+        messages: currentSession.messages.map((message) => message.id === assistantMessageId ? { ...message, content: assistantText || message.content, status: "done" } : message),
+        updatedAt: new Date().toISOString()
       }));
       finalizeSessionTitle(sessionId, userText);
     } catch (error) {
@@ -749,8 +750,8 @@ export default function PlaygroundPageClient() {
         const errorText = sanitizeErrorText(error?.message || error);
         updateSession(sessionId, (currentSession) => ({
           ...currentSession,
-          messages: currentSession.messages.map((message) => (message.id === assistantMessageId ? { ...message, content: message.content || `Error: ${errorText}`, status: "error" } : message)),
-          updatedAt: new Date().toISOString(),
+          messages: currentSession.messages.map((message) => message.id === assistantMessageId ? { ...message, content: message.content || `Error: ${errorText}`, status: "error" } : message),
+          updatedAt: new Date().toISOString()
         }));
         setLoadError(errorText || "Failed to send message.");
       }
@@ -773,9 +774,9 @@ export default function PlaygroundPageClient() {
   const modelSubLabel = activeModel ? activeModel.requestModel : "Choose from connected providers";
   const activeConnectionOptions = useMemo(() => getConnectionOptions(activeProviderGroup), [activeProviderGroup]);
 
-  const connectionValue = activeConnectionOptions.some((opt) => opt.value === activeConnectionId)
-    ? activeConnectionId
-    : "auto";
+  const connectionValue = activeConnectionOptions.some((opt) => opt.value === activeConnectionId) ?
+  activeConnectionId :
+  "auto";
 
   return (
     <div className="relative flex flex-1 flex-col h-full min-h-0 min-w-0 overflow-hidden bg-bg text-text">
@@ -788,25 +789,25 @@ export default function PlaygroundPageClient() {
               <span className="px-0.5 text-xs font-medium text-text-muted">Model</span>
               <div ref={modelMenuRef} className="relative min-w-0">
               <button
-                type="button"
-                onClick={() => setModelMenuOpen((value) => !value)}
-                aria-haspopup="listbox"
-                aria-expanded={modelMenuOpen}
-                className="flex h-[52px] w-full items-center gap-3 rounded-[12px] border border-border bg-surface px-3 py-2.5 text-left transition hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 sm:w-auto"
-              >
-                {activeProviderGroup ? (
+                  type="button"
+                  onClick={() => setModelMenuOpen((value) => !value)}
+                  aria-haspopup="listbox"
+                  aria-expanded={modelMenuOpen}
+                  className="flex h-[52px] w-full items-center gap-3 rounded-[12px] border border-border bg-surface px-3 py-2.5 text-left transition hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 sm:w-auto">
+                  
+                {activeProviderGroup ?
                   <ProviderIcon
                     src={`/providers/${activeProviderGroup.providerId}.png`}
                     alt={activeProviderGroup.providerName}
                     size={28}
                     className="shrink-0 rounded-[8px] object-contain"
-                    fallbackText={activeProviderGroup.providerId.slice(0, 2).toUpperCase()}
-                  />
-                ) : (
+                    fallbackText={activeProviderGroup.providerId.slice(0, 2).toUpperCase()} /> :
+
+
                   <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-surface-2 text-text-muted">
                     <span className="material-symbols-outlined text-[18px]">smart_toy</span>
                   </span>
-                )}
+                  }
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span className="truncate text-sm font-semibold text-text">{modelLabel}</span>
@@ -816,11 +817,11 @@ export default function PlaygroundPageClient() {
                 </span>
               </button>
 
-              {modelMenuOpen ? (
+              {modelMenuOpen ?
                 <Card
                   padding="none"
-                  className="absolute left-0 top-[calc(100%+8px)] z-30 w-[min(520px,calc(100vw-1.5rem))] shadow-[var(--shadow-elev)]"
-                >
+                  className="absolute left-0 top-[calc(100%+8px)] z-30 w-[min(520px,calc(100vw-1.5rem))] shadow-[var(--shadow-elev)]">
+                  
                   <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-subtle">Models</p>
@@ -830,38 +831,38 @@ export default function PlaygroundPageClient() {
                       type="button"
                       onClick={() => setModelMenuOpen(false)}
                       className="rounded-full p-1 text-text-muted transition hover:bg-surface-2 hover:text-text"
-                      aria-label="Close model list"
-                    >
+                      aria-label="Close model list">
+                      
                       <span className="material-symbols-outlined text-[18px]">close</span>
                     </button>
                   </div>
                   <div className="max-h-[60vh] space-y-2 overflow-y-auto p-2 custom-scrollbar">
-                    {providerGroups.map((group) => (
-                      <div key={group.providerId} className="rounded-[12px] border border-border-subtle bg-bg p-2">
+                    {providerGroups.map((group) =>
+                    <div key={group.providerId} className="rounded-[12px] border border-border-subtle bg-bg p-2">
                         <div className="flex items-center justify-between px-1.5 py-1.5">
                           <div className="flex min-w-0 items-center gap-2">
                             <ProviderIcon
-                              src={`/providers/${group.providerId}.png`}
-                              alt={group.providerName}
-                              size={20}
-                              className="shrink-0 rounded-[6px] object-contain"
-                              fallbackText={group.providerId.slice(0, 2).toUpperCase()}
-                            />
+                            src={`/providers/${group.providerId}.png`}
+                            alt={group.providerName}
+                            size={20}
+                            className="shrink-0 rounded-[6px] object-contain"
+                            fallbackText={group.providerId.slice(0, 2).toUpperCase()} />
+                          
                             <p className="truncate text-sm font-semibold text-text">{group.providerName}</p>
                           </div>
                           <Badge size="sm" variant="default">{group.models.length}</Badge>
                         </div>
                         <div className="grid gap-1.5 sm:grid-cols-2">
                           {group.models.map((model) => {
-                            const isActive = model.id === activeModelId;
-                            return (
-                              <button
-                                key={model.id}
-                                type="button"
-                                onClick={() => handleSelectModel(model.id)}
-                                aria-pressed={isActive}
-                                className={`rounded-[10px] border px-3 py-2.5 text-left transition ${isActive ? "border-brand-500/50 bg-brand-500/10" : "border-border-subtle bg-surface hover:bg-surface-2 hover:border-border"}`}
-                              >
+                          const isActive = model.id === activeModelId;
+                          return (
+                            <button
+                              key={model.id}
+                              type="button"
+                              onClick={() => handleSelectModel(model.id)}
+                              aria-pressed={isActive}
+                              className={`rounded-[10px] border px-3 py-2.5 text-left transition ${isActive ? "border-brand-500/50 bg-brand-500/10" : "border-border-subtle bg-surface hover:bg-surface-2 hover:border-border"}`}>
+                              
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="min-w-0">
                                     <p className="truncate text-sm font-medium text-text">{model.name}</p>
@@ -869,49 +870,49 @@ export default function PlaygroundPageClient() {
                                   </div>
                                   {isActive ? <span className="material-symbols-outlined shrink-0 text-[18px] text-brand-500">check_circle</span> : null}
                                 </div>
-                              </button>
-                            );
-                          })}
+                              </button>);
+
+                        })}
                         </div>
                       </div>
-                    ))}
+                    )}
                   </div>
-                </Card>
-              ) : null}
+                </Card> :
+                null}
               </div>
             </div>
 
             {/* Secondary controls */}
             <div className="flex flex-wrap items-center gap-2">
-              {activeConnectionOptions.length > 1 ? (
-                <Select
-                  label="Connection"
-                  selectClassName="min-w-[10rem]"
-                  options={activeConnectionOptions}
-                  value={connectionValue}
-                  onChange={(event) => setActiveConnectionId(event.target.value)}
-                  placeholder="Select connection"
-                />
-              ) : null}
-              {reasoningOptions && reasoningOptions.length > 1 ? (
-                <Select
-                  label="Effort"
-                  aria-label="Reasoning effort"
-                  selectClassName="h-[46px] min-w-[9rem] py-2.5"
-                  options={reasoningOptions.map((option) => ({ value: option, label: humanize(option) }))}
-                  value={reasoningEffort}
-                  onChange={(event) => setReasoningEffort(event.target.value)}
-                  placeholder="Effort"
-                />
-              ) : null}
+              {activeConnectionOptions.length > 1 ?
+              <Select
+                label="Connection"
+                selectClassName="min-w-[10rem]"
+                options={activeConnectionOptions}
+                value={connectionValue}
+                onChange={(event) => setActiveConnectionId(event.target.value)}
+                placeholder="Select connection" /> :
+
+              null}
+              {reasoningOptions && reasoningOptions.length > 1 ?
+              <Select
+                label="Effort"
+                aria-label="Reasoning effort"
+                selectClassName="h-[46px] min-w-[9rem] py-2.5"
+                options={reasoningOptions.map((option) => ({ value: option, label: humanize(option) }))}
+                value={reasoningEffort}
+                onChange={(event) => setReasoningEffort(event.target.value)}
+                placeholder="Effort" /> :
+
+              null}
               <Button
                 variant="outline"
                 size="sm"
                 icon="history"
                 onClick={() => setHistoryOpen((value) => !value)}
                 aria-expanded={historyOpen}
-                aria-haspopup="dialog"
-              >
+                aria-haspopup="dialog">
+                
                 History
               </Button>
               <Button
@@ -919,8 +920,8 @@ export default function PlaygroundPageClient() {
                 size="sm"
                 icon="delete"
                 onClick={handleDeleteCurrentChat}
-                disabled={!activeSessionId || sessions.length === 0}
-              >
+                disabled={!activeSessionId || sessions.length === 0}>
+                
                 Clear
               </Button>
             </div>
@@ -928,38 +929,38 @@ export default function PlaygroundPageClient() {
         </header>
 
         {/* ---------- History popover ---------- */}
-        {historyOpen ? (
-          <Card
-            padding="none"
-            className="absolute right-3 top-[68px] z-30 w-[min(360px,calc(100vw-1.5rem))] shadow-[var(--shadow-elev)] sm:right-4 lg:right-6"
-          >
+        {historyOpen ?
+        <Card
+          padding="none"
+          className="absolute right-3 top-[68px] z-30 w-[min(360px,calc(100vw-1.5rem))] shadow-[var(--shadow-elev)] sm:right-4 lg:right-6">
+          
             <div className="flex items-center justify-between px-3 py-2">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-subtle">Recent chats</p>
               <button
-                type="button"
-                onClick={() => setHistoryOpen(false)}
-                className="rounded-full p-1 text-text-muted transition hover:bg-surface-2 hover:text-text"
-                aria-label="Close history"
-              >
+              type="button"
+              onClick={() => setHistoryOpen(false)}
+              className="rounded-full p-1 text-text-muted transition hover:bg-surface-2 hover:text-text"
+              aria-label="Close history">
+              
                 <span className="material-symbols-outlined text-[16px]">close</span>
               </button>
             </div>
             <div className="max-h-[48vh] space-y-1.5 overflow-y-auto p-1.5 custom-scrollbar">
-              {sessionItems.length === 0 ? (
-                <div className="rounded-[10px] border border-dashed border-border-subtle bg-surface p-4 text-sm text-text-muted">
+              {sessionItems.length === 0 ?
+            <div className="rounded-[10px] border border-dashed border-border-subtle bg-surface p-4 text-sm text-text-muted">
                   No conversations yet.
-                </div>
-              ) : paginatedSessions.items.map((session) => {
-                const isActive = session.id === activeSessionId;
-                const latestMessage = [...(session.messages || [])].reverse().find((message) => message.role === "user") || session.messages?.[0];
-                return (
-                  <button
-                    key={session.id}
-                    type="button"
-                    onClick={() => handleSelectSession(session.id)}
-                    aria-pressed={isActive}
-                    className={`w-full rounded-[10px] border px-3 py-2.5 text-left transition ${isActive ? "border-brand-500/50 bg-brand-500/10" : "border-border-subtle bg-surface hover:bg-surface-2 hover:border-border"}`}
-                  >
+                </div> :
+            paginatedSessions.items.map((session) => {
+              const isActive = session.id === activeSessionId;
+              const latestMessage = [...(session.messages || [])].reverse().find((message) => message.role === "user") || session.messages?.[0];
+              return (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => handleSelectSession(session.id)}
+                  aria-pressed={isActive}
+                  className={`w-full rounded-[10px] border px-3 py-2.5 text-left transition ${isActive ? "border-brand-500/50 bg-brand-500/10" : "border-border-subtle bg-surface hover:bg-surface-2 hover:border-border"}`}>
+                  
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-text">{session.title}</p>
@@ -967,38 +968,38 @@ export default function PlaygroundPageClient() {
                       </div>
                       <span className="shrink-0 text-[10px] text-text-subtle">{formatRelativeTime(session.updatedAt)}</span>
                     </div>
-                  </button>
-                );
-              })}
+                  </button>);
+
+            })}
             </div>
-            {sessionItems.length > paginatedSessions.items.length ? (
-              <div className="border-t border-border-subtle px-2 py-1">
+            {sessionItems.length > paginatedSessions.items.length ?
+          <div className="border-t border-border-subtle px-2 py-1">
                 <Pagination
-                  currentPage={paginatedSessions.page}
-                  pageSize={10}
-                  totalItems={sessionItems.length}
-                  onPageChange={setHistoryPage}
-                />
-              </div>
-            ) : null}
-          </Card>
-        ) : null}
+              currentPage={paginatedSessions.page}
+              pageSize={10}
+              totalItems={sessionItems.length}
+              onPageChange={setHistoryPage} />
+            
+              </div> :
+          null}
+          </Card> :
+        null}
 
         {/* ---------- Load error ---------- */}
-        {loadError ? (
-          <div className="mx-3 mt-3 rounded-[12px] border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-200 sm:mx-4 lg:mx-6">
+        {loadError ?
+        <div className="mx-3 mt-3 rounded-[12px] border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-200 sm:mx-4 lg:mx-6">
             <div className="flex items-start gap-3">
               <span className="material-symbols-outlined mt-0.5 text-[18px] text-red-600 dark:text-red-300">error</span>
               <p className="leading-6">{loadError}</p>
             </div>
-          </div>
-        ) : null}
+          </div> :
+        null}
 
         {/* ---------- Thread + composer ---------- */}
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto px-3 py-4 custom-scrollbar sm:px-4 lg:px-6">
-            {currentMessages.length === 0 ? (
-              <div className="flex min-h-[50vh] items-center justify-center px-4 text-center">
+            {currentMessages.length === 0 ?
+            <div className="flex min-h-[50vh] items-center justify-center px-4 text-center">
                 <div className="max-w-xl space-y-4">
                   <div className="mx-auto flex size-16 items-center justify-center rounded-[20px] border border-border-subtle bg-surface text-brand-500">
                     <span className="material-symbols-outlined text-[32px]">forum</span>
@@ -1008,16 +1009,16 @@ export default function PlaygroundPageClient() {
                     <p className="text-sm leading-6 text-text-muted">
                       Chat against the local /v1 endpoint with any model from connected providers. Select a model and start streaming.
                     </p>
-                    {activeModel ? (
-                      <p className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1 text-xs font-medium text-text-muted">
+                    {activeModel ?
+                  <p className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-surface px-3 py-1 text-xs font-medium text-text-muted">
                         <span className="size-1.5 rounded-full bg-brand-500" />
                         {activeProviderGroup?.providerName || activeModel.providerName} · {activeModel.name}
-                      </p>
-                    ) : null}
+                      </p> :
+                  null}
                   </div>
                 </div>
-              </div>
-            ) : null}
+              </div> :
+            null}
 
             <ol className="mx-auto flex w-full max-w-3xl flex-col gap-5">
               {currentMessages.map((message) => {
@@ -1031,112 +1032,112 @@ export default function PlaygroundPageClient() {
                 return (
                   <li
                     key={message.id}
-                    className={`flex w-full gap-3 ${isUser ? "justify-end" : "justify-start"}`}
-                  >
+                    className={`flex w-full gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
+                    
                     {/* Avatar (assistant only) */}
-                    {!isUser ? (
-                      <span
-                        className="mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-border-subtle bg-surface"
-                        aria-hidden="true"
-                      >
-                        {activeProviderGroup ? (
-                          <ProviderIcon
-                            src={`/providers/${activeProviderGroup.providerId}.png`}
-                            alt=""
-                            size={20}
-                            className="rounded object-contain"
-                            fallbackText={activeProviderGroup.providerId.slice(0, 2).toUpperCase()}
-                          />
-                        ) : (
-                          <span className="material-symbols-outlined text-[18px] text-text-muted">smart_toy</span>
-                        )}
-                      </span>
-                    ) : null}
+                    {!isUser ?
+                    <span
+                      className="mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-border-subtle bg-surface"
+                      aria-hidden="true">
+                      
+                        {activeProviderGroup ?
+                      <ProviderIcon
+                        src={`/providers/${activeProviderGroup.providerId}.png`}
+                        alt=""
+                        size={20}
+                        className="rounded object-contain"
+                        fallbackText={activeProviderGroup.providerId.slice(0, 2).toUpperCase()} /> :
+
+
+                      <span className="material-symbols-outlined text-[18px] text-text-muted">smart_toy</span>
+                      }
+                      </span> :
+                    null}
 
                     <div className={`flex min-w-0 max-w-[min(88%,42rem)] flex-col ${isUser ? "items-end" : "items-start"}`}>
                       {/* Role label */}
                       <div className={`mb-1 flex items-center gap-2 px-1 ${isUser ? "flex-row-reverse" : ""}`}>
                         <span className="text-xs font-semibold text-text">{isUser ? "You" : assistantName}</span>
-                        {isStreaming ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-medium text-brand-500">
+                        {isStreaming ?
+                        <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-medium text-brand-500">
                             <span className="size-1.5 animate-pulse rounded-full bg-brand-500" />
                             streaming
-                          </span>
-                        ) : null}
-                        {isError ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-300">
+                          </span> :
+                        null}
+                        {isError ?
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-300">
                             <span className="material-symbols-outlined text-[12px]">error</span>
                             error
-                          </span>
-                        ) : null}
+                          </span> :
+                        null}
                       </div>
 
                       {/* Attachments */}
-                      {message.attachments?.length ? (
-                        <div className={`mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3 ${isUser ? "justify-items-end" : ""}`}>
-                          {message.attachments.map((attachment) => (
-                            <a
-                              key={attachment.id}
-                              href={attachment.dataUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="block overflow-hidden rounded-[12px] border border-border-subtle bg-surface transition hover:border-brand-500/40"
-                            >
+                      {message.attachments?.length ?
+                      <div className={`mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3 ${isUser ? "justify-items-end" : ""}`}>
+                          {message.attachments.map((attachment) =>
+                        <a
+                          key={attachment.id}
+                          href={attachment.dataUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block overflow-hidden rounded-[12px] border border-border-subtle bg-surface transition hover:border-brand-500/40">
+                          
                               <img src={attachment.dataUrl} alt={attachment.name} className="h-28 w-full object-cover" />
                             </a>
-                          ))}
-                        </div>
-                      ) : null}
+                        )}
+                        </div> :
+                      null}
 
                       {/* Bubble */}
                       <div
                         className={`w-full whitespace-pre-wrap break-words rounded-[16px] px-4 py-3 text-[15px] leading-7 transition-colors ${
-                          isUser
-                            ? "rounded-tr-sm bg-brand-500/10 text-text"
-                            : isError
-                              ? "rounded-tl-sm border border-red-500/25 bg-red-500/5 text-text"
-                              : "rounded-tl-sm border border-border-subtle bg-surface text-text"
-                        }`}
-                      >
+                        isUser ?
+                        "rounded-tr-sm bg-brand-500/10 text-text" :
+                        isError ?
+                        "rounded-tl-sm border border-red-500/25 bg-red-500/5 text-text" :
+                        "rounded-tl-sm border border-border-subtle bg-surface text-text"}`
+                        }>
+                        
                         {content}
-                        {isAssistant && isStreaming && !streamingText ? (
-                          <span className="ml-0.5 inline-block animate-pulse text-text-muted">▋</span>
-                        ) : null}
+                        {isAssistant && isStreaming && !streamingText ?
+                        <span className="ml-0.5 inline-block animate-pulse text-text-muted">▋</span> :
+                        null}
                       </div>
                     </div>
-                  </li>
-                );
+                  </li>);
+
               })}
             </ol>
           </div>
 
           {/* ---------- Composer ---------- */}
           <div className="shrink-0 border-t border-border-subtle bg-bg/85 px-3 py-3 backdrop-blur-md sm:px-4 lg:px-6">
-            {attachments.length > 0 ? (
-              <div className="mx-auto mb-2.5 flex w-full max-w-3xl flex-wrap gap-2">
-                {attachments.map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="group flex items-center gap-2 rounded-full border border-border-subtle bg-surface py-1 pl-2 pr-1"
-                  >
+            {attachments.length > 0 ?
+            <div className="mx-auto mb-2.5 flex w-full max-w-3xl flex-wrap gap-2">
+                {attachments.map((attachment) =>
+              <div
+                key={attachment.id}
+                className="group flex items-center gap-2 rounded-full border border-border-subtle bg-surface py-1 pl-2 pr-1">
+                
                     <img
-                      src={attachment.dataUrl}
-                      alt={attachment.name}
-                      className="size-7 rounded-full object-cover"
-                    />
+                  src={attachment.dataUrl}
+                  alt={attachment.name}
+                  className="size-7 rounded-full object-cover" />
+                
                     <span className="max-w-[10rem] truncate text-xs text-text">{attachment.name}</span>
                     <button
-                      type="button"
-                      onClick={() => removeAttachment(attachment.id)}
-                      className="flex size-6 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-2 hover:text-text"
-                      aria-label={`Remove ${attachment.name}`}
-                    >
+                  type="button"
+                  onClick={() => removeAttachment(attachment.id)}
+                  className="flex size-6 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-2 hover:text-text"
+                  aria-label={`Remove ${attachment.name}`}>
+                  
                       <span className="material-symbols-outlined text-[16px]">close</span>
                     </button>
                   </div>
-                ))}
-              </div>
-            ) : null}
+              )}
+              </div> :
+            null}
 
             <div className="mx-auto w-full max-w-3xl">
               <div className="rounded-[16px] border border-border-subtle bg-surface shadow-[var(--shadow-soft)] transition focus-within:border-brand-500/40 focus-within:shadow-[var(--shadow-focus)]">
@@ -1147,8 +1148,8 @@ export default function PlaygroundPageClient() {
                   placeholder={`Message ${activeModel?.name || "model"}`}
                   rows={1}
                   aria-label="Message input"
-                  className="max-h-[25vh] w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 text-[15px] leading-6 text-text outline-none placeholder:text-text-muted custom-scrollbar"
-                />
+                  className="max-h-[25vh] w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 text-[15px] leading-6 text-text outline-none placeholder:text-text-muted custom-scrollbar" />
+                
 
                 <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
                   <div className="flex min-w-0 items-center gap-1">
@@ -1158,8 +1159,8 @@ export default function PlaygroundPageClient() {
                       disabled={!activeModel || loadingData}
                       className="flex size-9 items-center justify-center rounded-full text-text-muted transition hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
                       aria-label="Attach image"
-                      title="Attach image"
-                    >
+                      title="Attach image">
+                      
                       <span className="material-symbols-outlined text-[20px]">attach_file</span>
                     </button>
                     <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAttachFiles} />
@@ -1169,28 +1170,28 @@ export default function PlaygroundPageClient() {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
-                    {isSending ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        icon="stop"
-                        onClick={handleStop}
-                      >
+                    {isSending ?
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon="stop"
+                      onClick={handleStop}>
+                      
                         Stop
-                      </Button>
-                    ) : null}
+                      </Button> :
+                    null}
                     <button
                       type="button"
                       onClick={sendMessage}
                       disabled={!canSend}
                       aria-label="Send message"
                       className={`flex size-9 items-center justify-center rounded-full transition ${
-                        canSend
-                          ? "bg-brand-500 text-white hover:bg-brand-600 active:scale-95"
-                          : "cursor-not-allowed bg-surface-3 text-text-subtle"
-                      }`}
-                    >
+                      canSend ?
+                      "bg-brand-500 text-white hover:bg-brand-600 active:scale-95" :
+                      "cursor-not-allowed bg-surface-3 text-text-subtle"}`
+                      }>
+                      
                       <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
                     </button>
                   </div>
@@ -1204,6 +1205,6 @@ export default function PlaygroundPageClient() {
           </div>
         </div>
       </div>
-    </div>
-  );
+    </div>);
+
 }

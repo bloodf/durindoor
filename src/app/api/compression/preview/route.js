@@ -1,8 +1,8 @@
 import {
   getEngine,
   isEngineAvailable,
-  ENGINE_IDS,
-} from "open-sse/services/compression/index.js";
+  ENGINE_IDS } from
+"open-sse/services/compression/index.js";
 import { ENGINE_CATALOG } from "open-sse/services/compression/engineCatalog.js";
 
 // POST /api/compression/preview — run each catalog engine against the body and
@@ -27,30 +27,30 @@ import { ENGINE_CATALOG } from "open-sse/services/compression/engineCatalog.js";
 // already produces on `stats`: `validationErrors` plus inflation-guard entries
 // in `validationWarnings`. Non-fallback runs get [] / null — zero change on the
 // happy path, even when warnings exist (mirrors the source gating).
-function computeFallbackReasons(stats) {
+import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";function computeFallbackReasons(stats) {
   const reasons = [];
   if (!stats || stats.fallbackApplied !== true) return reasons;
   const seen = new Set();
   const push = (s) => {
-    if (typeof s === "string" && s.length > 0 && !seen.has(s)) {
+    if (isString(s) && s.length > 0 && !seen.has(s)) {
       seen.add(s);
       reasons.push(s);
     }
   };
   for (const err of stats.validationErrors ?? []) push(err);
   for (const warn of stats.validationWarnings ?? []) {
-    if (typeof warn === "string" && warn.startsWith("pipeline-inflation-guard:")) push(warn);
+    if (isString(warn) && warn.startsWith("pipeline-inflation-guard:")) push(warn);
   }
   return reasons;
 }
 
 function computeSavingsPercent(stats) {
-  if (!stats || typeof stats !== "object") return 0;
-  if (typeof stats.savingsPercent === "number") return stats.savingsPercent;
+  if (!stats || !isObject(stats)) return 0;
+  if (isNumber(stats.savingsPercent)) return stats.savingsPercent;
   const before = stats.bytesBefore ?? stats.tokensBefore ?? stats.originalTokens;
   const after = stats.bytesAfter ?? stats.tokensAfter ?? stats.compressedTokens;
-  if (typeof before !== "number" || typeof after !== "number" || before <= 0) return 0;
-  const pct = ((before - after) / before) * 100;
+  if (!isNumber(before) || !isNumber(after) || before <= 0) return 0;
+  const pct = (before - after) / before * 100;
   return Number.isFinite(pct) ? Math.round(pct * 100) / 100 : 0;
 }
 
@@ -65,7 +65,7 @@ export async function POST(request) {
     );
   }
 
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
+  if (!body || !isObject(body) || Array.isArray(body)) {
     return Response.json(
       { error: { message: "Invalid JSON body", type: "invalid_request_error" } },
       { status: 400 }
@@ -112,10 +112,10 @@ export async function POST(request) {
         fallbackReasons,
         skippedReasons: fallbackReasons,
         fallbackReason:
-          result?.stats?.fallbackApplied === true
-            ? (result.stats.fallbackReason ?? fallbackReasons[0] ?? null)
-            : null,
-        ...(raw !== undefined ? { raw } : {}),
+        result?.stats?.fallbackApplied === true ?
+        result.stats.fallbackReason ?? fallbackReasons[0] ?? null :
+        null,
+        ...(raw !== undefined ? { raw } : null)
       };
     } catch {
       results[id] = { status: "error" };

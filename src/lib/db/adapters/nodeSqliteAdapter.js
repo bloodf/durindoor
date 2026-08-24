@@ -2,6 +2,7 @@
 // No native build, no npm install. API mirrors betterSqliteAdapter.
 import { PRAGMA_SQL } from "../schema.js";
 import { assertCheckpointComplete } from "../helpers/checkpoint.js";
+import { isFunction } from "@/shared/utils/typeChecks.js";
 
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
@@ -35,18 +36,18 @@ export async function createNodeSqliteAdapter(filePath) {
 
   // Periodic WAL checkpoint to keep -wal/-shm small
   const checkpointTimer = setInterval(() => {
-    try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
+    try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
   }, CHECKPOINT_INTERVAL_MS);
-  if (typeof checkpointTimer.unref === "function") checkpointTimer.unref();
+  if (isFunction(checkpointTimer.unref)) checkpointTimer.unref();
 
   function gracefulClose() {
-    try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
-    try { stmtCache.clear(); } catch {}
-    try { db.close(); } catch {}
+    try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
+    try {stmtCache.clear();} catch {}
+    try {db.close();} catch {}
   }
   const onSignal = () => {
     // Keep the repository available until the central MITM cleanup finishes.
-    try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {}
+    try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
   };
   process.once("beforeExit", gracefulClose);
   process.once("SIGINT", onSignal);
@@ -65,7 +66,7 @@ export async function createNodeSqliteAdapter(filePath) {
     all(sql, params = []) {
       return prepare(sql).all(...params);
     },
-    exec(sql) { return db.exec(sql); },
+    exec(sql) {return db.exec(sql);},
     transaction(fn) {
       // node:sqlite has no transaction wrapper. Use SAVEPOINT for nested support.
       const sp = `sp_${Math.random().toString(36).slice(2)}`;
@@ -75,7 +76,7 @@ export async function createNodeSqliteAdapter(filePath) {
         db.exec(`RELEASE ${sp}`);
         return r;
       } catch (e) {
-        try { db.exec(`ROLLBACK TO ${sp}`); db.exec(`RELEASE ${sp}`); } catch {}
+        try {db.exec(`ROLLBACK TO ${sp}`);db.exec(`RELEASE ${sp}`);} catch {}
         throw e;
       }
     },
@@ -87,6 +88,6 @@ export async function createNodeSqliteAdapter(filePath) {
       clearInterval(checkpointTimer);
       gracefulClose();
     },
-    raw: db,
+    raw: db
   };
 }

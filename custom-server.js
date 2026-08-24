@@ -1,4 +1,4 @@
-// OmniRoute #6828: strip empty-string env vars (Docker `-e KEY=`) before any
+import { isFunction, isString } from "./src/shared/utils/typeChecks.js"; // OmniRoute #6828: strip empty-string env vars (Docker `-e KEY=`) before any
 // module below can snapshot them; "" must behave like "not set".
 require("./src/shared/utils/normalizeEnv").normalizeProcessEnv();
 
@@ -10,7 +10,7 @@ const {
   CONTROL_PORT_HEADER,
   CONTROL_PROOF_HEADER,
   CONTROL_SECRET_ENV,
-  createControlProof,
+  createControlProof
 } = require("./src/mitm/controlProof");
 const {
   extractRealtimeKey,
@@ -19,7 +19,7 @@ const {
   loopbackChatUrl,
   modelFromUrl,
   probeApiKey,
-  selectProtocol,
+  selectProtocol
 } = require("./src/shared/utils/wsHandshake");
 const { createRealtimeSession, publicSession: publicRealtimeSession } = require("./open-sse/handlers/realtimeCore");
 const { MAX_REALTIME_FRAME_BYTES } = require("./src/shared/utils/realtimeConfig");
@@ -57,8 +57,8 @@ function canonicalizeRuntimePaths() {
 
 function isMitmMutation(req) {
   const pathname = new URL(req.url || "/", "http://localhost").pathname;
-  return (pathname === MITM_CONTROL_PATH || pathname.startsWith(`${MITM_CONTROL_PATH}/`))
-    && String(req.method || "GET").toUpperCase() !== "GET";
+  return (pathname === MITM_CONTROL_PATH || pathname.startsWith(`${MITM_CONTROL_PATH}/`)) &&
+  String(req.method || "GET").toUpperCase() !== "GET";
 }
 
 /**
@@ -76,8 +76,8 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
   const origCreate = httpModule.createServer.bind(httpModule);
 
   httpModule.createServer = (...args) => {
-    const handler = args.find((a) => typeof a === "function");
-    const rest = args.filter((a) => typeof a !== "function");
+    const handler = args.find((a) => isFunction(a));
+    const rest = args.filter((a) => !isFunction(a));
     if (!handler) return origCreate(...args);
     const wrapped = (req, res) => {
       const socketIp = req.socket?.remoteAddress || "";
@@ -112,13 +112,13 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
       }
 
       const stampOwnerProof = async () => {
-        if (isMitmMutation(req) && await verifyOwner(req.socket)) {
+        if (isMitmMutation(req) && (await verifyOwner(req.socket))) {
           const remotePort = req.socket?.remotePort;
           const proof = createControlProof({
             method: req.method,
             pathname: req.url,
             remotePort,
-            secret: controlSecret,
+            secret: controlSecret
           });
           if (proof) {
             req.headers[CONTROL_PORT_HEADER] = String(remotePort);
@@ -135,7 +135,7 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
         applyHeadResponseGuard(req, res);
         try {
           const result = handler(req, res);
-          if (result && typeof result.catch === "function") {
+          if (result && isFunction(result.catch)) {
             void result.catch((error) => {
               if (!res.headersSent) res.writeHead?.(500, { "content-type": "text/plain" });
               if (!res.writableEnded) res.end?.("Internal Server Error");
@@ -153,7 +153,7 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
       // mutation.
       void stampOwnerProof().then(
         dispatch,
-        dispatch,
+        dispatch
       );
     };
     const server = origCreate(...rest, wrapped);
@@ -171,10 +171,10 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
  * scheduled on it.
  */
 function isHttpServer(value) {
-  return !!value
-    && typeof value.on === "function"
-    && typeof value.listeners === "function"
-    && typeof value.removeAllListeners === "function";
+  return !!value && isFunction(
+    value.on) && isFunction(
+    value.listeners) && isFunction(
+    value.removeAllListeners);
 }
 
 /**
@@ -223,7 +223,7 @@ function installRealtimeUpgradeDispatcher(server, { dashboardPort } = {}) {
           listener.call(server, req, socket, head);
         }
       } catch (error) {
-        try { socket.destroy(); } catch { /* already closed */ }
+        try {socket.destroy();} catch {/* already closed */}
         process.stderr.write(`[custom-server] upgrade dispatcher failed: ${error?.message || error}\n`);
       }
     });
@@ -231,8 +231,8 @@ function installRealtimeUpgradeDispatcher(server, { dashboardPort } = {}) {
 
   // Defer so Next (which registers its upgrade listener synchronously during
   // startServer, immediately after createServer returns) is in the snapshot.
-  if (typeof queueMicrotask === "function") queueMicrotask(rewire);
-  else process.nextTick(rewire);
+  if (isFunction(queueMicrotask)) queueMicrotask(rewire);else
+  process.nextTick(rewire);
   return server;
 }
 
@@ -308,9 +308,9 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
 
     try {
       const { key } = extractRealtimeKey(req);
-      const cliToken = typeof req.headers?.["x-9r-cli-token"] === "string"
-        ? req.headers["x-9r-cli-token"]
-        : null;
+      const cliToken = isString(req.headers?.["x-9r-cli-token"]) ?
+      req.headers["x-9r-cli-token"] :
+      null;
       const auth = await probeApiKey({ key, cliToken, authUrl: loopbackAuthUrl(port) });
       if (closed) return;
       if (!auth.ok) {
@@ -319,17 +319,17 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
         const code = credentialFailure ? 4001 : 1011;
         const errType = credentialFailure ? "invalid_request_error" : "server_error";
         const errCode = credentialFailure ? "invalid_api_key" : "auth_probe_failed";
-        const errMsg = credentialFailure
-          ? (auth.reason || "Unauthorized")
-          : "Realtime auth probe unavailable; retry shortly";
+        const errMsg = credentialFailure ?
+        auth.reason || "Unauthorized" :
+        "Realtime auth probe unavailable; retry shortly";
         try {
           ws.send(JSON.stringify({
             type: "error",
             event_id: `evt_${crypto.randomUUID()}`,
-            error: { type: errType, code: errCode, message: errMsg },
+            error: { type: errType, code: errCode, message: errMsg }
           }));
-        } catch { /* socket may already be gone */ }
-        ws.close(code, credentialFailure ? (auth.reason || "Unauthorized") : "auth probe failed");
+        } catch {/* socket may already be gone */}
+        ws.close(code, credentialFailure ? auth.reason || "Unauthorized" : "auth probe failed");
         return;
       }
 
@@ -341,7 +341,7 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
         modalities: ["text"],
         temperature: undefined,
         maxOutputTokens: undefined,
-        items: [],
+        items: []
       };
       const headers = {};
       if (key) headers.Authorization = `Bearer ${key}`;
@@ -350,14 +350,14 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
         method: "POST",
         headers: { "content-type": "application/json", ...h },
         body: JSON.stringify(body),
-        signal,
+        signal
       });
       rt = createRealtimeSession({ ws, session, chat, headers });
 
       ws.send(JSON.stringify({
         type: "session.created",
         event_id: `evt_${crypto.randomUUID()}`,
-        session: publicRealtimeSession(session),
+        session: publicRealtimeSession(session)
       }));
       ready = true;
       if (queue.length) {
@@ -365,14 +365,14 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
         for (const d of held) enqueue(d);
       }
     } catch (error) {
-      try { ws.close(1011, "internal error"); } catch { /* ignore */ }
+      try {ws.close(1011, "internal error");} catch {/* ignore */}
       process.stderr.write(`[custom-server] realtime setup failed: ${error?.message || error}\n`);
     }
   });
 }
 
 function createOwnerAwareHandler(handler, options = {}) {
-  const shim = { createServer: (...args) => args.find((value) => typeof value === "function") };
+  const shim = { createServer: (...args) => args.find((value) => isFunction(value)) };
   installRequestWrapper({ ...options, httpModule: shim });
   return shim.createServer(handler);
 }
@@ -383,7 +383,7 @@ function setProcessTitle(processImpl = process) {
   Object.defineProperty(processImpl, "title", {
     get: () => "9router next-server",
     set: () => {},
-    configurable: true,
+    configurable: true
   });
 }
 
@@ -406,5 +406,5 @@ module.exports = {
   isHttpServer,
   isMitmMutation,
   run,
-  setProcessTitle,
+  setProcessTitle
 };

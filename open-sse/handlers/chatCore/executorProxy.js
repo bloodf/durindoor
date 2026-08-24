@@ -2,16 +2,17 @@ import { getSettings } from "@/lib/localDb";
 import { getExecutor } from "../../executors/index.js";
 import { isCliproxyapiDeepModeEnabled } from "../../executors/cliproxyapi.js";
 import { getUpstreamProxyConfigCached } from "./comboContextCache.js";
+import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const CLIPROXYAPI_PROVIDER_ID = "cliproxyapi";
 const DEFAULT_FALLBACK_CODES = [429, 500, 502, 503, 504];
 
 function parseFallbackCodes(value) {
-  if (typeof value !== "string" || !value.trim()) return DEFAULT_FALLBACK_CODES;
-  const parsed = value
-    .split(",")
-    .map((part) => Number.parseInt(part.trim(), 10))
-    .filter((code) => Number.isInteger(code));
+  if (!isString(value) || !value.trim()) return DEFAULT_FALLBACK_CODES;
+  const parsed = value.
+  split(",").
+  map((part) => Number.parseInt(part.trim(), 10)).
+  filter((code) => Number.isInteger(code));
   return parsed.length ? parsed : DEFAULT_FALLBACK_CODES;
 }
 
@@ -28,9 +29,9 @@ async function mapCliproxyapiInput(providerId, input, providerMapping) {
   if (mappedModel === input.model) return input;
 
   const mappedBody =
-    input.body && typeof input.body === "object"
-      ? { ...input.body, model: mappedModel }
-      : input.body;
+  input.body && isObject(input.body) ?
+  { ...input.body, model: mappedModel } :
+  input.body;
 
   return { ...input, model: mappedModel, body: mappedBody };
 }
@@ -63,8 +64,8 @@ export async function resolveExecutorWithProxy(providerId, log, providerSpecific
     const wrapper = Object.create(proxyExec);
     wrapper.noAuth = nativeExec.noAuth === true;
     wrapper.execute = (input) =>
-      executeCliproxyapiMapped(proxyExec, providerId, input, providerSpecificData?.cliproxyapiModelMapping);
-    if (typeof nativeExec.refreshCredentials === "function") {
+    executeCliproxyapiMapped(proxyExec, providerId, input, providerSpecificData?.cliproxyapiModelMapping);
+    if (isFunction(nativeExec.refreshCredentials)) {
       wrapper.refreshCredentials = nativeExec.refreshCredentials.bind(nativeExec);
     }
     return wrapper;
@@ -80,8 +81,8 @@ export async function resolveExecutorWithProxy(providerId, log, providerSpecific
     const wrapper = Object.create(proxyExec);
     wrapper.noAuth = nativeExec.noAuth === true;
     wrapper.execute = (input) =>
-      executeCliproxyapiMapped(proxyExec, providerId, input, cfg.cliproxyapiModelMapping);
-    if (typeof nativeExec.refreshCredentials === "function") {
+    executeCliproxyapiMapped(proxyExec, providerId, input, cfg.cliproxyapiModelMapping);
+    if (isFunction(nativeExec.refreshCredentials)) {
       wrapper.refreshCredentials = nativeExec.refreshCredentials.bind(nativeExec);
     }
     return wrapper;
@@ -110,9 +111,9 @@ export async function resolveExecutorWithProxy(providerId, log, providerSpecific
     try {
       await result.response.body?.cancel?.();
     } catch {
+
       // ignore cancel errors; body may already be consumed or not cancelable
-    }
-    return executeCliproxyapiMapped(proxyExec, providerId, input, cfg.cliproxyapiModelMapping);
+    }return executeCliproxyapiMapped(proxyExec, providerId, input, cfg.cliproxyapiModelMapping);
   };
 
   return wrapper;

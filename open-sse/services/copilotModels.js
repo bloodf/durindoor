@@ -14,6 +14,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { GITHUB_COPILOT } from "../config/appConstants.js";
 import { refreshCopilotToken } from "./tokenRefresh.js";
+import { isFunction, isObject } from "@/shared/utils/typeChecks.js";
 
 const MODELS_URL = "https://api.githubcopilot.com/models";
 const FETCH_TIMEOUT_MS = 10_000;
@@ -23,9 +24,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
 const catalogCache = new Map();
 
 function cacheKey(credentials, includeMetadata = false) {
-  const credentialKey = credentials?.providerSpecificData?.copilotToken
-    || credentials?.accessToken
-    || "copilot-anonymous";
+  const credentialKey = credentials?.providerSpecificData?.copilotToken ||
+  credentials?.accessToken ||
+  "copilot-anonymous";
   return `${credentialKey}:${includeMetadata ? "metadata" : "basic"}`;
 }
 
@@ -37,7 +38,7 @@ function buildHeaders(token) {
     "editor-version": `vscode/${GITHUB_COPILOT.VSCODE_VERSION}`,
     "editor-plugin-version": `copilot-chat/${GITHUB_COPILOT.COPILOT_CHAT_VERSION}`,
     "user-agent": GITHUB_COPILOT.USER_AGENT,
-    "x-github-api-version": GITHUB_COPILOT.API_VERSION,
+    "x-github-api-version": GITHUB_COPILOT.API_VERSION
   };
 }
 
@@ -49,7 +50,7 @@ async function fetchCatalogRaw(token, signal, proxyOptions = null) {
       method: "GET",
       headers: buildHeaders(token),
       cache: "no-store",
-      signal: signal || controller.signal,
+      signal: signal || controller.signal
     }, proxyOptions);
     if (!response.ok) {
       const err = new Error(`Copilot /models returned ${response.status}`);
@@ -69,7 +70,7 @@ function expandCatalog(raw, includeMetadata = false) {
   const seen = new Set();
   const models = [];
   for (const m of raw) {
-    if (!m || typeof m !== "object") continue;
+    if (!m || !isObject(m)) continue;
     if (m.capabilities?.type !== "chat") continue;
     if (m.policy && m.policy.state !== "enabled") continue;
     const id = m.id;
@@ -131,11 +132,11 @@ export async function resolveCopilotModels(credentials, options = {}) {
         options.proxyOptions
       );
       if (refreshed?.token) {
-        if (typeof options.onCredentialsRefreshed === "function") {
+        if (isFunction(options.onCredentialsRefreshed)) {
           try {
             await options.onCredentialsRefreshed({
               copilotToken: refreshed.token,
-              copilotTokenExpiresAt: refreshed.expiresAt,
+              copilotTokenExpiresAt: refreshed.expiresAt
             });
           } catch (e) {
             options.log?.warn?.(

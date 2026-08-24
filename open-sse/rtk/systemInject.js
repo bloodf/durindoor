@@ -4,6 +4,7 @@
 
 import { FORMATS } from "../translator/formats.js";
 import { OPENAI_BLOCK, RESPONSES_ITEM, ROLE } from "../translator/schema/index.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const SEP = "\n\n";
 
@@ -18,7 +19,7 @@ const SEP = "\n\n";
  */
 function isPromptAlreadyInjected(content, prompt) {
   if (!content || !prompt) return false;
-  const needle = typeof prompt === 'string' ? prompt.trim() : '';
+  const needle = isString(prompt) ? prompt.trim() : '';
   if (!needle) return false;
 
   // Check if the first 100 chars of the prompt appear in content
@@ -61,31 +62,31 @@ function injectMessagesSystem(body, prompt, format) {
   // envelope and never as top-level instructions (Codex rejects both). Detect the
   // envelope BEFORE the Responses/Codex top-level-instructions branch so only the
   // Lite shape routes through input[].
-  const isResponsesLite = Array.isArray(body.input) && body.input.some(m => m?.type === "additional_tools");
+  const isResponsesLite = Array.isArray(body.input) && body.input.some((m) => m?.type === "additional_tools");
 
   // OpenAI Responses API: Codex rejects instruction messages in input[]; use top-level instructions.
-  if (!isResponsesLite && (format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE || format === FORMATS.CODEX || typeof body.instructions === "string")) {
+  if (!isResponsesLite && (format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE || format === FORMATS.CODEX || isString(body.instructions))) {
     if (isPromptAlreadyInjected(body.instructions, prompt)) return;
-    body.instructions = body.instructions
-      ? `${body.instructions}${SEP}${prompt}`
-      : prompt;
+    body.instructions = body.instructions ?
+    `${body.instructions}${SEP}${prompt}` :
+    prompt;
     return;
   }
 
   const isChatMessages = Array.isArray(body.messages);
-  const arr = isChatMessages ? body.messages
-    : Array.isArray(body.input) ? body.input
-    : null;
+  const arr = isChatMessages ? body.messages :
+  Array.isArray(body.input) ? body.input :
+  null;
   if (!arr) {
     // Responses also accepts a bare string input with no top-level instructions yet.
-    if (typeof body.input === "string") body.instructions = prompt;
+    if (isString(body.input)) body.instructions = prompt;
     return;
   }
 
   const isResponses = arr === body.input;
   const partType = isChatMessages ? OPENAI_BLOCK.TEXT : RESPONSES_ITEM.INPUT_TEXT;
-  const idx = arr.findIndex(m =>
-    m && (!m.type || m.type === "message") && (m.role === ROLE.SYSTEM || m.role === ROLE.DEVELOPER)
+  const idx = arr.findIndex((m) =>
+  m && (!m.type || m.type === "message") && (m.role === ROLE.SYSTEM || m.role === ROLE.DEVELOPER)
   );
   if (idx >= 0) {
     // Check if already injected before appending
@@ -95,11 +96,11 @@ function injectMessagesSystem(body, prompt, format) {
   } else if (isResponses) {
     // Responses Lite puts an `additional_tools` envelope first; system prompt
     // must land in a developer message AFTER it, never inside the envelope.
-    const insertAt = arr.findIndex(m => m?.type !== "additional_tools");
+    const insertAt = arr.findIndex((m) => m?.type !== "additional_tools");
     arr.splice(insertAt < 0 ? arr.length : insertAt, 0, {
       type: RESPONSES_ITEM.MESSAGE,
       role: ROLE.DEVELOPER,
-      content: [{ type: partType, text: prompt }],
+      content: [{ type: partType, text: prompt }]
     });
   } else {
     arr.unshift({ role: ROLE.SYSTEM, content: prompt });
@@ -107,10 +108,10 @@ function injectMessagesSystem(body, prompt, format) {
 }
 
 function extractTextFromOpenAIMessage(msg) {
-  if (typeof msg.content === "string") {
+  if (isString(msg.content)) {
     return msg.content;
   } else if (Array.isArray(msg.content)) {
-    return msg.content.map(part => part.text || '').join(' ');
+    return msg.content.map((part) => part.text || '').join(' ');
   }
   return '';
 }
@@ -123,7 +124,7 @@ function extractTextFromOpenAIMessage(msg) {
  *   decolua/9router#3204/#3245, issue #3202.
  */
 function appendToOpenAIMessage(msg, prompt, partType) {
-  if (typeof msg.content === "string") {
+  if (isString(msg.content)) {
     msg.content = msg.content ? `${msg.content}${SEP}${prompt}` : prompt;
   } else if (Array.isArray(msg.content)) {
     msg.content.push({ type: partType, text: prompt });
@@ -135,20 +136,20 @@ function appendToOpenAIMessage(msg, prompt, partType) {
 // Claude shape: body.system as string | array of {type:"text", text}
 // Insert before the last cache_control block to keep injection inside the cached prefix.
 function injectClaudeSystem(body, prompt) {
-  if (typeof body.system === "string" && body.system.length > 0) {
+  if (isString(body.system) && body.system.length > 0) {
     if (isPromptAlreadyInjected(body.system, prompt)) return;
     body.system = `${body.system}${SEP}${prompt}`;
     return;
   }
   if (Array.isArray(body.system)) {
     // Check if already injected
-    const existingText = body.system.map(block => block?.text || '').join(' ');
+    const existingText = body.system.map((block) => block?.text || '').join(' ');
     if (isPromptAlreadyInjected(existingText, prompt)) return;
 
     const block = { type: "text", text: prompt };
     let lastCacheIdx = -1;
     for (let i = body.system.length - 1; i >= 0; i--) {
-      if (body.system[i]?.cache_control) { lastCacheIdx = i; break; }
+      if (body.system[i]?.cache_control) {lastCacheIdx = i;break;}
     }
     if (lastCacheIdx >= 0) {
       body.system.splice(lastCacheIdx, 0, block);
@@ -163,13 +164,13 @@ function injectClaudeSystem(body, prompt) {
 // Gemini shape: body.system_instruction | body.systemInstruction | body.request.systemInstruction
 // Each shape: { parts: [{ text }] }
 function injectGeminiSystem(body, prompt) {
-  const target = body.request && typeof body.request === "object" ? body.request : body;
+  const target = body.request && isObject(body.request) ? body.request : body;
   const useSnake = Object.prototype.hasOwnProperty.call(target, "system_instruction");
   const key = useSnake ? "system_instruction" : "systemInstruction";
   const sys = target[key];
   if (sys && Array.isArray(sys.parts)) {
     // Check if already injected
-    const existingText = sys.parts.map(part => part.text || '').join(' ');
+    const existingText = sys.parts.map((part) => part.text || '').join(' ');
     if (isPromptAlreadyInjected(existingText, prompt)) return;
     sys.parts.push({ text: prompt });
     return;

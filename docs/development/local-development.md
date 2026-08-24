@@ -80,7 +80,7 @@ npm run catalog:diff
 cd tests && npm run test:ci
 ```
 
-See [Anti-slop gate](anti-slop.md) for the vendored oxlint plugin and baseline workflow.
+See [Anti-slop gate](anti-slop.md) for the vendored oxlint plugin and clean-tree workflow.
 
 ## Generated indexes
 

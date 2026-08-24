@@ -3,7 +3,7 @@ import { PROVIDERS, PROVIDER_OAUTH } from "./providers.js";
 import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 
 // === Gemini CLI === derive từ registry gemini-cli.transport
-export const GEMINI_CLI_VERSION = PROVIDERS["gemini-cli"]?.cliVersion;
+import { isUndefined } from "@/shared/utils/typeChecks.js";export const GEMINI_CLI_VERSION = PROVIDERS["gemini-cli"]?.cliVersion;
 export const GEMINI_CLI_API_CLIENT = PROVIDERS["gemini-cli"]?.apiClient;
 
 // Map Node arch to Gemini CLI arch string (x64/x86/arm64/...)
@@ -24,7 +24,7 @@ export const GITHUB_COPILOT = {
   VSCODE_VERSION: _ghCopilot.vscodeVersion,
   COPILOT_CHAT_VERSION: _ghCopilot.chatVersion,
   USER_AGENT: _ghCopilot.userAgent,
-  API_VERSION: _ghCopilot.apiVersion,
+  API_VERSION: _ghCopilot.apiVersion
 };
 
 // === Antigravity enums ===
@@ -81,52 +81,52 @@ export const CLAUDE_TOOL_SUFFIX = "_ide";
 // CC native default tools — these are Claude Code's own tools, kept as decoys
 // Client tools matching these names are skipped (not renamed), others get _cc suffix
 export const CC_DEFAULT_TOOLS = new Set([
-  "Task",
-  "TaskOutput",
-  "TaskStop",
-  "TaskCreate",
-  "TaskGet",
-  "TaskUpdate",
-  "TaskList",
-  "Bash",
-  "Glob",
-  "Grep",
-  "Read",
-  "Edit",
-  "Write",
-  "NotebookEdit",
-  "WebFetch",
-  "WebSearch",
-  "AskUserQuestion",
-  "Skill",
-  "EnterPlanMode",
-  "ExitPlanMode",
-]);
+"Task",
+"TaskOutput",
+"TaskStop",
+"TaskCreate",
+"TaskGet",
+"TaskUpdate",
+"TaskList",
+"Bash",
+"Glob",
+"Grep",
+"Read",
+"Edit",
+"Write",
+"NotebookEdit",
+"WebFetch",
+"WebSearch",
+"AskUserQuestion",
+"Skill",
+"EnterPlanMode",
+"ExitPlanMode"]
+);
 
 // AG native default tools — kept as decoys with neutral description/properties
 // These names must match exactly what AG sends in the real request log
 export const AG_DEFAULT_TOOLS = new Set([
-  "browser_subagent",
-  "command_status",
-  "find_by_name",
-  "generate_image",
-  "grep_search",
-  "list_dir",
-  "list_resources",
-  "multi_replace_file_content",
-  "notify_user",
-  "read_resource",
-  "read_terminal",
-  "read_url_content",
-  "replace_file_content",
-  "run_command",
-  "search_web",
-  "send_command_input",
-  "task_boundary",
-  "view_content_chunk",
-  "view_file",
-  "write_to_file"
-]);
+"browser_subagent",
+"command_status",
+"find_by_name",
+"generate_image",
+"grep_search",
+"list_dir",
+"list_resources",
+"multi_replace_file_content",
+"notify_user",
+"read_resource",
+"read_terminal",
+"read_url_content",
+"replace_file_content",
+"run_command",
+"search_web",
+"send_command_input",
+"task_boundary",
+"view_content_chunk",
+"view_file",
+"write_to_file"]
+);
 
 // Antigravity chat/stream headers
 export const ANTIGRAVITY_HEADERS = {
@@ -136,12 +136,12 @@ export const ANTIGRAVITY_HEADERS = {
 // Cloud Code Assist API
 export const CLOUD_CODE_API = {
   loadCodeAssist: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
-  onboardUser: "https://cloudcode-pa.googleapis.com/v1internal:onboardUser",
+  onboardUser: "https://cloudcode-pa.googleapis.com/v1internal:onboardUser"
 };
 
 export const LOAD_CODE_ASSIST_HEADERS = {
   "Content-Type": "application/json",
-  "User-Agent": "vscode/1.X.X (Antigravity/4.2.0)",
+  "User-Agent": "vscode/1.X.X (Antigravity/4.2.0)"
 };
 
 // The real Antigravity IDE does NOT send X-Goog-Api-Client / Client-Metadata on
@@ -150,11 +150,11 @@ export const LOAD_CODE_ASSIST_HEADERS = {
 // its own header set instead of mutating the shared Gemini CLI one.
 export const ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS = {
   "Content-Type": "application/json",
-  "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
+  "User-Agent": ANTIGRAVITY_IDE_USER_AGENT
 };
 
 export const LOAD_CODE_ASSIST_METADATA = {
-  ideType: "ANTIGRAVITY",
+  ideType: "ANTIGRAVITY"
 };
 
 // System prompts
@@ -168,12 +168,12 @@ export const REFRESH_LEAD_MS = Object.fromEntries(
 
 // OAuth endpoints
 export const OAUTH_ENDPOINTS = {
-  google:    { token: "https://oauth2.googleapis.com/token", auth: "https://accounts.google.com/o/oauth2/auth" },
-  openai:    { token: PROVIDER_OAUTH["codex"]?.tokenUrl, auth: PROVIDER_OAUTH["codex"]?.authorizeUrl },
+  google: { token: "https://oauth2.googleapis.com/token", auth: "https://accounts.google.com/o/oauth2/auth" },
+  openai: { token: PROVIDER_OAUTH["codex"]?.tokenUrl, auth: PROVIDER_OAUTH["codex"]?.authorizeUrl },
   anthropic: { token: PROVIDER_OAUTH["claude"]?.tokenUrl, auth: "https://api.anthropic.com/v1/oauth/authorize" }, // ≠ claude.authorizeUrl (claude.ai login) — keep
-  qwen:      { token: PROVIDER_OAUTH["qwen"]?.tokenUrl, auth: PROVIDER_OAUTH["qwen"]?.deviceCodeUrl },
-  iflow:     { token: PROVIDER_OAUTH["iflow"]?.tokenUrl, auth: PROVIDER_OAUTH["iflow"]?.authorizeUrl },
-  github:    { token: PROVIDER_OAUTH["github"]?.tokenUrl, auth: PROVIDER_OAUTH["github"]?.authorizeUrl, deviceCode: PROVIDER_OAUTH["github"]?.deviceCodeUrl },
+  qwen: { token: PROVIDER_OAUTH["qwen"]?.tokenUrl, auth: PROVIDER_OAUTH["qwen"]?.deviceCodeUrl },
+  iflow: { token: PROVIDER_OAUTH["iflow"]?.tokenUrl, auth: PROVIDER_OAUTH["iflow"]?.authorizeUrl },
+  github: { token: PROVIDER_OAUTH["github"]?.tokenUrl, auth: PROVIDER_OAUTH["github"]?.authorizeUrl, deviceCode: PROVIDER_OAUTH["github"]?.deviceCodeUrl }
 };
 
 // Generate Kimi OAuth custom headers
@@ -181,7 +181,7 @@ export function buildKimiHeaders(deviceId) {
   return {
     "X-Msh-Platform": "9router",
     "X-Msh-Version": "2.1.2",
-    "X-Msh-Device-Model": typeof process !== "undefined" ? `${process.platform} ${process.arch}` : "unknown",
-    "X-Msh-Device-Id": deviceId || `kimi-${Date.now()}`,
+    "X-Msh-Device-Model": !isUndefined(globalThis.process) ? `${process.platform} ${process.arch}` : "unknown",
+    "X-Msh-Device-Id": deviceId || `kimi-${Date.now()}`
   };
 }

@@ -16,15 +16,16 @@ import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { stripThinkingSuffix } from "../concerns/thinkingUnified.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 function flattenText(content) {
   if (content == null) return "";
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (Array.isArray(content)) {
     const parts = [];
     for (const p of content) {
-      if (typeof p === "string") parts.push(p);
-      else if (p && typeof p === "object" && typeof p.text === "string") parts.push(p.text);
+      if (isString(p)) parts.push(p);else
+      if (p && isObject(p) && isString(p.text)) parts.push(p.text);
     }
     return parts.join("\n");
   }
@@ -33,18 +34,18 @@ function flattenText(content) {
 
 function toContentBlocks(content) {
   if (content == null) return [{ type: OPENAI_BLOCK.TEXT, text: "" }];
-  if (typeof content === "string") return [{ type: OPENAI_BLOCK.TEXT, text: content }];
+  if (isString(content)) return [{ type: OPENAI_BLOCK.TEXT, text: content }];
   if (Array.isArray(content)) {
     const blocks = [];
     for (const part of content) {
-      if (typeof part === "string") {
+      if (isString(part)) {
         blocks.push({ type: OPENAI_BLOCK.TEXT, text: part });
-      } else if (part && typeof part === "object") {
-        if (part.type === OPENAI_BLOCK.TEXT && typeof part.text === "string") {
+      } else if (part && isObject(part)) {
+        if (part.type === OPENAI_BLOCK.TEXT && isString(part.text)) {
           blocks.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
         } else if (part.type === OPENAI_BLOCK.IMAGE_URL || part.type === OPENAI_BLOCK.IMAGE) {
           blocks.push({ type: OPENAI_BLOCK.TEXT, text: "[image omitted]" });
-        } else if (typeof part.text === "string") {
+        } else if (isString(part.text)) {
           blocks.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
         }
       }
@@ -56,8 +57,8 @@ function toContentBlocks(content) {
 
 function safeParseJson(s) {
   if (s == null) return {};
-  if (typeof s !== "string") return s;
-  try { return JSON.parse(s); } catch { return {}; }
+  if (!isString(s)) return s;
+  try {return JSON.parse(s);} catch {return {};}
 }
 
 function convertMessages(messages = []) {
@@ -75,15 +76,15 @@ function convertMessages(messages = []) {
     }
 
     if (role === ROLE.TOOL) {
-      const value = typeof m.content === "string" ? m.content : flattenText(m.content);
+      const value = isString(m.content) ? m.content : flattenText(m.content);
       out.push({
         role: ROLE.TOOL,
         content: [{
           type: "tool-result",
           toolCallId: m.tool_call_id || "",
           toolName: m.name || "",
-          output: { type: "text", value },
-        }],
+          output: { type: "text", value }
+        }]
       });
       continue;
     }
@@ -103,7 +104,7 @@ function convertMessages(messages = []) {
             type: "tool-call",
             toolCallId: tc.id || "",
             toolName: fn.name || "",
-            input: safeParseJson(fn.arguments),
+            input: safeParseJson(fn.arguments)
           });
         }
       }
@@ -126,13 +127,13 @@ function convertTools(tools) {
       result.push({
         name: t.function.name,
         description: t.function.description,
-        input_schema: t.function.parameters || { type: "object" },
+        input_schema: t.function.parameters || { type: "object" }
       });
     } else if (t.name && (t.input_schema || t.parameters)) {
       result.push({
         name: t.name,
         description: t.description,
-        input_schema: t.input_schema || t.parameters,
+        input_schema: t.input_schema || t.parameters
       });
     }
   }
@@ -149,7 +150,7 @@ export function openaiToCommandCodeRequest(model, body, stream /* , credentials 
     messages,
     stream: stream !== false,
     max_tokens: maxTokens,
-    temperature: body.temperature ?? 0.3,
+    temperature: body.temperature ?? 0.3
   };
 
   if (system) params.system = system;
@@ -172,9 +173,9 @@ export function openaiToCommandCodeRequest(model, body, stream /* , credentials 
       currentBranch: "",
       mainBranch: "",
       gitStatus: "",
-      recentCommits: [],
+      recentCommits: []
     },
-    params,
+    params
   };
 }
 

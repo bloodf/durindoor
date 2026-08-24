@@ -1,4 +1,5 @@
 import { getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 function isCodexUserAgent(request) {
   const originator = request.headers.get("originator") ?? "";
@@ -13,9 +14,9 @@ function isAnthropicRequest(request) {
 
 function toCodexModel(m) {
   const provider =
-    typeof m.id === "string" && m.id.includes("/")
-      ? m.id.split("/")[0] ?? ""
-      : (m.owned_by ?? "");
+  isString(m.id) && m.id.includes("/") ?
+  m.id.split("/")[0] ?? "" :
+  m.owned_by ?? "";
   const caps = getCapabilitiesForModel(provider, m.id);
   // Advertise the window only when it is a real catalog value. resolveModelLimits
   // reports `known: false` for the generic floor, and publishing that as fact is
@@ -28,25 +29,25 @@ function toCodexModel(m) {
     supports_search_tool: !!caps?.search,
     tool_mode: "auto",
     multi_agent_version: null,
-    ...(limits.known
-      ? { context_window: limits.contextWindow, max_output_tokens: limits.maxOutput }
-      : {}),
+    ...(limits.known ?
+    { context_window: limits.contextWindow, max_output_tokens: limits.maxOutput } : null)
+
   };
 }
 
 function toAnthropicModel(m) {
-  const id = typeof m.id === "string" ? m.id : "";
+  const id = isString(m.id) ? m.id : "";
   const displayName =
-    (typeof m.display_name === "string" && m.display_name) ||
-    (typeof m.name === "string" && m.name) ||
-    id;
+  isString(m.display_name) && m.display_name ||
+  isString(m.name) && m.name ||
+  id;
   return {
     type: "model",
     id,
     display_name: displayName,
     // Anthropic ModelInfo.created_at is a required ISO string; epoch when unknown.
     created_at:
-      typeof m.created_at === "string" && m.created_at ? m.created_at : "1970-01-01T00:00:00Z",
+    isString(m.created_at) && m.created_at ? m.created_at : "1970-01-01T00:00:00Z"
   };
 }
 
@@ -60,15 +61,15 @@ function toAnthropicModel(m) {
  * @returns {Response} JSON `200` envelope.
  */
 function buildAnthropicModelsResponse(data, headers) {
-  const ids = data
-    .map((m) => (typeof m.id === "string" ? m.id : null))
-    .filter((id) => id !== null);
+  const ids = data.
+  map((m) => isString(m.id) ? m.id : null).
+  filter((id) => id !== null);
   return Response.json(
     {
       data: data.map(toAnthropicModel),
       has_more: false,
       first_id: ids.length > 0 ? ids[0] : null,
-      last_id: ids.length > 0 ? ids[ids.length - 1] : null,
+      last_id: ids.length > 0 ? ids[ids.length - 1] : null
     },
     { headers }
   );

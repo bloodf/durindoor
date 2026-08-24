@@ -5,13 +5,13 @@ import { FORMATS } from "../formats.js";
 import { fetchImageAsBase64, parseDataUri } from "./image.js";
 
 // Targets that require inline base64 images (cannot accept remote URLs).
-const TARGETS_NEED_BASE64 = new Set([
-  FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX,
-  FORMATS.ANTIGRAVITY, FORMATS.OLLAMA, FORMATS.KIRO,
-]);
+import { isString } from "@/shared/utils/typeChecks.js";const TARGETS_NEED_BASE64 = new Set([
+FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX,
+FORMATS.ANTIGRAVITY, FORMATS.OLLAMA, FORMATS.KIRO]
+);
 
 function isRemoteUrl(url) {
-  return typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://"));
+  return isString(url) && (url.startsWith("http://") || url.startsWith("https://"));
 }
 
 // Collect {get,set} accessors for every remote image URL in a source body.
@@ -22,10 +22,10 @@ function collectImageRefs(body, sourceFormat) {
       if (!Array.isArray(msg.content)) continue;
       for (const block of msg.content) {
         if (block?.type === "image_url") {
-          const url = typeof block.image_url === "string" ? block.image_url : block.image_url?.url;
+          const url = isString(block.image_url) ? block.image_url : block.image_url?.url;
           if (isRemoteUrl(url)) refs.push({ get: () => url, set: (v) => {
-            if (typeof block.image_url === "string") block.image_url = v; else block.image_url.url = v;
-          } });
+              if (isString(block.image_url)) block.image_url = v;else block.image_url.url = v;
+            } });
         }
       }
     }
@@ -87,9 +87,9 @@ export async function prefetchRemoteImages(body, sourceFormat, targetFormat, opt
     if (parseDataUri(url)) continue; // already inline
     const fetched = await fetchImageAsBase64(url, options);
     if (!fetched) continue;
-    if (ref.set) ref.set(fetched.url);
-    else if (ref.part) { delete ref.part.fileData; ref.part.inlineData = { mimeType: fetched.mimeType, data: fetched.url.split(",")[1] }; }
-    else if (ref.claudeBlock) ref.claudeBlock.source = { type: "base64", media_type: fetched.mimeType, data: fetched.url.split(",")[1] };
+    if (ref.set) ref.set(fetched.url);else
+    if (ref.part) {delete ref.part.fileData;ref.part.inlineData = { mimeType: fetched.mimeType, data: fetched.url.split(",")[1] };} else
+    if (ref.claudeBlock) ref.claudeBlock.source = { type: "base64", media_type: fetched.mimeType, data: fetched.url.split(",")[1] };
     converted++;
   }
   return converted;

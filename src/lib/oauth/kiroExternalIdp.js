@@ -1,15 +1,16 @@
 import { KIRO_DEFAULT_REGION, normalizeKiroRegion } from "../../../open-sse/config/kiroRegions.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const MICROSOFT_TOKEN_ENDPOINT_HOSTS = new Set([
-  "login.microsoftonline.com",
-  "login.microsoft.com",
-  "login.windows.net",
-]);
+"login.microsoftonline.com",
+"login.microsoft.com",
+"login.windows.net"]
+);
 
 const DEFAULT_EXPIRES_IN = 3600;
 
 function normalizeString(value) {
-  return typeof value === "string" ? value.trim() : "";
+  return isString(value) ? value.trim() : "";
 }
 
 export function validateMicrosoftTokenEndpoint(rawEndpoint) {
@@ -44,11 +45,11 @@ export function normalizeScope(scopes) {
 
 export function decodeJwtPayload(jwt) {
   try {
-    if (!jwt || typeof jwt !== "string") return null;
+    if (!jwt || !isString(jwt)) return null;
     const parts = jwt.split(".");
     if (parts.length !== 3) return null;
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padding = (4 - (base64.length % 4)) % 4;
+    const padding = (4 - base64.length % 4) % 4;
     return JSON.parse(Buffer.from(`${base64}${"=".repeat(padding)}`, "base64").toString("utf8"));
   } catch {
     return null;
@@ -77,7 +78,7 @@ function resolveExpiresAt(input) {
 
 export function normalizeKiroExternalIdpAuth(rawAuth) {
   let input = rawAuth;
-  if (typeof input === "string") {
+  if (isString(input)) {
     try {
       input = JSON.parse(input);
     } catch {
@@ -85,7 +86,7 @@ export function normalizeKiroExternalIdpAuth(rawAuth) {
     }
   }
 
-  if (!input || typeof input !== "object") {
+  if (!input || !isObject(input)) {
     throw new Error("CLIProxyAPI auth JSON is required");
   }
 
@@ -123,8 +124,8 @@ export function normalizeKiroExternalIdpAuth(rawAuth) {
       provider: "CLIProxyAPI",
       clientId,
       tokenEndpoint,
-      scope,
-    },
+      scope
+    }
   };
 }
 
@@ -143,13 +144,13 @@ export function buildExternalIdpRefreshParams(refreshToken, providerSpecificData
       grant_type: "refresh_token",
       client_id: clientId,
       refresh_token: refreshToken,
-      scope,
+      scope
     }),
     providerSpecificData: {
       authMethod: "external_idp",
       clientId,
       tokenEndpoint,
-      scope,
-    },
+      scope
+    }
   };
 }

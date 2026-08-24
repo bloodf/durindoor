@@ -7,8 +7,9 @@ import {
   markCooldown as markAccountCooldown,
   markSuccess as markAccountSuccess,
   maskAccountId,
-  isNetworkErrorRotatable,
-} from "./accountRotation.js";
+  isNetworkErrorRotatable } from
+"./accountRotation.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const BASE_URL = "https://api.xiaomimimo.com";
 const BOOTSTRAP_PATH = "/api/free-ai/bootstrap";
@@ -18,13 +19,13 @@ const BOOTSTRAP_TIMEOUT_MS = 15_000;
 const MIMO_SOURCE = "mimocode-cli-free";
 
 export const MIMO_SYSTEM_MARKER =
-  "You are MiMoCode, an interactive CLI tool that helps users with software engineering tasks.";
+"You are MiMoCode, an interactive CLI tool that helps users with software engineering tasks.";
 
 const USER_AGENTS = [
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-];
+"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"];
+
 
 const bootstrapInflight = new Map();
 const dispatcherCache = new Map();
@@ -34,9 +35,9 @@ export function injectMimocodeSystemMarker(body) {
   if (!Array.isArray(messages)) return body;
   const hasMarker = messages.some(
     (message) =>
-      message?.role === "system" &&
-      typeof message.content === "string" &&
-      message.content.includes(MIMO_SYSTEM_MARKER)
+    message?.role === "system" && isString(
+      message.content) &&
+    message.content.includes(MIMO_SYSTEM_MARKER)
   );
   if (hasMarker) return body;
   return { ...body, messages: [{ role: "system", content: MIMO_SYSTEM_MARKER }, ...messages] };
@@ -56,10 +57,10 @@ export function generateFingerprint(seed) {
   try {
     username = os.userInfo().username;
   } catch {}
-  return crypto
-    .createHash("sha256")
-    .update(`${os.hostname()}|${os.platform()}|${os.arch()}|${getCpuModel()}|${username}`)
-    .digest("hex");
+  return crypto.
+  createHash("sha256").
+  update(`${os.hostname()}|${os.platform()}|${os.arch()}|${getCpuModel()}|${username}`).
+  digest("hex");
 }
 
 export function parseJwtExp(jwt) {
@@ -97,9 +98,9 @@ function proxyConfigToUrl(entry) {
     throw new Error(`Mimocode per-account proxy type "${type}" is not supported in this DurinDoor port; use http/https or add a fetch-socks dispatcher.`);
   }
   const port = proxy.port ?? (type === "https" ? 443 : 8080);
-  const auth = proxy.username
-    ? `${encodeURIComponent(proxy.username)}:${proxy.password ? encodeURIComponent(proxy.password) : ""}@`
-    : "";
+  const auth = proxy.username ?
+  `${encodeURIComponent(proxy.username)}:${proxy.password ? encodeURIComponent(proxy.password) : ""}@` :
+  "";
   return { fingerprint: entry.fingerprint, url: `${type}://${auth}${proxy.host}:${port}` };
 }
 
@@ -119,11 +120,11 @@ async function bootstrapJwt(baseUrl, fingerprint, signal, dispatcher) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ client: fingerprint }),
-        signal: controller.signal,
+        signal: controller.signal
       };
-      const response = dispatcher
-        ? await undiciFetch(url, { ...init, dispatcher })
-        : await fetch(url, init);
+      const response = dispatcher ?
+      await undiciFetch(url, { ...init, dispatcher }) :
+      await fetch(url, init);
       if (!response.ok) {
         const text = await response.text().catch(() => "");
         throw new Error(`Bootstrap failed: ${response.status} ${text.slice(0, 200)}`);
@@ -177,7 +178,7 @@ export class MimocodeExecutor extends BaseExecutor {
     const existing = new Set(this.accounts.map((account) => account.fingerprint));
     if (Array.isArray(providerData.fingerprints)) {
       for (const fingerprint of providerData.fingerprints) {
-        if (typeof fingerprint === "string" && !existing.has(fingerprint)) {
+        if (isString(fingerprint) && !existing.has(fingerprint)) {
           this.accounts.push(this.buildAccount(fingerprint));
           existing.add(fingerprint);
         }
@@ -186,9 +187,9 @@ export class MimocodeExecutor extends BaseExecutor {
 
     const structuredProxyMap = new Map(accountProxies.map((entry) => [entry.fingerprint, entry.proxy ?? null]));
     for (const account of this.accounts) {
-      account.proxy = structuredProxyMap.has(account.fingerprint)
-        ? structuredProxyMap.get(account.fingerprint)
-        : null;
+      account.proxy = structuredProxyMap.has(account.fingerprint) ?
+      structuredProxyMap.get(account.fingerprint) :
+      null;
     }
   }
 
@@ -202,7 +203,7 @@ export class MimocodeExecutor extends BaseExecutor {
 
   pickAccount() {
     return pickRotatableAccount(this.accounts, this, (account) =>
-      isAccountReady(account),
+    isAccountReady(account)
     );
   }
 
@@ -222,14 +223,14 @@ export class MimocodeExecutor extends BaseExecutor {
     const headers = {
       "Content-Type": "application/json",
       "X-Mimo-Source": MIMO_SOURCE,
-      "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+      "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]
     };
     if (stream) headers.Accept = "text/event-stream, application/json";
     return headers;
   }
 
   transformRequest(model, body) {
-    if (!body || typeof body !== "object") return body;
+    if (!body || !isObject(body)) return body;
     return injectMimocodeSystemMarker({ ...body, model: rewriteModelName(model) });
   }
 
@@ -246,9 +247,9 @@ export class MimocodeExecutor extends BaseExecutor {
           body: JSON.stringify(injectMimocodeSystemMarker({
             model: "mimo-auto",
             messages: [{ role: "user", content: "ping" }],
-            stream: false,
+            stream: false
           })),
-          signal: signal ?? undefined,
+          signal: signal ?? undefined
         },
         account.fingerprint
       );
@@ -264,18 +265,18 @@ export class MimocodeExecutor extends BaseExecutor {
     const url = this.buildUrl(model, stream);
     const transformedBody = this.clampCustomMaxOutput(
       this.transformRequest(model, body, stream, credentials),
-      requestContext,
+      requestContext
     );
 
     if (signal?.aborted) {
       return {
         response: new Response(JSON.stringify({ error: { message: "Request aborted", type: "abort", code: "ABORTED" } }), {
           status: 499,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" }
         }),
         url,
         headers: this.buildHeaders(credentials, stream),
-        transformedBody,
+        transformedBody
       };
     }
 
@@ -319,11 +320,11 @@ export class MimocodeExecutor extends BaseExecutor {
           return {
             response: new Response(JSON.stringify({ error: { message, type: "upstream_error", code: "EXECUTOR_ERROR" } }), {
               status: 502,
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json" }
             }),
             url,
             headers: this.buildHeaders(credentials, stream),
-            transformedBody,
+            transformedBody
           };
         }
         this.markCooldown(account);
@@ -334,11 +335,11 @@ export class MimocodeExecutor extends BaseExecutor {
           return {
             response: new Response(JSON.stringify({ error: { message, type: "upstream_error", code: "EXECUTOR_ERROR" } }), {
               status: 502,
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json" }
             }),
             url,
             headers: this.buildHeaders(credentials, stream),
-            transformedBody,
+            transformedBody
           };
         }
       }
@@ -346,11 +347,11 @@ export class MimocodeExecutor extends BaseExecutor {
 
     return {
       response: new Response(JSON.stringify({
-        error: { message: "All accounts exhausted", type: "upstream_error", code: "NO_ACCOUNTS" },
+        error: { message: "All accounts exhausted", type: "upstream_error", code: "NO_ACCOUNTS" }
       }), { status: 502, headers: { "Content-Type": "application/json" } }),
       url,
       headers: this.buildHeaders(credentials, stream),
-      transformedBody,
+      transformedBody
     };
   }
 }
@@ -364,7 +365,7 @@ export const __test__ = {
   bootstrapInflight,
   dispatcherCache,
   injectMimocodeSystemMarker,
-  proxyConfigToUrl,
+  proxyConfigToUrl
 };
 
 export default MimocodeExecutor;

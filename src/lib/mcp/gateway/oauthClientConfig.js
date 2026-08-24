@@ -1,4 +1,4 @@
-// Merge manually-entered OAuth client credentials (client_id / client_secret /
+import { isObject, isString } from "@/shared/utils/typeChecks.js"; // Merge manually-entered OAuth client credentials (client_id / client_secret /
 // scope) from an instance create/update payload into the instance's oauthTokens
 // bundle, WITHOUT clobbering any live token material already stored there.
 //
@@ -14,7 +14,7 @@
 // (so callers can leave the stored tokens untouched).
 
 export function mergeOauthClientConfig(existingTokens, body) {
-  const pick = (k) => (typeof body[k] === "string" ? body[k].trim() : "");
+  const pick = (k) => isString(body[k]) ? body[k].trim() : "";
   const clientId = pick("clientId");
   const clientSecret = pick("clientSecret");
   const scope = pick("scope");
@@ -27,9 +27,9 @@ export function mergeOauthClientConfig(existingTokens, body) {
   if (!clientId && !clientSecret && !scope) return undefined;
 
   const base =
-    existingTokens && typeof existingTokens === "object" && !Array.isArray(existingTokens)
-      ? { ...existingTokens }
-      : {};
+  existingTokens && isObject(existingTokens) && !Array.isArray(existingTokens) ?
+  { ...existingTokens } :
+  {};
 
   if (clientId || clientSecret) {
     const client = { ...(base.client || {}) };

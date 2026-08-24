@@ -1,7 +1,7 @@
 import { ensureDirs, hardenPermissions, currentDataFile } from "./paths.js";
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
-if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false, file: null };
+import { isFunction } from "@/shared/utils/typeChecks.js";if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false, file: null };
 const state = global._dbAdapter;
 
 function liveDataFile() {
@@ -36,7 +36,7 @@ async function tryNodeSqlite() {
   // Built-in since Node 22.5.0 — no install needed. Skip under Bun (no node:sqlite).
   if (process.versions.bun) return null;
   const [maj, min] = process.versions.node.split(".").map(Number);
-  if (maj < 22 || (maj === 22 && min < 5)) return null;
+  if (maj < 22 || maj === 22 && min < 5) return null;
   try {
     const { createNodeSqliteAdapter } = await import("./adapters/nodeSqliteAdapter.js");
     return await createNodeSqliteAdapter(liveDataFile());
@@ -81,7 +81,7 @@ async function initAdapter() {
     await runMigrationOnce(adapter);
     return adapter;
   } catch (error) {
-    try { await adapter.close?.(); } catch {}
+    try {await adapter.close?.();} catch {}
     throw error;
   }
 }
@@ -92,23 +92,23 @@ export async function getAdapter() {
   const currentFile = liveDataFile();
   if (state.instance && state.file && state.file !== currentFile) {
     try {
-      if (typeof state.instance.close === "function") await state.instance.close();
-    } catch { /* best-effort */ }
+      if (isFunction(state.instance.close)) await state.instance.close();
+    } catch {/* best-effort */}
     state.instance = null;
     state.initPromise = null;
   }
   if (state.instance) return state.instance;
   if (!state.initPromise) {
-    state.initPromise = initAdapter()
-      .then((adapter) => {
-        state.instance = adapter;
-        return adapter;
-      })
-      .catch((error) => {
-        state.instance = null;
-        state.initPromise = null;
-        throw error;
-      });
+    state.initPromise = initAdapter().
+    then((adapter) => {
+      state.instance = adapter;
+      return adapter;
+    }).
+    catch((error) => {
+      state.instance = null;
+      state.initPromise = null;
+      throw error;
+    });
   }
   return state.initPromise;
 }

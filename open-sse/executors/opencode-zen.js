@@ -2,21 +2,22 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const BASE = "https://opencode.ai/zen/v1";
 
 const MESSAGES_FORMAT_MODELS = new Set([
-  "qwen3.5-plus",
-  "qwen3.6-plus",
-  "qwen3.6-plus-free",
-]);
+"qwen3.5-plus",
+"qwen3.6-plus",
+"qwen3.6-plus-free"]
+);
 
 function isClaudeModel(model) {
-  return typeof model === "string" && model.startsWith("claude-");
+  return isString(model) && model.startsWith("claude-");
 }
 
 function isGeminiModel(model) {
-  return typeof model === "string" && model.startsWith("gemini-");
+  return isString(model) && model.startsWith("gemini-");
 }
 
 function isMessagesModel(model) {
@@ -24,7 +25,7 @@ function isMessagesModel(model) {
 }
 
 function isResponsesModel(model) {
-  return typeof model === "string" && /^gpt-5(?:[.-]|$)/.test(model);
+  return isString(model) && /^gpt-5(?:[.-]|$)/.test(model);
 }
 
 export class OpenCodeZenExecutor extends BaseExecutor {

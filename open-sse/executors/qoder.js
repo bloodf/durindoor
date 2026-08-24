@@ -35,22 +35,22 @@ import { FORMATS } from "../translator/formats.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import {
   getCurrentProviderAttemptTimestamp,
-  runQuotaBearingProviderRequest,
-} from "../services/providerAttemptContext.js";
+  runQuotaBearingProviderRequest } from
+"../services/providerAttemptContext.js";
 import {
   QODER_CHAT_URL_ENCODED,
   QODER_JOB_TOKEN_EXCHANGE_URL,
   QODER_USERINFO_URL,
   QODER_MODEL_MAP,
   QODER_IDE_VERSION,
-  QODER_CLIENT_TYPE,
-} from "../shared/qoder/constants.js";
+  QODER_CLIENT_TYPE } from
+"../shared/qoder/constants.js";
 import { getQoderModelConfig, resolveQoderModels } from "../services/qoderModels.js";
 
 /**
  * Hoist role:"system" messages out of the messages array (Qoder rejects
  * system in messages) and flatten any multipart content arrays.
- */
+ */import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 function normalizeMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return { messages: [], systemText: "" };
@@ -58,7 +58,7 @@ function normalizeMessages(messages) {
   const systemParts = [];
   const out = [];
   for (const msg of messages) {
-    if (!msg || typeof msg !== "object") continue;
+    if (!msg || !isObject(msg)) continue;
     const text = extractText(msg.content);
     if (msg.role === "system") {
       if (text) systemParts.push(text);
@@ -72,15 +72,15 @@ function normalizeMessages(messages) {
 }
 
 function extractText(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (content == null) return "";
   if (Array.isArray(content)) {
     const parts = [];
     for (const item of content) {
-      if (item && typeof item === "object") {
-        if (item.type === "text" && typeof item.text === "string") {
+      if (item && isObject(item)) {
+        if (item.type === "text" && isString(item.text)) {
           parts.push(item.text);
-        } else if (typeof item.text === "string") {
+        } else if (isString(item.text)) {
           parts.push(item.text);
         }
       }
@@ -93,7 +93,7 @@ function extractText(content) {
 function lastUserText(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    if (m?.role === "user" && typeof m.content === "string") {
+    if (m?.role === "user" && isString(m.content)) {
       return m.content;
     }
   }
@@ -115,15 +115,15 @@ function stableChatRecordId(model, messages, tools, maxTokens) {
   h.update("qoder-record\0");
   h.update(String(model));
   for (const m of messages) {
-    if (!m || typeof m !== "object") continue;
-    if (m.role) { h.update("\0"); h.update(m.role); }
-    if (typeof m.content === "string" && m.content) {
-      h.update("\0"); h.update(m.content);
+    if (!m || !isObject(m)) continue;
+    if (m.role) {h.update("\0");h.update(m.role);}
+    if (isString(m.content) && m.content) {
+      h.update("\0");h.update(m.content);
     }
   }
   if (tools) {
     h.update("\0");
-    try { h.update(JSON.stringify(tools)); } catch {}
+    try {h.update(JSON.stringify(tools));} catch {}
   }
   h.update(`\0mt=${maxTokens}`);
   return h.digest("hex").slice(0, 16);
@@ -138,7 +138,7 @@ function truncate(s, n) {
  */
 async function buildQoderRequestBody({ model, body, credentials, log, proxyOptions, signal }) {
   const qoderKey = String(model || "").replace(/^qoder\//, "");
-  
+
   // Fetch model config from dynamic API instead of relying on static QODER_MODEL_MAP.
   // This allows support for new Qoder models (e.g., qmodel_latest) without code changes.
   let modelConfig = await getQoderModelConfig(credentials, qoderKey, { log, proxyOptions, signal });
@@ -149,7 +149,7 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
     const retried = refreshed?.rawConfigs.get(qoderKey);
     if (!retried) {
       throw new Error(
-        `qoder: model_config for "${qoderKey}" not yet known (run a model list fetch or check upstream connectivity)`,
+        `qoder: model_config for "${qoderKey}" not yet known (run a model list fetch or check upstream connectivity)`
       );
     }
     modelConfig = { ...retried, key: qoderKey };
@@ -162,10 +162,10 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
 
   let maxTokens = 32_768;
   if (maxOutputTokens > 0) maxTokens = maxOutputTokens;
-  if (typeof body.max_tokens === "number" && body.max_tokens > 0 && body.max_tokens < maxTokens) {
+  if (isNumber(body.max_tokens) && body.max_tokens > 0 && body.max_tokens < maxTokens) {
     maxTokens = body.max_tokens;
   }
-  if (typeof body.max_completion_tokens === "number" && body.max_completion_tokens > 0 && body.max_completion_tokens < maxTokens) {
+  if (isNumber(body.max_completion_tokens) && body.max_completion_tokens > 0 && body.max_completion_tokens < maxTokens) {
     maxTokens = body.max_completion_tokens;
   }
 
@@ -204,10 +204,10 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
         extra: {
           context: [],
           modelConfig: { key: qoderKey, is_reasoning: isReasoning },
-          originalContent: lastUser,
+          originalContent: lastUser
         },
         features: [],
-        text: lastUser,
+        text: lastUser
       },
       model_config: modelConfig,
       business: {
@@ -217,10 +217,10 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
         stage: "start",
         id: uuidv4(),
         name: truncate(lastUser, 30),
-        begin_at: Date.now(),
-      },
+        begin_at: Date.now()
+      }
     },
-    modelConfig,
+    modelConfig
   };
 }
 
@@ -234,7 +234,7 @@ const QODER_SSE_PEEK_BYTES = 64 * 1024;
  */
 export function isQoderQuotaExhaustedBody(body) {
   let parsed = body;
-  if (typeof body === "string") {
+  if (isString(body)) {
     if (!body) return false;
     try {
       parsed = JSON.parse(body);
@@ -242,33 +242,33 @@ export function isQoderQuotaExhaustedBody(body) {
       return false;
     }
   }
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    && parsed.code === "112";
+  return parsed && isObject(parsed) && !Array.isArray(parsed) &&
+  parsed.code === "112";
 }
 
 function isBillingBlock(body) {
-  if (typeof body !== "string" || !body) return false;
+  if (!isString(body) || !body) return false;
   try {
     const parsed = JSON.parse(body);
-    return isQoderQuotaExhaustedBody(parsed)
-      || (parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        && (parsed.code === "10605" || Object.hasOwn(parsed, "pricingUrl")));
+    return isQoderQuotaExhaustedBody(parsed) ||
+    parsed && isObject(parsed) && !Array.isArray(parsed) && (
+    parsed.code === "10605" || Object.hasOwn(parsed, "pricingUrl"));
   } catch {
     return false;
   }
 }
 
 function releaseReader(reader) {
-  try { reader.releaseLock(); } catch { /* already released */ }
+  try {reader.releaseLock();} catch {/* already released */}
 }
 
 async function cancelAndReleaseReader(reader, reason) {
   let timer;
   try {
     await Promise.race([
-      Promise.resolve(reader.cancel(reason)).catch(() => {}),
-      new Promise((resolve) => { timer = setTimeout(resolve, 250); }),
-    ]);
+    Promise.resolve(reader.cancel(reason)).catch(() => {}),
+    new Promise((resolve) => {timer = setTimeout(resolve, 250);})]
+    );
   } finally {
     clearTimeout(timer);
     releaseReader(reader);
@@ -287,9 +287,9 @@ async function readBeforeDeadline(reader, deadlineAt) {
   let timer;
   try {
     return await Promise.race([
-      reader.read(),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(qoderPeekTimeoutError()), remaining); }),
-    ]);
+    reader.read(),
+    new Promise((_, reject) => {timer = setTimeout(() => reject(qoderPeekTimeoutError()), remaining);})]
+    );
   } finally {
     clearTimeout(timer);
   }
@@ -321,13 +321,13 @@ async function peekQoderBillingFrame(reader, timeoutMs) {
         if (!line.startsWith("data:")) continue;
         try {
           const envelope = JSON.parse(line.slice(5).trimStart());
-          const status = typeof envelope.statusCodeValue === "number" ? envelope.statusCodeValue : 200;
-          const body = typeof envelope.body === "string" ? envelope.body : "";
+          const status = isNumber(envelope.statusCodeValue) ? envelope.statusCodeValue : 200;
+          const body = isString(envelope.body) ? envelope.body : "";
           if (status !== 200 && isBillingBlock(body)) return { chunks, done: false, billing: { status, body } };
         } catch {
+
           // Malformed frames remain existing stream-transform failures.
-        }
-        return { chunks, done: false };
+        }return { chunks, done: false };
       }
     }
     return { chunks, done: false };
@@ -370,8 +370,8 @@ function replayQoderBody(reader, chunks, alreadyDone) {
     async cancel(reason) {
       if (finished) return;
       finished = true;
-      try { await reader.cancel(reason); } finally { releaseReader(reader); }
-    },
+      try {await reader.cancel(reason);} finally {releaseReader(reader);}
+    }
   });
 }
 /**
@@ -409,7 +409,7 @@ async function wrapQoderSSE(response, model, options = {}) {
     if (failureEmitted) return;
     failureEmitted = true;
     controller.enqueue(encoder.encode(
-      `data: ${JSON.stringify({ error: { message: "Qoder upstream stream failed", type: "stream_error" } })}\n\n`,
+      `data: ${JSON.stringify({ error: { message: "Qoder upstream stream failed", type: "stream_error" } })}\n\n`
     ));
   };
 
@@ -437,9 +437,9 @@ async function wrapQoderSSE(response, model, options = {}) {
     }
 
     let envelope;
-    try { envelope = JSON.parse(data); } catch { emitFailure(controller); return; }
-    const statusVal = typeof envelope.statusCodeValue === "number" ? envelope.statusCodeValue : 200;
-    const inner = typeof envelope.body === "string" ? envelope.body : "";
+    try {envelope = JSON.parse(data);} catch {emitFailure(controller);return;}
+    const statusVal = isNumber(envelope.statusCodeValue) ? envelope.statusCodeValue : 200;
+    const inner = isString(envelope.body) ? envelope.body : "";
     if (statusVal !== 200) {
       emitFailure(controller);
       return;
@@ -451,8 +451,8 @@ async function wrapQoderSSE(response, model, options = {}) {
     }
     const sanitized = inner.replace(/\r?\n/g, "");
     let parsed;
-    try { parsed = JSON.parse(sanitized); }
-    catch { emitFailure(controller); return; }
+    try {parsed = JSON.parse(sanitized);}
+    catch {emitFailure(controller);return;}
     rawTerminal.observe({ chunk: parsed });
     if (rawTerminal.outcome === "failure") {
       emitFailure(controller);
@@ -482,7 +482,7 @@ async function wrapQoderSSE(response, model, options = {}) {
         downstreamDoneEmitted = true;
       }
       if (!downstreamDoneEmitted) emitFailure(controller);
-    },
+    }
   });
 
   const transformed = body.pipeThrough(transform);
@@ -490,21 +490,21 @@ async function wrapQoderSSE(response, model, options = {}) {
   const output = new ReadableStream({
     async pull(controller) {
       const { done, value } = await transformedReader.read();
-      if (done) controller.close();
-      else controller.enqueue(value);
+      if (done) controller.close();else
+      controller.enqueue(value);
     },
     async cancel(reason) {
-      try { await transformedReader.cancel(reason); }
-      finally { await cancelAndReleaseReader(reader, reason); }
-    },
+      try {await transformedReader.cancel(reason);} finally
+      {await cancelAndReleaseReader(reader, reason);}
+    }
   });
   return new Response(output, {
     status: response.status,
     statusText: response.statusText,
     headers: {
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-    },
+      "Cache-Control": "no-cache"
+    }
   });
 }
 
@@ -518,7 +518,7 @@ const PAT_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const patJobCache = new Map();
 
 export function isQoderPat(token) {
-  return typeof token === "string" && token.startsWith(PAT_PREFIX);
+  return isString(token) && token.startsWith(PAT_PREFIX);
 }
 
 async function exchangeJobToken(pat, proxyOptions = null, signal = null) {
@@ -531,12 +531,12 @@ async function exchangeJobToken(pat, proxyOptions = null, signal = null) {
         Accept: "application/json",
         "User-Agent": "qodercli/1.0.0",
         "Cosy-Version": QODER_IDE_VERSION,
-        "Cosy-ClientType": QODER_CLIENT_TYPE,
+        "Cosy-ClientType": QODER_CLIENT_TYPE
       },
       body: JSON.stringify({ personal_token: pat }),
-      signal,
+      signal
     },
-    proxyOptions,
+    proxyOptions
   );
   if (!res.ok) {
     throw new Error(`qoder PAT exchange failed with HTTP ${res.status}`);
@@ -548,7 +548,7 @@ async function exchangeJobToken(pat, proxyOptions = null, signal = null) {
   if (data.expires_at) {
     const parsed = Date.parse(data.expires_at);
     if (!Number.isNaN(parsed)) expiresAt = parsed;
-  } else if (typeof data.expires_in === "number" && data.expires_in > 0) {
+  } else if (isNumber(data.expires_in) && data.expires_in > 0) {
     expiresAt = Date.now() + data.expires_in * 1000;
   }
   return { jobToken: data.token, jobRefreshToken: data.refresh_token || "", expiresAt };
@@ -563,11 +563,11 @@ async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = nu
         headers: {
           Authorization: `Bearer ${jobToken}`,
           Accept: "application/json",
-          "User-Agent": "qodercli/1.0.0",
+          "User-Agent": "qodercli/1.0.0"
         },
-        signal,
+        signal
       },
-      proxyOptions,
+      proxyOptions
     );
     if (!res.ok) return "";
     const info = await res.json().catch(() => ({}));
@@ -628,15 +628,15 @@ export class QoderExecutor extends BaseExecutor {
             authMethod: "pat",
             ...(credentials?.providerSpecificData || {}),
             userId: resolved.userId || credentials?.providerSpecificData?.userId || "",
-            machineId: credentials?.providerSpecificData?.machineId || "",
-          },
+            machineId: credentials?.providerSpecificData?.machineId || ""
+          }
         };
       } catch (err) {
         const message = sanitizeErrorMessage(err?.message || "qoder PAT exchange failed");
         log?.error?.("QODER", message);
         const fakeResp = new Response(
           JSON.stringify({ error: { message } }),
-          { status: 401, headers: { "Content-Type": "application/json" } },
+          { status: 401, headers: { "Content-Type": "application/json" } }
         );
         return { response: fakeResp, url, headers: {}, transformedBody: body };
       }
@@ -648,7 +648,7 @@ export class QoderExecutor extends BaseExecutor {
       // the user back to OAuth.
       const fakeResp = new Response(
         JSON.stringify({ error: { message: "qoder credential is missing userId; reconnect the account" } }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
+        { status: 401, headers: { "Content-Type": "application/json" } }
       );
       return { response: fakeResp, url, headers: {}, transformedBody: body };
     }
@@ -657,7 +657,7 @@ export class QoderExecutor extends BaseExecutor {
       // "reconnect" rather than bubbling cosy.js's synchronous throw as 500.
       const fakeResp = new Response(
         JSON.stringify({ error: { message: "qoder credential is missing accessToken; reconnect the account" } }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
+        { status: 401, headers: { "Content-Type": "application/json" } }
       );
       return { response: fakeResp, url, headers: {}, transformedBody: body };
     }
@@ -669,7 +669,7 @@ export class QoderExecutor extends BaseExecutor {
     } catch (err) {
       const fakeResp = new Response(
         JSON.stringify({ error: { message: err.message } }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
       return { response: fakeResp, url, headers: {}, transformedBody: body };
     }
@@ -688,20 +688,20 @@ export class QoderExecutor extends BaseExecutor {
           authToken: credentials.accessToken,
           name: credentials.displayName || "",
           email: credentials.email || "",
-          machineId: psd.machineId || "",
-        },
+          machineId: psd.machineId || ""
+        }
       );
     } catch (err) {
       // cosy.js throws synchronously on missing userId/authToken — surface
       // as 401 so chatCore prompts re-auth instead of returning a 500.
       const fakeResp = new Response(
         JSON.stringify({ error: { message: `qoder cosy signing failed: ${err.message}` } }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
+        { status: 401, headers: { "Content-Type": "application/json" } }
       );
       return { response: fakeResp, url, headers: {}, transformedBody: body };
     }
 
-    const modelSource = (payload.model_config && payload.model_config.source) || "system";
+    const modelSource = payload.model_config && payload.model_config.source || "system";
     const headers = {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
@@ -710,7 +710,7 @@ export class QoderExecutor extends BaseExecutor {
       "X-Model-Source": modelSource,
       // gzip triggers signature validation on Qoder's CDN; force identity.
       "Accept-Encoding": "identity",
-      ...cosyHeaders,
+      ...cosyHeaders
     };
 
     // Abort if upstream doesn't return response headers within connect timeout.
@@ -724,7 +724,7 @@ export class QoderExecutor extends BaseExecutor {
       response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(
         url,
         { method: "POST", headers, body: encodedBodyBuf, signal: mergedSignal },
-        proxyOptions,
+        proxyOptions
       ));
     } finally {
       clearTimeout(connectTimer);
@@ -741,7 +741,7 @@ export class QoderExecutor extends BaseExecutor {
       headers,
       transformedBody: payload,
       attemptStartedAt: getCurrentProviderAttemptTimestamp(),
-      terminalProvenance: "validated",
+      terminalProvenance: "validated"
     };
   }
 
@@ -767,5 +767,5 @@ export const __test__ = {
   isBillingBlock,
   buildQoderRequestBody,
   isQoderPat,
-  resolvePatCredential,
+  resolvePatCredential
 };

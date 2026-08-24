@@ -1,4 +1,4 @@
-/**
+import { isNumber } from "@/shared/utils/typeChecks.js"; /**
  * Pure target-token computation (design D-C1). No clock, no DB, no tokenizer.
  *
  * @param {string} policy            active target policy
@@ -17,8 +17,8 @@ export function computeTarget(policy, modelContextLimit, requestMaxTokens, confi
   }
   // reserve-output (default): limit − output reservation − safety margin.
   const reserve =
-    typeof requestMaxTokens === "number" && requestMaxTokens > 0
-      ? requestMaxTokens
-      : config.outputReserve;
+  isNumber(requestMaxTokens) && requestMaxTokens > 0 ?
+  requestMaxTokens :
+  config.outputReserve;
   return Math.max(0, Math.floor(modelContextLimit - reserve - config.safetyMargin));
 }

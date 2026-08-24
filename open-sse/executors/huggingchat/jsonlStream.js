@@ -1,19 +1,19 @@
-export function sseChunk(data) {
+import { isString } from "@/shared/utils/typeChecks.js";export function sseChunk(data) {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
 
 export function parseJsonlLine(line) {
   try {
     const event = JSON.parse(line);
-    if (event.type === "stream" && typeof event.token === "string") {
+    if (event.type === "stream" && isString(event.token)) {
       const token = event.token.replace(/\0/g, "");
       if (token) return { token };
     }
-    if (event.type === "reasoning" && event.subtype === "stream" && typeof event.token === "string") {
+    if (event.type === "reasoning" && event.subtype === "stream" && isString(event.token)) {
       const token = event.token.replace(/\0/g, "");
       if (token) return { reasoning: token };
     }
-    if (event.type === "finalAnswer" && typeof event.text === "string") {
+    if (event.type === "finalAnswer" && isString(event.text)) {
       return { text: event.text, done: true };
     }
     if (event.type === "status") {
@@ -21,9 +21,9 @@ export function parseJsonlLine(line) {
       if (event.status === "finished") return { done: true };
     }
   } catch {
+
     // Ignore keepalive and malformed lines from the JSONL stream.
-  }
-  return {};
+  }return {};
 }
 
 export async function* streamJsonlToOpenAi(body, model, id, created, signal) {
@@ -38,7 +38,7 @@ export async function* streamJsonlToOpenAi(body, model, id, created, signal) {
     object: "chat.completion.chunk",
     created,
     model,
-    choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
+    choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }]
   });
 
   const emitDelta = (delta, finish_reason = null) => sseChunk({
@@ -46,7 +46,7 @@ export async function* streamJsonlToOpenAi(body, model, id, created, signal) {
     object: "chat.completion.chunk",
     created,
     model,
-    choices: [{ index: 0, delta, finish_reason }],
+    choices: [{ index: 0, delta, finish_reason }]
   });
 
   function* handle(parsed) {

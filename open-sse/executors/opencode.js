@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const OPENCODE_UA = "opencode";
 const MESSAGES_MODELS = new Set();
@@ -16,21 +17,21 @@ function generateSessionId() {
 }
 
 function trustedSessionKey(credentials, requestContext, fallback) {
-  const connectionId = typeof credentials?.connectionId === "string" && credentials.connectionId.trim()
-    ? credentials.connectionId.trim()
-    : null;
+  const connectionId = isString(credentials?.connectionId) && credentials.connectionId.trim() ?
+  credentials.connectionId.trim() :
+  null;
   if (!connectionId) return fallback;
-  const sessionId = typeof requestContext?.sessionId === "string" && requestContext.sessionId.trim()
-    ? requestContext.sessionId.trim()
-    : null;
+  const sessionId = isString(requestContext?.sessionId) && requestContext.sessionId.trim() ?
+  requestContext.sessionId.trim() :
+  null;
   return JSON.stringify([connectionId, sessionId]);
 }
 
 function opaqueSessionId(source) {
-  const digest = crypto.createHash("sha256")
-    .update("opencode-session\0")
-    .update(source)
-    .digest("hex");
+  const digest = crypto.createHash("sha256").
+  update("opencode-session\0").
+  update(source).
+  digest("hex");
   return `ses_${digest.slice(0, 32)}`;
 }
 
@@ -63,7 +64,7 @@ export class OpenCodeExecutor extends BaseExecutor {
 
   transformRequest(model, body, stream, credentials, requestContext) {
     this._currentSessionId = opaqueSessionId(
-      trustedSessionKey(credentials, requestContext, this._privateSessionKey),
+      trustedSessionKey(credentials, requestContext, this._privateSessionKey)
     );
     delete body.client_metadata;
     return injectReasoningContent({ provider: this.provider, model, body });
@@ -71,9 +72,9 @@ export class OpenCodeExecutor extends BaseExecutor {
 
   buildUrl(model) {
     const base = this.config.baseUrl;
-    return MESSAGES_MODELS.has(model)
-      ? `${base}/zen/v1/messages`
-      : `${base}/zen/v1/chat/completions`;
+    return MESSAGES_MODELS.has(model) ?
+    `${base}/zen/v1/messages` :
+    `${base}/zen/v1/chat/completions`;
   }
 
   buildHeaders(credentials, stream = true, requestContext = null) {
@@ -85,7 +86,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     const baseHeaders = {
       "Content-Type": "application/json",
       "x-opencode-client": clientHeaders.get("x-opencode-client") || "desktop",
-      "Accept": stream ? "text/event-stream" : "*/*",
+      "Accept": stream ? "text/event-stream" : "*/*"
     };
     if (hasPaidIdentity) {
       baseHeaders.Authorization = credentialToken.startsWith?.("Bearer ") ? credentialToken : `Bearer ${credentialToken}`;
@@ -104,13 +105,13 @@ export class OpenCodeExecutor extends BaseExecutor {
       "x-opencode-client": "desktop",
       "x-opencode-session": this._currentSessionId ?? generateSessionId(),
       "x-opencode-request": generateRequestId(),
-      "x-opencode-project": "global",
+      "x-opencode-project": "global"
     };
     const rawIp = (clientHeaders.get("x-9r-real-ip") || clientHeaders.get("x-real-ip") || "").trim();
     if (rawIp && !isPrivateIp(rawIp)) headers["x-real-ip"] = rawIp;
-    if (synthesizeCli && !clientUaIsCli) headers["User-Agent"] = "opencode-cli/1.0.0";
-    else if (clientUaIsCli) headers["User-Agent"] = clientUa;
-    else headers["User-Agent"] = OPENCODE_UA;
+    if (synthesizeCli && !clientUaIsCli) headers["User-Agent"] = "opencode-cli/1.0.0";else
+    if (clientUaIsCli) headers["User-Agent"] = clientUa;else
+    headers["User-Agent"] = OPENCODE_UA;
     return headers;
   }
 }

@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const API_URL = "https://theoldllm.vercel.app/api/chatgpt";
 const CHROME_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 const GPT_MODELS = {
   "gpt-5.4": "GPT_5_4",
@@ -21,7 +22,7 @@ const GPT_MODELS = {
   gpt_5_3: "GPT_5_3",
   gpt_5_2: "GPT_5_2",
   gpt_5_1: "GPT_5_1",
-  gpt_5: "GPT_5",
+  gpt_5: "GPT_5"
 };
 
 const CLAUDE_NAMES = {
@@ -33,36 +34,36 @@ const CLAUDE_NAMES = {
   claude_haiku_3_5: "CLAUDE_4_5_HAIKU",
   "claude opus 4": "CLAUDE_4_6_OPUS",
   "claude sonnet 4": "CLAUDE_4_6_SONNET",
-  "claude haiku 3.5": "CLAUDE_4_5_HAIKU",
+  "claude haiku 3.5": "CLAUDE_4_5_HAIKU"
 };
 
 export const CHATGPT_UPSTREAM_MODELS = new Set([
-  "GPT_5_4",
-  "GPT_5_3",
-  "GPT_5_2",
-  "GPT_5_1",
-  "GPT_5",
-  "GPT_o4_mini",
-  "GPT_o3_mini",
-  "gemini_3_pro",
-  "gemini_2_5_pro",
-  "gemini_2_0_flash",
-  "gemini_1_5_flash",
-  "CLAUDE_4_6_OPUS",
-  "CLAUDE_4_6_SONNET",
-  "CLAUDE_4_5_HAIKU",
-  "openrouter_gpt_4_o",
-  "openrouter_gpt_4_o_mini",
-  "openrouter_gpt_4",
-  "openrouter_grok_4",
-  "together_deepseek_r1",
-  "openrouter_deepseek_r1",
-  "together_deepseek_v3",
-  "openrouter_deepseek_v3",
-  "sonar-deep-research",
-  "sonar-pro",
-  "openrouter_web_search",
-]);
+"GPT_5_4",
+"GPT_5_3",
+"GPT_5_2",
+"GPT_5_1",
+"GPT_5",
+"GPT_o4_mini",
+"GPT_o3_mini",
+"gemini_3_pro",
+"gemini_2_5_pro",
+"gemini_2_0_flash",
+"gemini_1_5_flash",
+"CLAUDE_4_6_OPUS",
+"CLAUDE_4_6_SONNET",
+"CLAUDE_4_5_HAIKU",
+"openrouter_gpt_4_o",
+"openrouter_gpt_4_o_mini",
+"openrouter_gpt_4",
+"openrouter_grok_4",
+"together_deepseek_r1",
+"openrouter_deepseek_r1",
+"together_deepseek_v3",
+"openrouter_deepseek_v3",
+"sonar-deep-research",
+"sonar-pro",
+"openrouter_web_search"]
+);
 
 export function mapModel(model = "") {
   const trimmed = String(model).trim();
@@ -110,10 +111,10 @@ async function directFetch(reqBody, signal) {
         "Content-Type": "application/json",
         "X-Client-Version": "3.8.4",
         "X-Request-Token": generateRequestToken(),
-        "User-Agent": CHROME_UA,
+        "User-Agent": CHROME_UA
       },
       body: JSON.stringify(reqBody),
-      signal: controller.signal,
+      signal: controller.signal
     });
   } finally {
     clearTimeout(timer);
@@ -127,8 +128,8 @@ function isTokenRejected(status, body) {
     const parsed = JSON.parse(body);
     return (
       parsed?.error?.type === "access_denied" ||
-      (typeof parsed?.error === "string" && /blocked|denied|invalid/i.test(parsed.error))
-    );
+      isString(parsed?.error) && /blocked|denied|invalid/i.test(parsed.error));
+
   } catch {
     return false;
   }
@@ -142,9 +143,9 @@ function parseSseContent(sseText) {
       const data = JSON.parse(line.slice(6));
       content += data.choices?.[0]?.delta?.content || data.choices?.[0]?.delta?.text || "";
     } catch {
+
       // Ignore malformed upstream frames and preserve successfully parsed text.
-    }
-  }
+    }}
   return content;
 }
 
@@ -155,7 +156,7 @@ function buildChatCompletion(content, model) {
     created: Math.floor(Date.now() / 1000),
     model: mapModel(model),
     choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
   });
 }
 
@@ -170,11 +171,11 @@ function buildErrorResponse(status, body) {
         break;
       }
     } catch {
+
       // Keep the raw body preview if no structured error can be parsed.
-    }
-  }
+    }}
   return JSON.stringify({
-    error: { message: detail, type: "upstream_error", code: `HTTP_${status}` },
+    error: { message: detail, type: "upstream_error", code: `HTTP_${status}` }
   });
 }
 
@@ -191,12 +192,12 @@ export class TheOldLlmExecutor extends BaseExecutor {
     return {
       "Content-Type": "application/json",
       "X-Client-Version": "3.8.4",
-      "User-Agent": CHROME_UA,
+      "User-Agent": CHROME_UA
     };
   }
 
   transformRequest(model, body) {
-    if (!body || typeof body !== "object") return body;
+    if (!body || !isObject(body)) return body;
     return { ...body, model: mapModel(model) };
   }
 
@@ -212,7 +213,7 @@ export class TheOldLlmExecutor extends BaseExecutor {
         ),
         url: API_URL,
         headers,
-        transformedBody: body,
+        transformedBody: body
       };
     }
 
@@ -234,23 +235,23 @@ export class TheOldLlmExecutor extends BaseExecutor {
             status: 200,
             headers: {
               "Content-Type": stream ? "text/event-stream" : "application/json",
-              "Cache-Control": "no-cache",
-            },
+              "Cache-Control": "no-cache"
+            }
           }),
           url: API_URL,
           headers,
-          transformedBody: body,
+          transformedBody: body
         };
       }
 
       return {
         response: new Response(buildErrorResponse(upstream.status, upstreamText), {
           status: upstream.status,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" }
         }),
         url: API_URL,
         headers,
-        transformedBody: body,
+        transformedBody: body
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -262,7 +263,7 @@ export class TheOldLlmExecutor extends BaseExecutor {
         ),
         url: API_URL,
         headers,
-        transformedBody: body,
+        transformedBody: body
       };
     }
   }

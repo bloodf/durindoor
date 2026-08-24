@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { BaseExecutor } from "./base.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 function resolveDevinBin() {
   const envBin = process.env.CLI_DEVIN_BIN?.trim();
@@ -14,9 +15,9 @@ function resolveDevinBin() {
     return "devin.exe";
   }
   for (const candidate of [
-    path.join(os.homedir(), ".local", "share", "devin", "bin", "devin"),
-    path.join(os.homedir(), ".devin", "bin", "devin"),
-  ]) {
+  path.join(os.homedir(), ".local", "share", "devin", "bin", "devin"),
+  path.join(os.homedir(), ".devin", "bin", "devin")])
+  {
     if (fs.existsSync(candidate)) return candidate;
   }
   return "devin";
@@ -33,32 +34,32 @@ function buildPromptText(messages = []) {
   for (const message of messages) {
     const role = String(message.role || "user");
     let text = "";
-    if (typeof message.content === "string") {
+    if (isString(message.content)) {
       text = message.content;
     } else if (Array.isArray(message.content)) {
       for (const part of message.content) {
-        if (part && typeof part === "object" && part.type === "text") {
+        if (part && isObject(part) && part.type === "text") {
           text += String(part.text || "");
         }
       }
     }
     if (!text.trim()) continue;
-    if (role === "system") lines.push(`[System]\n${text}`);
-    else if (role === "assistant") lines.push(`[Assistant]\n${text}`);
-    else lines.push(`[User]\n${text}`);
+    if (role === "system") lines.push(`[System]\n${text}`);else
+    if (role === "assistant") lines.push(`[Assistant]\n${text}`);else
+    lines.push(`[User]\n${text}`);
   }
   return lines.join("\n\n") || "(empty)";
 }
 
 function extractResultText(result = {}) {
-  if (typeof result.content === "string") return result.content;
-  if (typeof result.text === "string") return result.text;
-  if (result.message && typeof result.message.content === "string") return result.message.content;
+  if (isString(result.content)) return result.content;
+  if (isString(result.text)) return result.text;
+  if (result.message && isString(result.message.content)) return result.message.content;
   if (Array.isArray(result.messages)) {
-    return result.messages
-      .filter(message => message.role === "assistant")
-      .map(message => String(message.content || ""))
-      .join("\n");
+    return result.messages.
+    filter((message) => message.role === "assistant").
+    map((message) => String(message.content || "")).
+    join("\n");
   }
   return "";
 }
@@ -90,15 +91,15 @@ export class DevinCliExecutor extends BaseExecutor {
     const sseStream = new ReadableStream({
       start(controller) {
         const enc = new TextEncoder();
-        const emitRaw = data => controller.enqueue(enc.encode(data));
-        const emit = object => emitRaw(`data: ${JSON.stringify(object)}\n\n`);
+        const emitRaw = (data) => controller.enqueue(enc.encode(data));
+        const emit = (object) => emitRaw(`data: ${JSON.stringify(object)}\n\n`);
         const env = { ...process.env };
         if (apiKey) env.WINDSURF_API_KEY = apiKey;
 
         const child = spawn(devinBin, ["acp", "--agent-type", "summarizer"], {
           env,
           stdio: ["pipe", "pipe", "pipe"],
-          shell: process.platform === "win32",
+          shell: process.platform === "win32"
         });
 
         let stdinClosed = false;
@@ -118,11 +119,11 @@ export class DevinCliExecutor extends BaseExecutor {
           try {
             child.stdin.write(rpc(method, params, idCounter++));
           } catch {
-            // Ignore writes after the process exits.
-          }
-        };
 
-        const finish = error => {
+            // Ignore writes after the process exits.
+          }};
+
+        const finish = (error) => {
           if (finished) return;
           finished = true;
           if (error) {
@@ -138,8 +139,8 @@ export class DevinCliExecutor extends BaseExecutor {
                 prompt_tokens: Math.ceil(promptText.length / 4),
                 completion_tokens: Math.ceil(totalText.length / 4),
                 total_tokens: Math.ceil((promptText.length + totalText.length) / 4),
-                estimated: true,
-              },
+                estimated: true
+              }
             });
           }
           emitRaw("data: [DONE]\n\n");
@@ -149,9 +150,9 @@ export class DevinCliExecutor extends BaseExecutor {
               child.stdin.end();
             }
           } catch {
+
             // Ignore close races.
-          }
-          const killTimer = setTimeout(() => {
+          }const killTimer = setTimeout(() => {
             if (!child.killed) child.kill("SIGKILL");
           }, 2000);
           killTimer.unref?.();
@@ -165,13 +166,13 @@ export class DevinCliExecutor extends BaseExecutor {
             object: "chat.completion.chunk",
             created,
             model,
-            choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+            choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }]
           });
           roleEmitted = true;
         };
 
         let buffer = "";
-        child.stdout.on("data", chunk => {
+        child.stdout.on("data", (chunk) => {
           buffer += chunk.toString("utf8");
           let newline;
           while ((newline = buffer.indexOf("\n")) !== -1) {
@@ -235,14 +236,14 @@ export class DevinCliExecutor extends BaseExecutor {
           }
         });
 
-        child.stderr.on("data", chunk => log?.debug?.("DEVIN", `stderr: ${chunk.toString("utf8").slice(0, 200)}`));
-        child.on("error", error => {
-          const message = error.message.includes("ENOENT") || error.message.includes("not found")
-            ? `Devin CLI not found: ${devinBin}. Install https://cli.devin.ai or set CLI_DEVIN_BIN.`
-            : `Devin CLI spawn error: ${error.message}`;
+        child.stderr.on("data", (chunk) => log?.debug?.("DEVIN", `stderr: ${chunk.toString("utf8").slice(0, 200)}`));
+        child.on("error", (error) => {
+          const message = error.message.includes("ENOENT") || error.message.includes("not found") ?
+          `Devin CLI not found: ${devinBin}. Install https://cli.devin.ai or set CLI_DEVIN_BIN.` :
+          `Devin CLI spawn error: ${error.message}`;
           finish(message);
         });
-        child.on("close", code => {
+        child.on("close", (code) => {
           if (!finished) finish(code !== 0 && !roleEmitted ? `Devin CLI exited with code ${code}` : undefined);
         });
         if (signal) {
@@ -253,9 +254,9 @@ export class DevinCliExecutor extends BaseExecutor {
         sendRpc("initialize", {
           protocolVersion: "0.3",
           clientInfo: { name: "durindoor", version: "1.0" },
-          capabilities: {},
+          capabilities: {}
         });
-      },
+      }
     });
 
     return {
@@ -263,12 +264,12 @@ export class DevinCliExecutor extends BaseExecutor {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
+          Connection: "keep-alive"
+        }
       }),
       url: this.buildUrl(),
       headers: {},
-      transformedBody: { model, promptLength: promptText.length },
+      transformedBody: { model, promptLength: promptText.length }
     };
   }
 }

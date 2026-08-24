@@ -7,14 +7,14 @@ import { extractThinkTags } from "../../utils/thinkStripper.js";
  * Resolve an inline-thinking response quirk from the exact selected transport
  * and model id. A similarly named model on another provider is intentionally
  * not eligible.
- */
+ */import { isString } from "@/shared/utils/typeChecks.js";
 export function resolveInlineThinkingFormat(provider, model, targetFormat) {
   const config = PROVIDERS[provider];
-  if (!config || typeof model !== "string" || typeof targetFormat !== "string") return null;
+  if (!config || !isString(model) || !isString(targetFormat)) return null;
 
-  const transport = Array.isArray(config.transports)
-    ? config.transports.find(candidate => candidate?.format === targetFormat)
-    : null;
+  const transport = Array.isArray(config.transports) ?
+  config.transports.find((candidate) => candidate?.format === targetFormat) :
+  null;
   const selected = transport || (config.format === targetFormat ? config : null);
   const policy = selected?.quirks?.inlineThinking;
   if (!policy || !Array.isArray(policy.models) || !policy.models.includes(model)) return null;
@@ -37,11 +37,11 @@ export function normalizeInlineThinkingResponse(responseBody, { provider, model,
   let changed = false;
   const choices = responseBody.choices.map((choice, position) => {
     const message = choice?.message;
-    if (typeof message?.content !== "string") return choice;
+    if (!isString(message?.content)) return choice;
 
     const extracted = extractThinkTags(message.content);
     if (!extracted.matched) return choice;
-    if (extracted.reasoning && message.reasoning_content != null && typeof message.reasoning_content !== "string") {
+    if (extracted.reasoning && message.reasoning_content != null && !isString(message.reasoning_content)) {
       return choice;
     }
 
@@ -57,6 +57,6 @@ export function normalizeInlineThinkingResponse(responseBody, { provider, model,
   return {
     responseBody: changed ? { ...responseBody, choices } : responseBody,
     configured,
-    extractedChoicePositions,
+    extractedChoicePositions
   };
 }

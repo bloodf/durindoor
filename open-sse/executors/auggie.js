@@ -5,22 +5,23 @@ import path from "node:path";
 import { BaseExecutor } from "./base.js";
 import { buildErrorBody, errorResponse } from "../utils/error.js";
 import auggieRegistry from "../providers/registry/auggie.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const AUGGIE_URL = "auggie://cli/stdio";
 const MODEL_ALLOWLIST = new Set((auggieRegistry.models || []).map((model) => model.id));
 const DEFAULT_MODEL = auggieRegistry.models?.[0]?.id || "claude-sonnet-4.6";
 
 function sanitizeErrorMessage(message) {
-  return String(message || "")
-    .replace(/[^\s]+(?:\.js|\.ts):\d+(?::\d+)?/g, "[source]")
-    .split("\n")
-    .slice(0, 3)
-    .join(" ")
-    .slice(0, 2000);
+  return String(message || "").
+  replace(/[^\s]+(?:\.js|\.ts):\d+(?::\d+)?/g, "[source]").
+  split("\n").
+  slice(0, 3).
+  join(" ").
+  slice(0, 2000);
 }
 
 export function resolveAuggieModel(model) {
-  const requested = typeof model === "string" ? model.trim() : "";
+  const requested = isString(model) ? model.trim() : "";
   if (!requested) return { ok: true, model: DEFAULT_MODEL };
   if (requested.startsWith("-")) {
     return { ok: false, error: `Invalid Auggie model "${requested}": model must not start with "-".` };
@@ -28,7 +29,7 @@ export function resolveAuggieModel(model) {
   if (!MODEL_ALLOWLIST.has(requested)) {
     return {
       ok: false,
-      error: `Unknown Auggie model "${requested}". Supported models: ${[...MODEL_ALLOWLIST].join(", ")}.`,
+      error: `Unknown Auggie model "${requested}". Supported models: ${[...MODEL_ALLOWLIST].join(", ")}.`
     };
   }
   return { ok: true, model: requested };
@@ -50,9 +51,9 @@ export function resolveAuggieBin() {
   }
 
   for (const candidate of [
-    path.join(os.homedir(), ".local", "share", "auggie", "bin", "auggie"),
-    path.join(os.homedir(), ".auggie", "bin", "auggie"),
-  ]) {
+  path.join(os.homedir(), ".local", "share", "auggie", "bin", "auggie"),
+  path.join(os.homedir(), ".auggie", "bin", "auggie")])
+  {
     if (fs.existsSync(candidate)) return candidate;
   }
 
@@ -64,7 +65,7 @@ export function buildAuggiePrompt(messages = []) {
   for (const message of messages) {
     const role = String(message?.role || "user");
     let text = "";
-    if (typeof message?.content === "string") {
+    if (isString(message?.content)) {
       text = message.content;
     } else if (Array.isArray(message?.content)) {
       for (const part of message.content) {
@@ -72,9 +73,9 @@ export function buildAuggiePrompt(messages = []) {
       }
     }
     if (!text.trim()) continue;
-    if (role === "system") lines.push(`[System]\n${text}`);
-    else if (role === "assistant") lines.push(`[Assistant]\n${text}`);
-    else lines.push(`[User]\n${text}`);
+    if (role === "system") lines.push(`[System]\n${text}`);else
+    if (role === "assistant") lines.push(`[Assistant]\n${text}`);else
+    lines.push(`[User]\n${text}`);
   }
   return lines.join("\n\n") || "(empty)";
 }
@@ -124,8 +125,8 @@ export function checkAuggieCliVersion(timeoutMs = 5000) {
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code === 0 && stdout.trim()) settle({ ok: true, version: stdout.trim().slice(0, 200) });
-      else settle({ ok: false, error: `Auggie CLI exited with code ${code}` });
+      if (code === 0 && stdout.trim()) settle({ ok: true, version: stdout.trim().slice(0, 200) });else
+      settle({ ok: false, error: `Auggie CLI exited with code ${code}` });
     });
   });
 }
@@ -158,39 +159,39 @@ export class AuggieExecutor extends BaseExecutor {
     const wantsStream = stream !== false;
     const modelResolution = resolveAuggieModel(model);
     if (!modelResolution.ok) {
-      const response = wantsStream
-        ? buildAuggieSseError(modelResolution.error)
-        : errorResponse(400, modelResolution.error);
+      const response = wantsStream ?
+      buildAuggieSseError(modelResolution.error) :
+      errorResponse(400, modelResolution.error);
       return { response, url: AUGGIE_URL, headers: {}, transformedBody: { error: true } };
     }
 
     const safeModel = modelResolution.model;
     log?.info?.("AUGGIE", `auggie --print model=${safeModel} stream=${wantsStream}`);
-    const response = wantsStream
-      ? this.runStreaming(auggieBin, safeModel, promptText, signal, log)
-      : await this.runNonStreaming(auggieBin, safeModel, promptText, signal, log);
+    const response = wantsStream ?
+    this.runStreaming(auggieBin, safeModel, promptText, signal, log) :
+    await this.runNonStreaming(auggieBin, safeModel, promptText, signal, log);
 
     return {
       response,
       url: AUGGIE_URL,
       headers: {},
-      transformedBody: { model: safeModel, promptLength: promptText.length },
+      transformedBody: { model: safeModel, promptLength: promptText.length }
     };
   }
 
   spawnAuggie(auggieBin, model, promptText) {
     const child = spawn(auggieBin, buildAuggieArgs(model), {
       env: process.env,
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"]
     });
     child.stdin.on("error", () => {});
     try {
       child.stdin.write(promptText);
       child.stdin.end();
     } catch {
+
       // Child error/close handlers surface the subprocess failure.
-    }
-    return child;
+    }return child;
   }
 
   runStreaming(auggieBin, model, promptText, signal, log) {
@@ -223,7 +224,7 @@ export class AuggieExecutor extends BaseExecutor {
               object: "chat.completion.chunk",
               created,
               model,
-              choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+              choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }]
             })}\n\n`);
             roleEmitted = true;
           }
@@ -232,7 +233,7 @@ export class AuggieExecutor extends BaseExecutor {
             object: "chat.completion.chunk",
             created,
             model,
-            choices: [{ index: 0, delta: { content: delta }, finish_reason: null }],
+            choices: [{ index: 0, delta: { content: delta }, finish_reason: null }]
           })}\n\n`);
         };
         const emitError = (message) => {
@@ -246,7 +247,7 @@ export class AuggieExecutor extends BaseExecutor {
             object: "chat.completion.chunk",
             created,
             model,
-            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }]
           })}\n\n`);
           emit("data: [DONE]\n\n");
           finish();
@@ -255,7 +256,7 @@ export class AuggieExecutor extends BaseExecutor {
         try {
           child = spawn(auggieBin, buildAuggieArgs(model), {
             env: process.env,
-            stdio: ["pipe", "pipe", "pipe"],
+            stdio: ["pipe", "pipe", "pipe"]
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -296,7 +297,7 @@ export class AuggieExecutor extends BaseExecutor {
       },
       cancel() {
         if (child && !child.killed) child.kill("SIGTERM");
-      },
+      }
     });
 
     return new Response(sseStream, {
@@ -304,8 +305,8 @@ export class AuggieExecutor extends BaseExecutor {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
+        Connection: "keep-alive"
+      }
     });
   }
 
@@ -368,12 +369,12 @@ function buildChatCompletionResponse(model, promptText, content) {
       prompt_tokens: Math.ceil(promptText.length / 4),
       completion_tokens: Math.ceil(trimmed.length / 4),
       total_tokens: Math.ceil((promptText.length + trimmed.length) / 4),
-      estimated: true,
-    },
+      estimated: true
+    }
   };
   return new Response(JSON.stringify(body), {
     status: 200,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" }
   });
 }
 
@@ -388,15 +389,15 @@ function buildAuggieSseError(message) {
       controller.enqueue(enc.encode(`data: ${JSON.stringify(buildErrorBody(400, sanitizeErrorMessage(message)))}\n\n`));
       controller.enqueue(enc.encode("data: [DONE]\n\n"));
       controller.close();
-    },
+    }
   });
   return new Response(sseStream, {
     status: 200,
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
+      Connection: "keep-alive"
+    }
   });
 }
 

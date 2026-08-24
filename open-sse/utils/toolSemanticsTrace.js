@@ -1,15 +1,16 @@
 import crypto from "node:crypto";
 import { dbg } from "./debugLog.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const TRACE_SECRET = crypto.randomBytes(32);
 
 function digest(value) {
   const data = Array.isArray(value) ? value : [];
   if (data.length === 0) return "none";
-  return crypto.createHmac("sha256", TRACE_SECRET)
-    .update(JSON.stringify(data))
-    .digest("hex")
-    .slice(0, 12);
+  return crypto.createHmac("sha256", TRACE_SECRET).
+  update(JSON.stringify(data)).
+  digest("hex").
+  slice(0, 12);
 }
 
 function toolNameFromDeclaration(tool) {
@@ -42,7 +43,7 @@ function extractToolCalls(body) {
   const add = (name, args) => {
     calls.push({
       name: name || "",
-      arguments: typeof args === "string" ? args : JSON.stringify(args || {})
+      arguments: isString(args) ? args : JSON.stringify(args || {})
     });
   };
 
@@ -84,7 +85,7 @@ export function createToolCallTraceAccumulator() {
   const addSlot = (slot, name, args) => {
     const current = bySlot.get(slot) || { name: "", arguments: "" };
     if (name) current.name += name;
-    if (args !== undefined) current.arguments += typeof args === "string" ? args : JSON.stringify(args || {});
+    if (args !== undefined) current.arguments += isString(args) ? args : JSON.stringify(args || {});
     bySlot.set(slot, current);
   };
   return {
@@ -114,7 +115,7 @@ export function createToolCallTraceAccumulator() {
       // body.data.item on both .added and .done events for the same logical call.
       // For non-streaming shapes (OpenAI completion, Claude message, Gemini
       // response, Ollama message), extractToolCalls still runs.
-      const isResponsesStreamEvent = typeof data?.type === "string" && data.type.startsWith("response.");
+      const isResponsesStreamEvent = isString(data?.type) && data.type.startsWith("response.");
       if (!isResponsesStreamEvent) calls.push(...extractToolCalls(body));
     },
     summary() {
@@ -135,6 +136,6 @@ export function logToolSemantics(log, options) {
   const providerToolCalls = options.providerToolCalls || summarizeToolCalls(providerBody);
   const clientToolCalls = options.clientToolCalls || summarizeToolCalls(clientBody);
   const line = `source=${source} target=${target} mode=${mode} ${segment("requestTools", requestTools)} ${segment("translatedRequestTools", translatedRequestTools)} ${segment("providerToolCalls", providerToolCalls)} ${segment("clientToolCalls", clientToolCalls)}`;
-  if (log?.debug) log.debug("TOOL-SEMANTICS", line);
-  else dbg("TOOL-SEMANTICS", line);
+  if (log?.debug) log.debug("TOOL-SEMANTICS", line);else
+  dbg("TOOL-SEMANTICS", line);
 }

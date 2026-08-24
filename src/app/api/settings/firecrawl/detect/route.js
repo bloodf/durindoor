@@ -9,8 +9,9 @@ import {
   probeFirecrawlEndpoint,
   probeDefaultFirecrawlEndpoints,
   upsertFirecrawlCustomConnection,
-  ALLOWED_FIRECRAWL_HOSTS,
-} from "@/lib/firecrawl/firecrawlConfig";
+  ALLOWED_FIRECRAWL_HOSTS } from
+"@/lib/firecrawl/firecrawlConfig";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export async function POST(request) {
 
     let probe;
     let baseUrl;
-    const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
+    const rawUrl = isString(body.url) ? body.url.trim() : "";
 
     if (rawUrl) {
       const urlValidation = validateFirecrawlBaseUrl(rawUrl);
@@ -60,12 +61,12 @@ export async function POST(request) {
       baseUrl = `${url.origin}${url.pathname.replace(/\/$/, "")}`;
       probe = await probeFirecrawlEndpoint(baseUrl, {
         apiKey: apiKeyValidation.apiKey,
-        headers: headerValidation.headers,
+        headers: headerValidation.headers
       });
     } else if (mode === "auto") {
       const defaultProbe = await probeDefaultFirecrawlEndpoints({
         apiKey: apiKeyValidation.apiKey,
-        headers: headerValidation.headers,
+        headers: headerValidation.headers
       });
       baseUrl = defaultProbe.baseUrl || "http://127.0.0.1:3002";
       probe = defaultProbe;
@@ -85,7 +86,7 @@ export async function POST(request) {
       apiKey: apiKeyValidation.apiKey,
       headers: headerValidation.headers,
       isActive: probe.ok,
-      testStatus: probe.ok ? "active" : "pending",
+      testStatus: probe.ok ? "active" : "pending"
     });
 
     return NextResponse.json({
@@ -97,9 +98,9 @@ export async function POST(request) {
         provider: connection.provider,
         name: connection.name,
         isActive: connection.isActive,
-        providerSpecificData: connection.providerSpecificData,
+        providerSpecificData: connection.providerSpecificData
       },
-      error: probe.ok ? undefined : probe.error,
+      error: probe.ok ? undefined : probe.error
     }, { status: probe.ok ? 200 : 202, headers: HEADERS });
   } catch (error) {
     console.error("Error detecting Firecrawl", { name: error?.name, code: error?.code });

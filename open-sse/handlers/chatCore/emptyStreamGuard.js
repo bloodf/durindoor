@@ -21,7 +21,7 @@ import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { isQuotaDispatchUnavailable } from "../../services/quota/dispatch.js";
 
 // Mirrors oh-my-pi's empty-response policy: 2 retries, 500ms * 2^attempt backoff.
-export const EMPTY_STREAM_MAX_RETRIES = 2;
+import { isObject, isString } from "@/shared/utils/typeChecks.js";export const EMPTY_STREAM_MAX_RETRIES = 2;
 export const EMPTY_STREAM_BASE_DELAY_MS = 500;
 
 // A part is meaningful when it carries output the client can act on: a tool
@@ -33,7 +33,7 @@ export function isMeaningfulPart(part) {
   if (part.functionCall) return true;
   if (part.inlineData?.data || part.inline_data?.data) return true;
   if (part.thought === true) return false;
-  return typeof part.text === "string" && part.text.trim().length > 0;
+  return isString(part.text) && part.text.trim().length > 0;
 }
 
 // Decide what to do with one parsed SSE event.
@@ -44,7 +44,7 @@ export function isMeaningfulPart(part) {
 function classifyEvent(parsed, meaningfulSeen) {
   // Antigravity wrapper
   const response = parsed.response || parsed;
-  if (!response || typeof response !== "object") return { action: "forward" };
+  if (!response || !isObject(response)) return { action: "forward" };
 
   const errorObj = response.error || parsed.error;
   if (errorObj) {
@@ -66,7 +66,7 @@ function classifyEvent(parsed, meaningfulSeen) {
 
   let meaningful = false;
   for (const part of candidate.content?.parts || []) {
-    if (isMeaningfulPart(part)) { meaningful = true; break; }
+    if (isMeaningfulPart(part)) {meaningful = true;break;}
   }
 
   const finishReason = candidate.finishReason && String(candidate.finishReason).toUpperCase();
@@ -85,7 +85,7 @@ function classifyEvent(parsed, meaningfulSeen) {
   return {
     action: "hold",
     kind: GEMINI_ERROR_FINISH_REASONS.has(finishReason) ? "error_finish" : "stop",
-    reason: finishReason,
+    reason: finishReason
   };
 }
 
@@ -112,7 +112,7 @@ export function createEmptyRetryStream({
   stallTimeoutMs = STREAM_STALL_TIMEOUT_MS,
   baseDelayMs = EMPTY_STREAM_BASE_DELAY_MS,
   onAttemptDiscarded,
-  onExhausted,
+  onExhausted
 }) {
   const encoder = new TextEncoder();
   let currentReader = null;
@@ -127,19 +127,19 @@ export function createEmptyRetryStream({
 
       const emit = (text) => {
         if (downstreamGone) return;
-        try { controller.enqueue(encoder.encode(text)); } catch { downstreamGone = true; }
+        try {controller.enqueue(encoder.encode(text));} catch {downstreamGone = true;}
       };
       const closeStream = () => {
         if (downstreamGone) return;
-        try { controller.close(); } catch { /* already closed */ }
+        try {controller.close();} catch {/* already closed */}
       };
       const abortStream = () => {
         // cancel() rejects when the stream already errored — swallow the promise too
-        try { currentReader.cancel().catch(() => { }); } catch { /* already closed */ }
+        try {currentReader.cancel().catch(() => {});} catch {/* already closed */}
         if (downstreamGone) return;
         const err = new Error("Request aborted");
         err.name = "AbortError";
-        try { controller.error(err); } catch { /* already closed */ }
+        try {controller.error(err);} catch {/* already closed */}
       };
       const exhaust = async (reason, { notifyProvider = true } = {}) => {
         // Bench-before-emit: the error event triggers the client's automatic
@@ -149,18 +149,18 @@ export function createEmptyRetryStream({
           if (notifyProvider) {
             await Promise.resolve(onExhausted?.(reason, { upstreamError: lastHeld?.error || null }));
           }
-        } catch { /* observer must not break the stream */ }
+        } catch {/* observer must not break the stream */}
         // Re-emit the real upstream error when we held one (true status/message,
         // e.g. RESOURCE_EXHAUSTED); otherwise synthesize an embedded error. The
         // gemini translator converts either into the client-facing error finish.
-        const line = lastHeld?.kind === "error_object"
-          ? lastHeld.line
-          : `data: ${JSON.stringify({ error: { code: 502, status: "EMPTY_RESPONSE", message: reason } })}`;
+        const line = lastHeld?.kind === "error_object" ?
+        lastHeld.line :
+        `data: ${JSON.stringify({ error: { code: 502, status: "EMPTY_RESPONSE", message: reason } })}`;
         emit(`${line}\n\n`);
         closeStream();
       };
 
-      for (let attempt = 0; ; attempt++) {
+      for (let attempt = 0;; attempt++) {
         const decoder = new TextDecoder();
         let lineBuffer = "";
         let held = null; // this attempt's withheld terminal
@@ -175,9 +175,9 @@ export function createEmptyRetryStream({
           try {
             // Defensive stall escape: a byte-silent upstream must not hang the pipe.
             readResult = await Promise.race([
-              currentReader.read(),
-              new Promise((resolve) => { stallTimer = setTimeout(() => resolve({ __stalled: true }), stallTimeoutMs); }),
-            ]);
+            currentReader.read(),
+            new Promise((resolve) => {stallTimer = setTimeout(() => resolve({ __stalled: true }), stallTimeoutMs);})]
+            );
           } catch {
             // A client abort rejects the pending read — never treat it as an
             // empty attempt or a disconnect turns into a retry/error.
@@ -188,7 +188,7 @@ export function createEmptyRetryStream({
             clearTimeout(stallTimer);
           }
           if (readResult.__stalled) {
-            try { currentReader.cancel().catch(() => { }); } catch { /* already closed */ }
+            try {currentReader.cancel().catch(() => {});} catch {/* already closed */}
             endReason = "stall";
             break readAttempt;
           }
@@ -206,9 +206,9 @@ export function createEmptyRetryStream({
             if (held) continue;
 
             const trimmed = line.trim();
-            if (!trimmed.startsWith("data:")) { emit(line + "\n"); continue; }
+            if (!trimmed.startsWith("data:")) {emit(line + "\n");continue;}
             const payload = trimmed.slice(5).trim();
-            if (!payload || payload === "[DONE]") { emit(line + "\n"); continue; }
+            if (!payload || payload === "[DONE]") {emit(line + "\n");continue;}
 
             let parsed;
             try {
@@ -245,7 +245,7 @@ export function createEmptyRetryStream({
 
         try {
           await Promise.resolve(onAttemptDiscarded?.(currentBody, reason, {
-            final: attempt >= EMPTY_STREAM_MAX_RETRIES,
+            final: attempt >= EMPTY_STREAM_MAX_RETRIES
           }));
         } catch (error) {
           return exhaust("local quota reservation settlement failed", { notifyProvider: false });
@@ -258,7 +258,7 @@ export function createEmptyRetryStream({
         // Abort-aware backoff, then splice the retried attempt into this stream.
         await new Promise((resolve) => {
           const t = setTimeout(resolve, baseDelayMs * 2 ** attempt);
-          signal?.addEventListener?.("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+          signal?.addEventListener?.("abort", () => {clearTimeout(t);resolve();}, { once: true });
         });
         if (signal?.aborted) return abortStream();
 
@@ -268,7 +268,7 @@ export function createEmptyRetryStream({
         } catch (error) {
           if (error?.name === "AbortError" || signal?.aborted) return abortStream();
           return exhaust(error?.message || "retry request failed", {
-            notifyProvider: !isQuotaDispatchUnavailable(error),
+            notifyProvider: !isQuotaDispatchUnavailable(error)
           });
         }
       }
@@ -276,7 +276,7 @@ export function createEmptyRetryStream({
 
     cancel(reason) {
       downstreamGone = true;
-      try { currentReader?.cancel(reason)?.catch?.(() => { }); } catch { /* already closed */ }
-    },
+      try {currentReader?.cancel(reason)?.catch?.(() => {});} catch {/* already closed */}
+    }
   });
 }

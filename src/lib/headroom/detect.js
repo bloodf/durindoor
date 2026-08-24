@@ -7,14 +7,14 @@ import { discoverInterpreters, managedVenvBinary, managedVenvDir, managedVenvPyt
 // `code` adds tree-sitter AST compression; `ml` adds Kompress-v2 HF model.
 // Other `[all]` extras (image, voice, otel, reports, evals, ...) are not
 // useful for the 9router proxy use case, so we don't track them here.
-export const HEADROOM_COMPRESSION_EXTRAS = ["code", "ml"];
+import { isFunction } from "@/shared/utils/typeChecks.js";export const HEADROOM_COMPRESSION_EXTRAS = ["code", "ml"];
 
 // Primary import-time marker module per extra (probed via importlib, works
 // with no pip present) plus a secondary distribution-name marker (used both
 // as a fallback signal and by the `pip list` fallback path below).
 const EXTRA_MARKERS = {
   code: { module: "tree_sitter", dist: "tree-sitter-language-pack" },
-  ml: { module: "torch", dist: "huggingface-hub" },
+  ml: { module: "torch", dist: "huggingface-hub" }
 };
 
 const HEADROOM_PIP_TIMEOUT_MS = 8000;
@@ -23,25 +23,25 @@ const IS_WIN = process.platform === "win32";
 const WHICH_CMD = IS_WIN ? "where" : "which";
 
 // Extra bin dirs often missing from a packaged/launchd PATH (Python installs headroom here).
-const EXTRA_BINS = IS_WIN
-  ? [
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python313\\Scripts`,
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python312\\Scripts`,
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python311\\Scripts`,
-      `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python310\\Scripts`,
-      `${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`,
-    ]
-  : [
-      "/usr/local/bin",
-      "/opt/homebrew/bin",
-      "/Library/Frameworks/Python.framework/Versions/3.13/bin",
-      "/Library/Frameworks/Python.framework/Versions/3.12/bin",
-      "/Library/Frameworks/Python.framework/Versions/3.11/bin",
-      "/Library/Frameworks/Python.framework/Versions/3.10/bin",
-      `${process.env.HOME || ""}/.local/bin`,
-      "/usr/bin",
-      "/bin",
-    ];
+const EXTRA_BINS = IS_WIN ?
+[
+`${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python313\\Scripts`,
+`${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python312\\Scripts`,
+`${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python311\\Scripts`,
+`${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python310\\Scripts`,
+`${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`] :
+
+[
+"/usr/local/bin",
+"/opt/homebrew/bin",
+"/Library/Frameworks/Python.framework/Versions/3.13/bin",
+"/Library/Frameworks/Python.framework/Versions/3.12/bin",
+"/Library/Frameworks/Python.framework/Versions/3.11/bin",
+"/Library/Frameworks/Python.framework/Versions/3.10/bin",
+`${process.env.HOME || ""}/.local/bin`,
+"/usr/bin",
+"/bin"];
+
 
 const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
 const HEADROOM_HEALTH_TIMEOUT_MS = 1500;
@@ -60,12 +60,12 @@ function emptyExtras() {
 // (uv-managed venvs have none). Built from EXTRA_MARKERS so a future extra
 // only needs one entry, not a second hardcoded script.
 function buildImportlibProbeScript() {
-  const extraChecks = HEADROOM_COMPRESSION_EXTRAS
-    .map((extra) => {
-      const { module, dist } = EXTRA_MARKERS[extra];
-      return `result["extras"]["${extra}"] = has_module("${module}") or has_dist("${dist}")`;
-    })
-    .join("\n");
+  const extraChecks = HEADROOM_COMPRESSION_EXTRAS.
+  map((extra) => {
+    const { module, dist } = EXTRA_MARKERS[extra];
+    return `result["extras"]["${extra}"] = has_module("${module}") or has_dist("${dist}")`;
+  }).
+  join("\n");
   return `import importlib.metadata as m, importlib.util as u, json
 
 def has_module(name):
@@ -99,7 +99,7 @@ function probeExtrasViaImportlib(python) {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       timeout: HEADROOM_PIP_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: { ...process.env, PATH: EXTENDED_PATH }
     }).toString();
     const parsed = JSON.parse(out);
     const version = parsed.version ?? null;
@@ -118,7 +118,7 @@ function probeExtrasViaPip(python) {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       timeout: HEADROOM_PIP_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: { ...process.env, PATH: EXTENDED_PATH }
     }).toString();
     const packages = JSON.parse(out);
     const names = new Set(packages.map((p) => String(p.name || "").toLowerCase()));
@@ -140,7 +140,7 @@ function resolveHeadroomOnPath() {
     const out = execSync(`${WHICH_CMD} headroom`, {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: { ...process.env, PATH: EXTENDED_PATH }
     }).toString().trim();
     // Windows `where` may return multiple lines — take the first.
     return out ? out.split(/\r?\n/)[0].trim() : null;
@@ -190,7 +190,7 @@ export function findPython310() {
   // (`pickVenvBasePython`/`ensureManagedVenv`), not to status.
   const managed = managedVenvPython();
   if (managed) return managed;
-  const root = typeof process.getuid === "function" && process.getuid() === 0;
+  const root = isFunction(process.getuid) && process.getuid() === 0;
   const usable = discoverInterpreters().find((entry) => entry.supported && !(root && entry.userScoped));
   return usable ? usable.resolvedPath : null;
 }
@@ -258,12 +258,12 @@ function buildNotInstalledDiagnostic(python) {
   return createDiagnostic({
     code: "NOT_INSTALLED",
     summary: "Headroom is not installed in the managed venv or on PATH",
-    detail: python
-      ? `No headroom binary found in the managed venv (${managedVenvDir()}) or on PATH; usable Python: ${python}`
-      : `No headroom binary found in the managed venv (${managedVenvDir()}) or on PATH`,
+    detail: python ?
+    `No headroom binary found in the managed venv (${managedVenvDir()}) or on PATH; usable Python: ${python}` :
+    `No headroom binary found in the managed venv (${managedVenvDir()}) or on PATH`,
     fixes: [
-      { label: "Install headroom-ai with the proxy, code, and ml extras", command: "POST /api/headroom/extras" },
-    ],
+    { label: "Install headroom-ai with the proxy, code, and ml extras", command: "POST /api/headroom/extras" }]
+
   });
 }
 
@@ -293,8 +293,8 @@ export async function getHeadroomStatus(url) {
     try {
       python = pickVenvBasePython().command;
     } catch (error) {
-      if (error instanceof SetupError) diagnostic = error.diagnostic;
-      else throw error;
+      if (error instanceof SetupError) diagnostic = error.diagnostic;else
+      throw error;
     }
   }
 
@@ -311,6 +311,6 @@ export async function getHeadroomStatus(url) {
     version: extrasStatus.version,
     extras: extrasStatus.extras,
     source: installed ? source : null,
-    diagnostic,
+    diagnostic
   };
 }

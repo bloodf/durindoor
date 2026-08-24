@@ -6,6 +6,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import { isBrowser } from "@/shared/utils/typeChecks.js";
 
 export default function JcodeToolCard({
   tool,
@@ -20,7 +21,7 @@ export default function JcodeToolCard({
   tunnelEnabled,
   tunnelPublicUrl,
   tailscaleEnabled,
-  tailscaleUrl,
+  tailscaleUrl
 }) {
   const [jcodeStatus, setJcodeStatus] = useState(initialStatus || null);
   const [checkingJcode, setCheckingJcode] = useState(false);
@@ -95,7 +96,7 @@ export default function JcodeToolCard({
   const normalizeLocalhost = (url) => url.replace("://localhost", "://127.0.0.1");
 
   const getLocalBaseUrl = () => {
-    if (typeof window !== "undefined") {
+    if (isBrowser()) {
       return normalizeLocalhost(window.location.origin);
     }
     return "http://127.0.0.1:20128";
@@ -115,8 +116,8 @@ export default function JcodeToolCard({
     setApplying(true);
     setMessage(null);
     try {
-      const keyToUse = selectedApiKey?.trim()
-        || (!cloudEnabled ? "sk_durindoor" : null);
+      const keyToUse = selectedApiKey?.trim() || (
+      !cloudEnabled ? "sk_durindoor" : null);
 
       const res = await fetch("/api/cli-tools/jcode-settings", {
         method: "POST",
@@ -124,8 +125,8 @@ export default function JcodeToolCard({
         body: JSON.stringify({
           baseUrl: getEffectiveBaseUrl(),
           apiKey: keyToUse,
-          models: selectedModel ? [selectedModel] : [],
-        }),
+          models: selectedModel ? [selectedModel] : []
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -168,9 +169,9 @@ export default function JcodeToolCard({
   };
 
   const getManualConfigs = () => {
-    const keyToUse = (selectedApiKey && selectedApiKey.trim())
-      ? selectedApiKey
-      : (!cloudEnabled ? "sk_durindoor" : "<API_KEY_FROM_DASHBOARD>");
+    const keyToUse = selectedApiKey && selectedApiKey.trim() ?
+    selectedApiKey :
+    !cloudEnabled ? "sk_durindoor" : "<API_KEY_FROM_DASHBOARD>";
 
     const configToml = `[providers.9router]
 type = "openai-compatible"
@@ -187,15 +188,15 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
     const envContent = `JCODE_9ROUTER_API_KEY="${keyToUse}"`;
 
     return [
-      {
-        filename: "~/.jcode/config.toml",
-        content: configToml,
-      },
-      {
-        filename: "~/.config/jcode/provider-9router.env",
-        content: envContent,
-      },
-    ];
+    {
+      filename: "~/.jcode/config.toml",
+      content: configToml
+    },
+    {
+      filename: "~/.config/jcode/provider-9router.env",
+      content: envContent
+    }];
+
   };
 
   return (
@@ -203,7 +204,7 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
       <div className="flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">
-            <Image src={tool.image || "/providers/jcode.png"} alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
+            <Image src={tool.image || "/providers/jcode.png"} alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => {e.target.style.display = "none";}} />
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -218,17 +219,17 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
         <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
       </div>
 
-      {isExpanded && (
-        <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
-          {checkingJcode && (
-            <div className="flex items-center gap-2 text-text-muted">
+      {isExpanded &&
+      <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
+          {checkingJcode &&
+        <div className="flex items-center gap-2 text-text-muted">
               <span className="material-symbols-outlined animate-spin">progress_activity</span>
               <span>Checking jcode CLI...</span>
             </div>
-          )}
+        }
 
-          {!checkingJcode && jcodeStatus && !jcodeStatus.installed && (
-            <div className="flex flex-col gap-4">
+          {!checkingJcode && jcodeStatus && !jcodeStatus.installed &&
+        <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
@@ -249,54 +250,54 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 </div>
               </div>
             </div>
-          )}
+        }
 
-          {!checkingJcode && jcodeStatus?.installed && (
-            <>
+          {!checkingJcode && jcodeStatus?.installed &&
+        <>
               <div className="flex flex-col gap-2">
                 {/* Info notes */}
-                {tool.notes && tool.notes.length > 0 && (
-                  <div className="flex flex-col gap-2 mb-2">
-                    {tool.notes.map((note, idx) => (
-                      <div key={idx} className={`flex items-start gap-2 p-2 rounded text-xs ${
-                        note.type === "info" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
-                        note.type === "warning" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" :
-                        "bg-gray-500/10 text-text-muted"
-                      }`}>
+                {tool.notes && tool.notes.length > 0 &&
+            <div className="flex flex-col gap-2 mb-2">
+                    {tool.notes.map((note, idx) =>
+              <div key={idx} className={`flex items-start gap-2 p-2 rounded text-xs ${
+              note.type === "info" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
+              note.type === "warning" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" :
+              "bg-gray-500/10 text-text-muted"}`
+              }>
                         <span className="material-symbols-outlined text-[14px] mt-0.5">
                           {note.type === "info" ? "info" : note.type === "warning" ? "warning" : "help"}
                         </span>
                         <span>{note.text}</span>
                       </div>
-                    ))}
+              )}
                   </div>
-                )}
+            }
 
                 {/* Endpoint (selector) */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Select Endpoint</span>
                   <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                   <BaseUrlSelect
-                    value={customBaseUrl || getDisplayUrl()}
-                    onChange={setCustomBaseUrl}
-                    requiresExternalUrl={tool.requiresExternalUrl}
-                    tunnelEnabled={tunnelEnabled}
-                    tunnelPublicUrl={tunnelPublicUrl}
-                    tailscaleEnabled={tailscaleEnabled}
-                    tailscaleUrl={tailscaleUrl}
-                  />
+                value={customBaseUrl || getDisplayUrl()}
+                onChange={setCustomBaseUrl}
+                requiresExternalUrl={tool.requiresExternalUrl}
+                tunnelEnabled={tunnelEnabled}
+                tunnelPublicUrl={tunnelPublicUrl}
+                tailscaleEnabled={tailscaleEnabled}
+                tailscaleUrl={tailscaleUrl} />
+              
                 </div>
 
                 {/* Current configured */}
-                {jcodeStatus?.config?.providers?.["9router"]?.base_url && (
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
+                {jcodeStatus?.config?.providers?.["9router"]?.base_url &&
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
                       {jcodeStatus.config.providers["9router"].base_url}
                     </span>
                   </div>
-                )}
+            }
 
                 {/* API Key */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
@@ -324,12 +325,12 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 </div>
               </div>
 
-              {message && (
-                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+              {message &&
+          <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
                   <span className="material-symbols-outlined text-[14px]">{message.type === "success" ? "check_circle" : "error"}</span>
                   <span>{message.text}</span>
                 </div>
-              )}
+          }
 
               <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
                 <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
@@ -343,9 +344,9 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 </Button>
               </div>
             </>
-          )}
+        }
         </div>
-      )}
+      }
 
       <ModelSelectModal
         isOpen={modalOpen}
@@ -354,15 +355,15 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
         selectedModel={selectedModel}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
-        title="Select Model for jcode"
-      />
+        title="Select Model for jcode" />
+      
 
       <ManualConfigModal
         isOpen={showManualConfigModal}
         onClose={() => setShowManualConfigModal(false)}
         title="jcode - Manual Configuration"
-        configs={getManualConfigs()}
-      />
-    </Card>
-  );
+        configs={getManualConfigs()} />
+      
+    </Card>);
+
 }

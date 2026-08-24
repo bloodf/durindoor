@@ -1,4 +1,4 @@
-/**
+import { isNumber, isObject } from "@/shared/utils/typeChecks.js"; /**
  * Per-provider concurrency gate (semaphore).
  *
  * Limits the number of concurrent in-flight upstream requests for a single
@@ -48,9 +48,9 @@ function getGate(provider) {
  * @returns {number} 0 = no limit, otherwise the max concurrent slots
  */
 export function getConcurrencyLimit(provider, limitsMap) {
-  if (!limitsMap || typeof limitsMap !== "object") return 0;
+  if (!limitsMap || !isObject(limitsMap)) return 0;
   const limit = limitsMap[provider];
-  if (typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0) return 0;
+  if (!isNumber(limit) || !Number.isFinite(limit) || limit <= 0) return 0;
   return Math.floor(limit);
 }
 

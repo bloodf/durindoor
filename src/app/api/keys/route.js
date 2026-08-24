@@ -4,6 +4,7 @@ import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { isApiKeyExpiryValidationError } from "@/shared/utils/apiKeyExpiry";
 import { toApiKeyManagementView } from "@/shared/utils/apiKeyManagement";
 import { isApiKeyPolicyInputError, resolveApiKeyPolicyInput } from "@/shared/utils/apiKeyPolicyManagement";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +16,8 @@ export async function GET() {
     return NextResponse.json({
       keys: keys.map((key) => ({
         ...toApiKeyManagementView(key),
-        usage: totalsById.get(key.id) || { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null },
-      })),
+        usage: totalsById.get(key.id) || { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null }
+      }))
     });
   } catch (error) {
     console.log("Error fetching keys:", error);
@@ -32,12 +33,12 @@ export async function POST(request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
+  if (!body || !isObject(body) || Array.isArray(body)) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
   try {
     const { name, allowedCombos, dailyLimitTokens, expiresAt } = body;
-    const trimmedName = typeof name === "string" ? name.trim() : "";
+    const trimmedName = isString(name) ? name.trim() : "";
 
     if (!trimmedName) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -52,7 +53,7 @@ export async function POST(request) {
       allowedCombos || [],
       dailyLimitTokens,
       expiresAt,
-      { policy: policyInput.value },
+      { policy: policyInput.value }
     );
 
     return NextResponse.json({
@@ -64,7 +65,7 @@ export async function POST(request) {
       dailyLimitTokens: apiKey.dailyLimitTokens,
       policy: apiKey.policy,
       usage: { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null },
-      expiresAt: apiKey.expiresAt,
+      expiresAt: apiKey.expiresAt
     }, { status: 201 });
   } catch (error) {
     console.log("Error creating key:", error);

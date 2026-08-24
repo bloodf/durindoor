@@ -1,5 +1,5 @@
-function stringifyHeaders(headers) {
-  if (!headers || typeof headers !== "object" || Array.isArray(headers)) return undefined;
+import { isObject, isString } from "@/shared/utils/typeChecks.js";function stringifyHeaders(headers) {
+  if (!headers || !isObject(headers) || Array.isArray(headers)) return undefined;
   const entries = Object.entries(headers).filter(([, v]) => v !== undefined && v !== null);
   return entries.length > 0 ? JSON.stringify(Object.fromEntries(entries)) : undefined;
 }
@@ -11,17 +11,17 @@ async function findExistingFirecrawlConnection(listConnections) {
     all.find((c) => c.isActive) ||
     all.find((c) => c.name === "Firecrawl Local") ||
     all[0] ||
-    null
-  );
+    null);
+
 }
 
 function connectionNeedsUpdate(existing, baseUrl, apiKey, headers) {
   if (!existing) return true;
   const effectiveApiKey = apiKey === undefined ? existing.apiKey || null : apiKey;
-  const effectiveHeaderString = headers === undefined
-    ? (typeof existing.firecrawlHeaders === "string" ? existing.firecrawlHeaders : null)
-    : stringifyHeaders(headers) || null;
-  const existingHeaders = typeof existing.firecrawlHeaders === "string" ? existing.firecrawlHeaders : null;
+  const effectiveHeaderString = headers === undefined ?
+  isString(existing.firecrawlHeaders) ? existing.firecrawlHeaders : null :
+  stringifyHeaders(headers) || null;
+  const existingHeaders = isString(existing.firecrawlHeaders) ? existing.firecrawlHeaders : null;
   if (existing.provider !== "firecrawl_custom") return true;
   if (existing.providerSpecificData?.baseUrl !== baseUrl) return true;
   if ((existing.apiKey || null) !== effectiveApiKey) return true;
@@ -41,7 +41,7 @@ export async function configureFirecrawl(settings, {
   listConnections,
   apiKey = process.env.FIRECRAWL_API_KEY,
   headers,
-  override = false,
+  override = false
 } = {}) {
   const report = { changed: false, actions: [] };
 
@@ -63,7 +63,7 @@ export async function configureFirecrawl(settings, {
       detected: false,
       actions: report.actions,
       updates: {},
-      connection: null,
+      connection: null
     };
   }
 
@@ -89,7 +89,7 @@ export async function configureFirecrawl(settings, {
   }
 
   const effectiveApiKey = apiKey === undefined && existing ? existing.apiKey || null : apiKey || null;
-  const effectiveHeaders = headers === undefined && existing ? (existing.firecrawlHeaders ? JSON.parse(existing.firecrawlHeaders) : {}) : headers;
+  const effectiveHeaders = headers === undefined && existing ? existing.firecrawlHeaders ? JSON.parse(existing.firecrawlHeaders) : {} : headers;
   const connection = needsUpdate && !dryRun ? {
     provider: "firecrawl_custom",
     authType: effectiveApiKey ? "apikey" : "noauth",
@@ -98,7 +98,7 @@ export async function configureFirecrawl(settings, {
     testStatus: "pending",
     apiKey: effectiveApiKey,
     firecrawlHeaders: stringifyHeaders(effectiveHeaders) || null,
-    providerSpecificData: { baseUrl },
+    providerSpecificData: { baseUrl }
   } : null;
 
   const updates = {};
@@ -114,7 +114,7 @@ export async function configureFirecrawl(settings, {
     baseUrl,
     actions: report.actions,
     updates,
-    connection,
+    connection
   };
 }
 

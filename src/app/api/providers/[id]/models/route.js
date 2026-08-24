@@ -9,7 +9,7 @@ import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 /**
  * GET /api/providers/[id]/models - Get models list from provider
- */
+ */import { isFunction, isString } from "@/shared/utils/typeChecks.js";
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
@@ -38,9 +38,9 @@ export async function GET(request, { params }) {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
-        cache: "no-store",
+        cache: "no-store"
       }, proxyOptions);
 
       if (!res.ok) {
@@ -52,7 +52,7 @@ export async function GET(request, { params }) {
       }
 
       const data = await res.json();
-      const models = Array.isArray(data) ? data : (data.data || []);
+      const models = Array.isArray(data) ? data : data.data || [];
       return NextResponse.json({ models });
     }
 
@@ -72,9 +72,9 @@ export async function GET(request, { params }) {
         headers: {
           "x-api-key": token,
           "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
-        cache: "no-store",
+        cache: "no-store"
       }, proxyOptions);
 
       if (!res.ok) {
@@ -86,7 +86,7 @@ export async function GET(request, { params }) {
       }
 
       const data = await res.json();
-      const models = Array.isArray(data) ? data : (data.data || []);
+      const models = Array.isArray(data) ? data : data.data || [];
       return NextResponse.json({ models });
     }
 
@@ -95,7 +95,7 @@ export async function GET(request, { params }) {
       // Generic fallback for registry providers that declare a modelsFetcher
       // (e.g. Qiniu) but have no hard-coded PROVIDER_MODELS_CONFIG entry.
       const fetcher = AI_PROVIDERS[connection.provider]?.modelsFetcher;
-      if (fetcher && typeof fetcher.url === "string") {
+      if (fetcher && isString(fetcher.url)) {
         const headers = { "Content-Type": "application/json" };
         if (connection.apiKey) {
           headers.Authorization = `Bearer ${connection.apiKey}`;
@@ -104,7 +104,7 @@ export async function GET(request, { params }) {
           const response = await proxyAwareFetch(fetcher.url, {
             method: "GET",
             headers,
-            signal: AbortSignal.timeout(8000),
+            signal: AbortSignal.timeout(8000)
           }, proxyOptions);
           if (!response.ok) {
             const errorText = await response.text();
@@ -122,7 +122,7 @@ export async function GET(request, { params }) {
           return NextResponse.json({
             provider: connection.provider,
             connectionId: connection.id,
-            models,
+            models
           });
         } catch (error) {
           console.log(
@@ -140,7 +140,7 @@ export async function GET(request, { params }) {
     }
 
     // Config-driven custom resolver path (OAuth refresh, non-OpenAI shape, etc.)
-    if (typeof config.customResolver === "function") {
+    if (isFunction(config.customResolver)) {
       const result = await config.customResolver(connection, proxyOptions);
       if (result.error) {
         return NextResponse.json({ error: result.error }, { status: result.status || 500 });
@@ -164,7 +164,7 @@ export async function GET(request, { params }) {
     }
 
     // Build headers
-    const headers = config.buildHeaders ? (config.buildHeaders(token) || {}) : { ...config.headers };
+    const headers = config.buildHeaders ? config.buildHeaders(token) || {} : { ...config.headers };
     if (!config.buildHeaders && config.authHeader && !config.authQuery) {
       headers[config.authHeader] = (config.authPrefix || "") + token;
     }
@@ -176,7 +176,7 @@ export async function GET(request, { params }) {
     const fetchOptions = {
       method: config.method || "GET",
       headers,
-      cache: "no-store",
+      cache: "no-store"
     };
 
     if (config.body && config.method === "POST") {

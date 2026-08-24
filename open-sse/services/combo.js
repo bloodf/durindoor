@@ -14,7 +14,7 @@ import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboReso
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
-const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
+import { isBoolean, isFunction, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 
 // Prefixes used when flattening tool turns into plain prose for panel models.
 const TOOL_CALL_PREFIX = "[Called tools: ";
@@ -31,7 +31,7 @@ const TOOL_RESULT_PREFIX = "[Tool result: ";
 export const FP_PIN_SEPARATOR = "|fp|";
 
 export function splitFingerprintPin(id) {
-  if (typeof id !== "string") return null;
+  if (!isString(id)) return null;
   const idx = id.indexOf(FP_PIN_SEPARATOR);
   if (idx === -1) return null;
   const realConnectionId = id.slice(0, idx);
@@ -79,7 +79,7 @@ export function applyNoAuthAutoComboGate({ idToKey, noAuthEntries, getModels, in
     if (!Array.isArray(models) || models.length === 0) continue;
     // #6557: honor the provider's own grid-card toggle (its connection row's
     // isActive=false). Scope is the isActive gate only.
-    if (inactiveKeys.has(key) || (entry.alias && inactiveKeys.has(entry.alias))) continue;
+    if (inactiveKeys.has(key) || entry.alias && inactiveKeys.has(entry.alias)) continue;
     keys.add(key);
   }
   return [...keys];
@@ -94,8 +94,8 @@ export {
   AUTO_FAMILY_IDS,
   isValidModelFamily,
   detectModelFamily,
-  isProviderOverrideFamily,
-} from "./autoComboFamilies.js";
+  isProviderOverrideFamily } from
+"./autoComboFamilies.js";
 
 /**
  * Flatten tool turns into prose so panel models keep context without looping on
@@ -106,43 +106,43 @@ export {
  * @returns {Array<Object>}
  */
 function flattenToolHistory(messages) {
-  return messages
-    .filter((msg) => msg)
-    .map((msg) => {
-      if (msg.role === "tool" || msg.role === "function") {
-        return { role: "user", content: `${TOOL_RESULT_PREFIX}${extractTextContent(msg.content) || String(msg.content ?? "")}]` };
-      }
-      if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {
-        const { tool_calls, ...rest } = msg;
-        const names = tool_calls.map((c) => c?.function?.name || c?.name || "tool").join(", ");
-        const base = extractTextContent(rest.content) || (typeof rest.content === "string" ? rest.content : "");
-        return { ...rest, content: `${base}${base ? "\n" : ""}${TOOL_CALL_PREFIX}${names}]` };
-      }
-      if (Array.isArray(msg.content)) {
-        const hasToolUse = msg.content.some((c) => c.type === "tool_use");
-        const hasToolResult = msg.content.some((c) => c.type === "tool_result");
-        if (hasToolUse || hasToolResult) {
-          const textParts = [];
-          const toolNames = [];
-          const toolResults = [];
-          for (const block of msg.content) {
-            if (block.type === "text" && block.text) textParts.push(block.text);
-            if (block.type === "tool_use") toolNames.push(block.name || "tool");
-            if (block.type === "tool_result") toolResults.push(extractTextContent(block.content) || String(block.content ?? ""));
-          }
-          const { ...rest } = msg;
-          let newContent = textParts.join("\n");
-          if (toolNames.length > 0) {
-            newContent = `${newContent}${newContent ? "\n" : ""}${TOOL_CALL_PREFIX}${toolNames.join(", ")}]`;
-          }
-          if (toolResults.length > 0) {
-            newContent = `${newContent}${newContent ? "\n" : ""}${TOOL_RESULT_PREFIX}${toolResults.join("\n")}]`;
-          }
-          return { ...rest, content: newContent };
+  return messages.
+  filter((msg) => msg).
+  map((msg) => {
+    if (msg.role === "tool" || msg.role === "function") {
+      return { role: "user", content: `${TOOL_RESULT_PREFIX}${extractTextContent(msg.content) || String(msg.content ?? "")}]` };
+    }
+    if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {
+      const { tool_calls, ...rest } = msg;
+      const names = tool_calls.map((c) => c?.function?.name || c?.name || "tool").join(", ");
+      const base = extractTextContent(rest.content) || (isString(rest.content) ? rest.content : "");
+      return { ...rest, content: `${base}${base ? "\n" : ""}${TOOL_CALL_PREFIX}${names}]` };
+    }
+    if (Array.isArray(msg.content)) {
+      const hasToolUse = msg.content.some((c) => c.type === "tool_use");
+      const hasToolResult = msg.content.some((c) => c.type === "tool_result");
+      if (hasToolUse || hasToolResult) {
+        const textParts = [];
+        const toolNames = [];
+        const toolResults = [];
+        for (const block of msg.content) {
+          if (block.type === "text" && block.text) textParts.push(block.text);
+          if (block.type === "tool_use") toolNames.push(block.name || "tool");
+          if (block.type === "tool_result") toolResults.push(extractTextContent(block.content) || String(block.content ?? ""));
         }
+        const { ...rest } = msg;
+        let newContent = textParts.join("\n");
+        if (toolNames.length > 0) {
+          newContent = `${newContent}${newContent ? "\n" : ""}${TOOL_CALL_PREFIX}${toolNames.join(", ")}]`;
+        }
+        if (toolResults.length > 0) {
+          newContent = `${newContent}${newContent ? "\n" : ""}${TOOL_RESULT_PREFIX}${toolResults.join("\n")}]`;
+        }
+        return { ...rest, content: newContent };
       }
-      return msg;
-    });
+    }
+    return msg;
+  });
 }
 
 /**
@@ -172,10 +172,10 @@ export function reorderByCapabilities(models, required, capabilitiesMap = null) 
   };
 
   // Stable sort by tier (Array.prototype.sort is stable in modern engines).
-  const reordered = models
-    .map((m, i) => ({ m, i, t: tierOf(m) }))
-    .sort((a, b) => a.t - b.t || a.i - b.i)
-    .map((x) => x.m);
+  const reordered = models.
+  map((m, i) => ({ m, i, t: tierOf(m) })).
+  sort((a, b) => a.t - b.t || a.i - b.i).
+  map((x) => x.m);
 
   return reordered.every((m, i) => m === models[i]) ? models : reordered;
 }
@@ -184,14 +184,14 @@ const TASK_LEVEL_WEIGHT = {
   light: 1,
   standard: 2,
   heavy: 3,
-  critical: 4,
+  critical: 4
 };
 
 const TASK_TARGET_POWER = {
   light: 35,
   standard: 65,
   heavy: 95,
-  critical: 120,
+  critical: 120
 };
 
 const LIGHT_TASK_RE = /\b(hi|hello|thanks|thank you|ping|format|rewrite|grammar|translate|summari[sz]e|short|quick|one[- ]?liner|explain briefly)\b/i;
@@ -199,10 +199,10 @@ const HEAVY_TASK_RE = /\b(debug|root cause|architecture|architectural|refactor|m
 const CRITICAL_TASK_RE = /\b(critical|security|vulnerability|exploit|rce|remote code execution|supply chain|account takeover|auth bypass|privilege escalation|tenant|cross[- ]tenant|sandbox escape|ssrf|deserialization|prod incident|data exfiltration|bug bounty)\b/i;
 
 function splitModelString(modelStr) {
-  const slash = typeof modelStr === "string" ? modelStr.indexOf("/") : -1;
+  const slash = isString(modelStr) ? modelStr.indexOf("/") : -1;
   return {
     provider: slash > 0 ? modelStr.slice(0, slash) : "",
-    model: slash > 0 ? modelStr.slice(slash + 1) : String(modelStr || ""),
+    model: slash > 0 ? modelStr.slice(slash + 1) : String(modelStr || "")
   };
 }
 
@@ -242,10 +242,10 @@ const SCORE_CFG = {
   max: 100,
   min: 10,
   onSuccess: 5,
-  onTransient: -10,   // 5xx / timeout
-  onQuota: -30,       // 429
-  onForbidden: -50,   // 403 / 401 (banned / suspended)
-  recoveryPerMinute: 3, // passive recovery after errors
+  onTransient: -10, // 5xx / timeout
+  onQuota: -30, // 429
+  onForbidden: -50, // 403 / 401 (banned / suspended)
+  recoveryPerMinute: 3 // passive recovery after errors
 };
 
 /** Get current effective score for a model (includes passive recovery). */
@@ -287,8 +287,8 @@ function _updateScore(comboName, modelStr, success, httpStatus) {
   }
   scores.set(modelStr, {
     score: Math.min(Math.max(current + delta, SCORE_CFG.min), SCORE_CFG.max),
-    lastSuccessMs: success ? now : (existing?.lastSuccessMs ?? null),
-    lastErrorMs: success ? (existing?.lastErrorMs ?? null) : now,
+    lastSuccessMs: success ? now : existing?.lastSuccessMs ?? null,
+    lastErrorMs: success ? existing?.lastErrorMs ?? null : now
   });
 }
 
@@ -298,7 +298,7 @@ function _updateScore(comboName, modelStr, success, httpStatus) {
  * - Tie-break: LRU (least recently succeeded first) → natural round-robin when all healthy
  */
 function getCapabilitiesForModelByModelStr(modelStr) {
-  const slash = typeof modelStr === "string" ? modelStr.indexOf("/") : -1;
+  const slash = isString(modelStr) ? modelStr.indexOf("/") : -1;
   const provider = slash > 0 ? modelStr.slice(0, slash) : "";
   const model = slash > 0 ? modelStr.slice(slash + 1) : modelStr;
   return getCapabilitiesForModel(provider, model);
@@ -307,18 +307,18 @@ function getCapabilitiesForModelByModelStr(modelStr) {
 export function getSmartScoredModels(models, comboName) {
   if (!models || models.length <= 1) return models;
   const scores = comboScoringState.get(comboName);
-  return [...models]
-    .map((m) => ({
-      m,
-      score: _getScore(comboName, m),
-      lastSuccessMs: scores?.get(m)?.lastSuccessMs ?? 0,
-    }))
-    .sort((a, b) => {
-      const diff = b.score - a.score;
-      if (Math.abs(diff) >= 5) return diff; // significant score gap → sort by score
-      return a.lastSuccessMs - b.lastSuccessMs; // equal scores → LRU (round-robin)
-    })
-    .map((x) => x.m);
+  return [...models].
+  map((m) => ({
+    m,
+    score: _getScore(comboName, m),
+    lastSuccessMs: scores?.get(m)?.lastSuccessMs ?? 0
+  })).
+  sort((a, b) => {
+    const diff = b.score - a.score;
+    if (Math.abs(diff) >= 5) return diff; // significant score gap → sort by score
+    return a.lastSuccessMs - b.lastSuccessMs; // equal scores → LRU (round-robin)
+  }).
+  map((x) => x.m);
 }
 
 // Trailing run of items after the last assistant/model turn = the current user
@@ -338,10 +338,10 @@ function trailingUserItems(arr) {
 // Returns a Set of: "vision" | "audioInput" | "pdf" | "search" | "reasoning".
 export function detectRequiredCapabilities(body) {
   const required = new Set();
-  if (!body || typeof body !== "object") return required;
+  if (!body || !isObject(body)) return required;
 
   const addByMime = (mime) => {
-    if (typeof mime !== "string") return;
+    if (!isString(mime)) return;
     if (mime.startsWith("image/")) required.add("vision");
     if (mime.startsWith("audio/")) required.add("audioInput");
     if (mime.startsWith("video/")) required.add("videoInput");
@@ -349,7 +349,7 @@ export function detectRequiredCapabilities(body) {
   };
 
   const scanBlock = (b) => {
-    if (!b || typeof b !== "object") return;
+    if (!b || !isObject(b)) return;
     const t = b.type;
     if (t === "image_url" || t === "image" || t === "input_image") required.add("vision");
     if (t === "input_audio" || t === "audio_url") required.add("audioInput");
@@ -365,7 +365,7 @@ export function detectRequiredCapabilities(body) {
 
   // Hermes/Ollama/Vercel AI SDK message shapes (message-level, not content blocks).
   const scanMessage = (m) => {
-    if (!m || typeof m !== "object") return;
+    if (!m || !isObject(m)) return;
 
     // Downstream stripping handles structured blocks regardless of role. Message
     // fields and inline strings remain user-only routing signals.
@@ -376,15 +376,15 @@ export function detectRequiredCapabilities(body) {
     if (Array.isArray(m.images) && m.images.length > 0) required.add("vision");
 
     // Vercel AI SDK / Hermes attachments
-    const attachments = Array.isArray(m.experimental_attachments)
-      ? m.experimental_attachments
-      : Array.isArray(m.attachments) ? m.attachments : null;
+    const attachments = Array.isArray(m.experimental_attachments) ?
+    m.experimental_attachments :
+    Array.isArray(m.attachments) ? m.attachments : null;
     if (attachments) {
       for (const att of attachments) {
         if (!att) continue;
-        const mime = att.contentType || att.mediaType || (typeof att.url === "string" && att.url.match(/^data:([^;,:]{1,255})/)?.[1]);
-        if (mime) addByMime(mime);
-        else if (att.url || att.data) required.add("vision");
+        const mime = att.contentType || att.mediaType || isString(att.url) && att.url.match(/^data:([^;,:]{1,255})/)?.[1];
+        if (mime) addByMime(mime);else
+        if (att.url || att.data) required.add("vision");
       }
     }
 
@@ -395,7 +395,7 @@ export function detectRequiredCapabilities(body) {
     if (m.file || m.document) required.add("pdf");
 
     // Inline data URIs embedded in string content
-    if (typeof m.content === "string") {
+    if (isString(m.content)) {
       if (m.content.includes("data:image/")) required.add("vision");
       if (m.content.includes("data:audio/")) required.add("audioInput");
       if (m.content.includes("data:video/")) required.add("videoInput");
@@ -404,15 +404,15 @@ export function detectRequiredCapabilities(body) {
   };
 
   // Modalities: current user turn only (trailing user run across each known shape).
-  for (const m of trailingUserItems(body.messages)) scanMessage(m);            // openai / claude / hermes / ollama
-  for (const it of trailingUserItems(body.input)) scanContent(it.content);     // responses
-  const contents = body.contents || body.request?.contents;                    // gemini / antigravity
+  for (const m of trailingUserItems(body.messages)) scanMessage(m); // openai / claude / hermes / ollama
+  for (const it of trailingUserItems(body.input)) scanContent(it.content); // responses
+  const contents = body.contents || body.request?.contents; // gemini / antigravity
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
 
 
   for (const tool of body.tools || []) {
     const type = tool?.type || tool?.function?.name || tool?.name;
-    if (typeof type === "string" && /^web_search/.test(type)) required.add("search");
+    if (isString(type) && /^web_search/.test(type)) required.add("search");
   }
 
   const effort = body.reasoning_effort || body.reasoning?.effort;
@@ -441,9 +441,9 @@ function rotateModelsFromIndex(models, currentIndex) {
 
 function getRotationState(rotationKey) {
   const existingState = comboRotationState.get(rotationKey);
-  return typeof existingState === "number"
-    ? { index: existingState, consecutiveUseCount: 0 }
-    : (existingState || { index: 0, consecutiveUseCount: 0 });
+  return isNumber(existingState) ?
+  { index: existingState, consecutiveUseCount: 0 } :
+  existingState || { index: 0, consecutiveUseCount: 0 };
 }
 
 function advanceRotationState(rotationKey, currentIndex, modelCount, normalizedStickyLimit, consecutiveUseCount) {
@@ -452,12 +452,12 @@ function advanceRotationState(rotationKey, currentIndex, modelCount, normalizedS
   if (nextUseCount >= normalizedStickyLimit) {
     comboRotationState.set(rotationKey, {
       index: (currentIndex + 1) % modelCount,
-      consecutiveUseCount: 0,
+      consecutiveUseCount: 0
     });
   } else {
     comboRotationState.set(rotationKey, {
       index: currentIndex,
-      consecutiveUseCount: nextUseCount,
+      consecutiveUseCount: nextUseCount
     });
   }
 }
@@ -472,12 +472,12 @@ function advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyL
     // and start its sticky counter so subsequent requests continue from it.
     comboRotationState.set(comboName || "__default__", {
       index: servedIndex,
-      consecutiveUseCount: 0,
+      consecutiveUseCount: 0
     });
   } else {
     comboRotationState.set(comboName || "__default__", {
       index: (servedIndex + 1) % models.length,
-      consecutiveUseCount: 0,
+      consecutiveUseCount: 0
     });
   }
 }
@@ -496,15 +496,15 @@ function pruneConversationAffinity(now = Date.now()) {
 }
 
 function normalizeFingerprintText(value) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 12000);
+  return String(value || "").
+  replace(/\s+/g, " ").
+  trim().
+  slice(0, 12000);
 }
 
 function collectText(value, out = []) {
   if (value == null) return out;
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (isString(value) || isNumber(value) || isBoolean(value)) {
     out.push(String(value));
     return out;
   }
@@ -512,16 +512,16 @@ function collectText(value, out = []) {
     for (const item of value) collectText(item, out);
     return out;
   }
-  if (typeof value !== "object") return out;
+  if (!isObject(value)) return out;
 
-  if (typeof value.text === "string") out.push(value.text);
-  if (typeof value.input_text === "string") out.push(value.input_text);
-  if (typeof value.output_text === "string") out.push(value.output_text);
-  if (typeof value.content === "string") out.push(value.content);
-  else if (Array.isArray(value.content)) collectText(value.content, out);
+  if (isString(value.text)) out.push(value.text);
+  if (isString(value.input_text)) out.push(value.input_text);
+  if (isString(value.output_text)) out.push(value.output_text);
+  if (isString(value.content)) out.push(value.content);else
+  if (Array.isArray(value.content)) collectText(value.content, out);
   if (Array.isArray(value.parts)) collectText(value.parts, out);
-  if (typeof value.query === "string") out.push(value.query);
-  if (typeof value.url === "string") out.push(value.url);
+  if (isString(value.query)) out.push(value.query);
+  if (isString(value.url)) out.push(value.url);
 
   return out;
 }
@@ -529,45 +529,45 @@ function collectText(value, out = []) {
 function estimatePromptChars(body) {
   const contents = body.contents || body.request?.contents;
   const parts = [
-    body.system,
-    body.instructions,
-    body.messages,
-    body.input,
-    contents,
-    body.query,
-    body.url,
-  ];
+  body.system,
+  body.instructions,
+  body.messages,
+  body.input,
+  contents,
+  body.query,
+  body.url];
+
   return collectText(parts).join("\n").length;
 }
 
 function countMessages(body) {
-  return (Array.isArray(body.messages) ? body.messages.length : 0) +
-    (Array.isArray(body.input) ? body.input.length : 0) +
-    (Array.isArray(body.contents) ? body.contents.length : 0) +
-    (Array.isArray(body.request?.contents) ? body.request.contents.length : 0);
+  return (Array.isArray(body.messages) ? body.messages.length : 0) + (
+  Array.isArray(body.input) ? body.input.length : 0) + (
+  Array.isArray(body.contents) ? body.contents.length : 0) + (
+  Array.isArray(body.request?.contents) ? body.request.contents.length : 0);
 }
 
 function maxRequestedOutput(body) {
   const candidates = [
-    body.max_tokens,
-    body.max_output_tokens,
-    body.max_completion_tokens,
-    body.generationConfig?.maxOutputTokens,
-  ].map((v) => Number.parseInt(v, 10)).filter((v) => Number.isFinite(v));
+  body.max_tokens,
+  body.max_output_tokens,
+  body.max_completion_tokens,
+  body.generationConfig?.maxOutputTokens].
+  map((v) => Number.parseInt(v, 10)).filter((v) => Number.isFinite(v));
   return candidates.length > 0 ? Math.max(...candidates) : 0;
 }
 
 function getTaskText(body) {
   const contents = body?.contents || body?.request?.contents;
   return collectText([
-    body?.system,
-    body?.instructions,
-    body?.messages,
-    body?.input,
-    contents,
-    body?.query,
-    body?.url,
-  ]).join("\n");
+  body?.system,
+  body?.instructions,
+  body?.messages,
+  body?.input,
+  contents,
+  body?.query,
+  body?.url]
+  ).join("\n");
 }
 
 function normalizeEffort(body) {
@@ -591,7 +591,7 @@ function getTaskSignals(body) {
     hasExplicitReasoning: Boolean(effort && effort !== "none" && effort !== "off" && effort !== "disabled"),
     lightKeyword: LIGHT_TASK_RE.test(text),
     heavyKeyword: HEAVY_TASK_RE.test(text),
-    criticalKeyword: CRITICAL_TASK_RE.test(text),
+    criticalKeyword: CRITICAL_TASK_RE.test(text)
   };
 }
 
@@ -615,40 +615,40 @@ export function classifyTask(body) {
   const effortIsLight = !s.hasExplicitReasoning || /^(low|minimal|none|off|disabled)$/.test(s.effort);
 
   const critical =
-    add(s.promptChars >= 100000, "huge-context") ||
-    add(s.outputTokens >= 32768, "huge-output") ||
-    add(s.toolCount >= 8 && s.promptChars >= 16000, "many-tools-large-context") ||
-    add(s.criticalKeyword && (effortIsHigh || s.toolCount >= 3 || s.promptChars >= 8000), "critical-domain");
+  add(s.promptChars >= 100000, "huge-context") ||
+  add(s.outputTokens >= 32768, "huge-output") ||
+  add(s.toolCount >= 8 && s.promptChars >= 16000, "many-tools-large-context") ||
+  add(s.criticalKeyword && (effortIsHigh || s.toolCount >= 3 || s.promptChars >= 8000), "critical-domain");
 
   if (critical) {
     return { level: "critical", weight: taskWeight("critical"), ...s, reasons };
   }
 
   const heavySignalCount = [
-    add(s.promptChars >= 50000, "large-context"),
-    add(s.promptChars >= 24000, "medium-large-context"),
-    add(s.messageCount >= 16, "long-conversation"),
-    add(s.toolCount >= 4, "many-tools"),
-    add(s.outputTokens >= 8192, "large-output"),
-    add(effortIsHigh, "high-reasoning-effort"),
-    add(s.criticalKeyword, "security-sensitive"),
-    add(s.heavyKeyword && s.promptChars >= 4000, "complex-task"),
-  ].filter(Boolean).length;
+  add(s.promptChars >= 50000, "large-context"),
+  add(s.promptChars >= 24000, "medium-large-context"),
+  add(s.messageCount >= 16, "long-conversation"),
+  add(s.toolCount >= 4, "many-tools"),
+  add(s.outputTokens >= 8192, "large-output"),
+  add(effortIsHigh, "high-reasoning-effort"),
+  add(s.criticalKeyword, "security-sensitive"),
+  add(s.heavyKeyword && s.promptChars >= 4000, "complex-task")].
+  filter(Boolean).length;
 
   if (heavySignalCount >= 2 || s.promptChars >= 50000 || effortIsHigh) {
     return { level: "heavy", weight: taskWeight("heavy"), ...s, reasons };
   }
 
   const light =
-    s.promptChars <= 2000 &&
-    s.messageCount <= 3 &&
-    s.toolCount === 0 &&
-    s.outputTokens <= 1500 &&
-    effortIsLight &&
-    !s.criticalKeyword &&
-    !s.heavyKeyword;
+  s.promptChars <= 2000 &&
+  s.messageCount <= 3 &&
+  s.toolCount === 0 &&
+  s.outputTokens <= 1500 &&
+  effortIsLight &&
+  !s.criticalKeyword &&
+  !s.heavyKeyword;
 
-  if (light || (s.lightKeyword && s.promptChars <= 4000 && s.toolCount === 0 && effortIsLight && !s.criticalKeyword)) {
+  if (light || s.lightKeyword && s.promptChars <= 4000 && s.toolCount === 0 && effortIsLight && !s.criticalKeyword) {
     return { level: "light", weight: taskWeight("light"), ...s, reasons: reasons.length ? reasons : ["small-simple-request"] };
   }
 
@@ -666,14 +666,14 @@ function modelPowerScore(modelStr, capabilitiesMap = null) {
   if (caps.tools) score += 3;
   if (caps.vision) score += 3;
 
-  if (caps.contextWindow >= 1000000) score += 22;
-  else if (caps.contextWindow >= 400000) score += 15;
-  else if (caps.contextWindow >= 200000) score += 9;
-  else if (caps.contextWindow <= 32000) score -= 10;
+  if (caps.contextWindow >= 1000000) score += 22;else
+  if (caps.contextWindow >= 400000) score += 15;else
+  if (caps.contextWindow >= 200000) score += 9;else
+  if (caps.contextWindow <= 32000) score -= 10;
 
-  if (caps.maxOutput >= 128000) score += 12;
-  else if (caps.maxOutput >= 64000) score += 8;
-  else if (caps.maxOutput <= 8192) score -= 8;
+  if (caps.maxOutput >= 128000) score += 12;else
+  if (caps.maxOutput >= 64000) score += 8;else
+  if (caps.maxOutput <= 8192) score -= 8;
 
   if (/\b(opus|mythos|gpt-5|o3|o4|pro|max|ultra|deepseek-v4-pro|sonnet-4|glm-5|kimi-k2\.7|minimax-m3|reasoner)\b/i.test(id)) score += 28;
   if (/\b(coder|code|coding)\b/i.test(id)) score += 8;
@@ -709,10 +709,10 @@ export function scoreModelForTask(modelStr, task = classifyTask({}), required = 
 export function reorderByTaskWeight(models, task = classifyTask({}), required = new Set(), capabilitiesMap = null) {
   if (!Array.isArray(models) || models.length <= 1) return models;
 
-  const reordered = models
-    .map((m, i) => ({ m, i, score: scoreModelForTask(m, task, required, capabilitiesMap) }))
-    .sort((a, b) => b.score - a.score || a.i - b.i)
-    .map((x) => x.m);
+  const reordered = models.
+  map((m, i) => ({ m, i, score: scoreModelForTask(m, task, required, capabilitiesMap) })).
+  sort((a, b) => b.score - a.score || a.i - b.i).
+  map((x) => x.m);
 
   return reordered.every((m, i) => m === models[i]) ? models : reordered;
 }
@@ -724,7 +724,7 @@ function isHeavyRequest(body) {
 function firstRoleText(items, roles, contentKey = "content") {
   if (!Array.isArray(items)) return "";
   for (const item of items) {
-    if (!item || typeof item !== "object") continue;
+    if (!item || !isObject(item)) continue;
     if (!roles.has(item.role)) continue;
     const content = contentKey === "parts" ? item.parts : item.content;
     const text = normalizeFingerprintText(collectText(content).join("\n"));
@@ -735,11 +735,11 @@ function firstRoleText(items, roles, contentKey = "content") {
 
 function allRoleText(items, roles, contentKey = "content") {
   if (!Array.isArray(items)) return "";
-  return normalizeFingerprintText(items
-    .filter((item) => item && typeof item === "object" && roles.has(item.role))
-    .map((item) => collectText(contentKey === "parts" ? item.parts : item.content).join("\n"))
-    .filter(Boolean)
-    .join("\n"));
+  return normalizeFingerprintText(items.
+  filter((item) => item && isObject(item) && roles.has(item.role)).
+  map((item) => collectText(contentKey === "parts" ? item.parts : item.content).join("\n")).
+  filter(Boolean).
+  join("\n"));
 }
 
 function hashConversationSeed(seed) {
@@ -754,22 +754,22 @@ function hashConversationSeed(seed) {
  * Appended turns should not move an existing conversation to another model.
  */
 export function getConversationCacheKey(body) {
-  if (!body || typeof body !== "object") return null;
+  if (!body || !isObject(body)) return null;
 
   const explicitCandidates = [
-    body.conversation_id,
-    body.conversationId,
-    body.thread_id,
-    body.threadId,
-    body.session_id,
-    body.sessionId,
-    body.metadata?.conversation_id,
-    body.metadata?.conversationId,
-    body.metadata?.thread_id,
-    body.metadata?.threadId,
-    body.metadata?.session_id,
-    body.metadata?.sessionId,
-  ];
+  body.conversation_id,
+  body.conversationId,
+  body.thread_id,
+  body.threadId,
+  body.session_id,
+  body.sessionId,
+  body.metadata?.conversation_id,
+  body.metadata?.conversationId,
+  body.metadata?.thread_id,
+  body.metadata?.threadId,
+  body.metadata?.session_id,
+  body.metadata?.sessionId];
+
   const explicit = explicitCandidates.find((v) => v != null && String(v).trim());
   if (explicit != null) return hashConversationSeed(`explicit:${String(explicit).trim()}`);
 
@@ -778,17 +778,17 @@ export function getConversationCacheKey(body) {
   const contents = body.contents || body.request?.contents;
 
   const seedParts = [
-    collectText(body.system).join("\n"),
-    collectText(body.instructions).join("\n"),
-    allRoleText(body.messages, systemRoles),
-    allRoleText(body.input, systemRoles),
-    allRoleText(contents, systemRoles, "parts"),
-    firstRoleText(body.messages, userRoles),
-    typeof body.input === "string" ? body.input : firstRoleText(body.input, userRoles),
-    firstRoleText(contents, userRoles, "parts"),
-    body.query,
-    body.url,
-  ].filter(Boolean);
+  collectText(body.system).join("\n"),
+  collectText(body.instructions).join("\n"),
+  allRoleText(body.messages, systemRoles),
+  allRoleText(body.input, systemRoles),
+  allRoleText(contents, systemRoles, "parts"),
+  firstRoleText(body.messages, userRoles),
+  isString(body.input) ? body.input : firstRoleText(body.input, userRoles),
+  firstRoleText(contents, userRoles, "parts"),
+  body.query,
+  body.url].
+  filter(Boolean);
 
   return hashConversationSeed(seedParts.join("\n"));
 }
@@ -858,8 +858,8 @@ export function resetComboRotation(comboName) {
  * @param {string} [comboName] - Combo name to reset; omit to clear all
  */
 export function resetComboScoring(comboName) {
-  if (comboName) comboScoringState.delete(comboName);
-  else comboScoringState.clear();
+  if (comboName) comboScoringState.delete(comboName);else
+  comboScoringState.clear();
 }
 
 /**
@@ -885,7 +885,7 @@ export function getComboModelsFromData(modelStr, combosData, options = {}) {
     return resolveAutoCombo(family, options.catalog || {}, options.settings);
   }
   // Handle both array and object formats
-  const combos = Array.isArray(combosData) ? combosData : (combosData?.combos || []);
+  const combos = Array.isArray(combosData) ? combosData : combosData?.combos || [];
 
   // Exact-name match only. Slash-basename lookup was removed because it
   // shadowed genuine `provider/model` routing whenever a saved combo
@@ -929,10 +929,10 @@ export async function detectUpstreamError(response) {
   if (contentType !== "application/json" && !contentType?.endsWith("+json")) return null;
   try {
     const payload = await response.clone().json();
-    const message = typeof payload?.error === "string"
-      ? payload.error
-      : payload?.error?.message ?? payload?.message ?? payload?.detail;
-    return typeof message === "string" && message.trim() ? message.trim() : null;
+    const message = isString(payload?.error) ?
+    payload.error :
+    payload?.error?.message ?? payload?.message ?? payload?.detail;
+    return isString(message) && message.trim() ? message.trim() : null;
   } catch {
     return null;
   }
@@ -964,8 +964,8 @@ async function isBodyEmpty(response) {
     bodyText === '{"choices":[{"message":{}}]}' ||
     bodyText === '{"content":""}' ||
     bodyText === '{"content":[]}' ||
-    bodyText === '{"text":""}'
-  );
+    bodyText === '{"text":""}');
+
 }
 
 export async function handleComboChat({
@@ -981,11 +981,11 @@ export async function handleComboChat({
   quotaRanker = null,
   signal = null,
   contextRequirements = null,
-  capabilitiesMap = null,
+  capabilitiesMap = null
 }) {
   const abortedResponse = () => new Response(
     JSON.stringify({ error: { message: "Request aborted" } }),
-    { status: 499, headers: { "Content-Type": "application/json" } },
+    { status: 499, headers: { "Content-Type": "application/json" } }
   );
   const waitForCooldown = (milliseconds) => {
     if (signal?.aborted) return Promise.reject(new DOMException("Request aborted", "AbortError"));
@@ -995,8 +995,8 @@ export async function handleComboChat({
       function finish(error = null) {
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
-        if (error) reject(error);
-        else resolve();
+        if (error) reject(error);else
+        resolve();
       }
       signal?.addEventListener("abort", onAbort, { once: true });
     });
@@ -1083,18 +1083,18 @@ export async function handleComboChat({
     rotatedModels = taskReordered;
   }
 
-  if (typeof quotaRanker === "function") {
+  if (isFunction(quotaRanker)) {
     try {
       const quotaOrdered = await quotaRanker(rotatedModels);
       if (Array.isArray(quotaOrdered) && quotaOrdered.length === rotatedModels.length) {
         rotatedModels = quotaOrdered;
       }
     } catch {
+
+
       // Quota diagnostics are fail-open for unknown/repository errors; account
       // selection still applies the authoritative atomic capacity gate.
-    }
-  }
-  
+    }}
   let lastError = null;
   let earliestRetryAfter = null;
   let lastStatus = null;
@@ -1109,9 +1109,9 @@ export async function handleComboChat({
   const stickyLimit = normalizeStickyLimit(comboStickyLimit);
   const rrRotationKey = comboName || "__default__";
   const rrAffinityKey =
-    comboStrategy === "round-robin" && stickyLimit > 1 && conversationCacheKey
-      ? `${rrRotationKey}:${conversationCacheKey}`
-      : null;
+  comboStrategy === "round-robin" && stickyLimit > 1 && conversationCacheKey ?
+  `${rrRotationKey}:${conversationCacheKey}` :
+  null;
   let affinityReleased = false;
   const releaseFailedAffinity = (failedModelStr, idx) => {
     if (affinityReleased || !rrAffinityKey) return;
@@ -1153,17 +1153,17 @@ export async function handleComboChat({
       try {
         if (comboTimeoutMs > 0) {
           result = await Promise.race([
-            handleSingleModel(attemptBody, modelStr, attemptSignal),
-            new Promise((_, reject) => {
-              timeoutTimer = setTimeout(() => {
-                const err = new Error(`Combo timeout after ${comboTimeoutMs}ms`);
-                err.name = "AbortError";
-                err.isComboTimeout = true;
-                reject(err);
-                attemptController.abort();
-              }, comboTimeoutMs);
-            }),
-          ]);
+          handleSingleModel(attemptBody, modelStr, attemptSignal),
+          new Promise((_, reject) => {
+            timeoutTimer = setTimeout(() => {
+              const err = new Error(`Combo timeout after ${comboTimeoutMs}ms`);
+              err.name = "AbortError";
+              err.isComboTimeout = true;
+              reject(err);
+              attemptController.abort();
+            }, comboTimeoutMs);
+          })]
+          );
         } else {
           result = await handleSingleModel(attemptBody, modelStr, attemptSignal);
         }
@@ -1231,17 +1231,17 @@ export async function handleComboChat({
         errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
         retryAfter = errorBody?.retryAfter || null;
       } catch {
+
         // Ignore JSON parse errors
       }
-
       // Track earliest retryAfter across all combo models
       if (retryAfter && (!earliestRetryAfter || new Date(retryAfter) < new Date(earliestRetryAfter))) {
         earliestRetryAfter = retryAfter;
       }
 
       // Normalize error text to string (Worker-safe)
-      if (typeof errorText !== "string") {
-        try { errorText = JSON.stringify(errorText); } catch { errorText = String(errorText); }
+      if (!isString(errorText)) {
+        try {errorText = JSON.stringify(errorText);} catch {errorText = String(errorText);}
       }
 
       // A client-side abort that surfaced without a 499 (bare
@@ -1261,7 +1261,7 @@ export async function handleComboChat({
         0,
         splitModelString(modelStr).provider,
         result.headers,
-        errorBody,
+        errorBody
       );
 
       if (!shouldFallback) {
@@ -1275,8 +1275,8 @@ export async function handleComboChat({
       // For transient errors (503/502/504), wait for cooldown before falling through
       // so a briefly-overloaded provider gets a chance to recover rather than being
       // skipped immediately (fixes: combo falls through on transient 503)
-      if (cooldownMs && cooldownMs > 0 && cooldownMs <= 5000 &&
-          (result.status === 503 || result.status === 502 || result.status === 504)) {
+      if (cooldownMs && cooldownMs > 0 && cooldownMs <= 5000 && (
+      result.status === 503 || result.status === 502 || result.status === 504)) {
         log.info("COMBO", `Model ${modelStr} transient ${result.status}, waiting ${cooldownMs}ms before next`);
         try {
           await waitForCooldown(cooldownMs);
@@ -1320,7 +1320,7 @@ export async function handleComboChat({
   // the request itself is invalid, but here the providers are simply unavailable
   // or have no active credentials. 503 is more accurate and retryable by clients.
   const allDisabled = lastError && lastError.toLowerCase().includes("no credentials");
-  const status = allDisabled ? 503 : (lastStatus || 503);
+  const status = allDisabled ? 503 : lastStatus || 503;
   const msg = lastError || "All combo models unavailable";
 
   if (earliestRetryAfter) {
@@ -1343,7 +1343,7 @@ export async function handleComboChat({
  * leaf content→string step reuses the translator's own extractTextContent.
  */
 function extractPanelText(json) {
-  if (!json || typeof json !== "object") return "";
+  if (!json || !isObject(json)) return "";
 
   // OpenAI chat completion
   const choice = json.choices?.[0];
@@ -1351,7 +1351,7 @@ function extractPanelText(json) {
     const msg = choice.message ?? choice.delta ?? {};
     const t = extractTextContent(msg.content);
     if (t.trim()) return t;
-    if (typeof choice.text === "string" && choice.text.trim()) return choice.text;
+    if (isString(choice.text) && choice.text.trim()) return choice.text;
   }
 
   // Claude messages (text blocks share OpenAI's {type:"text"} shape)
@@ -1367,9 +1367,9 @@ function extractPanelText(json) {
 
   // OpenAI Responses API
   if (Array.isArray(json.output)) {
-    const t = json.output
-      .flatMap((o) => (Array.isArray(o.content) ? o.content.map((c) => c?.text || "") : []))
-      .join("");
+    const t = json.output.
+    flatMap((o) => Array.isArray(o.content) ? o.content.map((c) => c?.text || "") : []).
+    join("");
     if (t.trim()) return t;
   }
 
@@ -1404,31 +1404,31 @@ function appendUserTurn(body, text) {
  * reputation of a model brand.
  */
 function buildJudgePrompt(answers) {
-  const panel = answers
-    .map((a, i) => `[Source ${i + 1}]\n${a.text}`)
-    .join("\n\n");
+  const panel = answers.
+  map((a, i) => `[Source ${i + 1}]\n${a.text}`).
+  join("\n\n");
 
   return [
-    `You are the JUDGE in a model-fusion panel. ${answers.length} expert models independently answered the user's most recent request. Their responses are below, anonymized by source.`,
-    "",
-    "Do NOT mention that multiple models were used, and do NOT refer to the sources. Produce ONE authoritative final answer addressed directly to the user.",
-    "",
-    "First, internally analyze the panel along these dimensions: consensus (points most sources agree on — treat as higher-confidence), contradictions (where they disagree — resolve with your own judgment), partial coverage, unique insights only one source surfaced, and blind spots every source missed. Then write the best possible final answer grounded in that analysis — more complete and correct than any single response, with no filler.",
-    "",
-    "=== PANEL RESPONSES ===",
-    panel,
-    "=== END PANEL RESPONSES ===",
-    "",
-    "Now write the final answer to the user's original request.",
-  ].join("\n");
+  `You are the JUDGE in a model-fusion panel. ${answers.length} expert models independently answered the user's most recent request. Their responses are below, anonymized by source.`,
+  "",
+  "Do NOT mention that multiple models were used, and do NOT refer to the sources. Produce ONE authoritative final answer addressed directly to the user.",
+  "",
+  "First, internally analyze the panel along these dimensions: consensus (points most sources agree on — treat as higher-confidence), contradictions (where they disagree — resolve with your own judgment), partial coverage, unique insights only one source surfaced, and blind spots every source missed. Then write the best possible final answer grounded in that analysis — more complete and correct than any single response, with no filler.",
+  "",
+  "=== PANEL RESPONSES ===",
+  panel,
+  "=== END PANEL RESPONSES ===",
+  "",
+  "Now write the final answer to the user's original request."].
+  join("\n");
 }
 
 // Fusion tuning. Overridable per-combo via settings.comboStrategies[name].
 const FUSION_DEFAULTS = {
-  minPanel: 2,             // answers needed before stragglers get a grace window
-  stragglerGraceMs: 8000,  // wait this long for laggards once quorum is reached
+  minPanel: 2, // answers needed before stragglers get a grace window
+  stragglerGraceMs: 8000, // wait this long for laggards once quorum is reached
   panelHardTimeoutMs: 90000, // absolute cap so one hung model can't stall forever
-  panelCancelDrainTimeoutMs: 5000, // wait for canceled calls to release quota before judge
+  panelCancelDrainTimeoutMs: 5000 // wait for canceled calls to release quota before judge
 };
 
 /**
@@ -1452,22 +1452,22 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
       clearTimeout(hardTimer);
       if (graceTimer) clearTimeout(graceTimer);
       const results = out.slice();
-      const pendingIndexes = Array.from({ length: results.length }, (_, index) => (
-        results[index] === undefined ? index : null
-      )).filter((index) => index !== null);
+      const pendingIndexes = Array.from({ length: results.length }, (_, index) =>
+      results[index] === undefined ? index : null
+      ).filter((index) => index !== null);
       resolve({ results, pendingIndexes });
     };
     const hardTimer = setTimeout(finish, panelHardTimeoutMs);
     calls.forEach((p, i) => {
-      Promise.resolve(p)
-        .then((v) => { out[i] = v; })
-        .catch((e) => { out[i] = { __error: e }; })
-        .finally(() => {
-          settled++;
-          if (out[i] && out[i].ok) ok++;
-          if (settled === calls.length) return finish();
-          if (ok >= minPanel && !graceTimer) graceTimer = setTimeout(finish, stragglerGraceMs);
-        });
+      Promise.resolve(p).
+      then((v) => {out[i] = v;}).
+      catch((e) => {out[i] = { __error: e };}).
+      finally(() => {
+        settled++;
+        if (out[i] && out[i].ok) ok++;
+        if (settled === calls.length) return finish();
+        if (ok >= minPanel && !graceTimer) graceTimer = setTimeout(finish, stragglerGraceMs);
+      });
     });
   });
 }
@@ -1554,9 +1554,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // judge, answer directly (judge would equal panel[0], nothing to fuse).
   if (panel.length === 1) {
     if (judgeModel && judgeModel.trim()) {
+
       // fall through to shared fan-out/judge path with a one-member panel
-    } else {
-      return handleSingleModel(body, panel[0]);
+    } else {return handleSingleModel(body, panel[0]);
     }
   }
 
@@ -1591,8 +1591,8 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
 
   const t0 = Date.now();
   const panelControllers = panel.map(() => new AbortController());
-  const calls = panel.map((m, index) => Promise.resolve()
-    .then(() => handleSingleModel(makePanelBody(), m, true, panelControllers[index].signal)));
+  const calls = panel.map((m, index) => Promise.resolve().
+  then(() => handleSingleModel(makePanelBody(), m, true, panelControllers[index].signal)));
   const { results: settled, pendingIndexes } = await collectPanel(calls, { ...cfg, minPanel });
   for (const index of pendingIndexes) {
     const controller = panelControllers[index];
@@ -1600,15 +1600,15 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
   if (pendingIndexes.length > 0) {
     const rawDrainTimeout = Number(cfg.panelCancelDrainTimeoutMs);
-    const drainTimeoutMs = Number.isFinite(rawDrainTimeout) && rawDrainTimeout > 0
-      ? Math.min(Math.floor(rawDrainTimeout), FUSION_DEFAULTS.panelCancelDrainTimeoutMs)
-      : FUSION_DEFAULTS.panelCancelDrainTimeoutMs;
+    const drainTimeoutMs = Number.isFinite(rawDrainTimeout) && rawDrainTimeout > 0 ?
+    Math.min(Math.floor(rawDrainTimeout), FUSION_DEFAULTS.panelCancelDrainTimeoutMs) :
+    FUSION_DEFAULTS.panelCancelDrainTimeoutMs;
     const drained = await drainCancelledPanelCalls(calls, pendingIndexes, drainTimeoutMs);
     if (!drained) {
       log.warn("FUSION", "Canceled panel calls did not acknowledge cleanup before the drain deadline");
       return new Response(
         JSON.stringify({ error: { message: "Fusion panel cleanup timed out" } }),
-        { status: 503, headers: { "Content-Type": "application/json" } },
+        { status: 503, headers: { "Content-Type": "application/json" } }
       );
     }
   }
@@ -1619,10 +1619,10 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   for (let i = 0; i < settled.length; i++) {
     const res = settled[i];
     const model = panel[i];
-    if (!res) { log.warn("FUSION", `Panel ${model} dropped (straggler/timeout)`); continue; }
-    if (res.__timeout) { log.warn("FUSION", `Panel ${model} timed out`); continue; }
-    if (res.__error) { log.warn("FUSION", `Panel ${model} threw`, { error: res.__error?.message || String(res.__error) }); continue; }
-    if (!res.ok) { log.warn("FUSION", `Panel ${model} failed`, { status: res.status }); continue; }
+    if (!res) {log.warn("FUSION", `Panel ${model} dropped (straggler/timeout)`);continue;}
+    if (res.__timeout) {log.warn("FUSION", `Panel ${model} timed out`);continue;}
+    if (res.__error) {log.warn("FUSION", `Panel ${model} threw`, { error: res.__error?.message || String(res.__error) });continue;}
+    if (!res.ok) {log.warn("FUSION", `Panel ${model} failed`, { status: res.status });continue;}
     try {
       const json = await res.clone().json();
       const text = extractPanelText(json);

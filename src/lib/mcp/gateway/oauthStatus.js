@@ -1,4 +1,4 @@
-// Dashboard-safe OAuth status derivation — never returns token material.
+import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js"; // Dashboard-safe OAuth status derivation — never returns token material.
 //
 // Distinct from `hasUsableToken` in oauthRefresh.js (which answers
 // "is a token usable right now for a live upstream call?"). This answers
@@ -14,17 +14,17 @@
  */
 export function deriveOauthStatus(oauth, tokens) {
   if (!oauth) return "none";
-  if (!tokens || typeof tokens !== "object") return "needs_login";
+  if (!tokens || !isObject(tokens)) return "needs_login";
   if (tokens.needsReauth) return "needs_login";
-  if (typeof tokens.access_token !== "string" || !tokens.access_token) {
+  if (!isString(tokens.access_token) || !tokens.access_token) {
     return "needs_login";
   }
   // Expired access token with a refresh_token -> refresh path will recover it.
   if (
-    typeof tokens.expires_at === "number" &&
-    Date.now() >= tokens.expires_at &&
-    !tokens.refresh_token
-  ) {
+  isNumber(tokens.expires_at) &&
+  Date.now() >= tokens.expires_at &&
+  !tokens.refresh_token)
+  {
     return "needs_login";
   }
   return "connected";

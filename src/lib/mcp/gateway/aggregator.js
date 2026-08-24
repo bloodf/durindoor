@@ -7,6 +7,7 @@
 import { clientFor } from "./client";
 import { filterToolsByGrants, isToolAllowed } from "./grants";
 import { isRecord } from "./guards";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 export const TOOL_PREFIX_SEP = "__";
 
@@ -19,7 +20,7 @@ function splitPrefixedName(prefixed) {
   if (idx <= 0) return null;
   return {
     slug: prefixed.slice(0, idx),
-    bareName: prefixed.slice(idx + TOOL_PREFIX_SEP.length),
+    bareName: prefixed.slice(idx + TOOL_PREFIX_SEP.length)
   };
 }
 
@@ -44,17 +45,17 @@ export async function aggregateTools(instances, grants = []) {
       for (const t of list) {
         if (!isRecord(t) || !t.name) continue;
         const name = t.name;
-        if (typeof name !== "string") continue;
+        if (!isString(name)) continue;
         tools.push({
           name: prefixName(slug, name),
-          description: typeof t.description === "string" ? t.description : "",
+          description: isString(t.description) ? t.description : "",
           inputSchema: t.inputSchema || { type: "object", properties: {} },
-          _instance: slug,
+          _instance: slug
         });
       }
     } else {
       const reason = r.reason;
-      const message = isRecord(reason) && typeof reason.message === "string" ? reason.message : String(reason);
+      const message = isRecord(reason) && isString(reason.message) ? reason.message : String(reason);
       errors.push({ slug, message });
       console.warn(`[mcp-gw] listTools failed for ${slug}: ${message}`);
     }

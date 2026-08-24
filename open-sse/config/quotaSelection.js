@@ -2,8 +2,9 @@ import {
   CODEX_SSE_PEEK_TIMEOUT_MS,
   PROVIDER_BODY_TIMEOUT_MS,
   STREAM_FIRST_CHUNK_TIMEOUT_MS,
-  STREAM_STALL_TIMEOUT_MS,
-} from "./runtimeConfig.js";
+  STREAM_STALL_TIMEOUT_MS } from
+"./runtimeConfig.js";
+import { isBoolean, isNumber, isObject } from "@/shared/utils/typeChecks.js";
 
 export const QUOTA_SELECTION_DEFAULTS = Object.freeze({
   routingFloorEnabled: false,
@@ -16,26 +17,26 @@ export const QUOTA_SELECTION_DEFAULTS = Object.freeze({
     CODEX_SSE_PEEK_TIMEOUT_MS,
     STREAM_STALL_TIMEOUT_MS,
     STREAM_FIRST_CHUNK_TIMEOUT_MS,
-    PROVIDER_BODY_TIMEOUT_MS,
+    PROVIDER_BODY_TIMEOUT_MS
   ) + 60 * 1000,
   maxLeaseMs: 24 * 60 * 60 * 1000,
   terminalRetentionMs: 24 * 60 * 60 * 1000,
-  maxItems: 16,
+  maxItems: 16
 });
 
 function booleanOr(value, fallback) {
-  return typeof value === "boolean" ? value : fallback;
+  return isBoolean(value) ? value : fallback;
 }
 
 function ratioOr(value, fallback) {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
-    ? value
-    : fallback;
+  return isNumber(value) && Number.isFinite(value) && value >= 0 && value <= 1 ?
+  value :
+  fallback;
 }
 
 function scopedConfig(config, key) {
   const value = config?.[key];
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  return value && isObject(value) && !Array.isArray(value) ? value : null;
 }
 
 /**
@@ -45,7 +46,7 @@ function scopedConfig(config, key) {
 export function resolveQuotaRoutingFloor(config = {}, {
   connectionId,
   provider,
-  dimensionKey,
+  dimensionKey
 } = {}) {
   const connection = scopedConfig(scopedConfig(config, "connections"), connectionId);
   const providerConfig = scopedConfig(scopedConfig(config, "providers"), provider);
@@ -57,17 +58,17 @@ export function resolveQuotaRoutingFloor(config = {}, {
   let ratio = QUOTA_SELECTION_DEFAULTS.routingFloorRatio;
   for (const candidate of candidates) {
     if (!candidate) continue;
-    if (typeof candidate.routingFloorEnabled === "boolean") {
+    if (isBoolean(candidate.routingFloorEnabled)) {
       enabled = booleanOr(candidate.routingFloorEnabled, enabled);
       break;
     }
   }
   for (const candidate of candidates) {
     if (!candidate) continue;
-    if (typeof candidate.routingFloorRatio === "number"
-        && Number.isFinite(candidate.routingFloorRatio)
-        && candidate.routingFloorRatio >= 0
-        && candidate.routingFloorRatio <= 1) {
+    if (isNumber(candidate.routingFloorRatio) &&
+    Number.isFinite(candidate.routingFloorRatio) &&
+    candidate.routingFloorRatio >= 0 &&
+    candidate.routingFloorRatio <= 1) {
       ratio = ratioOr(candidate.routingFloorRatio, ratio);
       break;
     }
@@ -76,9 +77,9 @@ export function resolveQuotaRoutingFloor(config = {}, {
 }
 
 export function resolveQuotaLeaseMs(value) {
-  return Number.isSafeInteger(value)
-    && value >= QUOTA_SELECTION_DEFAULTS.heartbeatMs * 2
-    && value <= QUOTA_SELECTION_DEFAULTS.maxLeaseMs
-    ? value
-    : QUOTA_SELECTION_DEFAULTS.leaseMs;
+  return Number.isSafeInteger(value) &&
+  value >= QUOTA_SELECTION_DEFAULTS.heartbeatMs * 2 &&
+  value <= QUOTA_SELECTION_DEFAULTS.maxLeaseMs ?
+  value :
+  QUOTA_SELECTION_DEFAULTS.leaseMs;
 }

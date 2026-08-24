@@ -12,14 +12,14 @@ export function ensureEngineBreakdown(stats) {
     return stats.engineBreakdown;
   }
   return [
-    {
-      engine: stats.engine || stats.mode || "compression",
-      originalTokens: stats.originalTokens,
-      compressedTokens: stats.compressedTokens,
-      savingsPercent: stats.savingsPercent,
-      techniquesUsed: stats.techniquesUsed ?? [],
-      ...(stats.rulesApplied ? { rulesApplied: stats.rulesApplied } : {}),
-      ...(stats.durationMs !== undefined ? { durationMs: stats.durationMs } : {}),
-    },
-  ];
+  {
+    engine: stats.engine || stats.mode || "compression",
+    originalTokens: stats.originalTokens,
+    compressedTokens: stats.compressedTokens,
+    savingsPercent: stats.savingsPercent,
+    techniquesUsed: stats.techniquesUsed ?? [],
+    ...(stats.rulesApplied ? { rulesApplied: stats.rulesApplied } : null),
+    ...(stats.durationMs !== undefined ? { durationMs: stats.durationMs } : null)
+  }];
+
 }

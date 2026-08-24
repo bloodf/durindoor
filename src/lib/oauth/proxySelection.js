@@ -1,9 +1,10 @@
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
+import { isObject } from "@/shared/utils/typeChecks.js";
 
 export const OAUTH_PROXY_MODE = Object.freeze({
   LEGACY: "legacy",
   DIRECT: "direct",
-  STRICT_POOL: "strict-pool",
+  STRICT_POOL: "strict-pool"
 });
 
 const VALID_MODES = new Set(Object.values(OAUTH_PROXY_MODE));
@@ -35,9 +36,9 @@ function normalizePoolId(value) {
 }
 
 function freezeSelection(mode, poolId = null) {
-  return Object.freeze(poolId
-    ? { mode, poolId }
-    : { mode });
+  return Object.freeze(poolId ?
+  { mode, poolId } :
+  { mode });
 }
 
 /**
@@ -48,7 +49,7 @@ export function parseOAuthProxySelection(input) {
   if (input === undefined) return freezeSelection(OAUTH_PROXY_MODE.LEGACY);
   if (input === null) return freezeSelection(OAUTH_PROXY_MODE.DIRECT);
 
-  if (typeof input !== "object") {
+  if (!isObject(input)) {
     const poolId = normalizePoolId(input);
     if (!poolId || poolId === NONE_POOL_VALUE) {
       return freezeSelection(OAUTH_PROXY_MODE.DIRECT);
@@ -56,26 +57,26 @@ export function parseOAuthProxySelection(input) {
     return freezeSelection(OAUTH_PROXY_MODE.STRICT_POOL, poolId);
   }
 
-  const nested = input.oauthProxy && typeof input.oauthProxy === "object"
-    ? input.oauthProxy
-    : null;
+  const nested = input.oauthProxy && isObject(input.oauthProxy) ?
+  input.oauthProxy :
+  null;
   const hasExplicitMode = hasOwn(input, "proxyMode") ||
-    hasOwn(input, "mode") ||
-    Boolean(nested && hasOwn(nested, "mode"));
+  hasOwn(input, "mode") ||
+  Boolean(nested && hasOwn(nested, "mode"));
   const explicitMode = input.proxyMode ?? input.mode ?? nested?.mode;
   const hasPoolField = hasOwn(input, "proxyPoolId") ||
-    hasOwn(input, "poolId") ||
-    Boolean(nested && hasOwn(nested, "poolId"));
-  const rawPoolId = hasOwn(input, "proxyPoolId")
-    ? input.proxyPoolId
-    : hasOwn(input, "poolId")
-      ? input.poolId
-      : nested?.poolId;
+  hasOwn(input, "poolId") ||
+  Boolean(nested && hasOwn(nested, "poolId"));
+  const rawPoolId = hasOwn(input, "proxyPoolId") ?
+  input.proxyPoolId :
+  hasOwn(input, "poolId") ?
+  input.poolId :
+  nested?.poolId;
 
   if (hasExplicitMode) {
-    const mode = explicitMode === undefined || explicitMode === null
-      ? ""
-      : String(explicitMode).trim();
+    const mode = explicitMode === undefined || explicitMode === null ?
+    "" :
+    String(explicitMode).trim();
     if (!VALID_MODES.has(mode)) {
       throw new OAuthProxySelectionError(
         "OAUTH_PROXY_SELECTION_INVALID",
@@ -113,16 +114,16 @@ export function parseOAuthProxySelection(input) {
  */
 export function buildOAuthProxyMetadataPatch(input) {
   const selection = parseOAuthProxySelection(input);
-  const poolId = selection.mode === OAUTH_PROXY_MODE.STRICT_POOL
-    ? selection.poolId
-    : null;
+  const poolId = selection.mode === OAUTH_PROXY_MODE.STRICT_POOL ?
+  selection.poolId :
+  null;
 
   return Object.freeze({
     proxyPoolId: poolId,
     oauthProxy: Object.freeze({
       mode: selection.mode,
-      poolId,
-    }),
+      poolId
+    })
   });
 }
 
@@ -135,7 +136,7 @@ export async function resolveOAuthProxySelection(input) {
     return Object.freeze({
       selection,
       metadataPatch,
-      proxyOptions: Object.freeze({ disableEnvProxy: false, strictProxy: false }),
+      proxyOptions: Object.freeze({ disableEnvProxy: false, strictProxy: false })
     });
   }
 
@@ -143,13 +144,13 @@ export async function resolveOAuthProxySelection(input) {
     return Object.freeze({
       selection,
       metadataPatch,
-      proxyOptions: Object.freeze({ disableEnvProxy: true, strictProxy: false }),
+      proxyOptions: Object.freeze({ disableEnvProxy: true, strictProxy: false })
     });
   }
 
   const config = await resolveConnectionProxyConfig({
     proxyPoolId: selection.poolId,
-    oauthProxy: { mode: OAUTH_PROXY_MODE.STRICT_POOL, poolId: selection.poolId },
+    oauthProxy: { mode: OAUTH_PROXY_MODE.STRICT_POOL, poolId: selection.poolId }
   });
   const hasRoute = config?.connectionProxyEnabled === true || Boolean(config?.vercelRelayUrl);
   if (config?.source === "error" || !hasRoute) {
@@ -166,7 +167,7 @@ export async function resolveOAuthProxySelection(input) {
     vercelRelayUrl: config.vercelRelayUrl || "",
     proxyPoolId: selection.poolId,
     disableEnvProxy: true,
-    strictProxy: true,
+    strictProxy: true
   });
 
   return Object.freeze({ selection, metadataPatch, proxyOptions });

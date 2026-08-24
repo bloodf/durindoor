@@ -6,6 +6,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import { isBrowser } from "@/shared/utils/typeChecks.js";
 
 const ENDPOINT = "/api/cli-tools/grok-build-settings";
 const MODEL_SLOT = "9router";
@@ -23,7 +24,7 @@ export default function GrokBuildToolCard({
   tunnelEnabled,
   tunnelPublicUrl,
   tailscaleEnabled,
-  tailscaleUrl,
+  tailscaleUrl
 }) {
   const [grokStatus, setGrokStatus] = useState(initialStatus || null);
   const [checking, setChecking] = useState(false);
@@ -94,7 +95,7 @@ export default function GrokBuildToolCard({
   const normalizeLocalhost = (url) => url.replace("://localhost", "://127.0.0.1");
 
   const getLocalBaseUrl = () => {
-    if (typeof window !== "undefined") {
+    if (isBrowser()) {
       return normalizeLocalhost(window.location.origin);
     }
     return "http://127.0.0.1:20128";
@@ -121,8 +122,8 @@ export default function GrokBuildToolCard({
         body: JSON.stringify({
           baseUrl: getEffectiveBaseUrl(),
           apiKey: keyToUse,
-          model: selectedModel,
-        }),
+          model: selectedModel
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -164,9 +165,9 @@ export default function GrokBuildToolCard({
   };
 
   const getManualConfigs = () => {
-    const keyToUse = (selectedApiKey && selectedApiKey.trim())
-      ? selectedApiKey
-      : (!cloudEnabled ? "sk_durindoor" : "<API_KEY_FROM_DASHBOARD>");
+    const keyToUse = selectedApiKey && selectedApiKey.trim() ?
+    selectedApiKey :
+    !cloudEnabled ? "sk_durindoor" : "<API_KEY_FROM_DASHBOARD>";
 
     const modelId = selectedModel || "provider/model-id";
     const tomlContent = `[models]
@@ -182,8 +183,8 @@ api_key = "${keyToUse}"
 `;
 
     return [
-      { filename: "~/.grok/config.toml", content: tomlContent },
-    ];
+    { filename: "~/.grok/config.toml", content: tomlContent }];
+
   };
 
   return (
@@ -198,8 +199,8 @@ api_key = "${keyToUse}"
               height={32}
               className="size-8 object-contain rounded-lg"
               sizes="32px"
-              onError={(e) => { e.target.style.display = "none"; }}
-            />
+              onError={(e) => {e.target.style.display = "none";}} />
+            
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -214,17 +215,17 @@ api_key = "${keyToUse}"
         <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
       </div>
 
-      {isExpanded && (
-        <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
-          {checking && (
-            <div className="flex items-center gap-2 text-text-muted">
+      {isExpanded &&
+      <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
+          {checking &&
+        <div className="flex items-center gap-2 text-text-muted">
               <span className="material-symbols-outlined animate-spin">progress_activity</span>
               <span>Checking Grok Build...</span>
             </div>
-          )}
+        }
 
-          {!checking && grokStatus && !grokStatus.installed && (
-            <div className="flex flex-col gap-4">
+          {!checking && grokStatus && !grokStatus.installed &&
+        <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
@@ -237,58 +238,58 @@ api_key = "${keyToUse}"
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 pl-0 sm:pl-9">
                   <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setShowManualConfigModal(true)}
-                    className="w-full sm:w-auto !bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30"
-                  >
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowManualConfigModal(true)}
+                className="w-full sm:w-auto !bg-yellow-500/20 !border-yellow-500/40 !text-yellow-700 dark:!text-yellow-300 hover:!bg-yellow-500/30">
+                
                     <span className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
                 </div>
               </div>
             </div>
-          )}
+        }
 
-          {!checking && grokStatus?.installed && (
-            <>
+          {!checking && grokStatus?.installed &&
+        <>
               <div className="flex flex-col gap-2">
-                {tool.notes && tool.notes.length > 0 && (
-                  <div className="flex flex-col gap-2 mb-2">
-                    {tool.notes.map((note, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex items-start gap-2 p-2 rounded text-xs ${
-                          note.type === "warning" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" :
-                          note.type === "error" ? "bg-red-500/10 text-red-600 dark:text-red-400" :
-                          "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                        }`}
-                      >
+                {tool.notes && tool.notes.length > 0 &&
+            <div className="flex flex-col gap-2 mb-2">
+                    {tool.notes.map((note, idx) =>
+              <div
+                key={idx}
+                className={`flex items-start gap-2 p-2 rounded text-xs ${
+                note.type === "warning" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" :
+                note.type === "error" ? "bg-red-500/10 text-red-600 dark:text-red-400" :
+                "bg-blue-500/10 text-blue-600 dark:text-blue-400"}`
+                }>
+                
                         <span className="material-symbols-outlined text-[14px] mt-0.5">
                           {note.type === "warning" ? "warning" : note.type === "error" ? "error" : "info"}
                         </span>
                         <span>{note.text}</span>
                       </div>
-                    ))}
+              )}
                   </div>
-                )}
+            }
 
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Select Endpoint</span>
                   <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                   <BaseUrlSelect
-                    value={customBaseUrl || getEffectiveBaseUrl()}
-                    onChange={setCustomBaseUrl}
-                    requiresExternalUrl={tool.requiresExternalUrl}
-                    tunnelEnabled={tunnelEnabled}
-                    tunnelPublicUrl={tunnelPublicUrl}
-                    tailscaleEnabled={tailscaleEnabled}
-                    tailscaleUrl={tailscaleUrl}
-                  />
+                value={customBaseUrl || getEffectiveBaseUrl()}
+                onChange={setCustomBaseUrl}
+                requiresExternalUrl={tool.requiresExternalUrl}
+                tunnelEnabled={tunnelEnabled}
+                tunnelPublicUrl={tunnelPublicUrl}
+                tailscaleEnabled={tailscaleEnabled}
+                tailscaleUrl={tailscaleUrl} />
+              
                 </div>
 
-                {grokStatus?.settings?.model?.base_url && (
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
+                {grokStatus?.settings?.model?.base_url &&
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
@@ -296,7 +297,7 @@ api_key = "${keyToUse}"
                       {grokStatus.settings.model.model ? ` · ${grokStatus.settings.model.model}` : ""}
                     </span>
                   </div>
-                )}
+            }
 
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">API Key</span>
@@ -309,42 +310,42 @@ api_key = "${keyToUse}"
                   <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                   <div className="relative w-full min-w-0">
                     <input
-                      type="text"
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      placeholder="provider/model-id"
-                      className="w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
-                    />
-                    {selectedModel && (
-                      <button
-                        onClick={() => setSelectedModel("")}
-                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-red-500 rounded transition-colors"
-                        title="Clear"
-                      >
+                  type="text"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  placeholder="provider/model-id"
+                  className="w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5" />
+                
+                    {selectedModel &&
+                <button
+                  onClick={() => setSelectedModel("")}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-red-500 rounded transition-colors"
+                  title="Clear">
+                  
                         <span className="material-symbols-outlined text-[14px]">close</span>
                       </button>
-                    )}
+                }
                   </div>
                   <button
-                    onClick={() => setModalOpen(true)}
-                    disabled={!hasActiveProviders}
-                    className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${
-                      hasActiveProviders
-                        ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer"
-                        : "opacity-50 cursor-not-allowed border-border"
-                    }`}
-                  >
+                onClick={() => setModalOpen(true)}
+                disabled={!hasActiveProviders}
+                className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${
+                hasActiveProviders ?
+                "bg-surface border-border text-text-main hover:border-primary cursor-pointer" :
+                "opacity-50 cursor-not-allowed border-border"}`
+                }>
+                
                     Select
                   </button>
                 </div>
               </div>
 
-              {message && (
-                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+              {message &&
+          <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
                   <span className="material-symbols-outlined text-[14px]">{message.type === "success" ? "check_circle" : "error"}</span>
                   <span>{message.text}</span>
                 </div>
-              )}
+          }
 
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <Button variant="primary" size="sm" onClick={handleApply} disabled={!selectedModel} loading={applying} className="w-full sm:w-auto">
@@ -358,9 +359,9 @@ api_key = "${keyToUse}"
                 </Button>
               </div>
             </>
-          )}
+        }
         </div>
-      )}
+      }
 
       <ModelSelectModal
         isOpen={modalOpen}
@@ -369,15 +370,15 @@ api_key = "${keyToUse}"
         selectedModel={selectedModel}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
-        title="Select Model for Grok Build"
-      />
+        title="Select Model for Grok Build" />
+      
 
       <ManualConfigModal
         isOpen={showManualConfigModal}
         onClose={() => setShowManualConfigModal(false)}
         title="Grok Build - Manual Configuration"
-        configs={getManualConfigs()}
-      />
-    </Card>
-  );
+        configs={getManualConfigs()} />
+      
+    </Card>);
+
 }

@@ -8,6 +8,7 @@
  */
 
 import { U, fetchWithTimeout, parseResetTime, toFiniteNumber } from "./shared.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 const USAGE = U("opencode-go");
 export const OPENCODE_GO_USAGE_URL = USAGE.url;
@@ -15,35 +16,35 @@ export const OPENCODE_GO_USAGE_URL = USAGE.url;
 const WINDOW_LABELS = {
   rolling: "Rolling",
   weekly: "Weekly",
-  monthly: "Monthly",
+  monthly: "Monthly"
 };
 
 /** Map Go's percent-used windows to the dashboard quota contract. */
 export function parseOpenCodeGoUsage(payload) {
   const windows = payload?.usage;
-  if (!windows || typeof windows !== "object" || Array.isArray(windows)) return null;
+  if (!windows || !isObject(windows) || Array.isArray(windows)) return null;
 
   const quotas = {};
   let limitReached = false;
   for (const [key, label] of Object.entries(WINDOW_LABELS)) {
     const window = windows[key];
-    if (!window || typeof window !== "object" || Array.isArray(window)) continue;
+    if (!window || !isObject(window) || Array.isArray(window)) continue;
 
     const rawPercent = toFiniteNumber(window.percent, NaN);
-    const status = typeof window.status === "string"
-      ? window.status.trim().toLowerCase().replaceAll("_", "-")
-      : "";
-    const blocked = status === "rate-limited" || (Number.isFinite(rawPercent) && rawPercent >= 100);
-    const used = Number.isFinite(rawPercent)
-      ? Math.max(0, Math.min(100, Math.round(rawPercent)))
-      : blocked ? 100 : 0;
+    const status = isString(window.status) ?
+    window.status.trim().toLowerCase().replaceAll("_", "-") :
+    "";
+    const blocked = status === "rate-limited" || Number.isFinite(rawPercent) && rawPercent >= 100;
+    const used = Number.isFinite(rawPercent) ?
+    Math.max(0, Math.min(100, Math.round(rawPercent))) :
+    blocked ? 100 : 0;
     limitReached ||= blocked;
     quotas[label] = {
       used,
       total: 100,
       remainingPercentage: 100 - used,
       resetAt: blocked || used > 0 ? parseResetTime(window.resetsAt) : null,
-      unlimited: false,
+      unlimited: false
     };
   }
 
@@ -75,7 +76,7 @@ export async function getOpenCodeGoUsage(apiKey, proxyOptions = null) {
       OPENCODE_GO_USAGE_URL,
       { headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" } },
       10000,
-      proxyOptions,
+      proxyOptions
     );
     if (response.status === 401 || response.status === 403) {
       return { message: "OpenCode Go API key invalid or expired." };

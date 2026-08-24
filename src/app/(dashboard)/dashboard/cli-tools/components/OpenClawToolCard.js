@@ -6,6 +6,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import { isBrowser } from "@/shared/utils/typeChecks.js";
 
 export default function OpenClawToolCard({
   tool,
@@ -20,7 +21,7 @@ export default function OpenClawToolCard({
   tunnelEnabled,
   tunnelPublicUrl,
   tailscaleEnabled,
-  tailscaleUrl,
+  tailscaleUrl
 }) {
   const [openclawStatus, setOpenclawStatus] = useState(initialStatus || null);
   const [checkingOpenclaw, setCheckingOpenclaw] = useState(false);
@@ -102,7 +103,7 @@ export default function OpenClawToolCard({
   const normalizeLocalhost = (url) => url.replace("://localhost", "://127.0.0.1");
 
   const getLocalBaseUrl = () => {
-    if (typeof window !== "undefined") {
+    if (isBrowser()) {
       return normalizeLocalhost(window.location.origin);
     }
     return "http://127.0.0.1:20128";
@@ -122,8 +123,8 @@ export default function OpenClawToolCard({
     setApplying(true);
     setMessage(null);
     try {
-      const keyToUse = selectedApiKey?.trim()
-        || (!cloudEnabled ? "sk_durindoor" : null);
+      const keyToUse = selectedApiKey?.trim() || (
+      !cloudEnabled ? "sk_durindoor" : null);
 
       const res = await fetch("/api/cli-tools/openclaw-settings", {
         method: "POST",
@@ -132,8 +133,8 @@ export default function OpenClawToolCard({
           baseUrl: getEffectiveBaseUrl(),
           apiKey: keyToUse,
           model: selectedModel,
-          agentModels,
-        }),
+          agentModels
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -172,7 +173,7 @@ export default function OpenClawToolCard({
 
   const handleModelSelect = (model) => {
     if (agentModalFor) {
-      setAgentModels(prev => ({ ...prev, [agentModalFor]: model.value }));
+      setAgentModels((prev) => ({ ...prev, [agentModalFor]: model.value }));
       setAgentModalFor(null);
     } else {
       setSelectedModel(model.value);
@@ -181,17 +182,17 @@ export default function OpenClawToolCard({
   };
 
   const getManualConfigs = () => {
-    const keyToUse = (selectedApiKey && selectedApiKey.trim())
-      ? selectedApiKey
-      : (!cloudEnabled ? "sk_durindoor" : "<API_KEY_FROM_DASHBOARD>");
+    const keyToUse = selectedApiKey && selectedApiKey.trim() ?
+    selectedApiKey :
+    !cloudEnabled ? "sk_durindoor" : "<API_KEY_FROM_DASHBOARD>";
 
     const settingsContent = {
       agents: {
         defaults: {
           model: {
-            primary: `9router/${selectedModel || "provider/model-id"}`,
-          },
-        },
+            primary: `9router/${selectedModel || "provider/model-id"}`
+          }
+        }
       },
       models: {
         providers: {
@@ -200,22 +201,22 @@ export default function OpenClawToolCard({
             apiKey: keyToUse,
             api: "openai-completions",
             models: [
-              {
-                id: selectedModel || "provider/model-id",
-                name: (selectedModel || "provider/model-id").split("/").pop(),
-              },
-            ],
-          },
-        },
-      },
+            {
+              id: selectedModel || "provider/model-id",
+              name: (selectedModel || "provider/model-id").split("/").pop()
+            }]
+
+          }
+        }
+      }
     };
 
     return [
-      {
-        filename: "~/.openclaw/openclaw.json",
-        content: JSON.stringify(settingsContent, null, 2),
-      },
-    ];
+    {
+      filename: "~/.openclaw/openclaw.json",
+      content: JSON.stringify(settingsContent, null, 2)
+    }];
+
   };
 
   return (
@@ -223,7 +224,7 @@ export default function OpenClawToolCard({
       <div className="flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">
-            <Image src="/providers/openclaw.png" alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
+            <Image src="/providers/openclaw.png" alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => {e.target.style.display = "none";}} />
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -238,17 +239,17 @@ export default function OpenClawToolCard({
         <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
       </div>
 
-      {isExpanded && (
-        <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
-          {checkingOpenclaw && (
-            <div className="flex items-center gap-2 text-text-muted">
+      {isExpanded &&
+      <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
+          {checkingOpenclaw &&
+        <div className="flex items-center gap-2 text-text-muted">
               <span className="material-symbols-outlined animate-spin">progress_activity</span>
               <span>Checking Open Claw CLI...</span>
             </div>
-          )}
+        }
 
-          {!checkingOpenclaw && openclawStatus && !openclawStatus.installed && (
-            <div className="flex flex-col gap-4">
+          {!checkingOpenclaw && openclawStatus && !openclawStatus.installed &&
+        <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-yellow-500">warning</span>
@@ -265,36 +266,36 @@ export default function OpenClawToolCard({
                 </div>
               </div>
             </div>
-          )}
+        }
 
-          {!checkingOpenclaw && openclawStatus?.installed && (
-            <>
+          {!checkingOpenclaw && openclawStatus?.installed &&
+        <>
               <div className="flex flex-col gap-2">
                 {/* Endpoint (selector) */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Select Endpoint</span>
                   <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                   <BaseUrlSelect
-                    value={customBaseUrl || getDisplayUrl()}
-                    onChange={setCustomBaseUrl}
-                    requiresExternalUrl={tool.requiresExternalUrl}
-                    tunnelEnabled={tunnelEnabled}
-                    tunnelPublicUrl={tunnelPublicUrl}
-                    tailscaleEnabled={tailscaleEnabled}
-                    tailscaleUrl={tailscaleUrl}
-                  />
+                value={customBaseUrl || getDisplayUrl()}
+                onChange={setCustomBaseUrl}
+                requiresExternalUrl={tool.requiresExternalUrl}
+                tunnelEnabled={tunnelEnabled}
+                tunnelPublicUrl={tunnelPublicUrl}
+                tailscaleEnabled={tailscaleEnabled}
+                tailscaleUrl={tailscaleUrl} />
+              
                 </div>
 
                 {/* Current configured */}
-                {openclawStatus?.settings?.models?.providers?.["9router"]?.baseUrl && (
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
+                {openclawStatus?.settings?.models?.providers?.["9router"]?.baseUrl &&
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                     <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">Current</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <span className="min-w-0 truncate rounded bg-surface/40 px-2 py-2 text-xs text-text-muted sm:py-1.5">
                       {openclawStatus.settings.models.providers["9router"].baseUrl}
                     </span>
                   </div>
-                )}
+            }
 
                 {/* API Key */}
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
@@ -311,35 +312,35 @@ export default function OpenClawToolCard({
                     <input type="text" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} placeholder="provider/model-id" className="w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5" />
                     {selectedModel && <button onClick={() => setSelectedModel("")} className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
                   </div>
-                  <button onClick={() => { setAgentModalFor(null); setModalOpen(true); }} disabled={!hasActiveProviders} className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select</button>
+                  <button onClick={() => {setAgentModalFor(null);setModalOpen(true);}} disabled={!hasActiveProviders} className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select</button>
                 </div>
 
                 {/* Per-agent model overrides */}
-                {(openclawStatus.agents || []).filter(a => a.agentDir).map((agent) => (
-                  <div key={agent.id} className="flex items-center gap-2 pl-4">
+                {(openclawStatus.agents || []).filter((a) => a.agentDir).map((agent) =>
+            <div key={agent.id} className="flex items-center gap-2 pl-4">
                     <span className="w-32 shrink-0 text-xs text-primary text-right truncate" title={agent.name || agent.id}>Agent {agent.name || agent.id}</span>
                     <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
                     <div className="relative w-full min-w-0">
                       <input
-                        type="text"
-                        value={agentModels[agent.id] || ""}
-                        onChange={(e) => setAgentModels(prev => ({ ...prev, [agent.id]: e.target.value }))}
-                        placeholder={`default (${selectedModel || "provider/model-id"})`}
-                        className="w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
-                      />
-                      {agentModels[agent.id] && <button onClick={() => setAgentModels(prev => ({ ...prev, [agent.id]: "" }))} className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
+                  type="text"
+                  value={agentModels[agent.id] || ""}
+                  onChange={(e) => setAgentModels((prev) => ({ ...prev, [agent.id]: e.target.value }))}
+                  placeholder={`default (${selectedModel || "provider/model-id"})`}
+                  className="w-full min-w-0 pl-2 pr-7 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5" />
+                
+                      {agentModels[agent.id] && <button onClick={() => setAgentModels((prev) => ({ ...prev, [agent.id]: "" }))} className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-red-500 rounded transition-colors" title="Clear"><span className="material-symbols-outlined text-[14px]">close</span></button>}
                     </div>
-                    <button onClick={() => { setAgentModalFor(agent.id); setModalOpen(true); }} disabled={!hasActiveProviders} className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select</button>
+                    <button onClick={() => {setAgentModalFor(agent.id);setModalOpen(true);}} disabled={!hasActiveProviders} className={`w-full sm:w-auto rounded border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Select</button>
                   </div>
-                ))}
+            )}
               </div>
 
-              {message && (
-                <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
+              {message &&
+          <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
                   <span className="material-symbols-outlined text-[14px]">{message.type === "success" ? "check_circle" : "error"}</span>
                   <span>{message.text}</span>
                 </div>
-              )}
+          }
 
               <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
                 <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
@@ -353,9 +354,9 @@ export default function OpenClawToolCard({
                 </Button>
               </div>
             </>
-          )}
+        }
         </div>
-      )}
+      }
 
       <ModelSelectModal
         isOpen={modalOpen}
@@ -364,15 +365,15 @@ export default function OpenClawToolCard({
         selectedModel={selectedModel}
         activeProviders={activeProviders}
         modelAliases={modelAliases}
-        title="Select Model for Open Claw"
-      />
+        title="Select Model for Open Claw" />
+      
 
       <ManualConfigModal
         isOpen={showManualConfigModal}
         onClose={() => setShowManualConfigModal(false)}
         title="Open Claw - Manual Configuration"
-        configs={getManualConfigs()}
-      />
-    </Card>
-  );
+        configs={getManualConfigs()} />
+      
+    </Card>);
+
 }

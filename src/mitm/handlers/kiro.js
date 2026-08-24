@@ -1,4 +1,4 @@
-const { err } = require("../logger");
+import { isString } from "@/shared/utils/typeChecks.js";const { err } = require("../logger");
 const { IS_DEV } = require("../config");
 const { fetchRouter, pipeTransformedEventStream } = require("./base");
 const fs = require("fs");
@@ -18,7 +18,7 @@ const CRC32_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
     let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ c >>> 1 : c >>> 1;
     t[n] = c;
   }
   return t;
@@ -27,7 +27,7 @@ const CRC32_TABLE = (() => {
 function crc32(buf) {
   let crc = 0xffffffff;
   for (let i = 0; i < buf.length; i++) {
-    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ buf[i]) & 0xff];
+    crc = crc >>> 8 ^ CRC32_TABLE[(crc ^ buf[i]) & 0xff];
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
@@ -37,16 +37,16 @@ function crc32(buf) {
  */
 function initKiroState(modelId) {
   return {
-    modelId: modelId || null,       // Model name from first chunk
-    toolCallInit: {},               // { [index]: { id, name } } — tracks seen tools
-    hasToolCalls: false,           // Whether this response uses tool calls
-    finishSent: false,             // Whether termination has been emitted
-    usage: null,                   // Accumulated usage from usage-only chunks
-    inThink: false,                // Whether inside a <thinking> block
-    thinkBuf: "",                  // Buffer for partial thinking content
-    initialSent: false,            // Whether initial-response frame was emitted
-   };
- }
+    modelId: modelId || null, // Model name from first chunk
+    toolCallInit: {}, // { [index]: { id, name } } — tracks seen tools
+    hasToolCalls: false, // Whether this response uses tool calls
+    finishSent: false, // Whether termination has been emitted
+    usage: null, // Accumulated usage from usage-only chunks
+    inThink: false, // Whether inside a <thinking> block
+    thinkBuf: "", // Buffer for partial thinking content
+    initialSent: false // Whether initial-response frame was emitted
+  };
+}
 
 /**
  * Extract thinking blocks from text content.
@@ -93,9 +93,9 @@ function extractThinking(text, state) {
   const rest = [before, after].filter(Boolean).join("");
 
   // Recursively process for more blocks
-  const recurse = rest
-    ? extractThinking(rest, { inThink: false, thinkBuf: "" })
-    : { thinking: null, text: null };
+  const recurse = rest ?
+  extractThinking(rest, { inThink: false, thinkBuf: "" }) :
+  { thinking: null, text: null };
 
   return {
     thinking: thinking || null,
@@ -114,9 +114,9 @@ function encodeHeader(name, value) {
   const buf = Buffer.alloc(1 + nameBuf.length + 1 + 2 + valueBuf.length);
   let o = 0;
   buf[o++] = nameBuf.length;
-  nameBuf.copy(buf, o); o += nameBuf.length;
+  nameBuf.copy(buf, o);o += nameBuf.length;
   buf[o++] = 7; // string type
-  buf.writeUInt16BE(valueBuf.length, o); o += 2;
+  buf.writeUInt16BE(valueBuf.length, o);o += 2;
   valueBuf.copy(buf, o);
   return buf;
 }
@@ -132,16 +132,16 @@ function encodeHeader(name, value) {
  */
 function buildEventStreamFrame(eventType, payload, contentType = "application/json") {
   const payloadBuf = Buffer.from(
-    typeof payload === "string" ? payload : JSON.stringify(payload),
+    isString(payload) ? payload : JSON.stringify(payload),
     "utf8"
   );
 
   // All three Smithy system headers are required
   const headersBuf = Buffer.concat([
-    encodeHeader(":message-type", "event"),
-    encodeHeader(":event-type", eventType),
-    encodeHeader(":content-type", contentType),
-  ]);
+  encodeHeader(":message-type", "event"),
+  encodeHeader(":event-type", eventType),
+  encodeHeader(":content-type", contentType)]
+  );
   const headersLen = headersBuf.length;
 
   const totalLen = 4 + 4 + 4 + headersLen + payloadBuf.length + 4;
@@ -184,9 +184,9 @@ function withInitialFrame(state, frames) {
  * this prevents the "" + object → "[object Object]" corruption.
  */
 function safeArgsString(value) {
-  if (typeof value === "string") return value;
+  if (isString(value)) return value;
   if (value == null) return "{}";
-  try { return JSON.stringify(value); } catch { return "{}"; }
+  try {return JSON.stringify(value);} catch {return "{}";}
 }
 
 /**
@@ -203,11 +203,11 @@ function convertUserInputMessage(uim) {
 
   // Emit one "tool" message per tool result (OpenAI multi-tool format)
   for (const tr of toolResults) {
-    const text = (tr.content || []).map(c => c.text || "").join("\n");
+    const text = (tr.content || []).map((c) => c.text || "").join("\n");
     out.push({
       role: "tool",
       tool_call_id: tr.toolUseId || "",
-      content: text,
+      content: text
     });
   }
 
@@ -234,14 +234,14 @@ function convertAssistantResponseMessage(arm) {
     return {
       role: "assistant",
       content: arm.content || null,
-      tool_calls: toolUses.map(tu => ({
+      tool_calls: toolUses.map((tu) => ({
         id: tu.toolUseId || `call_${Date.now()}`,
         type: "function",
         function: {
           name: tu.name || "",
-          arguments: safeArgsString(tu.input),
-        },
-      })),
+          arguments: safeArgsString(tu.input)
+        }
+      }))
     };
   }
 
@@ -299,21 +299,21 @@ function extractTools(body) {
 
   // Tools are typically on the currentMessage; may also appear on the first history item
   const fromCurrent = cs.currentMessage?.userInputMessage?.userInputMessageContext?.tools || [];
-  const fromHistory = cs.history?.find(h => h.userInputMessage?.userInputMessageContext?.tools)
-    ?.userInputMessage?.userInputMessageContext?.tools || [];
+  const fromHistory = cs.history?.find((h) => h.userInputMessage?.userInputMessageContext?.tools)?.
+  userInputMessage?.userInputMessageContext?.tools || [];
   const cwTools = fromCurrent.length > 0 ? fromCurrent : fromHistory;
 
   if (!cwTools.length) return [];
 
-  return cwTools.map(item => {
+  return cwTools.map((item) => {
     const spec = item.toolSpecification || item;
     return {
       type: "function",
       function: {
         name: spec.name || "",
         description: spec.description || `Tool: ${spec.name || "unknown"}`,
-        parameters: spec.inputSchema?.json || { type: "object", properties: {}, required: [] },
-      },
+        parameters: spec.inputSchema?.json || { type: "object", properties: {}, required: [] }
+      }
     };
   });
 }
@@ -491,7 +491,7 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
       // that don't contain model info - pass them through directly to avoid JSON.parse crash
       throw new Error(`Binary EventStream format detected (${bodyBuffer.length}B) - request should use passthrough instead of intercept`);
     }
-    
+
     const body = JSON.parse(bodyBuffer.toString());
 
     // 1 + 2: CodeWhisperer → OpenAI messages + tools
@@ -507,7 +507,7 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
       messages,
       stream: true,
       // Forward tools so Claude uses structured tool_calls instead of XML text fallback
-      ...(tools.length > 0 && { tools, tool_choice: "auto" }),
+      ...(tools.length > 0 && { tools, tool_choice: "auto" })
     };
 
     // 3: Forward to 9router
@@ -522,12 +522,12 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
     if (!res.headersSent) {
       res.writeHead(500, { "Content-Type": "application/json" });
     }
-    res.end(JSON.stringify({ 
-      error: { 
-        message: error.message, 
+    res.end(JSON.stringify({
+      error: {
+        message: error.message,
         type: "mitm_error",
         handler: "kiro"
-      } 
+      }
     }));
   }
 }

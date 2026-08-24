@@ -1,23 +1,24 @@
 import {
   getProviderConnections,
   createProviderConnection,
-  updateProviderConnection,
-} from "@/lib/localDb";
+  updateProviderConnection } from
+"@/lib/localDb";
 import {
   ALLOWED_FIRECRAWL_HOSTS,
   validateFirecrawlHeaders,
   validateFirecrawlApiKey,
   validateFirecrawlBaseUrl,
-  parseFirecrawlHeaders,
-} from "open-sse/shared/firecrawlConfig.js";
+  parseFirecrawlHeaders } from
+"open-sse/shared/firecrawlConfig.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 export {
   ALLOWED_FIRECRAWL_HOSTS,
   validateFirecrawlHeaders,
   validateFirecrawlApiKey,
   validateFirecrawlBaseUrl,
-  parseFirecrawlHeaders,
-};
+  parseFirecrawlHeaders };
+
 
 const PROBE_TIMEOUT_MS = 2000;
 
@@ -33,7 +34,7 @@ export async function probeFirecrawlEndpoint(baseUrl, { apiKey, headers } = {}) 
   const init = {
     method: "GET",
     redirect: "error",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json" }
   };
   if (apiKey) {
     init.headers.authorization = `Bearer ${apiKey}`;
@@ -66,7 +67,7 @@ export async function probeFirecrawlEndpoint(baseUrl, { apiKey, headers } = {}) 
 }
 
 function stringifyHeaders(headers) {
-  if (!headers || typeof headers !== "object" || Array.isArray(headers)) return undefined;
+  if (!headers || !isObject(headers) || Array.isArray(headers)) return undefined;
   const entries = Object.entries(headers).filter(([, v]) => v !== undefined && v !== null);
   return entries.length > 0 ? JSON.stringify(Object.fromEntries(entries)) : undefined;
 }
@@ -76,14 +77,14 @@ export async function upsertFirecrawlCustomConnection({
   apiKey,
   headers,
   isActive = true,
-  testStatus = "pending",
+  testStatus = "pending"
 }) {
   const all = await getProviderConnections({ provider: "firecrawl_custom" });
   const existing =
-    all.find((c) => c.isActive) ||
-    all.find((c) => c.name === "Firecrawl Local") ||
-    all[0] ||
-    null;
+  all.find((c) => c.isActive) ||
+  all.find((c) => c.name === "Firecrawl Local") ||
+  all[0] ||
+  null;
 
   const payload = {
     provider: "firecrawl_custom",
@@ -91,9 +92,9 @@ export async function upsertFirecrawlCustomConnection({
     name: "Firecrawl Local",
     isActive,
     testStatus,
-    apiKey: typeof apiKey === "string" && apiKey.length > 0 ? apiKey : null,
+    apiKey: isString(apiKey) && apiKey.length > 0 ? apiKey : null,
     firecrawlHeaders: stringifyHeaders(headers) || null,
-    providerSpecificData: { baseUrl },
+    providerSpecificData: { baseUrl }
   };
 
   if (existing) {

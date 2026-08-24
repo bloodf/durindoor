@@ -2,8 +2,8 @@ import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
-  resolveClientApiKey,
-} from "../services/auth.js";
+  resolveClientApiKey } from
+"../services/auth.js";
 import { getSettings, getCombos, getApiKeyByKey } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleSearchCore } from "open-sse/handlers/search/index.js";
@@ -22,7 +22,7 @@ import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../servi
  * Provider IS the model (no model field). Mirrors handleEmbeddings auth + fallback flow.
  *
  * @param {Request} request
- */
+ */import { isString } from "@/shared/utils/typeChecks.js";
 export async function handleSearch(request) {
   let body;
   try {
@@ -41,7 +41,7 @@ export async function handleSearch(request) {
 
   const settings = await getSettings();
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+    required: settings.requireApiKey === true
   });
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
@@ -57,12 +57,12 @@ export async function handleSearch(request) {
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
-  if (!providerInput || typeof providerInput !== "string") {
+  if (!providerInput || !isString(providerInput)) {
     log.warn("SEARCH", "Missing provider/model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: provider (or model)");
   }
 
-  if (!query || typeof query !== "string" || !query.trim()) {
+  if (!query || !isString(query) || !query.trim()) {
     log.warn("SEARCH", "Missing query");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: query");
   }
@@ -90,14 +90,14 @@ export async function handleSearch(request) {
   // stay against the real member list.
   const comboModels = filterPaidModels(
     getComboModelsFromData(providerInput, combos, autoOptions),
-    settings.hidePaidModels === true,
+    settings.hidePaidModels === true
   );
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[providerInput] || {};
-    const comboSpecificStrategy = isAutoComboId(providerInput)
-      ? (perCombo.strategy ?? perCombo.fallbackStrategy)
-      : perCombo.fallbackStrategy;
+    const comboSpecificStrategy = isAutoComboId(providerInput) ?
+    perCombo.strategy ?? perCombo.fallbackStrategy :
+    perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("SEARCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
@@ -170,7 +170,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       const usage = result.data?.usage || {};
       return recordApiKeyUsageForResponse(apiKey, result.response, {
         tokens: Number(usage.llm_tokens) || String(query).length / 4,
-        cost: Number(usage.search_cost_usd) || 0,
+        cost: Number(usage.search_cost_usd) || 0
       });
     }
     return result.response;
@@ -230,7 +230,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       const usage = result.data?.usage || {};
       return recordApiKeyUsageForResponse(apiKey, result.response, {
         tokens: Number(usage.llm_tokens) || String(query).length / 4,
-        cost: Number(usage.search_cost_usd) || 0,
+        cost: Number(usage.search_cost_usd) || 0
       });
     }
 
@@ -250,7 +250,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
 
 /** Normalize advertised `<alias>/search` model IDs to their provider alias. */
 export function normalizeSearchProviderInput(providerInput) {
-  if (typeof providerInput !== "string" || !providerInput.endsWith("/search")) return providerInput;
+  if (!isString(providerInput) || !providerInput.endsWith("/search")) return providerInput;
   const stripped = providerInput.slice(0, -"/search".length);
   const rawProvider = AI_PROVIDERS[resolveProviderId(providerInput)];
   const strippedProvider = AI_PROVIDERS[resolveProviderId(stripped)];

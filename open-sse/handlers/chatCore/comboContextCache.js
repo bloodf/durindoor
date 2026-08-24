@@ -1,4 +1,5 @@
 import { getSettings } from "@/lib/localDb";
+import { isObject } from "@/shared/utils/typeChecks.js";
 
 const proxyConfigCache = new Map();
 const PROXY_CONFIG_CACHE_TTL_MS = 10_000;
@@ -21,17 +22,17 @@ export async function getUpstreamProxyConfigCached(providerId) {
     cfg = null;
   }
 
-  const mode = ["native", "cliproxyapi", "fallback"].includes(cfg?.mode)
-    ? cfg.mode
-    : "native";
+  const mode = ["native", "cliproxyapi", "fallback"].includes(cfg?.mode) ?
+  cfg.mode :
+  "native";
   const result = {
     enabled: cfg?.enabled === true,
     mode,
     cliproxyapiModelMapping:
-      cfg?.cliproxyapiModelMapping && typeof cfg.cliproxyapiModelMapping === "object"
-        ? cfg.cliproxyapiModelMapping
-        : {},
-    ts: Date.now(),
+    cfg?.cliproxyapiModelMapping && isObject(cfg.cliproxyapiModelMapping) ?
+    cfg.cliproxyapiModelMapping :
+    {},
+    ts: Date.now()
   };
   proxyConfigCache.set(providerId, result);
   return result;

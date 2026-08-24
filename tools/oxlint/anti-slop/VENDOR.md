@@ -15,6 +15,5 @@ Effect rules under `effect/` are vendored for completeness but are **not**
 registered in `.oxlintrc.json` (DurinDoor does not depend on Effect).
 
 To refresh from upstream: replace this directory with a fresh copy of `src/`,
-update the SHA in this file, regenerate `tools/oxlint/anti-slop-baseline.tsv`
-via `node scripts/check-anti-slop.mjs --update-baseline`, and re-run
-`npm run lint:anti-slop`.
+update the SHA in this file, then run `npm run lint:anti-slop` and clear any
+new diagnostics before merging.

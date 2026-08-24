@@ -8,6 +8,7 @@ import { PROVIDERS } from "../../providers/index.js";
 import { FORMATS } from "../formats.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
 import { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 
 export { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
 
@@ -22,17 +23,17 @@ const FORMAT_TO_NATIVE = {
   "gemini-cli": "gemini-budget",
   vertex: "gemini-budget",
   antigravity: "gemini-budget",
-  kiro: "kiro",
+  kiro: "kiro"
 };
 
 // Extract unified thinking intent from a request body (post-translation, mixed shapes).
 // Returns { mode, budget?, level? } or null when no thinking intent present.
 export function extractThinking(body) {
-  if (!body || typeof body !== "object") return null;
+  if (!body || !isObject(body)) return null;
 
   // Claude output_config.effort (explicit) — priority over adaptive thinking
   const oc = body.output_config?.effort;
-  if (typeof oc === "string" && oc) {
+  if (isString(oc) && oc) {
     const e = oc.toLowerCase();
     if (e === "none" || e === "off") return { mode: "none" };
     if (e === "auto") return { mode: "auto" };
@@ -41,7 +42,7 @@ export function extractThinking(body) {
 
   // Claude shape
   const t = body.thinking;
-  if (t && typeof t === "object") {
+  if (t && isObject(t)) {
     if (t.type === "disabled") return { mode: "none" };
     if (t.type === "adaptive" || t.type === "enabled") {
       const budget = Number(t.budget_tokens);
@@ -51,8 +52,8 @@ export function extractThinking(body) {
   }
 
   // OpenAI chat / Responses shape
-  const effort = body.reasoning_effort ?? (typeof body.reasoning === "object" ? body.reasoning?.effort : null);
-  if (typeof effort === "string" && effort) {
+  const effort = body.reasoning_effort ?? (isObject(body.reasoning) ? body.reasoning?.effort : null);
+  if (isString(effort) && effort) {
     const e = effort.toLowerCase();
     if (e === "none" || e === "off") return { mode: "none" };
     if (e === "auto") return { mode: "auto" };
@@ -61,8 +62,8 @@ export function extractThinking(body) {
 
   // Gemini shape (top-level, generationConfig, or request envelope)
   const tc = body.thinkingConfig || body.generationConfig?.thinkingConfig || body.request?.generationConfig?.thinkingConfig;
-  if (tc && typeof tc === "object") {
-    if (typeof tc.thinkingLevel === "string") return { mode: "level", level: tc.thinkingLevel.toLowerCase() };
+  if (tc && isObject(tc)) {
+    if (isString(tc.thinkingLevel)) return { mode: "level", level: tc.thinkingLevel.toLowerCase() };
     const tb = Number(tc.thinkingBudget);
     if (Number.isFinite(tb)) {
       if (tb === 0) return { mode: "none" };
@@ -93,10 +94,10 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   // outranks the registry-level provider default (e.g. a custom model behind
   // OpenRouter that speaks claude-style thinking, not "openai").
   if (
-    resolvedCaps?.thinkingFormat
-    && resolvedCaps.customKeys instanceof Set
-    && resolvedCaps.customKeys.has("thinkingFormat")
-  ) {
+  resolvedCaps?.thinkingFormat &&
+  resolvedCaps.customKeys instanceof Set &&
+  resolvedCaps.customKeys.has("thinkingFormat"))
+  {
     return resolvedCaps.thinkingFormat;
   }
   // Dynamic OpenAI-compatible gateways speak the OpenAI wire format regardless
@@ -105,7 +106,7 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   // which strict compatible upstreams reject with HTTP 400 (port of
   // decolua/9router #2800). An explicit persisted thinkingFormat (handled above)
   // still wins for operators who know their upstream speaks a native format.
-  if (typeof provider === "string" && provider.startsWith("openai-compatible-")) {
+  if (isString(provider) && provider.startsWith("openai-compatible-")) {
     return "openai";
   }
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
@@ -117,9 +118,9 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
 // Convert unified config to a budget number (for budget-based formats).
 function toBudget(cfg, range) {
   let budget;
-  if (cfg.mode === "budget") budget = cfg.budget;
-  else if (cfg.mode === "level") budget = effortToBudget(cfg.level);
-  else if (cfg.mode === "auto") return -1;
+  if (cfg.mode === "budget") budget = cfg.budget;else
+  if (cfg.mode === "level") budget = effortToBudget(cfg.level);else
+  if (cfg.mode === "auto") return -1;
   if (!Number.isFinite(budget)) return undefined;
   if (range) {
     if (range.min != null && budget < range.min) budget = range.min;
@@ -137,7 +138,7 @@ function toLevel(cfg) {
 }
 
 function toGeminiThinkingLevel(cfg) {
-  const raw = cfg.mode === "auto" ? "high" : (toLevel(cfg) || "high");
+  const raw = cfg.mode === "auto" ? "high" : toLevel(cfg) || "high";
   return effortToThinkingLevel(raw);
 }
 
@@ -167,7 +168,7 @@ const GEMINI_LEVEL_OUTPUT_FLOOR = {
   minimal: 4096,
   low: 8192,
   medium: 16384,
-  high: 65535,
+  high: 65535
 };
 
 /**
@@ -195,13 +196,13 @@ function geminiLevelOutputFloor(level) {
  * creating whichever is missing.
  */
 function getGeminiGenerationConfig(body) {
-  if (body.request && typeof body.request === "object") {
-    if (!body.request.generationConfig || typeof body.request.generationConfig !== "object") {
+  if (body.request && isObject(body.request)) {
+    if (!body.request.generationConfig || !isObject(body.request.generationConfig)) {
       body.request.generationConfig = {};
     }
     return body.request.generationConfig;
   }
-  if (!body.generationConfig || typeof body.generationConfig !== "object") {
+  if (!body.generationConfig || !isObject(body.generationConfig)) {
     body.generationConfig = {};
   }
   return body.generationConfig;
@@ -229,7 +230,7 @@ function ensureGeminiOutputFloor(body, floor, caps) {
 // Strip every known thinking field from a body (used before re-applying / when unsupported).
 function stripAll(body) {
   const targets = [body];
-  if (body.params && typeof body.params === "object" && Array.isArray(body.params.messages)) {
+  if (body.params && isObject(body.params) && Array.isArray(body.params.messages)) {
     targets.push(body.params);
   }
   for (const target of targets) {
@@ -268,107 +269,107 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
   const eff = none && !canDisable ? { mode: "level", level: "minimal" } : cfg;
 
   switch (fmt) {
-    case "openai": {
-      if (none && canDisable) { body.reasoning_effort = "none"; break; }
-      const level = toLevel(eff);
-      // Config-driven: preserve supported effort; nearest sibling otherwise.
-      if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model);
-      break;
-    }
-    case "ollama": {
-      if (none && canDisable) { body.reasoning_effort = "none"; break; }
-      const level = toLevel(eff);
-      if (level) body.reasoning_effort = level === "xhigh" ? "max" : level;
-      break;
-    }
-    case "commandcode": {
-      const level = toLevel(eff);
-      const levels = getThinkingLevels(provider, model);
-      if (level && levels?.includes(level)) {
-        const params = body.params && typeof body.params === "object" ? body.params : body;
-        params.reasoning_effort = level;
+    case "openai":{
+        if (none && canDisable) {body.reasoning_effort = "none";break;}
+        const level = toLevel(eff);
+        // Config-driven: preserve supported effort; nearest sibling otherwise.
+        if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model);
+        break;
       }
-      break;
-    }
-    case "claude-adaptive": {
-      // disabled must NOT carry display (Anthropic rejects display on type:"disabled").
-      if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      body.output_config = { effort: toClaudeAdaptiveEffort(eff, caps, provider) };
-      // Opus 4.7/4.8/Sonnet5/Fable5/Mythos5 default thinking.display to "omitted",
-      // so explicitly request summarized to keep reasoning summary flowing to clients.
-      // Harmless on 4.6/Sonnet4.6 where "summarized" is already the default.
-      body.thinking = { type: "adaptive", display: "summarized" };
-      break;
-    }
-    case "claude-budget": {
-      if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      const budget = toBudget(eff, caps.thinkingRange);
-      body.thinking = budget === -1 ? { type: "enabled" } : { type: "enabled", budget_tokens: budget || 8192 };
-      break;
-    }
-    case "gemini-level": {
-      const level = none ? "minimal" : toGeminiThinkingLevel(eff);
-      setGeminiThinking(body, { thinkingLevel: level, includeThoughts: level !== "minimal" });
-      ensureGeminiOutputFloor(body, geminiLevelOutputFloor(level), caps);
-      break;
-    }
-    case "gemini-budget": {
-      if (none && canDisable) { setGeminiThinking(body, { thinkingBudget: 0, includeThoughts: false }); break; }
-      const budget = toBudget(eff, caps.thinkingRange);
-      setGeminiThinking(body, { thinkingBudget: budget ?? -1, includeThoughts: true });
-      ensureGeminiOutputFloor(body, geminiBudgetOutputFloor(budget ?? -1), caps);
-      break;
-    }
-    case "zai": {
-      // Z.ai ignores thinking.disabled → must use enable_thinking:false to turn off.
-      if (none && canDisable) { body.enable_thinking = false; delete body.thinking; break; }
-      body.thinking = { type: "enabled" };
-      // Z.ai GLM supports high/max reasoning_effort when thinking is enabled.
-      const level = toLevel(eff);
-      if (level) body.reasoning_effort = level === "xhigh" || level === "max" ? "max" : "high";
-      break;
-    }
-    case "qwen": {
-      if (none && canDisable) { body.enable_thinking = false; break; }
-      body.enable_thinking = true;
-      const budget = toBudget(eff, caps.thinkingRange);
-      if (Number.isFinite(budget) && budget > 0) body.thinking_budget = budget;
-      break;
-    }
-    case "deepseek": {
-      if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      body.thinking = { type: "enabled" };
-      // Native DeepSeek V4 accepts reasoning_effort "max"; legacy V3.2 models
-      // (deepseek-chat/deepseek-reasoner) only accept low/high on the wire.
-      const level = toLevel(eff);
-      const wantsMax = level === "xhigh" || level === "max";
-      body.reasoning_effort = wantsMax && isNativeDeepSeekV4(provider, model) ? "max" : "high";
-      break;
-    }
-    case "kimi": {
-      if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      const levels = getThinkingLevels(provider, model);
-      const effort = levels?.length === 1 && levels[0] === "max" ? "max" : toKimiReasoningEffort(eff);
-      if (effort) body.reasoning_effort = effort;
-      break;
-    }
-    case "minimax": {
-      // M3 adaptive; M2.x cannot disable (handled via canDisable clamp).
-      body.thinking = { type: none && canDisable ? "disabled" : "adaptive" };
-      break;
-    }
-    case "hunyuan": {
-      if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      const budget = toBudget(eff, caps.thinkingRange);
-      body.thinking = budget === -1 ? { type: "enabled" } : { type: "enabled", budget_tokens: budget || 8192 };
-      break;
-    }
-    case "step": {
-      if (none && canDisable) break;
-      const level = toLevel(eff);
-      if (level) body.reasoning_effort = level === "xhigh" || level === "max" ? "high" : level;
-      break;
-    }
+    case "ollama":{
+        if (none && canDisable) {body.reasoning_effort = "none";break;}
+        const level = toLevel(eff);
+        if (level) body.reasoning_effort = level === "xhigh" ? "max" : level;
+        break;
+      }
+    case "commandcode":{
+        const level = toLevel(eff);
+        const levels = getThinkingLevels(provider, model);
+        if (level && levels?.includes(level)) {
+          const params = body.params && isObject(body.params) ? body.params : body;
+          params.reasoning_effort = level;
+        }
+        break;
+      }
+    case "claude-adaptive":{
+        // disabled must NOT carry display (Anthropic rejects display on type:"disabled").
+        if (none && canDisable) {body.thinking = { type: "disabled" };break;}
+        body.output_config = { effort: toClaudeAdaptiveEffort(eff, caps, provider) };
+        // Opus 4.7/4.8/Sonnet5/Fable5/Mythos5 default thinking.display to "omitted",
+        // so explicitly request summarized to keep reasoning summary flowing to clients.
+        // Harmless on 4.6/Sonnet4.6 where "summarized" is already the default.
+        body.thinking = { type: "adaptive", display: "summarized" };
+        break;
+      }
+    case "claude-budget":{
+        if (none && canDisable) {body.thinking = { type: "disabled" };break;}
+        const budget = toBudget(eff, caps.thinkingRange);
+        body.thinking = budget === -1 ? { type: "enabled" } : { type: "enabled", budget_tokens: budget || 8192 };
+        break;
+      }
+    case "gemini-level":{
+        const level = none ? "minimal" : toGeminiThinkingLevel(eff);
+        setGeminiThinking(body, { thinkingLevel: level, includeThoughts: level !== "minimal" });
+        ensureGeminiOutputFloor(body, geminiLevelOutputFloor(level), caps);
+        break;
+      }
+    case "gemini-budget":{
+        if (none && canDisable) {setGeminiThinking(body, { thinkingBudget: 0, includeThoughts: false });break;}
+        const budget = toBudget(eff, caps.thinkingRange);
+        setGeminiThinking(body, { thinkingBudget: budget ?? -1, includeThoughts: true });
+        ensureGeminiOutputFloor(body, geminiBudgetOutputFloor(budget ?? -1), caps);
+        break;
+      }
+    case "zai":{
+        // Z.ai ignores thinking.disabled → must use enable_thinking:false to turn off.
+        if (none && canDisable) {body.enable_thinking = false;delete body.thinking;break;}
+        body.thinking = { type: "enabled" };
+        // Z.ai GLM supports high/max reasoning_effort when thinking is enabled.
+        const level = toLevel(eff);
+        if (level) body.reasoning_effort = level === "xhigh" || level === "max" ? "max" : "high";
+        break;
+      }
+    case "qwen":{
+        if (none && canDisable) {body.enable_thinking = false;break;}
+        body.enable_thinking = true;
+        const budget = toBudget(eff, caps.thinkingRange);
+        if (Number.isFinite(budget) && budget > 0) body.thinking_budget = budget;
+        break;
+      }
+    case "deepseek":{
+        if (none && canDisable) {body.thinking = { type: "disabled" };break;}
+        body.thinking = { type: "enabled" };
+        // Native DeepSeek V4 accepts reasoning_effort "max"; legacy V3.2 models
+        // (deepseek-chat/deepseek-reasoner) only accept low/high on the wire.
+        const level = toLevel(eff);
+        const wantsMax = level === "xhigh" || level === "max";
+        body.reasoning_effort = wantsMax && isNativeDeepSeekV4(provider, model) ? "max" : "high";
+        break;
+      }
+    case "kimi":{
+        if (none && canDisable) {body.thinking = { type: "disabled" };break;}
+        const levels = getThinkingLevels(provider, model);
+        const effort = levels?.length === 1 && levels[0] === "max" ? "max" : toKimiReasoningEffort(eff);
+        if (effort) body.reasoning_effort = effort;
+        break;
+      }
+    case "minimax":{
+        // M3 adaptive; M2.x cannot disable (handled via canDisable clamp).
+        body.thinking = { type: none && canDisable ? "disabled" : "adaptive" };
+        break;
+      }
+    case "hunyuan":{
+        if (none && canDisable) {body.thinking = { type: "disabled" };break;}
+        const budget = toBudget(eff, caps.thinkingRange);
+        body.thinking = budget === -1 ? { type: "enabled" } : { type: "enabled", budget_tokens: budget || 8192 };
+        break;
+      }
+    case "step":{
+        if (none && canDisable) break;
+        const level = toLevel(eff);
+        if (level) body.reasoning_effort = level === "xhigh" || level === "max" ? "high" : level;
+        break;
+      }
     case "kiro":
       // Kiro thinking handled via system-tag injection in openai-to-kiro.js; no body field here.
       break;
@@ -382,20 +383,20 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
 // `intent` is a pre-captured config (from captureThinking on the original body);
 // falls back to extracting from the current body when omitted.
 export function applyThinking(targetFormat, model, body, provider = null, intent = undefined, modelCapabilities = null) {
-  if (!body || typeof body !== "object") return body;
+  if (!body || !isObject(body)) return body;
 
   // ponytail: ceiling = ollama under claude transport. Lift into PROVIDERS[ollama].quirks
   // or a capability flag if a second native-claude provider lands.
   // Explicit custom thinking-related overrides (customKeys marker) must not be
   // bypassed by the native-Claude compatibility shortcut below.
   const hasExplicitThinkingOverride =
-    modelCapabilities?.customKeys instanceof Set
-    && ["reasoning", "thinkingCanDisable", "thinkingRange", "thinkingFormat"]
-      .some((k) => modelCapabilities.customKeys.has(k));
-  const preservesNativeClaudeThinking = (PROVIDERS[provider]?.quirks?.preserveNativeClaudeThinking
-    || provider === "ollama"
-    || provider === "ollama-local")
-    && !hasExplicitThinkingOverride;
+  modelCapabilities?.customKeys instanceof Set &&
+  ["reasoning", "thinkingCanDisable", "thinkingRange", "thinkingFormat"].
+  some((k) => modelCapabilities.customKeys.has(k));
+  const preservesNativeClaudeThinking = (PROVIDERS[provider]?.quirks?.preserveNativeClaudeThinking ||
+  provider === "ollama" ||
+  provider === "ollama-local") &&
+  !hasExplicitThinkingOverride;
   if (preservesNativeClaudeThinking && targetFormat === FORMATS.CLAUDE) {
     // WR-01: chatCore.js:66-68 injects `reasoning_effort` (OpenAI field) for level-mode
     // providerThinking configs. On the Claude wire it is not a valid Messages field.
@@ -445,7 +446,7 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
 // (e.g. MiniMax openai transport → reasoning_split).
 // Ported from upstream decolua/9router PR #2525 (head 72385571c6).
 export function applyTransportRequestDefaults(targetFormat, body, provider = null) {
-  if (!body || typeof body !== "object" || !provider) return body;
+  if (!body || !isObject(body) || !provider) return body;
   const config = PROVIDERS[provider];
   if (!config) return body;
 
@@ -457,7 +458,7 @@ export function applyTransportRequestDefaults(targetFormat, body, provider = nul
     defaults = config.requestDefaults ?? config.transport?.requestDefaults;
   }
 
-  if (!defaults || typeof defaults !== "object") return body;
+  if (!defaults || !isObject(defaults)) return body;
   for (const [key, value] of Object.entries(defaults)) {
     if (body[key] === undefined) body[key] = value;
   }

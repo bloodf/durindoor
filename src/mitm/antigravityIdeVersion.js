@@ -3,19 +3,19 @@
 // Rewrite Antigravity IDE markers so upstream AG 2.x backend accepts the request.
 // User-Agent header (antigravity/<old>) and body.metadata.ideVersion are forced
 // to a known-good IDE version. Hardcoded MVP — toggle/version configurable later.
-
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
 const ANTIGRAVITY_IDE_VERSION = "1.23.2";
 const ANTIGRAVITY_IDE_VERSION_OVERRIDE_ENABLED = true;
 
 function shouldRewriteMetadata(metadata) {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+  if (!metadata || !isObject(metadata) || Array.isArray(metadata)) return false;
   if (String(metadata.ideName || "").toLowerCase() === "antigravity") return true;
   if (String(metadata.ideType || "").toUpperCase() === "ANTIGRAVITY") return true;
   return Object.prototype.hasOwnProperty.call(metadata, "ideVersion");
 }
 
 function rewriteAntigravityUserAgent(userAgent, version) {
-  if (typeof userAgent !== "string" || !userAgent.includes("antigravity/")) return userAgent;
+  if (!isString(userAgent) || !userAgent.includes("antigravity/")) return userAgent;
   return userAgent.replace(/antigravity\/[^\s]+/, `antigravity/${version}`);
 }
 
@@ -46,5 +46,5 @@ function applyAntigravityIdeVersionOverride(bodyBuffer, headers) {
 module.exports = {
   ANTIGRAVITY_IDE_VERSION,
   applyAntigravityIdeVersionOverride,
-  rewriteAntigravityUserAgent,
+  rewriteAntigravityUserAgent
 };

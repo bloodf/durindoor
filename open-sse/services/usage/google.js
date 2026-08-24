@@ -7,10 +7,10 @@ import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, ANTIGRAVITY_OAUTH_
 import { U, parseResetTime, normalizeCloudCodeProjectId, fetchWithTimeout } from "./shared.js";
 
 // Antigravity API config (from Quotio) — urls from registry, oauth client + dynamic UA kept here
-const ANTIGRAVITY_CONFIG = {
+import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";const ANTIGRAVITY_CONFIG = {
   ...U("antigravity"),
   ...ANTIGRAVITY_OAUTH_CLIENT,
-  userAgent: ANTIGRAVITY_IDE_USER_AGENT,
+  userAgent: ANTIGRAVITY_IDE_USER_AGENT
 };
 
 /**
@@ -38,7 +38,7 @@ export async function getGeminiUsage(accessToken, providerSpecificData, proxyOpt
     if (!projectId) {
       return {
         plan,
-        message: "Gemini CLI project ID not available. Reconnect Gemini CLI, or configure a Google Cloud project with Gemini Code Assist access before checking quota.",
+        message: "Gemini CLI project ID not available. Reconnect Gemini CLI, or configure a Google Cloud project with Gemini Code Assist access before checking quota."
       };
     }
 
@@ -48,9 +48,9 @@ export async function getGeminiUsage(accessToken, providerSpecificData, proxyOpt
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({ project: projectId }),
+        body: JSON.stringify({ project: projectId })
       },
       10000,
       proxyOptions
@@ -77,7 +77,7 @@ export async function getGeminiUsage(accessToken, providerSpecificData, proxyOpt
           total,
           resetAt: parseResetTime(bucket.resetTime),
           remainingPercentage: remainingFraction * 100,
-          unlimited: false,
+          unlimited: false
         };
       }
     }
@@ -99,9 +99,9 @@ async function getGeminiSubscriptionInfo(accessToken, proxyOptions = null) {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({ metadata: CLIENT_METADATA }),
+        body: JSON.stringify({ metadata: CLIENT_METADATA })
       },
       10000,
       proxyOptions
@@ -147,7 +147,7 @@ const _weeklyQuotaCacheCleanupTimer = setInterval(
 _weeklyQuotaCacheCleanupTimer.unref?.();
 
 function _toWeeklyRecord(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return value && isObject(value) && !Array.isArray(value) ? value : {};
 }
 
 /**
@@ -177,9 +177,9 @@ async function fetchAntigravityUserQuotaSummaryCached(accessToken, projectId, { 
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
-            ...(headers || {}),
+            ...(headers || {})
           },
-          body: JSON.stringify({ project: projectId }),
+          body: JSON.stringify({ project: projectId })
         },
         10000,
         proxyOptions || null
@@ -203,19 +203,19 @@ const WEEKLY_KEYWORD = /\bweekly\b/;
 
 /** Turns a group displayName (e.g. "Gemini Models", "Claude and GPT models") into a quota key. */
 function slugifyGroupWeeklyKey(displayName) {
-  const cleaned = String(displayName || "")
-    .toLowerCase()
-    .replace(/\bmodels?\b/g, "")
-    .replace(/\band\b/g, " ")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  const cleaned = String(displayName || "").
+  toLowerCase().
+  replace(/\bmodels?\b/g, "").
+  replace(/\band\b/g, " ").
+  replace(/[^a-z0-9]+/g, "_").
+  replace(/^_+|_+$/g, "");
   return cleaned ? `${cleaned}_weekly` : null;
 }
 
 /** Friendly row label per weekly quota key (dashboard renders `displayName`). */
 const WEEKLY_DISPLAY_LABELS = {
   gemini_weekly: "Gemini Weekly",
-  claude_gpt_weekly: "Claude & GPT Weekly",
+  claude_gpt_weekly: "Claude & GPT Weekly"
 };
 
 /**
@@ -226,11 +226,11 @@ const WEEKLY_DISPLAY_LABELS = {
  */
 export function parseAntigravityWeeklyQuotas(summaryData) {
   const root = _toWeeklyRecord(summaryData);
-  const rawGroups = Array.isArray(root.groups)
-    ? root.groups
-    : Array.isArray(_toWeeklyRecord(root.quotaSummary).groups)
-      ? _toWeeklyRecord(root.quotaSummary).groups
-      : [];
+  const rawGroups = Array.isArray(root.groups) ?
+  root.groups :
+  Array.isArray(_toWeeklyRecord(root.quotaSummary).groups) ?
+  _toWeeklyRecord(root.quotaSummary).groups :
+  [];
 
   const quotas = {};
 
@@ -238,7 +238,7 @@ export function parseAntigravityWeeklyQuotas(summaryData) {
     const group = _toWeeklyRecord(groupValue);
     const buckets = Array.isArray(group.buckets) ? group.buckets : [];
     const weeklyBucketValue = buckets.find((b) => {
-      if (!b || typeof b !== "object") return false;
+      if (!b || !isObject(b)) return false;
       const bucket = _toWeeklyRecord(b);
       return WEEKLY_KEYWORD.test(`${String(bucket.bucketId || "")} ${String(bucket.displayName || "")}`.toLowerCase());
     });
@@ -254,8 +254,8 @@ export function parseAntigravityWeeklyQuotas(summaryData) {
     // null/"" coerce to 0 (fabricated depleted quota); objects may throw in Number().
     const rawValue = weeklyBucket.remainingFraction;
     const usable =
-      (typeof rawValue === "number" && Number.isFinite(rawValue)) ||
-      (typeof rawValue === "string" && rawValue.trim() !== "");
+    isNumber(rawValue) && Number.isFinite(rawValue) ||
+    isString(rawValue) && rawValue.trim() !== "";
     if (!usable) continue;
     const rawFraction = Number(rawValue);
     if (!Number.isFinite(rawFraction) || rawFraction < 0) continue;
@@ -272,7 +272,7 @@ export function parseAntigravityWeeklyQuotas(summaryData) {
       resetAt,
       remainingPercentage: isUnlimited ? 100 : remainingFraction * 100,
       unlimited: isUnlimited,
-      displayName: WEEKLY_DISPLAY_LABELS[key] || String(group.displayName || "").trim() || key,
+      displayName: WEEKLY_DISPLAY_LABELS[key] || String(group.displayName || "").trim() || key
     };
   }
 
@@ -280,24 +280,24 @@ export function parseAntigravityWeeklyQuotas(summaryData) {
 }
 
 export const ANTIGRAVITY_QUOTA_MODELS = [
-  'gemini-3.7-flash-high',
-  'gemini-3.7-flash-medium',
-  'gemini-3.7-flash-low',
-  'gemini-3.6-flash-high',
-  'gemini-3.6-flash-medium',
-  'gemini-3.6-flash-low',
-  'gemini-3-flash-agent',
-  'gemini-3.5-flash-low',
-  'gemini-3.5-flash-extra-low',
-  'gemini-pro-agent',
-  'gemini-3.1-pro-low',
-  'claude-sonnet-4-6',
-  'claude-opus-4-6-thinking',
-  'gpt-oss-120b-medium',
-  'gemini-3-flash',
-  'gemini-3.1-flash-image',
-  'gemini-3-pro-image',
-];
+'gemini-3.7-flash-high',
+'gemini-3.7-flash-medium',
+'gemini-3.7-flash-low',
+'gemini-3.6-flash-high',
+'gemini-3.6-flash-medium',
+'gemini-3.6-flash-low',
+'gemini-3-flash-agent',
+'gemini-3.5-flash-low',
+'gemini-3.5-flash-extra-low',
+'gemini-pro-agent',
+'gemini-3.1-pro-low',
+'claude-sonnet-4-6',
+'claude-opus-4-6-thinking',
+'gpt-oss-120b-medium',
+'gemini-3-flash',
+'gemini-3.1-flash-image',
+'gemini-3-pro-image'];
+
 
 /**
  * Antigravity Usage - Fetch quota from Google Cloud Code API
@@ -309,9 +309,9 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     // Prefer the connection-stored project id (#1271 convention) — the loadCodeAssist
     // response is only a fallback and may be partial for some accounts.
     const projectId =
-      normalizeCloudCodeProjectId(providerSpecificData?.projectId) ||
-      normalizeCloudCodeProjectId(subscriptionInfo?.cloudaicompanionProject) ||
-      null;
+    normalizeCloudCodeProjectId(providerSpecificData?.projectId) ||
+    normalizeCloudCodeProjectId(subscriptionInfo?.cloudaicompanionProject) ||
+    null;
 
     // Fetch the 5h per-model quota and the weekly summary RPC in parallel after
     // project resolution. The weekly window lives only in `retrieveUserQuotaSummary`
@@ -323,25 +323,25 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
       headers: {
         "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
         "X-Client-Name": "antigravity",
-        "X-Client-Version": ANTIGRAVITY_IDE_VERSION,
-      },
+        "X-Client-Version": ANTIGRAVITY_IDE_VERSION
+      }
     }).then(parseAntigravityWeeklyQuotas);
     const [response, weeklyQuotas] = await Promise.all([
-      fetchWithTimeout(ANTIGRAVITY_CONFIG.quotaApiUrl, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
-          "Content-Type": "application/json",
-          "X-Client-Name": "antigravity",
-          "X-Client-Version": ANTIGRAVITY_IDE_VERSION,
-        },
-        body: JSON.stringify({
-          ...(projectId ? { project: projectId } : {})
-        }),
-      }, 10000, proxyOptions),
-      weeklyPromise,
-    ]);
+    fetchWithTimeout(ANTIGRAVITY_CONFIG.quotaApiUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
+        "Content-Type": "application/json",
+        "X-Client-Name": "antigravity",
+        "X-Client-Version": ANTIGRAVITY_IDE_VERSION
+      },
+      body: JSON.stringify({
+        ...(projectId ? { project: projectId } : null)
+      })
+    }, 10000, proxyOptions),
+    weeklyPromise]
+    );
 
     if (response.status === 403) {
       return {
@@ -395,7 +395,7 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
           resetAt: parseResetTime(info.quotaInfo.resetTime),
           remainingPercentage,
           unlimited: false,
-          displayName: info.displayName || modelKey,
+          displayName: info.displayName || modelKey
         };
       }
     }
@@ -405,7 +405,7 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     return {
       plan: subscriptionInfo?.currentTier?.name || "Unknown",
       quotas,
-      subscriptionInfo,
+      subscriptionInfo
     };
   } catch (error) {
     console.error("[Antigravity Usage] Error:", error.message, error.cause);
@@ -423,9 +423,9 @@ async function getAntigravitySubscriptionInfo(accessToken, proxyOptions = null) 
       headers: {
         "Authorization": `Bearer ${accessToken}`,
         "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify({ metadata: CLIENT_METADATA, mode: 1 }),
+      body: JSON.stringify({ metadata: CLIENT_METADATA, mode: 1 })
     }, 10000, proxyOptions);
 
     if (!response.ok) return null;

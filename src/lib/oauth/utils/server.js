@@ -10,6 +10,19 @@ import {
 import { CODEX_CONFIG, OAUTH_TIMEOUT } from "../constants/oauth.js";
 
 /**
+ * Loopback origin guard for local OAuth callback listeners.
+ * Legit OAuth redirects are top-level navigations (no `Origin` header); cross-site
+ * pages issuing `fetch(..., { mode: "no-cors" })` against 127.0.0.1 always send
+ * `Origin: https://attacker`. Reject any non-loopback Origin to block login-CSRF.
+ * @param {string|undefined|null} origin
+ * @returns {boolean}
+ */
+export function isLoopbackOrigin(origin) {
+  if (origin == null) return true;
+  return /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin);
+}
+
+/**
  * Start a local HTTP server to receive OAuth callback
  * @param {Function} onCallback - Called with query params when callback received
  * @param {number} fixedPort - Optional fixed port number (default: random)
@@ -21,6 +34,12 @@ export function startLocalServer(onCallback, fixedPort = null) {
       const url = new URL(req.url, `http://localhost`);
 
       if (url.pathname === "/callback" || url.pathname === "/auth/callback") {
+        if (!isLoopbackOrigin(req.headers.origin)) {
+          res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+          res.end("Cross-origin callback rejected");
+          return;
+        }
+
         const params = Object.fromEntries(url.searchParams);
 
         // Send success response to browser with auto-close attempt
@@ -242,6 +261,12 @@ export function startCodexProxy(appPort) {
         return;
       }
 
+      if (!isLoopbackOrigin(req.headers.origin)) {
+        res.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(renderCodexResultPage(false, "Cross-origin callback rejected"));
+        return;
+      }
+
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
       const errorParam = url.searchParams.get("error");
@@ -441,6 +466,12 @@ export function startXaiProxy(appPort) {
       if (url.pathname !== "/callback" && url.pathname !== "/auth/callback") {
         res.writeHead(404);
         res.end("Not found");
+        return;
+      }
+
+      if (!isLoopbackOrigin(req.headers.origin)) {
+        res.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(renderXaiResultPage(false, "Cross-origin callback rejected"));
         return;
       }
 

@@ -58,7 +58,7 @@ describe("Kiro format RTK support", () => {
     expect(stats.bytesAfter).toBeLessThan(stats.bytesBefore);
     expect(stats.hits.length).toBe(1);
     expect(stats.hits[0].filter).toBe("build-output");
-    expect(stats.hits[0].shape).toBe("kiro-tool-result");
+    expect(stats.hits[0].layout).toBe("kiro-tool-result");
 
     // Verify compression happened
     const savedBytes = stats.bytesBefore - stats.bytesAfter;

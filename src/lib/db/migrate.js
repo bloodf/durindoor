@@ -8,12 +8,12 @@ import { makeBackupDir, backupFile, backupDbLite, pruneOldBackups } from "./back
 import { getAppVersion } from "./version.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
 import { backfillApiKeyUsageTotals } from "./helpers/apiKeyUsageTotals.js";
-import { quotaStorageNeedsAdditiveRepair, verifyPublishedSchemaShapes } from "./helpers/schemaVerifier.js";
+import { quotaStorageNeedsAdditiveRepair, verifyPublishedSchemaLayouts } from "./helpers/schemaVerifier.js";
 import { runIntegrityCheckOrThrow } from "./helpers/integrityCheck.js";
 import { canonicalizeApiKeyExpiresAt } from "../../shared/utils/apiKeyExpiry.js";
 
 // Marker file: prevents re-importing legacy JSON when user wipes data.sqlite.
-const migratedMarkerFile = () => path.join(currentDbDir(), ".migrated-from-json");
+import { isNumber, isObject } from "@/shared/utils/typeChecks.js";const migratedMarkerFile = () => path.join(currentDbDir(), ".migrated-from-json");
 
 // Track per-adapter so reusing same adapter skips re-run, but new adapter (after reset) re-runs.
 const _migratedAdapters = new WeakSet();
@@ -32,8 +32,8 @@ export class MigrationAborted extends Error {
 function importWithAssertion(adapter, tableName, rows, insertFn, rowMeta) {
   const dropped = [];
   for (const row of rows) {
-    try { insertFn(row); }
-    catch (err) { dropped.push({ ...rowMeta(row), reason: err.message }); }
+    try {insertFn(row);}
+    catch (err) {dropped.push({ ...rowMeta(row), reason: err.message });}
   }
   const inserted = adapter.get(`SELECT COUNT(*) as c FROM ${tableName}`)?.c ?? 0;
   if (inserted !== rows.length) {
@@ -44,7 +44,7 @@ function importWithAssertion(adapter, tableName, rows, insertFn, rowMeta) {
 
 function readJsonSafe(file) {
   if (!fs.existsSync(file)) return null;
-  try { return JSON.parse(fs.readFileSync(file, "utf-8")); } catch { return null; }
+  try {return JSON.parse(fs.readFileSync(file, "utf-8"));} catch {return null;}
 }
 
 function isFreshDb(adapter) {
@@ -92,10 +92,10 @@ function syncSchemaFromTables(adapter) {
       if (!existingNames.has(colName)) {
         // SQLite ADD COLUMN restrictions: no PRIMARY KEY / UNIQUE w/o NULL ok.
         // We strip PRIMARY KEY / UNIQUE since those are only valid at create time.
-        const safeDef = colDef
-          .replace(/PRIMARY KEY( AUTOINCREMENT)?/i, "")
-          .replace(/UNIQUE/i, "")
-          .trim();
+        const safeDef = colDef.
+        replace(/PRIMARY KEY( AUTOINCREMENT)?/i, "").
+        replace(/UNIQUE/i, "").
+        trim();
         try {
           adapter.exec(`ALTER TABLE ${tableName} ADD COLUMN ${colName} ${safeDef}`);
           console.log(`[DB][sync] +column ${tableName}.${colName}`);
@@ -107,14 +107,14 @@ function syncSchemaFromTables(adapter) {
 
     // Indexes (idempotent)
     for (const idx of def.indexes || []) {
-      try { adapter.exec(idx); } catch {}
+      try {adapter.exec(idx);} catch {}
     }
   }
 }
 
 // ─── Legacy JSON import (one-time) ───────────────────────────────────────
 function importLegacyMain(adapter, data) {
-  if (!data || typeof data !== "object") return;
+  if (!data || !isObject(data)) return;
 
   if (data.settings) {
     adapter.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(data.settings)]);
@@ -174,33 +174,33 @@ function importLegacyMain(adapter, data) {
 }
 
 function importLegacyUsage(adapter, data) {
-  if (!data || typeof data !== "object") return;
+  if (!data || !isObject(data)) return;
   for (const e of data.history || []) {
     const t = e.tokens || {};
     adapter.run(
       `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        e.timestamp || new Date().toISOString(),
-        e.provider || null, e.model || null, e.connectionId || null, e.apiKey || null, e.endpoint || null,
-        t.prompt_tokens || t.input_tokens || 0,
-        t.completion_tokens || t.output_tokens || 0,
-        e.cost || 0,
-        e.status || "ok",
-        stringifyJson(t),
-        stringifyJson({}),
-      ]
+      e.timestamp || new Date().toISOString(),
+      e.provider || null, e.model || null, e.connectionId || null, e.apiKey || null, e.endpoint || null,
+      t.prompt_tokens || t.input_tokens || 0,
+      t.completion_tokens || t.output_tokens || 0,
+      e.cost || 0,
+      e.status || "ok",
+      stringifyJson(t),
+      stringifyJson({})]
+
     );
   }
   for (const [dateKey, day] of Object.entries(data.dailySummary || {})) {
     adapter.run(`INSERT OR REPLACE INTO usageDaily(dateKey, data) VALUES(?, ?)`, [dateKey, stringifyJson(day)]);
   }
-  if (typeof data.totalRequestsLifetime === "number") {
+  if (isNumber(data.totalRequestsLifetime)) {
     setMetaSync(adapter, "totalRequestsLifetime", data.totalRequestsLifetime);
   }
 }
 
 function importLegacyDisabled(adapter, data) {
-  if (!data || typeof data.disabled !== "object") return;
+  if (!data || !isObject(data.disabled)) return;
   for (const [provider, ids] of Object.entries(data.disabled)) {
     adapter.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('disabledModels', ?, ?)`, [provider, stringifyJson(ids || [])]);
   }
@@ -251,16 +251,16 @@ export async function runMigrationOnce(adapter) {
   // Earlier PR145 heads could stamp v6 while the policy migration silently
   // skipped a missing totals table. Repair that exact structural state once;
   // never rebuild an existing table because it also contains non-chat usage.
-  const needsTotalsRepair = !fresh
-    && oldSchemaVersion >= 6
-    && adapter.all(`PRAGMA table_info(apiKeyUsageTotals)`).length === 0;
+  const needsTotalsRepair = !fresh &&
+  oldSchemaVersion >= 6 &&
+  adapter.all(`PRAGMA table_info(apiKeyUsageTotals)`).length === 0;
   // A previously interrupted/unreleased v7 build may have stamped the version
   // without both durable quota tables. Repair only absence; incompatible
-  // partial shapes are rejected by verifyPublishedSchemaShapes below.
+  // partial shapes are rejected by verifyPublishedSchemaLayouts below.
   const useLatestQuotaSchema = oldSchemaVersion >= 8;
-  const needsQuotaRepair = !fresh
-    && oldSchemaVersion >= 7
-    && quotaStorageNeedsAdditiveRepair(adapter, { useLatest: useLatestQuotaSchema });
+  const needsQuotaRepair = !fresh &&
+  oldSchemaVersion >= 7 &&
+  quotaStorageNeedsAdditiveRepair(adapter, { useLatest: useLatestQuotaSchema });
   // A database already stamped at the current quota schema is checked against
   // that immutable shape before backup or additive sync. Missing objects may be
   // repaired, but incompatible constraints never get mutated first.
@@ -268,20 +268,20 @@ export async function runMigrationOnce(adapter) {
   // created v8 tables on a v7 stamp. Completeness is still deferred until the
   // migration/sync pass, but incompatible objects must fail before backup,
   // version stamping, or any mutation.
-  verifyPublishedSchemaShapes(adapter, { useLatestQuotaSchema: true });
+  verifyPublishedSchemaLayouts(adapter, { useLatestQuotaSchema: true });
   let preUpgradeBackupDir = null;
   if (needsSchemaUpgrade || needsAppBackup || needsTotalsRepair || needsQuotaRepair) {
     // Strict checkpoint: adapters propagate SQL errors and reject a busy WAL.
     // Migration must stop before copying or mutating if committed pages cannot
     // be proven present in data.sqlite.
     if (adapter.checkpoint) await adapter.checkpoint();
-    const label = needsSchemaUpgrade
-      ? `schema-${oldSchemaVersion}-to-${latestVersion()}`
-      : needsTotalsRepair
-        ? `schema-${oldSchemaVersion}-totals-repair`
-        : needsQuotaRepair
-          ? `schema-${oldSchemaVersion}-quota-repair`
-        : `upgrade-${oldAppVersion}-to-${newAppVersion}`;
+    const label = needsSchemaUpgrade ?
+    `schema-${oldSchemaVersion}-to-${latestVersion()}` :
+    needsTotalsRepair ?
+    `schema-${oldSchemaVersion}-totals-repair` :
+    needsQuotaRepair ?
+    `schema-${oldSchemaVersion}-quota-repair` :
+    `upgrade-${oldAppVersion}-to-${newAppVersion}`;
     preUpgradeBackupDir = makeBackupDir(label);
     const source = currentDataFile();
     // Schema upgrades use a lightweight ATTACH backup that skips the huge
@@ -305,7 +305,7 @@ export async function runMigrationOnce(adapter) {
 
   // 2. Additive sync (auto add missing columns/indexes declared in TABLES)
   syncSchemaFromTables(adapter);
-  verifyPublishedSchemaShapes(adapter, { requireQuotaComplete: true, useLatestQuotaSchema: true });
+  verifyPublishedSchemaLayouts(adapter, { requireQuotaComplete: true, useLatestQuotaSchema: true });
   if (needsTotalsRepair) backfillApiKeyUsageTotals(adapter);
 
   // 3. One-time legacy JSON import (only if DB was fresh on entry)
@@ -333,7 +333,7 @@ export async function runMigrationOnce(adapter) {
       throw err;
     }
 
-    try { fs.writeFileSync(markerFile, new Date().toISOString()); } catch {}
+    try {fs.writeFileSync(markerFile, new Date().toISOString());} catch {}
     pruneOldBackups();
     console.log(`[DB][migrate] JSON → SQLite in ${Date.now() - t0}ms | legacy JSON kept at DATA_DIR | backup: ${backupDir}`);
     runIntegrityCheckOrThrow(adapter);
@@ -357,11 +357,11 @@ export async function runMigrationOnce(adapter) {
     console.log(`[DB][migrate] App ${oldAppVersion} → ${newAppVersion} | schema ${migInfo.from} → ${migInfo.to} | backup: ${preUpgradeBackupDir}`);
   } else if (migInfo.applied > 0 || needsTotalsRepair || needsQuotaRepair) {
     pruneOldBackups();
-    const repair = needsTotalsRepair
-      ? " | repaired API-key totals"
-      : needsQuotaRepair
-        ? " | repaired quota storage"
-        : "";
+    const repair = needsTotalsRepair ?
+    " | repaired API-key totals" :
+    needsQuotaRepair ?
+    " | repaired quota storage" :
+    "";
     console.log(`[DB][migrate] Schema ${migInfo.from} → ${migInfo.to}${repair} | backup: ${preUpgradeBackupDir}`);
   }
   runIntegrityCheckOrThrow(adapter);

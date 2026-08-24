@@ -314,12 +314,12 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
 }
 
 ProviderTopology.propTypes = {
-  providers: PropTypes.arrayOf(PropTypes.shape({
+  providers: PropTypes.arrayOf(PropTypes['shape']({
     id: PropTypes.string,
     provider: PropTypes.string,
     name: PropTypes.string,
   })),
-  activeRequests: PropTypes.arrayOf(PropTypes.shape({
+  activeRequests: PropTypes.arrayOf(PropTypes['shape']({
     provider: PropTypes.string,
     model: PropTypes.string,
     account: PropTypes.string,

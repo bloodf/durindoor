@@ -483,7 +483,7 @@ CompatibleModelsSection.propTypes = {
   onDeleteCustomModel: PropTypes.func.isRequired,
   onEditCustomModel: PropTypes.func,
   onRefresh: PropTypes.func.isRequired,
-  connections: PropTypes.arrayOf(PropTypes.shape({
+  connections: PropTypes.arrayOf(PropTypes['shape']({
     id: PropTypes.string,
     isActive: PropTypes.bool,
   })).isRequired,

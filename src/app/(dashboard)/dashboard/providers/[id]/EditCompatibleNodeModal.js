@@ -169,7 +169,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
 
 EditCompatibleNodeModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
-  node: PropTypes.shape({
+  node: PropTypes['shape']({
     id: PropTypes.string,
     name: PropTypes.string,
     prefix: PropTypes.string,

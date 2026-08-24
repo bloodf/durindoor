@@ -267,7 +267,7 @@ export default function UsageTable({
 
 UsageTable.propTypes = {
   title: PropTypes.string.isRequired,
-  columns: PropTypes.arrayOf(PropTypes.shape({
+  columns: PropTypes.arrayOf(PropTypes['shape']({
     field: PropTypes.string.isRequired,
     label: PropTypes.string.isRequired,
     align: PropTypes.string,

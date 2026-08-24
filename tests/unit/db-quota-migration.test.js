@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import m001 from "../../src/lib/db/migrations/001-initial.js";
 import m007 from "../../src/lib/db/migrations/007-provider-quota-snapshots.js";
 import { TABLES, buildCreateTableSql } from "../../src/lib/db/schema.js";
-import { canonicalizeSchemaSql, verifyQuotaStorageShapes } from "../../src/lib/db/helpers/schemaVerifier.js";
+import { canonicalizeSchemaSql, verifyQuotaStorageLayouts } from "../../src/lib/db/helpers/schemaVerifier.js";
 import { QUOTA_V7_TABLES, buildQuotaV7TableSql } from "../../src/lib/db/migrations/quota-v7-schema.js";
 
 import { latestVersion } from "../../src/lib/db/migrations/index.js";
@@ -204,14 +204,14 @@ describe("quota schema migration", () => {
     db.exec(`CREATE TABLE providerConnections (id TEXT PRIMARY KEY, provider TEXT NOT NULL)`);
     db.exec(buildCreateTableSql("providerQuotaSnapshots", TABLES.providerQuotaSnapshots)
       .replace("'available'", "'attacker_only'"));
-    expect(() => verifyQuotaStorageShapes(rawAdapter(db))).toThrow("incompatible table constraints");
+    expect(() => verifyQuotaStorageLayouts(rawAdapter(db))).toThrow("incompatible table constraints");
     db.close();
 
     const fetchDb = new Database(":memory:");
     fetchDb.pragma("foreign_keys=ON");
     fetchDb.exec(`CREATE TABLE providerConnections (id TEXT PRIMARY KEY, provider TEXT NOT NULL)`);
     fetchDb.exec(buildQuotaV7TableSql("quotaFetchStates").replace("'success'", "'attacker_only'"));
-    expect(() => verifyQuotaStorageShapes(rawAdapter(fetchDb))).toThrow("incompatible table constraints");
+    expect(() => verifyQuotaStorageLayouts(rawAdapter(fetchDb))).toThrow("incompatible table constraints");
     fetchDb.close();
   });
 
@@ -224,7 +224,7 @@ describe("quota schema migration", () => {
       db.exec(buildQuotaV7TableSql(name).replaceAll(name, quotedName));
       for (const indexSql of QUOTA_V7_TABLES[name].indexes) db.exec(indexSql.replaceAll(name, quotedName));
     }
-    expect(() => verifyQuotaStorageShapes(rawAdapter(db), { requireComplete: true })).not.toThrow();
+    expect(() => verifyQuotaStorageLayouts(rawAdapter(db), { requireComplete: true })).not.toThrow();
     db.close();
   });
 
@@ -268,7 +268,7 @@ describe("quota schema migration", () => {
     wrongColumns.exec(`CREATE TABLE providerConnections (id TEXT PRIMARY KEY, provider TEXT NOT NULL)`);
     m007.up(rawAdapter(wrongColumns));
     wrongColumns.exec(`DROP INDEX idx_pqs_stale; CREATE INDEX idx_pqs_stale ON providerQuotaSnapshots(observedAt)`);
-    expect(() => verifyQuotaStorageShapes(rawAdapter(wrongColumns), { requireComplete: true })).toThrow("incompatible index definition");
+    expect(() => verifyQuotaStorageLayouts(rawAdapter(wrongColumns), { requireComplete: true })).toThrow("incompatible index definition");
     wrongColumns.close();
 
     const extraUnique = new Database(":memory:");
@@ -276,7 +276,7 @@ describe("quota schema migration", () => {
     extraUnique.exec(`CREATE TABLE providerConnections (id TEXT PRIMARY KEY, provider TEXT NOT NULL)`);
     m007.up(rawAdapter(extraUnique));
     extraUnique.exec(`CREATE UNIQUE INDEX injected_unique_source ON quotaFetchStates(sourceId)`);
-    expect(() => verifyQuotaStorageShapes(rawAdapter(extraUnique), { requireComplete: true })).toThrow("unexpected unique index");
+    expect(() => verifyQuotaStorageLayouts(rawAdapter(extraUnique), { requireComplete: true })).toThrow("unexpected unique index");
     extraUnique.close();
   });
 
@@ -298,7 +298,7 @@ describe("quota schema migration", () => {
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
     expect(db.all(`PRAGMA index_info(idx_pqs_stale)`).map((column) => column.name)).toEqual(["staleAt"]);
-    expect(() => verifyQuotaStorageShapes(db, { requireComplete: true })).not.toThrow();
+    expect(() => verifyQuotaStorageLayouts(db, { requireComplete: true })).not.toThrow();
     expect(fs.readdirSync(path.join(dbDir, "backups"))).toHaveLength(1);
   });
 

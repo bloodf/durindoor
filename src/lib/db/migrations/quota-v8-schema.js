@@ -53,7 +53,7 @@ export const QUOTA_V8_TABLES = Object.freeze({
 export function buildQuotaV8TableSql(name) {
   const definition = QUOTA_V8_TABLES[name];
   if (!definition) throw new Error(`Unknown quota v8 table: ${name}`);
-  const columns = Object.entries(definition.columns).map(([column, shape]) => `${column} ${shape}`);
+  const columns = Object.entries(definition.columns).map(([column, layout]) => `${column} ${layout}`);
   if (definition.primaryKey) columns.push(definition.primaryKey);
   return `CREATE TABLE IF NOT EXISTS ${name} (${columns.join(", ")})`;
 }

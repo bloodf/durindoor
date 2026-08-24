@@ -33,7 +33,7 @@ export async function GET(request) {
 
     // ElevenLabs requires API key
     const raw = provider === "elevenlabs" ? await fetcher(apiKey) : await fetcher();
-    const useElevenShape = provider === "elevenlabs" || provider === "gemini";
+    const useElevenLayout = provider === "elevenlabs" || provider === "gemini";
     let voices;
 
     if (provider === "local-device") {
@@ -47,7 +47,7 @@ export async function GET(request) {
         langName:    langName(v.lang),
         gender:  v.gender,
       }));
-    } else if (useElevenShape) {
+    } else if (useElevenLayout) {
       voices = raw.map((v) => ({
         id:      v.voice_id,
         name:    v.name,

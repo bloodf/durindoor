@@ -45,6 +45,22 @@ node scripts/check-anti-slop.mjs --update-baseline
 Do not grow the baseline without an explicit review. Growing it is the same
 class of regression as adding to `tests/__baseline__/known-fails.txt`.
 
+## `no-shape-in-symbol-names`
+
+The rule bans any identifier whose name contains `"shape"` (case-insensitive).
+Prefer domain-role names such as `layout`, `payload`, or `form`.
+
+Known renames in this repo:
+
+- Schema verifiers: `verifyPublishedSchemaLayouts`,
+  `verifyApiKeyExpiryColumnLayout`, `verifyQuotaStorageLayouts`
+- RTK hit labels and SQL column DDL fragments: parameter/property `layout`
+- TTS voice mapping flag: `useElevenLayout`
+
+External APIs that literally expose `.shape` (notably `PropTypes.shape`) cannot
+be renamed. Call them with bracket access (`PropTypes['shape']`) so the banned
+substring is not an Identifier. Do not disable the rule.
+
 ## Vendoring
 
 See `tools/oxlint/anti-slop/VENDOR.md` for the upstream SHA and refresh steps.

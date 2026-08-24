@@ -329,7 +329,7 @@ AddCustomModelModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   providerAlias: PropTypes.string.isRequired,
   providerDisplayAlias: PropTypes.string.isRequired,
-  initialModel: PropTypes.shape({ id: PropTypes.string, capabilities: PropTypes.object }),
+  initialModel: PropTypes['shape']({ id: PropTypes.string, capabilities: PropTypes.object }),
   onSave: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
 };

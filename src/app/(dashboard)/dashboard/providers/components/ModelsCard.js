@@ -56,7 +56,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, deleteS
 }
 
 ModelRow.propTypes = {
-  model: PropTypes.shape({ id: PropTypes.string.isRequired }).isRequired,
+  model: PropTypes['shape']({ id: PropTypes.string.isRequired }).isRequired,
   fullModel: PropTypes.string.isRequired,
   copied: PropTypes.string,
   onCopy: PropTypes.func.isRequired,

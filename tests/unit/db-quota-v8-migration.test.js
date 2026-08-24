@@ -8,7 +8,7 @@ import { TABLES, buildCreateTableSql } from "../../src/lib/db/schema.js";
 import m007 from "../../src/lib/db/migrations/007-provider-quota-snapshots.js";
 import m008 from "../../src/lib/db/migrations/008-quota-reservations.js";
 import { QUOTA_V8_TABLES, buildQuotaV8TableSql } from "../../src/lib/db/migrations/quota-v8-schema.js";
-import { verifyQuotaStorageShapes } from "../../src/lib/db/helpers/schemaVerifier.js";
+import { verifyQuotaStorageLayouts } from "../../src/lib/db/helpers/schemaVerifier.js";
 
 let tempDir;
 const originalDataDir = process.env.DATA_DIR;
@@ -83,7 +83,7 @@ describe("quota reservation schema v8", () => {
     }
     expect(shape(migrated, "quotaReservations").foreignKeys).toContainEqual(expect.objectContaining({ table: "providerConnections", on_delete: "CASCADE" }));
     expect(shape(migrated, "quotaReservationItems").foreignKeys).toContainEqual(expect.objectContaining({ table: "quotaReservations", on_delete: "CASCADE" }));
-    expect(() => verifyQuotaStorageShapes(rawAdapter(migrated), { requireComplete: true, useLatest: true })).not.toThrow();
+    expect(() => verifyQuotaStorageLayouts(rawAdapter(migrated), { requireComplete: true, useLatest: true })).not.toThrow();
     migrated.close();
     fresh.close();
   });
@@ -185,10 +185,10 @@ describe("quota reservation schema v8", () => {
         acquiredAt, leaseExpiresAt, lastHeartbeatAt
       ) VALUES('reservation-canary', 'orphan-secret-canary', 'kiro', ?, 'active', ?, ?, ?, ?)
     `).run("a".repeat(64), "b".repeat(64), new Date().toISOString(), new Date(Date.now() + 60_000).toISOString(), new Date().toISOString());
-    expect(() => verifyQuotaStorageShapes(rawAdapter(db), { requireComplete: false, useLatest: true }))
+    expect(() => verifyQuotaStorageLayouts(rawAdapter(db), { requireComplete: false, useLatest: true }))
       .toThrowError(/orphan rows/);
     try {
-      verifyQuotaStorageShapes(rawAdapter(db), { useLatest: true });
+      verifyQuotaStorageLayouts(rawAdapter(db), { useLatest: true });
     } catch (error) {
       expect(error.message).not.toContain("orphan-secret-canary");
     }
@@ -216,7 +216,7 @@ describe("quota reservation schema v8", () => {
       new Date().toISOString(),
     );
 
-    expect(() => verifyQuotaStorageShapes(rawAdapter(db), { useLatest: true }))
+    expect(() => verifyQuotaStorageLayouts(rawAdapter(db), { useLatest: true }))
       .toThrowError("Published schema mismatch: quota reservation provider does not match its connection");
     db.close();
   });

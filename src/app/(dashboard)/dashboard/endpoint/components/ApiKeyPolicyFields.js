@@ -77,7 +77,7 @@ export default function ApiKeyPolicyFields({ draft, onChange, catalog = [], usag
 }
 
 ApiKeyPolicyFields.propTypes = {
-  draft: PropTypes.shape({ accessMode: PropTypes.string, allowedModels: PropTypes.array, maxTokens: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), maxCostUsd: PropTypes.oneOfType([PropTypes.string, PropTypes.number]) }).isRequired,
+  draft: PropTypes['shape']({ accessMode: PropTypes.string, allowedModels: PropTypes.array, maxTokens: PropTypes.oneOfType([PropTypes.string, PropTypes.number]), maxCostUsd: PropTypes.oneOfType([PropTypes.string, PropTypes.number]) }).isRequired,
   onChange: PropTypes.func.isRequired,
   catalog: PropTypes.array,
   usage: PropTypes.object,

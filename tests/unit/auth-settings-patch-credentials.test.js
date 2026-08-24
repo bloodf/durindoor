@@ -56,6 +56,13 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 vi.mock("node:crypto", () => ({ default: { randomBytes: mocks.randomBytes } }));
+vi.mock("@/lib/settings/settingsPatchAuth", async () => {
+  const actual = await vi.importActual("@/lib/settings/settingsPatchAuth");
+  return {
+    ...actual,
+    canModifySecurityCriticalSettings: vi.fn(async () => true),
+  };
+});
 
 const { PATCH } = await import("../../src/app/api/settings/route.js");
 

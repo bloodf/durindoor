@@ -3,6 +3,7 @@
 ## Security
 
 - Require an explicit `JWT_SECRET` for dashboard sessions (independent of 9router #3501 / GHSA-jphh). DurinDoor no longer auto-writes `DATA_DIR/jwt-secret`. Existing installs that already have that file keep working with a warning; set `JWT_SECRET` to the file contents (or a new secret, accepting session invalidation) to silence the warning. Fresh installs without env or file fail closed. Closes #550.
+- PATCH `/api/settings` no longer accepts mass assignment of auth-critical keys (`requireLogin`, `authMode`, OIDC fields, outbound proxy, observability toggle, and related secrets) unless the caller presents a valid dashboard session JWT or machine-bound CLI token. The `requireLogin=false` dashboard guard bypass can still reach the route but cannot persist those settings. Resolves GHSA-vmjq / CWE-915 (adapted from upstream 9router PR decolua/9router#3499). Closes #553.
 
 # 3.17.7
 

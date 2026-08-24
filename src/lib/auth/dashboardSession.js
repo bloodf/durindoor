@@ -2,11 +2,13 @@ import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import { DATA_DIR } from "@/lib/dataDir";
 import { getSettings, getSettingsSync } from "@/lib/localDb";
 
 export const DEFAULT_PASSWORD = "123456";
+
+/** Basename of the legacy on-disk JWT secret under DATA_DIR. */
+export const JWT_SECRET_FILE_BASENAME = "jwt-secret";
 
 export function validateDashboardPassword(password) {
   if (typeof password !== "string" || password.length < 6) {
@@ -79,19 +81,64 @@ export async function isUsingDefaultPassword(settings) {
   return promise;
 }
 
-function loadJwtSecret() {
-  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
-  const file = path.join(DATA_DIR, "jwt-secret");
+/**
+ * Resolve the JWT signing secret for dashboard session cookies.
+ *
+ * SECURITY (independent re-implementation of GHSA-jphh / 9router #3501):
+ * never mint a new on-disk secret. Silent auto-generation made it easy to
+ * deploy without an intentional secret and lose session integrity across hosts.
+ *
+ * Resolution order:
+ *   1. process.env.JWT_SECRET — operator-supplied, wins in all modes.
+ *   2. Existing DATA_DIR/jwt-secret — legacy file from older DurinDoor /
+ *      9router installs; reused with a warning so existing DATA_DIR installs
+ *      are not bricked. Operators should copy the value into JWT_SECRET.
+ *   3. Throw — refuse to sign or verify sessions without an explicit source.
+ *
+ * @returns {string} secret string (never logged).
+ */
+export function loadJwtSecret() {
+  const fromEnv = process.env.JWT_SECRET;
+  if (typeof fromEnv === "string" && fromEnv.length > 0) {
+    return fromEnv;
+  }
+
+  const secretPath = path.join(DATA_DIR, JWT_SECRET_FILE_BASENAME);
+  let existing = null;
   try {
-    return fs.readFileSync(file, "utf8").trim();
-  } catch {}
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const generated = crypto.randomBytes(32).toString("hex");
-  fs.writeFileSync(file, generated, { mode: 0o600 });
-  return generated;
+    existing = fs.readFileSync(secretPath, "utf8").trim();
+  } catch (err) {
+    if (err && err.code !== "ENOENT") throw err;
+  }
+  if (existing) {
+    console.warn(
+      "[auth] JWT_SECRET unset — using existing DATA_DIR/" +
+        JWT_SECRET_FILE_BASENAME +
+        ". Set JWT_SECRET explicitly in production.",
+    );
+    return existing;
+  }
+
+  throw new Error(
+    "JWT_SECRET environment variable is required. Set a strong random secret " +
+      "(e.g. openssl rand -hex 32). Legacy installs may keep an existing " +
+      "DATA_DIR/jwt-secret file; DurinDoor no longer auto-generates that file.",
+  );
 }
 
-const SECRET = new TextEncoder().encode(loadJwtSecret());
+let cachedSecretBytes = null;
+
+function getSecretBytes() {
+  if (!cachedSecretBytes) {
+    cachedSecretBytes = new TextEncoder().encode(loadJwtSecret());
+  }
+  return cachedSecretBytes;
+}
+
+/** Test-only: clear the cached encoded secret so the next call re-resolves. */
+export function __resetJwtSecretForTests() {
+  cachedSecretBytes = null;
+}
 
 export function shouldUseSecureCookie(request) {
   if (process.env.AUTH_COOKIE_SECURE === "true") return true;
@@ -118,13 +165,13 @@ export async function createDashboardAuthToken(claims = {}) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("24h")
-    .sign(SECRET);
+    .sign(getSecretBytes());
 }
 
 export async function verifyDashboardAuthToken(token) {
   if (!token) return false;
   try {
-    const { payload } = await jwtVerify(token, SECRET);
+    const { payload } = await jwtVerify(token, getSecretBytes());
     if (payload.oidc) return true;
     const settings = await getSettings();
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch;
@@ -136,7 +183,7 @@ export async function verifyDashboardAuthToken(token) {
 export async function getDashboardAuthSession(token) {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, SECRET);
+    const { payload } = await jwtVerify(token, getSecretBytes());
     if (payload.oidc) return payload;
     const settings = await getSettings();
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch ? payload : null;

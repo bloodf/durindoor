@@ -7,7 +7,7 @@ DurinDoor stores provider credentials and routes model traffic. Treat it as sens
 Before exposing DurinDoor outside localhost:
 
 1. Set a strong `INITIAL_PASSWORD`.
-2. Set stable random `JWT_SECRET` and `API_KEY_SECRET` values.
+2. Set stable random `JWT_SECRET` and `API_KEY_SECRET` values. `JWT_SECRET` is required for fresh installs (DurinDoor no longer auto-writes `DATA_DIR/jwt-secret`). Existing installs that already have that file keep working with a startup warning until you move the value into the env var.
 3. Use HTTPS.
 4. Restrict dashboard access with a VPN, firewall, reverse proxy auth, or trusted network.
 5. Create separate DurinDoor API keys for each tool or user.

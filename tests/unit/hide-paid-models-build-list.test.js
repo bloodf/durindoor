@@ -39,6 +39,7 @@ async function loadBuildModelsList() {
 
 describe("buildModelsList hidePaidModels wiring", () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
     mocks.getCustomModels.mockResolvedValue([]);
     mocks.getModelAliases.mockResolvedValue({});

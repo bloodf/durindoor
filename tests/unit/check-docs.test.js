@@ -137,14 +137,17 @@ describe("documentation integrity", () => {
   it("treats internal and package docs as non-public", async () => {
     const issues = await check({
       "README.md": `${assets}\n`,
-      "docs/superpowers/internal.md": "[x](other.md)",
-      "docs/superpowers/other.md": "# OK",
+      "open-sse/AGENT-INDEX.md": "# Agent index",
+      "tests/README.md": "# Tests",
       "cli/README.md": "# CLI",
       "AGENTS.md": "internal",
+      "CLAUDE.md": "internal",
     });
-    expect(issues).not.toContain("docs/superpowers/internal.md: public document is not reachable from README.md or docs/README.md");
+    expect(issues).not.toContain("open-sse/AGENT-INDEX.md: public document is not reachable from README.md or docs/README.md");
+    expect(issues).not.toContain("tests/README.md: public document is not reachable from README.md or docs/README.md");
     expect(issues).not.toContain("cli/README.md: public document is not reachable from README.md or docs/README.md");
     expect(issues).not.toContain("AGENTS.md: public document is not reachable from README.md or docs/README.md");
+    expect(issues).not.toContain("CLAUDE.md: public document is not reachable from README.md or docs/README.md");
   });
 
   it("flags duplicate required asset only once per file", async () => {

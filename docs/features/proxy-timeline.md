@@ -22,6 +22,7 @@ Traces live in `${currentDbDir()}/proxy-timeline.sqlite` next to the main databa
 ## Dashboard
 
 - **Timeline** (`/dashboard/timeline`) lists traces and can live-tail new events.
+- Live updates are coalesced so streamed frames do not trigger one full list reload each.
 - A trace detail page shows oldest-first hops. Consecutive `sse_chunk` events collapse as "N chunks" until expanded.
 - Provider and connection rows expose **View all**, which opens Timeline filtered to that provider or `connectionId`.
 - Usage → Details is unchanged. Timeline does not read `requestDetails`.

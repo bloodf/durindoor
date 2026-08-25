@@ -294,6 +294,15 @@ export async function getTrace(id) {
     return { ...trace, events: db.all("SELECT * FROM events WHERE trace_id=? ORDER BY seq,id", [id]).map((e) => ({ ...e, payload: e.payload ? JSON.parse(e.payload) : null })) };
   } catch { return null; }
 }
+export async function getTraceMeta(id) {
+  try {
+    const db = await getProxyTimelineAdapter();
+    return db.get(
+      "SELECT id,started_at,status,provider,model,connection_id,api_key_id,endpoint FROM traces WHERE id=?",
+      [id],
+    ) || null;
+  } catch { return null; }
+}
 export async function clearTraces() {
   flushGeneration++;
   pendingPersist = null;
@@ -310,6 +319,7 @@ export async function clearTraces() {
 }
 export async function pruneExpired() {
   try {
+    if (!enabled()) return;
     const days = Number(getSettingsSync().proxyTimelineRetentionDays); if (!Number.isFinite(days) || days <= 0) return;
     const db = await getProxyTimelineAdapter(); const cutoff = new Date(Date.now() - days * 86400000).toISOString();
     db.transaction(() => { db.run("DELETE FROM traces WHERE started_at < ?", [cutoff]); db.run("DELETE FROM events WHERE trace_id NOT IN (SELECT id FROM traces)"); });

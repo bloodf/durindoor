@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge, Card, CardSkeleton, Toggle } from "@/shared/components";
 import Pagination from "@/shared/components/Pagination";
+import { createLiveReloadScheduler } from "./href.js";
 
 const FILTER_KEYS = ["provider", "model", "connectionId", "apiKeyId", "status", "endpoint", "startDate", "endDate"];
 
@@ -59,15 +60,19 @@ function TimelineList() {
       setError(err?.message || "Failed to load timeline");
     }
   }, [query]);
+  const liveReload = useMemo(() => createLiveReloadScheduler(load), [load]);
 
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (!live) return undefined;
     const source = new EventSource(`/api/timeline/stream?${query.toString()}`);
-    source.onmessage = () => { load(); };
-    return () => source.close();
-  }, [live, query, load]);
+    source.onmessage = liveReload.schedule;
+    return () => {
+      liveReload.cancel();
+      source.close();
+    };
+  }, [live, query, liveReload]);
 
   const pagination = data.pagination || { page: 1, pageSize: 20, totalItems: 0, totalPages: 1 };
   const setPage = (page) => {

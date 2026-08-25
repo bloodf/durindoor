@@ -1,4 +1,4 @@
-import { getTrace, onTimelineWrite } from "@/lib/db/repos/proxyTimelineRepo.js";
+import { getTraceMeta, onTimelineWrite } from "@/lib/db/repos/proxyTimelineRepo.js";
 
 export const dynamic = "force-dynamic";
 /** Drop oldest live writes above this so a stalled lookup cannot grow forever. */
@@ -65,7 +65,7 @@ export async function GET(request) {
           while (!state.closed && state.queued.length) {
             const item = state.queued.shift();
             const id = item.id || item.traceId;
-            const trace = id ? await getTrace(id) : null;
+            const trace = id ? await getTraceMeta(id) : null;
             if (state.closed || !matchesFilters(trace, filters)) continue;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(item)}\n\n`));
           }

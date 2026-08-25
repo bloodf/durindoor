@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   listTraces: vi.fn(),
   getTrace: vi.fn(),
+  getTraceMeta: vi.fn(),
   clearTraces: vi.fn(),
   onTimelineWrite: vi.fn(() => () => {}),
 }));
@@ -26,6 +27,7 @@ describe("timeline HTTP API", () => {
     vi.clearAllMocks();
     mocks.listTraces.mockResolvedValue({ traces: [], pagination: { page: 1, pageSize: 20 } });
     mocks.getTrace.mockResolvedValue(null);
+    mocks.getTraceMeta.mockResolvedValue(null);
     mocks.clearTraces.mockResolvedValue(undefined);
     mocks.onTimelineWrite.mockReturnValue(() => {});
   });
@@ -113,13 +115,13 @@ describe("timeline HTTP API", () => {
       listener = fn;
       return unsubscribe;
     });
-    mocks.getTrace.mockResolvedValue({ id: "t-other", provider: "anthropic", started_at: "2026-08-22T00:00:00.000Z" });
+    mocks.getTraceMeta.mockResolvedValue({ id: "t-other", provider: "anthropic", started_at: "2026-08-22T00:00:00.000Z" });
     const res = await streamRoute.GET(request("/api/timeline/stream", { provider: "openai" }));
     const reader = res.body.getReader();
     listener({ type: "trace", id: "t-other" });
     await Promise.resolve();
     await Promise.resolve();
-    expect(mocks.getTrace).toHaveBeenCalledWith("t-other");
+    expect(mocks.getTraceMeta).toHaveBeenCalledWith("t-other");
     await reader.cancel();
     expect(unsubscribe).toHaveBeenCalled();
   });
@@ -130,7 +132,7 @@ describe("timeline HTTP API", () => {
       listener = fn;
       return () => {};
     });
-    mocks.getTrace.mockResolvedValue({ id: "t-ok", provider: "openai", started_at: "2026-08-22T00:00:00.000Z" });
+    mocks.getTraceMeta.mockResolvedValue({ id: "t-ok", provider: "openai", started_at: "2026-08-22T00:00:00.000Z" });
     const res = await streamRoute.GET(request("/api/timeline/stream", { provider: "openai" }));
     const reader = res.body.getReader();
     listener({ type: "trace", id: "t-ok" });
@@ -147,7 +149,7 @@ describe("timeline HTTP API", () => {
       listener = fn;
       return () => {};
     });
-    mocks.getTrace.mockImplementation(async (id) => {
+    mocks.getTraceMeta.mockImplementation(async (id) => {
       calls += 1;
       if (calls === 1) await firstLookup;
       return { id, provider: "openai", started_at: "2026-08-22T00:00:00.000Z" };

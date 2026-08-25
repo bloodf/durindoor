@@ -1,5 +1,14 @@
 # Unreleased
 
+## Added
+
+- Proxy Timeline page (`/dashboard/timeline`) with live tail, hop/SSE history, and provider/connection View all.
+- Settings: `enableProxyTimeline` (default off) and `proxyTimelineRetentionDays` (1/3/7). Sidecar `proxy-timeline.sqlite` is not in backups; secrets stay `[redacted]`.
+
+## Fixed
+
+- Observability settings now use the canonical `enableObservability` key. Stored `enableObservability2` migrates once and is dropped.
+
 ## Security
 
 - Management dashboard APIs (`/api/providers`, `/api/usage`, `/api/keys`, `/api/settings`, and related prefixes) no longer accept the global `requireLogin=false` guard bypass for remote callers. Unauthenticated remote clients receive `401`; loopback open-dashboard usage, dashboard JWT sessions, and machine-bound CLI tokens continue to work. Closes #555.

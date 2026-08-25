@@ -17,6 +17,9 @@ export function currentDbDir() {
 export function currentDataFile() {
   return path.join(currentDbDir(), "data.sqlite");
 }
+export function currentProxyTimelineFile() {
+  return path.join(currentDbDir(), "proxy-timeline.sqlite");
+}
 export function currentBackupsDir() {
   return path.join(currentDbDir(), "backups");
 }
@@ -53,10 +56,11 @@ export function hardenPermissions() {
   for (const dir of [currentDataDir(), currentDbDir(), currentBackupsDir()]) {
     if (fs.existsSync(dir)) chmodQuiet(dir, SECRET_DIR_MODE);
   }
-  const dataFile = currentDataFile();
-  for (const suffix of ["", "-wal", "-shm"]) {
-    const file = `${dataFile}${suffix}`;
-    if (fs.existsSync(file)) chmodQuiet(file, SECRET_FILE_MODE);
+  for (const base of [currentDataFile(), currentProxyTimelineFile()]) {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const file = `${base}${suffix}`;
+      if (fs.existsSync(file)) chmodQuiet(file, SECRET_FILE_MODE);
+    }
   }
 }
 export const LEGACY_FILES = {

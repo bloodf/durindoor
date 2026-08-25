@@ -106,15 +106,16 @@ export async function createSqlJsAdapter(filePath) {
     db.close();
   }
 
-  // Flush on shutdown
-  const flush = () => { if (dirty) try { persist(); } catch {} };
-  process.on("beforeExit", flush);
-  process.on("SIGINT", flush);
-  process.on("SIGTERM", flush);
+  // Public flush() throws so callers can retry persist without replaying a committed txn.
+  function flush() { if (dirty) persist(); }
+  const flushQuiet = () => { try { flush(); } catch {} };
+  process.on("beforeExit", flushQuiet);
+  process.on("SIGINT", flushQuiet);
+  process.on("SIGTERM", flushQuiet);
 
   return {
     driver: "sql.js",
     capabilities: Object.freeze({ sharedFileTransactions: false }),
-    run, get, all, exec, transaction, close, raw: db,
+    run, get, all, exec, transaction, close, flush, raw: db,
   };
 }

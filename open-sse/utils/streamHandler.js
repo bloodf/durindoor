@@ -114,12 +114,25 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
  * activity), not here — output of the transform stream may be silent
  * for long periods while raw bytes still flow (e.g. Kiro EventStream
  * binary frames buffering, Claude reasoning streams).
+ *
+ * onClientBytes/onClientEnd/onClientAbort are an optional timeline tap on the
+ * exact bytes reaching the client (regular passthrough plus any synthesized
+ * terminal/recovery bytes). They are best-effort: a throwing tap must never
+ * drop client bytes or otherwise perturb the stream.
  */
-export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null) {
+export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null) {
   const reader = transformStream.readable.getReader();
-  const writer = transformStream.writable.getWriter();
   let terminalEmitted = false;
   const decoder = terminalTracker ? new TextDecoder() : null;
+
+  // Forward raw client bytes to the timeline tap (if any), fail-open, then
+  // enqueue unconditionally — a broken tap must never drop client bytes.
+  const forward = (controller, bytes) => {
+    try { onClientBytes?.(bytes); } catch { /* fail-open */ }
+    controller.enqueue(bytes);
+  };
+  const end = () => { try { onClientEnd?.(); } catch { /* fail-open */ } };
+  const abort = () => { try { onClientAbort?.(); } catch { /* fail-open */ } };
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
   const emitTerminal = (controller) => {
@@ -127,15 +140,15 @@ export function createDisconnectAwareStream(transformStream, streamController, o
     terminalEmitted = true;
     try {
       const bytes = onAbortTerminal();
-      if (bytes) controller.enqueue(bytes);
-    } catch {/* best-effort terminal */}
+      if (bytes) forward(controller, bytes);
+    } catch { /* best-effort terminal */ }
   };
   const emitClientRecovery = (controller) => {
     if (terminalEmitted || !terminalTracker) return false;
     const bytes = terminalTracker.buildRecoveryBytes();
     if (!bytes) return false;
     terminalEmitted = true;
-    controller.enqueue(bytes);
+    forward(controller, bytes);
     return true;
   };
 
@@ -143,6 +156,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
     async pull(controller) {
       if (!streamController.isConnected()) {
         emitTerminal(controller);
+        abort();
         controller.close();
         return;
       }
@@ -155,14 +169,16 @@ export function createDisconnectAwareStream(transformStream, streamController, o
           if (trailingFrame) terminalTracker.observeClientFrame(trailingFrame);
           if (emitClientRecovery(controller)) {
             streamController.handleError(new Error("upstream stream ended before client terminal"));
+            abort();
           } else {
             streamController.handleComplete();
+            end();
           }
           controller.close();
           return;
         }
         terminalTracker?.observeClientFrame(decoder.decode(value, { stream: true }));
-        controller.enqueue(value);
+        forward(controller, value);
       } catch (error) {
         const wasConnected = streamController.isConnected();
         // Controller already closed = downstream ended; not an upstream error, skip noisy log.
@@ -170,7 +186,6 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         const isControllerClosed = msg0.includes("already closed") || msg0.includes("Invalid state");
         if (!isControllerClosed) streamController.handleError(error);
         reader.cancel().catch(() => {});
-        writer.abort().catch(() => {});
 
         const msg = error?.message || "";
         const code = error?.code || error?.cause?.code || "";
@@ -198,10 +213,12 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         // client formats synthesize their EOF recovery through terminalTracker.
         try {
           if (!wasConnected || isNetworkClose || onAbortTerminal) {
-            if (terminalTracker) emitClientRecovery(controller);else
-            emitTerminal(controller);
+            if (terminalTracker) emitClientRecovery(controller);
+            else emitTerminal(controller);
+            abort();
             controller.close();
           } else {
+            abort();
             controller.error(error);
           }
         } catch (e) {/* already closed or cancelled */}
@@ -210,8 +227,8 @@ export function createDisconnectAwareStream(transformStream, streamController, o
 
     cancel(reason) {
       streamController.handleDisconnect(reason || "cancelled");
+      abort();
       reader.cancel();
-      writer.abort();
     }
   });
 }
@@ -232,7 +249,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null) {
   let stallTimer = null;
   let chunkCount = 0;
   let totalBytes = 0;
@@ -292,9 +309,12 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
   pipeThrough(transformStream);
 
   return createDisconnectAwareStream(
-    { readable: transformedBody, writable: { getWriter: () => ({ abort: () => Promise.resolve() }) } },
+    { readable: transformedBody },
     wrappedController,
     onAbortTerminal,
-    terminalTracker
+    terminalTracker,
+    onClientBytes,
+    onClientEnd,
+    onClientAbort,
   );
 }

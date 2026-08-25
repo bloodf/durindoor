@@ -10,6 +10,7 @@ import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLin
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
 import { createErrorResult, readBoundedResponseText, sanitizeErrorMessage } from "../../utils/error.js";
+import { attachClientFrameTap, finishTrace } from "./proxyTimeline.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
@@ -65,7 +66,7 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null }) {
+export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null }) {
   if (!providerResponse?.body) {
     const error = new Error("Upstream returned an empty streaming body");
     streamController?.handleError?.(error);
@@ -128,7 +129,21 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   const onAbortTerminal = isResponsesPassthrough ? buildAbortedResponsesTerminalBytes : null;
   const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
   const terminalTracker = createTerminalTracker(emittedFormat);
-  const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker);
+  const clientTap = emittedFormat && traceId
+    ? attachClientFrameTap(traceId, emittedFormat === FORMATS.OLLAMA ? "ndjson" : "sse-lines")
+    : null;
+  const onClientEnd = () => {
+    clientTap?.onClientEnd();
+    if (traceId) { try { finishTrace(traceId, { status: "ok" }); } catch {} }
+  };
+  const onClientAbort = () => {
+    clientTap?.onClientAbort();
+    if (traceId) { try { finishTrace(traceId, { status: "aborted" }); } catch {} }
+  };
+  const transformedBody = pipeWithDisconnect(
+    providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker,
+    clientTap?.onClientBytes || null, onClientEnd, onClientAbort,
+  );
 
   saveRequestDetail(buildRequestDetail({
     provider, model, connectionId,

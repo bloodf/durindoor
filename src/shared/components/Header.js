@@ -89,6 +89,25 @@ const getPageInfo = (pathname) => {
       icon: "bar_chart",
       breadcrumbs: [],
     };
+  const timelineDetailMatch = pathname.match(/\/timeline\/([^/]+)$/);
+  if (timelineDetailMatch) {
+    return {
+      title: timelineDetailMatch[1],
+      description: "",
+      icon: "timeline",
+      breadcrumbs: [
+        { label: "Timeline", href: "/dashboard/timeline" },
+        { label: timelineDetailMatch[1] },
+      ],
+    };
+  }
+  if (pathname.includes("/timeline"))
+    return {
+      title: translate("Timeline"),
+      description: translate("Live redacted proxy hops and client frames"),
+      icon: "timeline",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/auth-files"))
     return {
       title: translate("Auth Files"),

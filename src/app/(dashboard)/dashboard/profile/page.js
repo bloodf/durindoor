@@ -552,6 +552,33 @@ export default function ProfilePage() {
     }
   };
 
+  const updateProxyTimelineEnabled = async (enabled) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enableProxyTimeline: enabled }),
+      });
+      if (res.ok) setSettings((prev) => ({ ...prev, enableProxyTimeline: enabled }));
+    } catch (err) {
+      console.error("Failed to update enableProxyTimeline:", err);
+    }
+  };
+
+  const updateProxyTimelineRetention = async (value) => {
+    const days = Number(value);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyTimelineRetentionDays: days }),
+      });
+      if (res.ok) setSettings((prev) => ({ ...prev, proxyTimelineRetentionDays: days }));
+    } catch (err) {
+      console.error("Failed to update proxyTimelineRetentionDays:", err);
+    }
+  };
+
   const reloadSettings = async () => {
     try {
       const res = await fetch("/api/settings");
@@ -643,6 +670,10 @@ export default function ProfilePage() {
   };
 
   const observabilityEnabled = settings.enableObservability === true;
+  const proxyTimelineEnabled = settings.enableProxyTimeline === true;
+  const proxyTimelineRetentionDays = [1, 3, 7].includes(settings.proxyTimelineRetentionDays)
+    ? settings.proxyTimelineRetentionDays
+    : 1;
 
   const handleShutdown = async () => {
     setIsShuttingDown(true);
@@ -1271,6 +1302,37 @@ export default function ProfilePage() {
               onChange={updateObservabilityEnabled}
               disabled={loading} />
             
+          </div>
+          <div className="flex items-start sm:items-center justify-between gap-4 pt-4 border-t border-border/50">
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm sm:text-base">Proxy timeline</p>
+              <p className="text-xs sm:text-sm text-text-muted">
+                Capture redacted hops in a sidecar db/proxy-timeline.sqlite. Not in backups. Secrets stay redacted.
+              </p>
+            </div>
+            <Toggle
+              checked={proxyTimelineEnabled}
+              onChange={updateProxyTimelineEnabled}
+              disabled={loading}
+              ariaLabel="Proxy timeline"
+            />
+          </div>
+          <div className="flex items-start sm:items-center justify-between gap-4 pt-4">
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm sm:text-base">Timeline retention</p>
+              <p className="text-xs sm:text-sm text-text-muted">Days to keep sidecar traces</p>
+            </div>
+            <select
+              aria-label="Timeline retention"
+              className="rounded-md border border-border bg-bg px-2 py-1 text-sm disabled:opacity-50"
+              value={proxyTimelineRetentionDays}
+              disabled={loading || !proxyTimelineEnabled}
+              onChange={(e) => updateProxyTimelineRetention(e.target.value)}
+            >
+              <option value={1}>1 day</option>
+              <option value={3}>3 days</option>
+              <option value={7}>7 days</option>
+            </select>
           </div>
         </Card>
 

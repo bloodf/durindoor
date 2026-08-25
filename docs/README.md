@@ -52,6 +52,7 @@ For operators running DurinDoor in production or on a team server.
 - [Data Management and Backup](operations/data-management.md)
 - [Security and Production Hardening](operations/security.md)
 - [Usage and Quota Tracking](features/quota-tracking.md)
+- [Proxy Timeline](features/proxy-timeline.md)
 - [MCP Gateway](features/mcp-gateway.md)
 - [Realtime Behavior](features/realtime.md)
 - [Compression](features/compression.md)
@@ -70,6 +71,8 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream Sync Watch](UPSTREAM_SYNC.md)
 - [tests/README.md](../tests/README.md)
 - [DurinDoor omp Extension](../omp-extension/README.md)
+- [Proxy Timeline Design](superpowers/specs/2026-08-22-proxy-timeline-design.md)
+- [Proxy Timeline Implementation Plan](superpowers/plans/2026-08-22-proxy-timeline.md)
 
 ## API & Reference
 

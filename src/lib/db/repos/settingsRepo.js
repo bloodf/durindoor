@@ -1,6 +1,6 @@
 import { getAdapter, getAdapterSync } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { isString } from "../../../shared/utils/typeChecks.js";
+import { isBoolean, isString } from "../../../shared/utils/typeChecks.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
@@ -45,6 +45,8 @@ const DEFAULT_SETTINGS = {
   oidcLoginLabel: "Sign in with OIDC",
   passwordSessionEpoch: "initial",
   enableObservability: true,
+  enableProxyTimeline: false,
+  proxyTimelineRetentionDays: 1,
   observabilityMaxRecords: 1000,
   observabilityBatchSize: 20,
   observabilityFlushIntervalMs: 5000,
@@ -98,16 +100,44 @@ const DEFAULT_SETTINGS = {
   debugMode: false
 };
 
+function migrateObservabilityKeys(raw) {
+  const next = { ...(raw || {}) };
+  const hasCanonical = Object.prototype.hasOwnProperty.call(next, "enableObservability");
+  const hasLegacy = Object.prototype.hasOwnProperty.call(next, "enableObservability2");
+  if (!hasCanonical && hasLegacy && isBoolean(next.enableObservability2)) {
+    next.enableObservability = next.enableObservability2;
+  }
+  delete next.enableObservability2;
+  return next;
+}
+
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
-  return row ? parseJson(row.data, {}) : {};
+  const parsed = row ? parseJson(row.data, {}) : {};
+  const migrated = migrateObservabilityKeys(parsed);
+  if (Object.prototype.hasOwnProperty.call(parsed, "enableObservability2")) {
+    db.run(
+      `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+      [stringifyJson(migrated)]
+    );
+  }
+  return migrated;
 }
+
 
 function readRawSync() {
   const db = getAdapterSync();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
-  return row ? parseJson(row.data, {}) : {};
+  const parsed = row ? parseJson(row.data, {}) : {};
+  const migrated = migrateObservabilityKeys(parsed);
+  if (Object.prototype.hasOwnProperty.call(parsed, "enableObservability2")) {
+    db.run(
+      `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+      [stringifyJson(migrated)]
+    );
+  }
+  return migrated;
 }
 
 export function getSettingsSync() {
@@ -143,12 +173,13 @@ export async function getSettings() {
 
 // Atomic read-merge-write inside transaction (prevents losing concurrent updates)
 export async function updateSettings(updates) {
+  const { enableObservability2: _legacyObservability, ...sanitizedUpdates } = updates;
   const db = await getAdapter();
   let next;
   db.transaction(() => {
     const row = db.get(`SELECT data FROM settings WHERE id = 1`);
-    const current = row ? parseJson(row.data, {}) : {};
-    next = { ...current, ...updates };
+    const current = migrateObservabilityKeys(row ? parseJson(row.data, {}) : {});
+    next = migrateObservabilityKeys({ ...current, ...sanitizedUpdates });
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
       [stringifyJson(next)]
@@ -168,18 +199,19 @@ export class PasswordEpochMismatchError extends Error {
 // `expectedEpoch`, the merge is aborted and the caller must retry instead
 // of clobbering a concurrent rotation.
 export async function updateSettingsWithPasswordEpoch(updates, expectedEpoch) {
+  const { enableObservability2: _legacyObservability, ...sanitizedUpdates } = updates;
   const db = await getAdapter();
   let next;
   let matched = false;
   db.transaction(() => {
     const row = db.get(`SELECT data FROM settings WHERE id = 1`);
-    const current = row ? parseJson(row.data, {}) : {};
+    const current = migrateObservabilityKeys(row ? parseJson(row.data, {}) : {});
     if ((current.passwordSessionEpoch ?? "initial") !== expectedEpoch) {
       matched = false;
       return;
     }
     matched = true;
-    next = { ...current, ...updates };
+    next = migrateObservabilityKeys({ ...current, ...sanitizedUpdates });
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
       [stringifyJson(next)]

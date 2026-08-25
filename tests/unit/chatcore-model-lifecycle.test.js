@@ -4,6 +4,9 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   handleNonStreamingResponse: vi.fn(),
+  startTrace: vi.fn(() => "trace-lifecycle"),
+  record: vi.fn(),
+  finishTrace: vi.fn(),
   createRequestLogger: vi.fn(async () => ({
     logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(),
     logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn(),
@@ -36,6 +39,12 @@ vi.mock("../../open-sse/utils/streamHandler.js", () => ({
 }));
 vi.mock("../../open-sse/handlers/chatCore/streamingHandler.js", () => ({ buildOnStreamComplete: vi.fn(() => vi.fn()), handleStreamingResponse: vi.fn() }));
 vi.mock("../../open-sse/handlers/chatCore/nonStreamingHandler.js", () => ({ handleNonStreamingResponse: mocks.handleNonStreamingResponse }));
+vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({
+  startTrace: mocks.startTrace,
+  record: mocks.record,
+  finishTrace: mocks.finishTrace,
+  attachClientFrameTap: vi.fn(),
+}));
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(),
   finishActiveSession: vi.fn(),
@@ -67,6 +76,15 @@ describe("chatCore model lifecycle", () => {
     expect(mocks.createRequestLogger).not.toHaveBeenCalled();
     expect(result).toMatchObject({ success: false, status: 410 });
     await expect(result.response.json()).resolves.toMatchObject({ error: { type: "invalid_request_error", code: "model_shutdown", message: expect.stringMatching(/gpt-5.2-codex/) } });
+    expect(mocks.startTrace).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "openai",
+      model: "gpt-5.2-codex",
+      api_key_id: null,
+      client_format: FORMATS.OPENAI,
+    }));
+    expect(mocks.record).toHaveBeenCalledWith("trace-lifecycle", expect.objectContaining({ type: "route" }));
+    expect(mocks.record).toHaveBeenCalledWith("trace-lifecycle", expect.objectContaining({ type: "error", summary: "model lifecycle rejected" }));
+    expect(mocks.finishTrace).toHaveBeenCalledWith("trace-lifecycle", { status: "error" });
   });
 
   it("rejects retired NVIDIA passthrough models before executor dispatch", async () => {

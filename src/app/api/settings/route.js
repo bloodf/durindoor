@@ -213,6 +213,17 @@ export async function PATCH(request) {
       }
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, "enableProxyTimeline")
+        && !isBoolean(body.enableProxyTimeline)) {
+      return NextResponse.json({ error: "Invalid enableProxyTimeline" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "proxyTimelineRetentionDays")) {
+      const v = body.proxyTimelineRetentionDays;
+      if (!Number.isInteger(v) || ![1, 3, 7].includes(v)) {
+        return NextResponse.json({ error: "Invalid proxyTimelineRetentionDays" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
+
     const willChangePassword = body.password !== undefined;
     let settings;
     try {

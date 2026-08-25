@@ -20,6 +20,7 @@ This guide shows how to use DurinDoor after it is installed and running.
 | Providers | Add OAuth, API key, cookie, and provider-node credentials. |
 | Combos | Create fallback chains exposed as one model name. |
 | Usage | Inspect tokens, costs, request history, and provider topology. |
+| Timeline | Live tail and hop/SSE history for proxy calls. |
 | Quota | View provider limits, cooldowns, and reset hints. |
 | CLI Tools | Copy integration settings for supported coding tools. |
 | Media Providers | Configure embeddings, image, TTS, STT, search, and fetch providers. |

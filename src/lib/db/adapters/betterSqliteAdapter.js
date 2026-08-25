@@ -55,6 +55,9 @@ export function createBetterSqliteAdapter(filePath) {
     checkpoint() {
       return assertCheckpointComplete(db.pragma("wal_checkpoint(TRUNCATE)"), "better-sqlite3");
     },
+    flush() {
+      return assertCheckpointComplete(db.pragma("wal_checkpoint(TRUNCATE)"), "better-sqlite3");
+    },
     close() {
       clearInterval(checkpointTimer);
       process.removeListener("beforeExit", gracefulClose);

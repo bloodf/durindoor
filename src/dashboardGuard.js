@@ -71,6 +71,7 @@ const MANAGEMENT_API_PATHS = [
   "/api/combos",
   "/api/models",
   "/api/usage",
+  "/api/timeline",
   "/api/oauth",
   "/api/cloud",
   "/api/media-providers",

@@ -1,6 +1,7 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { isBoolean, isObject } from "../../../shared/utils/typeChecks.js";
+import { isObject } from "../../../shared/utils/typeChecks.js";
+import { redactHeaders } from "../../observability/redact.js";
 
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;
@@ -20,9 +21,7 @@ async function getObservabilityConfig() {
     const { getSettings } = await import("./settingsRepo.js");
     const settings = await getSettings();
     const envEnabled = process.env.OBSERVABILITY_ENABLED !== "false";
-    const enabled = isBoolean(settings.enableObservability2) ?
-    settings.enableObservability2 :
-    envEnabled;
+    const enabled = settings.enableObservability !== false && envEnabled;
     cachedConfig = {
       enabled,
       maxRecords: settings.observabilityMaxRecords || parseInt(process.env.OBSERVABILITY_MAX_RECORDS || String(DEFAULT_MAX_RECORDS), 10),
@@ -48,13 +47,7 @@ let flushTimer = null;
 let isFlushing = false;
 
 function sanitizeHeaders(headers) {
-  if (!headers || !isObject(headers)) return {};
-  const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token", "api-key"];
-  const sanitized = { ...headers };
-  for (const key of Object.keys(sanitized)) {
-    if (sensitiveKeys.some((s) => key.toLowerCase().includes(s))) delete sanitized[key];
-  }
-  return sanitized;
+  return redactHeaders(headers, { keepKeys: false });
 }
 
 function generateDetailId(model) {

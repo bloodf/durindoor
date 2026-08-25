@@ -63,6 +63,10 @@ export async function createBunSqliteAdapter(filePath) {
       const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
       return assertCheckpointComplete(row, "bun:sqlite");
     },
+    flush() {
+      const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      return assertCheckpointComplete(row, "bun:sqlite");
+    },
     close() {
       clearInterval(checkpointTimer);
       gracefulClose();

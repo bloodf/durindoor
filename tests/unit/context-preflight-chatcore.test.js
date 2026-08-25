@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
   countInputTokens: vi.fn(),
   proxyAwareFetch: vi.fn(),
   appendRequestLog: vi.fn(() => Promise.resolve()),
+  startTrace: vi.fn(() => "trace-preflight"),
+  record: vi.fn(),
+  finishTrace: vi.fn(),
 }));
 
 // Real BaseExecutor reservation logic — the point of the test is that the
@@ -104,6 +107,12 @@ vi.mock("../../open-sse/handlers/chatCore/streamingHandler.js", () => ({
   handleStreamingResponse: vi.fn(async () => ({ success: true })),
 }));
 
+vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({
+  startTrace: mocks.startTrace,
+  record: mocks.record,
+  finishTrace: mocks.finishTrace,
+  attachClientFrameTap: vi.fn(),
+}));
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(),
   appendRequestLog: mocks.appendRequestLog,
@@ -181,6 +190,8 @@ describe("chatCore ingress context-limit preflight", () => {
     expect(result).toMatchObject({ success: false, status: 400 });
     expect(result.error).toMatch(/input is too long/i);
     expect(mocks.execute).not.toHaveBeenCalled();
+    expect(mocks.startTrace).toHaveBeenCalled();
+    expect(mocks.finishTrace).toHaveBeenCalledWith("trace-preflight", { status: "error" });
   });
 
   // A locally-rejected oversize payload must not trigger the fallback chain:

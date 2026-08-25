@@ -19,9 +19,11 @@ describe("SidebarNavIcons", () => {
   it("maps top nav labels to expected icon glyphs", () => {
     const map = new Map(navItems.map((i) => [i.label, i.icon]));
     expect(map.get("Usage")).toBe("bar_chart");
+    expect(map.get("Timeline")).toBe("timeline");
     expect(map.get("Playground")).toBe("chat");
     expect(map.get("Combos")).toBe("layers");
     expect(map.get("MCP Gateway")).toBe("hub");
+    expect(navItems[1].href).toBe("/dashboard/timeline");
   });
 
   it("does not include removed or relocated entries in top nav", () => {

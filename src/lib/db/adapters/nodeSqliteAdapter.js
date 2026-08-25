@@ -84,6 +84,10 @@ export async function createNodeSqliteAdapter(filePath) {
       const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
       return assertCheckpointComplete(row, "node:sqlite");
     },
+    flush() {
+      const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      return assertCheckpointComplete(row, "node:sqlite");
+    },
     close() {
       clearInterval(checkpointTimer);
       gracefulClose();

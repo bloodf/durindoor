@@ -33,6 +33,7 @@ export const BRAND_LOGO_ALT = "";
 // /dashboard route redirects to /dashboard/usage).
 export const navItems = [
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
+  { href: "/dashboard/timeline", label: "Timeline", icon: "timeline" },
   { href: "/dashboard/playground", label: "Playground", icon: "chat" },
   { href: "/dashboard/combos", label: "Combos", icon: "layers" },
   { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub", exact: false },

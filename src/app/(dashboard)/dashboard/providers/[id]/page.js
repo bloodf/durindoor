@@ -30,6 +30,7 @@ import { getCustomModelCapabilities } from "./customModelCapabilities";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
+import { buildTimelineHref } from "../../timeline/href.js";
 import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
@@ -1235,47 +1236,48 @@ export default function ProviderDetailPage() {
             </div>
             <div className="flex-1 min-w-0">
               <ConnectionRow
-          connection={conn}
-          plan={codexPlans[conn.id]}
-          proxyPools={proxyPools}
-          isOAuth={isOAuth}
-          isFirst={index === 0}
-          isLast={index === connections.length - 1}
-          onMoveUp={() => handleSwapPriority(index, index - 1)}
-          onMoveDown={() => handleSwapPriority(index, index + 1)}
-          onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
-          autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
-            on: autoPing.connections[conn.id] === true,
-            onToggle: (on) => handleAutoPingConnection(conn.id, on),
-            provider: providerId
-          } : null}
-          onUpdateProxy={async (proxyPoolId) => {
-            try {
-              const res = await fetch(`/api/providers/${conn.id}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ proxyPoolId: proxyPoolId || null })
-              });
-              if (res.ok) {
-                const { connection: updatedConnection } = await res.json();
-                setConnections((prev) => prev.map((c) =>
-                c.id === conn.id ?
-                updatedConnection || c :
-                c
-                ));
-              }
-            } catch (error) {
-              console.log("Error updating proxy:", error);
-            }
-          }}
-          onEdit={() => {
-            setSelectedConnection(conn);
-            setShowEditModal(true);
-          }}
-          onDelete={() => handleDelete(conn.id)}
-          onReconnect={() => handleReconnect(conn)}
-          oneByOneStatus={oneByOneResults[conn.id] || null} />
-        
+                connection={conn}
+                providerId={providerId}
+                plan={codexPlans[conn.id]}
+                proxyPools={proxyPools}
+                isOAuth={isOAuth}
+                isFirst={index === 0}
+                isLast={index === connections.length - 1}
+                onMoveUp={() => handleSwapPriority(index, index - 1)}
+                onMoveDown={() => handleSwapPriority(index, index + 1)}
+                onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
+                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
+                  on: autoPing.connections[conn.id] === true,
+                  onToggle: (on) => handleAutoPingConnection(conn.id, on),
+                  provider: providerId,
+                } : null}
+                onUpdateProxy={async (proxyPoolId) => {
+                  try {
+                    const res = await fetch(`/api/providers/${conn.id}`, {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ proxyPoolId: proxyPoolId || null }),
+                    });
+                    if (res.ok) {
+                      const { connection: updatedConnection } = await res.json();
+                      setConnections(prev => prev.map(c =>
+                        c.id === conn.id
+                          ? (updatedConnection || c)
+                          : c
+                      ));
+                    }
+                  } catch (error) {
+                    console.log("Error updating proxy:", error);
+                  }
+                }}
+                onEdit={() => {
+                  setSelectedConnection(conn);
+                  setShowEditModal(true);
+                }}
+                onDelete={() => handleDelete(conn.id)}
+                onReconnect={() => handleReconnect(conn)}
+                oneByOneStatus={oneByOneResults[conn.id] || null}
+              />
             </div>
           </div>
     )}
@@ -1585,6 +1587,12 @@ export default function ProviderDetailPage() {
           
           <span className="material-symbols-outlined text-lg">arrow_back</span>
           Back to Providers
+        </Link>
+        <Link
+          href={buildTimelineHref({ provider: providerId })}
+          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4 ml-4"
+        >
+          View all
         </Link>
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <div

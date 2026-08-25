@@ -54,6 +54,7 @@ import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { maskSensitiveUrl } from "../utils/requestLogger.js";
 import { isOpencodeGoProvider, stripBooleanReasoning } from "../services/opencodeReasoningSanitizer.js";
+import { startTrace, record, finishTrace } from "./chatCore/proxyTimeline.js";
 
 // Neutral adaptive config forwarded to the compression seam. mode:"off" short-
 // circuits resolveAdaptivePlan before it dereferences budget fields, but the
@@ -371,6 +372,25 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
+  const timelineTraceId = startTrace({
+    provider,
+    model: cleanModel,
+    connection_id: connectionId,
+    api_key_id: null,
+    endpoint: clientRawRequest?.endpoint,
+    client_format: sourceFormat,
+    provider_format: targetFormat,
+  });
+  const finishTimeline = (status, type, summary) => {
+    if (!timelineTraceId) return;
+    try {
+      if (type) record(timelineTraceId, { type, direction: "internal", summary: summary || null });
+      finishTrace(timelineTraceId, { status });
+    } catch {}
+  };
+  if (timelineTraceId) {
+    try { record(timelineTraceId, { type: "route", direction: "internal", summary: `${sourceFormat} to ${targetFormat}` }); } catch {}
+  }
   // Model lifecycle gate (OmniRoute #8627 port): reject with HTTP 410 when the
   // requested canonical model or its resolved upstream id maps to a shutdown
   // record. Deprecated models pass through with a warning. No silent rewrite;
@@ -381,7 +401,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     upstreamModel: cleanUpstreamModel,
     log
   });
-  if (lifecycleError) return lifecycleError;
+  if (lifecycleError) {
+    finishTimeline("error", "error", "model lifecycle rejected");
+    return lifecycleError;
+  }
   requestContext = Object.freeze({ ...requestContext, catalogModel: cleanModel });
   // Inject provider-level thinking config override (only if client hasn't set)
   // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
@@ -463,7 +486,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const n = await prefetchRemoteImages(body, sourceFormat, imageTargetFormat, { signal: abortSignal });
       if (n > 0) log?.debug?.("MODALITY", `prefetched ${n} remote image(s) for ${targetFormat}`);
     } catch (e) {
-      if (e?.name === "AbortError" || abortSignal?.aborted) return createErrorResult(499, "Request aborted");
+      if (e?.name === "AbortError" || abortSignal?.aborted) {
+        finishTimeline("aborted", "abort", "image prefetch aborted");
+        return createErrorResult(499, "Request aborted");
+      }
       log?.warn?.("MODALITY", `image prefetch failed: ${sanitizeErrorMessage(e?.message)}`);
     }
   }
@@ -538,6 +564,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     );
     if (!translatedBody) {
       trackPendingRequest(cleanModel, provider, connectionId, false, true);
+      finishTimeline("error", "error", `Failed to translate request for ${sourceFormat} to ${targetFormat}`);
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request for ${sourceFormat} → ${targetFormat}`);
     }
     toolNameMap = translatedBody._toolNameMap;
@@ -809,7 +836,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // but still dispatches upstream, so a healthy upstream is not bypassed.
   if (claudeClassifierCompat === "auto" && shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
     log?.warn?.("CHAT", `classifier compat=${claudeClassifierCompat} | short-circuit default-allow`);
-    appendRequestLog({ model: cleanModel, provider, connectionId, status: "ALLOWED (compat short-circuit)" }).catch(() => {});
+    appendRequestLog({ model: cleanModel, provider, connectionId, status: "ALLOWED (compat short-circuit)" }).catch(() => { });
+    finishTimeline("ok", "info", "classifier compat short-circuit");
     return buildDefaultAllowClaudeMessage();
   }
 
@@ -863,7 +891,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       // locally-rejected request from holding provider capacity until the lease
       // expires, since no dispatch path will settle it.
       await settleQuota(false, "context_limit");
-      appendRequestLog({ model: cleanModel, provider, connectionId, status: "REJECTED (context limit)" }).catch(() => {});
+      appendRequestLog({ model: cleanModel, provider, connectionId, status: "REJECTED (context limit)" }).catch(() => { });
+      finishTimeline("error", "error", "input exceeds context window");
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, detail);
     }
   }
@@ -1007,7 +1036,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         providerRequest: translatedBody || null,
         response: { error: errMsg, status: HTTP_STATUS.BAD_REQUEST, thinking: null },
         status: "error"
-      })).catch(() => {});
+      })).catch(() => { });
+      finishTimeline("error", "error", "outbound validation failed");
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, errMsg);
     }
   }
@@ -1076,9 +1106,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishActiveDashboardSession("error");
       if (e instanceof ConcurrencyGateTimeoutError) {
         log?.warn?.("CONCURRENCY", `${provider} | gate timeout after ${e.timeoutMs}ms (${e.limit} max)`);
+        finishTimeline("error", "error", "concurrency gate timeout");
         return createErrorResult(HTTP_STATUS.SERVICE_UNAVAILABLE, e.message);
       }
-      if (e?.name === "AbortError") return createErrorResult(499, "Request aborted");
+      if (e?.name === "AbortError") {
+        finishTimeline("aborted", "abort", "concurrency gate aborted");
+        return createErrorResult(499, "Request aborted");
+      }
       throw e;
     }
   }
@@ -1095,6 +1129,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     if (isQuotaDispatchUnavailable(error)) {
       finishProviderRequest();
       finishActiveDashboardSession("error");
+      finishTimeline("error", "error", "quota capacity unavailable");
       return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
     }
     finishProviderRequest();
@@ -1112,9 +1147,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       response: { error: sanitizeErrorMessage(error.message || String(error)), status: wasClientAbort ? 499 : 502, thinking: null },
       pxpipe: pxpipeSummary,
       status: "error"
-    })).catch(() => {});
-
+    }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => { });
     if (wasClientAbort) {
+      finishTimeline("aborted", "abort", "request aborted");
       streamController.handleError(error);
       return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
     }
@@ -1122,11 +1157,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
       log?.warn?.("CHAT", `classifier upstream unavailable, default-allowing: ${errMsg}`);
       streamController.handleComplete();
+      finishTimeline("ok", "info", "classifier default-allow after upstream error");
       return buildDefaultAllowClaudeMessage();
     }
     if (log?.errorLine) {
       log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
     }
+    finishTimeline("error", "error", errMsg);
     return { ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg), attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
@@ -1173,6 +1210,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       streamController.handleError(error);
       finishProviderRequest();
       finishActiveDashboardSession("error");
+      finishTimeline("aborted", "abort", "error-body parse aborted");
       return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
     }
   }
@@ -1215,6 +1253,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           if (isQuotaDispatchUnavailable(error)) {
             finishProviderRequest();
             finishActiveDashboardSession("error");
+            finishTimeline("error", "error", "quota capacity unavailable after refresh");
             return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
           }
           if (error?.name === "AbortError") throw error;
@@ -1227,10 +1266,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       if (isQuotaDispatchUnavailable(error)) {
         finishProviderRequest();
         finishActiveDashboardSession("error");
+        finishTimeline("error", "error", "quota capacity unavailable after refresh");
         return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
       }
       if (error?.name === "AbortError") {
         streamController.handleError(error);
+        finishTimeline("aborted", "abort", "token refresh aborted");
         return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
       }
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
@@ -1268,6 +1309,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
             streamController.handleError(error);
             finishProviderRequest();
             finishActiveDashboardSession("error");
+            finishTimeline("aborted", "abort", "thinking-signature retry aborted");
             return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
           }
           // Retry itself errored non-abort: fall through with the original error.
@@ -1307,36 +1349,37 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           const resetAt = getKimiTemporaryRateLimitResetAt(usage);
           if (resetAt) resetsAtMs = new Date(resetAt).getTime();
         } catch {
-
           // Preserve normal forbidden handling when the usage API is unavailable.
-        }}
-      appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => {});
-      saveRequestDetail(buildRequestDetail({
-        provider, model: cleanModel, connectionId,
-        latency: { ttft: 0, total: Date.now() - requestStartTime },
-        tokens: { prompt_tokens: 0, completion_tokens: 0 },
-        request: extractRequestConfig(body, stream),
-        providerRequest: finalBody || translatedBody || null,
-        response: { error: message, status: statusCode, thinking: null },
-        pxpipe: pxpipeSummary,
-        status: "error"
-      })).catch(() => {});
-
-      const errMsg = formatProviderError(new Error(message), provider, requestedModel, statusCode);
-      if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
-        log?.warn?.("CHAT", `classifier upstream returned error, default-allowing: ${errMsg}`);
-        streamController.handleComplete();
-        return buildDefaultAllowClaudeMessage();
+        }
       }
-      if (log?.errorLine) {
-        const urlStr = providerUrl ? `\n    URL: ${maskSensitiveUrl(providerUrl)}` : "";
-        log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
-      }
-      return {
-        ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence, credentials),
-        attemptStartedAt: latestProviderAttemptStartedAt,
-        headers: providerResponse.headers
-      };
+    appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${statusCode}` }).catch(() => { });
+    saveRequestDetail(buildRequestDetail({
+      provider, model: cleanModel, connectionId,
+      latency: { ttft: 0, total: Date.now() - requestStartTime },
+      tokens: { prompt_tokens: 0, completion_tokens: 0 },
+      request: extractRequestConfig(body, stream),
+      providerRequest: finalBody || translatedBody || null,
+      response: { error: message, status: statusCode, thinking: null },
+      pxpipe: pxpipeSummary,
+      status: "error"
+    })).catch(() => { });
+    const errMsg = formatProviderError(new Error(message), provider, requestedModel, statusCode);
+    if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
+      log?.warn?.("CHAT", `classifier upstream returned error, default-allowing: ${errMsg}`);
+      streamController.handleComplete();
+      finishTimeline("ok", "info", "classifier default-allow after upstream error");
+      return buildDefaultAllowClaudeMessage();
+    }
+    if (log?.errorLine) {
+      const urlStr = providerUrl ? `\n    URL: ${maskSensitiveUrl(providerUrl)}` : "";
+      log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
+    }
+    finishTimeline("error", "error", errMsg);
+    return {
+      ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence, credentials),
+      attemptStartedAt: latestProviderAttemptStartedAt,
+      headers: providerResponse.headers,
+    };
     }
   }
 
@@ -1400,6 +1443,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     connectionId,
     apiKey,
     clientRawRequest,
+    traceId: timelineTraceId,
     onRequestSuccess: async (context = {}) => {
       await settleQuota(true, "success");
       finishActiveDashboardSession("done");
@@ -1433,11 +1477,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       // a subsequent fallback/judge cannot race the still-active ticket.
       await settleQuota(false, result.quotaTerminalReason);
       streamController.handleError(error);
+      finishTimeline(result.quotaTerminalReason === "abort" ? "aborted" : "error", result.quotaTerminalReason === "abort" ? "abort" : "error", result.quotaTerminalReason);
     } else {
       // A trusted coherent terminal already committed through
       // onRequestSuccess. Otherwise this closes the response as malformed.
       await settleQuota(false, "malformed_terminal");
       streamController.handleComplete();
+      finishTimeline(result?.success ? "ok" : "error", result?.success ? null : "error", result?.success ? null : "malformed terminal");
     }
     return result;
   };
@@ -1449,6 +1495,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     // compare-and-set keeps the duplicate callback harmless.
     await settleQuota(false, reason);
     streamController.handleError(error instanceof Error ? error : new Error("provider response handling failed"));
+    finishTimeline(aborted ? "aborted" : "error", aborted ? "abort" : "error", "failed to process provider response");
     return withCompressionHeader(
       createErrorResult(aborted ? 499 : HTTP_STATUS.BAD_GATEWAY, aborted ?
       "Request aborted" :

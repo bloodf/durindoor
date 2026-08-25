@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { getConnectionErrorDisplay, getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
 import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
+import { buildTimelineHref } from "../../timeline/href.js";
 
-export default function ConnectionRow({ connection, plan = null, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect = null, oneByOneStatus = null, autoPing = null }) {
+export default function ConnectionRow({ connection, providerId = null, plan = null, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect = null, oneByOneStatus = null, autoPing = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -230,7 +232,16 @@ export default function ConnectionRow({ connection, plan = null, proxyPools, isO
         </div>
       </div>
       <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
-        <div className="grid flex-1 grid-cols-3 gap-1 sm:flex sm:flex-none">
+        <div className="grid flex-1 grid-cols-4 gap-1 sm:flex sm:flex-none">
+          {providerId && connection.id && (
+            <Link
+              href={buildTimelineHref({ provider: providerId, connectionId: connection.id })}
+              className="flex w-full flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+            >
+              <span className="material-symbols-outlined text-[18px]">timeline</span>
+              <span className="text-[10px] leading-tight">View all</span>
+            </Link>
+          )}
           {/* Proxy button with inline dropdown */}
           {(proxyPools || []).length > 0 && (
             <div className="relative" ref={proxyDropdownRef}>
@@ -321,6 +332,7 @@ ConnectionRow.propTypes = {
     priority: PropTypes.number,
     globalPriority: PropTypes.number,
   }).isRequired,
+  providerId: PropTypes.string,
   /** Live Codex plan from the usage API; falls back to stored OAuth metadata. */
   plan: PropTypes.string,
   proxyPools: PropTypes.arrayOf(PropTypes['shape']({

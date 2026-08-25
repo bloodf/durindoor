@@ -67,9 +67,13 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
 export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null }) {
+  const failTimeline = (status) => {
+    if (traceId) { try { finishTrace(traceId, { status }); } catch {} }
+  };
   if (!providerResponse?.body) {
     const error = new Error("Upstream returned an empty streaming body");
     streamController?.handleError?.(error);
+    failTimeline("error");
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, error.message);
   }
 
@@ -94,6 +98,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     } catch (error) {
       if (error?.name === "AbortError") {
         streamController?.handleError?.(error);
+        failTimeline("aborted");
         return createErrorResult(499, "Request aborted");
       }
     }
@@ -113,6 +118,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     // handleSingleModelChat can correctly log and fall back — a locally built
     // { success, response } object here silently drops status/error and causes
     // the real cause to be lost downstream (see markAccountUnavailable).
+    failTimeline("error");
     return createErrorResult(status, `[${status}]: ${shortMsg}`);
   }
 

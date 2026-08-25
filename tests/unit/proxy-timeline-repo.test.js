@@ -61,6 +61,29 @@ describe("proxy timeline repository", () => {
     expect(await timeline.getTrace("off")).toBeNull();
   });
 
+  it("does not create the sidecar while capture is disabled", async () => {
+    await setSettings({ enableProxyTimeline: false, proxyTimelineRetentionDays: 7 });
+    const { currentProxyTimelineFile } = await import("@/lib/db/paths.js");
+    const file = currentProxyTimelineFile();
+    expect(fs.existsSync(file)).toBe(false);
+    await timeline.pruneExpired();
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it("reads trace metadata without loading event payloads", async () => {
+    timeline.startTrace({ id: "meta-only", provider: "openai" });
+    timeline.record({ traceId: "meta-only", type: "sse_chunk", payload: "large payload" });
+    await timeline.flushProxyTimelineForTests();
+    const { getProxyTimelineAdapter } = await import("@/lib/db/proxyTimelineDb.js");
+    const adapter = await getProxyTimelineAdapter();
+    const all = vi.spyOn(adapter, "all");
+    const trace = await timeline.getTraceMeta("meta-only");
+    expect(trace).toMatchObject({ id: "meta-only", provider: "openai" });
+    expect(trace).not.toHaveProperty("events");
+    expect(all).not.toHaveBeenCalled();
+    all.mockRestore();
+  });
+
   it("keeps recording after start without reading settings again", async () => {
     const settings = await import("@/lib/db/repos/settingsRepo.js");
     timeline.startTrace({ id: "cached" });

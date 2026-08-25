@@ -8,6 +8,7 @@
 ## Fixed
 
 - Observability settings now use the canonical `enableObservability` key. Stored `enableObservability2` migrates once and is dropped.
+- Proxy Timeline now closes traces on early streaming errors, avoids event-payload reads while filtering live writes, coalesces live dashboard reloads, and leaves the sidecar unopened while capture is disabled.
 
 ## Security
 

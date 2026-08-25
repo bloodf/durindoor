@@ -6,3 +6,20 @@ export function buildTimelineHref({ provider, connectionId } = {}) {
   const s = q.toString();
   return s ? `/dashboard/timeline?${s}` : "/dashboard/timeline";
 }
+
+export function createLiveReloadScheduler(load, delayMs = 500) {
+  let timer = null;
+  return {
+    schedule() {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        load();
+      }, delayMs);
+    },
+    cancel() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    },
+  };
+}

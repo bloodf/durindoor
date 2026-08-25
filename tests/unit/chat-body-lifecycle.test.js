@@ -4,6 +4,7 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { handleForcedSSEToJson } from "../../open-sse/handlers/chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse } from "../../open-sse/handlers/chatCore/streamingHandler.js";
+import * as proxyTimeline from "../../open-sse/handlers/chatCore/proxyTimeline.js";
 
 vi.mock("@/lib/usageDb.js", () => ({
   appendRequestLog: vi.fn(() => Promise.resolve()),
@@ -328,6 +329,16 @@ describe("chat upstream body lifecycle", () => {
     expect(result.success).toBe(false);
     expect(result.status).toBe(502);
     expect(handleError).toHaveBeenCalledOnce();
+    const finishTrace = vi.spyOn(proxyTimeline, "finishTrace").mockImplementation(() => {});
+    await handleStreamingResponse({
+      ...common(vi.fn()),
+      traceId: "empty-body-trace",
+      providerResponse: new Response(null, { headers: { "content-type": "text/event-stream" } }),
+      reqLogger: null,
+      streamController: { handleError },
+    });
+    expect(finishTrace).toHaveBeenCalledWith("empty-body-trace", { status: "error" });
+    finishTrace.mockRestore();
   });
 
   it("redacts credentials from short non-SSE provider bodies", async () => {
@@ -344,5 +355,35 @@ describe("chat upstream body lifecycle", () => {
     expect(text).toContain("[redacted]");
     expect(text).not.toContain("provider-secret-token");
     expect(handleError).toHaveBeenCalledOnce();
+  });
+
+  it("finishes non-SSE and aborted body-read traces", async () => {
+    const finishTrace = vi.spyOn(proxyTimeline, "finishTrace").mockImplementation(() => {});
+    const handleError = vi.fn();
+    await handleStreamingResponse({
+      ...common(vi.fn()),
+      traceId: "non-sse-trace",
+      providerResponse: new Response("<html><title>bad gateway</title></html>", {
+        headers: { "content-type": "text/html" },
+      }),
+      reqLogger: null,
+      streamController: { handleError },
+    });
+    expect(finishTrace).toHaveBeenCalledWith("non-sse-trace", { status: "error" });
+
+    const controller = new AbortController();
+    controller.abort(new DOMException("Request aborted", "AbortError"));
+    await handleStreamingResponse({
+      ...common(vi.fn()),
+      traceId: "aborted-read-trace",
+      signal: controller.signal,
+      providerResponse: new Response("<html><title>bad gateway</title></html>", {
+        headers: { "content-type": "text/html" },
+      }),
+      reqLogger: null,
+      streamController: { handleError },
+    });
+    expect(finishTrace).toHaveBeenCalledWith("aborted-read-trace", { status: "aborted" });
+    finishTrace.mockRestore();
   });
 });

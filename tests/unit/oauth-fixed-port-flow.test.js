@@ -19,21 +19,23 @@ import {
   clearXaiSession,
   getCodexSessionStatus,
   getXaiSessionStatus,
+  isLoopbackOrigin,
   registerCodexSession,
   registerXaiSession,
   startCodexProxy,
+  startLocalServer,
   stopCodexProxy,
   stopXaiProxy,
 } from "@/lib/oauth/utils/server.js";
 
-function callbackRequest(port, path) {
+function callbackRequest(port, path, headers = {}) {
   return new Promise((resolve, reject) => {
     const request = http.request({
       host: "127.0.0.1",
       port,
       path,
       method: "GET",
-      headers: { Connection: "close" },
+      headers: { Connection: "close", ...headers },
     }, (response) => {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
@@ -239,5 +241,92 @@ describe("fixed-port OAuth flow binding", () => {
       "codex-state",
       expect.objectContaining({ flowId: newFlow.flowId }),
     );
+  });
+});
+
+describe("isLoopbackOrigin", () => {
+  it("allows a missing Origin but rejects an empty Origin header", () => {
+    expect(isLoopbackOrigin(undefined)).toBe(true);
+    expect(isLoopbackOrigin(null)).toBe(true);
+    expect(isLoopbackOrigin("")).toBe(false);
+  });
+
+  it("allows localhost and 127.0.0.1 loopback origins", () => {
+    expect(isLoopbackOrigin("http://localhost:1455")).toBe(true);
+    expect(isLoopbackOrigin("http://127.0.0.1:56121")).toBe(true);
+    expect(isLoopbackOrigin("http://localhost")).toBe(true);
+    expect(isLoopbackOrigin("http://127.0.0.1")).toBe(true);
+  });
+
+  it("rejects non-loopback origins", () => {
+    expect(isLoopbackOrigin("https://attacker.example")).toBe(false);
+    expect(isLoopbackOrigin("http://evil.local")).toBe(false);
+    expect(isLoopbackOrigin("https://localhost")).toBe(false);
+  });
+});
+
+describe("local OAuth callback Origin guard", () => {
+  afterEach(async () => {
+    await Promise.all([stopCodexProxy(), stopXaiProxy()]);
+  });
+
+  it("rejects Codex proxy callbacks with a non-loopback Origin", async () => {
+    expect(await startCodexProxy(20127)).toEqual({ success: true });
+    const response = await callbackRequest(
+      1455,
+      "/auth/callback?code=csrf-code&state=csrf-state",
+      { Origin: "https://attacker.example" },
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body).toContain("Cross-origin callback rejected");
+  });
+
+  it("rejects xAI proxy callbacks with a non-loopback Origin", async () => {
+    const { startXaiProxy } = await import("@/lib/oauth/utils/server.js");
+    expect(await startXaiProxy(20127)).toEqual({ success: true });
+    const response = await callbackRequest(
+      56121,
+      "/callback?code=csrf-code&state=csrf-state",
+      { Origin: "https://attacker.example" },
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body).toContain("Cross-origin callback rejected");
+  });
+
+  it("allows startLocalServer callbacks without Origin", async () => {
+    let received = null;
+    const { port, close } = await startLocalServer((params) => {
+      received = params;
+    });
+
+    const response = await callbackRequest(
+      port,
+      "/callback?code=local-code&state=local-state",
+    );
+    await close();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toContain("Authentication Successful");
+    expect(received).toEqual({ code: "local-code", state: "local-state" });
+  });
+
+  it("rejects startLocalServer callbacks with a non-loopback Origin", async () => {
+    let received = null;
+    const { port, close } = await startLocalServer((params) => {
+      received = params;
+    });
+
+    const response = await callbackRequest(
+      port,
+      "/callback?code=csrf-code&state=csrf-state",
+      { Origin: "https://attacker.example" },
+    );
+    await close();
+
+    expect(response.status).toBe(403);
+    expect(response.body).toBe("Cross-origin callback rejected");
+    expect(received).toBeNull();
   });
 });

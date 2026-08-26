@@ -119,11 +119,20 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
  * exact bytes reaching the client (regular passthrough plus any synthesized
  * terminal/recovery bytes). They are best-effort: a throwing tap must never
  * drop client bytes or otherwise perturb the stream.
+ *
+ * keepaliveFrame/keepaliveMs optionally emit a client-format keepalive while
+ * the post-translation stream is silent. Pings stop before the first real
+ * client byte and on every terminal path; `keepaliveMs=0` disables them.
+ *
+ * @param {Uint8Array|null} keepaliveFrame - Client-format SSE keepalive bytes.
+ * @param {number} keepaliveMs - Keepalive interval; zero disables pings.
  */
-export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null) {
+export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0) {
   const reader = transformStream.readable.getReader();
   let terminalEmitted = false;
   const decoder = terminalTracker ? new TextDecoder() : null;
+  let keepaliveTimer = null;
+  let clientBytesStarted = false;
 
   // Forward raw client bytes to the timeline tap (if any), fail-open, then
   // enqueue unconditionally — a broken tap must never drop client bytes.
@@ -133,6 +142,26 @@ export function createDisconnectAwareStream(transformStream, streamController, o
   };
   const end = () => { try { onClientEnd?.(); } catch { /* fail-open */ } };
   const abort = () => { try { onClientAbort?.(); } catch { /* fail-open */ } };
+  const stopKeepalive = () => {
+    if (!keepaliveTimer) return;
+    clearInterval(keepaliveTimer);
+    keepaliveTimer = null;
+  };
+  const armKeepalive = (controller) => {
+    if (clientBytesStarted || keepaliveTimer || !keepaliveFrame || keepaliveMs <= 0) return;
+    keepaliveTimer = setInterval(() => {
+      if (!streamController.isConnected()) {
+        stopKeepalive();
+        return;
+      }
+      try {
+        forward(controller, keepaliveFrame);
+      } catch {
+        stopKeepalive();
+      }
+    }, keepaliveMs);
+    keepaliveTimer.unref?.();
+  };
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
   const emitTerminal = (controller) => {
@@ -154,7 +183,9 @@ export function createDisconnectAwareStream(transformStream, streamController, o
 
   return new ReadableStream({
     async pull(controller) {
+      armKeepalive(controller);
       if (!streamController.isConnected()) {
+        stopKeepalive();
         emitTerminal(controller);
         abort();
         controller.close();
@@ -165,6 +196,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         const { done, value } = await reader.read();
 
         if (done) {
+          stopKeepalive();
           const trailingFrame = decoder?.decode();
           if (trailingFrame) terminalTracker.observeClientFrame(trailingFrame);
           if (emitClientRecovery(controller)) {
@@ -177,9 +209,12 @@ export function createDisconnectAwareStream(transformStream, streamController, o
           controller.close();
           return;
         }
+        clientBytesStarted = true;
+        stopKeepalive();
         terminalTracker?.observeClientFrame(decoder.decode(value, { stream: true }));
         forward(controller, value);
       } catch (error) {
+        stopKeepalive();
         const wasConnected = streamController.isConnected();
         // Controller already closed = downstream ended; not an upstream error, skip noisy log.
         const msg0 = error?.message || "";
@@ -226,6 +261,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
     },
 
     cancel(reason) {
+      stopKeepalive();
       streamController.handleDisconnect(reason || "cancelled");
       abort();
       reader.cancel();
@@ -248,8 +284,10 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {Response} providerResponse - Response from provider
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
+ * @param {Uint8Array|null} keepaliveFrame - Post-translation keepalive bytes.
+ * @param {number} keepaliveMs - Keepalive interval; zero disables pings.
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0) {
   let stallTimer = null;
   let chunkCount = 0;
   let totalBytes = 0;
@@ -316,5 +354,7 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     onClientBytes,
     onClientEnd,
     onClientAbort,
+    keepaliveFrame,
+    keepaliveMs,
   );
 }

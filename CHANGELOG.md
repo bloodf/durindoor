@@ -9,6 +9,7 @@
 
 ## Fixed
 
+- Groq replaces decommissioned seed model IDs with its current production catalog, discovers live models through the authenticated OpenAI-compatible `/models` endpoint, and accepts future model IDs via passthrough. Closes #582.
 - Claude→OpenAI stream translation emits a single whitespace `delta.content` before the terminal `finish_reason` chunk when the upstream stream produced no text or tool-call content (e.g. thinking-only responses, which map to `reasoning_content`). OpenAI-compat clients (AI SDK / Kilo) no longer throw `APIEmptyResponseError` on otherwise-successful streams; streams that already emitted content or tool calls are unchanged (independent re-implementation of VansRouter `5cc11b8` intent, not a cherry-pick). Closes #572.
 - `/v1/models/info` keeps registry `name` values additive (e.g. `cx/gpt-5.6-sol` stays `GPT 5.6 Sol`); presentation only adds provider display fields. Agent plan/spec trees under `docs/superpowers/` stay deleted. Closes #566.
 - Observability settings now use the canonical `enableObservability` key. Stored `enableObservability2` migrates once and is dropped.

@@ -92,6 +92,13 @@ try {
       path.join(process.cwd(), "src", "shared", "utils", "normalizeEnv.js"),
       path.join(standaloneDir, "src", "shared", "utils", "normalizeEnv.js"),
     );
+    // custom-server.js requires this CJS helper at import time (#551); like
+    // every post-build entry dependency it is outside Next's NFT trace, so a
+    // missing copy crash-loops the deployed server with MODULE_NOT_FOUND.
+    fs.copyFileSync(
+      path.join(process.cwd(), "src", "shared", "utils", "typeChecks.cjs"),
+      path.join(standaloneDir, "src", "shared", "utils", "typeChecks.cjs"),
+    );
     // Ensure `require("ws")` resolves inside the standalone bundle. Next's NFT
     // typically already traces ws (server-side fetch/WS deps), but a post-build
     // entry is outside the trace — copy the resolved package if it is missing

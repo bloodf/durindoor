@@ -3,6 +3,7 @@ import { AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getModelKind } from "@/shared/constants/models";
 import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
 import { resolveModelLimits } from "open-sse/providers/capabilities.js";
+import { projectModelPresentation } from "open-sse/providers/models/presentation.js";
 
 const KIND_ENDPOINT = {
   llm: "/v1/chat/completions",
@@ -19,6 +20,12 @@ const KIND_ENDPOINT = {
 const TTS_VOICES_API = new Set(["elevenlabs", "edge-tts", "deepgram", "inworld", "local-device", "minimax", "minimax-cn"]);
 
 function buildInfo({ alias, providerId, model, kind, providerInfo }) {
+  const presentation = projectModelPresentation({
+    model,
+    modelId: model.id,
+    providerId,
+    outputAlias: alias,
+  });
   const out = {
     id: `${alias}/${model.id}`,
     name: model.name || model.id,
@@ -26,6 +33,7 @@ function buildInfo({ alias, providerId, model, kind, providerInfo }) {
     owned_by: alias,
     endpoint: KIND_ENDPOINT[kind] || null,
   };
+  Object.assign(out, presentation);
   if (model.params) out.params = model.params;
   if (model.capabilities) out.capabilities = model.capabilities;
   if (model.options) out.options = model.options;

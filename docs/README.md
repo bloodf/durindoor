@@ -73,6 +73,8 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [DurinDoor omp Extension](../omp-extension/README.md)
 - [Proxy Timeline Design](superpowers/specs/2026-08-22-proxy-timeline-design.md)
 - [Proxy Timeline Implementation Plan](superpowers/plans/2026-08-22-proxy-timeline.md)
+- [Model Display Metadata Design](superpowers/specs/2026-08-26-model-display-metadata-design.md)
+- [Model Display Metadata Implementation Plan](superpowers/plans/2026-08-26-model-display-metadata.md)
 
 ## API & Reference
 

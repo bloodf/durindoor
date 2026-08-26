@@ -28,6 +28,7 @@ import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitie
 import { isPaidModel } from "open-sse/providers/pricing.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { projectModelPresentation } from "open-sse/providers/models/presentation.js";
 
 // In-flight request coalescing for `buildModelsList` (OmniRoute #6440):
 // concurrent `/v1/models` calls that hit before the first one resolves would
@@ -568,14 +569,14 @@ async function buildModelsListImpl(kindFilter, guard) {
       if (!kindFilter.includes(modelKind(model))) continue;
       if (model.requiresApiKey === true && !hasCredentials) continue;
       if (isDisabled(alias, model.id)) continue;
-      // #6495 / F-4: drop paid static/keyless provider models when on.
       if (hidePaidModels && isPaidModel(`${alias}/${model.id}`)) continue;
       const caps = getCapabilitiesForModel(providerId, model.id);
       const entry = {
         id: `${alias}/${model.id}`,
         object: "model",
         owned_by: alias,
-        capabilities: caps
+        capabilities: caps,
+        ...projectModelPresentation({ model, modelId: model.id, providerId, outputAlias: alias }),
       };
       if (modelKind(model) === LLM_KIND) {
         attachModelLimits(entry, providerId, model.id, caps);
@@ -647,14 +648,15 @@ async function buildModelsListImpl(kindFilter, guard) {
     const modelId = String(customModel.id).trim();
     if (!modelId) continue;
 
-    const providerId = providerAlias;
+    const providerId = aliasToProviderId[providerAlias] ?? providerAlias;
     const staticCaps = getCapabilitiesForModel(providerId, modelId);
     const customCaps = isRecord(customModel.capabilities) ? customModel.capabilities : {};
     const entry = {
       id: `${providerAlias}/${modelId}`,
       object: "model",
       owned_by: providerAlias,
-      capabilities: { ...staticCaps, ...customCaps }
+      capabilities: { ...staticCaps, ...customCaps },
+      ...projectModelPresentation({ model: customModel, modelId, providerId, outputAlias: providerAlias }),
     };
     attachModelLimits(entry, providerId, modelId, customCaps);
     models.push(entry);
@@ -689,6 +691,7 @@ async function buildModelsListImpl(kindFilter, guard) {
         const liveModelKindById = new Map();
         const liveCapabilitiesById = new Map();
         const liveModelIds = new Set();
+        const liveModelById = new Map();
 
         // Build kind lookup for static models so we can filter even when only IDs are exposed
         const staticModelKindById = new Map(
@@ -712,6 +715,7 @@ async function buildModelsListImpl(kindFilter, guard) {
 
         const customModelKindById = new Map();
         const customCapabilitiesById = new Map();
+        const customModelById = new Map();
         const customModelIds = customModels.
         filter((m) => {
           if (!m.id) return false;
@@ -726,6 +730,7 @@ async function buildModelsListImpl(kindFilter, guard) {
           const modelId = String(m.id).trim();
           const kind = customModelKind(m);
           if (modelId) {
+            customModelById.set(modelId, m);
             customModelKindById.set(modelId, kind);
             if (isRecord(m.capabilities)) customCapabilitiesById.set(modelId, m.capabilities);
           }
@@ -782,6 +787,7 @@ async function buildModelsListImpl(kindFilter, guard) {
               }
               for (const m of liveModels) {
                 if (!isRecord(m) || !isString(m.id)) continue;
+                liveModelById.set(m.id, m);
                 liveModelIds.add(m.id);
                 if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
                 if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
@@ -800,6 +806,7 @@ async function buildModelsListImpl(kindFilter, guard) {
             const live = await liveResolver(conn, guard);
             for (const m of live?.models ?? []) {
               if (!rawModelIds.includes(m.id)) continue;
+              liveModelById.set(m.id, m);
               if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
               if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
             }
@@ -896,11 +903,22 @@ async function buildModelsListImpl(kindFilter, guard) {
           const caps = hasStaticLimits ?
           { ...getCapabilitiesForModel(providerId, modelId), ...explicitCaps } :
           explicitCaps;
+          const presentationModel = customModelById.get(modelId)
+            || liveModelById.get(modelId)
+            || staticModelById.get(modelId)
+            || { id: modelId };
+          const presentation = projectModelPresentation({
+            model: presentationModel,
+            modelId,
+            providerId,
+            outputAlias,
+          });
           const model = {
             id: `${outputAlias}/${modelId}`,
             object: "model",
             owned_by: outputAlias,
-            capabilities: caps
+            capabilities: caps,
+            ...presentation,
           };
           if ((kind === LLM_KIND || allowAsLlm) && (hasStaticLimits || Object.keys(explicitCaps).length)) {
             attachModelLimits(model, providerId, modelId, customCaps, liveCaps);

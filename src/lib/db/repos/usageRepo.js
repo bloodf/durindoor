@@ -62,13 +62,15 @@ const ACTIVE_SESSION_DONE_LINGER_MS = 20000;
 const ACTIVE_SESSION_CAP = 200;
 
 // In-memory state shared across Next.js modules
-if (!global._pendingRequests) global._pendingRequests = { byModel: {}, byAccount: {} };
+if (!global._pendingRequests) global._pendingRequests = { byModel: {}, byAccount: {}, byKey: {} };
+global._pendingRequests.byKey ||= {};
 if (!global._lastErrorProvider) global._lastErrorProvider = { provider: "", ts: 0 };
 if (!global._statsEmitter) {
   global._statsEmitter = new EventEmitter();
   global._statsEmitter.setMaxListeners(50);
 }
 if (!global._pendingTimers) global._pendingTimers = {};
+if (!global._pendingCalls) global._pendingCalls = new Map();
 if (!global._recentRing) global._recentRing = { items: [], initialized: false };
 if (!global._connectionMapCache) global._connectionMapCache = { map: {}, ts: 0 };
 if (!global._statsEmitTimers) global._statsEmitTimers = { pending: null, update: null, tokenSaver: null };
@@ -78,6 +80,7 @@ if (!global._activeSessionTimers) global._activeSessionTimers = {};
 
 const pendingRequests = global._pendingRequests;
 const lastErrorProvider = global._lastErrorProvider;
+const pendingCalls = global._pendingCalls;
 const pendingTimers = global._pendingTimers;
 const recentRing = global._recentRing;
 const connCache = global._connectionMapCache;
@@ -297,53 +300,76 @@ async function getActiveSessions() {
   }));
 }
 
-export function trackPendingRequest(model, provider, connectionId, started, error = false, session = null) {
-  let activeSessionRequestId = null;
-  const modelKey = provider ? `${model} (${provider})` : model;
-  const timerKey = `${connectionId}|${modelKey}`;
-
-  if (!pendingRequests.byModel[modelKey]) pendingRequests.byModel[modelKey] = 0;
-  pendingRequests.byModel[modelKey] = Math.max(0, pendingRequests.byModel[modelKey] + (started ? 1 : -1));
+function changePendingCount({ modelKey, connectionId, keyName }, delta) {
+  pendingRequests.byModel[modelKey] = Math.max(0, (pendingRequests.byModel[modelKey] || 0) + delta);
   if (pendingRequests.byModel[modelKey] === 0) delete pendingRequests.byModel[modelKey];
+  if (!connectionId) return;
 
-  if (connectionId) {
-    if (!pendingRequests.byAccount[connectionId]) pendingRequests.byAccount[connectionId] = {};
-    if (!pendingRequests.byAccount[connectionId][modelKey]) pendingRequests.byAccount[connectionId][modelKey] = 0;
-    pendingRequests.byAccount[connectionId][modelKey] = Math.max(0, pendingRequests.byAccount[connectionId][modelKey] + (started ? 1 : -1));
-    if (pendingRequests.byAccount[connectionId][modelKey] === 0) {
-      delete pendingRequests.byAccount[connectionId][modelKey];
-      if (Object.keys(pendingRequests.byAccount[connectionId]).length === 0) {
-        delete pendingRequests.byAccount[connectionId];
-      }
-    }
+  pendingRequests.byAccount[connectionId] ||= {};
+  pendingRequests.byAccount[connectionId][modelKey] = Math.max(0, (pendingRequests.byAccount[connectionId][modelKey] || 0) + delta);
+  if (pendingRequests.byAccount[connectionId][modelKey] === 0) {
+    delete pendingRequests.byAccount[connectionId][modelKey];
+    if (Object.keys(pendingRequests.byAccount[connectionId]).length === 0) delete pendingRequests.byAccount[connectionId];
   }
 
-  if (started && session) {
-    try {activeSessionRequestId = startActiveSession({ ...session, model, provider, connectionId });} catch {/* telemetry must not block requests */}
+  pendingRequests.byKey[connectionId] ||= {};
+  pendingRequests.byKey[connectionId][modelKey] ||= {};
+  pendingRequests.byKey[connectionId][modelKey][keyName] = Math.max(
+    0,
+    (pendingRequests.byKey[connectionId][modelKey][keyName] || 0) + delta,
+  );
+  if (pendingRequests.byKey[connectionId][modelKey][keyName] === 0) {
+    delete pendingRequests.byKey[connectionId][modelKey][keyName];
+    if (Object.keys(pendingRequests.byKey[connectionId][modelKey]).length === 0) delete pendingRequests.byKey[connectionId][modelKey];
+    if (Object.keys(pendingRequests.byKey[connectionId]).length === 0) delete pendingRequests.byKey[connectionId];
   }
-  if (started) {
-    clearTimeout(pendingTimers[timerKey]);
-    pendingTimers[timerKey] = setTimeout(() => {
-      delete pendingTimers[timerKey];
-      if (pendingRequests.byModel[modelKey] > 0) pendingRequests.byModel[modelKey] = 0;
-      if (connectionId && pendingRequests.byAccount[connectionId]?.[modelKey] > 0) {
-        pendingRequests.byAccount[connectionId][modelKey] = 0;
-      }
-      scheduleStatsEvent("pending");
-    }, PENDING_TIMEOUT_MS);
-  } else {
-    clearTimeout(pendingTimers[timerKey]);
-    delete pendingTimers[timerKey];
-  }
+}
 
-  if (!started && error && provider) {
-    lastErrorProvider.provider = provider.toLowerCase();
+export function finishPendingRequest(requestId, error = false) {
+  const call = pendingCalls.get(requestId);
+  if (!call) return false;
+  pendingCalls.delete(requestId);
+  clearTimeout(call.timer);
+  delete pendingTimers[requestId];
+  changePendingCount(call, -1);
+  if (error && call.provider) {
+    lastErrorProvider.provider = call.provider.toLowerCase();
     lastErrorProvider.ts = Date.now();
   }
-
-  // [PENDING] console line removed; lifecycle is visible via "▶" and "📊 done" lines
   scheduleStatsEvent("pending");
-  return activeSessionRequestId;
+  return true;
+}
+
+export function trackPendingRequest(model, provider, connectionId, started, error = false, session = null, keyName = "Local (No API Key)") {
+  const modelKey = provider ? `${model} (${provider})` : model;
+  const safeKeyName = keyName || "Unknown API Key";
+  if (!started) {
+    if (session?.requestId) return finishPendingRequest(session.requestId, error);
+    const match = [...pendingCalls.entries()].find(([, call]) =>
+      call.modelKey === modelKey && call.connectionId === connectionId && call.keyName === safeKeyName
+    );
+    return match ? finishPendingRequest(match[0], error) : false;
+  }
+
+  const requestId = session?.requestId || randomUUID();
+  const call = { requestId, modelKey, provider, connectionId, keyName: safeKeyName, timer: null };
+  changePendingCount(call, 1);
+  if (session) {
+    try { startActiveSession({ ...session, requestId, model, provider, connectionId }); } catch {/* telemetry must not block requests */}
+  }
+  call.timer = setTimeout(() => finishPendingRequest(requestId), PENDING_TIMEOUT_MS);
+  call.timer.unref?.();
+  pendingCalls.set(requestId, call);
+  pendingTimers[requestId] = call.timer;
+  scheduleStatsEvent("pending");
+  return requestId;
+}
+
+function getPendingKeyGroups(connectionId, modelKey) {
+  return Object.entries(pendingRequests.byKey?.[connectionId]?.[modelKey] || {})
+    .filter(([, count]) => count > 0)
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 export async function getActiveRequests() {
@@ -358,7 +384,9 @@ export async function getActiveRequests() {
         activeRequests.push({
           model: match ? match[1] : modelKey,
           provider: match ? match[2] : "unknown",
-          account: accountName, count
+          account: accountName,
+          count,
+          keys: getPendingKeyGroups(connectionId, modelKey),
         });
       }
     }
@@ -686,7 +714,9 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.activeRequests.push({
           model: match ? match[1] : modelKey,
           provider: match ? match[2] : "unknown",
-          account: accountName, count
+          account: accountName,
+          count,
+          keys: getPendingKeyGroups(connectionId, modelKey),
         });
       }
     }

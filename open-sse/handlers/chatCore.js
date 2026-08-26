@@ -261,7 +261,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -563,7 +563,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities }
     );
     if (!translatedBody) {
-      trackPendingRequest(cleanModel, provider, connectionId, false, true);
       finishTimeline("error", "error", `Failed to translate request for ${sourceFormat} to ${targetFormat}`);
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request for ${sourceFormat} → ${targetFormat}`);
     }
@@ -900,7 +899,15 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Dashboard tracking stays fail-open and reuses the session id already resolved for request logs.
   const clientHeaders = clientRawRequest?.headers || {};
   const clientId = clientHeaders["x-9r-real-ip"] || clientHeaders["x-real-ip"] || clientHeaders["x-forwarded-for"] || "unknown";
-  const activeSessionRequestId = trackPendingRequest(cleanModel, provider, connectionId, true, false, { requestId: requestedUsageEventId, clientId, sessionId: sessionSeed }) || requestedUsageEventId;
+  const activeSessionRequestId = trackPendingRequest(
+    cleanModel,
+    provider,
+    connectionId,
+    true,
+    false,
+    { requestId: requestedUsageEventId, clientId, sessionId: sessionSeed },
+    apiKeyName,
+  ) || requestedUsageEventId;
   appendRequestLog({ model: cleanModel, provider, connectionId, status: "PENDING" }).catch(() => {});
 
   const msgCount = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || translatedBody.request?.contents?.length || 0;
@@ -919,7 +926,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const finishProviderRequest = () => {
     if (providerRequestFinished) return;
     providerRequestFinished = true;
-    trackPendingRequest(cleanModel, provider, connectionId, false);
+    trackPendingRequest(cleanModel, provider, connectionId, false, false, { requestId: activeSessionRequestId }, apiKeyName);
     if (slotAcquired) {
       releaseSlot(provider);
       slotAcquired = false;

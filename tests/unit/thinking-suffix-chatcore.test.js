@@ -142,6 +142,9 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       "kiro",
       "connection-gate-abort",
       false,
+      false,
+      { requestId: expect.any(String) },
+      "Local (No API Key)",
     );
     expect(mocks.finishSession).toHaveBeenCalledWith(expect.objectContaining({
       requestId: expect.any(String),
@@ -208,6 +211,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       true,
       false,
       expect.objectContaining({ requestId: expect.any(String), sessionId: "chatcore-session-144" }),
+      "Local (No API Key)",
     );
     expect(mocks.appendLog).toHaveBeenCalledWith(expect.objectContaining({
       model: "claude-sonnet-4.5",

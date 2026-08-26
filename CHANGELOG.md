@@ -4,6 +4,7 @@
 
 - Proxy Timeline page (`/dashboard/timeline`) with live tail, hop/SSE history, and provider/connection View all.
 - Settings: `enableProxyTimeline` (default off) and `proxyTimelineRetentionDays` (1/3/7). Sidecar `proxy-timeline.sqlite` is not in backups; secrets stay `[redacted]`.
+- Usage provider graph tooltips show which named API keys are using each active model without exposing key secrets.
 
 ## Fixed
 

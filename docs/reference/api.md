@@ -49,6 +49,8 @@ The response contains models available through configured providers, aliases, co
 
 Model rows keep the callable `id` and standard `owned_by` values used by existing clients. DurinDoor also adds optional presentation fields: `name`, `provider_name`, `provider_alias`, and `gateway_provider`. Clients must continue sending `id` in requests; friendly names are display metadata and do not replace aliases or routing identities.
 
+`GET /v1/models/info` already returned a registry `name`. That field stays registry-authoritative: presentation only adds `provider_name`, `provider_alias`, and `gateway_provider` and must not rewrite an existing info name (for example `cx/gpt-5.6-sol` stays `GPT 5.6 Sol`).
+
 ## Chat Completions
 
 ```bash

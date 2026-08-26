@@ -1,3 +1,11 @@
+/**
+ * Additive model/provider display projection for `/v1/models`.
+ *
+ * Returns friendly `name` / provider labels without mutating callable `id`,
+ * `owned_by`, or routing identities. Callers that already expose a registry
+ * `name` (notably `/v1/models/info`) must keep that name and only take the
+ * extra provider fields — never overwrite an existing registry name.
+ */
 import REGISTRY from "../registry/index.js";
 import { deriveModelName } from "./namePatterns.js";
 
@@ -26,6 +34,8 @@ export function projectModelPresentation({ model = {}, modelId, providerId, outp
   }
 
   const registryModel = provider.models?.find((entry) => entry.id === modelId);
+  // Prefer the caller's model.name, then the registry row, then a derived label.
+  // Never invent a hyphenated rewrite of an existing registry name.
   const name = model.name || registryModel?.name || deriveModelName(modelId);
   const providerName = model.providerName
     || registryModel?.providerName

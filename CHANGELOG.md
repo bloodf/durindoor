@@ -9,6 +9,7 @@
 
 ## Fixed
 
+- `/v1/models/info` keeps registry `name` values additive (e.g. `cx/gpt-5.6-sol` stays `GPT 5.6 Sol`); presentation only adds provider display fields. Agent plan/spec trees under `docs/superpowers/` stay deleted. Closes #566.
 - Observability settings now use the canonical `enableObservability` key. Stored `enableObservability2` migrates once and is dropped.
 - Proxy Timeline now closes traces on early streaming errors, avoids event-payload reads while filtering live writes, coalesces live dashboard reloads, and leaves the sidecar unopened while capture is disabled.
 

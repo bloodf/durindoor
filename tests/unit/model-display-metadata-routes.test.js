@@ -91,4 +91,31 @@ describe("additive model display metadata", () => {
       gateway_provider: "Blackbox AI",
     });
   });
+
+  it("prefers the registry display name when a live catalog echoes the id as name", async () => {
+    // Observed in production: Codex's live model list returns
+    // `{ id: "gpt-5.6-sol", name: "gpt-5.6-sol" }`, which shadowed the
+    // friendly registry label until id-equal names were rejected.
+    const { projectModelPresentation } = await import("../../open-sse/providers/models/presentation.js");
+    expect(projectModelPresentation({
+      model: { name: "gpt-5.6-sol" },
+      modelId: "gpt-5.6-sol",
+      providerId: "codex",
+      outputAlias: "cx",
+    })).toMatchObject({ name: "GPT 5.6 Sol", provider_name: "OpenAI", gateway_provider: "OpenAI Codex" });
+
+    expect(projectModelPresentation({
+      model: { name: "My Fancy Deployment" },
+      modelId: "gpt-5.6-sol",
+      providerId: "codex",
+      outputAlias: "cx",
+    }).name).toBe("My Fancy Deployment");
+
+    expect(projectModelPresentation({
+      model: { name: "gpt-mystery" },
+      modelId: "gpt-mystery",
+      providerId: "unknown-provider",
+      outputAlias: "unknown-provider",
+    }).name).toBe("GPT Mystery");
+  });
 });

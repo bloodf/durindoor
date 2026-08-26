@@ -47,7 +47,7 @@ Common strategies:
 
 ## What Triggers Fallback
 
-Fallback can occur when a model attempt fails because of provider errors, account cooldowns, rate limits, quota exhaustion, missing active credentials, selected upstream failures, or configured model locks.
+Fallback can occur when a model attempt fails because of provider errors, account cooldowns, rate limits, quota exhaustion, missing active credentials, selected upstream failures, configured model locks, or HTTP 200 responses that contain no usable output. For SSE responses, DurinDoor peeks only a bounded prefix until the first meaningful frame, then replays every consumed byte before continuing the live stream; keepalive-only, `[DONE]`-only, and empty streams fall through without losing valid response bytes.
 
 Fallback should not hide invalid client requests. If the request body is malformed or incompatible with the endpoint itself, fixing the request is better than trying unrelated providers.
 

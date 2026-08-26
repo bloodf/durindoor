@@ -24,6 +24,13 @@ const CODEX_SOURCE_TO_TARGET = {
   [FORMATS.GEMINI_CLI]: FORMATS.ANTIGRAVITY
 };
 
+function hasOutputTokens(usage) {
+  const count = Number(
+    usage?.completion_tokens ?? usage?.output_tokens ?? usage?.candidatesTokenCount ?? 0
+  );
+  return Number.isFinite(count) && count > 0;
+}
+
 /**
  * Determine which SSE transform stream to use based on provider/format.
  *
@@ -193,9 +200,11 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  * @param {object} [params.log] - Unified logger; `line(tag, symbol, message)`
  *   emits the DONE line when present.
  * @param {number} params.requestStartTime - `Date.now()` at request start (TTFT base).
+ * @param {Function} [params.onEmptyStream] - notified after a coherent stream
+ *   completes without text, thinking, or generated tokens.
  * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
-export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, getProviderAttemptStartedAt, terminalProvenance = null }) {
+export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let coherentTerminalHandled = false;
   let completed = false;
@@ -252,6 +261,17 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
+
+    if (
+    isFunction(onEmptyStream) &&
+    !contentObj?.content?.trim?.() &&
+    !contentObj?.thinking?.trim?.() &&
+    !hasOutputTokens(usage))
+    {
+      log?.warn?.("CHATCORE", `${provider}/${model} stream completed with no usable output`);
+      try {Promise.resolve(onEmptyStream()).catch(() => console.error("[Stream] empty-stream cooldown failed"));}
+      catch {console.error("[Stream] empty-stream cooldown failed");}
+    }
   };
 
   // Finalize the placeholder row when the stream ends without onStreamComplete

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { getSettings } from "@/lib/localDb";
+import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 
 export const OIDC_COOKIE_NAMES = {
   state: "oidc_state",
@@ -53,8 +54,19 @@ export async function getOidcRuntimeConfig() {
   };
 }
 
+/**
+ * Fetch the OIDC discovery document for an issuer.
+ * Rejects link-local / private / metadata targets via assertPublicUrl before any network I/O
+ * (login start, callback, and settings discovery test all share this path).
+ *
+ * @param {string} issuerUrl Absolute issuer URL (no trailing slash required).
+ * @returns {Promise<object>} Parsed openid-configuration JSON.
+ */
 export async function fetchOidcDiscovery(issuerUrl) {
-  const discoveryUrl = `${trimTrailingSlashes(issuerUrl)}/.well-known/openid-configuration`;
+  const base = trimTrailingSlashes(issuerUrl);
+  // SSRF guard: block internal/private/metadata issuers before discovery fetch.
+  assertPublicUrl(base);
+  const discoveryUrl = `${base}/.well-known/openid-configuration`;
   const res = await fetch(discoveryUrl, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Failed to load OIDC discovery document from ${discoveryUrl}`);

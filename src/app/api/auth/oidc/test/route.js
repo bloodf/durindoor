@@ -4,6 +4,12 @@ import { getSettings } from "@/lib/localDb";
 import { fetchOidcDiscovery, getPublicOrigin, probeOidcClientSecret } from "@/lib/auth/oidc";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 
+/** Map SSRF / URL-shape failures from fetchOidcDiscovery to HTTP 400. */
+function isOidcIssuerUrlError(error) {
+  const message = error?.message || "";
+  return message.startsWith("Blocked URL:") || message.includes("Invalid URL");
+}
+
 async function canAccessTestRoute() {
   const settings = await getSettings();
   if (settings.requireLogin === false) return true;
@@ -79,6 +85,7 @@ export async function POST(request) {
       message: secretProbe.message,
     });
   } catch (error) {
-    return NextResponse.json({ error: error.message || "OIDC test failed" }, { status: 500 });
+    const status = isOidcIssuerUrlError(error) ? 400 : 500;
+    return NextResponse.json({ error: error.message || "OIDC test failed" }, { status });
   }
 }

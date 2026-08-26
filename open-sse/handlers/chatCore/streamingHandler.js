@@ -3,8 +3,9 @@ import { needsTranslation } from "../../translator/index.js";
 import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
-import { HTTP_STATUS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { HTTP_STATUS, SSE_KEEPALIVE_MS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
+import { ANTHROPIC_PING_FRAME } from "../../utils/earlyStreamKeepalive.js";
 import { createTerminalTracker } from "../../utils/streamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
@@ -135,6 +136,10 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   const onAbortTerminal = isResponsesPassthrough ? buildAbortedResponsesTerminalBytes : null;
   const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
   const terminalTracker = createTerminalTracker(emittedFormat);
+  // Keepalives are client protocol bytes, so select them from emittedFormat
+  // after translation. Feeding an Anthropic ping into the provider stream can
+  // make translators swallow or misparse it.
+  const keepaliveFrame = emittedFormat === FORMATS.CLAUDE ? ANTHROPIC_PING_FRAME : null;
   const clientTap = emittedFormat && traceId
     ? attachClientFrameTap(traceId, emittedFormat === FORMATS.OLLAMA ? "ndjson" : "sse-lines")
     : null;
@@ -148,7 +153,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   };
   const transformedBody = pipeWithDisconnect(
     providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker,
-    clientTap?.onClientBytes || null, onClientEnd, onClientAbort,
+    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS,
   );
 
   saveRequestDetail(buildRequestDetail({

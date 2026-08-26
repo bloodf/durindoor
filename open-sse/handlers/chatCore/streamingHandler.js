@@ -67,7 +67,7 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null }) {
+export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, reqLogger, toolNameMap, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null }) {
   const failTimeline = (status) => {
     if (traceId) { try { finishTrace(traceId, { status }); } catch {} }
   };
@@ -151,6 +151,13 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     clientTap?.onClientAbort();
     if (traceId) { try { finishTrace(traceId, { status: "aborted" }); } catch {} }
   };
+  // Disconnect-aware piping owns client cancellation; capture transform state
+  // before chatCore's lifecycle callbacks race to close the shared detail row.
+  streamController.setInterruptionFinalizer?.((reason) => {
+    const normalizedReason = reason?.message === "stream stall timeout" ? "stall_timeout" :
+    reason?.message ? "stream_error" : reason || "client_disconnected";
+    onStreamAbandoned?.(normalizedReason, transformStream.getStreamSnapshot?.() || null);
+  });
   const transformedBody = pipeWithDisconnect(
     providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker,
     clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS,
@@ -254,23 +261,35 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
   // The `completed` guard (shared with onStreamComplete) makes the two mutually
   // exclusive, so a completion race with a disconnect can never double-write.
   // Reuses streamDetailId so the ON CONFLICT(id) upsert overwrites the placeholder.
-  const onStreamAbandoned = (reason) => {
+  const onStreamAbandoned = (reason, snapshot = null) => {
     if (completed) return;
     completed = true;
     const detail = `[Streaming interrupted: ${reason || "unknown"}]`;
+    const safeContent = snapshot?.content || detail;
+    const usage = snapshot?.usage || null;
+    const latency = {
+      ttft: snapshot?.ttftAt ? snapshot.ttftAt - requestStartTime : 0,
+      total: Date.now() - requestStartTime
+    };
     saveRequestDetail(buildRequestDetail({
       provider, model, connectionId,
-      latency: { ttft: 0, total: Date.now() - requestStartTime },
-      tokens: { prompt_tokens: 0, completion_tokens: 0 },
+      latency,
+      tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
       providerRequest: finalBody || translatedBody || null,
-      providerResponse: detail,
-      response: { content: detail, thinking: null, type: "streaming" },
+      providerResponse: safeContent,
+      response: { content: safeContent, thinking: snapshot?.thinking || null, type: "streaming" },
       pxpipe,
       status: "cancelled"
     }, { id: streamDetailId })).catch((err) => {
       console.error("[RequestDetail] Failed to finalize interrupted stream:", err.message);
     });
+
+    // Partial provider/estimated usage is billable even when client cancellation
+    // prevents transform flush. Mark it cancelled so persistence cannot convert
+    // chatCore's asynchronously finalized error session back to done.
+    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
+    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model }).replace(/^DONE /, "CANCELLED "));
   };
 
   return { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId };

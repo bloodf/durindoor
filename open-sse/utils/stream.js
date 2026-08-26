@@ -511,7 +511,26 @@ export function createSSEStream(options = {}) {
     return `data: ${JSON.stringify(chunk)}\n\n`;
   };
 
-  return new TransformStream({
+  /**
+   * Return partial accounting without closing the transform. Interrupted stream
+   * finalizers use this when flush cannot run, preferring provider usage and
+   * otherwise estimating from content already received.
+   */
+  const getStreamSnapshot = () => {
+    const currentUsage = mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage;
+    const resolvedUsage = hasValidUsage(currentUsage) ? currentUsage :
+    totalContentLength > 0 ?
+    estimateUsage(body, totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
+    null;
+    return {
+      content: accumulatedContent,
+      thinking: accumulatedThinking,
+      usage: resolvedUsage,
+      ttftAt
+    };
+  };
+
+  const transformStream = new TransformStream({
     transform(chunk, controller) {
       if (!ttftAt) ttftAt = Date.now();
       const text = decoder.decode(chunk, { stream: true });
@@ -1243,6 +1262,8 @@ export function createSSEStream(options = {}) {
       }
     }
   });
+  transformStream.getStreamSnapshot = getStreamSnapshot;
+  return transformStream;
 }
 
 export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null) {

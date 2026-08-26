@@ -494,7 +494,11 @@ export async function saveRequestUsage(entry) {
 
     if (inserted) {
       pushToRing(entry);
-      finishActiveSession({ requestId: entry.usageEventId, promptTokens, completionTokens, status: "done" });
+      // Non-success usage remains billable history but must not overwrite the
+      // request lifecycle's error/cancellation state with a completed session.
+      if (!entry.status || entry.status === "ok") {
+        finishActiveSession({ requestId: entry.usageEventId, promptTokens, completionTokens, status: "done" });
+      }
       scheduleStatsEvent("update", 250);
     }
   } catch (e) {

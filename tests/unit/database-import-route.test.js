@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(async () => ({})),
   applyOutboundProxyEnv: vi.fn(),
   verifyDashboardPassword: vi.fn(async () => true),
+  hasValidCliToken: vi.fn(async () => false),
+  hasValidToken: vi.fn(async () => false),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -14,6 +16,10 @@ vi.mock("@/lib/localDb", () => ({
 }));
 vi.mock("@/lib/network/outboundProxy", () => ({ applyOutboundProxyEnv: mocks.applyOutboundProxyEnv }));
 vi.mock("@/lib/auth/dashboardSession", () => ({ verifyDashboardPassword: mocks.verifyDashboardPassword }));
+vi.mock("@/dashboardGuard", () => ({
+  hasValidCliToken: mocks.hasValidCliToken,
+  hasValidToken: mocks.hasValidToken,
+}));
 
 import { POST, readJsonBodyWithLimit } from "../../src/app/api/settings/database/route.js";
 import { DATABASE_IMPORT_MAX_BYTES } from "../../src/shared/constants/quota.js";
@@ -21,9 +27,13 @@ import { DATABASE_IMPORT_MAX_BYTES } from "../../src/shared/constants/quota.js";
 describe("database import request bounds", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.verifyDashboardPassword.mockResolvedValue(true);
+    mocks.hasValidCliToken.mockResolvedValue(false);
+    mocks.hasValidToken.mockResolvedValue(false);
   });
 
   it("rejects an oversized declared body with 413 before import", async () => {
+    mocks.hasValidCliToken.mockResolvedValue(true);
     const request = new Request("http://localhost/api/settings/database", {
       method: "POST",
       headers: {
@@ -55,14 +65,17 @@ describe("database import request bounds", () => {
     await expect(readJsonBodyWithLimit(request, 8)).rejects.toMatchObject({ code: "DATABASE_IMPORT_TOO_LARGE" });
   });
 
-  it("imports a bounded CLI payload and re-applies proxy settings", async () => {
+  it("imports a bounded CLI+password payload and re-applies proxy settings", async () => {
+    mocks.hasValidCliToken.mockResolvedValue(true);
+    mocks.verifyDashboardPassword.mockResolvedValue(true);
     const request = new Request("http://localhost/api/settings/database", {
       method: "POST",
       headers: { "content-type": "application/json", "x-9r-cli-token": "local" },
-      body: JSON.stringify({ settings: { cloudEnabled: false } }),
+      body: JSON.stringify({ settings: { cloudEnabled: false }, password: "correct-horse" }),
     });
     const response = await POST(request);
     expect(response.status).toBe(200);
+    expect(mocks.verifyDashboardPassword).toHaveBeenCalledWith("correct-horse");
     expect(mocks.importDb).toHaveBeenCalledWith({ settings: { cloudEnabled: false } });
     expect(mocks.applyOutboundProxyEnv).toHaveBeenCalledWith({});
   });

@@ -13,6 +13,7 @@
 
 ## Security
 
+- MCP plugin bridges (`GET` `/api/mcp/[plugin]/sse`, `POST` `/api/mcp/[plugin]/message`) re-check the LOCAL_ONLY gate in-handler (machine-bound CLI token, or loopback with dashboard auth) and release SSE bridge sessions on `request.signal` abort as well as `ReadableStream.cancel()`, so disconnects cannot leave unreaped stdio children (intent of 9router #3498 / #3527; not a cherry-pick). Closes #564.
 - Database export/import (`GET`/`POST` `/api/settings/database`) now requires dual auth: a valid machine-bound CLI token **or** dashboard JWT session, **plus** the dashboard password. A stolen CLI token alone can no longer dump or replace credentials (GHSA-qvfm intent; independent of 9router #3500). Profile Export/Import (logged-in user confirms password) is unchanged. Loopback emergency recovery remains `POST /api/auth/reset-password`. Closes #561.
 - Local OAuth callback servers (`startCodexProxy`, `startXaiProxy`, and `startLocalServer`) reject requests whose `Origin` header is present and not loopback. Legitimate OAuth redirects (no `Origin`) continue to work. Closes #557.
 - Management dashboard APIs (`/api/providers`, `/api/usage`, `/api/keys`, `/api/settings`, and related prefixes) no longer accept the global `requireLogin=false` guard bypass for remote callers. Unauthenticated remote clients receive `401`; loopback open-dashboard usage, dashboard JWT sessions, and machine-bound CLI tokens continue to work. Closes #555.

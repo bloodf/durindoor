@@ -19,6 +19,12 @@ Before exposing DurinDoor outside localhost:
 
 The dashboard can create API keys, add upstream provider credentials, configure tunnels, and inspect usage. Do not expose it publicly with only the default password.
 
+### Local MCP plugin bridges
+
+`GET` `/api/mcp/[plugin]/sse` and `POST` `/api/mcp/[plugin]/message` spawn or talk to host stdio MCP children. They are under `LOCAL_ONLY_PATHS`: unauthenticated remote callers receive `403`. Access requires a machine-bound CLI token (`x-9r-cli-token`), or a loopback peer that satisfies the dashboard login policy (JWT when `requireLogin` is enabled; open-dashboard when it is disabled). Cowork MCP apply injects the CLI token into local `/api/mcp/...` SSE entries so legitimate desktop clients keep working. Handlers re-check the same gate in-process. SSE sessions unregister on client abort as well as stream cancel so orphaned children are reaped.
+
+The management control endpoint `POST` `/api/mcp/control` is exempt from the loopback-only branch and instead requires CLI token, API key, or dashboard JWT (including remote). The MCP gateway (`/api/mcp-gateway`) uses gateway keys, not this LOCAL_ONLY policy.
+
 ### Database export and import
 
 `GET`/`POST` `/api/settings/database` is always gated by the dashboard guard (JWT or machine-bound CLI token). That first factor alone is not enough: the handler also requires the current dashboard password (`x-9r-password` on export, `password` in the JSON body on import). A stolen CLI token therefore cannot dump or replace credentials remotely.

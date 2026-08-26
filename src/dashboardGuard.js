@@ -213,7 +213,18 @@ async function canAccessPublicLlmApi(request) {
   return false;
 }
 
-async function canAccessLocalOnlyRoute(request) {
+/**
+ * Access gate for LOCAL_ONLY_PATHS (spawn-capable / host-secret routes).
+ *
+ * Machine-bound CLI token always qualifies (including remote operator use).
+ * Otherwise the peer must be loopback, mutations need an exact Origin, and
+ * the dashboard login policy applies. Exported so MCP plugin handlers can
+ * re-check in-process (defense in depth beyond the middleware proxy gate).
+ *
+ * @param {Request} request
+ * @returns {Promise<boolean>}
+ */
+export async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
   if (!isLocalRequest(request)) return false;
 

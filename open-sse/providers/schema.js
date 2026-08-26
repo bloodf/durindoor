@@ -24,6 +24,7 @@ export const INLINE_THINKING_FORMATS = Object.freeze({
  * @property {boolean} [noAuth]       Provider needs no credentials (local/free).
  * @property {boolean} [autoComboNoAuth] Opt-in: seed this chat no-auth provider into the auto-combo pool by default (#6889); its connection row's isActive=false then gates it out.
  * @property {Object}  [display]      UI: {name,icon,color,textIcon,iconUrl,website,notice,deprecated,deprecationNotice,kindNotice,mediaPriority}.
+ * @property {string}  [modelProviderName] Default model maker/publisher used only for presentation metadata.
  * @property {Object}  [transport]    Runtime HTTP config (see TransportConfig below). Builds PROVIDERS[id].
  * @property {Object}  [oauth]        OAuth flow config (see OAuthConfig). Builds PROVIDER_OAUTH[id].
  * @property {Object}  [media]        Non-LLM services (see MediaConfig). Builds PROVIDER_MEDIA[id].

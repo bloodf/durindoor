@@ -47,6 +47,8 @@ curl http://localhost:20128/v1/models \
 
 The response contains models available through configured providers, aliases, compatible nodes, and media providers.
 
+Model rows keep the callable `id` and standard `owned_by` values used by existing clients. DurinDoor also adds optional presentation fields: `name`, `provider_name`, `provider_alias`, and `gateway_provider`. Clients must continue sending `id` in requests; friendly names are display metadata and do not replace aliases or routing identities.
+
 ## Chat Completions
 
 ```bash

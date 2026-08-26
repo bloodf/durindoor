@@ -20,6 +20,8 @@ const KIND_ENDPOINT = {
 const TTS_VOICES_API = new Set(["elevenlabs", "edge-tts", "deepgram", "inworld", "local-device", "minimax", "minimax-cn"]);
 
 function buildInfo({ alias, providerId, model, kind, providerInfo }) {
+  // Presentation is additive on /v1/models/info: keep the registry `name`
+  // (or id fallback) and only attach the extra display fields.
   const presentation = projectModelPresentation({
     model,
     modelId: model.id,
@@ -32,8 +34,10 @@ function buildInfo({ alias, providerId, model, kind, providerInfo }) {
     kind,
     owned_by: alias,
     endpoint: KIND_ENDPOINT[kind] || null,
+    provider_name: presentation.provider_name,
+    provider_alias: presentation.provider_alias,
+    gateway_provider: presentation.gateway_provider,
   };
-  Object.assign(out, presentation);
   if (model.params) out.params = model.params;
   if (model.capabilities) out.capabilities = model.capabilities;
   if (model.options) out.options = model.options;

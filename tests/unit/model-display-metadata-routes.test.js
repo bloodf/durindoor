@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getModelUpstreamId } from "../../open-sse/config/providerModels.js";
+import { projectModelPresentation } from "../../open-sse/providers/models/presentation.js";
 import { parseModel } from "../../src/sse/services/model.js";
 
 const db = vi.hoisted(() => ({
@@ -32,7 +33,7 @@ describe("additive model display metadata", () => {
       id: "cx/gpt-5.6-sol",
       object: "model",
       owned_by: "cx",
-      name: "GPT-5.6 Sol",
+      name: "GPT 5.6 Sol",
       provider_name: "OpenAI",
       provider_alias: "cx",
       gateway_provider: "OpenAI Codex",
@@ -46,18 +47,30 @@ describe("additive model display metadata", () => {
     expect(getModelUpstreamId("cx", "gpt-5.6-sol-review")).toBe("gpt-5.6-sol");
   });
 
-  it("returns the same identity and names from /v1/models/info", async () => {
+  it("keeps registry /v1/models/info name (does not overwrite with derived presentation)", async () => {
     const { GET } = await import("../../src/app/api/v1/models/info/route.js");
     const response = await GET(new Request("http://localhost/v1/models/info?id=cx/gpt-5.6-sol"));
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       id: "cx/gpt-5.6-sol",
       owned_by: "cx",
-      name: "GPT-5.6 Sol",
+      name: "GPT 5.6 Sol",
       provider_name: "OpenAI",
       provider_alias: "cx",
       gateway_provider: "OpenAI Codex",
     });
+    // Regression guard: #563 briefly rewrote this to the hyphenated form.
+    expect(body.name).not.toBe("GPT-5.6 Sol");
+  });
+
+  it("preserves an explicit registry name in projectModelPresentation", () => {
+    expect(projectModelPresentation({
+      model: { id: "gpt-5.6-sol", name: "GPT 5.6 Sol" },
+      modelId: "gpt-5.6-sol",
+      providerId: "codex",
+      outputAlias: "cx",
+    }).name).toBe("GPT 5.6 Sol");
   });
 
   it("keeps custom model names and callable ids while using registry provider metadata", async () => {

@@ -8,6 +8,7 @@
  */
 import REGISTRY from "../registry/index.js";
 import { deriveModelName } from "./namePatterns.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 function findProvider(providerId, outputAlias) {
   return REGISTRY.find((provider) =>
@@ -22,11 +23,23 @@ function findProvider(providerId, outputAlias) {
   ) || null;
 }
 
+function suppliedDisplayName(model, modelId) {
+  // Live provider catalogs often echo the model id as `name` (observed on
+  // Codex: `gpt-5.6-sol`). An id-equal name is not a display name; treating
+  // it as one shadows the friendly registry label, so only a name that
+  // differs from the id counts as supplied.
+  if (!isString(model.name)) return null;
+  const name = model.name.trim();
+  if (!name || name === modelId) return null;
+  return name;
+}
+
 export function projectModelPresentation({ model = {}, modelId, providerId, outputAlias }) {
+  const suppliedName = suppliedDisplayName(model, modelId);
   const provider = findProvider(providerId, outputAlias);
   if (!provider) {
     return {
-      name: model.name || deriveModelName(modelId),
+      name: suppliedName || deriveModelName(modelId),
       provider_name: providerId,
       provider_alias: outputAlias,
       gateway_provider: providerId,
@@ -34,9 +47,10 @@ export function projectModelPresentation({ model = {}, modelId, providerId, outp
   }
 
   const registryModel = provider.models?.find((entry) => entry.id === modelId);
-  // Prefer the caller's model.name, then the registry row, then a derived label.
+  // Prefer the caller's model.name (only when it is a real display name, not
+  // an echo of the id), then the registry row, then a derived label.
   // Never invent a hyphenated rewrite of an existing registry name.
-  const name = model.name || registryModel?.name || deriveModelName(modelId);
+  const name = suppliedName || registryModel?.name || deriveModelName(modelId);
   const providerName = model.providerName
     || registryModel?.providerName
     || provider.modelProviderName

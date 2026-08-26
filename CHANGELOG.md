@@ -13,6 +13,7 @@
 - Observability settings now use the canonical `enableObservability` key. Stored `enableObservability2` migrates once and is dropped.
 - Proxy Timeline now closes traces on early streaming errors, avoids event-payload reads while filtering live writes, coalesces live dashboard reloads, and leaves the sidecar unopened while capture is disabled.
 - Standalone builds and the Docker image ship `src/shared/utils/typeChecks.cjs` beside `custom-server.js`. The entry requires it at import time (#551) but it sat outside Next's file trace, so fresh deploys crash-looped at boot with MODULE_NOT_FOUND.
+- Model display metadata prefers the friendly registry name when a live provider catalog echoes the model id as `name` (e.g. Codex `gpt-5.6-sol` now displays as `GPT 5.6 Sol`). Supplied names that differ from the id still win.
 
 ## Security
 

@@ -13,6 +13,8 @@ export default {
   category: "free",
   noAuth: true,
   autoComboNoAuth: true,
+  // One OpenAI-compatible gateway owns the effort enum for every model family.
+  thinkingFormat: "opencode",
   transport: {
     baseUrl: "https://opencode.ai",
     headers: {

@@ -75,6 +75,29 @@ describe("extractThinking", () => {
   it("responses reasoning.effort none", () => {
     expect(extractThinking({ reasoning: { effort: "none" } })).toEqual({ mode: "none" });
   });
+  it("explicit reasoning effort wins over a generic enabled thinking block", () => {
+    expect(extractThinking({
+      thinking: { type: "enabled" },
+      reasoning: { effort: "medium" },
+    })).toEqual({ mode: "level", level: "medium" });
+  });
+  it("explicit Claude budget beats an injected reasoning effort", () => {
+    const out = apply("gemini-cli", "gemini-2.5-pro", {
+      request: { generationConfig: { maxOutputTokens: 1024 } },
+      thinking: { type: "enabled", budget_tokens: 32000 },
+      reasoning_effort: "low",
+    }, "gemini-cli");
+    expect(out.request.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 24576, includeThoughts: true });
+    expect(out.request.generationConfig.maxOutputTokens).toBe(32768);
+  });
+  it("explicit Claude disable beats an injected reasoning effort", () => {
+    const out = apply("claude", "claude-opus-4.8", {
+      thinking: { type: "disabled" },
+      reasoning_effort: "low",
+    }, "claude");
+    expect(out.thinking).toEqual({ type: "disabled" });
+    expect(out.output_config).toBeUndefined();
+  });
   it("gemini thinkingBudget 0 → none", () => {
     expect(extractThinking({ thinkingConfig: { thinkingBudget: 0 } })).toEqual({ mode: "none" });
   });
@@ -176,13 +199,63 @@ describe("applyThinking per provider format", () => {
     expect(outXhigh.thinking).toEqual({ type: "enabled" });
     expect(outXhigh.reasoning_effort).toBe("max");
   });
-  it("Z.ai GLM maps lower reasoning_effort levels to high", () => {
+  it("Z.ai preserves scalar effort and adds matching reasoning.effort", () => {
     const outLow = apply("openai", "glm-5.2", { reasoning_effort: "low" }, "glm");
     const outMedium = apply("openai", "glm-5.2", { reasoning_effort: "medium" }, "glm");
-    expect(outLow.thinking).toEqual({ type: "enabled" });
-    expect(outLow.reasoning_effort).toBe("high");
-    expect(outMedium.thinking).toEqual({ type: "enabled" });
-    expect(outMedium.reasoning_effort).toBe("high");
+    expect(outLow).toMatchObject({
+      thinking: { type: "enabled" },
+      reasoning_effort: "high",
+      reasoning: { effort: "low" },
+    });
+    expect(outMedium).toMatchObject({
+      thinking: { type: "enabled" },
+      reasoning_effort: "high",
+      reasoning: { effort: "medium" },
+    });
+  });
+  it.each([
+    ["high", "high", "high"],
+    ["max", "max", "high"],
+    ["xhigh", "max", "high"],
+    ["low", "high", "low"],
+    ["medium", "high", "medium"],
+    ["minimal", "high", "minimal"],
+  ])("Z.ai maps %s to scalar %s and object effort %s", (input, scalar, object) => {
+    const out = apply("openai", "glm-5.3", { reasoning_effort: input }, "glm-cn");
+    expect(out.thinking).toEqual({ type: "enabled" });
+    expect(out.reasoning_effort).toBe(scalar);
+    expect(out.reasoning).toEqual({ effort: object });
+  });
+  it.each([
+    ["none", false],
+    ["auto", true],
+    ["low", "low"],
+    ["medium", "medium"],
+    ["high", "high"],
+  ])("Ollama maps %s intent to think=%s", (input, expected) => {
+    const out = apply(FORMATS.OLLAMA, "qwen3.5", { reasoning_effort: input }, "ollama");
+    expect(out.think).toBe(expected);
+    expect(out.reasoning_effort).toBeUndefined();
+  });
+  it("Ollama clamps unsupported GPT-OSS max thinking to high", () => {
+    const out = apply(FORMATS.OLLAMA, "gpt-oss:120b", { reasoning_effort: "max" }, "ollama");
+    expect(out.think).toBe("high");
+  });
+  it("Ollama local declares the Ollama thinking wire format", () => {
+    expect(PROVIDERS["ollama-local"].thinkingFormat).toBe("ollama");
+  });
+  it("OpenAI to Ollama translation emits top-level think", () => {
+    const out = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OLLAMA,
+      "qwen3.5",
+      { messages: [{ role: "user", content: "hi" }], reasoning_effort: "high" },
+      false,
+      null,
+      "ollama",
+    );
+    expect(out.think).toBe("high");
+    expect(out.reasoning_effort).toBeUndefined();
   });
   it("Qwen on → enable_thinking + thinking_budget", () => {
     const out = apply("openai", "qwen3-max", { reasoning_effort: "medium" }, "qwen");

@@ -8,6 +8,7 @@
 - Model discovery exposes additive human-readable model/provider metadata while preserving every existing callable model ID and harness configuration.
 
 ## Fixed
+- Thinking effort now reaches Ollama as `think`, Z.AI as both scalar and `reasoning.effort`, OpenCode free models as its gateway enum, and Grok CLI 4.6 virtual models through `xhigh`.
 
 - `/v1/models/info` keeps registry `name` values additive (e.g. `cx/gpt-5.6-sol` stays `GPT 5.6 Sol`); presentation only adds provider display fields. Agent plan/spec trees under `docs/superpowers/` stay deleted. Closes #566.
 - Observability settings now use the canonical `enableObservability` key. Stored `enableObservability2` migrates once and is dropped.

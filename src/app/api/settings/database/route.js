@@ -2,14 +2,37 @@ import { NextResponse } from "next/server";
 import { exportDb, getSettings, importDb } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
+import { hasValidCliToken, hasValidToken } from "@/dashboardGuard";
 import { DATABASE_IMPORT_MAX_BYTES } from "@/shared/constants/quota";
 
-const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const PASSWORD_HEADER = "x-9r-password";
 
-// CLI token requests are already trusted (local machine); skip password re-auth.
-function isCliRequest(request) {
-  return Boolean(request.headers.get(CLI_TOKEN_HEADER));
+const DUAL_AUTH_UNAUTHORIZED = {
+  error: "Unauthorized: CLI token + password or JWT session + password required",
+};
+
+/**
+ * Dual-factor gate for credential-bearing database export/import.
+ *
+ * `/api/settings/database` is ALWAYS_PROTECTED, so a valid JWT or machine-bound
+ * CLI token already reaches this handler. That first factor alone must not dump
+ * or replace credentials (GHSA-qvfm): require the dashboard password as the
+ * second factor on both paths.
+ *
+ * Emergency recovery is unchanged: POST `/api/auth/reset-password` remains
+ * loopback-only (CLI token or trusted local origin). There is no loopback-only
+ * bypass that exports/imports with a stolen CLI token alone.
+ *
+ * @param {Request} request
+ * @param {string|null|undefined} password
+ * @returns {Promise<boolean>}
+ */
+export async function requireDatabaseDualAuth(request, password) {
+  const cliOk = await hasValidCliToken(request);
+  const jwtOk = await hasValidToken(request);
+  if (!cliOk && !jwtOk) return false;
+  if (!password || !(await verifyDashboardPassword(password))) return false;
+  return true;
 }
 
 class DatabaseImportTooLargeError extends Error {
@@ -53,8 +76,9 @@ export async function readJsonBodyWithLimit(request, maxBytes = DATABASE_IMPORT_
 
 export async function GET(request) {
   try {
-    if (!isCliRequest(request) && !(await verifyDashboardPassword(request.headers.get(PASSWORD_HEADER)))) {
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+    const password = request.headers.get(PASSWORD_HEADER);
+    if (!(await requireDatabaseDualAuth(request, password))) {
+      return NextResponse.json(DUAL_AUTH_UNAUTHORIZED, { status: 401 });
     }
     // SEC-B-02: credentials are scrubbed from the portable export by default.
     // Operators who need a full backup (e.g. migrating DATA_DIR to a new
@@ -73,8 +97,8 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const { password, ...payload } = await readJsonBodyWithLimit(request);
-    if (!isCliRequest(request) && !(await verifyDashboardPassword(password))) {
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+    if (!(await requireDatabaseDualAuth(request, password))) {
+      return NextResponse.json(DUAL_AUTH_UNAUTHORIZED, { status: 401 });
     }
     await importDb(payload);
 

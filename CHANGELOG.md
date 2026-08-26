@@ -13,6 +13,7 @@
 
 ## Security
 
+- Database export/import (`GET`/`POST` `/api/settings/database`) now requires dual auth: a valid machine-bound CLI token **or** dashboard JWT session, **plus** the dashboard password. A stolen CLI token alone can no longer dump or replace credentials (GHSA-qvfm intent; independent of 9router #3500). Profile Export/Import (logged-in user confirms password) is unchanged. Loopback emergency recovery remains `POST /api/auth/reset-password`. Closes #561.
 - Local OAuth callback servers (`startCodexProxy`, `startXaiProxy`, and `startLocalServer`) reject requests whose `Origin` header is present and not loopback. Legitimate OAuth redirects (no `Origin`) continue to work. Closes #557.
 - Management dashboard APIs (`/api/providers`, `/api/usage`, `/api/keys`, `/api/settings`, and related prefixes) no longer accept the global `requireLogin=false` guard bypass for remote callers. Unauthenticated remote clients receive `401`; loopback open-dashboard usage, dashboard JWT sessions, and machine-bound CLI tokens continue to work. Closes #555.
 - Require an explicit `JWT_SECRET` for dashboard sessions (independent of 9router #3501 / GHSA-jphh). DurinDoor no longer auto-writes `DATA_DIR/jwt-secret`. Existing installs that already have that file keep working with a warning; set `JWT_SECRET` to the file contents (or a new secret, accepting session invalidation) to silence the warning. Fresh installs without env or file fail closed. Closes #550.

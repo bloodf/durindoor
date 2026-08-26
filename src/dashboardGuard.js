@@ -244,7 +244,12 @@ async function canAccessLocalOnlyRoute(request) {
   return false;
 }
 
-async function hasValidToken(request) {
+/**
+ * True when the request carries a valid dashboard session JWT (`auth_token` cookie).
+ * Exported so sensitive routes (e.g. database export/import) can require JWT+password
+ * as a second factor beyond the ALWAYS_PROTECTED middleware gate.
+ */
+export async function hasValidToken(request) {
   const token = request.cookies.get("auth_token")?.value;
   return await verifyDashboardAuthToken(token);
 }

@@ -19,6 +19,14 @@ Before exposing DurinDoor outside localhost:
 
 The dashboard can create API keys, add upstream provider credentials, configure tunnels, and inspect usage. Do not expose it publicly with only the default password.
 
+### Database export and import
+
+`GET`/`POST` `/api/settings/database` is always gated by the dashboard guard (JWT or machine-bound CLI token). That first factor alone is not enough: the handler also requires the current dashboard password (`x-9r-password` on export, `password` in the JSON body on import). A stolen CLI token therefore cannot dump or replace credentials remotely.
+
+The Profile page Export/Import flow already prompts for the password and continues to work for a logged-in session. Scripted CLI backups must send both the CLI token and the password.
+
+If the dashboard password is lost, use the loopback-only emergency path `POST /api/auth/reset-password` (CLI token or trusted local origin), then set a new password before exporting again. There is no loopback-only bypass that exports or imports with a CLI token alone.
+
 Remote login with the built-in `123456` password is refused before a dashboard session cookie is issued. Set `INITIAL_PASSWORD` or a stored dashboard password before any remote access. The login screen surfaces the default-password hint only when `settings.password || INITIAL_PASSWORD || 123456` resolves to the literal built-in password, so a stored custom password or OIDC mode hides it.
 
 Recommended controls:

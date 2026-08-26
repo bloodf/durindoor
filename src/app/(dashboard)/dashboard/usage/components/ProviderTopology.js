@@ -10,11 +10,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-import { createVisiblePoller } from "@/shared/utils/visiblePoller";
+import { buildProviderActivity } from "./providerTopologyData.js";
+import { getProviderNodeAccessibility } from "./providerNodeAccessibility.js";
 
-// Force-stop FE animation if a provider stays active longer than this
-const FE_ACTIVE_TIMEOUT_MS = 60000;
-const FE_ACTIVE_TICK_MS = 1000;
 
 function getProviderConfig(providerId) {
   return AI_PROVIDERS[providerId] || { color: "#6b7280", name: providerId };
@@ -25,18 +23,18 @@ function getProviderImageUrl(providerId) {
   return `/providers/${providerId}.png`;
 }
 
-// Custom provider node - rectangle with image + name
-function ProviderNode({ data }) {
-  const { label, color, imageUrl, textIcon, active } = data;
+export function ProviderNode({ data }) {
+  const { label, color, imageUrl, textIcon, active, activity = [], tooltipId } = data;
   const [imgError, setImgError] = useState(false);
   return (
     <div
-      className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg border-2 transition-all duration-300 bg-bg"
+      className="group relative flex items-center gap-2.5 px-4 py-2.5 rounded-lg border-2 transition-all duration-300 bg-bg"
       style={{
         borderColor: active ? color : "var(--color-border)",
         boxShadow: active ? `0 0 16px ${color}40` : "none",
         minWidth: "150px",
       }}
+      {...getProviderNodeAccessibility(active, tooltipId)}
     >
       <Handle type="target" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="target" position={Position.Bottom} id="bottom" className="!bg-transparent !border-0 !w-0 !h-0" />
@@ -69,6 +67,25 @@ function ProviderNode({ data }) {
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: color }} />
           <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: color }} />
         </span>
+      )}
+      {active && activity.length > 0 && (
+        <div
+          id={tooltipId}
+          role="tooltip"
+          className="pointer-events-none invisible absolute left-1/2 top-full z-50 mt-2 min-w-56 -translate-x-1/2 rounded-lg border border-border bg-bg p-3 text-left text-xs text-text opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus:visible group-focus:opacity-100"
+        >
+          <p className="mb-2 font-semibold">{label} active calls</p>
+          {activity.map((model) => (
+            <div key={model.model} className="mt-2 first:mt-0">
+              <p className="font-mono font-medium">{model.model}{model.count > 1 ? ` ×${model.count}` : ""}</p>
+              <ul className="mt-1 space-y-0.5 text-text-muted">
+                {model.keys.map((key) => (
+                  <li key={key.name}>{key.name}{key.count > 1 ? ` ×${key.count}` : ""}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -105,7 +122,7 @@ RouterNode.propTypes = {
 const nodeTypes = { provider: ProviderNode, router: RouterNode };
 
 // Place N nodes evenly along an ellipse around the router center.
-function buildLayout(providers, activeSet, lastSet, errorSet) {
+function buildLayout(providers, activeSet, lastSet, errorSet, activityByProvider = {}) {
   const nodeW = 180;
   const nodeH = 30;
   const routerW = 120;
@@ -155,6 +172,8 @@ function buildLayout(providers, activeSet, lastSet, errorSet) {
       imageUrl: getProviderImageUrl(p.provider),
       textIcon: config.textIcon || (p.provider || "?").slice(0, 2).toUpperCase(),
       active,
+      activity: activityByProvider[p.provider?.toLowerCase()] || [],
+      tooltipId: `provider-${p.provider}-active-keys`,
     };
 
     // Distribute evenly starting from top (−π/2), clockwise
@@ -208,42 +227,13 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   const rawActiveSet = useMemo(() => new Set(activeKey ? activeKey.split(",") : []), [activeKey]);
   const lastSet = useMemo(() => new Set(lastKey ? [lastKey] : []), [lastKey]);
   const errorSet = useMemo(() => new Set(errorKey ? [errorKey] : []), [errorKey]);
+  const activityByProvider = useMemo(() => buildProviderActivity(activeRequests), [activeRequests]);
+  const activeSet = rawActiveSet;
 
-  // Track firstSeen per active provider; drop provider if running too long (BE stuck)
-  const firstSeenRef = useRef({});
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    const seen = firstSeenRef.current;
-    const now = Date.now();
-    for (const p of rawActiveSet) {
-      if (!seen[p]) seen[p] = now;
-    }
-    for (const p of Object.keys(seen)) {
-      if (!rawActiveSet.has(p)) delete seen[p];
-    }
-  }, [rawActiveSet]);
-
-  useEffect(() => {
-    if (rawActiveSet.size === 0) return;
-    const poller = createVisiblePoller({ callback: () => setTick((t) => t + 1), intervalMs: FE_ACTIVE_TICK_MS, jitter: 0 });
-    poller.start();
-    return () => poller.stop();
-  }, [rawActiveSet]);
-
-  const activeSet = useMemo(() => {
-    const now = Date.now();
-    const filtered = new Set();
-    for (const p of rawActiveSet) {
-      const ts = firstSeenRef.current[p];
-      if (!ts || now - ts < FE_ACTIVE_TIMEOUT_MS) filtered.add(p);
-    }
-    return filtered;
-  }, [rawActiveSet, tick]);
 
   const { nodes, edges } = useMemo(
-    () => buildLayout(providers, activeSet, lastSet, errorSet),
-    [providers, activeSet, lastKey, errorKey]
+    () => buildLayout(providers, activeSet, lastSet, errorSet, activityByProvider),
+    [providers, activeSet, lastSet, errorSet, activityByProvider]
   );
 
   // Stable key — only remount when provider list changes
@@ -314,16 +304,8 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
 }
 
 ProviderTopology.propTypes = {
-  providers: PropTypes.arrayOf(PropTypes['shape']({
-    id: PropTypes.string,
-    provider: PropTypes.string,
-    name: PropTypes.string,
-  })),
-  activeRequests: PropTypes.arrayOf(PropTypes['shape']({
-    provider: PropTypes.string,
-    model: PropTypes.string,
-    account: PropTypes.string,
-  })),
+  providers: PropTypes.arrayOf(PropTypes.object),
+  activeRequests: PropTypes.arrayOf(PropTypes.object),
   lastProvider: PropTypes.string,
   errorProvider: PropTypes.string,
 };

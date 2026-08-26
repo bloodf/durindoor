@@ -501,7 +501,7 @@ export async function handleChat(request, clientRawRequest = null) {
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false }
+            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)") }
           );
         },
         log,
@@ -537,7 +537,7 @@ export async function handleChat(request, clientRawRequest = null) {
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false }
+          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)") }
         );
       },
       log,
@@ -565,7 +565,11 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, { settings, allowVisionBridge: true });
+  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, {
+    settings,
+    allowVisionBridge: true,
+    apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"),
+  });
 }
 
 // Resolve custom capabilities for all combo members into a single map keyed
@@ -613,7 +617,7 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
  * Handle single model chat request
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)" } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -656,7 +660,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false }
+              { settings: chatSettings, allowVisionBridge: false, apiKeyName }
             );
           },
           log,
@@ -691,7 +695,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false }
+            { settings: chatSettings, allowVisionBridge: false, apiKeyName }
           );
         },
         log,
@@ -768,7 +772,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             attemptSignal,
             tokenSaverCollector,
-            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps }
+            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps, apiKeyName }
           );
         }
         // Invalid reroute target: fall through to original model.
@@ -1022,6 +1026,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         connectionId: credentials.connectionId,
         userAgent,
         apiKey,
+        apiKeyName,
         abortSignal: requestSignal,
         quotaReservation,
         onProviderAttempt: () => {

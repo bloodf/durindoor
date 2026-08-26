@@ -70,6 +70,10 @@ The default model is \"openai/gpt-4o-mini\" if the URL does not specify one.
 
 On \"close\" and on \"error\", the session's \"dispose()\" aborts any in-flight upstream chat, so provider connections and tokens are not stranded. Frames already queued across the auth window are dropped and cannot start a response after cleanup. The abort is abort-only: the owning response clears its own controller in its \"finally\" block, so an abort racing a newer \"response.create\" can never clobber the newer request's handle.
 
+## Usage dashboard live activity
+
+The Usage provider graph shows active models and their API-key names on pointer hover and keyboard focus. The `/api/usage/stream` active-request payload contains only safe key names and concurrent counts; it never includes raw keys, masked secrets, or database key IDs. Concurrent calls use request-owned completion tokens so finishing one call cannot remove another call from the graph.
+
 ## Test coverage
 
 "tests/unit/realtime-ws.test.js" covers bad-key close (4001), ordered event sequences ending in "response.done", audio-modality refusal, frame/session validation, oversize-frame rejection, history cap, disconnect cleanup, and upstream-error propagation.

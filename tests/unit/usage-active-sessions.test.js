@@ -1,22 +1,26 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-active-sessions-"));
 process.env.DATA_DIR = dataDir;
 const { finishActiveSession, getActiveRequests, saveRequestUsage, trackPendingRequest } = await import("../../src/lib/db/repos/usageRepo.js");
 afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }));
+afterEach(() => vi.useRealTimers());
+
 
 describe("live usage sessions (#3273)", () => {
   beforeEach(() => {
     global._activeSessions.clear();
+    global._pendingRequests.byKey = {};
     global._pendingRequests.byModel = {};
     global._pendingRequests.byAccount = {};
     for (const key of Object.keys(global._pendingTimers)) {
       clearTimeout(global._pendingTimers[key]);
       delete global._pendingTimers[key];
     }
+    global._pendingCalls.clear();
     global._connectionMapCache.map = { "conn-1": "Primary account" };
     global._connectionMapCache.ts = Date.now();
   });
@@ -71,5 +75,46 @@ describe("live usage sessions (#3273)", () => {
     finishActiveSession({ requestId: first, status: "done" });
 
     expect(global._pendingRequests.byModel["gpt-5.6 (codex)"]).toBe(1);
+  });
+
+  it("keeps the remaining key active when another key finishes the same model", async () => {
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, null, "OMP Production");
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, null, "Cursor Dev");
+
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", false, false, null, "OMP Production");
+
+    const { activeRequests } = await getActiveRequests();
+    expect(activeRequests).toEqual([
+      expect.objectContaining({
+        model: "gpt-5.6",
+        provider: "codex",
+        count: 1,
+        keys: [{ name: "Cursor Dev", count: 1 }],
+      }),
+    ]);
+    expect(JSON.stringify(activeRequests)).not.toContain("sk-");
+    expect(JSON.stringify(activeRequests)).not.toContain("keyId");
+  });
+
+  it("keeps a timeout for the second concurrent call from the same key", async () => {
+    vi.useFakeTimers();
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, null, "OMP Production");
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, null, "OMP Production");
+
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", false, false, null, "OMP Production");
+    expect((await getActiveRequests()).activeRequests[0]).toMatchObject({
+      count: 1,
+      keys: [{ name: "OMP Production", count: 1 }],
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await getActiveRequests()).activeRequests).toEqual([]);
+  });
+
+  it("ignores a duplicate completion token", async () => {
+    const requestId = trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, null, "OMP Production");
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", false, false, { requestId }, "OMP Production");
+    trackPendingRequest("gpt-5.6", "codex", "conn-1", false, false, { requestId }, "OMP Production");
+    expect((await getActiveRequests()).activeRequests).toEqual([]);
+    expect(global._pendingRequests.byModel["gpt-5.6 (codex)"]).toBeUndefined();
   });
 });

@@ -546,6 +546,26 @@ describe("dashboard guard local-only access", () => {
 
     expect(response).toBe(mocks.nextResponse);
   });
+
+  it("rejects unauthenticated remote MCP plugin message POST", async () => {
+    const response = await proxy(request("/api/mcp/browsermcp/message", {
+      host: "router.example.com",
+    }, "POST"));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Local only: CLI token required");
+  });
+
+  it("rejects unauthenticated remote MCP plugin SSE even when requireLogin=false", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+
+    const response = await proxy(request("/api/mcp/browsermcp/sse", {
+      host: "router.example.com",
+    }));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Local only: CLI token required");
+  });
 });
 
 describe("dashboard guard MCP CIMD client-metadata", () => {

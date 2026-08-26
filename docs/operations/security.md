@@ -159,6 +159,15 @@ browser sessions receive separate owner scopes, so starting a second login
 cannot cancel another user's flow. Secret-bearing provider metadata is accepted
 only in POST bodies and is rejected on legacy GET authorization URLs.
 
+### Dashboard OIDC issuer discovery
+
+`fetchOidcDiscovery` validates the configured issuer with `assertPublicUrl` before
+fetching `/.well-known/openid-configuration`. Link-local, loopback, RFC1918,
+`.internal` / `.local`, and similar metadata hosts are rejected for login start,
+callback, and the settings discovery test (`POST /api/auth/oidc/test`). Public
+issuer URLs continue to work. DNS pinning for other outbound probes lives in
+`outboundUrlGuard` and is not duplicated on this path.
+
 ## Request Logs
 
 Detailed request logs may include prompts, responses, tool output, filenames, URLs, source code, and customer data.

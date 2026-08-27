@@ -201,7 +201,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  *   emits the DONE line when present.
  * @param {number} params.requestStartTime - `Date.now()` at request start (TTFT base).
  * @param {Function} [params.onEmptyStream] - notified after a coherent stream
- *   completes without text, thinking, or generated tokens.
+ *   completes without text, thinking, tool calls, or generated tokens.
  * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
 export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null }) {
@@ -265,6 +265,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     if (
     isFunction(onEmptyStream) &&
     !contentObj?.content?.trim?.() &&
+    !contentObj?.hadToolCalls &&
     !contentObj?.thinking?.trim?.() &&
     !hasOutputTokens(usage))
     {

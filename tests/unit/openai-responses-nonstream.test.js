@@ -5,7 +5,8 @@ vi.mock("@/lib/usageDb.js", () => ({ appendRequestLog: vi.fn(async () => {}), sa
 const { EMPTY_CONTENT_COOLDOWN_MS } = await import("../../open-sse/config/errorConfig.js");
 const { FORMATS } = await import("../../open-sse/translator/formats.js");
 const { handleNonStreamingResponse, translateNonStreamingResponse } = await import("../../open-sse/handlers/chatCore/nonStreamingHandler.js");
-const { buildOnStreamComplete } = await import("../../open-sse/handlers/chatCore/streamingHandler.js");
+const { buildOnStreamComplete, handleStreamingResponse } = await import("../../open-sse/handlers/chatCore/streamingHandler.js");
+const { createStreamController } = await import("../../open-sse/utils/streamHandler.js");
 
 function options(responseBody, overrides = {}) {
   return {
@@ -47,6 +48,22 @@ describe("non-stream empty-content fallback (#3465)", () => {
     }
   });
 
+  it.each([
+    FORMATS.GEMINI,
+    FORMATS.ANTIGRAVITY,
+    FORMATS.GEMINI_CLI,
+    FORMATS.VERTEX,
+    FORMATS.OLLAMA
+  ])("accepts emitted OpenAI content for a %s client", async (sourceFormat) => {
+    const result = await handleNonStreamingResponse(options({
+      choices: [{ message: { role: "assistant", content: "translated answer" }, finish_reason: "stop" }]
+    }, { sourceFormat, targetFormat: FORMATS.OPENAI }));
+
+    expect(result.success).toBe(true);
+    expect(result.status).not.toBe(502);
+    expect(result).not.toHaveProperty("resetsAtMs");
+  });
+
   it("projects a Responses body into OpenAI chat content", () => {
     const translated = translateNonStreamingResponse({
       id: "resp_test", object: "response", status: "completed", model: "gpt-test",
@@ -72,16 +89,30 @@ describe("stream empty-content cooldown (#3465)", () => {
     expect(onEmptyStream).toHaveBeenCalledOnce();
   });
 
-  it("does not report tool-only output with generated tokens as empty", () => {
+  it("does not report a tool-call-only stream with absent usage as empty", async () => {
     const onEmptyStream = vi.fn();
-    const { onStreamComplete } = buildOnStreamComplete({
+    const completion = buildOnStreamComplete({
       provider: "openai", model: "gpt-test", requestStartTime: Date.now(),
       body: {}, stream: true, onEmptyStream
     });
+    const toolCall = {
+      id: "chatcmpl-tool", object: "chat.completion.chunk", model: "gpt-test",
+      choices: [{
+        index: 0,
+        delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "run", arguments: "{}" } }] },
+        finish_reason: "tool_calls"
+      }]
+    };
+    const result = await handleStreamingResponse({
+      ...options({}, { ...completion, stream: true }),
+      providerResponse: new Response(`data: ${JSON.stringify(toolCall)}\n\ndata: [DONE]\n\n`, {
+        headers: { "content-type": "text/event-stream" }
+      }),
+      streamController: createStreamController({ provider: "openai", model: "gpt-test" })
+    });
 
-    onStreamComplete({ content: "", thinking: "" }, { completion_tokens: 1 });
-
-    expect(onEmptyStream).not.toHaveBeenCalled();
+    await result.response.text();
+    await vi.waitFor(() => expect(onEmptyStream).not.toHaveBeenCalled());
   });
 
   it("uses the configured cooldown when the callback benches an account", async () => {

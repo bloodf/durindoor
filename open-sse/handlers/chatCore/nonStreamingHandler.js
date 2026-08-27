@@ -45,6 +45,16 @@ FORMATS.VERTEX]
  * here lets existing account and combo fallback handle the current request.
  */
 function hasUsefulContent(response, sourceFormat) {
+  /** Translation may emit OpenAI choices regardless of the client's source dialect. */
+  if (Array.isArray(response?.choices)) {
+    const message = response.choices[0]?.message;
+    return isString(message?.content) && message.content.trim().length > 0 ||
+    Array.isArray(message?.content) && message.content.length > 0 ||
+    isString(message?.reasoning_content) && message.reasoning_content.trim().length > 0 ||
+    isString(message?.reasoning) && message.reasoning.trim().length > 0 ||
+    Array.isArray(message?.tool_calls) && message.tool_calls.length > 0 ||
+    Boolean(message?.function_call);
+  }
   if (sourceFormat === FORMATS.CLAUDE && response?.type === "message") {
     return Array.isArray(response.content) && response.content.some((block) =>
     block?.type === "tool_use" ||
@@ -76,13 +86,7 @@ function hasUsefulContent(response, sourceFormat) {
     Array.isArray(response?.message?.tool_calls) && response.message.tool_calls.length > 0;
   }
 
-  const message = response?.choices?.[0]?.message;
-  return isString(message?.content) && message.content.trim().length > 0 ||
-  Array.isArray(message?.content) && message.content.length > 0 ||
-  isString(message?.reasoning_content) && message.reasoning_content.trim().length > 0 ||
-  isString(message?.reasoning) && message.reasoning.trim().length > 0 ||
-  Array.isArray(message?.tool_calls) && message.tool_calls.length > 0 ||
-  Boolean(message?.function_call);
+  return false;
 }
 
 // Claude Code classifier compat: detect classifier-shaped requests by the

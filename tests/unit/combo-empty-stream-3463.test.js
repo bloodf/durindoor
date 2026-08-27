@@ -73,6 +73,25 @@ describe("combo empty-stream failover (#3463)", () => {
     expect(text).toBe(chunks.join(""));
   });
 
+  it("serves wrapped Gemini content without trying the fallback member", async () => {
+    const frame = `data: ${JSON.stringify({
+      response: {
+        candidates: [{
+          content: { parts: [{ text: "wrapped Gemini wins" }] },
+          finishReason: "STOP"
+        }]
+      }
+    })}\n\n`;
+    const { attempted, text } = await runCombo({
+      "p1/first": () => sseResponse([frame]),
+      "p2/second": () => sseResponse(['data: {"choices":[{"delta":{"content":"wrong fallback"}}]}\n\n']),
+    });
+
+    expect(attempted).toEqual(["p1/first"]);
+    expect(text).toContain("wrapped Gemini wins");
+    expect(text).not.toContain("wrong fallback");
+  });
+
   it("replays invalid UTF-8 preamble bytes without rewriting them", async () => {
     const preamble = new Uint8Array([0x3a, 0x20, 0xff, 0xfe, 0x0a, 0x0a]);
     const content = encoder.encode('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n');

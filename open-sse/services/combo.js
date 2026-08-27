@@ -56,7 +56,9 @@ function frameCarriesContent(line) {
 
   if (isString(parsed.type) && parsed.type.endsWith(".delta") && nonEmptyString(parsed.delta)) return true;
 
-  const parts = parsed.candidates?.[0]?.content?.parts;
+  /** Antigravity wraps native Gemini stream members in a response envelope. */
+  const geminiResponse = parsed.response || parsed;
+  const parts = geminiResponse.candidates?.[0]?.content?.parts;
   if (Array.isArray(parts) && parts.some((part) =>
   nonEmptyString(part?.text) || part?.functionCall || part?.inlineData))
   return true;

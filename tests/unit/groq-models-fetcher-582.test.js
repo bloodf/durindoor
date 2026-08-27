@@ -32,6 +32,7 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({
 }));
 
 import { getProviderConnections } from "@/lib/localDb";
+import { getSettings } from "@/lib/db/repos/settingsRepo";
 
 const retiredIds = [
   "llama-3.3-70b-versatile",
@@ -71,7 +72,7 @@ describe("Groq model catalog (upstream #3558)", () => {
     expect(isValidModel("groq", "future-live-model")).toBe(true);
   });
 
-  it("fetches Groq models with bearer auth while keeping the seed unique", async () => {
+  it("serves live-only Groq models with bearer auth while keeping the seed unique", async () => {
     getProviderConnections.mockResolvedValue([{
       id: "groq-1",
       provider: "groq",
@@ -81,7 +82,10 @@ describe("Groq model catalog (upstream #3558)", () => {
     }]);
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: [{ id: "openai/gpt-oss-120b" }] }),
+      json: async () => ({ data: [
+        { id: "openai/gpt-oss-120b" },
+        { id: "moonshotai/kimi-k2-instruct" },
+      ] }),
     });
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -96,7 +100,29 @@ describe("Groq model catalog (upstream #3558)", () => {
         headers: expect.objectContaining({ Authorization: "Bearer gsk-test" }),
       }),
     );
-    expect(ids).toContain("groq/openai/gpt-oss-120b");
+    expect(ids).toContain("groq/moonshotai/kimi-k2-instruct");
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("keeps the refreshed free Groq catalog when paid models are hidden", async () => {
+    const freeIds = Object.keys(currentModels).filter((id) => id !== "openai/gpt-oss-safeguard-20b");
+    getSettings.mockResolvedValueOnce({ hidePaidModels: true });
+    getProviderConnections.mockResolvedValue([{
+      id: "groq-1",
+      provider: "groq",
+      apiKey: "gsk-test",
+      isActive: true,
+      providerSpecificData: { enabledModels: freeIds },
+    }]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: freeIds.map((id) => ({ id })) }),
+    }));
+
+    const ids = (await buildModelsList([LLM_KIND]))
+      .map((model) => model.id)
+      .filter((id) => id.startsWith("groq/"));
+
+    expect(ids).toEqual(freeIds.map((id) => `groq/${id.replace(/^groq\//, "")}`));
   });
 });

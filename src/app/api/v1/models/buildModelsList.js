@@ -122,10 +122,12 @@ function isOllamaEmbeddingModel(model) {
 // intentionally stay unmapped until upstream publishes a stable canonical ID.
 const KIMI_LIVE_MODEL_PROVIDERS = new Set(["kimi", "kimi-coding", "kimi-coding-apikey"]);
 const KIMI_LIVE_MODEL_ALIASES = { k3: "kimi-k3" };
+/** Providers whose discovered models extend, rather than only enrich, their static catalog. */
 const LIVE_MODEL_UNION_PROVIDERS = new Set([
 "anthropic",
 "claude",
 "codex",
+"groq",
 "minimax",
 "minimax-cn",
 "glm",
@@ -768,16 +770,16 @@ async function buildModelsListImpl(kindFilter, guard) {
           try {
             const live = await liveResolver(conn, guard);
             if (live?.models?.length) {
-              const enrichExistingOnly = (
+              const enrichExistingOnly = !LIVE_MODEL_UNION_PROVIDERS.has(providerId) && (
               hasExplicitEnabledModels || Boolean(compatibleLiveResolver) || providerId === "cloudflare-ai") &&
               rawModelIds.length > 0;
               const servedIds = new Set(rawModelIds);
               const liveModels = enrichExistingOnly ?
               live.models.filter((m) => servedIds.has(m.id)) :
               live.models;
-              // Generic and Cloudflare discovery enrich routed IDs only. Dedicated
-              // union providers preserve static order and append unknown live IDs;
-              // other dedicated or empty-static resolvers expose their live list.
+              // Generic and Cloudflare discovery generally enrich routed IDs only.
+              // Union providers, including Groq's generic fetcher, preserve static
+              // order and append unknown live IDs; other resolvers expose live IDs.
               if (!hasExplicitEnabledModels) {
                 if (LIVE_MODEL_UNION_PROVIDERS.has(providerId)) {
                   rawModelIds = Array.from(new Set([...rawModelIds, ...liveModels.map((m) => m.id)]));

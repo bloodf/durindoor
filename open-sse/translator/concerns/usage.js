@@ -97,7 +97,11 @@ export function toOpenAIUsage(raw, kind) {
   return buildUsage(extract(raw));
 }
 
-// OpenAI chat-completions usage → Responses API usage (Codex requires input_tokens).
+/**
+ * Convert OpenAI chat-completions or Responses usage to the Responses shape.
+ * Existing detail objects remain intact; flat provider fields are folded into
+ * those objects so callers keep cache, reasoning, and prediction breakdowns.
+ */
 export function toResponsesUsage(raw) {
   if (!raw || !isObject(raw) || Array.isArray(raw)) return null;
 
@@ -110,11 +114,21 @@ export function toResponsesUsage(raw) {
     total_tokens: n(raw.total_tokens) || inputTokens + outputTokens
   };
 
-  const cachedTokens = n(raw.input_tokens_details?.cached_tokens) || n(raw.prompt_tokens_details?.cached_tokens);
-  if (cachedTokens > 0) usage.input_tokens_details = { cached_tokens: cachedTokens };
+  const rawInputDetails = raw.input_tokens_details || raw.prompt_tokens_details;
+  const inputDetails = rawInputDetails && isObject(rawInputDetails) && !Array.isArray(rawInputDetails) ?
+  { ...rawInputDetails } : {};
+  const cachedTokens = n(raw.cached_tokens) || n(raw.cache_read_input_tokens);
+  const cacheCreationTokens = n(raw.cache_creation_input_tokens);
+  if (cachedTokens > 0 && !isNumber(inputDetails.cached_tokens)) inputDetails.cached_tokens = cachedTokens;
+  if (cacheCreationTokens > 0 && !isNumber(inputDetails.cache_creation_tokens)) inputDetails.cache_creation_tokens = cacheCreationTokens;
+  if (Object.keys(inputDetails).length > 0) usage.input_tokens_details = inputDetails;
 
-  const reasoningTokens = n(raw.output_tokens_details?.reasoning_tokens) || n(raw.completion_tokens_details?.reasoning_tokens);
-  if (reasoningTokens > 0) usage.output_tokens_details = { reasoning_tokens: reasoningTokens };
+  const rawOutputDetails = raw.output_tokens_details || raw.completion_tokens_details;
+  const outputDetails = rawOutputDetails && isObject(rawOutputDetails) && !Array.isArray(rawOutputDetails) ?
+  { ...rawOutputDetails } : {};
+  const reasoningTokens = n(raw.reasoning_tokens);
+  if (reasoningTokens > 0 && !isNumber(outputDetails.reasoning_tokens)) outputDetails.reasoning_tokens = reasoningTokens;
+  if (Object.keys(outputDetails).length > 0) usage.output_tokens_details = outputDetails;
 
   return usage;
 }

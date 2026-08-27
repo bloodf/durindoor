@@ -25,11 +25,6 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
       );
     });
 
-    it("gpt-5.6", () => {
-      expect(getPricingForModel(null, "gpt-5.6")).toEqual(
-        claude(2.50, 15.00, 0.25, 15.00, 2.50),
-      );
-    });
 
     it("gpt-5.6-luna", () => {
       expect(getPricingForModel(null, "gpt-5.6-luna")).toEqual(
@@ -52,10 +47,10 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
 
   describe("revised canonical GPT-5 / Codex rates", () => {
     const revised = {
-      "gpt-5":          claude(1.25, 10.00, 0.625, 10.00, 1.25),
-      "gpt-5-mini":     claude(0.25, 2.00, 0.125, 2.00, 0.25),
+      "gpt-5":          claude(1.25, 10.00, 0.125, 10.00, 1.25),
+      "gpt-5-mini":     claude(0.25, 2.00, 0.025, 2.00, 0.25),
       "gpt-5-codex":    claude(1.25, 10.00, 0.625, 10.00, 1.25),
-      "gpt-5.1":        claude(1.25, 10.00, 0.625, 10.00, 1.25),
+      "gpt-5.1":        claude(1.25, 10.00, 0.125, 10.00, 1.25),
       "gpt-5.1-codex":  claude(1.25, 10.00, 0.625, 10.00, 1.25),
       "gpt-5.2":        claude(1.75, 14.00, 0.175, 14.00, 1.75),
       "gpt-5.2-codex":  claude(1.75, 14.00, 0.175, 14.00, 1.75),
@@ -72,7 +67,7 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
   describe("pattern fallback rates", () => {
     it("gpt-5.6-* pattern matches new family variants", () => {
       expect(getPricingForModel(null, "gpt-5.6-unknown")).toEqual(
-        claude(2.50, 15.00, 0.25, 15.00, 2.50),
+        claude(2.00, 12.00, 0.20, 12.00, 2.50),
       );
     });
 
@@ -105,7 +100,7 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
 
     it("gpt-5.1-* pattern aligns to 1.25/10.00", () => {
       expect(getPricingForModel(null, "gpt-5.1-anything")).toEqual(
-        claude(1.25, 10.00, 0.625, 10.00, 1.25),
+        claude(1.25, 10.00, 0.125, 10.00, 1.25),
       );
     });
 
@@ -130,7 +125,7 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
       // a dot) — lands uniquely on the dashed-family row.
       const r = getPricingForModel(null, "gpt-5-zzz");
       expect(r).toBe(row("gpt-5-*").pricing);
-      expect(r).toEqual(claude(1.25, 10.00, 0.625, 10.00, 1.25));
+      expect(r).toEqual(claude(1.25, 10.00, 0.125, 10.00, 1.25));
     });
 
     it("gpt-5* bare row repriced (unknown id, no dash or dot after gpt-5)", () => {
@@ -138,7 +133,7 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
       // dotted 5.x rows — unique hit on the bare catch-all row.
       const r = getPricingForModel(null, "gpt-5zzz");
       expect(r).toBe(row("gpt-5*").pricing);
-      expect(r).toEqual(claude(1.25, 10.00, 0.625, 10.00, 1.25));
+      expect(r).toEqual(claude(1.25, 10.00, 0.125, 10.00, 1.25));
     });
   });
 

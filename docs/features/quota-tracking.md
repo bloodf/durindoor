@@ -9,10 +9,10 @@ DurinDoor records request activity so operators can understand traffic, cost, pr
 | Request time | When the request was handled. |
 | Provider and model | The resolved upstream provider and model. |
 | Connection | The account or credential used when available. |
-| Input tokens | Prompt tokens reported or estimated by the upstream. |
-| Output tokens | Completion tokens reported or estimated by the upstream. |
+| Input tokens | Prompt tokens reported or estimated by the upstream, including cached-input and cache-write detail when supplied. |
+| Output tokens | Completion tokens reported or estimated by the upstream, including reasoning detail when supplied. |
 | Total tokens | Combined usage when known. |
-| Cost estimate | Calculated when pricing data is available. |
+| Cost estimate | Calculated from normalized token totals and the model catalog. Reasoning tokens are a subset of output tokens, not an extra charge. |
 | Latency | Duration of the request. |
 | Status | Success, provider error, client error, retry, or fallback result. |
 | Error details | Normalized error text for failed requests. |
@@ -52,6 +52,8 @@ Response translators keep provider-specific metering fields internally while exp
 - When Kiro reports only credit information and no standard token fields, the forwarded chunk omits the `usage` property entirely instead of sending an empty object.
 - Fallback token counts derived from Kiro metering or context events are marked with `estimated: true`. The `estimated` flag travels through direct routes (e.g., Kiro → Claude) so downstream consumers do not treat inferred counts as authoritative provider metrics. Only a strict boolean `true` is accepted as the marker.
 - When projecting an OpenAI chat-completions usage object into the Responses API, DurinDoor merges the chunk's usage fields into the existing `state.usage` rather than replacing it. This keeps provider-only fields such as Kiro credits intact while still letting the latest public token values win.
+- Responses SSE-to-JSON conversion preserves normalized `input_tokens_details` and `output_tokens_details`, including fields beyond cache and reasoning counts. Flat provider cache/reasoning fields are folded into those standard objects.
+- OpenAI list-price rows use the standard-tier rates published at [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing). DurinDoor's synthetic Kiro GPT-5.6 tiers keep their subscription-surface prices and suffix resolution.
 
 Schema version 7 adds the runtime-neutral persistence boundary used by the quota integration program. It stores provider-reported observations separately from local request accounting:
 

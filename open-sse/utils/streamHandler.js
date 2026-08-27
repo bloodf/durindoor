@@ -1,5 +1,5 @@
 // Stream handler with disconnect detection - shared for all providers
-import { STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { STREAM_FIRST_CHUNK_TIMEOUT_MS, STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { sanitizeErrorMessage } from "./error.js";
 
@@ -23,6 +23,8 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
   const startTime = Date.now();
   let disconnected = false;
   let externalAbort = null;
+  let interruptionFinalizer = null;
+
 
   const clearExternalAbort = () => {
     if (!externalAbort) return;
@@ -45,8 +47,17 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
 
     isConnected: () => !disconnected,
 
-    // Raw upstream activity keeps persistent reservation leases alive. The
-    // callback owns throttling so this remains cheap for token-heavy streams.
+    /**
+     * Register partial-stream accounting before lifecycle callbacks run. This
+     * keeps transform snapshots available on disconnect/error without moving
+     * chat detail ownership into stream plumbing.
+     */
+    setInterruptionFinalizer: (finalizer) => {
+      interruptionFinalizer = finalizer;
+    },
+
+    // Raw upstream activity keeps persistent reservation leases alive.
+    // The callback owns throttling so this remains cheap for token-heavy streams.
     handleActivity: () => onActivity?.(),
 
     // Call when client disconnects
@@ -54,7 +65,9 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
       if (disconnected) return;
       disconnected = true;
       clearExternalAbort();
-
+      try { interruptionFinalizer?.(reason); } catch (error) {
+        console.error("[Stream] Failed to finalize interrupted stream:", error?.message || error);
+      }
       logStream("⚡", `DISCONNECT: ${reason}`);
       dbg("CTRL", `${provider}/${model} | disconnect=${reason} | dur=${Date.now() - startTime}ms`);
 
@@ -78,7 +91,9 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
       if (disconnected) return;
       disconnected = true;
       clearExternalAbort();
-
+      try { interruptionFinalizer?.(error); } catch (finalizeError) {
+        console.error("[Stream] Failed to finalize interrupted stream:", finalizeError?.message || finalizeError);
+      }
       onError?.(error);
 
       if (error.name === "AbortError") {
@@ -119,11 +134,20 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
  * exact bytes reaching the client (regular passthrough plus any synthesized
  * terminal/recovery bytes). They are best-effort: a throwing tap must never
  * drop client bytes or otherwise perturb the stream.
+ *
+ * keepaliveFrame/keepaliveMs optionally emit a client-format keepalive while
+ * the post-translation stream is silent. Pings stop before the first real
+ * client byte and on every terminal path; `keepaliveMs=0` disables them.
+ *
+ * @param {Uint8Array|null} keepaliveFrame - Client-format SSE keepalive bytes.
+ * @param {number} keepaliveMs - Keepalive interval; zero disables pings.
  */
-export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null) {
+export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0) {
   const reader = transformStream.readable.getReader();
   let terminalEmitted = false;
   const decoder = terminalTracker ? new TextDecoder() : null;
+  let keepaliveTimer = null;
+  let clientBytesStarted = false;
 
   // Forward raw client bytes to the timeline tap (if any), fail-open, then
   // enqueue unconditionally — a broken tap must never drop client bytes.
@@ -133,6 +157,26 @@ export function createDisconnectAwareStream(transformStream, streamController, o
   };
   const end = () => { try { onClientEnd?.(); } catch { /* fail-open */ } };
   const abort = () => { try { onClientAbort?.(); } catch { /* fail-open */ } };
+  const stopKeepalive = () => {
+    if (!keepaliveTimer) return;
+    clearInterval(keepaliveTimer);
+    keepaliveTimer = null;
+  };
+  const armKeepalive = (controller) => {
+    if (clientBytesStarted || keepaliveTimer || !keepaliveFrame || keepaliveMs <= 0) return;
+    keepaliveTimer = setInterval(() => {
+      if (!streamController.isConnected()) {
+        stopKeepalive();
+        return;
+      }
+      try {
+        forward(controller, keepaliveFrame);
+      } catch {
+        stopKeepalive();
+      }
+    }, keepaliveMs);
+    keepaliveTimer.unref?.();
+  };
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
   const emitTerminal = (controller) => {
@@ -154,7 +198,9 @@ export function createDisconnectAwareStream(transformStream, streamController, o
 
   return new ReadableStream({
     async pull(controller) {
+      armKeepalive(controller);
       if (!streamController.isConnected()) {
+        stopKeepalive();
         emitTerminal(controller);
         abort();
         controller.close();
@@ -165,6 +211,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         const { done, value } = await reader.read();
 
         if (done) {
+          stopKeepalive();
           const trailingFrame = decoder?.decode();
           if (trailingFrame) terminalTracker.observeClientFrame(trailingFrame);
           if (emitClientRecovery(controller)) {
@@ -177,9 +224,12 @@ export function createDisconnectAwareStream(transformStream, streamController, o
           controller.close();
           return;
         }
+        clientBytesStarted = true;
+        stopKeepalive();
         terminalTracker?.observeClientFrame(decoder.decode(value, { stream: true }));
         forward(controller, value);
       } catch (error) {
+        stopKeepalive();
         const wasConnected = streamController.isConnected();
         // Controller already closed = downstream ended; not an upstream error, skip noisy log.
         const msg0 = error?.message || "";
@@ -226,6 +276,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
     },
 
     cancel(reason) {
+      stopKeepalive();
       streamController.handleDisconnect(reason || "cancelled");
       abort();
       reader.cancel();
@@ -242,15 +293,26 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * Measuring stall on the transform output caused false stalls and the
  * "failed to pipe response" error in Next.
  *
- * Any upstream chunk resets the timer. If no bytes arrive for
- * STREAM_STALL_TIMEOUT_MS, abort the underlying fetch via the controller.
+ * The first-byte watchdog uses STREAM_FIRST_CHUNK_TIMEOUT_MS only until raw
+ * upstream activity begins. After that, the existing stall watchdog remains
+ * authoritative and is reset by every upstream chunk.
  *
  * @param {Response} providerResponse - Response from provider
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
+ * @param {function|null} onAbortTerminal - Optional synthesized abort terminal
+ * @param {number} stallTimeoutMs - Maximum silence between raw upstream chunks
+ * @param {object|null} terminalTracker - Fork terminal/recovery tracker
+ * @param {function|null} onClientBytes - Optional client-byte observer
+ * @param {function|null} onClientEnd - Optional clean-client-end observer
+ * @param {function|null} onClientAbort - Optional aborted-client observer
+ * @param {Uint8Array|null} keepaliveFrame - Post-translation keepalive bytes.
+ * @param {number} keepaliveMs - Keepalive interval; zero disables pings.
+ * @param {number} ttftTimeoutMs - Maximum wait for the first raw upstream byte
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0, ttftTimeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS) {
   let stallTimer = null;
+  let firstChunkTimer = null;
   let chunkCount = 0;
   let totalBytes = 0;
   let lastChunkAt = Date.now();
@@ -259,32 +321,50 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
   const clearStall = () => {
     if (stallTimer) {clearTimeout(stallTimer);stallTimer = null;}
   };
+  const clearFirstChunk = () => {
+    if (firstChunkTimer) {clearTimeout(firstChunkTimer);firstChunkTimer = null;}
+  };
+  // Separate TTFT deadline prevents a header-only upstream from consuming the
+  // longer inter-chunk stall window; first raw byte permanently disarms it.
+  const armFirstChunk = () => {
+    clearFirstChunk();
+    firstChunkTimer = setTimeout(() => {
+      firstChunkTimer = null;
+      clearStall();
+      dbg(tag, `TTFT TIMEOUT ${ttftTimeoutMs}ms | no bytes received`);
+      streamController.handleError?.(new Error(`stream ttft timeout (${ttftTimeoutMs}ms)`));
+      streamController.abort?.();
+    }, ttftTimeoutMs);
+  };
   const armStall = () => {
     clearStall();
     stallTimer = setTimeout(() => {
       stallTimer = null;
+      clearFirstChunk();
       dbg(tag, `STALL TIMEOUT ${stallTimeoutMs}ms | chunks=${chunkCount} | bytes=${totalBytes} | sinceLast=${Date.now() - lastChunkAt}ms`);
       streamController.handleError?.(new Error("stream stall timeout"));
       streamController.abort?.();
     }, stallTimeoutMs);
   };
 
-  // Wrap controller so every termination path clears the stall timer.
-  // Without this, abort/cancel/downstream-error paths leave the timer armed
+  // Wrap controller so every termination path clears both watchdogs.
+  // Without this, abort/cancel/downstream-error paths leave timers armed
   // and a stale abort could fire after the request has already ended.
   const wrappedController = {
     signal: streamController.signal,
     startTime: streamController.startTime,
     isConnected: () => streamController.isConnected(),
-    handleComplete: () => {dbg(tag, `complete | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearStall();streamController.handleComplete();},
-    handleError: (e) => {dbg(tag, `error: ${e?.message} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearStall();streamController.handleError(e);},
-    handleDisconnect: (r) => {dbg(tag, `disconnect: ${r} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearStall();streamController.handleDisconnect(r);},
-    abort: () => {clearStall();streamController.abort();},
+    handleComplete: () => {dbg(tag, `complete | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();streamController.handleComplete();},
+    handleError: (e) => {dbg(tag, `error: ${e?.message} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();streamController.handleError(e);},
+    handleDisconnect: (r) => {dbg(tag, `disconnect: ${r} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();streamController.handleDisconnect(r);},
+    abort: () => {clearFirstChunk();clearStall();streamController.abort();},
+    setInterruptionFinalizer: (finalizer) => streamController.setInterruptionFinalizer?.(finalizer),
     handleActivity: () => streamController.handleActivity?.()
   };
 
+  armFirstChunk();
   armStall();
-  dbg(tag, `pipe start | stallTimeout=${stallTimeoutMs}ms`);
+  dbg(tag, `pipe start | ttftTimeout=${ttftTimeoutMs}ms | stallTimeout=${stallTimeoutMs}ms`);
 
   const upstreamTap = new TransformStream({
     transform(chunk, controller) {
@@ -298,10 +378,11 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
       if (isDebugEnabled && (chunkCount <= 5 || chunkCount % 20 === 0 || gap > 5000)) {
         dbg(tag, `chunk #${chunkCount} | size=${sz}B | gap=${gap}ms | total=${totalBytes}B`);
       }
+      if (sz > 0) clearFirstChunk();
       armStall();
       controller.enqueue(chunk);
     },
-    flush() {dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearStall();}
+    flush() {dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();}
   });
 
   const transformedBody = providerResponse.body.
@@ -316,5 +397,7 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     onClientBytes,
     onClientEnd,
     onClientAbort,
+    keepaliveFrame,
+    keepaliveMs,
   );
 }

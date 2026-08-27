@@ -126,6 +126,32 @@ describe("commandcode-to-openai — error event", () => {
     expect(text).toContain("Boom");
     expect(text).not.toContain("[object Object]");
   });
+
+  it("opens a first-event error with the assistant role and a stop chunk", () => {
+    const { chunks } = feed([{ type: "error", error: "boom" }]);
+
+    expect(chunks[0].choices[0].delta.role).toBe("assistant");
+    expect(chunks[1].choices[0].finish_reason).toBe("stop");
+  });
+
+  it("omits the role from an error after content", () => {
+    const { chunks } = feed([
+      { type: "text-delta", text: "hi" },
+      { type: "error", error: "boom" },
+    ]);
+
+    expect(chunks[1].choices[0].delta).toEqual({ content: "\n\n[CommandCode error: boom]" });
+  });
+
+  it("emits the assistant role exactly once when text follows an error", () => {
+    const { chunks } = feed([
+      { type: "error", error: "boom" },
+      { type: "text-delta", text: "hi" },
+    ]);
+
+    expect(chunks.filter((chunk) => chunk.choices[0].delta.role === "assistant")).toHaveLength(1);
+    expect(chunks[2].choices[0].delta).toEqual({ content: "hi" });
+  });
 });
 
 describe("commandcode-to-openai — state pre-populated by initState (Responses API client)", () => {

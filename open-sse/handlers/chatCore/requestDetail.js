@@ -117,7 +117,11 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
   return line;
 }
 
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, label = "USAGE", silent = false }) {
+/**
+ * Persist normalized usage. A non-success status keeps billable accounting
+ * without allowing persistence to complete an errored live session.
+ */
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, status, label = "USAGE", silent = false }) {
   if (!tokens || !isObject(tokens)) return;
 
   const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined ?
@@ -148,6 +152,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
     endpoint: endpoint || null,
+    status: status || undefined,
     usageEventId: usageEventId || undefined
   }).catch(() => {});
 }

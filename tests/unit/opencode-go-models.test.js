@@ -4,6 +4,8 @@ import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { resolveTransport } from "../../open-sse/services/provider.js";
 import { resolveRequestTransport } from "../../open-sse/handlers/chatCore.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const API_KEY = { apiKey: "test-key" };
 const OPENAI_URL = "https://opencode.ai/zen/go/v1/chat/completions";
@@ -111,6 +113,40 @@ describe("OpenCode Go per-model transport selection", () => {
       expect(runtimeTransport?.baseUrl).toBe(CLAUDE_URL);
       expect(targetFormat).toBe("claude");
     }
+  });
+
+  it("sends translated Claude bodies through the Claude endpoint and auth", () => {
+    const executor = new DefaultExecutor("opencode-go");
+
+    for (const model of CLAUDE_CAPABLE) {
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "openai",
+        credentials: API_KEY,
+      });
+
+      expect(targetFormat).toBe("claude");
+      expect(runtimeTransport?.format).toBe("claude");
+      expect(executor.buildUrl(model, true, 0, { ...API_KEY, runtimeTransport })).toBe(CLAUDE_URL);
+      const headers = executor.buildHeaders({ ...API_KEY, runtimeTransport }, true);
+      expect(headers).toMatchObject({
+        "x-api-key": "test-key",
+        "anthropic-version": expect.any(String),
+      });
+      expect(headers).not.toHaveProperty("Authorization");
+    }
+
+    const translated = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "minimax-m3", {
+      messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] }],
+      tools: [{ type: "function", function: { name: "inspect", parameters: { type: "object" } } }],
+    }, true, API_KEY, "opencode-go");
+    expect(translated.messages[0].content[0]).toMatchObject({
+      type: "image",
+      source: { type: "base64", media_type: "image/png", data: "AA==" },
+    });
+    expect(translated.tools[0]).toMatchObject({ name: "inspect", input_schema: { type: "object" } });
   });
 
   it("routes a suffixed Claude-capable model to the Claude endpoint", () => {

@@ -106,6 +106,8 @@ The translation layer converts between OpenAI, Anthropic Claude, Gemini, OpenAI 
 
 Provider-specific stream formats are handled by executors and response translators. Tool calls, reasoning blocks, image content, and audio content need the most careful tests because not every upstream format supports the same fields.
 
+For providers with multiple wire-format endpoints, routing selects transport from the final outbound format. A model-level `targetFormat` therefore moves translated requests to the matching endpoint, headers, and authentication scheme; unpinned models can still use a client-format endpoint directly when their registry metadata declares support.
+
 ## Persistence
 
 The primary database is SQLite at `DATA_DIR/db/data.sqlite`. The default `DATA_DIR` remains `~/.9router` or `%APPDATA%\9router` for compatibility. Legacy JSON files may exist during migration and should be treated as migration artifacts unless the running version still reads a specific file.

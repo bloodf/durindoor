@@ -49,6 +49,11 @@ The response contains models available through configured providers, aliases, co
 
 Model rows keep the callable `id` and standard `owned_by` values used by existing clients. DurinDoor also adds optional presentation fields: `name`, `provider_name`, `provider_alias`, and `gateway_provider`. Clients must continue sending `id` in requests; friendly names are display metadata and do not replace aliases or routing identities.
 
+Operators can enable **Profile → Model catalog → Expose combos only** to make
+`GET /v1/models` return only configured combo names. The setting defaults off.
+Combo rows use `owned_by: "combo"`; web search and fetch combos also retain
+their `kind` so clients can distinguish those endpoints.
+
 `GET /v1/models/info` already returned a registry `name`. That field stays registry-authoritative: presentation only adds `provider_name`, `provider_alias`, and `gateway_provider` and must not rewrite an existing info name (for example `cx/gpt-5.6-sol` stays `GPT 5.6 Sol`).
 
 ## Chat Completions

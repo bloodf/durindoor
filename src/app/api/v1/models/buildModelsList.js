@@ -451,6 +451,20 @@ function comboMatchesKinds(combo, kindFilter) {
 }
 
 /**
+ * Project a combo into the public OpenAI model shape. Web kind stays explicit
+ * because search and fetch clients share the models endpoint.
+ */
+function comboToEntry(combo) {
+  const entry = {
+    id: combo.name,
+    object: "model",
+    owned_by: "combo"
+  };
+  if (combo.kind === "webSearch" || combo.kind === "webFetch") entry.kind = combo.kind;
+  return entry;
+}
+
+/**
  * Build OpenAI-format models filtered by service kind. Built-in catalogs are a
  * DB-read failure fallback; a healthy empty DB exposes only explicit custom,
  * combo, and keyless catalogs rather than pretending every provider is saved.
@@ -466,11 +480,14 @@ async function buildModelsListImpl(kindFilter, guard) {
   const connectionsPromise = getProviderConnections();
   let settings = null;
   let hidePaidModels = false;
+  let exposeComboOnly = false;
   try {
     settings = await getSettings();
     hidePaidModels = settings?.hidePaidModels === true;
+    exposeComboOnly = settings?.exposeComboOnly === true;
   } catch (e) {
     hidePaidModels = false;
+    exposeComboOnly = false;
   }
 
   const isFreeNoAuthDisabled = (providerId) =>
@@ -491,6 +508,19 @@ async function buildModelsListImpl(kindFilter, guard) {
     combos = (await getCombos()).filter((c) => c !== null);
   } catch (e) {
     console.log("Could not fetch combos");
+  }
+
+  // decolua/9router#3429: combo-only exposure must return before direct model
+  // catalogs are read or probed. Preserve first occurrence order by combo ID.
+  if (exposeComboOnly) {
+    const seen = new Set();
+    const models = [];
+    for (const combo of combos) {
+      if (!comboMatchesKinds(combo, kindFilter) || seen.has(combo.name)) continue;
+      seen.add(combo.name);
+      models.push(comboToEntry(combo));
+    }
+    return models;
   }
 
   let customModels = [];
@@ -627,14 +657,8 @@ async function buildModelsListImpl(kindFilter, guard) {
       });
       if (visibleMembers.length === 0) continue;
     }
-    const entry = {
-      id: combo.name,
-      object: "model",
-      owned_by: "combo"
-    };
-    if (combo.kind === "webSearch" || combo.kind === "webFetch") {
-      entry.kind = combo.kind;
-    } else {
+    const entry = comboToEntry(combo);
+    if (!entry.kind) {
       const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId, 0, customCapsById);
       if (comboCaps) {
         entry.capabilities = comboCaps;

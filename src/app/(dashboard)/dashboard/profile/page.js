@@ -385,6 +385,22 @@ export default function ProfilePage() {
     }
   };
 
+  const updateExposeComboOnly = async (exposeComboOnly) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exposeComboOnly })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSettings((prev) => ({ ...prev, exposeComboOnly: data.exposeComboOnly === true }));
+      }
+    } catch (err) {
+      console.error("Failed to update combo-only model exposure:", err);
+    }
+  };
+
   const updateRequireLogin = async (requireLogin) => {
     try {
       const res = await fetch("/api/settings", {
@@ -801,18 +817,31 @@ export default function ProfilePage() {
             </div>
             <h3 className="text-base sm:text-lg font-semibold">Model catalog</h3>
           </div>
-          <div className="flex items-start sm:items-center justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm sm:text-base">Hide paid models</p>
-              <p className="text-xs sm:text-sm text-text-muted">
-                When ON, /v1/models, dashboard pickers, and combo pools only show free or unpriced models.
-              </p>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start sm:items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Expose combos only</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  When ON, /v1/models lists only configured combo names.
+                </p>
+              </div>
+              <Toggle
+                checked={settings.exposeComboOnly === true}
+                disabled={loading}
+                onChange={() => updateExposeComboOnly(!(settings.exposeComboOnly === true))} />
             </div>
-            <Toggle
-              checked={settings.hidePaidModels === true}
-              disabled={loading}
-              onChange={() => updateHidePaidModels(!(settings.hidePaidModels === true))} />
-            
+            <div className="flex items-start sm:items-center justify-between gap-4 pt-4 border-t border-border">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Hide paid models</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  When ON, /v1/models, dashboard pickers, and combo pools only show free or unpriced models.
+                </p>
+              </div>
+              <Toggle
+                checked={settings.hidePaidModels === true}
+                disabled={loading}
+                onChange={() => updateHidePaidModels(!(settings.hidePaidModels === true))} />
+            </div>
           </div>
         </Card>
 

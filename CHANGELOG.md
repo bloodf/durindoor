@@ -10,6 +10,7 @@
 ## Fixed
 - Thinking effort now reaches Ollama as `think`, Z.AI as both scalar and `reasoning.effort`, OpenCode free models as its gateway enum, and Grok CLI 4.6 virtual models through `xhigh`.
 
+- Groq replaces decommissioned seed model IDs with its current production catalog, discovers live models through the authenticated OpenAI-compatible `/models` endpoint, and accepts future model IDs via passthrough. Closes #582.
 - Responses API stream translation now preserves UTF-8 characters split across transport chunks, drains a final unterminated SSE event, carries reasoning-token details into `response.completed`, and omits `usage` when upstream sent none (ports decolua/9router#3547 and #3433). Closes #576.
 - port(upstream): #3549 - CommandCode error chunk opens with the assistant role.
 - Claude→OpenAI stream translation emits a single whitespace `delta.content` before the terminal `finish_reason` chunk when the upstream stream produced no text or tool-call content (e.g. thinking-only responses, which map to `reasoning_content`). OpenAI-compat clients (AI SDK / Kilo) no longer throw `APIEmptyResponseError` on otherwise-successful streams; streams that already emitted content or tool calls are unchanged (independent re-implementation of VansRouter `5cc11b8` intent, not a cherry-pick). Closes #572.

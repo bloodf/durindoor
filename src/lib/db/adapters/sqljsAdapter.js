@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import path from "node:path";
 import fs from "node:fs";
 import initSqlJs from "sql.js";
 import { PRAGMA_SQL } from "../schema.js";
@@ -22,11 +24,32 @@ export async function createSqlJsAdapter(filePath) {
   let saveTimer = null;
   const SAVE_DEBOUNCE_MS = 100;
 
+  /**
+   * Exports once, durably stages an owner-only sibling, then atomically renames
+   * it so an interrupted full-image write cannot truncate the live database.
+   */
   function persist() {
     const data = db.export();
-    /** Upstream PR #3381: sql.js creates its credential database only on first persist. */
-    fs.writeFileSync(filePath, Buffer.from(data), { mode: SECRET_FILE_MODE });
-    dirty = false;
+    const tmpPath = path.join(
+      path.dirname(filePath),
+      `.${path.basename(filePath)}.tmp-${process.pid}-${crypto.randomUUID()}`,
+    );
+    let fd;
+    try {
+      fd = fs.openSync(tmpPath, "wx", SECRET_FILE_MODE);
+      fs.writeFileSync(fd, Buffer.from(data));
+      fs.fsyncSync(fd);
+      fs.closeSync(fd);
+      fd = undefined;
+      fs.renameSync(tmpPath, filePath);
+      dirty = false;
+    } catch (error) {
+      if (fd !== undefined) {
+        try { fs.closeSync(fd); } catch { /* ignore cleanup failure */ }
+      }
+      try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup failure */ }
+      throw error;
+    }
   }
 
   function scheduleSave() {

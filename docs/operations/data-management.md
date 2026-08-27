@@ -17,6 +17,12 @@ DATA_DIR/
 
 Always stop DurinDoor before backing up or restoring so the SQLite database is not mid-write.
 
+The pure-JavaScript `sql.js` fallback publishes each full database image through
+an owner-only sibling file, flushes it to storage, then atomically renames it
+over `data.sqlite`. If staging or publication fails, the previous database stays
+intact and the temporary file is removed. This protects ordinary runtime saves;
+operators should still stop DurinDoor before backups and restores.
+
 ```bash
 # CLI / source
 Ctrl+C

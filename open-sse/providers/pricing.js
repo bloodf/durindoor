@@ -220,7 +220,12 @@ export const MODEL_PRICING = {
   "qwen3-coder-plus": { input: 1.00, output: 4.00, cached: 0.50, reasoning: 6.00, cache_creation: 1.00 },
   "qwen3-coder-flash": { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 },
 
-  // === Kimi (third-party registries; first-party Kimi Code subscriptions remain quota-based) ===
+/** Qwen3.8 canonical per-million-token rates; exact rows must beat the generic Qwen fallback. */
+"qwen3.8-max": { input: 2.00, output: 6.00, cached: 0.25, cache_creation: 2.50, reasoning: 6.00 },
+"qwen3.8-27b": { input: 0.40, output: 3.00, cached: 0.05, reasoning: 3.00 },
+"qwen3.8-2.4t-a95b": { input: 2.00, output: 6.00, cached: 0.25, reasoning: 6.00 },
+
+// === Kimi (third-party registries; first-party Kimi Code subscriptions remain quota-based) ===
   "kimi-k3": { input: 3.00, output: 15.00, cached: 0.30 },
   "kimi-k2": { input: 1.00, output: 4.00, cached: 0.50, reasoning: 6.00, cache_creation: 1.00 },
   "kimi-k2-thinking": { input: 1.50, output: 6.00, cached: 0.75, reasoning: 9.00, cache_creation: 1.50 },
@@ -396,7 +401,14 @@ export const PATTERN_PRICING = [
 
 // --- Grok ---
 { pattern: "grok-code-*", pricing: { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 } },
-{ pattern: "grok-*", pricing: { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 } }];
+
+{ pattern: "grok-*", pricing: { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 } },
+
+/** Meta Muse pattern rates; first match wins, so specializations precede the family fallback. */
+{ pattern: "*muse-spark*contributor*", pricing: { input: 0.10, output: 0.20, cached: 0.002, reasoning: 0.30, cache_creation: 0.10 } },
+{ pattern: "*muse-spark*", pricing: { input: 1.25, output: 4.25, cached: 0.15, reasoning: 6.375, cache_creation: 1.25 } },
+{ pattern: "*muse-glimmer*", pricing: { input: 0.30, output: 1.20, cached: 0.04, reasoning: 1.80, cache_creation: 0.30 } },
+{ pattern: "*muse*", pricing: { input: 1.25, output: 4.25, cached: 0.15, reasoning: 6.375, cache_creation: 1.25 } }];
 
 
 /**

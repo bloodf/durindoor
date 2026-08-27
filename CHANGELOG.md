@@ -56,6 +56,7 @@
 ## Security
 
 - Public tunnel subdomains now use unbiased OS CSPRNG sampling instead of predictable `Math.random()` state, and Cloudflare tunnel startup accepts either the preferred relay URL or direct URL as health proof while still failing when both are unavailable. Ports decolua/9router#3522 and #3519. Closes #605.
+- Login rate limiting no longer trusts `X-Forwarded-For` from unproved peers when `TRUST_PROXY=true`; spoofed values stay in one limiter bucket, while wrapper-proved proxy and loopback identities retain their existing precedence. Ports decolua/9router#3496. Refs #607.
 
 - OIDC discovery (`fetchOidcDiscovery`) rejects link-local, private, and metadata issuer URLs via `assertPublicUrl` before any network fetch. Login start, callback, and settings discovery test share the same guard; public issuers still work. Independent of 9router #3497 (OIDC SSRF intent only; DNS pin already in `outboundUrlGuard`). Closes #570.
 - MCP plugin bridges (`GET` `/api/mcp/[plugin]/sse`, `POST` `/api/mcp/[plugin]/message`) re-check the LOCAL_ONLY gate in-handler (machine-bound CLI token, or loopback with dashboard auth) and release SSE bridge sessions on `request.signal` abort as well as `ReadableStream.cancel()`, so disconnects cannot leave unreaped stdio children (intent of 9router #3498 / #3527; not a cherry-pick). Closes #564.

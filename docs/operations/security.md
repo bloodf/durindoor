@@ -42,7 +42,7 @@ Recommended controls:
 - Reverse proxy authentication for public deployments.
 - IP allowlists where possible.
 - `AUTH_COOKIE_SECURE=true` behind HTTPS.
-- `TRUST_PROXY=true` only when the proxy is trusted and strips spoofed forwarding headers.
+- `TRUST_PROXY=true` only when the proxy is trusted, overwrites spoofed forwarding headers, and requests pass through the production `custom-server.js` wrapper. The login limiter ignores forwarded IPs without the wrapper's per-process peer proof.
 
 ## DurinDoor API Keys
 

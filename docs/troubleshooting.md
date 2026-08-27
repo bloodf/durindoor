@@ -40,6 +40,7 @@ If health fails, DurinDoor is not reachable. If the model list fails, check the 
 - Reconnect OAuth providers.
 - Rotate or replace API keys.
 - Check whether the upstream account revoked access.
+- For unavailable connections, read the dashboard error detail before reconnecting. Transport failures retain safe diagnostics such as `fetch failed (ECONNREFUSED)`; use the code to check DNS, firewall, proxy, and upstream reachability.
 
 ## Rate limits or quota exhaustion
 

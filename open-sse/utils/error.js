@@ -594,6 +594,37 @@ export function formatProviderError(error, provider, model, statusCode) {
   return `[${code}]: ${message}${causeStr}`;
 }
 
+/**
+ * Describe a provider failure for persistent operator diagnostics without
+ * serializing attached request/header payloads. Output is one line and bounded
+ * to the provider connection `lastError` budget.
+ * @param {unknown} error
+ * @returns {string}
+ */
+export function describeProviderError(error) {
+  const clamp = (value, limit = 100) => sanitizeErrorMessage(value).replace(/\s+/g, " ").trim().slice(0, limit).trimEnd() || "Provider error";
+  if (isString(error)) return clamp(error);
+  if (!error || !isObject(error)) return "Provider error";
+
+  const rawCode = isString(error.code) ? error.code : error.cause?.code;
+  const code = isString(rawCode) && /^[A-Z0-9_]{1,64}$/.test(rawCode) ? rawCode : null;
+  const candidates = [
+    error.error?.message,
+    error.message,
+    isString(error.error) ? error.error : null,
+    error.detail,
+    error.reason
+  ];
+  const rawMessage = candidates.find((value) => isString(value) && value.trim());
+  if (rawMessage) {
+    const message = clamp(rawMessage);
+    if (!code || message.includes(code)) return message;
+    const suffix = ` (${code})`;
+    return `${clamp(rawMessage, 100 - suffix.length)}${suffix}`;
+  }
+  return code ? `Provider error (${code})` : "Provider error";
+}
+
 // Source extensions whose absolute paths are masked (upstream OmniRoute #6886
 // looksLikeAbsolutePath). Whitespace-tokenized instead of one regex so a safe
 // URL like `https://cdn/app.js` (token has a scheme, not an absolute-path head)

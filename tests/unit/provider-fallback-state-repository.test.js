@@ -90,6 +90,41 @@ describe("atomic provider fallback health state", () => {
     })).resolves.toEqual([]);
   });
 
+  it("persists a bounded secret-safe transport failure reason", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const { markAccountUnavailable } = await import("../../src/sse/services/auth.js");
+    const db = await getAdapter();
+    const now = Date.now();
+    const createdAt = new Date(now - 60_000).toISOString();
+    db.run(
+      `INSERT INTO providerConnections(id, provider, authType, name, isActive, data, createdAt, updatedAt)
+       VALUES('conn-transport', 'openrouter', 'apikey', 'OpenRouter', 1, '{}', ?, ?)`,
+      [createdAt, createdAt],
+    );
+    const failure = new TypeError("fetch failed");
+    failure.cause = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:443"), {
+      code: "ECONNREFUSED",
+    });
+    failure.request = { headers: { authorization: "Bearer request-secret" } };
+
+    await markAccountUnavailable(
+      "conn-transport",
+      502,
+      failure,
+      "openrouter",
+      "openai/gpt-4o-mini",
+      null,
+      { attemptStartedAt: now },
+    );
+
+    const stored = await database.getProviderConnectionById("conn-transport");
+    expect(stored.lastError).toBe("fetch failed (ECONNREFUSED)");
+    expect(stored.lastError.length).toBeLessThanOrEqual(100);
+    expect(stored.lastError).not.toContain("request-secret");
+    expect(stored.lastError).not.toContain("authorization");
+  });
+
   it("never shortens a lock and fences late error/success completions without rewriting credentials", async () => {
     const database = await import("@/lib/db/index.js");
     const { getAdapter } = await import("@/lib/db/driver.js");

@@ -74,6 +74,8 @@ Back up the existing data directory, start DurinDoor with the same or copied dat
 
 Documentation translations should be generated from the English Markdown in `docs/` outside this repository. Do not commit non-English Markdown documentation here. Non-English language assets that ship with the project are limited to the web UI localization layer.
 
+The dashboard loads locale catalogs from `public/i18n/literals/`. Catalog keys are the exact English UI labels; when a key is absent, the dashboard displays that English source text. Keep translations aligned with labels that DurinDoor currently ships rather than importing strings for upstream-only surfaces.
+
 ## Where are all environment variables documented?
 
 Use [Environment Variables](reference/environment.md). `.env.example` is the starter template; the reference page explains when and why to set each variable.

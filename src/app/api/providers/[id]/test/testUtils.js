@@ -462,10 +462,21 @@ export function __setProviderTestFetchForTesting(fetchFn) {
   return () => {providerTestFetchOverride = previous;};
 }
 
-async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null) {
-  if (providerTestFetchOverride) return providerTestFetchOverride(url, options, effectiveProxy);
+const CONNECTION_TEST_TIMEOUT_MS = 15_000;
+
+/**
+ * Route a connection probe through its resolved proxy with a 15-second
+ * deadline, without discarding cancellation supplied by the caller.
+ */
+export async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null) {
+  const timeoutSignal = AbortSignal.timeout(CONNECTION_TEST_TIMEOUT_MS);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
+  const boundedOptions = { ...options, signal };
+  if (providerTestFetchOverride) return providerTestFetchOverride(url, boundedOptions, effectiveProxy);
   const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
-  return proxyAwareFetch(url, options, effectiveProxy);
+  return proxyAwareFetch(url, boundedOptions, effectiveProxy);
 }
 
 const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
@@ -838,12 +849,12 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
         }
       case "ollama":{
-          const res = await fetch("https://ollama.com/api/tags", { headers: { Authorization: `Bearer ${connection.apiKey}` } });
+          const res = await fetchWithConnectionProxy("https://ollama.com/api/tags", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
           return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
         }
       case "ollama-local":{
           const host = resolveOllamaLocalHost(connection);
-          const res = await fetch(`${host}/api/tags`);
+          const res = await fetchWithConnectionProxy(`${host}/api/tags`, {}, effectiveProxy);
           return { valid: res.ok, error: res.ok ? null : `Ollama not reachable at ${host}` };
         }
       case "deepgram":{

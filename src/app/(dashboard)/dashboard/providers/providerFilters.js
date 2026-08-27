@@ -1,6 +1,13 @@
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { FREE_TIER_PROVIDERS } from "@/shared/constants/providers";
 
+/** Match a provider name without dereferencing incomplete registry metadata. */
+export function matchesProviderSearch(name, searchQuery) {
+  if (!searchQuery.trim()) return true;
+  if (!name) return false;
+  return name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+}
+
 export function isProviderConfigured(connections, providerId, noAuth = false) {
   if (noAuth) return true;
   return connections.some((c) => c.provider === providerId);

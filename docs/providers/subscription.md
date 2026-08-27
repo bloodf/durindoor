@@ -38,6 +38,12 @@ DurinDoor stores refresh metadata so it can renew tokens when the upstream provi
 
 Use provider labels when you keep multiple accounts for the same provider. Labels make usage logs and fallback behavior easier to audit.
 
+Provider validation and connection tests have bounded deadlines. Validation
+probes stop after 10 seconds, while API-key and OAuth connection tests stop
+after 15 seconds, rather than leaving the dashboard waiting indefinitely when
+an upstream accepts a connection but never responds. Custom provider URLs
+remain subject to the outbound SSRF guard.
+
 ## Connection Health
 
 A connection can be active, unavailable, locked for a model, expired, or missing required fields. DurinDoor may mark a connection unavailable after upstream errors such as authentication failure, quota exhaustion, rate limits, or provider-specific refusal.

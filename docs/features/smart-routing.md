@@ -50,6 +50,8 @@ Common service kinds:
 
 If a provider has multiple connections, DurinDoor selects an available connection and avoids accounts that are temporarily locked, expired, or excluded by the current fallback attempt. Provider-specific code can refresh credentials when the upstream supports refresh.
 
+Account-wide locks apply to every model until expiry, even when the connection also carries an expired model-specific lock.
+
 For round-robin providers, behavior depends on whether a stable client session id is present:
 
 - When the client supplies a session id (via `x-session-id`, `session-id`, `session_id`, `x-amp-thread-id`, or embedded body fields), DurinDoor pins that session to the first available account and keeps routing to the same account until it becomes unavailable or the in-memory affinity entry expires (default session TTL). This is the "session-sticky" round-robin path.

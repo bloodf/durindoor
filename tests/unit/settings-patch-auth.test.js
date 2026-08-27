@@ -37,7 +37,10 @@ describe("settingsPatchAuth.canModifySecurityCriticalSettings", () => {
     await expect(canModifySecurityCriticalSettings({ headers: { get: vi.fn() } })).resolves.toBe(true);
   });
 
-  it("rejects unauthenticated callers", async () => {
+  it.each([
+    ["trusted loopback headers", { host: "localhost:20128", "x-9r-real-ip": "127.0.0.1", "x-9r-peer-token": "trusted-wrapper" }],
+    ["remote headers", { host: "router.example.com", "x-9r-real-ip": "203.0.113.10" }],
+  ])("rejects %s without JWT or CLI proof", async (_label, headers) => {
     vi.doMock("@/dashboardGuard", () => ({
       hasValidCliToken: vi.fn(async () => false),
     }));
@@ -49,7 +52,12 @@ describe("settingsPatchAuth.canModifySecurityCriticalSettings", () => {
     }));
 
     const { canModifySecurityCriticalSettings } = await import("../../src/lib/settings/settingsPatchAuth.js");
-    await expect(canModifySecurityCriticalSettings({ headers: { get: vi.fn() } })).resolves.toBe(false);
+    const request = { headers: { get: (name) => headers[name] } };
+    await expect(canModifySecurityCriticalSettings(request)).resolves.toBe(false);
+  });
+
+  it("fails closed for a malformed request", async () => {
+    const { canModifySecurityCriticalSettings } = await import("../../src/lib/settings/settingsPatchAuth.js");
     await expect(canModifySecurityCriticalSettings(undefined)).resolves.toBe(false);
   });
 });

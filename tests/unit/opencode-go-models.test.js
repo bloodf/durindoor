@@ -14,6 +14,7 @@ const CHAT_ONLY = ["glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-
 const MODEL_WITHOUT_FORMATS = "glm-5.2";
 const CLAUDE_CAPABLE = ["minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"];
 const RESPONSES_CAPABLE = ["deepseek-v4-pro", "deepseek-v4-flash"];
+const VISION_CAPABLE = "deepseek-v4-flash-vision-exp";
 
 describe("OpenCode Go model catalog", () => {
   it("matches documented model IDs", () => {
@@ -23,6 +24,7 @@ describe("OpenCode Go model catalog", () => {
       MODEL_WITHOUT_FORMATS,
       ...CHAT_ONLY.slice(0, 3),
       ...RESPONSES_CAPABLE,
+      VISION_CAPABLE,
       ...CHAT_ONLY.slice(3),
       ...CLAUDE_CAPABLE,
     ]);
@@ -42,6 +44,11 @@ describe("OpenCode Go per-model supportedFormats", () => {
     }
   });
 
+  it("declares every OpenCode Go transport for DeepSeek V4 Flash Vision", () => {
+    expect(getModelSupportedFormats("opencode-go", VISION_CAPABLE))
+      .toEqual(["openai", "claude", "openai-responses"]);
+  });
+
   it("uses default OpenAI transport for known models without endpoint metadata", () => {
     expect(getModelSupportedFormats("opencode-go", MODEL_WITHOUT_FORMATS)).toBeNull();
   });
@@ -54,6 +61,15 @@ describe("OpenCode Go per-model supportedFormats", () => {
 
   it("strips at most one recognized thinking suffix per lookup", () => {
     expect(getModelUpstreamId("opencode-go", "minimax-m3(max)(max)")).toBe("minimax-m3(max)");
+  });
+});
+
+describe("CommandCode DeepSeek V4 Flash Vision aliases", () => {
+  it("maps the short selectable ID to CommandCode's vendor-prefixed upstream ID", () => {
+    expect(getModelUpstreamId("commandcode", "deepseek-v4-flash-vision-exp"))
+      .toBe("deepseek/deepseek-v4-flash-vision-exp");
+    expect(getModelUpstreamId("commandcode", "deepseek/deepseek-v4-flash-vision-exp"))
+      .toBe("deepseek/deepseek-v4-flash-vision-exp");
   });
 });
 

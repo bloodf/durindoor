@@ -174,6 +174,29 @@ describe("openaiToCommandCodeRequest — tools schema conversion", () => {
     expect(out.params.tools[0].description).toBe("Ping the server");
   });
 
+  it("preserves OpenAI image URLs and data URIs as CommandCode image blocks", () => {
+    const out = openaiToCommandCodeRequest("deepseek/deepseek-v4-flash-vision-exp", {
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "compare" },
+          { type: "image_url", image_url: { url: "data:image/png;base64,BBBB" } },
+          { type: "image", image: "https://example.com/reference.png" },
+          { type: "image", source: { type: "url", url: "https://example.com/source.png" } },
+          { type: "image", source: { type: "base64", media_type: "image/webp", data: "CCCC" } },
+        ],
+      }],
+    }, true);
+
+    expect(out.params.messages[0].content).toEqual([
+      { type: "text", text: "compare" },
+      { type: "image", image: "data:image/png;base64,BBBB" },
+      { type: "image", image: "https://example.com/reference.png" },
+      { type: "image", image: "https://example.com/source.png" },
+      { type: "image", image: "data:image/webp;base64,CCCC" },
+    ]);
+  });
+
   it("does not include tools field when input has none", () => {
     const out = openaiToCommandCodeRequest(MODEL, {
       messages: [{ role: "user", content: "hi" }],

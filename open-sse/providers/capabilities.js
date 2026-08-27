@@ -94,6 +94,9 @@ function hasUnpublishedOutput(provider, model) {
  * otherwise mis-match. Only declare deltas vs DEFAULT.
  */
 export const MODEL_CAPABILITIES = {
+  /** DeepSeek V4 Flash Vision's exact bare and vendor-prefixed IDs share this override. */
+  "deepseek-v4-flash-vision-exp": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+
   /**
    * Live probe 2026-08-13: GET https://api.kimi.com/coding/v1/models returned
    * `{"id":"k3",...,"context_length":1048576,...}`. Keep the exact integer;
@@ -740,6 +743,8 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*glm*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000 } },
 
 // ── DeepSeek (thinking.enabled + reasoning_effort; r1 = thinking-only) ─
+/** Match vendor-prefixed vision variants before the text-only V4 family fallback. */
+{ pattern: "*deepseek-v4*vision*", caps: { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 } },
 { pattern: "*deepseek-v4*", caps: { reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 } },
 { pattern: "*reasoner*", caps: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 } },
 { pattern: "*deepseek-r*", caps: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 } },

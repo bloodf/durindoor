@@ -35,6 +35,8 @@ export default {
   models: [
     { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
     { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    { id: "deepseek/deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision Exp" },
+    { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision Exp", upstreamModelId: "deepseek/deepseek-v4-flash-vision-exp" },
     { id: "meta/muse-spark-1.2-contributor", name: "Muse Spark 1.2 Contributor" },
     { id: "moonshotai/Kimi-K2.7-Code", name: "Kimi K2.7 Code" },
     { id: "moonshotai/Kimi-K2.7-Code-Highspeed", name: "Kimi K2.7 Code HighSpeed" },

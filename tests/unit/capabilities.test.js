@@ -55,6 +55,22 @@ describe("getCapabilitiesForModel", () => {
     expect(getCapabilitiesForModel("kiro", "claude-sonnet-5-thinking-agentic")).toMatchObject(claudeSonnet5Expected);
   });
 
+  it("keeps DeepSeek V4 Flash vision capability limited to vision-exp IDs", () => {
+    const expected = {
+      vision: true,
+      reasoning: true,
+      thinkingFormat: "deepseek",
+      contextWindow: 1000000,
+      maxOutput: 384000,
+    };
+
+    expect(getCapabilitiesForModel("opencode-go", "deepseek-v4-flash-vision-exp")).toMatchObject(expected);
+    expect(getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4-flash-vision-exp")).toMatchObject(expected);
+    expect(getCapabilitiesForModel("commandcode", "vendor/deepseek-v4-flash-vision-preview")).toMatchObject(expected);
+    expect(getCapabilitiesForModel("opencode-go", "deepseek-v4-flash").vision).toBe(false);
+    expect(getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4-flash").vision).toBe(false);
+  });
+
   // decolua/9router#2596 — every Kiro GPT-5.6 synthetic variant resolves the
   // family's 1.05M context / 32k output (the Kiro wire caps inferenceConfig
   // .maxTokens at 32000) / Kiro-native thinking under both

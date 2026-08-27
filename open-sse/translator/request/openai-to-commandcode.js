@@ -16,6 +16,7 @@ import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { stripThinkingSuffix } from "../concerns/thinkingUnified.js";
+import { encodeDataUri } from "../concerns/image.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function flattenText(content) {
@@ -44,7 +45,11 @@ function toContentBlocks(content) {
         if (part.type === OPENAI_BLOCK.TEXT && isString(part.text)) {
           blocks.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
         } else if (part.type === OPENAI_BLOCK.IMAGE_URL || part.type === OPENAI_BLOCK.IMAGE) {
-          blocks.push({ type: OPENAI_BLOCK.TEXT, text: "[image omitted]" });
+          /** Preserve remote, data-URI, and source-shaped images in CommandCode's native multimodal block. */
+          const sourceUrl = part.source?.type === "url" ? part.source.url : null;
+          const sourceData = part.source?.type === "base64" && isString(part.source.media_type) && isString(part.source.data) ? encodeDataUri(part.source.media_type, part.source.data) : null;
+          const url = isString(part.image_url) ? part.image_url : part.image_url?.url || part.image || part.url || sourceUrl || sourceData;
+          if (url) blocks.push({ type: "image", image: url });
         } else if (isString(part.text)) {
           blocks.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
         }

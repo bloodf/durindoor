@@ -292,14 +292,21 @@ export function getModelLockKey(model) {
 }
 
 /**
- * Check if a model lock on a connection is still active.
- * Reads flat field `modelLock_${model}` (or `modelLock___all` when model=null).
+ * Check whether an exact-model or account-wide lock is still active.
+ * Each applicable timestamp is validated independently so an expired exact
+ * lock cannot mask an active account-wide lock.
+ *
+ * @param {object} connection - Provider connection containing flat lock fields.
+ * @param {string|null} model - Requested model, or null for an account-wide lock.
+ * @returns {boolean} Whether either applicable lock expires in the future.
  */
 export function isModelLockActive(connection, model) {
-  const key = getModelLockKey(model);
-  const expiry = connection[key] || connection[MODEL_LOCK_ALL];
-  if (!expiry) return false;
-  return new Date(expiry).getTime() > Date.now();
+  const now = Date.now();
+  const exactExpiry = new Date(connection[getModelLockKey(model)] || "").getTime();
+  const accountExpiry = new Date(connection[MODEL_LOCK_ALL] || "").getTime();
+  const exactActive = Number.isFinite(exactExpiry) && exactExpiry > now;
+  const accountActive = Number.isFinite(accountExpiry) && accountExpiry > now;
+  return exactActive || accountActive;
 }
 
 /** Return the later applicable exact/account lock for one requested model. */

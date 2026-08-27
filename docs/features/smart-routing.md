@@ -82,6 +82,7 @@ The response layer is responsible for:
 - Mapping finish reasons.
 - Normalizing usage data when available.
 - Handling provider-specific stream formats.
+- Retaining non-empty generated-image deltas in OpenAI-compatible streams while filtering empty deltas.
 - Returning errors in a client-compatible shape.
 
 ## Failure Handling

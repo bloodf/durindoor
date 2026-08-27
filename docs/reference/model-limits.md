@@ -86,6 +86,14 @@ number, requests the provider would have accepted would be rejected locally.
   or a provider override rather than a registry field — stop reporting no
   window at all.
 
+Default/LLM combo entries expose the same flat `context_length` and
+`max_completion_tokens` fields as individual models. Both values are the
+smallest known limit across resolved members, including nested combos and
+members referenced through static aliases or custom connection prefixes. This
+is the largest limit every routable member can safely honor. Unknown member
+limits are skipped; if every member is unknown, the field is omitted. Web
+search and web fetch combos remain field-free because they are not chat models.
+
 ## Verified behavior
 
 Confirmed against a dev server running this branch on an isolated port and data

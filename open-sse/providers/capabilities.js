@@ -83,6 +83,7 @@ function hasUnpublishedOutput(provider, model) {
   provider === "grok-cli" && (id.includes("grok-build") || id.includes("grok-composer"))) return true;
   if ((provider === "kimi" || provider === "kimi-coding" || provider === "kimi-coding-apikey" || provider === "kmc" || provider === "kmca") &&
   id.includes("kimi-k2")) return true;
+  if ((provider === "qoder" || provider === "qd") && id === "kmodel") return true;
   if ((provider === "cloudflare-ai" || provider === "cf") && id.startsWith("@cf/")) return true;
   if (provider === "ollama-local" && id === "llama3.2:1b") return true;
   return provider === "nvidia" && id === "moonshotai/kimi-k2.6";
@@ -303,6 +304,26 @@ const XIAOMI_TOKENPLAN_CAPABILITIES = {
   "mimo-v2.5": { vision: false, audioInput: false, videoInput: false, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 }
 };
 
+/**
+ * Qoder capability lookup uses opaque wire IDs, not registry display names.
+ * Context and vision values follow Qoder's live catalog/model families; thinking
+ * cannot be disabled because model_config fixes reasoning upstream.
+ */
+const QODER_CAPABILITIES = {
+  // auto, efficient, and lite are variable-target tiers; no fixed family limits or vision guarantee.
+  ultimate: { vision: true, reasoning: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
+  performance: { vision: true, reasoning: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
+  dmodel: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
+  dfmodel: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
+  gmodel: { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  kmodel_latest: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
+  kmodel: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: undefined },
+  mmodel: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  qmodel_latest: { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
+  qmodel: { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
+  qmodel_38max: { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 }
+};
+
 export const PROVIDER_CAPABILITIES = {
   // Direct OpenAI GPT-5.5/5.6 family and Codex/CX aliases expose 1.05M context
   // window and 128K max output, overriding the generic *gpt-5* 400K fallback pattern.
@@ -313,6 +334,8 @@ export const PROVIDER_CAPABILITIES = {
   cf: CLOUDFLARE_CAPS,
   "xiaomi-tokenplan": XIAOMI_TOKENPLAN_CAPABILITIES,
   xmtp: XIAOMI_TOKENPLAN_CAPABILITIES,
+  qoder: QODER_CAPABILITIES,
+  qd: QODER_CAPABILITIES,
   // Ollama's trained 131,072-token window is not its served window. The local
   // daemon's /api/ps reports 4,096 for llama3.2:1b; /api/tags exposes no num_ctx.
   "ollama-local": {

@@ -75,7 +75,7 @@ DurinDoor uses provider identifiers internally and in model strings. Examples in
 
 ### Live Provider Catalogs
 
-Some OpenAI-compatible providers, including `hcnsec`, load available models from the upstream `/v1/models` endpoint and expose them without a static seed list. Use the dashboard or DurinDoor's `GET /v1/models` response as the source of truth.
+Some providers load account-specific catalogs at runtime. Qoder uses its authenticated COSY model list and keeps a static fallback containing current `lite`, `qmodel_38max` (Qwen3.8-Max), and `gmodel` (GLM-5.3) identifiers; vision-capable Qoder models accept OpenAI URL/data-URI images and Claude base64 image blocks. OpenAI-compatible providers such as `hcnsec` load available models from the upstream `/v1/models` endpoint. Use the dashboard or DurinDoor's `GET /v1/models` response as the source of truth.
 
 When the add-key dialog creates default connection names, it chooses the first unused name in the `main`, `main-2`, `main-3`, ... sequence. Reopening the dialog after a successful add clears prior secrets and provider-specific fields; background refreshes while the dialog is open preserve in-progress input.
 

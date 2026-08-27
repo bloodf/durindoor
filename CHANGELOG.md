@@ -10,6 +10,7 @@
 - Grok CLI **Bulk Add** imports single, array, or `accounts` JSON with snake/camel token keys, derived identity/expiry, serial priority assignment, and token-safe partial results. Ports decolua/9router#3443. Closes #600.
 
 ## Fixed
+- Headroom now records a diagnostic when an OpenAI Responses request cannot translate to compression `messages[]`, while preserving fail-open behavior (ports decolua/9router#3535). Refs #602.
 - Browser OAuth attempts now clear callback poll timers and release local listeners on timeout, callback validation, token exchange, and credential-save failures. Fixed-port Codex and xAI logins can retry immediately instead of failing with `EADDRINUSE`. Ports decolua/9router#3543 and extends it to the fork-only xAI flow. Closes #588.
 - Provider connection fallback state now persists bounded, secret-safe failure diagnostics such as `fetch failed (ECONNREFUSED)` instead of the generic “Provider unavailable”, including the fork’s atomic DB and compatibility paths. Ports decolua/9router#3518. Closes #587.
 

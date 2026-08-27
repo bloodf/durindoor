@@ -113,6 +113,46 @@ export function startLocalServer(onCallback, fixedPort = null) {
 }
 
 /**
+ * Poll for OAuth callback params while guaranteeing both timer handles are cleared.
+ * @param {() => Object|null|undefined} getParams Returns callback params once available
+ * @param {number} timeoutMs Deadline in milliseconds
+ * @param {number} pollMs Poll interval in milliseconds
+ * @returns {Promise<Object>} Callback params
+ */
+export function waitForCallbackParams(getParams, timeoutMs = OAUTH_TIMEOUT, pollMs = 100) {
+  return new Promise((resolve, reject) => {
+    let interval = null;
+    let timeout = null;
+    let settled = false;
+
+    const cleanup = () => {
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+      if (timeout !== null) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    };
+    const settle = (complete, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      complete(value);
+    };
+
+    timeout = setTimeout(() => {
+      settle(reject, new Error("Authentication timeout (5 minutes)"));
+    }, timeoutMs);
+    interval = setInterval(() => {
+      const params = getParams();
+      if (params) settle(resolve, params);
+    }, pollMs);
+  });
+}
+
+/**
  * Wait for callback with timeout
  * @param {number} timeoutMs - Timeout in milliseconds
  * @returns {Promise<Object>} - Callback params

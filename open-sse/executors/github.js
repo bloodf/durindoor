@@ -261,7 +261,8 @@ export class GithubExecutor extends BaseExecutor {
      * the "github" branch KEEPS unvalidated blocks (see normalizeClaudePassthrough),
      * so we force the validating path to strip them for this route.
      */
-    normalizeClaudePassthrough(transformedBody, model, "claude", requestContext?.modelCapabilities?.maxOutput ?? null);
+    /** Preserve the caller's assistant-prefill policy through the native GitHub Messages cleanup pass. */
+    normalizeClaudePassthrough(transformedBody, model, "claude", requestContext?.modelCapabilities?.maxOutput ?? null, { rawHeaders: requestContext?.clientHeaders });
 
     /**
      * Parallel-tool-use guard (Codex #291 P2): translateRequest converts OpenAI

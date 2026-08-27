@@ -165,6 +165,31 @@ describe("request normalization", () => {
     expect(result.output_config).toEqual(body.output_config);
   });
 
+  it.each([
+    ["ollama", "ollama"],
+    ["ollama-local", "ollama-local"],
+  ])("translateRequest honors assistant-prefill headers on the live %s Claude route", (_name, provider) => {
+    const request = (rawHeaders) => translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.CLAUDE,
+      "qwen3.5",
+      {
+        model: "qwen3.5",
+        max_tokens: 64,
+        messages: [
+          { role: "user", content: [{ type: "text", text: "Start" }] },
+          { role: "assistant", content: [{ type: "text", text: "Partial answer" }] },
+        ],
+      },
+      true,
+      rawHeaders ? { rawHeaders } : null,
+      provider,
+    );
+
+    expect(request({ "x-9router-assistant-prefill": "preserve" }).messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(request().messages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
+  });
+
   it("parseSSELine supports provider raw NDJSON stream lines", () => {
     const raw = JSON.stringify({
       model: "gpt-oss:120b",

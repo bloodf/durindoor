@@ -106,6 +106,35 @@ describe("GithubExecutor native Claude /v1/messages routing (upstream #2608)", (
     expect(result.terminalProvenance).toBe("validated");
   });
 
+  it("honors assistant-prefill headers on the live native Messages route and keeps the default continuation", async () => {
+    const execute = async (rawHeaders = null) => {
+      proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+      const headers = rawHeaders || {};
+      await new GithubExecutor().execute({
+        model: "claude-sonnet-4.6",
+        body: {
+          model: "claude-sonnet-4.6",
+          messages: [
+            { role: "user", content: "Start" },
+            { role: "assistant", content: "Partial answer" },
+          ],
+        },
+        stream: true,
+        credentials: { ...credentials, rawHeaders: headers },
+        signal: null,
+        log: null,
+        requestContext: { clientHeaders: headers },
+      });
+      return JSON.parse(proxyAwareFetch.mock.calls.at(-1)[1].body);
+    };
+
+    const preserved = await execute({ "x-9router-assistant-prefill": "preserve" });
+    expect(preserved.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+
+    const normalized = await execute();
+    expect(normalized.messages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
+  });
+
   it("recognizes claude variants by name pattern (case-insensitive, unknown-to-registry)", () => {
     const exec = new GithubExecutor();
     expect(exec.isClaudeModel("claude-opus-4.8")).toBe(true);

@@ -15,6 +15,7 @@ import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "clientSecret",
+"idToken",
 "qwenCloudCookie",
 "alibabaConsoleCookie",
 "cookie",

@@ -127,6 +127,9 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   if (isString(provider) && provider.startsWith("openai-compatible-")) {
     return "openai";
   }
+  // Model-scoped Ox Alpha metadata is narrower than OpenCode's gateway-wide
+  // default and must retain its low/high/max enum.
+  if (resolvedCaps.thinkingFormat === "openai-low-high-max") return resolvedCaps.thinkingFormat;
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
   if (resolvedCaps.thinkingFormat) return resolvedCaps.thinkingFormat;
@@ -180,6 +183,15 @@ function toKimiReasoningEffort(cfg) {
   if (["low", "medium", "high", "max"].includes(level)) return level;
   return null;
 }
+/** Map unified effort onto Ox Alpha's always-on low/high/max wire enum. */
+function toLowHighMaxLevel(cfg) {
+  const level = toLevel(cfg);
+  if (["none", "minimal", "low"].includes(level)) return "low";
+  if (["medium", "high"].includes(level)) return "high";
+  if (["xhigh", "max", "ultra"].includes(level)) return "max";
+  return null;
+}
+
 /** Convert unified intent to Ollama's top-level `think` field. */
 function toOllamaThink(cfg, supportedLevels) {
   if (cfg.mode === "auto") return true;
@@ -306,6 +318,11 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
         const level = toLevel(eff);
         // Config-driven: preserve supported effort; nearest sibling otherwise.
         if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model);
+        break;
+      }
+    case "openai-low-high-max": {
+        const level = toLowHighMaxLevel(eff);
+        if (level) body.reasoning_effort = level;
         break;
       }
     case "ollama":{

@@ -29,6 +29,7 @@ import {
 "./models/kiroVariants.js";
 import { normalizeModelId } from "./models/schema.js";
 import REGISTRY from "./registry/index.js";
+import { stripThinkingSuffix } from "../translator/concerns/thinkingSuffix.js";
 
 
 /**
@@ -50,7 +51,7 @@ export const DEFAULT_CAPABILITIES = {
   tools: true, // function / tool calling
   reasoning: false, // thinking / reasoning
   // thinking wire format (only meaningful when reasoning:true). null → derive from transport.format.
-  // enum: openai|commandcode|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|opencode|minimax|hunyuan|step|kiro
+  // enum: openai|openai-low-high-max|commandcode|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|opencode|minimax|hunyuan|step|kiro
   thinkingFormat: null,
   thinkingCanDisable: true, // false → model cannot turn thinking off (clamp to min instead of disable)
   thinkingRange: null, // { min, max } for budget formats; null = no clamp
@@ -327,6 +328,16 @@ const QODER_CAPABILITIES = {
   qmodel_38max: { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 }
 };
 
+/** OpenCode Ox Alpha supports images and an always-on low/high/max effort enum. */
+const OX_ALPHA_CAPABILITIES = {
+  vision: true,
+  reasoning: true,
+  thinkingFormat: "openai-low-high-max",
+  thinkingCanDisable: false,
+  contextWindow: 1000000,
+  maxOutput: 131072
+};
+
 export const PROVIDER_CAPABILITIES = {
   // Direct OpenAI GPT-5.5/5.6 family and Codex/CX aliases expose 1.05M context
   // window and 128K max output, overriding the generic *gpt-5* 400K fallback pattern.
@@ -500,15 +511,18 @@ export const PROVIDER_CAPABILITIES = {
     "deepseek-v3-2-volc": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 96000, maxOutput: 32000 }
   },
 
-  // OpenCode free/stealth ids use the gateway reasoning_effort enum rather than
-  // each underlying vendor's native thinking shape (decolua/9router#3504).
+  // OpenCode free/stealth ids use the gateway reasoning_effort enum except Ox
+  // Alpha, whose model-scoped low/high/max contract is narrower.
   opencode: {
-    "x-preview-f-free": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1000000, maxOutput: 131072 },
+    "x-preview-f-free": OX_ALPHA_CAPABILITIES,
     "big-pickle": { reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 },
     "muse-spark-1.2": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "muse-spark-1.2-contributor-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "mimo-v2.5-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 }
   },
+  oc: { "x-preview-f-free": OX_ALPHA_CAPABILITIES },
+  "opencode-go": { "ox-alpha-free": OX_ALPHA_CAPABILITIES },
+  ocg: { "ox-alpha-free": OX_ALPHA_CAPABILITIES },
 
   // OpenCode Zen — Big Pickle advertises reasoning in the registry but the
   // generic fallback did not read model-level supportsReasoning flags.
@@ -886,24 +900,25 @@ export function getCapabilitiesForModel(provider, model) {
   };
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
 
-  const baseModel = model.includes("/") ? model.split("/").pop() : model;
+  const normalizedModel = stripThinkingSuffix(model);
+  const baseModel = normalizedModel.includes("/") ? normalizedModel.split("/").pop() : normalizedModel;
 
   // Z.ai's Claude Code catalog spells GLM-5.3's 1M variant `glm-5.3[1m]`.
   // Preserve its wire ID; normalize only static capability lookup.
   const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" : baseModel;
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
-    if (providerCaps?.[model]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[model] });
+    if (providerCaps?.[normalizedModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedModel] });
     if (providerCaps?.[capabilityBaseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[capabilityBaseModel] });
     if (provider === "kiro" || provider === "kr") {
-      const normalized = normalizeModelId(model);
+      const normalized = normalizeModelId(normalizedModel);
       const normalizedBase = normalizeModelId(baseModel);
       if (providerCaps?.[normalized]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalized] });
       if (providerCaps?.[normalizedBase]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedBase] });
     }
   }
 
-  const exactId = MODEL_CAPABILITIES[capabilityBaseModel] ? capabilityBaseModel : model;
+  const exactId = MODEL_CAPABILITIES[capabilityBaseModel] ? capabilityBaseModel : normalizedModel;
   const exactCaps = MODEL_CAPABILITIES[exactId];
   if (exactCaps) {
     const merged = { ...DEFAULT_CAPABILITIES, ...exactCaps };
@@ -912,7 +927,7 @@ export function getCapabilitiesForModel(provider, model) {
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
-    if (matchPattern(pattern, capabilityBaseModel) || matchPattern(pattern, model)) {
+    if (matchPattern(pattern, capabilityBaseModel) || matchPattern(pattern, normalizedModel)) {
       const merged = { ...DEFAULT_CAPABILITIES, ...caps };
       if (hasUnpublishedOutput(provider, baseModel)) merged.maxOutput = undefined;
       return finalize(merged);

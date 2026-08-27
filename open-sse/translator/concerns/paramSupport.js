@@ -16,6 +16,8 @@ const STRIP_RULES = [
 // xAI Grok Composer: rejects reasoningEffort entirely (including "none") — omit param upstream.
 // Upstream: decolua/9router#2534.
 { provider: "xai", match: /grok-composer/i, drop: ["thinking", "reasoning_effort", "reasoning"] },
+/** OpenCode Muse Responses rejects every Chat and Responses token-cap spelling. */
+{ provider: "opencode", match: /muse/i, drop: ["max_tokens", "max_completion_tokens", "max_output_tokens"] },
 // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
 { provider: "cloudflare-ai", flattenContent: true },
 // Mistral: rejects reasoning_content carried in assistant message history with

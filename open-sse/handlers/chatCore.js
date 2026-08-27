@@ -119,12 +119,21 @@ export function withCompressionHeader(result, headerValue) {
 }
 
 /**
+ * OpenCode Free Muse models require the Responses API; similarly named models
+ * on OpenCode Go and Zen keep their registry-selected transports.
+ */
+function isOpenCodeMuse(provider, alias, model) {
+  return (provider === "opencode" || alias === "oc") && /muse/i.test(model);
+}
+
+/**
  * Pick a request-scoped transport without allowing undeclared model metadata to
  * select a wire-format endpoint. A transport needs credentials because the
  * default executor otherwise uses the provider's default payload format.
  */
 export function resolveRequestTransport({ provider, alias, model, sourceFormat, credentials }) {
-  const modelTargetFormat = getModelTargetFormat(alias, model);
+  const forceOpenCodeMuseResponses = isOpenCodeMuse(provider, alias, model);
+  const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES : getModelTargetFormat(alias, model);
   const supportedFormats = getModelSupportedFormats(alias, model);
   const apikeyTransportFormat = provider === "kimi" && credentials?.authType === "apikey" ?
   "openai-apikey" :
@@ -134,8 +143,8 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const preferredFormat = apikeyTransportFormat || directFormat || modelTargetFormat || defaultFormat;
   const runtimeTransport = credentials ? resolveTransport(provider, preferredFormat) : null;
   const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
-  const targetFormat = transportFormat === sourceFormat ?
-  sourceFormat :
+  const targetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
+  transportFormat === sourceFormat ? sourceFormat :
   apikeyTransportFormat ? transportFormat : credentials ? modelTargetFormat || transportFormat || defaultFormat : defaultFormat;
 
   return { runtimeTransport, targetFormat, apikeyTransportFormat };

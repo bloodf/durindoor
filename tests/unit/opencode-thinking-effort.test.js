@@ -5,19 +5,18 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
 
-// OpenCode's single gateway owns the reasoning_effort enum regardless of the
-// native family behind a free/stealth model id (decolua/9router#3504).
+// OpenCode's gateway owns the reasoning_effort enum for its stealth models;
+// Ox Alpha's narrower low/high/max enum is covered separately.
 describe("OpenCode thinking effort", () => {
-  const stealthIds = [
-    "x-preview-f-free",
+  const gatewayIds = [
     "big-pickle",
     "muse-spark-1.2",
     "muse-spark-1.2-contributor-free",
     "mimo-v2.5-free",
   ];
 
-  it("marks every named stealth id as reasoning with the OpenCode format", () => {
-    for (const id of stealthIds) {
+  it("marks gateway-native stealth ids as reasoning with the OpenCode format", () => {
+    for (const id of gatewayIds) {
       expect(getCapabilitiesForModel("opencode", id)).toMatchObject({
         reasoning: true,
         thinkingFormat: "opencode",

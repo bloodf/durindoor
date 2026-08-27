@@ -2,11 +2,19 @@
 import "../translator/registerAll.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { executeMock, dedupeToolsMock, detectClientToolMock, isNativePassthroughMock, translateRequestMock } = vi.hoisted(() => ({
+const {
+  executeMock,
+  dedupeToolsMock,
+  detectClientToolMock,
+  isNativePassthroughMock,
+  normalizeClaudePassthroughMock,
+  translateRequestMock,
+} = vi.hoisted(() => ({
   executeMock: vi.fn(),
   dedupeToolsMock: vi.fn((tools) => ({ tools, stripped: [] })),
   detectClientToolMock: vi.fn(() => null),
   isNativePassthroughMock: vi.fn(() => false),
+  normalizeClaudePassthroughMock: vi.fn(),
   translateRequestMock: vi.fn(),
 }));
 
@@ -69,7 +77,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 vi.mock("../../open-sse/translator/formats/claude.js", () => ({
   prepareClaudeRequest: vi.fn((body) => body),
-  normalizeClaudePassthrough: vi.fn(),
+  normalizeClaudePassthrough: normalizeClaudePassthroughMock,
   anchorClaudeCache: vi.fn(),
 }));
 
@@ -321,6 +329,7 @@ describe("forceStream provider config", () => {
     detectClientToolMock.mockReturnValue(null);
     isNativePassthroughMock.mockReset();
     isNativePassthroughMock.mockReturnValue(false);
+    normalizeClaudePassthroughMock.mockClear();
     translateRequestMock.mockClear();
   });
 
@@ -398,6 +407,54 @@ describe("forceStream provider config", () => {
     expect(Object.hasOwn(executeMock.mock.calls[0][0].body, "stream")).toBe(true);
     expect(executeMock.mock.calls[0][0].body.stream).toBe(false);
     expect(executeMock.mock.calls[0][0].stream).toBe(false);
+  });
+
+  it("threads raw request headers through native Claude normalization", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const options = makeNativeClaudeOptions();
+    options.clientRawRequest.headers["x-9router-assistant-prefill"] = "preserve";
+    detectClientToolMock.mockReturnValue("claude");
+    isNativePassthroughMock.mockReturnValue(true);
+
+    await handleChatCore(options);
+
+    expect(normalizeClaudePassthroughMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      "claude-sonnet-4.5",
+      "claude",
+      null,
+      { foldSystemTurns: true, rawHeaders: options.clientRawRequest.headers },
+    );
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+    ["empty", ""],
+  ])("defaults a %s Claude tool type to custom", async (_label, type) => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const options = makeNativeClaudeOptions();
+    const tool = { name: "lookup", input_schema: { type: "object" } };
+    if (type !== undefined) tool.type = type;
+    options.body.tools = [tool];
+    options.clientRawRequest.body = options.body;
+    isNativePassthroughMock.mockReturnValue(true);
+
+    await handleChatCore(options);
+
+    expect(executeMock.mock.calls[0][0].body.tools[0]).toMatchObject({ name: "lookup", type: "custom" });
+  });
+
+  it("preserves a truthy Claude tool object by reference", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const options = makeNativeClaudeOptions();
+    options.body.tools = [{ name: "computer", type: "computer_use", display_width: 1024 }];
+    options.clientRawRequest.body = options.body;
+    isNativePassthroughMock.mockReturnValue(true);
+    await handleChatCore(options);
+
+    const normalizedTools = dedupeToolsMock.mock.calls[0][0];
+    expect(executeMock.mock.calls[0][0].body.tools[0]).toBe(normalizedTools[0]);
   });
 
   it("does not inject stream into native Gemini CLI passthrough bodies", async () => {

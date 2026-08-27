@@ -9,6 +9,7 @@ import { PROVIDERS } from "../../providers/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
@@ -391,7 +392,9 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
     }
   }
 
-  return reconcileClaudeThinkingBudget(body, provider, customMaxOutput);
+  reconcileClaudeThinkingBudget(body, provider, customMaxOutput);
+  applyAssistantPrefillPolicy(body, options?.rawHeaders);
+  return body;
 }
 
 // Prepare request for Claude format endpoints
@@ -440,7 +443,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       }
 
       // Keep final assistant even if empty, otherwise check valid content
-      const isFinalAssistant = i === len - 1 && msg.role === "assistant";
+      const isFinalAssistant = i === len - 1 && msg.role === ROLE.ASSISTANT;
       if (isFinalAssistant || hasValidContent(msg)) {
         filtered.push(msg);
       }
@@ -451,10 +454,12 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     filtered = fixToolUseOrdering(filtered);
 
     body.messages = filtered;
+    applyAssistantPrefillPolicy(body, rawHeaders);
+    filtered = body.messages;
 
     // Check if thinking is enabled AND last message is from user
     const lastMessage = filtered[filtered.length - 1];
-    const lastMessageIsUser = lastMessage?.role === "user";
+    const lastMessageIsUser = lastMessage?.role === ROLE.USER;
     const thinkingEnabled = body.thinking?.type === "enabled" && lastMessageIsUser;
 
     // Pass 2 (reverse): add cache_control to last assistant + handle thinking for Anthropic
@@ -462,7 +467,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     for (let i = filtered.length - 1; i >= 0; i--) {
       const msg = filtered[i];
 
-      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+      if (msg.role === ROLE.ASSISTANT && Array.isArray(msg.content)) {
         // Add cache_control to last non-thinking block of first (from end) assistant with content
         // thinking/redacted_thinking blocks do not support cache_control
         if (allowCacheControl && !lastAssistantProcessed && msg.content.length > 0) {

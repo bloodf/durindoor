@@ -101,6 +101,17 @@ export const STREAM_STALL_TIMEOUT_MS = envMs("STREAM_STALL_TIMEOUT_MS", 360 * 10
 // Time-to-first-token timeout (prompt prefill). Env: STREAM_FIRST_CHUNK_TIMEOUT_MS.
 export const STREAM_FIRST_CHUNK_TIMEOUT_MS = envMs("STREAM_FIRST_CHUNK_TIMEOUT_MS", 200 * 1000);
 
+/**
+ * Interval for client-facing Claude SSE ping events during upstream silence.
+ * Set `SSE_KEEPALIVE_MS=0` to disable both early and post-translation pings.
+ */
+export const SSE_KEEPALIVE_MS = (() => {
+  const raw = process.env.SSE_KEEPALIVE_MS;
+  if (raw == null || raw === "") return 10 * 1000;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 10 * 1000;
+})();
+
 // Connect timeout for ollama-local: higher default because local models may need extra time
 // to load weights (especially large models). Env: OLLAMA_LOCAL_CONNECT_TIMEOUT_MS.
 export const OLLAMA_LOCAL_CONNECT_TIMEOUT_MS = envMs("OLLAMA_LOCAL_CONNECT_TIMEOUT_MS", 120 * 1000);

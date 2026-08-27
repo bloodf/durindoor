@@ -1,6 +1,8 @@
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { requireJsonContentType } from "open-sse/translator/validate.js";
+import { SSE_KEEPALIVE_MS } from "open-sse/config/runtimeConfig.js";
+import { ANTHROPIC_PING_FRAME, withEarlyStreamKeepalive } from "open-sse/utils/earlyStreamKeepalive.js";
 
 let initialized = false;
 
@@ -28,7 +30,8 @@ export async function OPTIONS() {
 }
 
 /**
- * POST /v1/messages - Claude format (auto convert via handleChat)
+ * POST /v1/messages - Claude format (auto convert via handleChat).
+ * Streaming requests emit Anthropic ping events while provider setup is silent.
  */
 export async function POST(request) {
   // #6414: reject non-JSON Content-Type with 415 before touching the body.
@@ -36,6 +39,14 @@ export async function POST(request) {
   if (ctRejection) return ctRejection;
 
   await ensureInitialized();
-  return await handleChat(request);
+  const body = await request.clone().json().catch(() => null);
+  const handlerPromise = handleChat(request);
+  if (body?.stream !== true) return await handlerPromise;
+
+  return await withEarlyStreamKeepalive(handlerPromise, {
+    signal: request.signal,
+    intervalMs: SSE_KEEPALIVE_MS,
+    keepaliveFrame: ANTHROPIC_PING_FRAME
+  });
 }
 

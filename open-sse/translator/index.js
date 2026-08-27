@@ -216,10 +216,11 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     provider === "ollama" ||
     provider === "ollama-local";
     if (normalizesNativeClaudeTransport) {
-      // Ollama implements the Messages wire contract but not Anthropic's
-      // model-specific beta matrix. Normalize system turns without applying
-      // Claude-family model downgrades to the upstream Ollama model id.
-      result = normalizeClaudePassthrough(result, "", provider);
+      /**
+       * Ollama implements the Messages wire contract but not Anthropic's model beta matrix.
+       * Normalize against its model id while preserving the caller's assistant-prefill policy.
+       */
+      result = normalizeClaudePassthrough(result, "", provider, null, { rawHeaders: credentials?.rawHeaders });
     }
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
     const customMaxOutput = resolvedTranslationContext.modelCapabilities?.maxOutput ?? null;

@@ -100,6 +100,12 @@ curl http://localhost:20128/v1/messages \
 
 This route is useful for Claude-compatible clients and translation testing.
 
+Claude-format requests normally end on a user turn. DurinDoor converts a trailing assistant text prefill into a continuation user turn and pairs trailing `tool_use` blocks with error `tool_result` blocks so strict Messages endpoints do not reject the request. Clients that require native assistant-prefill behavior can opt out per request:
+
+```http
+X-9Router-Assistant-Prefill: preserve
+```
+
 ## Count Tokens
 
 ```bash

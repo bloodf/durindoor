@@ -14,6 +14,7 @@
 
 - Exact-model and account-wide model-lock timestamps are now validated independently, so an expired exact lock cannot mask an active account-wide lock. Ports decolua/9router#3516. Closes #578.
 - Thinking effort now reaches Ollama as `think`, Z.AI as both scalar and `reasoning.effort`, OpenCode free models as its gateway enum, and Grok CLI 4.6 virtual models through `xhigh`.
+- Claude-format requests now normalize trailing assistant prefills into a continuation user turn (or matching error `tool_result`), unless `X-9Router-Assistant-Prefill: preserve` is set; falsy Claude `tools[].type` values now default to `custom`. Ports decolua/9router#3506 and #3484. Closes #580.
 
 - Qoder refreshes its fallback catalog with `lite`, Qwen3.8-Max, and GLM-5.3; opaque Qoder model IDs now expose correct reasoning, vision, context, and output capabilities, and vision models retain OpenAI URL/data-URI and Claude base64 image blocks in outgoing chat payloads. Ports decolua/9router#3555. Closes #583.
 - Groq replaces decommissioned seed model IDs with its current production catalog, discovers live models through the authenticated OpenAI-compatible `/models` endpoint, and accepts future model IDs via passthrough. Closes #582.

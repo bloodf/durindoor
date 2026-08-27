@@ -115,7 +115,12 @@ describe("#2401 reasoning/thinking bridge (request)", () => {
     expect(assistant).toBeTruthy();
     expect(assistant.reasoning_content ?? "").not.toContain("opaque-encrypted-payload-CCC");
 
-    const final = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, mid, true, {}, "anthropic");
+    // This case isolates the in-process redacted-thinking carrier. Preserve the
+    // terminal assistant deliberately; default continuation behavior is covered
+    // by the translated/native assistant-prefill-policy regression suite.
+    const final = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, mid, true, {
+      rawHeaders: { "x-9router-assistant-prefill": "preserve" },
+    }, "anthropic");
     const back = final.messages.find((m) => m.role === "assistant");
     expect(back).toBeTruthy();
     expect(back.content).toEqual([{ type: "redacted_thinking", data: "opaque-encrypted-payload-CCC" }]);

@@ -537,7 +537,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       });
     }
     // Normalize newer Cowork/CC beta shapes (adaptive thinking, mid-conversation system) the API rejects
-    if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null, { foldSystemTurns: true });
+    if (clientTool === "claude") normalizeClaudePassthrough(translatedBody, translatedBody.model, provider, modelCapabilities?.maxOutput ?? null, { foldSystemTurns: true, rawHeaders: clientRawRequest?.headers });
     /**
      * Native OpenAI Responses and Claude Messages bodies carry top-level
      * `stream`; Gemini-family native bodies do not and reject an injected key.
@@ -652,7 +652,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Claude tool schema requires `type` to be explicitly set; strict gateways (e.g., MiniMax)
   // reject legacy payloads that omit it with HTTP 400. Default to "custom" when missing.
   if (finalFormat === "claude" && Array.isArray(translatedBody.tools)) {
-    translatedBody.tools = translatedBody.tools.map((tool) => tool.type ? tool : { type: "custom", ...tool });
+    translatedBody.tools = translatedBody.tools.map((tool) => tool.type ? tool : { ...tool, type: "custom" });
   }
 
   // Token-saver summary parts, printed as one "⚙" line at the end (only active ones)

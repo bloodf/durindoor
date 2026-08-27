@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { anchorClaudeCache, normalizeClaudePassthrough } from "../../open-sse/translator/formats/claude.js";
 
+// These cases isolate system-turn folding/hoisting and intentionally assert the
+// pre-policy assistant shape. Opt out explicitly; default trailing-assistant
+// normalization is covered for both paths in assistant-prefill-policy.test.js.
+const PRESERVE_ASSISTANT_PREFILL = { rawHeaders: { "x-9router-assistant-prefill": "preserve" } };
+
 describe("Claude passthrough cache-control anchoring", () => {
   it("re-anchors markers after preparation reshapes messages", () => {
     const body = {
@@ -104,7 +109,7 @@ describe("normalizeClaudePassthrough default behavior (foldSystemTurns off)", ()
       ],
     };
 
-    normalizeClaudePassthrough(body);
+    normalizeClaudePassthrough(body, "", "claude", null, PRESERVE_ASSISTANT_PREFILL);
 
     expect(body.system).toEqual([{ type: "text", text: "volatile reminder" }]);
     expect(body.messages).toEqual([
@@ -165,7 +170,7 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
       ],
     };
 
-    normalizeClaudePassthrough(body, "", "claude", null, { foldSystemTurns: true });
+    normalizeClaudePassthrough(body, "", "claude", null, { ...PRESERVE_ASSISTANT_PREFILL, foldSystemTurns: true });
 
     // Top-level system must NOT pick up the volatile system message.
     expect(body.system).toEqual([{ type: "text", text: "stable" }]);
@@ -197,7 +202,7 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
       ],
     };
 
-    normalizeClaudePassthrough(body, "", "claude", null, { foldSystemTurns: true });
+    normalizeClaudePassthrough(body, "", "claude", null, { ...PRESERVE_ASSISTANT_PREFILL, foldSystemTurns: true });
 
     // System reminder must attach to the FOLLOWING user turn, not the tool_result one.
     expect(body.messages).toEqual([
@@ -236,7 +241,7 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
       ],
     };
 
-    normalizeClaudePassthrough(body, "", "claude", null, { foldSystemTurns: true });
+    normalizeClaudePassthrough(body, "", "claude", null, { ...PRESERVE_ASSISTANT_PREFILL, foldSystemTurns: true });
 
     // No synthesized standalone user turn; the next existing user turn absorbs everything.
     expect(body.messages).toHaveLength(3);
@@ -265,7 +270,7 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
       ],
     };
 
-    normalizeClaudePassthrough(body, "", "claude", null, { foldSystemTurns: true });
+    normalizeClaudePassthrough(body, "", "claude", null, { ...PRESERVE_ASSISTANT_PREFILL, foldSystemTurns: true });
 
     expect(body.messages.every((m) => m.role !== "system")).toBe(true);
     expect(body.messages).toEqual([
@@ -340,7 +345,7 @@ describe("normalizeClaudePassthrough foldSystemTurns: true (native chatCore pass
       ],
     };
 
-    normalizeClaudePassthrough(body, "", "claude", null, { foldSystemTurns: true });
+    normalizeClaudePassthrough(body, "", "claude", null, { ...PRESERVE_ASSISTANT_PREFILL, foldSystemTurns: true });
 
     expect(body.messages).toEqual([
       { role: "user", content: "ask" },

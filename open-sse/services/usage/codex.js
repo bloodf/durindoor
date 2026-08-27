@@ -5,6 +5,7 @@
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U, parseResetTime, toFiniteNumber } from "./shared.js";
 import { applyCodexAccountHeader, resolveCodexAccountId } from "../../shared/codexAccountId.js";
+import { resolveCodexSparkRateLimit } from "../../shared/codexSparkRateLimit.js";
 
 // Codex (OpenAI) API config
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -216,16 +217,19 @@ export async function getCodexUsage(accessToken, providerSpecificData = {}, prox
     const data = await response.json();
     const normalRateLimit = data.rate_limit || data.rate_limits || data.rate_limits_by_limit_id?.codex || {};
     const reviewRateLimit = getCodexReviewRateLimit(data);
+    const sparkRateLimit = resolveCodexSparkRateLimit(data);
     const resetCredits = parseCodexResetCredits(data.rate_limit_reset_credits);
     const quotas = {};
 
     appendCodexQuotaWindows(quotas, "", normalRateLimit);
     appendCodexQuotaWindows(quotas, "review", reviewRateLimit);
+    appendCodexQuotaWindows(quotas, "spark", sparkRateLimit);
 
     return {
       plan: data.plan_type || data.summary?.plan || "unknown",
       limitReached: getCodexRateLimitBody(normalRateLimit)?.limit_reached || false,
       reviewLimitReached: getCodexRateLimitBody(reviewRateLimit)?.limit_reached || false,
+      sparkLimitReached: getCodexRateLimitBody(sparkRateLimit)?.limit_reached || false,
       resetCredits,
       quotas
     };

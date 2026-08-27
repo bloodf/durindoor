@@ -75,7 +75,7 @@ The stable refresh coverage is:
 | --- | --- |
 | Gemini CLI | Google Code Assist project discovery plus `retrieveUserQuota` model fractions. |
 | Antigravity and `agy` | Native Antigravity bootstrap profile (`ideType` only, with no rejected platform/plugin metadata) plus `retrieveUserQuota`; no credit-spending probe. |
-| Codex | ChatGPT `wham/usage` session, weekly, code-review, and Codex Spark windows, bound with the shared account-ID resolver. |
+| Codex | ChatGPT `wham/usage` session, weekly, code-review, and Codex Spark windows, bound with the shared account-ID resolver. Spark windows are accepted from top-level `spark_rate_limit` or `gpt_5_3_codex_spark_rate_limit`, indexed `rate_limits_by_limit_id["gpt-5.3-codex-spark"]`, and `additional_rate_limits` payloads; both dashboard usage and quota preflight use the same resolver and normalize Spark preflight rows to `model:codex-spark`. |
 | Claude | OAuth utilization windows plus strict legacy organization usage rows; unknown legacy allocations remain unknown rather than fabricated. Anthropic's `omelette` codename maps to `designer`. When a plan returns no utilization windows, an enabled `extraUsage` credit block is surfaced as a credits-style quota row so real remaining credit still renders instead of "No quota data". |
 | GitHub Copilot | Paid entitlement, used/total, or percent-only snapshots and free-plan remaining buckets, preserving unlimited entitlements. |
 | Cursor | The WorkOS-authenticated dashboard spending JSON contract; Connect/protobuf usage calls are not used for quota persistence. Redirects remain rejected by the common transport security lock. |

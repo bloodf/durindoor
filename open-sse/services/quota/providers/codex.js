@@ -2,6 +2,7 @@ import {
   hasConflictingCodexAccountIds,
   resolveCodexAccountId } from
 "../../../shared/codexAccountId.js";
+import { resolveCodexSparkRateLimit } from "../../../shared/codexSparkRateLimit.js";
 import {
   asArray,
   asRecord,
@@ -94,19 +95,9 @@ function reviewLimit(data) {
   }) || null;
 }
 
-function sparkLimits(data) {
-  return additionalLimits(data).filter((entry) => {
-    const record = asRecord(entry) || {};
-    const descriptor = [
-    record.limit_name, record.limitName, record.metered_feature, record.meteredFeature,
-    record.limit_id, record.limitId, record.id, record.name, record.title,
-    record.model, record.model_id, record.modelId].
-
-    filter((value) => isString(value)).
-    join(" ").
-    toLowerCase();
-    return descriptor.includes("spark");
-  });
+/** Normalize Spark under its catalog quota-family scope for exact preflight matching. */
+function sparkLimit(data) {
+  return resolveCodexSparkRateLimit(data);
 }
 
 export function normalizeCodexQuota(data, { accountId = "", now = Date.now() } = {}) {
@@ -140,14 +131,12 @@ export function normalizeCodexQuota(data, { accountId = "", now = Date.now() } =
     plan,
     now
   })) return null;
-  for (const entry of sparkLimits(payload)) {
-    if (!appendWindows(rows, entry, {
-      accountKey,
-      resourceKey: quotaScopedKey("model", "codex-spark"),
-      plan,
-      now
-    })) return null;
-  }
+  if (!appendWindows(rows, sparkLimit(payload), {
+    accountKey,
+    resourceKey: quotaScopedKey("model", "codex-spark"),
+    plan,
+    now
+  })) return null;
   return rows.length > 0 ? rows : null;
 }
 

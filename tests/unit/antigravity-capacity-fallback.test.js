@@ -121,7 +121,7 @@ describe("Antigravity capacity fallback", () => {
       403,
       "Request limit reached for current billing cycle",
       "kimi-coding",
-      "kimi-k2.6",
+      "kimi-for-coding",
       now + 365 * 24 * 60 * 60 * 1000,
     );
 
@@ -130,7 +130,7 @@ describe("Antigravity capacity fallback", () => {
     // markAccountUnavailable's own cap computation.
     expect(result.cooldownMs).toBeLessThanOrEqual(MAX_RATE_LIMIT_COOLDOWN_MS + 5000);
     const persistedReset = new Date(
-      mocks.updateProviderConnection.mock.calls.at(-1)[1]["modelLock_kimi-k2.6"],
+      mocks.updateProviderConnection.mock.calls.at(-1)[1]["modelLock_kimi-for-coding"],
     ).getTime();
     expect(persistedReset - now).toBeLessThanOrEqual(MAX_RATE_LIMIT_COOLDOWN_MS + 5000);
   });

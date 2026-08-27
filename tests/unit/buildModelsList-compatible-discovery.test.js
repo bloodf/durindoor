@@ -233,7 +233,7 @@ describe("buildModelsList — compatible provider discovery", () => {
     expect(models.find((entry) => entry.id === "err/gpt-4o").capabilities.contextWindow).toBe(128_000);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
-  it("merges Kimi coding limits without replacing static model IDs", async () => {
+  it("merges live Kimi Code limits into canonical static model IDs", async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: [
@@ -252,9 +252,8 @@ describe("buildModelsList — compatible provider discovery", () => {
 
     const models = await buildModelsList([LLM_KIND]);
 
-    expect(models.find((entry) => entry.id === "kimi/kimi-k3").capabilities.contextWindow).toBe(999_999);
-    expect(models.some((entry) => entry.id === "kimi/k3")).toBe(false);
-    expect(models.some((entry) => entry.id === "kimi/kimi-for-coding")).toBe(false);
+    expect(models.find((entry) => entry.id === "kimi/k3").capabilities.contextWindow).toBe(999_999);
+    expect(models.some((entry) => entry.id === "kimi/kimi-for-coding")).toBe(true);
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://api.kimi.com/coding/v1/models",
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer test-key" }) }),

@@ -47,7 +47,8 @@ export function isValidModel(aliasOrId, modelId, passthroughProviders = new Set(
   if (passthroughProviders.has(aliasOrId)) return true;
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return false;
-  return !!findModel(models, modelId, aliasOrId);
+  const baseId = parseSuffix(modelId).cleanModel;
+  return !!(findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId));
 }
 
 export function findModelName(aliasOrId, modelId) {
@@ -118,10 +119,10 @@ export function getModelUpstreamId(aliasOrId, modelId) {
   return baseId;
 }
 
-/** Return the configured catalog id for a request model, or null for passthrough input. */
 export function getCanonicalModelId(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
-  return findModel(models, modelId, aliasOrId)?.id || null;
+  const baseId = parseSuffix(modelId).cleanModel;
+  return (findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId))?.id || null;
 }
 
 export function getModelQuotaFamily(aliasOrId, modelId) {

@@ -55,6 +55,7 @@ vi.mock("@/shared/constants/config", () => ({
 
 vi.mock("open-sse/providers/shared.js", () => ({
   CLAUDE_CLI_SPOOF_HEADERS: { "anthropic-version": "2023-06-01" },
+  KIMI_CODING_USAGE_URL: "https://api.kimi.com/coding/v1/usages",
 }));
 
 vi.mock("open-sse/services/usage/shared.js", () => ({

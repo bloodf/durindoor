@@ -1,3 +1,4 @@
+import { KIMI_CODING_MODELS_URL } from "../../../../../open-sse/providers/shared.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import {
   AI_PROVIDERS,
@@ -118,10 +119,8 @@ function isOllamaEmbeddingModel(model) {
   }
   return false;
 }
-// Kimi's live `k3` id is verified as the static `kimi-k3`. Other live IDs
-// intentionally stay unmapped until upstream publishes a stable canonical ID.
+// Kimi Code live IDs are canonical; no static remapping is required.
 const KIMI_LIVE_MODEL_PROVIDERS = new Set(["kimi", "kimi-coding", "kimi-coding-apikey"]);
-const KIMI_LIVE_MODEL_ALIASES = { k3: "kimi-k3" };
 /** Providers whose discovered models extend, rather than only enrich, their static catalog. */
 const LIVE_MODEL_UNION_PROVIDERS = new Set([
 "anthropic",
@@ -759,9 +758,9 @@ async function buildModelsListImpl(kindFilter, guard) {
             provider: providerId,
             guard: liveGuard,
             proxyOptions,
-            endpoint: genericFetcher?.url || (isKimiLiveProvider ? "https://api.kimi.com/coding/v1/models" : undefined),
+            endpoint: genericFetcher?.url || (isKimiLiveProvider ? KIMI_CODING_MODELS_URL : undefined),
             anthropic: isAnthropicCompatibleProvider(providerId),
-            modelAliases: isKimiLiveProvider ? KIMI_LIVE_MODEL_ALIASES : undefined
+            modelAliases: undefined
           });
         } :
         null;

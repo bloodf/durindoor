@@ -186,7 +186,7 @@ describe("injectReasoningContent — native Kimi thinking round-trip", () => {
   it("injects reasoning_content on Kimi assistant turns without tool calls", () => {
     const out = injectReasoningContent({
       provider: "kimi",
-      model: "kimi-k2.6",
+      model: "kimi-for-coding",
       body: bodyWith([
         { role: "user", content: "hi" },
         { role: "assistant", content: "previous answer" },

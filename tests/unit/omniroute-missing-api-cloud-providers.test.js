@@ -119,9 +119,9 @@ describe("OmniRoute missing API-key cloud provider ports", () => {
     expect(PROVIDERS["kimi-coding-apikey"]).toMatchObject({
       baseUrl: "https://api.kimi.com/coding/v1/messages",
       format: "claude",
-      urlSuffix: "?beta=true",
       auth: { header: "x-api-key", scheme: "raw" },
     });
+    expect(PROVIDERS["kimi-coding-apikey"].urlSuffix).toBeUndefined();
     expect(PROVIDERS["kimi-coding-apikey"].transports.map((transport) => transport.format)).toEqual(["openai", "claude"]);
   });
 
@@ -201,7 +201,7 @@ describe("OmniRoute missing API-key cloud provider ports", () => {
     const kimiHeaders = kimi.buildHeaders({ apiKey: "kimi-test" }, false);
 
     expect({
-      url: kimi.buildUrl("kimi-k2.7-code", false),
+      url: kimi.buildUrl("kimi-for-coding", false),
       anthropicVersion: kimiHeaders["Anthropic-Version"],
       authorization: kimiHeaders.Authorization,
       xApiKey: kimiHeaders["x-api-key"],
@@ -209,7 +209,7 @@ describe("OmniRoute missing API-key cloud provider ports", () => {
       {
         "anthropicVersion": "2023-06-01",
         "authorization": undefined,
-        "url": "https://api.kimi.com/coding/v1/messages?beta=true",
+        "url": "https://api.kimi.com/coding/v1/messages",
         "xApiKey": "kimi-test",
       }
     `);

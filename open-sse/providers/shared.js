@@ -52,8 +52,19 @@ export const CLAUDE_CLI_SPOOF_HEADERS = {
   "X-Stainless-Timeout": "600"
 };
 
-// Shared baseUrls
+// Kimi Code single-source endpoints and documented membership display names.
 export const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1/messages";
+export const KIMI_CODING_OPENAI_URL = "https://api.kimi.com/coding/v1/chat/completions";
+export const KIMI_CODING_USAGE_URL = "https://api.kimi.com/coding/v1/usages";
+export const KIMI_CODING_MODELS_URL = "https://api.kimi.com/coding/v1/models";
+export const KIMI_PLATFORM_CHAT_URL = "https://api.moonshot.ai/v1/chat/completions";
+export const KIMI_PLANS = Object.freeze({
+  Andante: "Andante",
+  LEVEL_BASIC: "Moderato",
+  LEVEL_INTERMEDIATE: "Allegretto",
+  LEVEL_ADVANCED: "Allegro",
+  LEVEL_STANDARD: "Vivace",
+});
 
 // Default base for dynamic compat providers (openai-compatible-* / anthropic-compatible-*) when user gives no baseUrl
 export const OPENAI_COMPAT_BASE = "https://api.openai.com/v1";

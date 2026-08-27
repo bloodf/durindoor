@@ -1,15 +1,15 @@
-// decolua/9router#3088 (upstream issue #2881) — a Kimi API-key connection must
-// reach the OpenAI-compatible platform endpoint (api.moonshot.cn), not the Kimi
-// Code subscription endpoint that OAuth connections use. The platform API speaks
-// OpenAI only, so a Claude-format client has to be translated rather than passed
-// through.
+// Kimi Code docs define separate subscription and Open Platform endpoints.
+// Subscription transports support both protocols; platform API keys remain OpenAI-only.
 import { describe, expect, it } from "vitest";
+import { getModelUpstreamId, isValidModel } from "../../open-sse/config/providerModels.js";
 import { resolveTransport } from "../../open-sse/services/provider.js";
 import kimi from "../../open-sse/providers/registry/kimi.js";
 
 const SUBSCRIPTION_HOST = "api.kimi.com";
-const PLATFORM_HOST = "api.moonshot.cn";
+const PLATFORM_HOST = "api.moonshot.ai";
 
+const DOCUMENTED_MODELS = ["k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"];
+const LEGACY_MODELS = ["kimi-k3", "kimi-k2.7-code", "kimi-k2.6-thinking", "moonshotai/kimi-k2.7-code"];
 describe("kimi transports", () => {
   it("exposes a dedicated apikey transport pointing at the platform endpoint", () => {
     const transport = resolveTransport("kimi", "openai-apikey");
@@ -22,6 +22,31 @@ describe("kimi transports", () => {
   it("keeps the OAuth transports on the subscription endpoint", () => {
     expect(resolveTransport("kimi", "openai").baseUrl).toContain(SUBSCRIPTION_HOST);
     expect(resolveTransport("kimi", "claude").baseUrl).toContain(SUBSCRIPTION_HOST);
+  });
+
+  it("exposes only documented models and the documented k3[1m] inbound alias", () => {
+    expect(kimi.models.map(({ id }) => id)).toEqual(DOCUMENTED_MODELS);
+    expect(kimi.models.find(({ id }) => id === "k3")?.aliases).toEqual(["k3[1m]"]);
+    expect(getModelUpstreamId("kimi", "k3[1m]")).toBe("k3");
+    expect(isValidModel("kimi", "k3[1m]")).toBe(true);
+    expect(isValidModel("kimi", "k3")).toBe(true);
+    for (const legacyId of LEGACY_MODELS) {
+      expect(isValidModel("kimi", legacyId)).toBe(false);
+      expect(kimi.models.some(({ id, aliases }) => id === legacyId || aliases?.includes(legacyId))).toBe(false);
+    }
+  });
+
+  it("keeps both protocol transports free of the retired beta query", () => {
+    for (const format of ["claude", "openai"]) {
+      const transport = resolveTransport("kimi", format);
+      expect(transport.baseUrl).toContain(SUBSCRIPTION_HOST);
+      expect(transport.urlSuffix).toBeUndefined();
+    }
+  });
+
+  it("preserves raw x-api-key Claude auth and Bearer OpenAI auth", () => {
+    expect(resolveTransport("kimi", "claude").auth).toMatchObject({ header: "x-api-key", scheme: "raw" });
+    expect(resolveTransport("kimi", "openai").auth).toMatchObject({ header: "Authorization", scheme: "bearer" });
   });
 
   // The apikey transport is selected by a lookup tag, not a wire format. If that

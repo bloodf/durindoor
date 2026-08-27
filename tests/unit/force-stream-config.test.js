@@ -259,14 +259,14 @@ function makeNativeCodexOptions() {
 
 function makeKimiOptions(provider, authType) {
   const body = {
-    model: "kimi-k3",
+    model: "k3",
     stream: false,
     messages: [{ role: "user", content: "hello" }],
   };
 
   return {
     body,
-    modelInfo: { provider, model: "kimi-k3" },
+    modelInfo: { provider, model: "k3" },
     credentials: { apiKey: "kimi-test", authType },
     clientRawRequest: {
       endpoint: "/v1/chat/completions",
@@ -381,7 +381,7 @@ describe("forceStream provider config", () => {
       stream: false,
       body: { stream: false },
       credentials: {
-        runtimeTransport: { baseUrl: "https://api.moonshot.cn/v1/chat/completions" },
+        runtimeTransport: { baseUrl: "https://api.moonshot.ai/v1/chat/completions" },
       },
     });
   });

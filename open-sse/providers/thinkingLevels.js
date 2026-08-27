@@ -45,7 +45,7 @@ const PATTERN_THINKING = [
   { pattern: "*gpt-5.6-terra*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
   // Luna accepts max; ultra falls back to max in applyThinking.
   { pattern: "*gpt-5.6-luna*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
-  // K3 only accepts max reasoning effort.
+  /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
   // Ollama GPT-OSS accepts low/medium/high only; max must clamp to high.

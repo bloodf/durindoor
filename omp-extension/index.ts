@@ -91,8 +91,8 @@ function thinkingConfig(modelId: string, capabilities: CapabilityBag): OmpModel[
   const bareModelId = modelId.toLowerCase().split("/").at(-1);
   const format = capabilities.thinkingFormat;
   let efforts: readonly Effort[] = [EFFORT.low, EFFORT.medium, EFFORT.high];
-  if (bareModelId === "kimi-k3") {
-    efforts = [EFFORT.max];
+  if (bareModelId === "k3") {
+    efforts = [EFFORT.low, EFFORT.high, EFFORT.max];
   } else if (
     bareModelId?.includes("gpt-5.6-sol") ||
     bareModelId?.includes("gpt-5.6-terra") ||

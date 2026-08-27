@@ -19,6 +19,8 @@ import {
   aggregateComboCapabilities,
   getCapabilitiesForModel,
 } from "../../open-sse/providers/capabilities.js";
+import { getPricingForModel } from "../../open-sse/providers/pricing.js";
+import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
 import { buildModelsList } from "../../src/app/api/v1/models/buildModelsList.js";
 import * as localDb from "@/lib/localDb";
 
@@ -74,11 +76,28 @@ describe("August 2026 model catalog audit", () => {
     expect(getCapabilitiesForModel("zai", "glm-4.6v").maxOutput).toBe(32_768);
   });
 
-  it("leaves unpublished Kimi K2.x output ceilings unset", () => {
-    for (const model of ["kimi-k2.5", "kimi-k2.5-thinking", "kimi-k2.6", "kimi-k2.7-code", "kimi-k2.7-code-highspeed"]) {
-      expect(getCapabilitiesForModel("kimi", model).maxOutput, model).toBeUndefined();
+  it("publishes documented Kimi Code context windows", () => {
+    expect(getCapabilitiesForModel("kimi", "k3").contextWindow).toBe(1048576);
+    for (const model of ["k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"]) {
+      expect(getCapabilitiesForModel("kimi", model).contextWindow, model).toBe(262144);
     }
     expect(getCapabilitiesForModel("cloudflare-ai", "@cf/moonshotai/kimi-k2.6").maxOutput).toBeUndefined();
+  });
+
+  it("preserves third-party Kimi capability and thinking fallbacks", () => {
+    expect(getCapabilitiesForModel("opencode-go", "kimi-k2.5")).toMatchObject({
+      contextWindow: 262144,
+      reasoning: true,
+      thinkingFormat: "kimi",
+    });
+    expect(getCapabilitiesForModel("opencode-go", "kimi-k2.7-code").thinkingCanDisable).toBe(false);
+    expect(getCapabilitiesForModel("novita", "moonshotai/kimi-k3").contextWindow).toBe(1048576);
+    expect(getThinkingLevels("novita", "moonshotai/kimi-k3")).toEqual(["max"]);
+  });
+
+  it("preserves third-party Kimi base pricing", () => {
+    expect(getPricingForModel("novita", "moonshotai/kimi-k3")).toMatchObject({ input: 3.00, output: 15.00 });
+    expect(getPricingForModel("bluesminds", "kimi-k2").input).toBe(1.00);
   });
 
   it("does not claim fixed limits for target-dependent router aliases", () => {

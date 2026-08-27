@@ -62,17 +62,16 @@ describe("capabilities contextWindow resolution", () => {
   });
 
   it.each([
-    ["kimi-k3", 1048576],
     ["k3", 1048576],
     ["k3-256k", 262144],
-    ["kimi-k2.7-code", 262144],
-    ["kimi-k2.7-code-highspeed", 262144],
-    ["kimi-k2.6", 262144],
-    ["kimi-k2.5", 262144],
-  ])("keeps live-probed Kimi %s window at %d", (model, expected) => {
-    // 2026-08-13: Kimi `/coding/v1/models` returned exact k3/k3-256k context_length;
-    // deliberate K2.7/K2.6/K2.5 overflow errors stated model token limit 262144.
+    ["kimi-for-coding", 262144],
+    ["kimi-for-coding-highspeed", 262144],
+  ])("keeps documented Kimi %s window at %d", (model, expected) => {
     expect(getCapabilitiesForModel("kimi", model).contextWindow).toBe(expected);
+  });
+
+  it("resolves the documented Claude Code k3[1m] spelling through canonical K3 limits", () => {
+    expect(getCapabilitiesForModel("kimi", "k3[1m]").contextWindow).toBe(1048576);
   });
 
   it("keeps glm-4.6v vision even at its 128K window", () => {

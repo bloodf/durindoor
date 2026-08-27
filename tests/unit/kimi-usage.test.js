@@ -11,6 +11,7 @@ import { PROVIDERS } from "../../open-sse/providers/index.js";
 import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 
 const KIMI_USAGE_URL = "https://api.kimi.com/coding/v1/usages";
+const QUOTA_PAGE = "https://www.kimi.com/membership/subscription?tab=quota";
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -118,12 +119,14 @@ describe("getUsageForProvider(kimi) auth selection", () => {
     expect(opts.headers["X-Msh-Platform"]).toBeUndefined();
   });
 
-  it("maps membership levels to plan display names", async () => {
+  it("maps documented membership levels and preserves unknown wire levels", async () => {
     for (const [level, plan] of [
+      ["Andante", "Andante"],
       ["LEVEL_BASIC", "Moderato"],
       ["LEVEL_INTERMEDIATE", "Allegretto"],
       ["LEVEL_ADVANCED", "Allegro"],
       ["LEVEL_STANDARD", "Vivace"],
+      ["LEVEL_FUTURE", "future"],
     ]) {
       proxyAwareFetch.mockResolvedValueOnce(
         jsonResponse({
@@ -131,31 +134,25 @@ describe("getUsageForProvider(kimi) auth selection", () => {
           usage: { limit: "10", used: "1", remaining: "9" },
         }),
       );
-      const usage = await getUsageForProvider({
-        provider: "kimi",
-        accessToken: "t",
-      });
+      const usage = await getUsageForProvider({ provider: "kimi", accessToken: "t" });
       expect(usage.plan).toBe(plan);
     }
   });
 
-  it("parses Weekly + Ratelimit; does not put absolute remaining on quota rows", async () => {
+  it("labels the rate quota as the documented rolling five-hour window", async () => {
     proxyAwareFetch.mockResolvedValueOnce(jsonResponse(ACTIVE_USAGE));
 
-    const usage = await getUsageForProvider({
-      provider: "kimi",
-      accessToken: "tok",
-    });
+    const usage = await getUsageForProvider({ provider: "kimi", accessToken: "tok" });
 
-    // Absolute remaining would break getRemainingPercentage (treats it as 0-100 %)
     expect(usage.quotas.Weekly.remaining).toBeUndefined();
     expect(usage.quotas.Weekly.remainingPercentage).toBe(65);
-    expect(usage.quotas.Ratelimit).toMatchObject({
+    expect(usage.quotas["Rolling 5-hour"]).toMatchObject({
       used: 20,
       total: 60,
       remainingPercentage: expect.closeTo(40 / 60 * 100, 5),
     });
-    expect(usage.quotas.Ratelimit.remaining).toBeUndefined();
+    expect(usage.quotas["Rolling 5-hour"].remaining).toBeUndefined();
+    expect(usage.quotas.Ratelimit).toBeUndefined();
   });
 
   it("surfaces re-authorize message only on 401 unauthenticated", async () => {
@@ -248,6 +245,14 @@ describe("getUsageForProvider(kimi) auth selection", () => {
         }),
       ),
     ).toMatch(/permission|subscribe/i);
+  });
+
+  it("formats documented quota and transient overload errors with recovery guidance", async () => {
+    const { formatKimiUsageError } = await import(
+      "../../open-sse/services/usage/kimi.js"
+    );
+    expect(formatKimiUsageError(403, "You've reached your weekly (7-day) usage limit")).toContain(QUOTA_PAGE);
+    expect(formatKimiUsageError(429, "We're receiving too many requests")).toMatch(/wait.*retry/i);
   });
 
   it("returns tracked-per-request message when usage limit missing", async () => {

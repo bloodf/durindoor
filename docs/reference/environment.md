@@ -71,6 +71,8 @@ DurinDoor can send upstream provider calls through HTTP, HTTPS, SOCKS, or manage
 | `NINE_ROUTER_NO_PROXY` *(compatibility)* | Internal managed no-proxy list set by dashboard proxy settings. |
 | `NINE_ROUTER_PROXY_MANAGED` *(compatibility)* | Internal marker for dashboard-managed proxy env state. |
 
+Local-machine targets (`localhost`, `*.localhost`, `0.0.0.0`, `127.0.0.0/8`, `::`, `::1`, and IPv4-compatible or IPv4-mapped local addresses) never use an outbound proxy, even without `NO_PROXY`. Best-effort routes stay direct; strict proxy routes fail closed. Outbound relays reject local targets rather than forwarding local URLs off-machine, and proxied or relayed requests reject automatic redirects so a public URL cannot redirect across this boundary.
+
 Prefer dashboard proxy settings for normal operation. Use process-level proxy variables for container or platform-level egress control.
 
 ## Web Fetch Providers

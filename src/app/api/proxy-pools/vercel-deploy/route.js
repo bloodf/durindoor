@@ -5,7 +5,7 @@ const VERCEL_API = "https://api.vercel.com";
 
 // Relay function source code deployed to Vercel
 // Forwards requests to target URL specified in x-relay-target header
-const RELAY_FUNCTION_CODE = `
+export const RELAY_FUNCTION_CODE = `
 export const config = { runtime: "edge" };
 
 export default async function handler(req) {
@@ -29,6 +29,7 @@ export default async function handler(req) {
     method: req.method,
     headers,
     body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+    redirect: "error",
     duplex: "half",
   });
 

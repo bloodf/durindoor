@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
 
 // Relay worker source code deployed to Cloudflare
-const RELAY_WORKER_CODE = `
+export const RELAY_WORKER_CODE = `
 export default {
   async fetch(request, env, ctx) {
     const target = request.headers.get("x-relay-target");
@@ -19,6 +19,7 @@ export default {
     const newRequestInit = {
       method: request.method,
       headers: new Headers(request.headers),
+      redirect: "error",
     };
 
     if (request.method !== "GET" && request.method !== "HEAD") {

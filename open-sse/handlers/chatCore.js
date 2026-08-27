@@ -1554,7 +1554,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
   abandonStreamingDetail = onStreamAbandoned;
   try {
-    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, onCoherentTerminal, streamDetailId, signal: providerSignal });
+    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal });
     if (!result?.success) await settleQuota(false, "stream_error");
     return await finalizeResponse(result);
   } catch (error) {

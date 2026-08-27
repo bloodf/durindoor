@@ -23,6 +23,8 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
   const startTime = Date.now();
   let disconnected = false;
   let externalAbort = null;
+  let interruptionFinalizer = null;
+
 
   const clearExternalAbort = () => {
     if (!externalAbort) return;
@@ -45,8 +47,17 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
 
     isConnected: () => !disconnected,
 
-    // Raw upstream activity keeps persistent reservation leases alive. The
-    // callback owns throttling so this remains cheap for token-heavy streams.
+    /**
+     * Register partial-stream accounting before lifecycle callbacks run. This
+     * keeps transform snapshots available on disconnect/error without moving
+     * chat detail ownership into stream plumbing.
+     */
+    setInterruptionFinalizer: (finalizer) => {
+      interruptionFinalizer = finalizer;
+    },
+
+    // Raw upstream activity keeps persistent reservation leases alive.
+    // The callback owns throttling so this remains cheap for token-heavy streams.
     handleActivity: () => onActivity?.(),
 
     // Call when client disconnects
@@ -54,7 +65,9 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
       if (disconnected) return;
       disconnected = true;
       clearExternalAbort();
-
+      try { interruptionFinalizer?.(reason); } catch (error) {
+        console.error("[Stream] Failed to finalize interrupted stream:", error?.message || error);
+      }
       logStream("⚡", `DISCONNECT: ${reason}`);
       dbg("CTRL", `${provider}/${model} | disconnect=${reason} | dur=${Date.now() - startTime}ms`);
 
@@ -78,7 +91,9 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
       if (disconnected) return;
       disconnected = true;
       clearExternalAbort();
-
+      try { interruptionFinalizer?.(error); } catch (finalizeError) {
+        console.error("[Stream] Failed to finalize interrupted stream:", finalizeError?.message || finalizeError);
+      }
       onError?.(error);
 
       if (error.name === "AbortError") {
@@ -343,6 +358,7 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     handleError: (e) => {dbg(tag, `error: ${e?.message} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();streamController.handleError(e);},
     handleDisconnect: (r) => {dbg(tag, `disconnect: ${r} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();streamController.handleDisconnect(r);},
     abort: () => {clearFirstChunk();clearStall();streamController.abort();},
+    setInterruptionFinalizer: (finalizer) => streamController.setInterruptionFinalizer?.(finalizer),
     handleActivity: () => streamController.handleActivity?.()
   };
 

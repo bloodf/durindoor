@@ -113,5 +113,8 @@ export function toResponsesUsage(raw) {
   const cachedTokens = n(raw.input_tokens_details?.cached_tokens) || n(raw.prompt_tokens_details?.cached_tokens);
   if (cachedTokens > 0) usage.input_tokens_details = { cached_tokens: cachedTokens };
 
+  const reasoningTokens = n(raw.output_tokens_details?.reasoning_tokens) || n(raw.completion_tokens_details?.reasoning_tokens);
+  if (reasoningTokens > 0) usage.output_tokens_details = { reasoning_tokens: reasoningTokens };
+
   return usage;
 }

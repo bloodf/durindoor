@@ -167,7 +167,13 @@ export function commandCodeToOpenAIResponse(chunk, state) {
         state.finishReason = OPENAI_FINISH.STOP;
         const errVal = event.error ?? event.message ?? "unknown";
         const errStr = isString(errVal) ? errVal : JSON.stringify(errVal);
-        out.push(makeChunk(state, { content: `\n\n[CommandCode error: ${errStr}]` }));
+        const errText = `\n\n[CommandCode error: ${errStr}]`;
+        /** Open the first client-visible delta with its required assistant role. */
+        const delta = state.chunkIndex === 0
+          ? { role: ROLE.ASSISTANT, content: errText }
+          : { content: errText };
+        state.chunkIndex++;
+        out.push(makeChunk(state, delta));
         out.push(makeChunk(state, {}, OPENAI_FINISH.STOP));
         break;
       }

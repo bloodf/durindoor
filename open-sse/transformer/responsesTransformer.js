@@ -237,26 +237,33 @@ export function createResponsesApiTransformStream(logger = null) {
   const sendCompleted = (controller) => {
     if (!state.completedSent) {
       state.completedSent = true;
-      const usage = toResponsesUsage(state.usage) || { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+      const usage = toResponsesUsage(state.usage);
+      const response = {
+        id: state.responseId,
+        object: "response",
+        created_at: state.created,
+        status: "completed",
+        background: false,
+        error: null
+      };
+      if (usage) response.usage = usage;
       emit(controller, "response.completed", {
         type: "response.completed",
-        response: {
-          id: state.responseId,
-          object: "response",
-          created_at: state.created,
-          status: "completed",
-          background: false,
-          error: null,
-          usage
-        }
+        response
       });
     }
   };
 
-  return new TransformStream({
+  /**
+   * One decoder must span the stream so split multi-byte UTF-8 sequences remain intact.
+   * Reusing transform during flush also sends a final unterminated SSE event through the normal parser.
+   */
+  const decoder = new TextDecoder("utf-8");
+  const messageTerminator = encoder.encode("\n\n");
+  const handlers = {
     transform(chunk, controller) {
-      const text = new TextDecoder().decode(chunk);
-      logger?.logInput(text.trim());
+      const text = decoder.decode(chunk, { stream: true });
+      if (text.trim()) logger?.logInput(text.trim());
       state.buffer += text;
 
       const messages = state.buffer.split("\n\n");
@@ -450,6 +457,9 @@ export function createResponsesApiTransformStream(logger = null) {
     },
 
     flush(controller) {
+      state.buffer += decoder.decode();
+      if (state.buffer.trim()) handlers.transform(messageTerminator, controller);
+
       for (const i in state.msgItemAdded) closeMessage(controller, i);
       closeReasoning(controller);
       for (const i in state.funcCallIds) closeToolCall(controller, i);
@@ -459,5 +469,7 @@ export function createResponsesApiTransformStream(logger = null) {
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       logger?.flush();
     }
-  });
+  };
+
+  return new TransformStream(handlers);
 }

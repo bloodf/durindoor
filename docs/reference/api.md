@@ -81,6 +81,7 @@ curl http://localhost:20128/v1/responses \
 ```
 
 DurinDoor also includes compatibility rewrites for selected Responses-style clients.
+Streaming compatibility preserves split UTF-8 payloads and final unterminated SSE events. `response.completed.usage` is included only when the upstream stream reports usage, including available reasoning-token details.
 
 ## Claude Messages
 

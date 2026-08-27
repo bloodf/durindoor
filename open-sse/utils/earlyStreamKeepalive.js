@@ -36,6 +36,9 @@ function normalizeError(maybeError) {
 }
 
 /**
+ * Open an SSE response while a streaming handler is still resolving.
+ * `intervalMs=0` disables the wrapper and returns the handler response unchanged.
+ *
  * @param {Promise<Response>} handlerPromise
  * @param {object} [options]
  * @param {number} [options.thresholdMs=2000]
@@ -45,6 +48,7 @@ function normalizeError(maybeError) {
  * @returns {Promise<Response>}
  */
 export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
+  if (options.intervalMs === 0) return await handlerPromise;
   const thresholdMs = Math.max(0, options.thresholdMs ?? 2_000);
   const intervalMs = Math.max(250, options.intervalMs ?? 2_500);
   const signal = options.signal ?? null;

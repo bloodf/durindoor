@@ -83,6 +83,12 @@ const MANAGEMENT_API_PATHS = [
   "/api/tunnel",
 ];
 
+/**
+ * Exact Headroom reads expose configured URLs, process/circuit state, and usage
+ * data. Keep only these existing leaves on the management auth policy.
+ */
+const MANAGEMENT_API_EXACT_PATHS = ["/api/headroom/status", "/api/headroom/stats"];
+
 // Routes that spawn child processes or read host secrets — restrict to localhost.
 const LOCAL_ONLY_PATHS = [
   "/api/cli-tools/cowork-settings",
@@ -282,6 +288,7 @@ async function isAuthenticated(request) {
 }
 
 function isManagementApi(pathname) {
+  if (MANAGEMENT_API_EXACT_PATHS.includes(pathname)) return true;
   return MANAGEMENT_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 

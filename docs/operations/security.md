@@ -19,6 +19,10 @@ Before exposing DurinDoor outside localhost:
 
 The dashboard can create API keys, add upstream provider credentials, configure tunnels, and inspect usage. Do not expose it publicly with only the default password.
 
+### Headroom status and statistics
+
+`GET /api/headroom/status` and `GET /api/headroom/stats` use the management API policy because they expose the configured proxy URL, managed process and circuit state, and usage statistics. Remote callers need a dashboard JWT or machine-bound CLI token, including when `requireLogin=false`. Direct loopback requests keep open-dashboard access when login is disabled. API keys do not grant access, and existing dashboard CSRF/origin protections are unchanged.
+
 ### Local MCP plugin bridges
 
 `GET` `/api/mcp/[plugin]/sse` and `POST` `/api/mcp/[plugin]/message` spawn or talk to host stdio MCP children. They are under `LOCAL_ONLY_PATHS`: unauthenticated remote callers receive `403`. Access requires a machine-bound CLI token (`x-9r-cli-token`), or a loopback peer that satisfies the dashboard login policy (JWT when `requireLogin` is enabled; open-dashboard when it is disabled). Cowork MCP apply injects the CLI token into local `/api/mcp/...` SSE entries so legitimate desktop clients keep working. Handlers re-check the same gate in-process. SSE sessions unregister on client abort as well as stream cancel so orphaned children are reaped.

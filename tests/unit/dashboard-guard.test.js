@@ -612,6 +612,64 @@ describe("dashboard guard management API auth", () => {
       expect(response.body.error).toBe("Unauthorized");
     });
   }
+  for (const path of ["/api/headroom/status", "/api/headroom/stats"]) {
+    it(`rejects remote unauthenticated GET ${path} when requireLogin=false`, async () => {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe("Unauthorized");
+    });
+    it(`rejects API-key-only remote GET ${path}`, async () => {
+      mocks.validateApiKey.mockResolvedValue(true);
+      const response = await proxy(request(path, {
+        host: "router.example.com",
+        authorization: "Bearer sk-valid",
+      }));
+      expect(response.status).toBe(401);
+      expect(mocks.validateApiKey).not.toHaveBeenCalled();
+    });
+
+    it(`allows remote JWT access to GET ${path}`, async () => {
+      mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+      const req = request(path, { host: "router.example.com" });
+      req.cookies.get = vi.fn((name) =>
+        name === "auth_token" ? { value: "valid-jwt" } : undefined,
+      );
+      expect(await proxy(req)).toBe(mocks.nextResponse);
+    });
+
+    it(`allows remote CLI access to GET ${path}`, async () => {
+      const response = await proxy(request(path, {
+        host: "router.example.com",
+        "x-9r-cli-token": "cli-token",
+      }));
+      expect(response).toBe(mocks.nextResponse);
+    });
+
+    it(`preserves loopback open-dashboard access to GET ${path}`, async () => {
+      const response = await proxy(request(path, {
+        host: "localhost:20128",
+        origin: "http://localhost:20128",
+        "x-9r-real-ip": "127.0.0.1",
+      }));
+      expect(response).toBe(mocks.nextResponse);
+    });
+
+    it(`rejects untrusted loopback-header bypass of GET ${path}`, async () => {
+      mocks.hasTrustedPeerHeaders.mockReturnValue(false);
+      const response = await proxy(request(path, {
+        host: "localhost:20128",
+        origin: "http://localhost:20128",
+        "x-9r-real-ip": "127.0.0.1",
+      }));
+      expect(response.status).toBe(401);
+    });
+  }
+
+  it("does not broaden the headroom read guard to child paths", async () => {
+    for (const path of ["/api/headroom/status/details", "/api/headroom/stats/export"]) {
+      expect(await proxy(request(path, { host: "router.example.com" }))).toBe(mocks.nextResponse);
+    }
+  });
 
   it("allows remote management API with a valid dashboard JWT", async () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(true);

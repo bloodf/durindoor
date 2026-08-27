@@ -50,7 +50,7 @@ export const DEFAULT_CAPABILITIES = {
   tools: true, // function / tool calling
   reasoning: false, // thinking / reasoning
   // thinking wire format (only meaningful when reasoning:true). null → derive from transport.format.
-  // enum: openai|commandcode|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|minimax|hunyuan|step|kiro
+  // enum: openai|commandcode|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|opencode|minimax|hunyuan|step|kiro
   thinkingFormat: null,
   thinkingCanDisable: true, // false → model cannot turn thinking off (clamp to min instead of disable)
   thinkingRange: null, // { min, max } for budget formats; null = no clamp
@@ -472,6 +472,16 @@ export const PROVIDER_CAPABILITIES = {
     "deepseek-v4-pro": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
     "deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
     "deepseek-v3-2-volc": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 96000, maxOutput: 32000 }
+  },
+
+  // OpenCode free/stealth ids use the gateway reasoning_effort enum rather than
+  // each underlying vendor's native thinking shape (decolua/9router#3504).
+  opencode: {
+    "x-preview-f-free": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1000000, maxOutput: 131072 },
+    "big-pickle": { reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 },
+    "muse-spark-1.2": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
+    "muse-spark-1.2-contributor-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
+    "mimo-v2.5-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 }
   },
 
   // OpenCode Zen — Big Pickle advertises reasoning in the registry but the

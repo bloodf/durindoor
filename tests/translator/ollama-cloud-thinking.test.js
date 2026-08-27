@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { openaiToOllamaRequest } from "../../open-sse/translator/request/openai-to-ollama.js";
 
 const request = (reasoning_effort) => ({
   model: "gpt-oss-120b",
@@ -20,12 +21,21 @@ const translate = (targetFormat, provider, reasoning_effort) => translateRequest
 );
 
 describe("Ollama Cloud reasoning effort", () => {
-  it("maps xhigh to Ollama Cloud's documented max effort", () => {
-    expect(translate(FORMATS.OLLAMA, "ollama", "xhigh").reasoning_effort).toBe("max");
+  it("clamps GPT-OSS xhigh to Ollama's supported high effort", () => {
+    expect(translate(FORMATS.OLLAMA, "ollama", "xhigh").think).toBe("high");
   });
 
-  it("preserves Ollama Cloud high effort", () => {
-    expect(translate(FORMATS.OLLAMA, "ollama", "high").reasoning_effort).toBe("high");
+  it("emits Ollama Cloud high effort as think", () => {
+    const out = translate(FORMATS.OLLAMA, "ollama", "high");
+    expect(out.think).toBe("high");
+    expect(out.reasoning_effort).toBeUndefined();
+  });
+
+  it("forwards a pre-normalized think level during OpenAI translation", () => {
+    expect(openaiToOllamaRequest("gpt-oss-120b", {
+      messages: [{ role: "user", content: "hi" }],
+      think: "high",
+    }, false).think).toBe("high");
   });
 
   it("preserves xhigh for other OpenAI providers", () => {

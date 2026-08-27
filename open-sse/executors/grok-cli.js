@@ -66,7 +66,8 @@ const RESPONSES_API_ALLOWLIST = new Set([
 "prompt_cache_key"]
 );
 
-const EFFORT_LEVELS = ["low", "medium", "high"];
+/** Effort suffixes accepted by verified Grok CLI virtual model rows. */
+const EFFORT_LEVELS = ["low", "medium", "high", "xhigh"];
 
 // Per-session last turn index so multi-turn headers never go backwards in-process.
 const sessionTurnStore = new Map();

@@ -8,6 +8,7 @@
 - Model discovery exposes additive human-readable model/provider metadata while preserving every existing callable model ID and harness configuration.
 
 ## Fixed
+- Thinking effort now reaches Ollama as `think`, Z.AI as both scalar and `reasoning.effort`, OpenCode free models as its gateway enum, and Grok CLI 4.6 virtual models through `xhigh`.
 
 - Groq replaces decommissioned seed model IDs with its current production catalog, discovers live models through the authenticated OpenAI-compatible `/models` endpoint, and accepts future model IDs via passthrough. Closes #582.
 - Responses API stream translation now preserves UTF-8 characters split across transport chunks, drains a final unterminated SSE event, carries reasoning-token details into `response.completed`, and omits `usage` when upstream sent none (ports decolua/9router#3547 and #3433). Closes #576.

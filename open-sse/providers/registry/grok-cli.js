@@ -36,7 +36,7 @@ export default {
   authModes: ["oauth"],
   hasOAuth: true,
   thinkingConfig: {
-    options: ["low", "medium", "high"],
+    options: ["low", "medium", "high", "xhigh"],
     defaultMode: "high",
   },
   transport: {
@@ -83,6 +83,12 @@ export default {
     { id: "grok-4.5-high", name: "Grok 4.5 (High)", upstreamModelId: "grok-4.5", contextLength: 500000 },
     { id: "grok-4.5-medium", name: "Grok 4.5 (Medium)", upstreamModelId: "grok-4.5", contextLength: 500000 },
     { id: "grok-4.5-low", name: "Grok 4.5 (Low)", upstreamModelId: "grok-4.5", contextLength: 500000 },
+    // Grok 4.6 accepts xhigh in addition to the established effort levels.
+    { id: "grok-4.6", name: "Grok 4.6", contextLength: 500000 },
+    { id: "grok-4.6-xhigh", name: "Grok 4.6 (XHigh)", upstreamModelId: "grok-4.6", contextLength: 500000 },
+    { id: "grok-4.6-high", name: "Grok 4.6 (High)", upstreamModelId: "grok-4.6", contextLength: 500000 },
+    { id: "grok-4.6-medium", name: "Grok 4.6 (Medium)", upstreamModelId: "grok-4.6", contextLength: 500000 },
+    { id: "grok-4.6-low", name: "Grok 4.6 (Low)", upstreamModelId: "grok-4.6", contextLength: 500000 },
   ],
   passthroughModels: true,
   oauth: {

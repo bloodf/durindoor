@@ -26,6 +26,9 @@ export function openaiToOllamaRequest(model, body, stream) {
     stream: stream
   };
 
+  /** Preserve normalized Ollama thinking intent on the `/api/chat` wire. */
+  if (body.think !== undefined) result.think = body.think;
+
   // Temperature
   if (body.temperature !== undefined) {
     result.options = result.options || {};

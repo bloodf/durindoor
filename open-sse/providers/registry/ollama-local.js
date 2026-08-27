@@ -13,6 +13,8 @@ export default {
     website: "https://ollama.com",
   },
   category: "apikey",
+  // `/api/chat` consumes thinking intent through its top-level `think` field.
+  thinkingFormat: "ollama",
   quirks: {
     preserveNativeClaudeThinking: true,
     normalizeNativeClaudeTransport: true,

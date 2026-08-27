@@ -40,24 +40,42 @@ export function extractThinking(body) {
     return { mode: "level", level: e };
   }
 
-  // Claude shape
+  const effort = body.reasoning_effort ?? (isObject(body.reasoning) ? body.reasoning?.effort : null);
+
+  /**
+   * Explicit Claude disable/budget intent wins over provider-injected effort.
+   * Only Z.AI's generic enabled shape without a budget defers to its effort.
+   */
   const t = body.thinking;
   if (t && isObject(t)) {
     if (t.type === "disabled") return { mode: "none" };
     if (t.type === "adaptive" || t.type === "enabled") {
       const budget = Number(t.budget_tokens);
       if (Number.isFinite(budget) && budget > 0) return { mode: "budget", budget };
-      return { mode: "auto" };
+      if (Number.isFinite(budget) || t.type === "adaptive" || !isString(effort) || !effort) return { mode: "auto" };
     }
   }
 
-  // OpenAI chat / Responses shape
-  const effort = body.reasoning_effort ?? (isObject(body.reasoning) ? body.reasoning?.effort : null);
+  // OpenAI chat / Responses shape; also Z.AI's generic enabled/no-budget shape.
   if (isString(effort) && effort) {
     const e = effort.toLowerCase();
     if (e === "none" || e === "off") return { mode: "none" };
     if (e === "auto") return { mode: "auto" };
     return { mode: "level", level: e };
+  }
+
+  // Ollama shape: boolean auto/off or a named effort level.
+  if (body.think !== undefined) {
+    const value = body.think;
+    if (value === false) return { mode: "none" };
+    if (value === true) return { mode: "auto" };
+    if (isString(value)) {
+      const level = value.toLowerCase().trim();
+      if (["none", "off", "false"].includes(level)) return { mode: "none" };
+      if (["auto", "true"].includes(level)) return { mode: "auto" };
+      if (level) return { mode: "level", level: level === "xhigh" ? "max" : level };
+    }
+    return value ? { mode: "auto" } : { mode: "none" };
   }
 
   // Gemini shape (top-level, generationConfig, or request envelope)
@@ -162,6 +180,19 @@ function toKimiReasoningEffort(cfg) {
   if (["low", "medium", "high", "max"].includes(level)) return level;
   return null;
 }
+/** Convert unified intent to Ollama's top-level `think` field. */
+function toOllamaThink(cfg, supportedLevels) {
+  if (cfg.mode === "auto") return true;
+  const level = toLevel(cfg);
+  if (!level || level === "auto") return true;
+  if (level === "minimal") return "low";
+  if (level === "xhigh") return supportedLevels?.includes("max") ? "max" : "high";
+  if (["low", "medium", "high", "max"].includes(level)) {
+    return level === "max" && !supportedLevels?.includes("max") ? "high" : level;
+  }
+  return "medium";
+}
+
 
 /** Minimum maxOutputTokens by Gemini thinkingLevel. */
 const GEMINI_LEVEL_OUTPUT_FLOOR = {
@@ -241,6 +272,7 @@ function stripAll(body) {
     delete target.enable_thinking;
     delete target.thinking_budget;
     delete target.output_config;
+    delete target.think;
     if (target.generationConfig) delete target.generationConfig.thinkingConfig;
     if (target.request?.generationConfig) delete target.request.generationConfig.thinkingConfig;
   }
@@ -277,9 +309,9 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
         break;
       }
     case "ollama":{
-        if (none && canDisable) {body.reasoning_effort = "none";break;}
-        const level = toLevel(eff);
-        if (level) body.reasoning_effort = level === "xhigh" ? "max" : level;
+        // Ollama `/api/chat` accepts only top-level `think`, never reasoning_effort.
+        if (none && canDisable) {body.think = false;break;}
+        body.think = toOllamaThink(eff, getThinkingLevels(provider, model));
         break;
       }
     case "commandcode":{
@@ -324,9 +356,12 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
         // Z.ai ignores thinking.disabled → must use enable_thinking:false to turn off.
         if (none && canDisable) {body.enable_thinking = false;delete body.thinking;break;}
         body.thinking = { type: "enabled" };
-        // Z.ai GLM supports high/max reasoning_effort when thinking is enabled.
+        // Z.ai reads scalar high|max; Ark-compatible wires read reasoning.effort.
         const level = toLevel(eff);
-        if (level) body.reasoning_effort = level === "xhigh" || level === "max" ? "max" : "high";
+        const objectEffort = ["minimal", "low", "medium", "high"].includes(level) ?
+        level : ["xhigh", "max"].includes(level) ? "high" : "medium";
+        body.reasoning_effort = ["xhigh", "max"].includes(level) ? "max" : "high";
+        body.reasoning = { effort: objectEffort };
         break;
       }
     case "qwen":{
@@ -351,6 +386,15 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
         const levels = getThinkingLevels(provider, model);
         const effort = levels?.length === 1 && levels[0] === "max" ? "max" : toKimiReasoningEffort(eff);
         if (effort) body.reasoning_effort = effort;
+        break;
+      }
+    case "opencode":{
+        // OpenCode gateway accepts none|low|medium|high|max on reasoning_effort.
+        if (none && canDisable) {body.reasoning_effort = "none";break;}
+        const level = toLevel(eff);
+        if (!level || level === "auto") break;
+        body.reasoning_effort = level === "minimal" ? "low" :
+        ["xhigh", "ultra"].includes(level) ? "max" : level;
         break;
       }
     case "minimax":{

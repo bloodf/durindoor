@@ -12,6 +12,7 @@
 - Exact-model and account-wide model-lock timestamps are now validated independently, so an expired exact lock cannot mask an active account-wide lock. Ports decolua/9router#3516. Closes #578.
 - Thinking effort now reaches Ollama as `think`, Z.AI as both scalar and `reasoning.effort`, OpenCode free models as its gateway enum, and Grok CLI 4.6 virtual models through `xhigh`.
 
+- Qoder refreshes its fallback catalog with `lite`, Qwen3.8-Max, and GLM-5.3; opaque Qoder model IDs now expose correct reasoning, vision, context, and output capabilities, and vision models retain OpenAI URL/data-URI and Claude base64 image blocks in outgoing chat payloads. Ports decolua/9router#3555. Closes #583.
 - Groq replaces decommissioned seed model IDs with its current production catalog, discovers live models through the authenticated OpenAI-compatible `/models` endpoint, and accepts future model IDs via passthrough. Closes #582.
 - Responses API stream translation now preserves UTF-8 characters split across transport chunks, drains a final unterminated SSE event, carries reasoning-token details into `response.completed`, and omits `usage` when upstream sent none (ports decolua/9router#3547 and #3433). Closes #576.
 - port(upstream): #3549 - CommandCode error chunk opens with the assistant role.

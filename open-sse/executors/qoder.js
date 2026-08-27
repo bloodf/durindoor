@@ -46,10 +46,12 @@ import {
   QODER_CLIENT_TYPE } from
 "../shared/qoder/constants.js";
 import { getQoderModelConfig, resolveQoderModels } from "../services/qoderModels.js";
+import { OPENAI_BLOCK, CLAUDE_BLOCK } from "../translator/schema/blocks.js";
+import { encodeDataUri } from "../translator/concerns/image.js";
 
 /**
  * Hoist role:"system" messages out of the messages array (Qoder rejects
- * system in messages) and flatten any multipart content arrays.
+ * system in messages) and preserve supported image blocks in user content.
  */
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 function normalizeMessages(messages) {
@@ -60,16 +62,57 @@ function normalizeMessages(messages) {
   const out = [];
   for (const msg of messages) {
     if (!msg || !isObject(msg)) continue;
-    const text = extractText(msg.content);
     if (msg.role === "system") {
+      const text = extractText(msg.content);
       if (text) systemParts.push(text);
       continue;
     }
     const cloned = { ...msg };
-    cloned.content = text;
+    cloned.content = normalizeContent(msg.content);
     out.push(cloned);
   }
   return { messages: out, systemText: systemParts.join("\n\n") };
+}
+
+/**
+ * Preserve URL/data-URI images as Qoder's accepted OpenAI `image_url` blocks,
+ * and convert Claude base64/URL image sources to that same wire shape.
+ */
+function normalizeContent(content) {
+  if (isString(content)) return content;
+  if (content == null) return "";
+  if (!Array.isArray(content)) return String(content);
+
+  const blocks = [];
+  const textParts = [];
+  let hasImage = false;
+  for (const item of content) {
+    if (!item || !isObject(item)) continue;
+    if (item.type === OPENAI_BLOCK.IMAGE_URL && isString(item.image_url?.url) && item.image_url.url) {
+      blocks.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: item.image_url.url } });
+      hasImage = true;
+      continue;
+    }
+    if (item.type === CLAUDE_BLOCK.IMAGE && item.source) {
+      const source = item.source;
+      const url = source.type === "base64" && source.data ?
+        encodeDataUri(source.media_type || "image/png", source.data) :
+        isString(source.url) && source.url ? source.url : null;
+      if (url) {
+        blocks.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url } });
+        hasImage = true;
+      }
+      continue;
+    }
+    if (isString(item.text) && item.text) {
+      if (hasImage || blocks.length) blocks.push({ type: OPENAI_BLOCK.TEXT, text: item.text });
+      else textParts.push(item.text);
+    }
+  }
+
+  if (!hasImage) return textParts.join("\n");
+  if (textParts.length) blocks.unshift({ type: OPENAI_BLOCK.TEXT, text: textParts.join("\n") });
+  return blocks;
 }
 
 function extractText(content) {
@@ -93,10 +136,10 @@ function extractText(content) {
 
 function lastUserText(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (m?.role === "user" && isString(m.content)) {
-      return m.content;
-    }
+    const message = messages[i];
+    if (message?.role !== "user") continue;
+    if (isString(message.content)) return message.content;
+    if (Array.isArray(message.content)) return extractText(message.content);
   }
   return "";
 }
@@ -120,6 +163,10 @@ function stableChatRecordId(model, messages, tools, maxTokens) {
     if (m.role) {h.update("\0");h.update(m.role);}
     if (isString(m.content) && m.content) {
       h.update("\0");h.update(m.content);
+    } else if (Array.isArray(m.content)) {
+      // Image references belong to request identity so changed images cannot reuse a record id.
+      h.update("\0");
+      try {h.update(JSON.stringify(m.content));} catch {}
     }
   }
   if (tools) {

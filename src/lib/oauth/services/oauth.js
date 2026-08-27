@@ -1,5 +1,5 @@
 import open from "open";
-import { startLocalServer } from "../utils/server.js";
+import { startLocalServer, waitForCallbackParams } from "../utils/server.js";
 import { generatePKCE } from "../utils/pkce.js";
 import { spinner as createSpinner } from "../utils/ui.js";
 import { OAUTH_TIMEOUT } from "../constants/oauth.js";
@@ -51,29 +51,20 @@ export class OAuthService {
       waitForCallback: async () => {
         spinner.start(`Waiting for ${providerName} authorization...`);
 
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error("Authentication timeout (5 minutes)"));
-          }, OAUTH_TIMEOUT);
+        try {
+          callbackParams = await waitForCallbackParams(() => callbackParams, OAUTH_TIMEOUT);
 
-          const checkInterval = setInterval(() => {
-            if (callbackParams) {
-              clearInterval(checkInterval);
-              clearTimeout(timeout);
-              resolve();
-            }
-          }, 100);
-        });
+          if (callbackParams.error) {
+            throw new Error(callbackParams.error_description || callbackParams.error);
+          }
 
-        spinner.stop();
-        close();
-
-        if (callbackParams.error) {
-          throw new Error(callbackParams.error_description || callbackParams.error);
-        }
-
-        if (!callbackParams.code) {
-          throw new Error("No authorization code received");
+          if (!callbackParams.code) {
+            throw new Error("No authorization code received");
+          }
+        } finally {
+          // Release the callback listener after timeout or callback validation failures.
+          spinner.stop();
+          close();
         }
 
         return callbackParams;

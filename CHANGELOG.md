@@ -8,6 +8,8 @@
 - Model discovery exposes additive human-readable model/provider metadata while preserving every existing callable model ID and harness configuration.
 
 ## Fixed
+- Browser OAuth attempts now clear callback poll timers and release local listeners on timeout, callback validation, token exchange, and credential-save failures. Fixed-port Codex and xAI logins can retry immediately instead of failing with `EADDRINUSE`. Ports decolua/9router#3543 and extends it to the fork-only xAI flow. Closes #588.
+
 
 - Exact-model and account-wide model-lock timestamps are now validated independently, so an expired exact lock cannot mask an active account-wide lock. Ports decolua/9router#3516. Closes #578.
 - Thinking effort now reaches Ollama as `think`, Z.AI as both scalar and `reasoning.effort`, OpenCode free models as its gateway enum, and Grok CLI 4.6 virtual models through `xhigh`.

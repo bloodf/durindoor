@@ -2,7 +2,7 @@ import open from "open";
 import { OAuthService } from "./oauth.js";
 import { CODEX_CONFIG } from "../constants/oauth.js";
 import { getServerCredentials } from "../config/index.js";
-import { startLocalServer } from "../utils/server.js";
+import { startLocalServer, waitForCallbackParams } from "../utils/server.js";
 import { generatePKCE } from "../utils/pkce.js";
 import { spinner as createSpinner } from "../utils/ui.js";
 
@@ -71,6 +71,7 @@ export class CodexService extends OAuthService {
    */
   async connect() {
     const spinner = createSpinner("Starting Codex OAuth...").start();
+    let closeServer = null;
 
     try {
       spinner.text = "Starting local server...";
@@ -81,6 +82,7 @@ export class CodexService extends OAuthService {
       const { port, close } = await startLocalServer((params) => {
         callbackParams = params;
       }, fixedPort);
+      closeServer = close;
 
       const redirectUri = `http://localhost:${port}/auth/callback`;
       spinner.succeed(`Local server started on port ${port}`);
@@ -100,19 +102,7 @@ export class CodexService extends OAuthService {
       // Wait for callback
       spinner.start("Waiting for OpenAI authorization...");
 
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error("Authentication timeout (5 minutes)"));
-        }, 300000);
-
-        const checkInterval = setInterval(() => {
-          if (callbackParams) {
-            clearInterval(checkInterval);
-            clearTimeout(timeout);
-            resolve();
-          }
-        }, 100);
-      });
+      await waitForCallbackParams(() => callbackParams);
 
       close();
 
@@ -139,6 +129,9 @@ export class CodexService extends OAuthService {
     } catch (error) {
       spinner.fail(`Failed: ${error.message}`);
       throw error;
+    } finally {
+      // Release fixed port 1455 after timeout, validation, exchange, or save failures.
+      closeServer?.();
     }
   }
 }

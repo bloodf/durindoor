@@ -8,6 +8,8 @@ DurinDoor keeps each Codex OAuth connection bound to its own ChatGPT account. Le
 
 OAuth logins are deduplicated only when both records have the same unambiguous account binding. A shared email without an account binding, different bindings on the same email, or conflicting aliases remain separate connections so token pairs cannot overwrite one another. Account identifiers and tokens are never returned by the client-facing provider API.
 
+The local callback listener on port `1455` is released after every CLI OAuth outcome, including timeout, denied consent, malformed callbacks, token exchange errors, and credential-save errors. A failed login can therefore be retried immediately without restarting DurinDoor or manually freeing the port.
+
 ## Prerequisites
 
 - DurinDoor running locally or behind a reachable URL.

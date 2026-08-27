@@ -126,6 +126,22 @@ describe("NVIDIA NIM passthrough per-model 404 scoping (#6888)", () => {
     expect(lock).toBe("modelLock_openai/gpt-4o-mini-tts");
   });
 
+  it("compatibility path persists the same safe transport reason", async () => {
+    mocks.recordProviderConnectionFallbackState.mockRejectedValue(new Error("no atomic"));
+    const failure = new TypeError("fetch failed");
+    failure.cause = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:443"), {
+      code: "ECONNREFUSED",
+    });
+    failure.request = { headers: { authorization: "Bearer request-secret" } };
+
+    await markAccountUnavailable("or-1", 502, failure, "openrouter", "openai/gpt-4o-mini-tts");
+
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
+      "or-1",
+      expect.objectContaining({ lastError: "fetch failed (ECONNREFUSED)" }),
+    );
+  });
+
   it("compatibility path: NVIDIA 404 writes model key, 503 writes account-wide key", async () => {
     // Force the legacy fallback branch
     mocks.recordProviderConnectionFallbackState.mockRejectedValue(new Error("no atomic"));

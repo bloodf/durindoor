@@ -391,6 +391,7 @@ export async function recordProviderConnectionFallbackState(id, {
   model = null,
   status,
   reasonCode = "provider_error",
+  reason = null,
   cooldownMs,
   backoffLevel = 0,
   observedAt
@@ -405,7 +406,11 @@ export async function recordProviderConnectionFallbackState(id, {
     provider_error: "Provider unavailable",
     network_error: "Provider network error"
   };
-  const reason = safeReasons[reasonCode] || safeReasons.provider_error;
+  // Caller-supplied diagnostics must already be secret-safe; this persistence
+  // boundary accepts only the bounded single-line shape produced by
+  // describeProviderError and otherwise falls back to the fixed reason code.
+  const validatedReason = isString(reason) && reason.trim() === reason && reason.length > 0 && reason.length <= 100 && !/[\r\n]/.test(reason) ? reason : null;
+  const storedReason = reasonCode === "rate_limited" ? safeReasons.rate_limited : validatedReason || safeReasons[reasonCode] || safeReasons.provider_error;
   const db = await getAdapter();
   let result = null;
   db.transaction(() => {
@@ -431,7 +436,7 @@ export async function recordProviderConnectionFallbackState(id, {
       [lockKey]: new Date(expiry).toISOString(),
       [versionKey]: new Date(eventMs).toISOString(),
       testStatus: "unavailable",
-      lastError: reason,
+      lastError: storedReason,
       errorCode: Number(status) || null,
       lastErrorAt: new Date(eventMs).toISOString(),
       backoffLevel: Math.max(Number(existing.backoffLevel) || 0, Number(backoffLevel) || 0),

@@ -9,6 +9,7 @@ import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
+import { describeProviderError } from "open-sse/utils/error.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
@@ -1021,6 +1022,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   Number(status) === 502 ?
   "network_error" :
   "provider_error";
+  // Rate-limit text stays stable for users; other failures retain a bounded,
+  // sanitized operator diagnostic such as `fetch failed (ECONNREFUSED)`.
+  const reason = reasonCode === "rate_limited" ? "Rate limited" : describeProviderError(errorText);
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const quotaFamily = getModelQuotaFamily(alias, model);
   const hasFamilyScope = Boolean(quotaFamily && getProviderQuotaConfig(provider)?.preflightScopes?.quotaFamilies?.[quotaFamily]);
@@ -1048,6 +1052,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         model: fallbackModel,
         status,
         reasonCode,
+        reason,
         cooldownMs: legacyCooldownMs,
         backoffLevel: newBackoffLevel ?? backoffLevel,
         observedAt
@@ -1063,7 +1068,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     await updateProviderConnection(connectionId, {
       ...lockUpdate,
       testStatus: "unavailable",
-      lastError: reasonCode === "rate_limited" ? "Rate limited" : "Provider unavailable",
+      lastError: reason,
       errorCode: status,
       lastErrorAt: new Date(observedAt).toISOString(),
       backoffLevel: newBackoffLevel ?? backoffLevel

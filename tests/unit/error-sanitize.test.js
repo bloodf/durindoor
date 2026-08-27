@@ -4,6 +4,7 @@ import {
   buildErrorBody,
   createErrorResult,
   errorResponse,
+  describeProviderError,
   sanitizeErrorMessage,
   unavailableResponse,
   writeStreamError,
@@ -144,6 +145,35 @@ describe("sanitizeErrorMessage", () => {
   it("passes a safe message through unchanged", () => {
     expect(sanitizeErrorMessage("Model not found")).toBe("Model not found");
     expect(sanitizeErrorMessage("Invalid JSON body")).toBe("Invalid JSON body");
+  });
+});
+
+describe("describeProviderError", () => {
+  it("keeps bounded transport diagnostics without serializing attached secrets", () => {
+    const failure = new TypeError("fetch failed");
+    failure.cause = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:443"), {
+      code: "ECONNREFUSED",
+    });
+    failure.request = { headers: { authorization: "Bearer request-secret" } };
+
+    expect(describeProviderError(failure)).toBe("fetch failed (ECONNREFUSED)");
+    expect(describeProviderError({ message: "x".repeat(200) })).toHaveLength(100);
+    expect(describeProviderError(failure)).not.toContain("request-secret");
+    expect(describeProviderError(failure)).not.toContain("authorization");
+  });
+
+  it("keeps persisted output valid at the 100-character boundary", () => {
+    const trailingSpaceAtLimit = `${"x".repeat(99)} ${"y".repeat(20)}`;
+    const described = describeProviderError({ message: trailingSpaceAtLimit });
+    expect(described).toBe("x".repeat(99));
+    expect(described).not.toMatch(/\s$/);
+
+    const withCode = describeProviderError({
+      message: "transport ".repeat(20),
+      code: "ECONNREFUSED",
+    });
+    expect(withCode.length).toBeLessThanOrEqual(100);
+    expect(withCode).toMatch(/ \(ECONNREFUSED\)$/);
   });
 });
 

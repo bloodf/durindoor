@@ -30,12 +30,12 @@ describe("system inject: Cursor-CLI input[] body labelled FORMATS.OPENAI", () =>
     expect(body.input[0].content.some((p) => p.type === "text")).toBe(false);
   });
 
-  it("sets top-level instructions when a body carries a bare string input (no messages[], no input[])", () => {
+  it("leaves bare string input untouched because it has no injectable wire block", () => {
     const body = { model: "gpt-4o-mini", input: "hello", stream: false };
 
     injectSystemPrompt(body, "openai", PROMPT);
 
-    expect(body.instructions).toBe(PROMPT);
+    expect(body.instructions).toBeUndefined();
     expect(body.input).toBe("hello");
   });
 });

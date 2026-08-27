@@ -45,6 +45,16 @@ result, or other non-text block is treated as an ordinary model request. When
 no stored API-key identity is available, `gain` points to the dashboard instead
 of exposing installation-wide usage.
 
+## Token Saver prompt injection
+
+When Caveman or Ponytail is enabled, DurinDoor injects its instruction into the
+translated provider request using the actual wire shape. Repeated passes keep
+each complete instruction block once, including distinct instructions with a
+shared prefix. Responses function calls, reasoning, and tool outputs retain
+their original order. Kiro receives the instruction in
+`conversationState.currentMessage.userInputMessage.content`; DurinDoor does not
+add a `systemPrompt` field that Kiro's wire schema does not provide.
+
 ## Create an API Key
 
 Use the dashboard to create a DurinDoor API key. Save the key immediately and use it in client tools. The creation confirmation is the only response that shows the complete secret; later lists, details, the dashboard, and the CLI show a masked identifier only.

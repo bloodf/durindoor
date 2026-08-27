@@ -16,6 +16,20 @@ function createChunk(state, delta, finishReason = null) {
   );
 }
 
+// Empty/thinking-only stream guard: OpenAI-compat clients (AI SDK / Kilo)
+// treat a stream that reaches finish_reason without any prior delta.content
+// or tool_calls as an empty completion and throw APIEmptyResponseError, even
+// though the upstream stream succeeded (e.g. thinking-only responses map to
+// reasoning_content, never content). Emit a single whitespace content delta
+// before the terminal chunk so such streams are accepted. Streams that
+// already emitted text or tool calls are unchanged. Independent
+// re-implementation of the VansRouter 5cc11b8 intent (not a cherry-pick).
+function pushSyntheticContentIfEmpty(state, results) {
+  if (state.contentEmitted || state.toolCalls?.size > 0) return;
+  results.push(createChunk(state, { content: " " }));
+  state.contentEmitted = true;
+}
+
 // Convert Claude stream chunk to OpenAI format
 export function claudeToOpenAIResponse(chunk, state) {
   if (!chunk) return null;
@@ -92,6 +106,7 @@ export function claudeToOpenAIResponse(chunk, state) {
         if (chunk.index === state.serverToolBlockIndex) break;
         const delta = chunk.delta;
         if (delta?.type === "text_delta" && delta.text) {
+          state.contentEmitted = true;
           results.push(createChunk(state, { content: delta.text }));
         } else if (delta?.type === "thinking_delta" && delta.thinking) {
           results.push(createChunk(state, reasoningDelta(delta.thinking)));
@@ -161,6 +176,7 @@ export function claudeToOpenAIResponse(chunk, state) {
 
         if (chunk.delta?.stop_reason) {
           state.finishReason = convertStopReason(chunk.delta.stop_reason);
+          pushSyntheticContentIfEmpty(state, results);
           const finalChunk = createChunk(state, {}, state.finishReason);
 
           if (state.usage) {
@@ -184,6 +200,7 @@ export function claudeToOpenAIResponse(chunk, state) {
     case "message_stop":{
         if (!state.finishReasonSent) {
           const finishReason = state.finishReason || (state.toolCalls?.size > 0 ? OPENAI_FINISH.TOOL_CALLS : OPENAI_FINISH.STOP);
+          pushSyntheticContentIfEmpty(state, results);
           const finalChunk = createChunk(state, {}, finishReason);
           if (state.usage && isObject(state.usage)) {
             // Same merged cache-aware usage as the message_delta path — reuse

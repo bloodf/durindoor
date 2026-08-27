@@ -56,6 +56,25 @@ describe("live usage sessions (#3273)", () => {
     expect(activeSessions.filter((session) => session.status === "active")).toHaveLength(0);
   });
 
+  it("keeps an interrupted session errored after partial usage persists", async () => {
+    const requestId = trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, { requestId: "interrupted" });
+    finishActiveSession({ requestId, status: "error" });
+
+    await saveRequestUsage({
+      usageEventId: requestId,
+      provider: "codex",
+      model: "gpt-5.6",
+      connectionId: "conn-1",
+      tokens: { prompt_tokens: 3, completion_tokens: 2 },
+      status: "cancelled",
+    });
+
+    const { activeSessions } = await getActiveRequests();
+    expect(activeSessions.find((session) => session.requestId === requestId)).toMatchObject({
+      status: "error",
+    });
+  });
+
   it("does not cross-associate concurrent requests for the same route", async () => {
     const first = trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, { requestId: "first" });
     const second = trackPendingRequest("gpt-5.6", "codex", "conn-1", true, false, { requestId: "second" });

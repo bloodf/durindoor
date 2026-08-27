@@ -60,7 +60,8 @@ import {
   createQuotaReservationLifecycle,
   rankQuotaConnections } from
 "@/shared/services/quotaSelection";
-import { buildQuotaResourceKeys, inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
+import { buildQuotaResourceKeys, evaluateProviderQuotaPreflight, inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
+import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
 import {
   quotaDecisionDiagnostic,
   rankQuotaCandidates } from
@@ -847,6 +848,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const excludeConnectionIds = new Set();
   const attemptCounts = new Map();
   const attemptedBlockers = new Map();
+  const refreshedQuotaConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
   let antigravityCapacitySweeps = 0;
@@ -857,6 +859,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const upstreamModel = getModelUpstreamId(providerAlias, model);
   const quotaFamily = getModelQuotaFamily(providerAlias, model);
   const modelCandidates = [...new Set([model, upstreamModel].filter(Boolean))];
+  const quotaResourceKeys = buildQuotaResourceKeys({ provider, modelCandidates, quotaFamily });
 
   // Token Saver telemetry (port of 9router #2562): capture the LATEST routing
   // attempt's normalized event; fallback retries overwrite it. When a parent
@@ -874,6 +877,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           signal: requestSignal,
           modelCandidates,
           quotaFamily,
+          resourceKeys: quotaResourceKeys,
           sessionId: routingSessionId,
           preferredConnectionId: preferredConnectionId || requestReplayConnectionId
         });
@@ -1147,6 +1151,46 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       latestAttemptStartedAt;
       const resultErrorBody = result.errorBody && isObject(result.errorBody) ? result.errorBody : null;
       const resultHeaders = result.headers ?? null;
+      /**
+       * Antigravity 409s and 429s without executor reset metadata may describe
+       * exact model quota. Refresh the shared repository before creating any
+       * legacy lock; only a fresh exact-source blocker owns the reselect.
+       */
+      const shouldRefreshAntigravityQuota =
+        (provider === "antigravity" || provider === "agy") &&
+        (result.status === 409 || (result.status === 429 && !Number.isFinite(result.resetsAtMs))) &&
+        activeConnection &&
+        !refreshedQuotaConnectionIds.has(credentials.connectionId);
+      if (shouldRefreshAntigravityQuota) {
+        refreshedQuotaConnectionIds.add(credentials.connectionId);
+        try {
+          const refreshResult = await refreshProviderQuota(activeConnection, {
+            signal: requestSignal,
+            force: true
+          });
+          const decision = refreshResult?.outcome === "success" && Array.isArray(refreshResult.snapshots) ?
+          evaluateProviderQuotaPreflight(refreshResult.snapshots, {
+            connectionId: credentials.connectionId,
+            provider,
+            resourceKeys: quotaResourceKeys,
+            now: Date.now(),
+            refreshSupported: true
+          }) :
+          null;
+          if (decision?.skip) {
+            log.info("AUTH", `${provider} | refreshed quota blocked ${credentials.connectionId.slice(0, 8)} (reason=${decision.reason || "unknown"}); reselecting`);
+            lastError = result.error;
+            lastStatus = result.status;
+            continue;
+          }
+        } catch (error) {
+          if (error?.name === "AbortError" || requestAborted(request, requestSignal)) {
+            return errorResponse(499, "Request aborted");
+          }
+          log.warn("QUOTA", `${provider} | reactive quota refresh failed for ${credentials.connectionId.slice(0, 8)}; using standard fallback`);
+        }
+      }
+
       const fallbackState = await markAccountUnavailable(
         credentials.connectionId,
         result.status,

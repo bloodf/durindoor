@@ -126,6 +126,7 @@ stateDiagram-v2
   Candidate --> Attempt: missing/stale/unknown/error + deduped refresh
   Attempt --> Success: coherent completion
   Attempt --> Candidate: 429 records scoped evidence
+  Attempt --> Candidate: Antigravity 409 or reset-free 429 refreshes quota; fresh exact blocker reselects
   Attempt --> AuthRetry: 401/403
   AuthRetry --> Success: one shared refresh + one retry succeeds
   AuthRetry --> Candidate: retry fails; auth fallback only
@@ -136,6 +137,8 @@ stateDiagram-v2
 ```
 
 Retries are bounded by distinct connection IDs plus the existing two explicit Antigravity capacity sweeps. OAuth refresh before dispatch and the one reactive 401/403 retry both use the same compare-and-swap coordinator as quota refresh, preventing concurrent single-use token rotations from overwriting one another. Retry delays and every selection/dispatch boundary honor request cancellation.
+
+Antigravity and `agy` refresh the existing provider-quota tracker after an upstream `409` or a `429` with no executor reset metadata, before writing legacy fallback state. Only a fresh blocking snapshot for the requested resource triggers the normal repository-backed reselect, so another eligible account is chosen or the existing `allRateLimited` response reports the earliest complete reset. Missing, stale, usable, or failed refresh results keep the standard `markAccountUnavailable` path; executor-provided reset metadata remains authoritative.
 
 Provider monitoring keeps transport and quota separate. A reachable connection can remain `healthy` while its sanitized quota decision says `skip`. The unauthenticated health payload exposes only `eligible`, fixed reason, and freshness; it does not expose quota amounts, resource/account identities, source metadata, or reset timestamps. Monitoring reads the repository and never starts a second polling loop.
 

@@ -16,6 +16,21 @@ import { isUndefined } from "../../../../shared/utils/typeChecks.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
+const PROVIDER_VALIDATION_TIMEOUT_MS = 10_000;
+
+/**
+ * Run one provider-validation probe with a hard deadline while retaining a
+ * caller-owned cancellation signal and the selected transport (including the
+ * SSRF-guarded transport for caller-controlled URLs).
+ */
+export function fetchValidationProbe(url, options = {}, transport = fetch) {
+  const timeoutSignal = AbortSignal.timeout(PROVIDER_VALIDATION_TIMEOUT_MS);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
+  return transport(url, { ...options, signal });
+}
+
 function guardBlockedResponse(err) {
   if (err) console.log("Provider URL blocked by SSRF guard:", err?.message, "url=", err?.url);
   return NextResponse.json(
@@ -46,10 +61,9 @@ export async function probeNoAuthLocalProvider(baseUrl, apiKey = undefined) {
   replace(/\/api\/chat$/, "");
   if (!normalized) return { valid: false, error: "Base URL required for no-auth provider" };
   try {
-    const res = await guardedProbeFetch(`${normalized}/models`, {
+    const res = await fetchValidationProbe(`${normalized}/models`, {
       ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : null),
-      signal: AbortSignal.timeout(8000)
-    });
+    }, guardedProbeFetch);
     return { valid: res.ok, error: res.ok ? null : "Endpoint unreachable or rejected" };
   } catch (err) {
     console.log("probeNoAuthLocalProvider error:", err);
@@ -93,7 +107,7 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
     body = JSON.stringify({ query: "ping", q: "ping", url: "https://example.com" });
   }
 
-  const res = await fetch(url, { method: cfg.method, headers, body, signal: AbortSignal.timeout(8000) });
+  const res = await fetchValidationProbe(url, { method: cfg.method, headers, body });
   return res.ok;
 }
 
@@ -127,18 +141,17 @@ async function probeMediaProvider(provider, apiKey) {
   }
 
   const method = cfg.method || "POST";
-  const res = await fetch(cfg.baseUrl, {
+  const res = await fetchValidationProbe(cfg.baseUrl, {
     method,
     headers,
     body: method === "GET" ? undefined : JSON.stringify({ input: "ping", text: "ping", prompt: "ping", model: getDefaultModel(provider) || "test" }),
-    signal: AbortSignal.timeout(8000)
   });
   return res.status !== 401 && res.status !== 403;
 }
 
 async function exchangeGigaChatApiKey(apiKey) {
   const cfg = PROVIDERS.gigachat;
-  const res = await fetch(cfg.tokenUrl, {
+  const res = await fetchValidationProbe(cfg.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -147,7 +160,6 @@ async function exchangeGigaChatApiKey(apiKey) {
       RqUID: crypto.randomUUID()
     },
     body: new URLSearchParams({ scope: cfg.tokenScope || "GIGACHAT_API_PERS" }),
-    signal: AbortSignal.timeout(8000)
   });
 
   if (!res.ok) return null;
@@ -184,9 +196,9 @@ export async function POST(request) {
         const modelsUrl = `${node.baseUrl?.replace(/\/$/, "")}/models`;
         let res;
         try {
-          res = await guardedProbeFetch(modelsUrl, {
+          res = await fetchValidationProbe(modelsUrl, {
             headers: { "Authorization": `Bearer ${apiKey}` }
-          });
+          }, guardedProbeFetch);
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
           throw err;
@@ -219,10 +231,10 @@ export async function POST(request) {
         }
         let modelsRes;
         try {
-          modelsRes = await guardedProbeFetch(modelsUrl, {
+          modelsRes = await fetchValidationProbe(modelsUrl, {
             headers: { "Authorization": `Bearer ${apiKey}` },
             redirect: "manual"
-          });
+          }, guardedProbeFetch);
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
           throw err;
@@ -237,12 +249,12 @@ export async function POST(request) {
         // Fallback: probe /embeddings with a common test model — many providers lack /models
         let embedRes;
         try {
-          embedRes = await guardedProbeFetch(embedUrl, {
+          embedRes = await fetchValidationProbe(embedUrl, {
             method: "POST",
             headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({ model: "test", input: "ping" }),
             redirect: "manual"
-          });
+          }, guardedProbeFetch);
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
           throw err;
@@ -274,7 +286,7 @@ export async function POST(request) {
 
         let res;
         try {
-          res = await guardedProbeFetch(messagesUrl, {
+          res = await fetchValidationProbe(messagesUrl, {
             method: "POST",
             headers: {
               "x-api-key": apiKey,
@@ -287,7 +299,7 @@ export async function POST(request) {
               max_tokens: 1,
               messages: [{ role: "user", content: "test" }]
             })
-          });
+          }, guardedProbeFetch);
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
           throw err;
@@ -308,7 +320,7 @@ export async function POST(request) {
           return NextResponse.json({ valid: false, error: "Missing Account ID" });
         }
         const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`;
-        const cfRes = await fetch(url, {
+        const cfRes = await fetchValidationProbe(url, {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -329,9 +341,8 @@ export async function POST(request) {
         if (!accessToken) {
           return NextResponse.json({ valid: false, error: "Invalid API key" });
         }
-        const res = await fetch(PROVIDERS.gigachat.modelsUrl || "https://gigachat.devices.sberbank.ru/api/v1/models", {
+        const res = await fetchValidationProbe(PROVIDERS.gigachat.modelsUrl || "https://gigachat.devices.sberbank.ru/api/v1/models", {
           headers: { Authorization: `Bearer ${accessToken}` },
-          signal: AbortSignal.timeout(8000)
         });
         isValid = res.status !== 401 && res.status !== 403;
         return NextResponse.json({
@@ -350,7 +361,7 @@ export async function POST(request) {
           return NextResponse.json({ valid: false, error: CLIENT_VALIDATION_ERROR });
         }
         const url = `https://${accountId}.snowflakecomputing.com/api/v2/cortex/v1/chat/completions`;
-        const snowflakeRes = await fetch(url, {
+        const snowflakeRes = await fetchValidationProbe(url, {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -358,7 +369,6 @@ export async function POST(request) {
             messages: [{ role: "user", content: "test" }],
             max_tokens: 1
           }),
-          signal: AbortSignal.timeout(10000)
         });
         isValid = snowflakeRes.status !== 401 && snowflakeRes.status !== 403;
         return NextResponse.json({
@@ -384,14 +394,14 @@ export async function POST(request) {
         // SSRF guard (#6542): azureEndpoint is fully caller-controllable.
         let azureRes;
         try {
-          azureRes = await guardedProbeFetch(url, {
+          azureRes = await fetchValidationProbe(url, {
             method: "POST",
             headers,
             body: JSON.stringify({
               messages: [{ role: "user", content: "test" }],
               max_tokens: 1
             })
-          });
+          }, guardedProbeFetch);
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
           throw err;
@@ -423,21 +433,21 @@ export async function POST(request) {
 
       switch (provider) {
         case "openai":
-          const openaiRes = await fetch("https://api.openai.com/v1/models", {
+          const openaiRes = await fetchValidationProbe("https://api.openai.com/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` }
           });
           isValid = openaiRes.ok;
           break;
 
         case "vercel-ai-gateway":
-          const vercelAiGatewayRes = await fetch("https://ai-gateway.vercel.sh/v1/models", {
+          const vercelAiGatewayRes = await fetchValidationProbe("https://ai-gateway.vercel.sh/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` }
           });
           isValid = vercelAiGatewayRes.ok;
           break;
 
         case "anthropic":
-          const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+          const anthropicRes = await fetchValidationProbe("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
               "x-api-key": apiKey,
@@ -454,12 +464,12 @@ export async function POST(request) {
           break;
 
         case "gemini":
-          const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`);
+          const geminiRes = await fetchValidationProbe(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`);
           isValid = geminiRes.ok;
           break;
 
         case "openrouter":
-          const openrouterRes = await fetch("https://openrouter.ai/api/v1/models", {
+          const openrouterRes = await fetchValidationProbe("https://openrouter.ai/api/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` }
           });
           isValid = openrouterRes.ok;
@@ -480,7 +490,7 @@ export async function POST(request) {
 
             if (isOpenAiFormat) {
               const testModel = getDefaultModel(provider);
-              const res = await fetch(cfg.baseUrl, {
+              const res = await fetchValidationProbe(cfg.baseUrl, {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
                 body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] })
@@ -489,7 +499,7 @@ export async function POST(request) {
             } else {
               const testModel = getDefaultModel(provider) || "claude-sonnet-4-20250514";
               const isBearer = provider === "bailian-coding-plan";
-              const res = await fetch(cfg.baseUrl, {
+              const res = await fetchValidationProbe(cfg.baseUrl, {
                 method: "POST",
                 headers: {
                   ...(isBearer ? { "Authorization": `Bearer ${apiKey}` } : { "x-api-key": apiKey }),
@@ -506,7 +516,7 @@ export async function POST(request) {
           }
         case "volcengine-ark":
         case "byteplus":{
-            const res = await fetch(PROVIDERS[provider]?.baseUrl, {
+            const res = await fetchValidationProbe(PROVIDERS[provider]?.baseUrl, {
               method: "POST",
               headers: {
                 "Authorization": `Bearer ${apiKey}`,
@@ -553,7 +563,7 @@ export async function POST(request) {
             };
             const headers = {};
             if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-            const res = await fetch(endpoints[provider], { headers, signal: AbortSignal.timeout(8000) });
+            const res = await fetchValidationProbe(endpoints[provider], { headers });
             // xai returns 400 for bad key, 403 for valid-but-no-credit. Other providers use 401.
             if (provider === "xai") {
               isValid = res.status === 200 || res.status === 403;
@@ -568,10 +578,9 @@ export async function POST(request) {
 
         case "opencode-go":{
             /** Guard the authenticated usage probe and keep transient failures distinct from invalid keys. */
-            const res = await guardedProbeFetch(OPENCODE_GO_USAGE_URL, {
+            const res = await fetchValidationProbe(OPENCODE_GO_USAGE_URL, {
               headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
-              signal: AbortSignal.timeout(8000)
-            });
+            }, guardedProbeFetch);
             const result = classifyOpenCodeGoValidation(res, await res.text().catch(() => ""));
             isValid = result.valid;
             error = result.error;
@@ -588,7 +597,7 @@ export async function POST(request) {
               max_tokens: 1,
               stream: false
             }, false);
-            const res = await fetch(cfg.baseUrl, {
+            const res = await fetchValidationProbe(cfg.baseUrl, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -609,7 +618,7 @@ export async function POST(request) {
           }
 
         case "deepgram":{
-            const res = await fetch("https://api.deepgram.com/v1/projects", {
+            const res = await fetchValidationProbe("https://api.deepgram.com/v1/projects", {
               headers: { "Authorization": `Token ${apiKey}` }
             });
             isValid = res.ok;
@@ -617,7 +626,7 @@ export async function POST(request) {
           }
 
         case "blackbox":{
-            const res = await fetch("https://api.blackbox.ai/chat/completions", {
+            const res = await fetchValidationProbe("https://api.blackbox.ai/chat/completions", {
               method: "POST",
               headers: {
                 "Authorization": `Bearer ${apiKey}`,
@@ -642,10 +651,8 @@ export async function POST(request) {
               error = validateVertexSaKey(saJson);
               isValid = !error;
             } else {
-              const probeRes = await fetch(
-                `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
-                { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-              );
+              const probeRes = await fetchValidationProbe(`https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
+              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
               isValid = probeRes.status !== 401 && probeRes.status !== 403;
             }
             break;
@@ -657,10 +664,8 @@ export async function POST(request) {
               error = validateVertexSaKey(saJson);
               isValid = !error;
             } else {
-              const probeRes = await fetch(
-                `https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
-                { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-              );
+              const probeRes = await fetchValidationProbe(`https://aiplatform.googleapis.com/v1/publishers/google/models/__probe__:generateContent?key=${apiKey}`,
+              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
               isValid = probeRes.status !== 401 && probeRes.status !== 403;
             }
             break;
@@ -677,7 +682,7 @@ export async function POST(request) {
             const statsigId = Buffer.from("e:TypeError: Cannot read properties of null (reading 'children')").toString("base64");
             const traceId = randomHex(16);
             const spanId = randomHex(8);
-            const res = await fetch("https://grok.com/rest/app-chat/conversations/new", {
+            const res = await fetchValidationProbe("https://grok.com/rest/app-chat/conversations/new", {
               method: "POST",
               headers: {
                 Accept: "*/*",
@@ -731,7 +736,7 @@ export async function POST(request) {
               error = "Paste your access_token from copilot.microsoft.com";
               break;
             }
-            const res = await fetch("https://copilot.microsoft.com/c/api/start", {
+            const res = await fetchValidationProbe("https://copilot.microsoft.com/c/api/start", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -768,7 +773,7 @@ export async function POST(request) {
               sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
             }
             const tz = !isUndefined(Intl) ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
-            const res = await fetch("https://www.perplexity.ai/rest/sse/perplexity_ask", {
+            const res = await fetchValidationProbe("https://www.perplexity.ai/rest/sse/perplexity_ask", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -810,7 +815,7 @@ export async function POST(request) {
             }
             const url = new URL(ZENMUX_FREE_CHAT_URL);
             url.searchParams.set("ctoken", ctoken);
-            const res = await fetch(url.toString(), {
+            const res = await fetchValidationProbe(url.toString(), {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -829,7 +834,6 @@ export async function POST(request) {
                 max_tokens: 1,
                 messages: [{ role: "user", content: "ping" }]
               }, getDefaultModel("zenmux-free") || "deepseek/deepseek-chat")),
-              signal: AbortSignal.timeout(10000)
             });
             if (res.status === 401 || res.status === 403) {
               isValid = false;
@@ -842,7 +846,7 @@ export async function POST(request) {
 
         default:{
             // Generic registry probe covers OpenAI-compatible and Claude-format providers.
-            const registryResult = await probeRegistryProvider(provider, apiKey, fetch, providerSpecificData || {});
+            const registryResult = await probeRegistryProvider(provider, apiKey, fetchValidationProbe, providerSpecificData || {});
             if (!registryResult) {
               return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
             }

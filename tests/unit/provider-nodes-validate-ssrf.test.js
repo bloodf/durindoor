@@ -196,6 +196,23 @@ describe("/api/provider-nodes/validate — SSRF guard wiring", () => {
     expect(init.redirect).toBe("manual");
   });
 
+  it("adds a ten second abort signal to every guarded provider-node probe", async () => {
+    setGuardEnv("default");
+    const deadline = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+    const { POST } = await import("@/app/api/provider-nodes/validate/route.js");
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+    await POST(makeRequest({
+      baseUrl: PUBLIC_BASE,
+      apiKey: "sk-test",
+      type: "openai-compatible",
+    }));
+
+    expect(AbortSignal.timeout).toHaveBeenCalledWith(10_000);
+    expect(global.fetch.mock.calls[0][1].signal).toBe(deadline.signal);
+  });
+
   it("custom-embedding error path does NOT echo upstream body (no blind-SSRF leak)", async () => {
     setGuardEnv("default");
     const { POST } = await import("@/app/api/provider-nodes/validate/route.js");

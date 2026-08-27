@@ -1,18 +1,16 @@
 import { NextResponse } from "next/server";
 import { guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 
-// Guarded fetch wrapper used for all outbound probes in this route.
-// - applies the outbound-URL SSRF guard BEFORE the socket opens
-// - forces redirect:"manual" so a 3xx cannot bounce the probe to metadata
-// - throws OutboundUrlGuardError on policy rejection (caller maps to 403)
-const guardedFetch = (url, options, timeout = 10000) => {
-  return guardedProbeFetch(
-    url,
-    {
-      ...options,
-      signal: AbortSignal.timeout(timeout),
-    },
-  );
+/**
+ * Guard every provider-node probe against SSRF and bound it to ten seconds,
+ * while retaining cancellation supplied by a caller.
+ */
+const guardedFetch = (url, options = {}, timeout = 10000) => {
+  const timeoutSignal = AbortSignal.timeout(timeout);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
+  return guardedProbeFetch(url, { ...options, signal });
 };
 
 // Validate URL format. Only http(s) is allowed; the SSRF guard below adds

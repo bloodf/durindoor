@@ -3,6 +3,7 @@ import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
 import { normalizeKiroExternalIdpAuth } from "@/lib/oauth/kiroExternalIdp";
 import { resolveKiroCredentialsFromSsoCache } from "open-sse/services/kiroModels.js";
+import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
 
 /**
  * POST /api/oauth/kiro/import
@@ -22,13 +23,22 @@ export async function POST(request) {
       );
     }
 
+    let safeRegion;
+    try {
+      // IDC regions become part of the AWS OIDC hostname. Validate this
+      // request-owned value before cache lookup or refresh can perform I/O.
+      safeRegion = normalizeKiroRegion(region || "us-east-1");
+    } catch (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
     const kiroService = new KiroService();
     const isIdc = !!(clientId && clientSecret);
 
     // For IDC tokens, refresh via the regional OIDC endpoint with client credentials.
     // For social/builder-id tokens, use the standard social refresh endpoint.
     let resolvedProviderData = isIdc ?
-    { clientId, clientSecret, region: region || "us-east-1", authMethod: "idc" } :
+    { clientId, clientSecret, region: safeRegion, authMethod: "idc" } :
     {};
 
     let resolvedProfileArn = profileArn || null;
@@ -73,7 +83,7 @@ export async function POST(request) {
         profileArn: resolvedProfileArn,
         authMethod: resolvedAuthMethod,
         provider: providerLabel,
-        ...(isIdc ? { clientId, clientSecret, region: region || "us-east-1" } : null),
+        ...(isIdc ? { clientId, clientSecret, region: safeRegion } : null),
         // Persist the full external_idp metadata (clientId, tokenEndpoint,
         // scope) so later runtime refreshes stay on the Microsoft endpoint.
         ...(tokenData.providerSpecificData?.authMethod === "external_idp" ? tokenData.providerSpecificData : null)

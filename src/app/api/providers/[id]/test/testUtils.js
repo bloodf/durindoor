@@ -29,6 +29,7 @@ import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
+import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
 
 // OAuth provider test endpoints
 import { isString } from "../../../../../shared/utils/typeChecks.js";
@@ -254,9 +255,14 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
       const psd = connection.providerSpecificData || {};
       const clientId = psd.clientId || connection.clientId;
       const clientSecret = psd.clientSecret || connection.clientSecret;
-      const region = psd.region || connection.region;
+      /**
+       * Stored provider metadata is an untrusted hostname component. Normalize
+       * it before constructing the regional AWS OIDC endpoint; invalid values
+       * throw into this function's fail-closed refresh path before network I/O.
+       */
+      const region = normalizeKiroRegion(psd.region || connection.region || "us-east-1");
       if (clientId && clientSecret) {
-        const endpoint = `https://oidc.${region || "us-east-1"}.amazonaws.com/token`;
+        const endpoint = `https://oidc.${region}.amazonaws.com/token`;
         const response = await fetchWithConnectionProxy(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

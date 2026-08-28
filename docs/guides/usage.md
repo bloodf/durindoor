@@ -54,6 +54,9 @@ shared prefix. Responses function calls, reasoning, and tool outputs retain
 their original order. Kiro receives the instruction in
 `conversationState.currentMessage.userInputMessage.content`; DurinDoor does not
 add a `systemPrompt` field that Kiro's wire schema does not provide.
+When a Claude- or Gemini-labeled request has no injectable wire block,
+DurinDoor creates the canonical `system` or `systemInstruction` field instead
+of dropping the instruction.
 
 ## Create an API Key
 

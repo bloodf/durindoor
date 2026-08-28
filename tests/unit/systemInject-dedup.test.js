@@ -124,10 +124,10 @@ describe("systemInject deduplication", () => {
   });
 
   describe("Gemini format", () => {
-    it("leaves an empty mislabeled body untouched", () => {
+    it("creates systemInstruction if none exists", () => {
       const body = {};
       injectSystemPrompt(body, FORMATS.GEMINI, TEST_PROMPT);
-      expect(body).toEqual({});
+      expect(body.systemInstruction.parts[0].text).toBe(TEST_PROMPT);
     });
 
     it("appends to existing systemInstruction", () => {

@@ -2,6 +2,7 @@
 // recognized translated wire shapes and keeps injection exact-idempotent.
 
 import { OPENAI_BLOCK, RESPONSES_ITEM, ROLE } from "../translator/schema/index.js";
+import { FORMATS } from "../translator/formats.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const SEP = "\n\n";
@@ -24,20 +25,19 @@ function isPromptAlreadyInjected(content, prompt) {
 }
 
 /**
- * Inject a system prompt according to the translated body's wire shape.
- * `format` remains in the public signature for callers, but labels never
- * manufacture fields on a body whose wire shape does not support injection.
+ * Inject a system prompt using translated wire-shape precedence, then the
+ * provider label as a fallback when Claude or Gemini has no system block yet.
  * Mutates `body` in place.
  *
  * @param {object} body translated request body (mutated)
- * @param {string} _format retained for call-site compatibility; wire shape decides injection
+ * @param {string} format translated provider format
  * @param {string} prompt system/token-saver text to inject
  */
-export function injectSystemPrompt(body, _format, prompt) {
+export function injectSystemPrompt(body, format, prompt) {
   try {
     if (body === null || !isObject(body) || !isString(prompt) || !prompt) return;
 
-    if (isKiroBody(body)) {
+    if (isKiroBody(body) || format === FORMATS.KIRO) {
       injectKiroSystem(body, prompt);
     } else if (isString(body.instructions)) {
       injectInstructionsSystem(body, prompt);
@@ -45,10 +45,21 @@ export function injectSystemPrompt(body, _format, prompt) {
       injectOpenAIArray(body.messages, prompt, false);
     } else if (Array.isArray(body.input)) {
       injectOpenAIArray(body.input, prompt, true);
-    } else if (isClaudeBody(body)) {
-      injectClaudeSystem(body, prompt);
-    } else if (isGeminiBody(body)) {
-      injectGeminiSystem(body, prompt);
+    } else if (isString(body.input)) {
+      // String input stays untouched.
+      return;
+    } else {
+      switch (format) {
+        case FORMATS.CLAUDE:
+          injectClaudeSystem(body, prompt);
+          break;
+        case FORMATS.GEMINI:
+        case FORMATS.GEMINI_CLI:
+        case FORMATS.VERTEX:
+        case FORMATS.ANTIGRAVITY:
+          injectGeminiSystem(body, prompt);
+          break;
+      }
     }
   } catch {
     // Token-saver injection must never break provider dispatch.
@@ -65,17 +76,6 @@ function tryMutate(mutation) {
 
 function isKiroBody(body) {
   return isString(body.conversationState?.currentMessage?.userInputMessage?.content);
-}
-
-function isClaudeBody(body) {
-  return Object.prototype.hasOwnProperty.call(body, "system") &&
-    (isString(body.system) || Array.isArray(body.system));
-}
-
-function isGeminiBody(body) {
-  return Object.prototype.hasOwnProperty.call(body, "system_instruction") ||
-    Object.prototype.hasOwnProperty.call(body, "systemInstruction") ||
-    Object.prototype.hasOwnProperty.call(body.request || {}, "systemInstruction");
 }
 
 function injectInstructionsSystem(body, prompt) {
@@ -131,7 +131,8 @@ function injectOpenAIArray(arr, prompt, isResponses) {
  * there exactly once; never invent upstream's unsupported `systemPrompt`.
  */
 function injectKiroSystem(body, prompt) {
-  const message = body.conversationState.currentMessage.userInputMessage;
+  const message = body.conversationState?.currentMessage?.userInputMessage;
+  if (!message || !isString(message.content) && message.content != null) return;
   if (isPromptAlreadyInjected(message.content, prompt)) return;
   const next = message.content ? `${prompt}${SEP}${message.content}` : prompt;
   tryMutate(() => { message.content = next; });

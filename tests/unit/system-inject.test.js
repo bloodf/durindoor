@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { injectSystemPrompt } from "../../open-sse/rtk/systemInject.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { openaiToClaudeRequest } from "../../open-sse/translator/request/openai-to-claude.js";
+import { openaiToGeminiRequest } from "../../open-sse/translator/request/openai-to-gemini.js";
+import { openaiToKiroRequest } from "../../open-sse/translator/request/openai-to-kiro.js";
 
 describe("injectSystemPrompt", () => {
   it("injects openai-responses input[] by its Responses wire shape", () => {
@@ -135,6 +138,56 @@ describe("upstream #3491 wire-safe injection", () => {
     expect(body).not.toHaveProperty("systemPrompt");
   });
 
+  it("injects into a translated Kiro current message exactly once", () => {
+    const body = openaiToKiroRequest(
+      "claude-sonnet-4.5",
+      { messages: [{ role: "user", content: "hi" }] },
+      false,
+      { profileArn: "arn:aws:codewhisperer:us-east-1:123456789012:profile/test" },
+    );
+
+    injectSystemPrompt(body, FORMATS.KIRO, "respond tersely");
+    const afterFirst = structuredClone(body);
+    injectSystemPrompt(body, FORMATS.KIRO, "respond tersely");
+
+    const content = body.conversationState.currentMessage.userInputMessage.content;
+    expect(content).toMatch(/^respond tersely\n\n\[Context: Current time/);
+    expect(body).not.toHaveProperty("systemPrompt");
+    expect(body).toEqual(afterFirst);
+  });
+
+  it("creates systemInstruction on a translated Gemini body without a system message", () => {
+    const body = openaiToGeminiRequest(
+      "gemini-2.5-pro",
+      { messages: [{ role: "user", content: "hi" }] },
+      false,
+    );
+
+    injectSystemPrompt(body, FORMATS.GEMINI, "respond tersely");
+
+    expect(body.systemInstruction?.parts).toEqual([{ text: "respond tersely" }]);
+  });
+
+  it("injects once before the translated Claude cache-control block", () => {
+    const body = openaiToClaudeRequest(
+      "claude-sonnet-4.5",
+      {
+        messages: [
+          { role: "system", content: "base" },
+          { role: "user", content: "hi" },
+        ],
+      },
+      false,
+    );
+
+    injectSystemPrompt(body, FORMATS.CLAUDE, "respond tersely");
+    injectSystemPrompt(body, FORMATS.CLAUDE, "respond tersely");
+
+    expect(body.system.at(-2)).toEqual({ type: "text", text: "respond tersely" });
+    expect(body.system.at(-1).cache_control).toBeDefined();
+    expect(body.system.filter((block) => block.text === "respond tersely")).toHaveLength(1);
+  });
+
   it("preserves non-message Responses items while injecting by wire shape", () => {
     const functionCall = { type: "function_call", call_id: "call-1", name: "lookup" };
     const reasoning = { type: "reasoning", summary: [{ type: "summary_text", text: "work" }] };
@@ -178,12 +231,23 @@ describe("upstream #3491 wire-safe injection", () => {
     ]);
   });
 
-  it("leaves a body untouched when its label has no matching wire shape", () => {
-    const body = { metadata: { request: "not Claude" } };
+  it("creates Claude system content when its labeled body has no wire block", () => {
+    const body = { metadata: { request: "Claude passthrough" } };
 
     injectSystemPrompt(body, FORMATS.CLAUDE, "respond tersely");
 
-    expect(body).toEqual({ metadata: { request: "not Claude" } });
+    expect(body).toEqual({
+      metadata: { request: "Claude passthrough" },
+      system: "respond tersely",
+    });
+  });
+
+  it("leaves an unlabeled body without an injectable wire shape untouched", () => {
+    const body = { metadata: { request: "unknown" } };
+
+    injectSystemPrompt(body, "unknown", "respond tersely");
+
+    expect(body).toEqual({ metadata: { request: "unknown" } });
   });
 
   it("prefers Chat messages over a stray Claude system field", () => {

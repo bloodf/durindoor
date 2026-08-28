@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { buildModelsList, LLM_KIND } from "@/app/api/v1/models/buildModelsList.js";
 import { canonicalizePolicyModelIdentity } from "@/sse/services/apiKeyPolicyIdentity.js";
 import { getModelInfo } from "@/sse/services/model.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 const POLICY_KINDS = [
   LLM_KIND,
@@ -19,10 +20,12 @@ const POLICY_KINDS = [
 ];
 
 export async function buildApiKeyPolicyCatalog() {
-  const models = await buildModelsList(POLICY_KINDS);
+  // Policy rows exclude combos, so bypass presentation-only combo exposure and
+  // retain direct models for API-key allowlists without changing /v1/models.
+  const models = await buildModelsList(POLICY_KINDS, undefined, { exposeComboOnly: false });
   const catalog = new Map();
   for (const model of models) {
-    if (!model?.id || model.owned_by === "combo") continue;
+    if (!isString(model?.id) || model.owned_by === "combo") continue;
     let id = canonicalizePolicyModelIdentity(model.id);
     if (String(model.id).includes("/")) {
       const resolved = await getModelInfo(model.id);

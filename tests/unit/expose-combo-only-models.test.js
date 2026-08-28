@@ -63,6 +63,40 @@ describe("buildModelsList exposeComboOnly", () => {
     expect(mocks.getDisabledModels).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    "hidePaidModels with exposeComboOnly=%s keeps unknown nested members but excludes cycles and all-paid pools",
+    async (exposeComboOnly) => {
+      mocks.getSettings.mockResolvedValue({ exposeComboOnly, hidePaidModels: true });
+      mocks.getCombos.mockResolvedValue([
+        { name: "all-paid", kind: "llm", models: ["anthropic/claude-sonnet-5"] },
+        { name: "free-pool", kind: "llm", models: ["aug/claude-sonnet-4.6"] },
+        { name: "mixed-pool", kind: "llm", models: ["anthropic/claude-sonnet-5", "aug/claude-sonnet-4.6"] },
+        { name: "nested-safe", kind: "llm", models: ["all-paid", "free-pool"] },
+        { name: "nested-paid", kind: "llm", models: ["all-paid"] },
+        { name: "deleted-nested", kind: "llm", models: ["deleted-pool"] },
+        { name: "legacy-member", kind: "llm", models: [{ deleted: true }] },
+        { name: "unavailable-cycle", kind: "llm", models: ["unavailable-cycle"] },
+      ]);
+
+      const models = await buildModelsList(["llm"]);
+      const comboIds = models.filter((model) => model.owned_by === "combo").map((model) => model.id);
+
+      expect(comboIds).toEqual(["free-pool", "mixed-pool", "nested-safe", "deleted-nested", "legacy-member"]);
+    },
+  );
+
+  it("settings read failure keeps the normal direct and paid catalog", async () => {
+    mocks.getSettings.mockRejectedValue(new Error("settings unavailable"));
+    mocks.getCombos.mockResolvedValue([
+      { name: "all-paid", kind: "llm", models: ["anthropic/claude-sonnet-5"] },
+    ]);
+
+    const models = await buildModelsList(["llm"]);
+
+    expect(models).not.toHaveLength(0);
+    expect(models.map((model) => model.id)).toEqual(expect.arrayContaining(["all-paid", "openai/direct-model"]));
+  });
+
   it("toggle off keeps direct models in the catalog", async () => {
     mocks.getSettings.mockResolvedValue({ exposeComboOnly: false });
 

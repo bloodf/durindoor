@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/localDb";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
+import { isString } from "../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ function isAllowedPath(url, prefix) {
 
 /** Rewrite Headroom-owned root URLs while leaving arbitrary HTML values unchanged. */
 export function rewriteHeadroomHtml(html, prefix = DASHBOARD_PREFIX) {
-  if (typeof html !== "string" || !html) return html;
+  if (!isString(html) || !html) return html;
 
   return html
     .replace(
@@ -64,7 +65,7 @@ export function rewriteHeadroomHtml(html, prefix = DASHBOARD_PREFIX) {
 }
 
 export function rewriteLocation(value, target) {
-  if (typeof value !== "string" || !value) return value;
+  if (!isString(value) || !value) return value;
   if (value === DASHBOARD_PREFIX || value.startsWith(DASHBOARD_PREFIX + "/")) return value;
   if (value.startsWith("//")) return value;
 

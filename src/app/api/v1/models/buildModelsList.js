@@ -556,9 +556,10 @@ async function buildModelsListImpl(kindFilter, guard) {
     const positive = (value) => Number.isFinite(value) && value > 0;
     let contextWindow = explicitCaps.contextWindow;
     let maxOutput = explicitCaps.maxOutput;
+    const explicitKeys = explicitCaps.customKeys instanceof Set ? explicitCaps.customKeys : null;
     const fallback = resolveModelLimits(providerId, modelId, explicitCaps, null, liveLimits);
-    if (!positive(contextWindow) && fallback.known) contextWindow = fallback.contextWindow;
-    if (!positive(maxOutput) && fallback.known) maxOutput = fallback.maxOutput;
+    if (!positive(contextWindow) && fallback.known && !explicitKeys?.has("contextWindow")) contextWindow = fallback.contextWindow;
+    if (!positive(maxOutput) && fallback.known && !explicitKeys?.has("maxOutput")) maxOutput = fallback.maxOutput;
     if (positive(contextWindow)) model.context_length = contextWindow;
     if (positive(maxOutput)) model.max_completion_tokens = maxOutput;
     return model;
@@ -635,7 +636,20 @@ async function buildModelsListImpl(kindFilter, guard) {
       entry.kind = combo.kind;
     } else {
       const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId, 0, customCapsById);
-      if (comboCaps) entry.capabilities = comboCaps;
+      if (comboCaps) {
+        entry.capabilities = comboCaps;
+        /**
+         * Expose the same proven flat token limits as individual LLM models.
+         * Combo aggregation already applies member-safe minima and resolves
+         * nested combos, static aliases, and custom connection prefixes.
+         */
+        if ((combo.kind ?? LLM_KIND) === LLM_KIND) {
+          attachModelLimits(entry, null, combo.name, {
+            ...comboCaps,
+            customKeys: new Set(["contextWindow", "maxOutput"])
+          });
+        }
+      }
     }
     models.push(entry);
   }

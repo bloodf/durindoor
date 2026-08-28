@@ -797,10 +797,6 @@ function minKnownLimit(caps, key) {
   return values.length ? Math.min(...values) : undefined;
 }
 
-function maxKnownLimit(caps, key) {
-  const values = caps.map((item) => item[key]).filter((value) => Number.isFinite(value) && value > 0);
-  return values.length ? Math.max(...values) : undefined;
-}
 
 /**
  * Aggregate capabilities for a combo from its constituent model IDs.
@@ -809,7 +805,7 @@ function maxKnownLimit(caps, key) {
  * Union:        vision, pdf, audioInput, videoInput, imageOutput, audioOutput, search
  * Intersection: tools
  * Primary:      reasoning fields from the first (primary) model
- * Conservative: contextWindow = min; maxOutput = max
+ * Conservative: contextWindow = min; maxOutput = min
  *
  * @param {string[]} comboModels
  * @param {Object|null} [comboLookup] optional map of combo name → models array for nested resolution
@@ -838,7 +834,18 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     // prefix; both normalize through aliasToProviderId above.
     const custom = customCapsById?.get?.(`${providerId}/${model}`);
     const staticCaps = getCapabilitiesForModel(providerId, model);
-    return custom ? { ...staticCaps, ...custom } : staticCaps;
+    const merged = custom ? { ...staticCaps, ...custom } : staticCaps;
+    // getCapabilitiesForModel merges generic defaults into unknown models for
+    // feature detection. Those floors are not provider guarantees, so exclude
+    // them from combo limits exactly as individual /v1/models rows do.
+    const explicitCustom = custom ? { ...custom, customKeys: new Set(Object.keys(custom)) } : null;
+    const limits = resolveModelLimits(providerId, model, explicitCustom, null, null, true);
+    return {
+      ...merged,
+      contextWindow: limits.known ? limits.contextWindow : undefined,
+      maxOutput: Number.isFinite(custom?.maxOutput) && custom.maxOutput > 0 ? custom.maxOutput :
+      limits.known ? limits.maxOutput : undefined
+    };
   });
   const first = allCaps[0];
   const combined = {
@@ -855,7 +862,7 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     thinkingCanDisable: first.thinkingCanDisable,
     thinkingRange: first.thinkingRange,
     contextWindow: minKnownLimit(allCaps, "contextWindow"),
-    maxOutput: maxKnownLimit(allCaps, "maxOutput")
+    maxOutput: minKnownLimit(allCaps, "maxOutput")
   };
   return sanitizeModelLimits(combined);
 }
@@ -934,9 +941,10 @@ export function getCapabilitiesForModel(provider, model) {
  * @param {object|null} customCaps
  * @param {object|null} connection Reserved for request context compatibility.
  * @param {object|null} liveLimits Already-resolved server-side cache value.
+ * @param {boolean} [requireExplicitOutput] Leave maxOutput unset unless the selected source declares it.
  * @returns {{contextWindow: number, maxOutput: number|undefined, known: boolean, source: "custom"|"live"|"provider"|"exact"|"pattern"|"registry"|"default"}}
  */
-export function resolveModelLimits(provider, model, customCaps = null, connection = null, liveLimits = null) {
+export function resolveModelLimits(provider, model, customCaps = null, connection = null, liveLimits = null, requireExplicitOutput = false) {
   const baseModel = isString(model) && model.includes("/") ? model.split("/").pop() : model;
 
   // Keep documented bracket suffixes on wire; resolve limits through canonical IDs.
@@ -947,7 +955,7 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
     if (!positive(caps?.contextWindow)) return null;
     return {
       contextWindow: caps.contextWindow,
-      maxOutput: unpublishedOutput ? undefined : positive(caps.maxOutput) ? caps.maxOutput : DEFAULT_CAPABILITIES.maxOutput,
+      maxOutput: unpublishedOutput || requireExplicitOutput && !positive(caps.maxOutput) ? undefined : positive(caps.maxOutput) ? caps.maxOutput : DEFAULT_CAPABILITIES.maxOutput,
       known: true,
       source
     };
@@ -1009,7 +1017,7 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
 
   return applyPreferred({
     contextWindow: DEFAULT_CAPABILITIES.contextWindow,
-    maxOutput: DEFAULT_CAPABILITIES.maxOutput,
+    maxOutput: requireExplicitOutput ? undefined : DEFAULT_CAPABILITIES.maxOutput,
     known: false,
     source: "default"
   });

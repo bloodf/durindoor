@@ -194,6 +194,11 @@ Enable detailed logs only for short debugging windows. If logs must be retained,
 
 Tunnels are convenient for tools that cannot reach localhost. They also make your gateway reachable from another network.
 
+Quick-tunnel public subdomains use OS-backed cryptographic randomness while preserving
+the existing six-character URL format. During startup, DurinDoor accepts a successful
+health response from either the preferred relay URL or the direct Cloudflare URL; both
+must remain unavailable for the startup check to fail.
+
 When using tunnels:
 
 - Use HTTPS tunnel URLs.

@@ -18,11 +18,25 @@ export async function probeUrlAlive(url) {
   }
 }
 
-export async function waitForHealth(url, cancelToken = { cancelled: false }) {
+/**
+ * Probes one URL or ordered candidates until one responds, returning the responding URL.
+ * Empty candidates fail closed rather than treating an unverified tunnel as healthy.
+ *
+ * @param {string|string[]} urls
+ * @param {{ cancelled: boolean }} cancelToken
+ * @returns {Promise<string>}
+ */
+export async function waitForHealth(urls, cancelToken = { cancelled: false }) {
+  const candidates = (Array.isArray(urls) ? urls : [urls]).filter(Boolean);
+  if (candidates.length === 0) throw new Error("Health check requires at least one URL");
+
   const start = Date.now();
   while (Date.now() - start < HEALTH_CHECK.timeoutMs) {
     if (cancelToken.cancelled) throw new Error("cancelled");
-    if (await probeUrlAlive(url)) return true;
+    for (const url of candidates) {
+      if (cancelToken.cancelled) throw new Error("cancelled");
+      if (await probeUrlAlive(url)) return url;
+    }
     await new Promise((r) => setTimeout(r, HEALTH_CHECK.intervalMs));
   }
   throw new Error(`Health check timeout after ${HEALTH_CHECK.timeoutMs}ms`);

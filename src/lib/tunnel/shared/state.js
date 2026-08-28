@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { randomInt } from "node:crypto";
 import { DATA_DIR } from "@/lib/dataDir.js";
 
 const TUNNEL_DIR = path.join(DATA_DIR, "tunnel");
@@ -30,10 +31,14 @@ export function clearState() {
   } catch { /* ignore */ }
 }
 
+/**
+ * Generates the capability-bearing public tunnel subdomain with unbiased OS CSPRNG draws.
+ * Length and alphabet stay stable for existing tunnel registration contracts.
+ */
 export function generateShortId() {
   let result = "";
   for (let i = 0; i < SHORT_ID_LENGTH; i++) {
-    result += SHORT_ID_CHARS.charAt(Math.floor(Math.random() * SHORT_ID_CHARS.length));
+    result += SHORT_ID_CHARS.charAt(randomInt(0, SHORT_ID_CHARS.length));
   }
   return result;
 }

@@ -45,13 +45,15 @@ The native default remains `~/.9router` on macOS/Linux and `%APPDATA%\9router` o
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `ENABLE_REQUEST_LOGS` | `false` | Enables detailed request logging in the routing core. Prompts and responses may be sensitive. |
-| `OBSERVABILITY_ENABLED` | `true` unless disabled | Enables request-detail persistence where supported. |
+| `ENABLE_REQUEST_LOGS` | `false` | Enables diagnostic request files under `logs/` in the routing core. This switch is independent from Usage → Details persistence. Prompts and responses may be sensitive. |
+| `OBSERVABILITY_ENABLED` | unset | Overrides Usage → Details request-detail persistence when explicitly set: `true` enables it and `false` vetoes it. Unset or empty values defer to the canonical dashboard `enableObservability` setting. |
 | `OBSERVABILITY_MAX_RECORDS` | repository default | Maximum number of request detail records retained. |
 | `OBSERVABILITY_BATCH_SIZE` | repository default | Batch size for request-detail flushing. |
 | `OBSERVABILITY_FLUSH_INTERVAL_MS` | repository default | Flush interval for request-detail persistence. |
 | `OBSERVABILITY_MAX_JSON_SIZE` | `5` KB default in code path | Maximum JSON payload size stored per request detail record, in KB. |
 | `LOG_LEVEL` | `INFO` | Server log level. Supported levels are `DEBUG`, `INFO`, `WARN`, and `ERROR`. |
+
+Request-detail persistence precedence is `OBSERVABILITY_ENABLED` followed by the dashboard `enableObservability` setting. `ENABLE_REQUEST_LOGS` controls separate diagnostic files only; it never enables or vetoes database persistence.
 
 Keep detailed request logs disabled in shared or production deployments unless you have a retention policy and user consent.
 

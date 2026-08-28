@@ -15,13 +15,27 @@ const CONFIG_CACHE_TTL_MS = 5000;
 let cachedConfig = null;
 let cachedConfigTs = 0;
 
+/**
+ * Resolve request-detail persistence independently from ENABLE_REQUEST_LOGS,
+ * which controls diagnostic files under logs/. An explicit feature env value
+ * overrides the canonical dashboard setting; unset or empty values defer to it.
+ *
+ * @param {object | undefined} settings merged settings row
+ * @param {object} env environment variables, injectable for tests
+ * @returns {boolean}
+ */
+export function resolveObservabilityEnabled(settings, env = process.env) {
+  const raw = env.OBSERVABILITY_ENABLED;
+  if (raw !== undefined && raw.trim() !== "") return raw.trim().toLowerCase() === "true";
+  return settings?.enableObservability === true;
+}
+
 async function getObservabilityConfig() {
   if (cachedConfig && Date.now() - cachedConfigTs < CONFIG_CACHE_TTL_MS) return cachedConfig;
   try {
     const { getSettings } = await import("./settingsRepo.js");
     const settings = await getSettings();
-    const envEnabled = process.env.OBSERVABILITY_ENABLED !== "false";
-    const enabled = settings.enableObservability !== false && envEnabled;
+    const enabled = resolveObservabilityEnabled(settings);
     cachedConfig = {
       enabled,
       maxRecords: settings.observabilityMaxRecords || parseInt(process.env.OBSERVABILITY_MAX_RECORDS || String(DEFAULT_MAX_RECORDS), 10),

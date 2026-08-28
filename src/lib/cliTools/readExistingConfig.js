@@ -1,8 +1,10 @@
 import fs from "fs/promises";
+import { redactSecrets } from "@/shared/utils/secretRedaction";
 
 /**
  * Read and parse a CLI tool config before a merge that writes back to the same path.
- * Only a missing file is an empty config; read and parse failures must stop the write.
+ * Parser failures log only safe metadata because engine messages may quote raw file bytes.
+ * Read and parse failures must stop the write without exposing those messages to clients.
  *
  * @param {string} filePath
  * @param {(raw: string) => unknown} parse
@@ -20,7 +22,13 @@ export async function readExistingConfig(filePath, parse) {
   try {
     return parse(raw);
   } catch (error) {
-    const reason = error?.message || String(error);
-    throw new Error(`${filePath} exists but could not be parsed (${reason}); refusing to overwrite it`);
+    console.log("Error parsing existing CLI config:", redactSecrets({
+      filePath,
+      parserError: {
+        name: error?.name || "Error",
+        code: error?.code || null,
+      },
+    }));
+    throw new Error(`${filePath} exists but could not be parsed; refusing to overwrite it`);
   }
 }

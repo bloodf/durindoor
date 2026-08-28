@@ -134,6 +134,23 @@ describe("Codex settings writer", () => {
     expect(await fsp.readFile(authPath, "utf8")).toBe(authContents);
   });
 
+  it("does not expose token-like malformed auth bytes in the refusal", async () => {
+    const codexDir = path.join(home, ".codex");
+    const configPath = path.join(codexDir, "config.toml");
+    const authPath = path.join(codexDir, "auth.json");
+    const tokenPrefix = "ya29.a0AfB_bySECRETTOKEN_abcdefghijklmnop";
+    await fsp.mkdir(codexDir, { recursive: true });
+    await fsp.writeFile(configPath, 'model = "keep-me"\n');
+    await fsp.writeFile(authPath, `${tokenPrefix}","auth_mode":"chatgpt"}`);
+
+    const response = await post(codex.POST, codexBody);
+    const error = (await response.json()).error;
+
+    expect(response.status).toBe(500);
+    expect(error).toBe(`${authPath} exists but could not be parsed; refusing to overwrite it`);
+    expect(error).not.toContain("ya29.a0AfB");
+  });
+
   it.each([
     ["string", '"keep-me"'],
     ["number", "42"],

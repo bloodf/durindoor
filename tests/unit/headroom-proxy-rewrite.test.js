@@ -117,17 +117,21 @@ describe("forwardedHeaders", () => {
     expect(fallback.get("x-forwarded-host")).toBe("dashboard.example");
   });
 
-  it("strips every header nominated by Connection", () => {
+  it("uses request origin when Connection nominates forwarded host and proto", () => {
     const headers = forwardedHeaders({
       url: "https://dashboard.example/api/headroom/proxy/dashboard",
       headers: new Headers({
-        Connection: "x-private",
+        Connection: "x-private, x-forwarded-host, x-forwarded-proto",
         "X-Private": "request-secret",
+        "X-Forwarded-Host": "attacker.example",
+        "X-Forwarded-Proto": "http",
       }),
     });
 
     expect(headers.get("connection")).toBeNull();
     expect(headers.get("x-private")).toBeNull();
+    expect(headers.get("x-forwarded-host")).toBe("dashboard.example");
+    expect(headers.get("x-forwarded-proto")).toBe("https");
   });
 
   it("strips viewer and hop-by-hop credentials and never forwards HEADROOM_PROXY_TOKEN", () => {

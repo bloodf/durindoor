@@ -97,6 +97,7 @@ export function rewriteLocation(value, requestedTarget, upstreamBase) {
   }
 }
 
+/** Build upstream headers, deriving forwarded origin only after hop-by-hop exclusions. */
 export function forwardedHeaders(request) {
   const headers = new Headers(request.headers);
   stripHopByHopHeaders(headers);
@@ -108,7 +109,7 @@ export function forwardedHeaders(request) {
 
   const requestUrl = new URL(request.url);
   const firstHeaderValue = (name, fallback) =>
-    (request.headers.get(name) || "").split(",")[0].trim() || fallback;
+    (headers.get(name) || "").split(",")[0].trim() || fallback;
   headers.set(
     "x-forwarded-proto",
     firstHeaderValue("x-forwarded-proto", requestUrl.protocol.slice(0, -1)),

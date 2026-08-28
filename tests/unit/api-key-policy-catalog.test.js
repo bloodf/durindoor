@@ -17,25 +17,35 @@ vi.mock("next/server", () => ({ NextResponse: { json: (body, init = {}) => new R
 describe("API-key policy catalog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.buildModelsList.mockResolvedValue([
-      { id: "combo", owned_by: "combo" },
-      { id: "ag/gemini", name: "Gemini", capabilities: { vision: true } },
-      { id: "img/flux", name: "Flux" },
-      { id: "web/search", name: "Search", kind: "webSearch" },
-      { id: "web/fetch", name: "Fetch", kind: "webFetch" },
-      { id: "ag/gemini", name: "duplicate" },
-    ]);
+    mocks.buildModelsList.mockImplementation(async (_kinds, _guard, options) =>
+      options?.exposeComboOnly === false
+        ? [
+            { id: "combo", owned_by: "combo" },
+            { id: "ag/gemini", name: "Gemini", capabilities: { vision: true } },
+            { id: "img/flux", name: "Flux" },
+            { id: "web/search", name: "Search", kind: "webSearch" },
+            { id: "web/fetch", name: "Fetch", kind: "webFetch" },
+            { id: "ag/gemini", name: "duplicate" },
+            { id: null },
+            { id: {} },
+            { id: [] },
+          ]
+        : [{ id: "combo", owned_by: "combo" }]
+    );
     mocks.getModelInfo.mockImplementation(async (id) => {
       const [provider, model] = id.split("/");
       return { provider: provider === "ag" ? "antigravity" : provider, model };
     });
   });
 
-  it("requests every modality, excludes combos, canonicalizes, and deduplicates", async () => {
+  it("with combo-only exposure enabled, requests the full catalog before excluding combos", async () => {
     const { buildApiKeyPolicyCatalog } = await import("@/app/api/keys/policy-catalog/route.js");
-    const catalog = await buildApiKeyPolicyCatalog();
+    const catalogPromise = buildApiKeyPolicyCatalog();
+    await expect(catalogPromise).resolves.toEqual(expect.any(Array));
+    const catalog = await catalogPromise;
     const kinds = mocks.buildModelsList.mock.calls[0][0];
     expect(kinds).toEqual(expect.arrayContaining(["llm", "image", "tts", "stt", "embedding", "moderation", "rerank", "webSearch", "webFetch", "music", "video"]));
+    expect(mocks.buildModelsList.mock.calls[0][2]).toEqual({ exposeComboOnly: false });
     expect(catalog.map((entry) => entry.id)).toEqual(["antigravity/gemini", "img/flux", "web/fetch", "web/search"]);
     expect(catalog.find((entry) => entry.id === "web/search")?.kinds).toEqual(["webSearch"]);
     expect(catalog.some((entry) => entry.id === "combo")).toBe(false);

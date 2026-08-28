@@ -451,13 +451,52 @@ function comboMatchesKinds(combo, kindFilter) {
 }
 
 /**
+ * Project a combo into the public OpenAI model shape. Web kind stays explicit
+ * because search and fetch clients share the models endpoint.
+ */
+function comboToEntry(combo) {
+  const entry = {
+    id: combo.name,
+    object: "model",
+    owned_by: "combo"
+  };
+  if (combo.kind === "webSearch" || combo.kind === "webFetch") entry.kind = combo.kind;
+  return entry;
+}
+
+/**
+ * Resolve a combo's member pool through saved nested combos, applying the
+ * existing provider/model paid classifier once at each concrete member.
+ * Unknown legacy members stay visible; empty and cyclic resolved pools do not.
+ */
+function visibleComboMembers(combo, comboByName, hidePaidModels) {
+  const members = Array.isArray(combo?.models) ? combo.models : [];
+  if (!hidePaidModels) return members;
+
+  const isVisible = (member, seen) => {
+    if (!isString(member)) return true;
+    if (member.includes("/")) return !isPaidModel(member);
+    if (seen.has(member)) return false;
+    const nested = comboByName[member];
+    if (!Array.isArray(nested)) return true;
+    seen.add(member);
+    const visible = nested.some((nestedMember) => isVisible(nestedMember, seen));
+    seen.delete(member);
+    return visible;
+  };
+
+  return members.filter((member) => isVisible(member, new Set([combo.name])));
+}
+
+/**
  * Build OpenAI-format models filtered by service kind. Built-in catalogs are a
  * DB-read failure fallback; a healthy empty DB exposes only explicit custom,
  * combo, and keyless catalogs rather than pretending every provider is saved.
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
+ * @param {{ exposeComboOnly?: boolean }} [options] - Internal catalog exposure override.
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
-async function buildModelsListImpl(kindFilter, guard) {
+async function buildModelsListImpl(kindFilter, guard, options = {}) {
   // Start the real aggregation FIRST so `getProviderConnections()` is called
   // synchronously — required by the #6440 coalescing identity test, which holds
   // the first in-flight promise open via mockReturnValueOnce and asserts it was
@@ -466,11 +505,14 @@ async function buildModelsListImpl(kindFilter, guard) {
   const connectionsPromise = getProviderConnections();
   let settings = null;
   let hidePaidModels = false;
+  let exposeComboOnly = false;
   try {
     settings = await getSettings();
     hidePaidModels = settings?.hidePaidModels === true;
+    exposeComboOnly = options.exposeComboOnly ?? (settings?.exposeComboOnly === true);
   } catch (e) {
     hidePaidModels = false;
+    exposeComboOnly = false;
   }
 
   const isFreeNoAuthDisabled = (providerId) =>
@@ -491,6 +533,23 @@ async function buildModelsListImpl(kindFilter, guard) {
     combos = (await getCombos()).filter((c) => c !== null);
   } catch (e) {
     console.log("Could not fetch combos");
+  }
+
+  const comboByName = Object.fromEntries(combos.map((combo) => [combo.name, combo.models || []]));
+
+  // decolua/9router#3429: combo-only exposure must return before direct model
+  // catalogs are read or probed. Preserve first occurrence order by combo ID.
+  if (exposeComboOnly) {
+    const seen = new Set();
+    const models = [];
+    for (const combo of combos) {
+      if (!comboMatchesKinds(combo, kindFilter) || seen.has(combo.name)) continue;
+      const visibleMembers = visibleComboMembers(combo, comboByName, hidePaidModels);
+      if (hidePaidModels && visibleMembers.length === 0) continue;
+      seen.add(combo.name);
+      models.push(comboToEntry(combo));
+    }
+    return models;
   }
 
   let customModels = [];
@@ -523,7 +582,6 @@ async function buildModelsListImpl(kindFilter, guard) {
   }
 
   const models = [];
-  const comboByName = Object.fromEntries(combos.map((combo) => [combo.name, combo.models || []]));
   // Model ids below are prefixed with outputAlias (static alias or the active
   // connection's custom prefix), so map each exposed alias back to the
   // provider id — needed for combo capability aggregation on ids like
@@ -597,6 +655,11 @@ async function buildModelsListImpl(kindFilter, guard) {
     filter((m) => m?.id && m?.providerAlias && (m.kind || m.type || "llm") === "llm" && m?.capabilities && isObject(m.capabilities)).
     map((m) => [`${aliasToProviderId[m.providerAlias] ?? m.providerAlias}/${m.id}`, m.capabilities])
   );
+  // Capability aggregation accepts model IDs only; legacy members remain
+  // visibility evidence but cannot contribute capabilities.
+  const capabilityComboByName = Object.fromEntries(
+    Object.entries(comboByName).map(([name, members]) => [name, members.filter(isString)])
+  );
 
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
@@ -605,37 +668,11 @@ async function buildModelsListImpl(kindFilter, guard) {
     // is on; omit combos whose members are all paid. Resolves nested combo
     // names via comboByName with a visited set so cyclic/deeper combos can't
     // loop or leak all-paid pools. Persisted combo objects are untouched.
-    let visibleMembers = combo.models || [];
-    if (hidePaidModels) {
-      const comboHasVisibleMember = (name, seen) => {
-        if (seen.has(name)) return false;
-        const members = comboByName[name];
-        if (!Array.isArray(members)) return true; // unknown name → keep
-        seen.add(name);
-        const ok = members.some((m) => {
-          if (!isString(m)) return true;
-          if (!m.includes("/")) return comboHasVisibleMember(m, seen);
-          return !isPaidModel(m);
-        });
-        seen.delete(name);
-        return ok;
-      };
-      visibleMembers = visibleMembers.filter((member) => {
-        if (!isString(member)) return true;
-        if (!member.includes("/")) return comboHasVisibleMember(member, new Set());
-        return !isPaidModel(member);
-      });
-      if (visibleMembers.length === 0) continue;
-    }
-    const entry = {
-      id: combo.name,
-      object: "model",
-      owned_by: "combo"
-    };
-    if (combo.kind === "webSearch" || combo.kind === "webFetch") {
-      entry.kind = combo.kind;
-    } else {
-      const comboCaps = aggregateComboCapabilities(visibleMembers, comboByName, aliasToProviderId, 0, customCapsById);
+    const visibleMembers = visibleComboMembers(combo, comboByName, hidePaidModels);
+    if (hidePaidModels && visibleMembers.length === 0) continue;
+    const entry = comboToEntry(combo);
+    if (!entry.kind) {
+      const comboCaps = aggregateComboCapabilities(visibleMembers.filter(isString), capabilityComboByName, aliasToProviderId, 0, customCapsById);
       if (comboCaps) {
         entry.capabilities = comboCaps;
         /**
@@ -1031,22 +1068,25 @@ async function buildModelsListImpl(kindFilter, guard) {
  *   mode for discovery fetches. Defaults to `getProviderValidationGuard()` so
  *   direct callers (policy catalog, tests) always run guarded; the models
  *   routes pass the same resolution explicitly.
+ * @param {{ exposeComboOnly?: boolean }} [options] - internal override for
+ *   callers that require the full direct-model catalog.
  * @returns {Promise<object[]>} OpenAI-format model entries.
  */
-export function buildModelsList(kindFilter, guard = getProviderValidationGuard()) {
+export function buildModelsList(kindFilter, guard = getProviderValidationGuard(), options = {}) {
   // #6440: store the impl promise itself so concurrent same-kind callers get
   // the SAME reference and the aggregation (whose first await is
   // getProviderConnections) starts in this tick. #6495/F-4 hide-paid filtering
   // is resolved inside the impl, so the flag does not affect the coalescing key
   // and one shared build serves all concurrent same-kind callers consistently.
-  // #6966: the guard mode DOES affect behavior (blocked vs allowed discovery
-  // fetches), so it is part of the coalescing key — concurrent callers under
-  // different policies never share one promise.
-  const pendingKey = `${kindFilterKey(kindFilter)}\0${guard}`;
+  // #6966: guard mode and the internal exposure override affect behavior, so
+  // both join the coalescing key. Public callers omit the override and retain
+  // settings-driven /v1/models behavior.
+  const exposureKey = options.exposeComboOnly === undefined ? "settings" : String(options.exposeComboOnly);
+  const pendingKey = `${kindFilterKey(kindFilter)}\0${guard}\0${exposureKey}`;
   const existing = modelsInFlight.get(pendingKey);
   if (existing) return existing;
 
-  const promise = buildModelsListImpl(kindFilter, guard).finally(() => {
+  const promise = buildModelsListImpl(kindFilter, guard, options).finally(() => {
     // Only delete if still the same promise (guards against a stale entry if
     // the map is ever manipulated elsewhere).
     if (modelsInFlight.get(pendingKey) === promise) modelsInFlight.delete(pendingKey);

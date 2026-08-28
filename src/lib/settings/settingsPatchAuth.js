@@ -20,6 +20,7 @@ export const SECRET_SETTING_KEYS = Object.freeze([
  * Keys absent from durindoor settings are intentionally omitted.
  */
 export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
+  "exposeComboOnly",
   "requireLogin",
   "authMode",
   "oidcIssuerUrl",

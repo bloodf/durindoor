@@ -105,6 +105,7 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
     "outboundProxyEnabled",
     "outboundProxyUrl",
     "outboundNoProxy",
+    "exposeComboOnly",
   ])("drops unauthenticated mass assignment of %s", async (key) => {
     await PATCH({
       json: async () => ({ [key]: key === "requireLogin" ? false : `value-for-${key}` }),
@@ -128,6 +129,7 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
         oidcClientSecret: "client-secret",
         outboundProxyEnabled: true,
         outboundProxyUrl: "http://proxy.local:8080",
+        exposeComboOnly: true,
       }),
     });
 
@@ -139,6 +141,7 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
       oidcClientSecret: "client-secret",
       outboundProxyEnabled: true,
       outboundProxyUrl: "http://proxy.local:8080",
+      exposeComboOnly: true,
     }));
   });
 

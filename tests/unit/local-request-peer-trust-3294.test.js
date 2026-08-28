@@ -29,7 +29,7 @@ vi.mock("@/mitm/controlProof", () => ({
 }));
 
 const { proxy } = await import("../../src/dashboardGuard.js");
-const { getClientIp } = await import("../../src/lib/auth/loginLimiter.js");
+const { checkLock, getClientIp, recordFail, resetLoginLimiter } = await import("../../src/lib/auth/loginLimiter.js");
 const PEER_TOKEN = "peer-token-fixture";
 const originalNodeEnv = process.env.NODE_ENV;
 
@@ -46,6 +46,7 @@ describe("peer header trust", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NINEROUTER_PEER_TOKEN = PEER_TOKEN;
+    resetLoginLimiter();
     process.env.NODE_ENV = "production";
     mocks.getSettings.mockResolvedValue({ requireLogin: true });
     mocks.validateApiKey.mockResolvedValue(false);
@@ -140,5 +141,36 @@ describe("peer header trust", () => {
       "x-9r-real-ip": "203.0.113.9",
       "x-9r-peer-token": PEER_TOKEN,
     }))).toBe("203.0.113.9");
+  });
+
+  it("keeps rotating spoofed XFF values in one limiter bucket", () => {
+    process.env.TRUST_PROXY = "true";
+
+    for (const spoofedIp of ["198.51.100.10", "198.51.100.11", "198.51.100.12", "198.51.100.13", "198.51.100.14"]) {
+      const ip = getClientIp(request("/api/auth/login", { "x-forwarded-for": spoofedIp }));
+      expect(ip).toBe("unknown");
+      recordFail(ip);
+    }
+
+    expect(checkLock("unknown").locked).toBe(true);
+  });
+
+  it("accepts XFF from a wrapper-proved trusted proxy", () => {
+    process.env.TRUST_PROXY = "true";
+
+    expect(getClientIp(request("/api/auth/login", {
+      "x-forwarded-for": "198.51.100.10, 203.0.113.5",
+      "x-9r-peer-token": PEER_TOKEN,
+    }))).toBe("198.51.100.10");
+  });
+
+  it("keeps wrapper-stamped loopback IP precedence over XFF", () => {
+    process.env.TRUST_PROXY = "true";
+
+    expect(getClientIp(request("/api/auth/login", {
+      "x-9r-real-ip": "127.0.0.1",
+      "x-forwarded-for": "198.51.100.10",
+      "x-9r-peer-token": PEER_TOKEN,
+    }))).toBe("127.0.0.1");
   });
 });

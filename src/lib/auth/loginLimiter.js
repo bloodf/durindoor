@@ -85,6 +85,10 @@ export function recordSuccess(ip) {
   attempts.delete(ip);
 }
 
+/**
+ * Resolves the limiter bucket from wrapper-authenticated peer metadata only.
+ * Forwarding headers remain attacker-controlled until custom-server proves it handled the socket.
+ */
 export function getClientIp(request) {
   // Trusted only when custom-server.js proves it stamped the header from the TCP socket;
   // otherwise a client could rotate the value to escape its own lockout bucket.
@@ -93,7 +97,8 @@ export function getClientIp(request) {
     if (realIp) return realIp;
   }
   // Behind a trusted reverse proxy that overwrites XFF with the real client IP.
-  if (process.env.TRUST_PROXY === "true") {
+  // TRUST_PROXY configures proxy semantics; wrapper proof establishes header provenance.
+  if (process.env.TRUST_PROXY === "true" && hasTrustedPeerHeaders(request)) {
     const xff = request.headers.get("x-forwarded-for");
     if (xff) return xff.split(",")[0].trim();
   }

@@ -38,6 +38,10 @@ export const REVIEWED_ORPHANS = new Map([
   ["pricing:claude-opus-4.1", "priced alias present in upstream"],
   ["pricing:claude-opus-4-5-thinking", "priced alias present in upstream"],
   ["pricing:gpt-5.1-codex-mini-high", "priced alias present in upstream"],
+  /** #592 ports #3481 official OpenAI Pro prices without registry aliases. */
+  ["pricing:gpt-5-pro", "#592/#3481 official-price alias"],
+  ["pricing:gpt-5.2-pro", "#592/#3481 official-price alias"],
+  ["pricing:o1-pro", "#592/#3481 official-price alias"],
   ["pricing:gpt-5.6", "priced alias present in upstream"],
   ["pricing:gemini-3.1-pro-high", "priced alias present in upstream"],
   ["pricing:deepseek-v3.2-chat", "priced alias present in upstream"],

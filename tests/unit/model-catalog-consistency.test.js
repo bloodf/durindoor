@@ -76,4 +76,14 @@ describe("model catalog consistency", () => {
 
     expect(related.sort()).toEqual(expected.sort());
   });
+
+  it("reviews exactly the intended #592 OpenAI Pro pricing orphans", async () => {
+    const { REVIEWED_ORPHANS } = await import("../../open-sse/config/catalogAllowlist.js");
+    const expected = ["pricing:gpt-5-pro", "pricing:gpt-5.2-pro", "pricing:o1-pro"];
+    const reviewedProPricing = [...REVIEWED_ORPHANS.keys()].filter(
+      (key) => key.startsWith("pricing:") && key.endsWith("-pro")
+    );
+
+    expect(reviewedProPricing.sort()).toEqual(expected.sort());
+  });
 });

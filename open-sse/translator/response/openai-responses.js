@@ -616,7 +616,8 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
     if (responseUsage && isObject(responseUsage)) {
-      const normalized = toResponsesUsage(responseUsage);
+      /** Malformed provider usage must keep the stream transform total. */
+      const normalized = toResponsesUsage(responseUsage) || { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
       state.usage = buildUsage({
         promptTokens: normalized.input_tokens,
         completionTokens: normalized.output_tokens,

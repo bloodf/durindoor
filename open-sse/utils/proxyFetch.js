@@ -720,9 +720,11 @@ export async function serializeBypassRequestBody(body) {
 }
 
 /**
- * Route fetch through configured proxy transport. A DNS-guarded provider probe
- * is refused when proxy routing is selected because ProxyAgent replaces its
- * validating dispatcher and resolves the CONNECT target beyond that boundary.
+ * Route fetch through configured proxy transport. Automatic redirects fail
+ * closed across proxy boundaries, while manual redirects remain visible for
+ * caller-side hop validation. A DNS-guarded provider probe is refused when
+ * proxy routing is selected because ProxyAgent replaces its validating
+ * dispatcher and resolves the CONNECT target beyond that boundary.
  */
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // Native fetch can hide method-preserving 307/308 redirects inside one call,
@@ -747,7 +749,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   null :
   normalizeProxyUrl(getEnvProxyUrl(targetUrl));
   const proxyUrl = connectionProxyUrl || envProxyUrl;
-  if (vercelRelayUrl || proxyUrl) options = { ...options, redirect: "error" };
+  if ((vercelRelayUrl || proxyUrl) && options.redirect !== "manual") options = { ...options, redirect: "error" };
 
   // ProxyAgent resolves the CONNECT target outside our connector, so replacing
   // a guarded probe dispatcher would silently remove DNS-address validation.

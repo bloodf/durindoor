@@ -137,13 +137,16 @@ describe("loopback proxy trust boundaries", () => {
   it.each([
     { connectionProxyEnabled: true, connectionProxyUrl: PROXY_URL, disableEnvProxy: true },
     { vercelRelayUrl: "https://relay.example.test/api/relay" },
-  ])("disables automatic redirects across an outbound route", async (proxyOptions) => {
+  ])("preserves manual redirects but disables automatic redirects across an outbound route", async (proxyOptions) => {
+    await proxyAwareFetch("https://provider.example.test/start", { redirect: "manual" }, proxyOptions);
     await proxyAwareFetch("https://provider.example.test/start", { redirect: "follow" }, proxyOptions);
+    await proxyAwareFetch("https://provider.example.test/start", {}, proxyOptions);
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ redirect: "error" }),
-    );
+    expect(fetchMock.mock.calls.map(([, options]) => options.redirect)).toEqual([
+      "manual",
+      "error",
+      "error",
+    ]);
   });
 
   it("fails closed when strict proxy routing targets loopback", async () => {

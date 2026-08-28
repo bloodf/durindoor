@@ -16,6 +16,15 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
+/** Strip standard and Connection-nominated hop-by-hop fields in place. */
+function stripHopByHopHeaders(headers) {
+  for (const token of (headers.get("connection") || "").split(",")) {
+    const name = token.trim().toLowerCase();
+    if (name) headers.delete(name);
+  }
+  for (const name of HOP_BY_HOP_HEADERS) headers.delete(name);
+}
+
 export const DASHBOARD_PREFIX = "/api/headroom/proxy";
 
 const ALLOWED_PREFIXES = [
@@ -90,9 +99,7 @@ export function rewriteLocation(value, requestedTarget, upstreamBase) {
 
 export function forwardedHeaders(request) {
   const headers = new Headers(request.headers);
-  for (const key of [...headers.keys()]) {
-    if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) headers.delete(key);
-  }
+  stripHopByHopHeaders(headers);
   headers.delete("host");
   headers.delete("cookie");
   headers.delete("authorization");
@@ -165,12 +172,15 @@ async function proxy(request, { params }) {
     }
 
     const headers = new Headers(response.headers);
-    for (const key of [...headers.keys()]) {
-      if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) headers.delete(key);
-    }
+    stripHopByHopHeaders(headers);
 
     const location = headers.get("location");
     if (location) headers.set("location", rewriteLocation(location, target, base));
+
+    /** HEAD metadata describes the GET representation; never decode or rewrite its absent body. */
+    if (method === "HEAD") {
+      return new NextResponse(null, { status: response.status, headers });
+    }
 
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("text/html")) {

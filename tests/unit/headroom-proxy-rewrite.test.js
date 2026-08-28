@@ -1,15 +1,22 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 
 // The route module imports Next.js server helpers and app-local modules that
-// are not resolvable in the plain node test environment; stub them so the pure
-// HTML-rewrite helper can be imported directly.
-vi.mock("next/server", () => ({ NextResponse: { json: () => ({}) } }));
-vi.mock("@/lib/localDb", () => ({ getSettings: async () => ({}) }));
+// are not resolvable in the plain node test environment; stub them so the route
+// can be exercised without starting Next.js.
+vi.mock("next/server", () => ({
+  NextResponse: class NextResponse extends Response {
+    static json(body, init) {
+      return Response.json(body, init);
+    }
+  },
+}));
+vi.mock("@/lib/localDb", () => ({
+  getSettings: async () => ({ headroomUrl: "http://127.0.0.1:8099" }),
+}));
 vi.mock("@/lib/headroom/detect", () => ({ DEFAULT_HEADROOM_URL: "http://127.0.0.1:8099" }));
 
-const { DASHBOARD_PREFIX, forwardedHeaders, rewriteHeadroomHtml, rewriteLocation } = await import(
-  "../../src/app/api/headroom/proxy/[...path]/route.js"
-);
+const { DASHBOARD_PREFIX, HEAD, forwardedHeaders, rewriteHeadroomHtml, rewriteLocation } =
+  await import("../../src/app/api/headroom/proxy/[...path]/route.js");
 
 const PREFIX = DASHBOARD_PREFIX;
 
@@ -110,6 +117,19 @@ describe("forwardedHeaders", () => {
     expect(fallback.get("x-forwarded-host")).toBe("dashboard.example");
   });
 
+  it("strips every header nominated by Connection", () => {
+    const headers = forwardedHeaders({
+      url: "https://dashboard.example/api/headroom/proxy/dashboard",
+      headers: new Headers({
+        Connection: "x-private",
+        "X-Private": "request-secret",
+      }),
+    });
+
+    expect(headers.get("connection")).toBeNull();
+    expect(headers.get("x-private")).toBeNull();
+  });
+
   it("strips viewer and hop-by-hop credentials and never forwards HEADROOM_PROXY_TOKEN", () => {
     process.env.HEADROOM_PROXY_TOKEN = "proxy-secret";
     const headers = forwardedHeaders({
@@ -130,5 +150,64 @@ describe("forwardedHeaders", () => {
     expect(headers.get("connection")).toBeNull();
     expect(headers.get("proxy-authorization")).toBeNull();
     expect(headers.get("x-custom")).toBe("keep");
+  });
+});
+
+describe("HEAD proxy responses", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves encoded representation metadata without reading or rewriting the body", async () => {
+    const text = vi.fn();
+    const fetch = vi.fn(async () => ({
+      status: 200,
+      headers: new Headers({
+        "content-type": "text/html",
+        "content-encoding": "gzip",
+        "content-length": "321",
+      }),
+      body: null,
+      text,
+    }));
+    vi.stubGlobal("fetch", fetch);
+
+    const response = await HEAD(
+      new Request("https://dashboard.example/api/headroom/proxy/dashboard", { method: "HEAD" }),
+      { params: Promise.resolve({ path: ["dashboard"] }) },
+    );
+
+    expect(fetch).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:8099/dashboard"),
+      expect.objectContaining({ method: "HEAD", body: undefined }),
+    );
+    expect(text).not.toHaveBeenCalled();
+    expect(response.body).toBeNull();
+    expect(response.headers.get("content-encoding")).toBe("gzip");
+    expect(response.headers.get("content-length")).toBe("321");
+  });
+
+  it("strips response headers nominated by Connection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        status: 200,
+        headers: new Headers({
+          Connection: " Keep-Alive, X-Private ",
+          "Keep-Alive": "timeout=5",
+          "X-Private": "response-secret",
+        }),
+        body: null,
+      })),
+    );
+
+    const response = await HEAD(
+      new Request("https://dashboard.example/api/headroom/proxy/dashboard", { method: "HEAD" }),
+      { params: Promise.resolve({ path: ["dashboard"] }) },
+    );
+
+    expect(response.headers.get("connection")).toBeNull();
+    expect(response.headers.get("keep-alive")).toBeNull();
+    expect(response.headers.get("x-private")).toBeNull();
   });
 });

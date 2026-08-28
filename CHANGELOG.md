@@ -15,6 +15,7 @@
 
 
 - Codex GPT-5.3-Spark quota now reaches both dashboard usage and request preflight from top-level, indexed, and additional `wham/usage` response shapes, normalized to the existing `model:codex-spark` quota family. Ports decolua/9router#3458. Closes #593.
+- Model-pinned request formats now select the matching multi-endpoint transport, so translated Claude bodies use the Claude URL and `x-api-key` authentication instead of an OpenAI chat endpoint and bearer header. Unpinned models retain source-format routing. Ports decolua/9router#3538. Closes #604.
 - Exact-model and account-wide model-lock timestamps are now validated independently, so an expired exact lock cannot mask an active account-wide lock. Ports decolua/9router#3516. Closes #578.
 - The sql.js fallback now stages, fsyncs, and atomically renames full database images, preserving the prior valid database and removing temporary files when persistence fails (ports decolua/9router#3523). Closes #589.
 - Active generated and assistant-anchored sessions now refresh their in-memory recency, so capacity eviction removes the least-recently-used session instead of the first-created one. Ports decolua/9router#3550. Closes #590.

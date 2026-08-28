@@ -127,9 +127,11 @@ function isOpenCodeMuse(provider, alias, model) {
 }
 
 /**
- * Pick a request-scoped transport without allowing undeclared model metadata to
- * select a wire-format endpoint. A transport needs credentials because the
- * default executor otherwise uses the provider's default payload format.
+ * Pick the request-scoped transport that speaks the final outbound body format.
+ * A model-pinned targetFormat overrides a supported client sourceFormat because
+ * the transport also selects the upstream endpoint, headers, and auth scheme.
+ * Kimi API-key credentials retain their dedicated transport override, while
+ * unpinned models keep the existing source-format and provider-default behavior.
  */
 export function resolveRequestTransport({ provider, alias, model, sourceFormat, credentials }) {
   const forceOpenCodeMuseResponses = isOpenCodeMuse(provider, alias, model);
@@ -140,7 +142,7 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   null;
   const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
   const defaultFormat = getTargetFormat(provider, credentials);
-  const preferredFormat = apikeyTransportFormat || directFormat || modelTargetFormat || defaultFormat;
+  const preferredFormat = apikeyTransportFormat || modelTargetFormat || directFormat || defaultFormat;
   const runtimeTransport = credentials ? resolveTransport(provider, preferredFormat) : null;
   const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
   const targetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :

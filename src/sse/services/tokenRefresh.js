@@ -3,7 +3,6 @@ import * as log from "../utils/logger.js";
 import { updateProviderConnection } from "../../lib/localDb.js";
 import {
   getProjectIdForConnection,
-  invalidateProjectId,
   removeConnection } from
 "open-sse/services/projectId.js";
 import {
@@ -118,19 +117,17 @@ function needsProjectId(provider) {
 }
 
 /**
- * Non-blocking: fetch the project ID for a connection after a token refresh and
- * persist it to localDb.  Invalidates the stale cached value first so the fetch
- * always retrieves a fresh one.
+ * Non-blocking: fetch and persist a missing project ID after token refresh.
+ * Stored project IDs survive access-token rotation because Google binds them
+ * to the account rather than the short-lived access token.
  *
  * @param {string} provider
  * @param {string} connectionId
  * @param {string} accessToken
+ * @param {object|null} proxyOptions
  */
 function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
   if (!needsProjectId(provider) || !connectionId || !accessToken) return;
-
-  // Evict the stale cached entry so getProjectIdForConnection does a real fetch
-  invalidateProjectId(connectionId);
 
   getProjectIdForConnection(connectionId, accessToken, proxyOptions, null, provider).
   then((projectId) => {
@@ -265,8 +262,10 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
         creds.providerSpecificData
       };
 
-      // Non-blocking: refresh projectId with the new access token
-      _refreshProjectId(provider, creds.connectionId, creds.accessToken, effectiveProxyOptions);
+      // Non-blocking: discover only when this connection has no stored project ID.
+      if (!creds.projectId) {
+        _refreshProjectId(provider, creds.connectionId, creds.accessToken, effectiveProxyOptions);
+      }
     }
   }
 

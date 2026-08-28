@@ -169,18 +169,6 @@ export async function getProjectIdForConnection(connectionId, accessToken, proxy
   return subscribeToPending(entry, signal);
 }
 
-/**
- * Invalidate the cached project ID for a connection.
- * Call this when a connection's credentials are fully revoked or refreshed.
- */
-export function invalidateProjectId(connectionId) {
-  projectIdCache.delete(connectionId);
-  for (const [key, pending] of pendingFetches) {
-    if (!key.startsWith(`${connectionId}:`)) continue;
-    try {pending.controller.abort(new DOMException("Project credentials changed", "AbortError"));} catch {/* noop */}
-    pendingFetches.delete(key);
-  }
-}
 
 /**
  * Fully remove a connection: abort any in-flight fetch and delete its cached project ID.
@@ -251,6 +239,8 @@ async function fetchProjectId(accessToken, signal, proxyOptions, provider = null
 
 /**
  * Fetch project ID via onboardUser endpoint (polls until done).
+ * A done response without a usable project ID is terminal because retrying the
+ * same completed onboarding operation cannot provision the account.
  *
  * @param {string}      accessToken
  * @param {string}      tierID
@@ -302,7 +292,8 @@ async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, pr
           console.log(`[ProjectId] Successfully onboarded, project ID: ${projectId}`);
           return projectId;
         }
-        throw new Error("onboardUser done but no project_id in response");
+        console.warn("[ProjectId] onboardUser finished without a project ID (account not provisioned)");
+        return null;
       }
 
       // Server not done yet – wait and retry

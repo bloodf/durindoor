@@ -2,18 +2,31 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   proxyAwareFetch: vi.fn(),
+  refreshProviderCredentials: vi.fn(),
+  updateProviderConnection: vi.fn(async () => true),
 }));
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: mocks.proxyAwareFetch,
 }));
 
+vi.mock("../../open-sse/services/oauthCredentialManager.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  refreshProviderCredentials: mocks.refreshProviderCredentials,
+  shouldRefreshCredentials: vi.fn(() => true),
+}));
+
+vi.mock("../../src/lib/localDb.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  updateProviderConnection: mocks.updateProviderConnection,
+}));
+
 import {
   getProjectIdForConnection,
-  invalidateProjectId,
   removeConnection,
   stopCacheCleanup,
 } from "../../open-sse/services/projectId.js";
+import { checkAndRefreshToken } from "../../src/sse/services/tokenRefresh.js";
 
 function projectResponse(projectId) {
   return {
@@ -29,6 +42,10 @@ describe("project-id proxy routing", () => {
     removeConnection("connection-strict");
     removeConnection("connection-shared");
     removeConnection("connection-redaction");
+    mocks.refreshProviderCredentials.mockResolvedValue({
+      accessToken: "rotated-access",
+      expiresIn: 3600,
+    });
   });
 
   afterEach(() => {
@@ -37,6 +54,64 @@ describe("project-id proxy routing", () => {
 
   afterAll(() => {
     stopCacheCleanup();
+  });
+
+  it("stops after terminal onboarding returns no project ID", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.proxyAwareFetch.mockImplementation(async (_url, options) => {
+        const body = JSON.parse(options.body);
+        return new Response(JSON.stringify("tierId" in body
+          ? { done: true, response: { cloudaicompanionProject: {} } }
+          : { allowedTiers: [{ id: "standard-tier", isDefault: true }] }), { status: 200 });
+      });
+
+      const pending = getProjectIdForConnection(
+        "connection-direct",
+        "access-direct",
+        { disableEnvProxy: true },
+        null,
+        "gemini-cli",
+      );
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await expect(pending).resolves.toBeNull();
+      expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a stored project ID when the access token rotates", async () => {
+    await checkAndRefreshToken("antigravity", {
+      connectionId: "connection-direct",
+      accessToken: "old-access",
+      refreshToken: "refresh-token",
+      projectId: "stored-project",
+    }, { disableEnvProxy: true }, { force: true });
+
+    expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
+    expect(mocks.updateProviderConnection).toHaveBeenCalledOnce();
+  });
+
+  it("discovers a missing project ID through the refreshed credential route", async () => {
+    const route = { disableEnvProxy: true, strictProxy: false };
+    mocks.proxyAwareFetch.mockResolvedValue(projectResponse("discovered-project"));
+
+    await checkAndRefreshToken("antigravity", {
+      connectionId: "connection-direct",
+      accessToken: "old-access",
+      refreshToken: "refresh-token",
+    }, route, { force: true });
+
+    await vi.waitFor(() => expect(mocks.updateProviderConnection).toHaveBeenCalledTimes(2));
+    expect(mocks.proxyAwareFetch).toHaveBeenCalledOnce();
+    expect(mocks.proxyAwareFetch.mock.calls[0][2]).toEqual(expect.objectContaining(route));
+    expect(mocks.proxyAwareFetch.mock.calls[0][1].headers).not.toHaveProperty("X-Goog-Api-Client");
+    expect(mocks.updateProviderConnection).toHaveBeenLastCalledWith(
+      "connection-direct",
+      { projectId: "discovered-project" },
+    );
   });
 
   it("uses the exact route for project discovery after refresh", async () => {
@@ -246,7 +321,7 @@ describe("project-id proxy routing", () => {
     expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("does not coalesce or cache project discovery across token invalidation", async () => {
+  it("does not coalesce or cache project discovery after connection removal", async () => {
     let resolveOld;
     let resolveFresh;
     mocks.proxyAwareFetch
@@ -259,7 +334,7 @@ describe("project-id proxy routing", () => {
       { disableEnvProxy: true },
     );
     await vi.waitFor(() => expect(mocks.proxyAwareFetch).toHaveBeenCalledOnce());
-    invalidateProjectId("connection-shared");
+    removeConnection("connection-shared");
     const freshRequest = getProjectIdForConnection(
       "connection-shared",
       "token-new",

@@ -37,11 +37,20 @@ function isPromptAlreadyInjected(content, prompt) {
 export function injectSystemPrompt(body, format, prompt) {
   try {
     if (body === null || !isObject(body) || !isString(prompt) || !prompt) return;
+    /**
+     * Responses Lite keeps system prompts in `input[]` after its tools envelope,
+     * even when top-level `instructions` is present.
+     */
+    const isResponsesLite = Array.isArray(body.input) &&
+      body.input.some((item) => item?.type === "additional_tools");
+
 
     if (isKiroBody(body) || format === FORMATS.KIRO) {
       injectKiroSystem(body, prompt);
     } else if (format === FORMATS.CLAUDE) {
       injectClaudeSystem(body, prompt);
+    } else if (isResponsesLite) {
+      injectOpenAIArray(body.input, prompt, true);
     } else if (isString(body.instructions)) {
       injectInstructionsSystem(body, prompt);
     } else if (Array.isArray(body.messages)) {

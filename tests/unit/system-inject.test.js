@@ -84,8 +84,12 @@ describe("injectSystemPrompt", () => {
     ]);
   });
 
-  it("inserts a Lite developer message after additional_tools when missing", () => {
+  it.each([
+    ["nonempty", "codex preamble"],
+    ["empty", ""],
+  ])("keeps %s Responses Lite instructions unchanged", (_label, instructions) => {
     const body = {
+      instructions,
       input: [
         { type: "additional_tools", role: "developer", tools: [] },
         { type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] },
@@ -93,7 +97,10 @@ describe("injectSystemPrompt", () => {
     };
 
     injectSystemPrompt(body, FORMATS.OPENAI_RESPONSES, "injected");
+    const afterFirst = structuredClone(body);
+    injectSystemPrompt(body, FORMATS.OPENAI_RESPONSES, "injected");
 
+    expect(body.instructions).toBe(instructions);
     expect(body.input).toEqual([
       { type: "additional_tools", role: "developer", tools: [] },
       {
@@ -103,6 +110,7 @@ describe("injectSystemPrompt", () => {
       },
       { type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] },
     ]);
+    expect(body).toEqual(afterFirst);
   });
 });
 

@@ -685,9 +685,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     xf.push(`HEADROOM −${delta}tok(${pct}%)`);
     log?.info?.("HEADROOM", formatHeadroomLog(headroomStats));
     log?.info?.("HEADROOM", formatHeadroomSizeLog(headroomDiagnostics));
-    if (isHeadroomPhantomSavings(headroomStats, headroomDiagnostics)) {
-      log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${formatHeadroomSizeLog(headroomDiagnostics)}`);
-    }
     try {
       onHeadroomEvent?.({
         provider,

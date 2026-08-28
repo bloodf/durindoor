@@ -46,6 +46,8 @@ Compression is designed to never break a request:
 - Per-engine error, malformed result, or unavailable engine: that step is rolled back, the loop continues.
 - Catastrophic seam failure: the chat core restores the pre-stack snapshot and emits no compression header.
 
+Headroom also fails open before mutating the provider request. It makes one proxy call, rejects CCR markers, explicit error-tool results, reordered or identity-changing OpenAI messages, skipped/no-gain/conflicting token results, and candidates that shrink the serialized request by five percent or less. Managed-proxy stop waits through bounded `SIGTERM` then `SIGKILL` shutdown and clears only the PID file still owned by that process.
+
 ## Error-result preservation
 
 The compression engine contract preserves provider-specific error content and tool-result structure. For example, Kiro and AWS CodeWhisperer tool-result text can be rewritten and restored into the original envelope shape, and object outputs are serialized so compression engines can process them and restored as string outputs accepted by the Responses API.

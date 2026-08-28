@@ -244,7 +244,7 @@ export async function configureHeadroom(settings, {
           running = true;
         } else {
           if (!startResult.alreadyRunning) {
-            try { stopHeadroomProxy(); } catch { /* health failure remains primary */ }
+            try { await stopHeadroomProxy(); } catch { /* health failure remains primary */ }
           }
           report.actions.push("headroom health check failed after start; see proxy.log");
           return {

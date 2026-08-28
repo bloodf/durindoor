@@ -31,20 +31,19 @@ function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 
-
 const GEMINI_FAMILY_FORMATS = new Set([
-FORMATS.GEMINI,
-FORMATS.GEMINI_CLI,
-FORMATS.ANTIGRAVITY,
-FORMATS.VERTEX]
-);
+  FORMATS.GEMINI,
+  FORMATS.GEMINI_CLI,
+  FORMATS.VERTEX,
+  FORMATS.ANTIGRAVITY
+]);
 
 /**
- * Check translated response shapes for client-usable text, reasoning, or tools.
- * A coherent terminal with no output is still an upstream failure: rejecting it
- * here lets existing account and combo fallback handle the current request.
+ * Check the emitted response shape for client-usable text, reasoning, or tools.
+ * Translation can emit a shape other than the client's source dialect, so the
+ * body itself—not sourceFormat—selects the content fields inspected here.
  */
-function hasUsefulContent(response, sourceFormat) {
+function hasUsefulContent(response) {
   /** Translation may emit OpenAI choices regardless of the client's source dialect. */
   if (Array.isArray(response?.choices)) {
     const message = response.choices[0]?.message;
@@ -55,15 +54,15 @@ function hasUsefulContent(response, sourceFormat) {
     Array.isArray(message?.tool_calls) && message.tool_calls.length > 0 ||
     Boolean(message?.function_call);
   }
-  if (sourceFormat === FORMATS.CLAUDE && response?.type === "message") {
+  if (response?.type === "message") {
     return Array.isArray(response.content) && response.content.some((block) =>
     block?.type === "tool_use" ||
     block?.type === "thinking" && isString(block.thinking) && block.thinking.trim() ||
     block?.type === "text" && isString(block.text) && block.text.trim());
   }
 
-  if ([FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(sourceFormat)) {
-    return Array.isArray(response?.output) && response.output.some((item) =>
+  if (Array.isArray(response?.output)) {
+    return response.output.some((item) =>
     item?.type === "function_call" ||
     item?.type === "custom_tool_call" ||
     item?.type === "reasoning" && (
@@ -73,14 +72,14 @@ function hasUsefulContent(response, sourceFormat) {
     isString(part?.text) && part.text.trim()));
   }
 
-  if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) {
-    const candidates = response?.candidates ?? response?.response?.candidates;
-    return Array.isArray(candidates) && candidates.some((candidate) =>
+  const candidates = response?.candidates ?? response?.response?.candidates;
+  if (Array.isArray(candidates)) {
+    return candidates.some((candidate) =>
     Array.isArray(candidate?.content?.parts) && candidate.content.parts.some((part) =>
     isString(part?.text) && part.text.trim() || part?.functionCall || part?.inlineData || part?.inline_data));
   }
 
-  if (sourceFormat === FORMATS.OLLAMA) {
+  if (response?.message || isString(response?.response)) {
     return isString(response?.message?.content) && response.message.content.trim().length > 0 ||
     isString(response?.response) && response.response.trim().length > 0 ||
     Array.isArray(response?.message?.tool_calls) && response.message.tool_calls.length > 0;
@@ -531,7 +530,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     appendLog({ tokens: usage, status: "200 OK" });
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
 
-    if (!hasUsefulContent(translatedResponse, sourceFormat)) {
+    if (!hasUsefulContent(translatedResponse)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
       return createErrorResult(

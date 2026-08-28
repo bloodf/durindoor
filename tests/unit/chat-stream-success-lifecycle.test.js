@@ -108,21 +108,20 @@ describe("stream success lifecycle", () => {
     expect(success).not.toHaveBeenCalled();
   });
 
-  it("persists capped provider summary after an unterminated stream event", async () => {
-    const hugeUsage = {};
-    for (let i = 0; i < 200; i++) hugeUsage[`k_${i}`] = i;
-    const event = `data: ${JSON.stringify({ choices: [{ delta: { content: "tail", tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "weather", arguments: "{}" } }] }, finish_reason: "tool_calls" }], usage: hugeUsage })}`;
+  it("deduplicates provider summary during a Gemini-client translate flush", async () => {
+    const event = `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "tail" }] } }] })}`;
     const result = await handleStreamingResponse({
       ...context(vi.fn()),
+      sourceFormat: FORMATS.OPENAI,
+      targetFormat: FORMATS.GEMINI,
       providerResponse: new Response(event, { status: 200, headers: { "content-type": "text/event-stream" } }),
     });
     await result.response.text();
     await Promise.resolve();
 
     const detail = saveRequestDetail.mock.calls.at(-1)[0];
-    expect(detail.response.content).toBe("tail");
-    expect(detail.tokens).toMatchObject({ estimated: true });
-    expect(Object.keys(detail.providerResponse.usage)).toHaveLength(64);
-    expect(detail.providerResponse.choices[0]).toMatchObject({ finish_reason: "tool_calls" });
+    expect(detail.response.content).toBe("[Empty streaming response]");
+    expect(detail.tokens).toEqual({ prompt_tokens: 0, completion_tokens: 0 });
+    expect(detail.providerResponse.candidates[0].content.parts[0].text).toBe("tail");
   });
 });

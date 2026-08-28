@@ -64,6 +64,72 @@ describe("non-stream empty-content fallback (#3465)", () => {
     expect(result).not.toHaveProperty("resetsAtMs");
   });
 
+  it.each([
+    FORMATS.GEMINI,
+    FORMATS.GEMINI_CLI,
+    FORMATS.ANTIGRAVITY,
+    FORMATS.VERTEX,
+    FORMATS.OLLAMA
+  ])("accepts emitted Responses content for a %s client", async (sourceFormat) => {
+    const result = await handleNonStreamingResponse(options({
+      id: "resp_test", object: "response", status: "completed", model: "gpt-test",
+      output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "translated answer" }] }],
+      usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 }
+    }, { sourceFormat, targetFormat: FORMATS.OPENAI_RESPONSES }));
+
+    expect(result.success).toBe(true);
+    expect(result.status).not.toBe(502);
+    expect(result).not.toHaveProperty("resetsAtMs");
+  });
+
+  it("accepts useful content in an emitted Gemini body", async () => {
+    const body = {
+      candidates: [{ content: { parts: [{ text: "gemini answer" }] }, finishReason: "STOP" }]
+    };
+    const result = await handleNonStreamingResponse(options(body, {
+      sourceFormat: FORMATS.GEMINI,
+      targetFormat: FORMATS.GEMINI
+    }));
+
+    expect(result.success).toBe(true);
+    expect((await result.response.json()).candidates[0].content.parts[0].text).toBe("gemini answer");
+  });
+
+  it("accepts useful content in an emitted Ollama body", async () => {
+    const body = {
+      model: "llama3.2",
+      message: { role: "assistant", content: "ollama answer" },
+      done: true,
+      done_reason: "stop"
+    };
+    const result = await handleNonStreamingResponse(options(body, {
+      sourceFormat: FORMATS.OLLAMA,
+      targetFormat: FORMATS.OLLAMA
+    }));
+
+    expect(result.success).toBe(true);
+    expect((await result.response.json()).message.content).toBe("ollama answer");
+  });
+
+  it("accepts useful content in an emitted Claude body", async () => {
+    const body = {
+      id: "msg-test",
+      type: "message",
+      role: "assistant",
+      model: "claude-test",
+      content: [{ type: "text", text: "claude answer" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 2, output_tokens: 1 }
+    };
+    const result = await handleNonStreamingResponse(options(body, {
+      sourceFormat: FORMATS.CLAUDE,
+      targetFormat: FORMATS.CLAUDE
+    }));
+
+    expect(result.success).toBe(true);
+    expect((await result.response.json()).content[0].text).toBe("claude answer");
+  });
+
   it("projects a Responses body into OpenAI chat content", () => {
     const translated = translateNonStreamingResponse({
       id: "resp_test", object: "response", status: "completed", model: "gpt-test",

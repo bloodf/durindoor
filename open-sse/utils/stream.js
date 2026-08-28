@@ -1186,8 +1186,8 @@ export function createSSEStream(options = {}) {
           const trimmedBuffer = buffer.trim();
           currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
           const parsed = parseSSELine(trimmedBuffer, targetFormat);
+          /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
           if (parsed && !parsed.done) recordCompletionData(parsed, { trackUsage: false });
-          if (parsed && !parsed.done) providerSummary.ingest(parsed);
           if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 

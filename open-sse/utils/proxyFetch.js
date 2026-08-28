@@ -241,6 +241,34 @@ function shouldBypassMitmDns(url) {
   } catch {return false;}
 }
 
+/**
+ * Return whether a URL names the local machine. Loopback targets must never
+ * cross an outbound proxy or relay, where `localhost` names a different host.
+ * LAN and other private targets remain eligible for configured proxy routing.
+ */
+export function isLoopbackTarget(targetUrl) {
+  let hostname;
+  try {hostname = new URL(targetUrl).hostname.toLowerCase();} catch {return false;}
+
+  let host = hostname.startsWith("[") && hostname.endsWith("]") ?
+  hostname.slice(1, -1) :
+  hostname;
+  if (host.endsWith(".")) host = host.slice(0, -1);
+
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "::1" || host === "::" || host === "0.0.0.0") return true;
+
+  // WHATWG URL canonicalizes embedded IPv4 to `::ffff:7f00:1` or `::7f00:1`.
+  const embedded = /^(?:::ffff:|::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(host);
+  if (embedded) {
+    const high = parseInt(embedded[1], 16);
+    const low = parseInt(embedded[2], 16);
+    return high === 0 && low === 0 || (high >> 8 & 0xff) === 127;
+  }
+
+  return /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
 function shouldBypassByNoProxy(targetUrl, noProxyValue) {
   const noProxy = normalizeString(noProxyValue);
   if (!noProxy) return false;
@@ -260,6 +288,7 @@ function shouldBypassByNoProxy(targetUrl, noProxyValue) {
  * Get proxy URL from environment
  */
 function getEnvProxyUrl(targetUrl) {
+  if (isLoopbackTarget(targetUrl)) return null;
   const noProxy = process.env.NO_PROXY || process.env.no_proxy;
   if (shouldBypassByNoProxy(targetUrl, noProxy)) return null;
 
@@ -456,6 +485,7 @@ function getProxyUrl(targetUrl, proxyOptions) {
 }
 
 function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
+  if (isLoopbackTarget(targetUrl)) return null;
   const enabled = proxyOptions?.enabled === true || proxyOptions?.connectionProxyEnabled === true;
   if (!enabled) return null;
 
@@ -690,9 +720,11 @@ export async function serializeBypassRequestBody(body) {
 }
 
 /**
- * Route fetch through configured proxy transport. A DNS-guarded provider probe
- * is refused when proxy routing is selected because ProxyAgent replaces its
- * validating dispatcher and resolves the CONNECT target beyond that boundary.
+ * Route fetch through configured proxy transport. Automatic redirects fail
+ * closed across proxy boundaries, while manual redirects remain visible for
+ * caller-side hop validation. A DNS-guarded provider probe is refused when
+ * proxy routing is selected because ProxyAgent replaces its validating
+ * dispatcher and resolves the CONNECT target beyond that boundary.
  */
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // Native fetch can hide method-preserving 307/308 redirects inside one call,
@@ -700,14 +732,24 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   // ticket. Provider runtime endpoints are fixed configuration, so redirects
   // fail closed and must never be enabled by caller-controlled options.
   if (isQuotaBearingProviderRequest()) options = { ...options, redirect: "error" };
-  const targetUrl = isString(url) ? url : url.toString();
-
+  const targetUrl = isString(url) ? url : isString(url?.url) ? url.url : url.toString();
+  const loopbackTarget = isLoopbackTarget(targetUrl);
   const vercelRelayUrl = normalizeString(proxyOptions?.vercelRelayUrl);
-  const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
-  const envProxyUrl = connectionProxyUrl || proxyOptions?.disableEnvProxy === true ?
+  if (loopbackTarget && vercelRelayUrl) {
+    const parsedTarget = new URL(targetUrl);
+    throw new OutboundUrlGuardError("Loopback target cannot use an outbound relay", {
+      code: "OUTBOUND_URL_GUARD_BLOCKED",
+      url: parsedTarget.origin,
+      hostname: parsedTarget.hostname
+    });
+  }
+
+  const connectionProxyUrl = loopbackTarget ? null : resolveConnectionProxyUrl(targetUrl, proxyOptions);
+  const envProxyUrl = loopbackTarget || connectionProxyUrl || proxyOptions?.disableEnvProxy === true ?
   null :
   normalizeProxyUrl(getEnvProxyUrl(targetUrl));
   const proxyUrl = connectionProxyUrl || envProxyUrl;
+  if ((vercelRelayUrl || proxyUrl) && options.redirect !== "manual") options = { ...options, redirect: "error" };
 
   // ProxyAgent resolves the CONNECT target outside our connector, so replacing
   // a guarded probe dispatcher would silently remove DNS-address validation.

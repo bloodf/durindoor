@@ -79,9 +79,10 @@ describe("proxyAwareFetch CONNECT tunneling (connection proxy)", () => {
       connectCount += 1;
       sockets.add(clientSocket);
       clientSocket.on("close", () => sockets.delete(clientSocket));
-      const [host, portRaw] = req.url.split(":");
+      const [, portRaw] = req.url.split(":");
       const port = Number(portRaw) || 80;
-      const upstream = net.connect(port, host, () => {
+      // Synthetic public target resolves inside this fixture only; loopback targets must bypass proxies.
+      const upstream = net.connect(port, "127.0.0.1", () => {
         clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
         if (head && head.length) upstream.write(head);
         upstream.pipe(clientSocket);
@@ -94,7 +95,7 @@ describe("proxyAwareFetch CONNECT tunneling (connection proxy)", () => {
     });
     const proxyPort = await listen(proxy);
 
-    // Plain-HTTP origin: the proxy CONNECTs to 127.0.0.1:originPort.
+    // Plain-HTTP origin reached through the proxy's fixture-only hostname mapping.
     origin = http.createServer((req, res) => {
       originHits += 1;
       res.writeHead(200, { "Content-Type": "text/plain" });
@@ -132,7 +133,7 @@ describe("proxyAwareFetch CONNECT tunneling (connection proxy)", () => {
     const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js");
 
     const res = await proxyAwareFetch(
-      `http://127.0.0.1:${origin.__port}/hello`,
+      `http://origin.example.test:${origin.__port}/hello`,
       { method: "GET" },
       {
         enabled: true,

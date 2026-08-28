@@ -13,7 +13,7 @@ export default {
   category: "free",
   noAuth: true,
   autoComboNoAuth: true,
-  // One OpenAI-compatible gateway owns the effort enum for every model family.
+  // Gateway-wide effort enum; model-scoped capability metadata may narrow it.
   thinkingFormat: "opencode",
   transport: {
     baseUrl: "https://opencode.ai",
@@ -22,7 +22,9 @@ export default {
     },
     noAuth: true,
   },
-  models: [],
+  models: [
+    { id: "x-preview-f-free", name: "Ox Alpha Free", targetFormat: "openai", supportedFormats: ["openai"] },
+  ],
   modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" },
   passthroughModels: true,
   features: {

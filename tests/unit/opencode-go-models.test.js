@@ -15,6 +15,7 @@ const MODEL_WITHOUT_FORMATS = "glm-5.2";
 const CLAUDE_CAPABLE = ["minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"];
 const RESPONSES_CAPABLE = ["deepseek-v4-pro", "deepseek-v4-flash"];
 const VISION_CAPABLE = "deepseek-v4-flash-vision-exp";
+const OX_ALPHA = "ox-alpha-free";
 
 describe("OpenCode Go model catalog", () => {
   it("matches documented model IDs", () => {
@@ -27,6 +28,7 @@ describe("OpenCode Go model catalog", () => {
       VISION_CAPABLE,
       ...CHAT_ONLY.slice(3),
       ...CLAUDE_CAPABLE,
+      OX_ALPHA,
     ]);
   });
 });
@@ -47,6 +49,10 @@ describe("OpenCode Go per-model supportedFormats", () => {
   it("declares every OpenCode Go transport for DeepSeek V4 Flash Vision", () => {
     expect(getModelSupportedFormats("opencode-go", VISION_CAPABLE))
       .toEqual(["openai", "claude", "openai-responses"]);
+  });
+
+  it("declares Chat Completions only for Ox Alpha", () => {
+    expect(getModelSupportedFormats("opencode-go", OX_ALPHA)).toEqual(["openai"]);
   });
 
   it("uses default OpenAI transport for known models without endpoint metadata", () => {

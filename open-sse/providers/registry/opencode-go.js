@@ -50,6 +50,7 @@ export default {
     { id: "qwen3.7-max", name: "Qwen 3.7 Max", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
     { id: "qwen3.7-plus", name: "Qwen 3.7 Plus", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
     { id: "qwen3.6-plus", name: "Qwen 3.6 Plus", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
+    { id: "ox-alpha-free", name: "Ox Alpha Free", supportedFormats: ["openai"] },
   ],
   features: {
     usage: true,

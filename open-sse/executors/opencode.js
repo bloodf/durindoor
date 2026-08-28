@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const OPENCODE_UA = "opencode";
@@ -67,11 +68,15 @@ export class OpenCodeExecutor extends BaseExecutor {
       trustedSessionKey(credentials, requestContext, this._privateSessionKey)
     );
     delete body.client_metadata;
-    return injectReasoningContent({ provider: this.provider, model, body });
+    const transformed = injectReasoningContent({ provider: this.provider, model, body });
+    /** Muse Responses rejects every Chat and Responses token-cap spelling. */
+    return /muse/i.test(model) ? stripUnsupportedParams(this.provider, model, transformed) : transformed;
   }
 
+  /** OpenCode Muse rejects Chat Completions and is served only by Responses. */
   buildUrl(model) {
     const base = this.config.baseUrl;
+    if (/muse/i.test(model)) return `${base}/zen/v1/responses`;
     return MESSAGES_MODELS.has(model) ?
     `${base}/zen/v1/messages` :
     `${base}/zen/v1/chat/completions`;

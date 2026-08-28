@@ -46,6 +46,12 @@ Use cookie-backed providers for personal or experimental workflows unless your t
 
 A no-auth provider should only be used when the upstream is protected by the network boundary or runs locally. Do not expose a no-auth upstream to the public internet through DurinDoor without adding an outer access-control layer.
 
+## OpenCode Free
+
+OpenCode Free exposes Ox Alpha Free as `oc/x-preview-f-free`. It accepts image input and low/high/max reasoning effort over Chat Completions. Muse model IDs on this provider use the Responses endpoint and omit unsupported `max_tokens` fields automatically.
+
+OpenCode Go subscribers can use Ox Alpha Free as `ocg/ox-alpha-free` over Chat Completions.
+
 ## Xiaomi Token Plan
 
 The `xiaomi-tokenplan` provider uses the SenseNova Token Plan service. Its catalog is discovered at runtime, so use the dashboard or `GET /v1/models` instead of copying model IDs from documentation. Provider limits and available models can change upstream.

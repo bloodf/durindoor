@@ -18,6 +18,7 @@
 - Claude-format requests now normalize trailing assistant prefills into a continuation user turn (or matching error `tool_result`), unless `X-9Router-Assistant-Prefill: preserve` is set; falsy Claude `tools[].type` values now default to `custom`. Ports decolua/9router#3506 and #3484. Closes #580.
 
 - Qoder refreshes its fallback catalog with `lite`, Qwen3.8-Max, and GLM-5.3; opaque Qoder model IDs now expose correct reasoning, vision, context, and output capabilities, and vision models retain OpenAI URL/data-URI and Claude base64 image blocks in outgoing chat payloads. Ports decolua/9router#3555. Closes #583.
+- OpenCode Free Muse models use the Responses endpoint without unsupported token caps; Ox Alpha Free is available as `oc/x-preview-f-free` and `ocg/ox-alpha-free` with image input and low/high/max reasoning effort. Ports decolua/9router#3509, #3483, #3447, and #3451. Closes #584.
 - Groq replaces decommissioned seed model IDs with its current production catalog, discovers live models through the authenticated OpenAI-compatible `/models` endpoint, and accepts future model IDs via passthrough. Closes #582.
 - Responses API stream translation now preserves UTF-8 characters split across transport chunks, drains a final unterminated SSE event, carries reasoning-token details into `response.completed`, and omits `usage` when upstream sent none (ports decolua/9router#3547 and #3433). Closes #576.
 - port(upstream): #3549 - CommandCode error chunk opens with the assistant role.

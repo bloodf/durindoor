@@ -20,6 +20,7 @@ const L = {
 // thinkingFormat → valid selectable levels (source of truth for UI options).
 const FORMAT_LEVELS = {
   openai: L.openai,
+  "openai-low-high-max": ["low", "high", "max"],
   ollama: L.levelMax,
   commandcode: ["low", "medium", "high", "xhigh", "max"],
   "claude-adaptive": L.levelMax,
@@ -80,8 +81,8 @@ export function getThinkingLevelsFromCapabilities(caps, provider = null, model =
   const modelId = model || "";
   const hit = PATTERN_THINKING.find((p) =>
     (!p.provider || p.provider === provider) && matchPattern(p.pattern, modelId));
-  // Provider gateway formats override native family formats (Ollama/OpenCode).
-  const format = (provider ? PROVIDERS[provider]?.thinkingFormat : null) || caps.thinkingFormat;
+  const format = caps.thinkingFormat === "openai-low-high-max" ? caps.thinkingFormat :
+  (provider ? PROVIDERS[provider]?.thinkingFormat : null) || caps.thinkingFormat;
   let levels = hit?.levels || (format === "deepseek" && isNativeDeepSeekV4(provider, modelId)
     ? L.hiMax
     : FORMAT_LEVELS[format] || L.base);

@@ -23,6 +23,11 @@ resolveModelLimits(provider, model);
 | `pattern` | The first matching `PATTERN_CAPABILITIES` glob. |
 | `default` | Nothing matched; the values are the generic floor. |
 
+Qwen3.8 and Meta Muse use ordered static rules. `qwen3.8-2.4t-*` stays text-only
+at 262,144 tokens before the multimodal `qwen3.8-*` 1M rule; Muse Spark and
+Glimmer likewise resolve before the generic Muse fallback. Exact CommandCode
+Muse models keep their provider override, including `thinkingFormat: "commandcode"`.
+
 ### Why `known` exists
 
 `DEFAULT_CAPABILITIES` carries `contextWindow: 200000` / `maxOutput: 64000`.

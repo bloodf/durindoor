@@ -712,10 +712,13 @@ export const PATTERN_CAPABILITIES = [
 /** Cloudflare publishes 32,768 tokens for @cf/qwen/qwen2.5-coder-32b-instruct. */
 { pattern: "*@cf/qwen/qwen2.5-coder-32b-instruct", caps: { reasoning: false, thinkingFormat: null, contextWindow: 32768 } },
 
-// ── Qwen (3.5+ = native vision/video; coder & max = text-only; QwQ = thinking-only) ─
+// ── Qwen (3.5+ = native vision/video; coder = text-only; QwQ = thinking-only) ─
 { pattern: "*qwen*vl*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 { pattern: "*qwen*omni*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144, maxOutput: 65536 } },
 { pattern: "*qwen*coder*", caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 } },
+/** Qwen3.8 exceptions precede overlapping Max and family patterns; the 2.4T open model is text-only. */
+{ pattern: "*qwen3.8-2.4t*", caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
+{ pattern: "*qwen3.8*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
 { pattern: "*qwen*max*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
 { pattern: "*qwen3.5*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
 { pattern: "*qwen3.6*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
@@ -782,6 +785,11 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*sonar*", caps: { search: true, contextWindow: 128000 } },
 { pattern: "*pplx*", caps: { search: true, contextWindow: 128000 } },
 { pattern: "*perplexity*", caps: { search: true, contextWindow: 128000 } },
+
+/** Meta Muse patterns are ordered specific-first because capability resolution stops at the first match. */
+{ pattern: "*muse-spark*", caps: { vision: true, videoInput: true, audioInput: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1048576 } },
+{ pattern: "*muse-glimmer*", caps: { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 128000 } },
+{ pattern: "*muse*", caps: { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 128000 } },
 
 // ── Others ───────────────────────────────────────────────────────
 { pattern: "*hunyuan*", caps: { reasoning: true, thinkingFormat: "hunyuan", contextWindow: 262144, maxOutput: 262144 } },

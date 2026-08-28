@@ -22,8 +22,10 @@ describe("official OpenAI standard-tier pricing", () => {
     "gpt-5": price(1.25, 10.00, 0.125),
     "gpt-5-mini": price(0.25, 2.00, 0.025),
     "gpt-5-nano": price(0.05, 0.40, 0.005),
+    "gpt-5-pro": price(15.00, 120.00, 15.00),
     "gpt-5.1": price(1.25, 10.00, 0.125),
     "gpt-5.2": price(1.75, 14.00, 0.175),
+    "gpt-5.2-pro": price(21.00, 168.00, 21.00),
     "gpt-5.4": price(2.50, 15.00, 0.25),
     "gpt-5.4-mini": price(0.75, 4.50, 0.075),
     "gpt-5.4-nano": price(0.20, 1.25, 0.02),
@@ -31,6 +33,7 @@ describe("official OpenAI standard-tier pricing", () => {
     "gpt-5.5": price(5.00, 30.00, 0.50),
     "gpt-5.5-pro": price(30.00, 180.00, 30.00),
     "o1": price(15.00, 60.00, 7.50),
+    "o1-pro": price(150.00, 600.00, 150.00),
     "o3": price(2.00, 8.00, 0.50),
     "o3-mini": price(1.10, 4.40, 0.55),
     "o3-pro": price(20.00, 80.00, 20.00),
@@ -40,16 +43,26 @@ describe("official OpenAI standard-tier pricing", () => {
   it.each([
     "gpt-3.5-turbo",
     "gpt-4o-2024-05-13",
-    "gpt-5-pro",
-    "gpt-5.2-pro",
     "gpt-5.6-cyber",
-    "o1-pro",
-  ])("does not add unreachable registry model %s", (model) => {
+  ])("does not add fork-excluded or dated registry model %s", (model) => {
     expect(Object.hasOwn(MODEL_PRICING, model)).toBe(false);
   });
 
   it.each(Object.entries(official))("resolves %s", (model, expected) => {
     expect(getPricingForModel("openai", model)).toEqual(expected);
+  });
+
+  it.each(["gpt-5-pro", "gpt-5.2-pro", "o1-pro"])("registers official pro row %s exactly", (model) => {
+    expect(Object.hasOwn(MODEL_PRICING, model)).toBe(true);
+  });
+
+  it("resolves pro rows before cheaper family fallbacks", () => {
+    const row = (pattern) => PATTERN_PRICING.find((entry) => entry.pattern === pattern)?.pricing;
+
+    expect(getPricingForModel("openai", "gpt-5-pro").output).toBe(120.00);
+    expect(getPricingForModel("openai", "gpt-5.2-pro").output).toBe(168.00);
+    expect(getPricingForModel("openai", "o1-pro").input).toBe(150.00);
+    expect(getPricingForModel("openai", "o1-pro")).not.toEqual(row("o1-*"));
   });
 
   it("refreshes only GPT/o-series fallback rows", () => {
@@ -66,6 +79,13 @@ describe("official OpenAI standard-tier pricing", () => {
   });
 
   it("preserves fork GPT-5.6 tier prices and Kiro suffix resolution", () => {
+    expect(MODEL_PRICING["gpt-5.6-sol"]).toEqual({
+      input: 5.00,
+      output: 6.25,
+      cached: 0.50,
+      reasoning: 6.25,
+      cache_creation: 5.00,
+    });
     expect(getPricingForModel("kiro", "gpt-5-6-luna-thinking")).toEqual(price(1.00, 1.25, 0.10));
     expect(getPricingForModel("kr", "gpt-5.6-terra-agentic")).toEqual(price(2.50, 3.125, 0.25));
     expect(getPricingForModel("kiro", "gpt-5.6-sol-thinking-agentic")).toEqual(price(5.00, 6.25, 0.50));

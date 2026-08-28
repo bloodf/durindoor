@@ -12,6 +12,12 @@ Model:    MODEL_ID_OR_COMBO
 
 Use HTTPS and a reachable host for remote deployments.
 
+Dashboard setup for GitHub Copilot writes VS Code's
+`chatLanguageModels.json`. DurinDoor creates an absent file, but refuses to
+overwrite an existing file that is unreadable, malformed JSON, or not a
+provider array. Fix or restore the named file and retry; other providers remain
+untouched.
+
 ## Python OpenAI SDK
 
 ```python

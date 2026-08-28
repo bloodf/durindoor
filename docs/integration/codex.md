@@ -53,6 +53,13 @@ curl http://localhost:20128/v1/models \
 
 If your Codex client supports a config file, set the base URL to `http://localhost:20128/v1`, set the API key to a DurinDoor key, and set the model to a DurinDoor model ID, alias, or combo.
 
+When the dashboard applies Codex settings, it first reads and parses both
+`~/.codex/config.toml` and `~/.codex/auth.json`, then merges DurinDoor fields.
+It creates either file when absent, but refuses the whole update before any
+write when an existing file cannot be read or parsed. Fix or restore that file
+before applying settings again; existing providers, MCP servers, policies, and
+ChatGPT OAuth tokens remain untouched.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -60,5 +67,6 @@ If your Codex client supports a config file, set the base URL to `http://localho
 | Invalid API key | Use a DurinDoor API key, not an upstream provider key. |
 | Model not found | Confirm the model is visible in `/v1/models` or create a combo. |
 | Responses API error | Verify the client is using `/v1/responses` or the expected compatibility route. |
+| Applying dashboard settings fails with “refusing to overwrite it” | Fix or restore the named `~/.codex/config.toml` or `~/.codex/auth.json`; DurinDoor leaves malformed existing files unchanged. |
 | Compact request uses the normal endpoint | Confirm the client calls `/v1/responses/compact`; internal body markers are not required. |
 | Provider-specific failure | Check Usage or Request Details in the dashboard. |

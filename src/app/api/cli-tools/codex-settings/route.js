@@ -8,6 +8,7 @@ import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
 import { isObject } from "../../../../shared/utils/typeChecks.js";
+import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
 
 const execAsync = promisify(exec);
 
@@ -17,6 +18,18 @@ const getCodexAuthPath = () => path.join(getCodexDir(), "auth.json");
 
 // Flatten confbox-parsed TOML into a writable object, preserving nested tables
 const parsedToWritable = (obj) => obj ?? {};
+
+/**
+ * Parse a config that must remain a keyed object when merged and serialized.
+ * Arrays, primitives, and null are valid JSON values but invalid Codex auth/config shapes.
+ */
+const parseConfigObject = (raw, parse) => {
+  const parsed = parse(raw);
+  if (parsed === null || parsed === undefined || !isObject(parsed) || Array.isArray(parsed)) {
+    throw new Error("expected an object");
+  }
+  return parsed;
+};
 
 // Set a nested key from a flat dotted path, creating intermediate objects as needed
 const setNestedSection = (obj, dottedKey, value) => {
@@ -118,16 +131,22 @@ export async function POST(request) {
 
     const codexDir = getCodexDir();
     const configPath = getCodexConfigPath();
+    const authPath = getCodexAuthPath();
 
     // Ensure directory exists
     await fs.mkdir(codexDir, { recursive: true });
 
-    // Read and parse existing config
-    let parsed = {};
-    try {
-      const existingConfig = await fs.readFile(configPath, "utf-8");
-      parsed = parsedToWritable(parseTOML(existingConfig));
-    } catch {/* No existing config */}
+    // Parse both existing files before either write. Otherwise a bad auth.json
+    // could reject the request only after config.toml had already been replaced.
+    const [existingConfig, existingAuth] = await Promise.all([
+      readExistingConfig(
+        configPath,
+        (raw) => parseConfigObject(raw, (value) => parsedToWritable(parseTOML(value))),
+      ),
+      readExistingConfig(authPath, (raw) => parseConfigObject(raw, JSON.parse)),
+    ]);
+    const parsed = existingConfig ?? {};
+    const authData = existingAuth ?? {};
 
     // Update only DurinDoor related fields (api_key goes to auth.json, not config.toml)
     parsed.model = model;
@@ -148,17 +167,9 @@ export async function POST(request) {
       model: effectiveSubagentModel
     });
 
-    // Write merged config
+    // Both destinations passed preflight above; now write their merged values.
     const configContent = stringifyTOML(parsed);
     await fs.writeFile(configPath, configContent);
-
-    // Update auth.json with OPENAI_API_KEY (Codex reads this first)
-    const authPath = getCodexAuthPath();
-    let authData = {};
-    try {
-      const existingAuth = await fs.readFile(authPath, "utf-8");
-      authData = JSON.parse(existingAuth);
-    } catch {/* No existing auth */}
 
     // Force apikey mode (keep existing tokens untouched for ChatGPT login reuse)
     authData.OPENAI_API_KEY = apiKey;
@@ -172,7 +183,11 @@ export async function POST(request) {
     });
   } catch (error) {
     console.log("Error updating codex settings:", error);
-    return NextResponse.json({ error: "Failed to update codex settings" }, { status: 500 });
+    const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
+    return NextResponse.json(
+      { error: refusedToClobber ? error.message : "Failed to update codex settings" },
+      { status: 500 },
+    );
   }
 }
 

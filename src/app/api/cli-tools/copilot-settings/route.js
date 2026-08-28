@@ -5,6 +5,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
+import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
 
 // Resolve chatLanguageModels.json path per OS
 const getConfigPath = () => {
@@ -73,13 +74,13 @@ export async function POST(request) {
     const configPath = getConfigPath();
     await fs.mkdir(path.dirname(configPath), { recursive: true });
 
-    // Read existing config array
-    let config = [];
-    try {
-      const existing = await fs.readFile(configPath, "utf-8");
-      const parsed = JSON.parse(existing);
-      config = Array.isArray(parsed) ? parsed : [];
-    } catch { /* No existing config */ }
+    // Existing bytes must be readable and structurally valid before this route
+    // replaces its DurinDoor entry and writes the complete provider array back.
+    const existingConfig = await readExistingConfig(configPath, JSON.parse);
+    if (existingConfig !== null && !Array.isArray(existingConfig)) {
+      throw new Error(`${configPath} is not a provider array; refusing to overwrite it`);
+    }
+    const config = existingConfig ?? [];
 
     const endpointUrl = `${baseUrl}/chat/completions#models.ai.azure.com`;
     const idx = config.findIndex((entry) => entry.name === "DurinDoor");
@@ -116,7 +117,11 @@ export async function POST(request) {
     });
   } catch (error) {
     console.log("Error updating copilot settings:", error);
-    return NextResponse.json({ error: "Failed to update copilot settings" }, { status: 500 });
+    const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
+    return NextResponse.json(
+      { error: refusedToClobber ? error.message : "Failed to update copilot settings" },
+      { status: 500 },
+    );
   }
 }
 

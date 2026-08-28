@@ -58,8 +58,13 @@ export function injectSystemPrompt(body, format, prompt) {
     } else if (Array.isArray(body.input)) {
       injectOpenAIArray(body.input, prompt, true);
     } else if (isString(body.input)) {
-      // String input stays untouched.
-      return;
+      /** Bare Responses input strings stay intact; prompts belong in top-level instructions. */
+      switch (format) {
+        case FORMATS.OPENAI_RESPONSES:
+        case FORMATS.OPENAI_RESPONSE:
+        case FORMATS.CODEX:
+          injectInstructionsSystem(body, prompt);
+      }
     } else {
       switch (format) {
         case FORMATS.GEMINI:

@@ -7,6 +7,7 @@
 // chat-shaped text parts.
 import { describe, expect, it } from "vitest";
 import { injectSystemPrompt } from "../../open-sse/rtk/systemInject.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const PROMPT = "BE TERSE";
 
@@ -30,12 +31,31 @@ describe("system inject: Cursor-CLI input[] body labelled FORMATS.OPENAI", () =>
     expect(body.input[0].content.some((p) => p.type === "text")).toBe(false);
   });
 
-  it("leaves bare string input untouched because it has no injectable wire block", () => {
-    const body = { model: "gpt-4o-mini", input: "hello", stream: false };
+  it.each([
+    FORMATS.OPENAI_RESPONSES,
+    FORMATS.OPENAI_RESPONSE,
+    FORMATS.CODEX,
+  ])("injects bare string input through %s instructions exactly once", (format) => {
+    const body = { model: "gpt-4o-mini", input: "hello" };
 
-    injectSystemPrompt(body, "openai", PROMPT);
+    injectSystemPrompt(body, format, PROMPT);
+    const afterFirst = structuredClone(body);
+    injectSystemPrompt(body, format, PROMPT);
 
-    expect(body.instructions).toBeUndefined();
+    expect(body.instructions).toBe(PROMPT);
     expect(body.input).toBe("hello");
+    expect(body).toEqual(afterFirst);
+  });
+
+  it.each([
+    FORMATS.OPENAI,
+    FORMATS.CURSOR,
+    FORMATS.OLLAMA,
+  ])("leaves bare string input unchanged for non-Responses format %s", (format) => {
+    const body = { model: "gpt-4o-mini", input: "hello" };
+
+    injectSystemPrompt(body, format, PROMPT);
+
+    expect(body).toEqual({ model: "gpt-4o-mini", input: "hello" });
   });
 });

@@ -53,7 +53,6 @@ const SHIPPED_TRANSLATIONS = {
   "No active proxy pools available. Create one in Proxy Pools page first.": "Nenhum pool de proxy ativo disponível. Crie um na página Pools de Proxy primeiro.",
   "No endpoint usage recorded yet.": "Nenhum uso de endpoint registrado ainda.",
   "No providers support": "Nenhum provedor suporta",
-  "No usage recorded yet": "Nenhum uso registrado ainda",
   "No usage recorded yet.": "Nenhum uso registrado ainda.",
   "OIDC login is currently active. Password login is disabled until you switch back.": "O login OIDC está ativo no momento. O login por senha está desabilitado até você voltar.",
   "Only letters, numbers, -, _ and . allowed": "Apenas letras, números, -, _ e . permitidos",

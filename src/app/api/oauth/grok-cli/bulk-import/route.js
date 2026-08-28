@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection, getProviderConnections } from "@/models";
 import { decodeXaiIdTokenEmail, extractEmailFromAccessToken } from "@/lib/oauth/providerHelpers";
 import { isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 
@@ -23,6 +23,15 @@ function safeError(error, tokens) {
 }
 
 /**
+ * Canonical provider/email key used to detect the bare-email upsert identity.
+ * @returns {string|null} Normalized identity, or null when email is unavailable.
+ */
+function providerEmailIdentity(provider, email) {
+  if (!isString(email) || !email.trim()) return null;
+  return `${provider}:${email.trim().toLowerCase()}`;
+}
+
+/**
  * Bulk-import Grok CLI device-code credentials without changing Grok's OAuth flow.
  * Items run serially because connection priority assignment reads the current maximum.
  * Tokens are accepted as snake_case or camelCase and never echoed in results.
@@ -43,6 +52,11 @@ export async function POST(request) {
   const results = [];
   let success = 0;
   let failed = 0;
+  const existingConnections = await getProviderConnections({ provider: "grok-cli" });
+  const knownIdentities = new Set(existingConnections
+    .filter((connection) => connection.authType === "oauth")
+    .map((connection) => providerEmailIdentity(connection.provider, connection.email))
+    .filter(Boolean));
 
   for (let index = 0; index < accounts.length; index += 1) {
     const raw = accounts[index];
@@ -75,6 +89,10 @@ export async function POST(request) {
         decodeXaiIdTokenEmail(idToken) ||
         extractEmailFromAccessToken(accessToken) ||
         null;
+      const identity = providerEmailIdentity("grok-cli", email);
+      if (identity && knownIdentities.has(identity)) {
+        throw new Error("Duplicate Grok CLI account");
+      }
       const providerSpecificData = {
         authMethod: "device_code",
         ...(raw.providerSpecificData?.userId ? { userId: raw.providerSpecificData.userId } : null),
@@ -98,6 +116,7 @@ export async function POST(request) {
 
       results.push({ index, ok: true, id: created.id });
       success += 1;
+      if (identity) knownIdentities.add(identity);
     } catch (error) {
       results.push({ index, ok: false, error: safeError(error, tokens) });
       failed += 1;

@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(process.cwd(), "..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 

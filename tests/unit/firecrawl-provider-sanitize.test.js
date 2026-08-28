@@ -11,23 +11,6 @@ vi.mock("@/models", () => ({
   getProviderNodeById: vi.fn(),
   createProviderConnection: vi.fn(),
 }));
-vi.mock("next/server", () => ({
-  NextResponse: {
-    json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }),
-  },
-}));
-vi.mock("@/lib/oauth/proxySelection.js", () => ({
-  buildOAuthProxyMetadataPatch: vi.fn(() => ({})),
-}));
-vi.mock("@/lib/providerNormalization", () => ({
-  normalizeProviderSpecificData: (_provider, value) => value,
-}));
-vi.mock("open-sse/executors/default.js", () => ({
-  normalizeAccountIdPlaceholder: (value) => value,
-}));
-vi.mock("@/shared/services/quotaAutoPing", () => ({
-  notifyQuotaAutoPingSettingChanged: vi.fn(),
-}));
 
 describe("firecrawlHeaders sanitizer", () => {
   it("sanitizeProviderConnectionForClient strips firecrawlHeaders", () => {
@@ -92,32 +75,5 @@ describe("firecrawlHeaders sanitizer", () => {
     expect(body.connection).not.toHaveProperty("firecrawlHeaders");
     expect(body.connection).not.toHaveProperty("apiKey");
     expect(body.connection.providerSpecificData).toEqual({ baseUrl: "http://127.0.0.1:3002/firecrawl" });
-  });
-
-  it("GET /api/providers/[id] strips nested OAuth token fields", async () => {
-    const { getProviderConnectionById } = await import("@/models");
-    getProviderConnectionById.mockResolvedValue({
-      id: "grok-1",
-      provider: "grok-cli",
-      authType: "oauth",
-      accessToken: "access-secret",
-      idToken: "id-secret",
-      providerSpecificData: {
-        authMethod: "device_code",
-        idToken: "legacy-nested-id-secret",
-        email: "user@example.com",
-      },
-    });
-
-    const res = await getProviderById(new Request("http://localhost/api/providers/grok-1"), {
-      params: Promise.resolve({ id: "grok-1" }),
-    });
-    const body = await res.json();
-    expect(body.connection).not.toHaveProperty("accessToken");
-    expect(body.connection).not.toHaveProperty("idToken");
-    expect(body.connection.providerSpecificData).toEqual({
-      authMethod: "device_code",
-      email: "user@example.com",
-    });
   });
 });

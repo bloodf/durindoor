@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createProviderConnection = vi.hoisted(() => vi.fn());
+const getProviderConnections = vi.hoisted(() => vi.fn());
 
-vi.mock("@/models", () => ({ createProviderConnection }));
+vi.mock("@/models", () => ({ createProviderConnection, getProviderConnections }));
 vi.mock("next/server", () => ({
   NextResponse: {
     json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }),
@@ -28,6 +29,7 @@ describe("Grok CLI bulk import", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-27T18:00:00.000Z"));
+    getProviderConnections.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -108,6 +110,61 @@ describe("Grok CLI bulk import", () => {
         email: "access-token@example.com",
       },
     }));
+  });
+
+  it("reports JWT-derived same-email items as one success and one duplicate failure", async () => {
+    const stored = new Map();
+    createProviderConnection.mockImplementation(async (connection) => {
+      const identity = `${connection.provider}:${connection.email.trim().toLowerCase()}`;
+      stored.set(identity, connection);
+      return { id: `grok-${stored.size}` };
+    });
+
+    const response = await POST(request({ accounts: [
+      {
+        accessToken: "first-secret",
+        idToken: jwt({ email: " User@Example.com " }),
+      },
+      {
+        accessToken: "second-secret",
+        idToken: jwt({ email: "user@example.com" }),
+      },
+    ] }));
+    const body = await response.json();
+
+    expect(body).toEqual({
+      success: 1,
+      failed: 1,
+      results: [
+        { index: 0, ok: true, id: "grok-1" },
+        { index: 1, ok: false, error: "Duplicate Grok CLI account" },
+      ],
+    });
+    expect(createProviderConnection).toHaveBeenCalledTimes(1);
+    expect(stored.size).toBe(1);
+    expect(JSON.stringify(body)).not.toMatch(/first-secret|second-secret|header\./);
+  });
+
+  it("rejects a normalized match against an existing bare-email connection", async () => {
+    getProviderConnections.mockResolvedValue([{
+      provider: "grok-cli",
+      authType: "oauth",
+      email: " Existing@Example.com ",
+    }]);
+
+    const response = await POST(request({
+      email: "existing@example.com",
+      accessToken: "replacement-secret",
+    }));
+    const body = await response.json();
+
+    expect(body).toEqual({
+      success: 0,
+      failed: 1,
+      results: [{ index: 0, ok: false, error: "Duplicate Grok CLI account" }],
+    });
+    expect(createProviderConnection).not.toHaveBeenCalled();
+    expect(JSON.stringify(body)).not.toContain("replacement-secret");
   });
 
   it.each([

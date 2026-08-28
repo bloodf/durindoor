@@ -107,6 +107,33 @@ function selected(id, provider = "codex") {
   };
 }
 
+function exhaustedQuotaSnapshot(connectionId, provider, model, resetAt) {
+  const now = Date.now();
+  return {
+    identity: {
+      connectionId,
+      provider,
+      accountKey: "scope:connection",
+      resourceKey: `model:${model}`,
+      dimensionKey: "requests:quota",
+    },
+    state: "exhausted",
+    amounts: { limitKind: "unknown", limit: null, used: null, remaining: 0, remainingRatio: 0, unit: "requests" },
+    timing: {
+      observedAt: new Date(now - 1_000).toISOString(),
+      staleAt: new Date(now + 60_000).toISOString(),
+      resetAt,
+      cooldownUntil: null,
+    },
+    provenance: {
+      sourceType: "provider_api",
+      sourceId: `${provider}:retrieve-user-quota:v1`,
+      reasonCode: "quota_exhausted",
+      metadata: {},
+    },
+  };
+}
+
 function comboProfile(provider, connectionId, model, ratio, {
   reason = "available",
   dimensionKey = "requests:session",
@@ -445,6 +472,124 @@ describe("chat quota fallback orchestration", () => {
       expect.objectContaining({ connectionId: "conn-two" }),
       "gpt-5.4",
       expect.objectContaining({ provider: "codex", attemptStartedAt: expect.any(Number) }),
+    );
+  });
+
+  it("refreshes Antigravity quota once and reselects another account without a legacy lock", async () => {
+    const model = "claude-opus-4-6-thinking";
+    const first = selected("agy-one", "agy");
+    const second = selected("agy-two", "agy");
+    const resetAt = new Date(Date.now() + 60_000).toISOString();
+    const selectionExcludes = [];
+    mocks.getModelInfo.mockResolvedValue({ provider: "agy", model });
+    mocks.getProviderCredentials.mockImplementation(async (_provider, excluded) => {
+      selectionExcludes.push([...(excluded || [])]);
+      return selectionExcludes.length === 1 ? first : second;
+    });
+    mocks.refreshProviderQuota.mockResolvedValue({
+      outcome: "success",
+      snapshots: [exhaustedQuotaSnapshot(first.connectionId, "agy", model, resetAt)],
+    });
+    mocks.handleChatCore
+      .mockImplementationOnce(async (options) => ({
+        success: false,
+        status: 409,
+        error: "Quota exhausted",
+        response: new Response("quota exhausted", { status: 409 }),
+        attemptStartedAt: options.onProviderAttempt(),
+      }))
+      .mockImplementationOnce(async (options) => {
+        const attemptStartedAt = options.onProviderAttempt();
+        await options.onRequestSuccess();
+        return {
+          success: true,
+          attemptStartedAt,
+          response: new Response("data: [DONE]\n\n", {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+        };
+      });
+
+    const response = await handleChat(request(`agy/${model}`));
+
+    expect(response.status).toBe(200);
+    expect(mocks.refreshProviderQuota).toHaveBeenCalledOnce();
+    expect(mocks.refreshProviderQuota).toHaveBeenCalledWith(
+      first._connection,
+      expect.objectContaining({ force: true, signal: expect.any(AbortSignal) }),
+    );
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+    expect(selectionExcludes).toEqual([[], []]);
+    expect(mocks.handleChatCore.mock.calls.map(([options]) => options.connectionId))
+      .toEqual(["agy-one", "agy-two"]);
+  });
+
+  it("returns the repository's earliest reset when refreshed Antigravity quota leaves every account exhausted", async () => {
+    const model = "claude-opus-4-6-thinking";
+    const first = selected("ag-one", "antigravity");
+    const firstReset = new Date(Date.now() + 60_000).toISOString();
+    const earliestReset = new Date(Date.now() + 30_000).toISOString();
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce({
+        allRateLimited: true,
+        retryAfter: earliestReset,
+        retryAfterHuman: "reset after 30s",
+        lastError: "Rate limited",
+        lastErrorCode: 429,
+      });
+    mocks.refreshProviderQuota.mockResolvedValue({
+      outcome: "success",
+      snapshots: [exhaustedQuotaSnapshot(first.connectionId, "antigravity", model, firstReset)],
+    });
+    mocks.handleChatCore.mockImplementationOnce(async (options) => ({
+      success: false,
+      status: 429,
+      error: "Rate limit exceeded",
+      response: new Response("rate limited", { status: 429 }),
+      attemptStartedAt: options.onProviderAttempt(),
+    }));
+
+    const response = await handleChat(request(`antigravity/${model}`));
+    const payload = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(payload.error.retry_after).toBe(earliestReset);
+    expect(mocks.refreshProviderQuota).toHaveBeenCalledOnce();
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+    expect(mocks.getProviderCredentials.mock.calls.map(([, excluded]) => [...(excluded || [])]))
+      .toEqual([[], []]);
+  });
+
+  it("keeps executor-provided Antigravity reset metadata on the existing fallback path", async () => {
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-one", "antigravity");
+    const resetAtMs = Date.now() + 60_000;
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+    mocks.handleChatCore.mockImplementationOnce(async (options) => ({
+      success: false,
+      status: 429,
+      error: "Rate limit exceeded",
+      resetsAtMs: resetAtMs,
+      response: new Response("rate limited", { status: 429 }),
+      attemptStartedAt: options.onProviderAttempt(),
+    }));
+
+    await handleChat(request(`antigravity/${model}`));
+
+    expect(mocks.refreshProviderQuota).not.toHaveBeenCalled();
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
+      account.connectionId,
+      429,
+      "Rate limit exceeded",
+      "antigravity",
+      model,
+      resetAtMs,
+      expect.objectContaining({ attemptStartedAt: expect.any(Number) }),
     );
   });
 

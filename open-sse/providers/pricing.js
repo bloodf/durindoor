@@ -202,7 +202,8 @@ export const MODEL_PRICING = {
   "gpt-5.4-pro": { input: 30.00, output: 180.00, cached: 30.00, reasoning: 180.00, cache_creation: 30.00 },
   "gpt-5.5": { input: 5.00, output: 30.00, cached: 0.50, reasoning: 30.00, cache_creation: 5.00 },
   "gpt-5.5-pro": { input: 30.00, output: 180.00, cached: 30.00, reasoning: 180.00, cache_creation: 30.00 },
-  // DurinDoor synthetic tiers intentionally retain fork subscription prices.
+  // Fork-specific exact GPT-5.6 and synthetic tiers retain subscription prices.
+  "gpt-5.6": { input: 2.50, output: 15.00, cached: 0.25, reasoning: 15.00, cache_creation: 2.50 },
   "gpt-5.6-luna": { input: 1.00, output: 1.25, cached: 0.10, reasoning: 1.25, cache_creation: 1.00 },
   "gpt-5.6-terra": { input: 2.50, output: 3.125, cached: 0.25, reasoning: 3.125, cache_creation: 2.50 },
   "gpt-5.6-sol": { input: 5.00, output: 6.25, cached: 0.50, reasoning: 6.25, cache_creation: 5.00 },
@@ -369,7 +370,7 @@ export const PATTERN_PRICING = [
 { pattern: "gemini-*", pricing: { input: 0.50, output: 3.00, cached: 0.03, reasoning: 4.50, cache_creation: 0.50 } },
 
 // --- GPT (specific first, generic last) ---
-{ pattern: "gpt-5.6-*", pricing: { input: 2.00, output: 12.00, cached: 0.20, reasoning: 12.00, cache_creation: 2.50 } },
+{ pattern: "gpt-5.6-*", pricing: { input: 2.50, output: 15.00, cached: 0.25, reasoning: 15.00, cache_creation: 2.50 } },
 { pattern: "gpt-5.4-*", pricing: { input: 2.50, output: 15.00, cached: 0.25, reasoning: 15.00, cache_creation: 2.50 } },
 { pattern: "gpt-5.3-*", pricing: { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 } },
 { pattern: "gpt-5.2-*", pricing: { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 } },

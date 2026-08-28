@@ -27,6 +27,7 @@ describe("toResponsesUsage", () => {
       input_tokens: 12,
       output_tokens: 7,
       total_tokens: 19,
+      cached_tokens: 4,
       input_tokens_details: { cached_tokens: 4 },
     });
   });

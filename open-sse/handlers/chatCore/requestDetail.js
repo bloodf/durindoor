@@ -26,30 +26,9 @@ export function extractRequestConfig(body, stream) {
 export function extractUsageFromResponse(responseBody) {
   if (!responseBody || !isObject(responseBody)) return null;
 
-  // Claude format
-  if (responseBody.usage?.input_tokens !== undefined) {
-    return {
-      prompt_tokens: responseBody.usage.input_tokens || 0,
-      completion_tokens: responseBody.usage.output_tokens || 0,
-      cache_read_input_tokens: responseBody.usage.cache_read_input_tokens,
-      cache_creation_input_tokens: responseBody.usage.cache_creation_input_tokens,
-      cost_usd: responseBody.usage.cost_usd,
-      cost_in_usd: responseBody.usage.cost_in_usd,
-      cost_in_usd_ticks: responseBody.usage.cost_in_usd_ticks
-    };
-  }
-
-  // OpenAI format
-  if (responseBody.usage?.prompt_tokens !== undefined) {
-    return {
-      prompt_tokens: responseBody.usage.prompt_tokens || 0,
-      completion_tokens: responseBody.usage.completion_tokens || 0,
-      cached_tokens: responseBody.usage.prompt_tokens_details?.cached_tokens,
-      reasoning_tokens: responseBody.usage.completion_tokens_details?.reasoning_tokens,
-      cost_usd: responseBody.usage.cost_usd,
-      cost_in_usd: responseBody.usage.cost_in_usd,
-      cost_in_usd_ticks: responseBody.usage.cost_in_usd_ticks
-    };
+  const responseUsage = responseBody.usage;
+  if (responseUsage?.input_tokens !== undefined || responseUsage?.prompt_tokens !== undefined) {
+    return canonicalizeUsage(responseUsage);
   }
 
   // Gemini / Antigravity format. Antigravity wraps the native Gemini response

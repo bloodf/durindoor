@@ -90,6 +90,29 @@ describe("9router#41606a37 — cached tokens fold into client-format usage", () 
     });
   });
 
+  it("does not add inclusive Responses cache fields to prompt_tokens again", () => {
+    const completion = responsesApiToOpenAICompletion({
+      id: "resp_inclusive",
+      status: "completed",
+      output: [],
+      usage: {
+        input_tokens: 5_844,
+        output_tokens: 50,
+        total_tokens: 5_894,
+        cached_tokens: 5_332,
+        cache_creation_input_tokens: 500,
+        input_tokens_details: { cached_tokens: 5_332, cache_creation_tokens: 500 },
+      },
+    }, "claude-sonnet-4.6");
+
+    expect(completion.usage).toEqual({
+      prompt_tokens: 5_844,
+      prompt_tokens_details: { cached_tokens: 5_332, cache_creation_tokens: 500 },
+      completion_tokens: 50,
+      total_tokens: 5_894,
+    });
+  });
+
   it("omits prompt_tokens_details when there is no cache activity", () => {
     const jsonResponse = {
       id: "resp_3",
@@ -132,9 +155,11 @@ describe("9router#41606a37 — saveRequestDetail records cache-inclusive prompt_
       },
     ],
     usage: {
-      input_tokens: 12,
+      input_tokens: 5344,
       output_tokens: 7,
-      cache_read_input_tokens: 5332,
+      total_tokens: 5351,
+      cached_tokens: 5332,
+      input_tokens_details: { cached_tokens: 5332 },
     },
   };
 

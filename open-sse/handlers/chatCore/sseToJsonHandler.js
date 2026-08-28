@@ -213,11 +213,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
         if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
-        // Cache-inclusive prompt total for the recorded detail — same logic the
-        // client-facing response uses below, so the DB and the client can't disagree.
-        const inTokensForLog = (usage.input_tokens || 0) + (
-        usage.cache_read_input_tokens || usage.cached_tokens || 0) + (
-        usage.cache_creation_input_tokens || 0);
+        // Responses usage is already cache-inclusive after stream conversion.
+        const inTokensForLog = usage.input_tokens || 0;
 
         // When the client asked for the Responses API format, return the converted JSON directly.
         // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.

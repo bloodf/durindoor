@@ -25,6 +25,13 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
       );
     });
 
+    it("gpt-5.6 keeps its exact fork rate instead of the generic GPT-5 fallback", () => {
+      expect(getPricingForModel(null, "gpt-5.6")).toBe(MODEL_PRICING["gpt-5.6"]);
+      expect(getPricingForModel(null, "gpt-5.6")).toEqual(
+        claude(2.50, 15.00, 0.25, 15.00, 2.50),
+      );
+    });
+
 
     it("gpt-5.6-luna", () => {
       expect(getPricingForModel(null, "gpt-5.6-luna")).toEqual(
@@ -65,9 +72,11 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
   });
 
   describe("pattern fallback rates", () => {
-    it("gpt-5.6-* pattern matches new family variants", () => {
-      expect(getPricingForModel(null, "gpt-5.6-unknown")).toEqual(
-        claude(2.00, 12.00, 0.20, 12.00, 2.50),
+    it("gpt-5.6-* pattern retains the historical fork rate", () => {
+      const pattern = PATTERN_PRICING.find((entry) => entry.pattern === "gpt-5.6-*");
+      expect(getPricingForModel(null, "gpt-5.6-unknown")).toBe(pattern.pricing);
+      expect(pattern.pricing).toEqual(
+        claude(2.50, 15.00, 0.25, 15.00, 2.50),
       );
     });
 

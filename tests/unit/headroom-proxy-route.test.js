@@ -47,6 +47,22 @@ describe("Headroom proxy route", () => {
     expect(response.headers.get("location")).toBe(`${DASHBOARD_PREFIX}/dashboard`);
   });
 
+  it("resolves relative redirects from the requested upstream URL", async () => {
+    global.fetch = vi.fn(async () =>
+      new Response(null, { status: 302, headers: { location: "child" } }),
+    );
+
+    const response = await GET(
+      new Request("https://dashboard.example/api/headroom/proxy/dashboard/sub", { method: "GET" }),
+      { params: Promise.resolve({ path: ["dashboard", "sub"] }) },
+    );
+
+    expect(global.fetch.mock.calls[0][0].toString()).toBe(
+      "http://127.0.0.1:8099/base/dashboard/sub",
+    );
+    expect(response.headers.get("location")).toBe(`${DASHBOARD_PREFIX}/dashboard/child`);
+  });
+
   it("describes decoded rewritten gzip HTML", async () => {
     const body = '<a href="/dashboard">é</a>';
     global.fetch = vi.fn(async () =>

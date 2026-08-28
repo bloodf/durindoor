@@ -64,15 +64,16 @@ export function rewriteHeadroomHtml(html, prefix = DASHBOARD_PREFIX) {
     });
 }
 
-/** Strip the configured upstream base once before exposing a same-origin redirect through the proxy. */
-export function rewriteLocation(value, upstreamBase) {
+/** Resolve redirects from the fetched URL, then strip the configured upstream base once. */
+export function rewriteLocation(value, requestedTarget, upstreamBase) {
   if (!isString(value) || !value) return value;
   if (value === DASHBOARD_PREFIX || value.startsWith(DASHBOARD_PREFIX + "/")) return value;
   if (value.startsWith("//")) return value;
 
   try {
+    const target = requestedTarget instanceof URL ? requestedTarget : new URL(requestedTarget);
     const base = upstreamBase instanceof URL ? upstreamBase : new URL(upstreamBase);
-    const location = new URL(value, base);
+    const location = new URL(value, target);
     if (!["http:", "https:"].includes(location.protocol) || location.origin !== base.origin) {
       return value;
     }
@@ -169,7 +170,7 @@ async function proxy(request, { params }) {
     }
 
     const location = headers.get("location");
-    if (location) headers.set("location", rewriteLocation(location, base));
+    if (location) headers.set("location", rewriteLocation(location, target, base));
 
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("text/html")) {

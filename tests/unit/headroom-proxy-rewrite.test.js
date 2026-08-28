@@ -59,25 +59,28 @@ describe("rewriteHeadroomHtml", () => {
 
 describe("rewriteLocation", () => {
   const target = new URL("http://127.0.0.1:8099/base");
+  const base = new URL("http://127.0.0.1:8099/base");
 
   it("strips the configured base path from same-origin locations", () => {
-    expect(rewriteLocation("/dashboard?next=1#top", target)).toBe(
+    expect(rewriteLocation("/dashboard?next=1#top", target, base)).toBe(
       `${PREFIX}/dashboard?next=1#top`,
     );
-    expect(rewriteLocation("http://127.0.0.1:8099/base/stats", target)).toBe(
+    expect(rewriteLocation("http://127.0.0.1:8099/base/stats", target, base)).toBe(
       `${PREFIX}/stats`,
     );
   });
 
   it("preserves external, protocol-relative, non-http, and already-proxied locations", () => {
-    expect(rewriteLocation("https://external.example/dashboard", target)).toBe(
+    expect(rewriteLocation("https://external.example/dashboard", target, base)).toBe(
       "https://external.example/dashboard",
     );
-    expect(rewriteLocation("//external.example/dashboard", target)).toBe(
+    expect(rewriteLocation("//external.example/dashboard", target, base)).toBe(
       "//external.example/dashboard",
     );
-    expect(rewriteLocation("mailto:ops@example.com", target)).toBe("mailto:ops@example.com");
-    expect(rewriteLocation(`${PREFIX}/dashboard`, target)).toBe(`${PREFIX}/dashboard`);
+    expect(rewriteLocation("mailto:ops@example.com", target, base)).toBe(
+      "mailto:ops@example.com",
+    );
+    expect(rewriteLocation(`${PREFIX}/dashboard`, target, base)).toBe(`${PREFIX}/dashboard`);
   });
 });
 

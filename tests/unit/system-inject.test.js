@@ -186,6 +186,7 @@ describe("upstream #3491 wire-safe injection", () => {
     expect(body.system.at(-2)).toEqual({ type: "text", text: "respond tersely" });
     expect(body.system.at(-1).cache_control).toBeDefined();
     expect(body.system.filter((block) => block.text === "respond tersely")).toHaveLength(1);
+    expect(body.messages.some((message) => message.role === "system")).toBe(false);
   });
 
   it("preserves non-message Responses items while injecting by wire shape", () => {
@@ -250,16 +251,15 @@ describe("upstream #3491 wire-safe injection", () => {
     expect(body).toEqual({ metadata: { request: "unknown" } });
   });
 
-  it("prefers Chat messages over a stray Claude system field", () => {
+  it("treats a Claude label as the final wire format before generic messages", () => {
     const body = {
-      system: "stray Claude field",
-      messages: [{ role: "system", content: "chat system" }],
+      messages: [{ role: "user", content: "hi" }],
     };
 
     injectSystemPrompt(body, FORMATS.CLAUDE, "respond tersely");
 
-    expect(body.system).toBe("stray Claude field");
-    expect(body.messages[0].content).toBe("chat system\n\nrespond tersely");
+    expect(body.system).toBe("respond tersely");
+    expect(body.messages).toEqual([{ role: "user", content: "hi" }]);
   });
 
   it("prefers Responses input over a stray Gemini system field", () => {

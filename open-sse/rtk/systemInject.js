@@ -25,8 +25,9 @@ function isPromptAlreadyInjected(content, prompt) {
 }
 
 /**
- * Inject a system prompt using translated wire-shape precedence, then the
- * provider label as a fallback when Claude or Gemini has no system block yet.
+ * Inject a system prompt using translated wire-shape precedence. Claude's
+ * final format is authoritative because valid Claude bodies also carry a
+ * `messages[]` field; other provider labels remain shape fallbacks.
  * Mutates `body` in place.
  *
  * @param {object} body translated request body (mutated)
@@ -39,6 +40,8 @@ export function injectSystemPrompt(body, format, prompt) {
 
     if (isKiroBody(body) || format === FORMATS.KIRO) {
       injectKiroSystem(body, prompt);
+    } else if (format === FORMATS.CLAUDE) {
+      injectClaudeSystem(body, prompt);
     } else if (isString(body.instructions)) {
       injectInstructionsSystem(body, prompt);
     } else if (Array.isArray(body.messages)) {
@@ -50,9 +53,6 @@ export function injectSystemPrompt(body, format, prompt) {
       return;
     } else {
       switch (format) {
-        case FORMATS.CLAUDE:
-          injectClaudeSystem(body, prompt);
-          break;
         case FORMATS.GEMINI:
         case FORMATS.GEMINI_CLI:
         case FORMATS.VERTEX:

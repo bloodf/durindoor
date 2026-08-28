@@ -7,6 +7,7 @@
 - Usage provider graph tooltips show which named API keys are using each active model without exposing key secrets.
 - Model discovery exposes additive human-readable model/provider metadata while preserving every existing callable model ID and harness configuration.
 - OpenCode Go and CommandCode now expose DeepSeek V4 Flash Vision Exp with vision/reasoning capabilities; OpenCode Go enables all three declared request formats, and CommandCode preserves OpenAI image URLs and data URIs. Ports decolua/9router#3482. Closes #585.
+- Grok CLI **Bulk Add** imports single, array, or `accounts` JSON with snake/camel token keys, derived identity/expiry, serial priority assignment, and token-safe partial results. Ports decolua/9router#3443. Closes #600.
 
 ## Fixed
 - Browser OAuth attempts now clear callback poll timers and release local listeners on timeout, callback validation, token exchange, and credential-save failures. Fixed-port Codex and xAI logins can retry immediately instead of failing with `EADDRINUSE`. Ports decolua/9router#3543 and extends it to the fork-only xAI flow. Closes #588.

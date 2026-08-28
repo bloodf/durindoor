@@ -15,6 +15,7 @@
 
 - Exact-model and account-wide model-lock timestamps are now validated independently, so an expired exact lock cannot mask an active account-wide lock. Ports decolua/9router#3516. Closes #578.
 - The sql.js fallback now stages, fsyncs, and atomically renames full database images, preserving the prior valid database and removing temporary files when persistence fails (ports decolua/9router#3523). Closes #589.
+- Active generated and assistant-anchored sessions now refresh their in-memory recency, so capacity eviction removes the least-recently-used session instead of the first-created one. Ports decolua/9router#3550. Closes #590.
 - Thinking effort now reaches Ollama as `think`, Z.AI as both scalar and `reasoning.effort`, OpenCode free models as its gateway enum, and Grok CLI 4.6 virtual models through `xhigh`.
 - Claude-format requests now normalize trailing assistant prefills into a continuation user turn (or matching error `tool_result`), unless `X-9Router-Assistant-Prefill: preserve` is set; falsy Claude `tools[].type` values now default to `custom`. Ports decolua/9router#3506 and #3484. Closes #580.
 

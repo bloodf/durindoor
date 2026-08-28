@@ -59,6 +59,8 @@ For round-robin providers, behavior depends on whether a stable client session i
 - For Kiro specifically, the request-scoped `x-client-request-id` header is intentionally ignored for account affinity so that per-request IDs do not break stickiness. Other scopes still allow `x-client-request-id` as a session hint.
 - A session whose pinned account is excluded or locked falls back to the next available account and re-anchors there for that session.
 
+Generated connection sessions and assistant-anchored conversation sessions are also bounded in memory. Reads refresh their recency, so reaching the 1,000-connection or 5,000-conversation safety cap evicts the least-recently-used entry rather than rotating an active session and losing its warm prompt cache.
+
 ## Request Translation
 
 Client tools do not all speak the same format. DurinDoor translates between OpenAI, Anthropic Claude, Gemini, OpenAI Responses, Kiro, Cursor, CommandCode, Ollama, Vertex, and other supported shapes.

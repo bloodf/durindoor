@@ -50,10 +50,13 @@ export function deriveSessionId(connectionId) {
   const existing = runtimeSessionStore.get(connectionId);
   if (existing) {
     existing.lastUsed = Date.now();
+    /** Keep Map iteration order in access order for the capped LRU eviction below. */
+    runtimeSessionStore.delete(connectionId);
+    runtimeSessionStore.set(connectionId, existing);
     return existing.sessionId;
   }
 
-  // Evict oldest entry if store exceeds max size (safety cap between cleanup cycles)
+  // Evict the least-recently-used entry if the store reaches its safety cap.
   const MAX_SESSIONS = 1000;
   if (runtimeSessionStore.size >= MAX_SESSIONS) {
     const oldest = runtimeSessionStore.keys().next().value;
@@ -199,6 +202,9 @@ function assistantTextSessionId(scope, body) {
   const existing = assistantSessionStore.get(hash);
   if (existing) {
     existing.lastUsed = Date.now();
+    /** Keep Map iteration order in access order for the capped LRU eviction below. */
+    assistantSessionStore.delete(hash);
+    assistantSessionStore.set(hash, existing);
     return existing.sessionId;
   }
   if (assistantSessionStore.size >= MAX_ASSISTANT_SESSIONS) {

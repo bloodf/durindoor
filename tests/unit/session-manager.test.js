@@ -7,6 +7,13 @@ const longAssistant = "x".repeat(80);
 const bodyWithAssistant = { messages: [{ role: "assistant", content: longAssistant }] };
 const bodyWithUserOnly = { messages: [{ role: "user", content: "hello from first user message anchor" }] };
 
+const MAX_RUNTIME_SESSIONS = 1000;
+const MAX_ASSISTANT_SESSIONS = 5000;
+
+function assistantBody(n) {
+  return { messages: [{ role: "assistant", content: `conversation ${n} `.padEnd(80, "x") }] };
+}
+
 beforeEach(() => clearSessionStore());
 
 describe("resolveSessionId", () => {
@@ -78,5 +85,32 @@ describe("resolveSessionId", () => {
   it("workspaceId path: empty body + workspaceId set -> normalized workspaceId", () => {
     const got = resolveSessionId({ body: {}, connectionId: "conn1", workspaceId: "ws-abc" });
     expect(got).toBe("ws-abc");
+  });
+});
+
+describe("session store eviction", () => {
+  it("evicts the least-recently-used connection at the 1,000-entry cap", () => {
+    const hotId = deriveSessionId("conn-0");
+    const lruId = deriveSessionId("conn-1");
+    for (let i = 2; i < MAX_RUNTIME_SESSIONS; i++) deriveSessionId(`conn-${i}`);
+
+    expect(deriveSessionId("conn-0")).toBe(hotId);
+    deriveSessionId("conn-new");
+
+    expect(deriveSessionId("conn-0")).toBe(hotId);
+    expect(deriveSessionId("conn-1")).not.toBe(lruId);
+  });
+
+  it("evicts the least-recently-used assistant conversation at the 5,000-entry cap", () => {
+    const idFor = (n) => resolveSessionId({ body: assistantBody(n), connectionId: "conn", scope: "codex" });
+    const hotId = idFor(0);
+    const lruId = idFor(1);
+    for (let i = 2; i < MAX_ASSISTANT_SESSIONS; i++) idFor(i);
+
+    expect(idFor(0)).toBe(hotId);
+    idFor(MAX_ASSISTANT_SESSIONS);
+
+    expect(idFor(0)).toBe(hotId);
+    expect(idFor(1)).not.toBe(lruId);
   });
 });

@@ -11,7 +11,7 @@ import {
   incrementHeadroomFailures,
   resetHeadroomCircuit } from
 "./headroomCircuit.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const RETRY_BACKOFF_MS = 100;
@@ -24,7 +24,7 @@ export {
 
 /** Return a finite positive timeout, preserving the fork's 15-second default. */
 function normalizeTimeout(value) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
+  return isNumber(value) && Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
 }
 
 function jsonBytes(value) {

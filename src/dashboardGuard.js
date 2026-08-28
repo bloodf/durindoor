@@ -287,8 +287,18 @@ async function isAuthenticated(request) {
   return false;
 }
 
+/**
+ * Match exact management leaves as Next resolves them. Decode once so encoded
+ * route spellings cannot bypass auth; malformed encoding fails closed.
+ */
 function isManagementApi(pathname) {
-  if (MANAGEMENT_API_EXACT_PATHS.includes(pathname)) return true;
+  let decodedPathname;
+  try {
+    decodedPathname = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+  if (MANAGEMENT_API_EXACT_PATHS.includes(decodedPathname)) return true;
   return MANAGEMENT_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 

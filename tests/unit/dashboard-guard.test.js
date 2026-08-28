@@ -664,9 +664,37 @@ describe("dashboard guard management API auth", () => {
       expect(response.status).toBe(401);
     });
   }
+  it("rejects encoded spellings of exact headroom read paths", async () => {
+    for (const path of [
+      "/api/headroom/%73tatus",
+      "/api/headroom/%73tats",
+      "/api/headroom%2Fstatus",
+      "/api/headroom%2Fstats",
+    ]) {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe("Unauthorized");
+    }
+  });
+
+  it("fails closed for malformed encoding in API paths", async () => {
+    for (const path of ["/api/headroom/%", "/api/headroom/status%2"]) {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe("Unauthorized");
+    }
+  });
+
 
   it("does not broaden the headroom read guard to child paths", async () => {
-    for (const path of ["/api/headroom/status/details", "/api/headroom/stats/export"]) {
+    for (const path of [
+      "/api/headroom/status/details",
+      "/api/headroom/stats/export",
+      "/api/headroom/%73tatus/details",
+      "/api/headroom/%73tats/export",
+      "/api/headroom%2Fstatus/details",
+      "/api/headroom%2Fstats/export",
+    ]) {
       expect(await proxy(request(path, { host: "router.example.com" }))).toBe(mocks.nextResponse);
     }
   });

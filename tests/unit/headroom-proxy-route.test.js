@@ -10,7 +10,7 @@ vi.mock("next/server", () => ({
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: vi.fn(async () => ({
-    headroomUrl: "http://127.0.0.1:8099",
+    headroomUrl: "http://127.0.0.1:8099/base",
     headroomTimeoutMs: 1000,
   })),
 }));
@@ -34,11 +34,28 @@ describe("Headroom proxy route", () => {
     vi.useRealTimers();
   });
 
-  it("recalculates content-length after an HTML rewrite", async () => {
+  it("round-trips a base-prefixed upstream redirect without duplicating the base", async () => {
+    global.fetch = vi.fn(async () =>
+      new Response(null, { status: 302, headers: { location: "/base/dashboard" } }),
+    );
+
+    const response = await GET(request(), context);
+
+    expect(global.fetch.mock.calls[0][0].toString()).toBe(
+      "http://127.0.0.1:8099/base/dashboard",
+    );
+    expect(response.headers.get("location")).toBe(`${DASHBOARD_PREFIX}/dashboard`);
+  });
+
+  it("describes decoded rewritten gzip HTML", async () => {
     const body = '<a href="/dashboard">é</a>';
     global.fetch = vi.fn(async () =>
       new Response(body, {
-        headers: { "content-type": "text/html", "content-length": "1" },
+        headers: {
+          "content-type": "text/html",
+          "content-encoding": "gzip",
+          "content-length": "1",
+        },
       }),
     );
 
@@ -46,7 +63,27 @@ describe("Headroom proxy route", () => {
     const rewritten = `<a href="${DASHBOARD_PREFIX}/dashboard">é</a>`;
 
     expect(await response.text()).toBe(rewritten);
+    expect(response.headers.get("content-encoding")).toBeNull();
     expect(response.headers.get("content-length")).toBe(String(Buffer.byteLength(rewritten)));
+  });
+
+  it("describes decoded gzip HTML when rewriting is a no-op", async () => {
+    const body = '<a href="/unknown">é</a>';
+    global.fetch = vi.fn(async () =>
+      new Response(body, {
+        headers: {
+          "content-type": "text/html",
+          "content-encoding": "gzip",
+          "content-length": "1",
+        },
+      }),
+    );
+
+    const response = await GET(request(), context);
+
+    expect(await response.text()).toBe(body);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("content-length")).toBe(String(Buffer.byteLength(body)));
   });
 
   it("aborts a stalled upstream fetch through the existing generic 502 boundary", async () => {

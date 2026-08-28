@@ -64,18 +64,24 @@ export function rewriteHeadroomHtml(html, prefix = DASHBOARD_PREFIX) {
     });
 }
 
-export function rewriteLocation(value, target) {
+/** Strip the configured upstream base once before exposing a same-origin redirect through the proxy. */
+export function rewriteLocation(value, upstreamBase) {
   if (!isString(value) || !value) return value;
   if (value === DASHBOARD_PREFIX || value.startsWith(DASHBOARD_PREFIX + "/")) return value;
   if (value.startsWith("//")) return value;
 
   try {
-    const targetUrl = target instanceof URL ? target : new URL(target);
-    const location = new URL(value, targetUrl);
-    if (!["http:", "https:"].includes(location.protocol) || location.origin !== targetUrl.origin) {
+    const base = upstreamBase instanceof URL ? upstreamBase : new URL(upstreamBase);
+    const location = new URL(value, base);
+    if (!["http:", "https:"].includes(location.protocol) || location.origin !== base.origin) {
       return value;
     }
-    return `${DASHBOARD_PREFIX}${location.pathname}${location.search}${location.hash}`;
+    const basePath = base.pathname.replace(/\/$/, "");
+    const pathname =
+      basePath && (location.pathname === basePath || location.pathname.startsWith(basePath + "/"))
+        ? location.pathname.slice(basePath.length) || "/"
+        : location.pathname;
+    return `${DASHBOARD_PREFIX}${pathname}${location.search}${location.hash}`;
   } catch {
     return value;
   }
@@ -169,9 +175,9 @@ async function proxy(request, { params }) {
     if (contentType.includes("text/html")) {
       const body = await response.text();
       const rewritten = rewriteHeadroomHtml(body);
-      if (rewritten !== body) {
-        headers.set("content-length", String(Buffer.byteLength(rewritten)));
-      }
+      /** Fetch decoded this body, so describe the emitted decoded bytes rather than upstream encoding. */
+      headers.delete("content-encoding");
+      headers.set("content-length", String(Buffer.byteLength(rewritten)));
       return new NextResponse(rewritten, { status: response.status, headers });
     }
 

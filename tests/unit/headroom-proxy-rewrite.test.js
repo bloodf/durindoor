@@ -60,16 +60,23 @@ describe("rewriteHeadroomHtml", () => {
 describe("rewriteLocation", () => {
   const target = new URL("http://127.0.0.1:8099/base");
 
-  it("rewrites same-origin locations and preserves external or already-prefixed locations", () => {
+  it("strips the configured base path from same-origin locations", () => {
     expect(rewriteLocation("/dashboard?next=1#top", target)).toBe(
       `${PREFIX}/dashboard?next=1#top`,
     );
     expect(rewriteLocation("http://127.0.0.1:8099/base/stats", target)).toBe(
-      `${PREFIX}/base/stats`,
+      `${PREFIX}/stats`,
     );
+  });
+
+  it("preserves external, protocol-relative, non-http, and already-proxied locations", () => {
     expect(rewriteLocation("https://external.example/dashboard", target)).toBe(
       "https://external.example/dashboard",
     );
+    expect(rewriteLocation("//external.example/dashboard", target)).toBe(
+      "//external.example/dashboard",
+    );
+    expect(rewriteLocation("mailto:ops@example.com", target)).toBe("mailto:ops@example.com");
     expect(rewriteLocation(`${PREFIX}/dashboard`, target)).toBe(`${PREFIX}/dashboard`);
   });
 });

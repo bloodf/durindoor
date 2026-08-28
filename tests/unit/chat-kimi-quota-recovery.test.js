@@ -64,7 +64,7 @@ const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 
 const RESET_AT = "2030-01-01T01:00:00.000Z";
 
-function options(provider = "kimi-coding", model = "kimi-k2.6") {
+function options(provider = "kimi-coding", model = "kimi-for-coding") {
   const body = { model, stream: false, messages: [{ role: "user", content: "hi" }] };
   return {
     body,
@@ -95,13 +95,13 @@ describe("Kimi temporary quota recovery in chatCore", () => {
   });
 
   it("uses the exact registered model as fallback scope", () => {
-    expect(resolveFallbackModelScope("kimi-coding", "kimi-k2.6")).toBe("kimi-k2.6");
+    expect(resolveFallbackModelScope("kimi-coding", "kimi-for-coding")).toBe("kimi-for-coding");
   });
 
   it("returns the usage reset deadline for a temporary Kimi request limit", async () => {
     mocks.getUsageForProvider.mockResolvedValue({
       quotas: {
-        Ratelimit: { remainingPercentage: 0, resetAt: RESET_AT },
+        "Rolling 5-hour": { remainingPercentage: 0, resetAt: RESET_AT },
         Weekly: { remainingPercentage: 50 },
       },
     });
@@ -115,18 +115,18 @@ describe("Kimi temporary quota recovery in chatCore", () => {
     );
   });
 
-  it("leaves other registered Kimi models terminal without probing usage", async () => {
+  it("applies documented rolling-window recovery to every current Kimi Code model", async () => {
     mocks.getUsageForProvider.mockResolvedValue({
       quotas: {
-        Ratelimit: { remainingPercentage: 0, resetAt: RESET_AT },
+        "Rolling 5-hour": { remainingPercentage: 0, resetAt: RESET_AT },
         Weekly: { remainingPercentage: 50 },
       },
     });
 
-    const result = await handleChatCore(options("kimi-coding", "kimi-k3"));
+    const result = await handleChatCore(options("kimi-coding", "k3"));
 
-    expect(result).toMatchObject({ success: false, status: 403, resetsAtMs: undefined });
-    expect(mocks.getUsageForProvider).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ success: false, status: 403, resetsAtMs: Date.parse(RESET_AT) });
+    expect(mocks.getUsageForProvider).toHaveBeenCalledOnce();
   });
 
   it("keeps the original terminal 403 when the usage body times out", async () => {
@@ -140,7 +140,7 @@ describe("Kimi temporary quota recovery in chatCore", () => {
   it("leaves an exhausted weekly quota terminal", async () => {
     mocks.getUsageForProvider.mockResolvedValue({
       quotas: {
-        Ratelimit: { remainingPercentage: 0, resetAt: RESET_AT },
+        "Rolling 5-hour": { remainingPercentage: 0, resetAt: RESET_AT },
         Weekly: { remainingPercentage: 0 },
       },
     });
@@ -151,7 +151,7 @@ describe("Kimi temporary quota recovery in chatCore", () => {
   });
 
   it.each([
-    ["has no usable reset", { quotas: { Ratelimit: { remainingPercentage: 0, resetAt: "not-a-date" }, Weekly: { remainingPercentage: 50 } } }],
+    ["has no usable reset", { quotas: { "Rolling 5-hour": { remainingPercentage: 0, resetAt: "not-a-date" }, Weekly: { remainingPercentage: 50 } } }],
     ["cannot read usage", new Error("usage probe failed")],
   ])("leaves a request limit terminal when it %s", async (_case, usage) => {
     mocks.getUsageForProvider.mockImplementation(() => {

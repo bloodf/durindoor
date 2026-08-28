@@ -1,3 +1,4 @@
+import { KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
@@ -753,10 +754,10 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           return { valid, error: valid ? null : "Invalid API key" };
         }
       case "kimi":{
-          const res = await fetchWithConnectionProxy("https://api.moonshot.cn/v1/chat/completions", {
+          const res = await fetchWithConnectionProxy(KIMI_PLATFORM_CHAT_URL, {
             method: "POST",
             headers: { Authorization: `Bearer ${connection.apiKey}`, "content-type": "application/json" },
-            body: JSON.stringify({ model: "kimi-latest", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+            body: JSON.stringify({ model: "kimi-for-coding", max_tokens: 1, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };

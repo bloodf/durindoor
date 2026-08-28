@@ -43,6 +43,8 @@ export const REVIEWED_ORPHANS = new Map([
   ["pricing:deepseek-v3.2-chat", "priced alias present in upstream"],
   ["pricing:deepseek-v3.2-reasoner", "priced alias present in upstream"],
   ["pricing:minimax-m2.1", "priced alias present in upstream"],
+  ["pricing:kimi-k3", "priced third-party registry alias"],
+  ["pricing:kimi-k2.5-thinking", "priced third-party registry alias"],
 
   ["pricing-pattern:*-codex-mini-*", "intentional forward glob"],
   ["pricing-pattern:codex-*", "intentional forward glob"],

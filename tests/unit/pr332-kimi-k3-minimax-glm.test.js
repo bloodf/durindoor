@@ -21,27 +21,29 @@ describe("GPT-5.6 Luna routing", () => {
 });
 
 describe("Kimi K3 reasoning wiring", () => {
-  it("advertises only max thinking level", () => {
-    expect(getThinkingLevels(null, "kimi-k3")).toEqual(["max"]);
+  it("advertises documented K3 thinking levels", () => {
+    expect(getThinkingLevels(null, "k3")).toEqual(["none", "low", "medium", "high", "max"]);
   });
 
-  it("does not allow disabling reasoning", () => {
-    const caps = getCapabilitiesForModel(null, "kimi-k3");
+  it("allows documented thinking disable", () => {
+    const caps = getCapabilitiesForModel(null, "k3");
     expect(caps.reasoning).toBe(true);
-    expect(caps.thinkingCanDisable).toBe(false);
+    expect(caps.thinkingCanDisable).toBe(true);
   });
 
-  it("emits reasoning_effort=max even when caller asks none", () => {
-    const out = apply("openai", "kimi-k3", { reasoning_effort: "none" }, "kimi");
-    expect(out.reasoning_effort).toBe("max");
-    expect(out.thinking).toBeUndefined();
+  it.each([
+    ["ultra", "max"], ["max", "max"], ["xhigh", "max"],
+    ["high", "high"], ["medium", "high"],
+    ["low", "low"], ["minimal", "low"],
+  ])("folds reasoning effort %s to %s", (requested, expected) => {
+    const out = apply("openai", "k3", { reasoning_effort: requested }, "kimi");
+    expect(out.reasoning_effort).toBe(expected);
   });
 
-  it("emits reasoning_effort=max for low/auto requests", () => {
-    const low = apply("openai", "kimi-k3", { reasoning_effort: "low" }, "kimi");
-    const auto = apply("openai", "kimi-k3", { reasoning_effort: "auto" }, "kimi");
-    expect(low.reasoning_effort).toBe("max");
-    expect(auto.reasoning_effort).toBe("max");
+  it("maps none to thinking disabled", () => {
+    const out = apply("openai", "k3", { reasoning_effort: "none" }, "kimi");
+    expect(out.thinking).toEqual({ type: "disabled" });
+    expect(out.reasoning_effort).toBeUndefined();
   });
 });
 
@@ -77,8 +79,8 @@ describe("CLI Kimi menu", () => {
     expect(ids).not.toContain("kimi-latest");
   });
 
-  it("offers kimi-k3 instead of kimi-latest", () => {
+  it("offers the documented Kimi Code catalog", () => {
     const ids = PROVIDER_MODELS.kimi?.map((m) => m.id) || [];
-    expect(ids).toContain("kimi-k3");
+    expect(ids).toEqual(["k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"]);
   });
 });

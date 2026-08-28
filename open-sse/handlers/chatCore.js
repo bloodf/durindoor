@@ -1341,24 +1341,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");
       let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody } = parsedError;
-      // Fork-specific divergence from upstream: upstream (#10058) treats any
-      // Kimi 403 as a candidate for recovery; this fork narrows the trigger to
-      // K2.6's literal /billing cycle/i wording observed at port time. K2.6
-      // can report either a depleted weekly subscription or a temporary
-      // per-model request window. Verify the official usage response before
-      // benching it: only an empty Ratelimit with remaining Weekly quota gets
-      // a precise, model-scoped recovery deadline. Other Kimi models retain
-      // terminal 403 handling without a usage probe. Probe failures preserve
-      // the original 403. If K2.6 changes this wording upstream, this regex
-      // silently stops firing (false negative, safe) — it never widens to
-      // unrelated 403s (no false-positive risk from text drift), but re-verify
-      // the phrase and canonical model against Kimi's API on any future Kimi
-      // 403-handling port.
+      // Kimi docs classify exhausted membership windows as 403. Confirm the
+      // rolling 5-hour window is empty while weekly quota remains before
+      // attaching a temporary model-scoped reset deadline.
       if (
       statusCode === HTTP_STATUS.FORBIDDEN && (
       provider === "kimi-coding" || provider === "kimi-coding-apikey") &&
-      cleanModel === "kimi-k2.6" &&
-      /billing cycle/i.test(message))
+      ["k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"].includes(cleanModel) &&
+      /billing cycle|5-hour usage limit/i.test(message))
       {
         try {
           const usage = await getUsageForProvider({ ...credentials, provider: "kimi" }, proxyOptions);

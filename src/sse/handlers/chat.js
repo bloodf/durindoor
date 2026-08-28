@@ -1,3 +1,4 @@
+import { KIMI_CODING_MODELS_URL } from "../../../open-sse/providers/shared.js";
 import "open-sse/index.js";
 
 import {
@@ -120,9 +121,8 @@ export function warmRequestModelLimits(provider, credentials) {
     warmLiveModelLimits(provider, credentials, {
       guard: getProviderValidationGuard(),
       proxyOptions: proxyOptionsFromCredentials(credentials),
-      endpoint: genericFetcher?.url || (kimi ? "https://api.kimi.com/coding/v1/models" : undefined),
-      anthropic,
-      modelAliases: kimi ? { k3: "kimi-k3" } : undefined
+      endpoint: genericFetcher?.url || (kimi ? KIMI_CODING_MODELS_URL : undefined),
+      anthropic
     });
   } catch {
 

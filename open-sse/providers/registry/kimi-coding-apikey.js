@@ -1,4 +1,4 @@
-import { CLAUDE_API_HEADERS } from "../shared.js";
+import { CLAUDE_API_HEADERS, KIMI_CODING_BASE_URL, KIMI_CODING_OPENAI_URL } from "../shared.js";
 
 export default {
   id: "kimi-coding-apikey",
@@ -9,16 +9,15 @@ export default {
     icon: "psychology",
     color: "#1E40AF",
     textIcon: "KC",
-    website: "https://kimi.moonshot.cn",
+    website: "https://www.kimi.com",
     notice: {
       apiKeyUrl: "https://platform.moonshot.ai/console/api-keys",
     },
   },
   category: "apikey",
   transport: {
-    baseUrl: "https://api.kimi.com/coding/v1/messages",
+    baseUrl: KIMI_CODING_BASE_URL,
     format: "claude",
-    urlSuffix: "?beta=true",
     /** decolua/9router#3421: Kimi Code requires SSE upstream; chatCore buffers JSON clients. */
     forceStream: true,
     headers: { ...CLAUDE_API_HEADERS },
@@ -31,25 +30,22 @@ export default {
   transports: [
     {
       format: "openai",
-      baseUrl: "https://api.kimi.com/coding/v1/chat/completions",
+      baseUrl: KIMI_CODING_OPENAI_URL,
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
     },
     {
       format: "claude",
-      baseUrl: "https://api.kimi.com/coding/v1/messages",
-      urlSuffix: "?beta=true",
+      baseUrl: KIMI_CODING_BASE_URL,
       headers: { ...CLAUDE_API_HEADERS },
       auth: { combined: true, header: "x-api-key", scheme: "raw" },
     },
   ],
-  // Ported from OmniRoute kimi/coding-apikey at source commit 3ddcee6.
   models: [
-    { id: "kimi-k3", name: "Kimi K3", contextLength: 1048576, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
-    { id: "kimi-k2.6", name: "Kimi K2.6", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true },
-    { id: "kimi-k2.6-thinking", name: "Kimi K2.6 Thinking", contextLength: 262144, maxOutputTokens: 262144 },
-    { id: "kimi-k2.7-code", name: "Kimi K2.7 Code", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
-    { id: "kimi-k2.7-code-highspeed", name: "Kimi K2.7 Code (High Speed)", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
-    { id: "moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code", contextLength: 262144, maxOutputTokens: 262144 },
+    /** K3 reaches 1M only for Allegretto+ accounts; lower tiers are server-gated to 256K. */
+    { id: "k3", name: "Kimi K3", aliases: ["k3[1m]"], contextLength: 1048576, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
+    { id: "k3-256k", name: "Kimi K3 256K", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
+    { id: "kimi-for-coding", name: "Kimi K2.7 Code", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
+    { id: "kimi-for-coding-highspeed", name: "Kimi K2.7 Code HighSpeed", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
   ],
   defaultContextLength: 262144,
 };

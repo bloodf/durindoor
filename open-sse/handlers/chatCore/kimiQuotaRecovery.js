@@ -25,7 +25,7 @@ function remaining(value) {
  */
 export function getKimiTemporaryRateLimitResetAt(usage, nowMs = Date.now()) {
   const quotas = asRecord(asRecord(usage)?.quotas);
-  const rateLimit = asRecord(quotas?.Ratelimit);
+  const rateLimit = asRecord(quotas?.["Rolling 5-hour"]);
   const weekly = asRecord(quotas?.Weekly);
   const rateLimitRemaining = remaining(rateLimit);
   const weeklyRemaining = remaining(weekly);

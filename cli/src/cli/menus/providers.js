@@ -112,7 +112,10 @@ const PROVIDER_MODELS = {
     { id: "glm-4.6v" },
   ],
   kimi: [
-    { id: "kimi-k3" },
+    { id: "k3" },
+    { id: "k3-256k" },
+    { id: "kimi-for-coding" },
+    { id: "kimi-for-coding-highspeed" },
   ],
   minimax: [
     { id: "MiniMax-M2.1" },

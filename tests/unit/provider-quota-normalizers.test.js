@@ -294,6 +294,14 @@ describe("provider plan quota normalizers", () => {
     expect(rows[1].amounts.remainingRatio).toBeCloseTo(0.8);
   });
 
+  it("preserves documented Andante plan names in normalized Kimi quota", () => {
+    const rows = normalizeKimiQuota({
+      user: { membership: { level: "Andante" } },
+      usage: { limit: "100", used: "1", remaining: "99", resetTime: RESET },
+    }, { now: NOW });
+    expect(rows[0].metadata.plan).toBe("Andante");
+  });
+
   it("rejects empty or present malformed Kimi quota sources", () => {
     expect(normalizeKimiQuota({}, { now: NOW })).toBeNull();
     expect(normalizeKimiQuota({ usage: "invalid" }, { now: NOW })).toBeNull();

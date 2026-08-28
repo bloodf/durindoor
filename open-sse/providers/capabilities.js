@@ -82,8 +82,6 @@ function hasUnpublishedOutput(provider, model) {
   const id = model.toLowerCase();
   if (provider === "xai" && id.includes("grok") ||
   provider === "grok-cli" && (id.includes("grok-build") || id.includes("grok-composer"))) return true;
-  if ((provider === "kimi" || provider === "kimi-coding" || provider === "kimi-coding-apikey" || provider === "kmc" || provider === "kmca") &&
-  id.includes("kimi-k2")) return true;
   if ((provider === "qoder" || provider === "qd") && id === "kmodel") return true;
   if ((provider === "cloudflare-ai" || provider === "cf") && id.startsWith("@cf/")) return true;
   if (provider === "ollama-local" && id === "llama3.2:1b") return true;
@@ -98,11 +96,9 @@ export const MODEL_CAPABILITIES = {
   /** DeepSeek V4 Flash Vision's exact bare and vendor-prefixed IDs share this override. */
   "deepseek-v4-flash-vision-exp": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
 
-  /**
-   * Live probe 2026-08-13: GET https://api.kimi.com/coding/v1/models returned
-   * `{"id":"k3",...,"context_length":1048576,...}`. Keep the exact integer;
-   * this is not an inferred expansion of Moonshot's "1M" documentation label.
-   */
+  /** Kimi Code docs: canonical K3 supports 1M on Allegretto+ and can disable thinking. */
+  k3: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 262144 },
+  /** Third-party registries retain the upstream `kimi-k3` ID and its verified 1M context. */
   "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
   // Claude Opus 5: native 1M context window + adaptive thinking.
   "claude-opus-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
@@ -729,23 +725,12 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*qwq*", caps: { reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 131072 } },
 { pattern: "*qwen*", caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 
-// ── Kimi (enabled→reasoning_effort; K2.7-code cannot disable) ─────
-/**
- * Live probes 2026-08-13 confirmed exact integers rather than merely
- * expanding Moonshot's ambiguous labels. `/coding/v1/models` returned
- * context_length=262144 for upstream IDs kimi-for-coding,
- * kimi-for-coding-highspeed, and k3-256k, while k3 returned
- * context_length=1048576. Deliberate overflows for kimi-k2.7-code,
- * kimi-k2.7-code-highspeed, kimi-k2.6, and kimi-k2.5 all returned
- * `Your request exceeded model token limit: 262144`.
- */
-{ pattern: "k3-256k", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144 } },
-// K3 routes through the bare upstream id `k3` (no "kimi" prefix); match it to
-// the K3 window so it does not fall to the generic 200K default (#2697).
-{ pattern: "k3", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 } },
-// Moonshot documents a 32,768-token default for K2.x, but no maximum. A
-// default is not a safe client-side ceiling, so maxOutput remains unset.
-// Exact K2.7 aliases confirmed by deliberate overflow errors described above.
+// ── Kimi Code (explicit first-party IDs before generic third-party fallbacks) ──
+/** Context values verified by `/coding/v1/models`; availability remains server tier-gated. */
+{ pattern: "k3-256k", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 262144, maxOutput: 262144 } },
+{ pattern: "k3", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 262144 } },
+{ pattern: "kimi-for-coding*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 262144, maxOutput: 262144 } },
+/** Generic Kimi arms preserve third-party registry IDs; exact first-party IDs above win first. */
 { pattern: "*kimi*k2.7*code*", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: undefined } },
 { pattern: "*kimi*k2*", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", contextWindow: 262144, maxOutput: undefined } },
 { pattern: "*kimi*", caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },
@@ -903,9 +888,9 @@ export function getCapabilitiesForModel(provider, model) {
   const normalizedModel = stripThinkingSuffix(model);
   const baseModel = normalizedModel.includes("/") ? normalizedModel.split("/").pop() : normalizedModel;
 
-  // Z.ai's Claude Code catalog spells GLM-5.3's 1M variant `glm-5.3[1m]`.
-  // Preserve its wire ID; normalize only static capability lookup.
-  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" : baseModel;
+  // Kimi's `k3[1m]` is a Claude Code-only inbound spelling of canonical `k3`.
+  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :
+    /^k3\[1m\]$/i.test(baseModel) ? "k3" : baseModel;
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     if (providerCaps?.[normalizedModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedModel] });
@@ -954,8 +939,9 @@ export function getCapabilitiesForModel(provider, model) {
 export function resolveModelLimits(provider, model, customCaps = null, connection = null, liveLimits = null) {
   const baseModel = isString(model) && model.includes("/") ? model.split("/").pop() : model;
 
-  // Keep Z.ai's documented Claude Code suffix on wire; use bare catalog ID for limits.
-  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" : baseModel;
+  // Keep documented bracket suffixes on wire; resolve limits through canonical IDs.
+  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :
+    /^k3\[1m\]$/i.test(baseModel) ? "k3" : baseModel;
   const positive = (value) => Number.isFinite(value) && value > 0;
   const asLimits = (caps, source, unpublishedOutput = false) => {
     if (!positive(caps?.contextWindow)) return null;

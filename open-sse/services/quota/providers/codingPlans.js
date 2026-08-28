@@ -22,6 +22,7 @@ import {
   providerSuccess } from
 "../providerHelpers.js";
 import { isBoolean, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { KIMI_PLANS } from "../../../providers/shared.js";
 
 function safePlan(value, fallback = null) {
   return isString(value) && value.trim() ? value.trim() : fallback;
@@ -33,14 +34,6 @@ function stableDeviceId(provider, connection) {
   return createHash("sha256").update(provider).update("\0").update(String(connection?.id || "connection")).digest("hex").slice(0, 32);
 }
 
-// ─── Kimi Coding ────────────────────────────────────────────────────────────
-
-const KIMI_PLANS = Object.freeze({
-  LEVEL_BASIC: "Moderato",
-  LEVEL_INTERMEDIATE: "Allegretto",
-  LEVEL_ADVANCED: "Allegro",
-  LEVEL_STANDARD: "Vivace"
-});
 
 export function normalizeKimiQuota(payload, { accountKey = null, now = Date.now() } = {}) {
   const data = asRecord(payload);

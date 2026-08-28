@@ -451,7 +451,7 @@ describe("chat quota fallback orchestration", () => {
   it("passes Kimi temporary resets through final fallback with its exact model scope", async () => {
     const connection = selected("kimi-connection", "kimi-coding");
     const resetAtMs = Date.now() + 60_000;
-    mocks.getModelInfo.mockResolvedValue({ provider: "kimi-coding", model: "kimi-k2.6" });
+    mocks.getModelInfo.mockResolvedValue({ provider: "kimi-coding", model: "kimi-for-coding" });
     mocks.getProviderCredentials.mockResolvedValue(connection);
     mocks.handleChatCore.mockResolvedValue({
       success: false,
@@ -462,7 +462,7 @@ describe("chat quota fallback orchestration", () => {
     });
     mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
 
-    const response = await handleChat(request("kimi-coding/kimi-k2.6"));
+    const response = await handleChat(request("kimi-coding/kimi-for-coding"));
 
     expect(response.status).toBe(403);
     expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
@@ -470,7 +470,7 @@ describe("chat quota fallback orchestration", () => {
       403,
       "[403]: Request limit reached for current billing cycle",
       "kimi-coding",
-      "kimi-k2.6",
+      "kimi-for-coding",
       resetAtMs,
       expect.objectContaining({
         attemptStartedAt: null,
@@ -483,7 +483,7 @@ describe("chat quota fallback orchestration", () => {
 
   it("keeps normal terminal fallback when Kimi body probe supplies no reset deadline", async () => {
     const connection = selected("kimi-connection", "kimi-coding");
-    mocks.getModelInfo.mockResolvedValue({ provider: "kimi-coding", model: "kimi-k2.6" });
+    mocks.getModelInfo.mockResolvedValue({ provider: "kimi-coding", model: "kimi-for-coding" });
     mocks.getProviderCredentials.mockResolvedValue(connection);
     mocks.handleChatCore.mockResolvedValue({
       success: false,
@@ -494,7 +494,7 @@ describe("chat quota fallback orchestration", () => {
     });
     mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
 
-    const response = await handleChat(request("kimi-coding/kimi-k2.6"));
+    const response = await handleChat(request("kimi-coding/kimi-for-coding"));
 
     expect(response.status).toBe(403);
     expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
@@ -502,7 +502,7 @@ describe("chat quota fallback orchestration", () => {
       403,
       "[403]: Request limit reached for current billing cycle",
       "kimi-coding",
-      "kimi-k2.6",
+      "kimi-for-coding",
       undefined,
       expect.objectContaining({
         attemptStartedAt: null,

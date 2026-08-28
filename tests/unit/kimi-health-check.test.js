@@ -35,9 +35,10 @@ describe("Kimi API-key connection health check", () => {
       providerSpecificData: {},
     });
     const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(async (url, options) => {
-      expect(String(url)).toBe("https://api.moonshot.cn/v1/chat/completions");
+      expect(String(url)).toBe("https://api.moonshot.ai/v1/chat/completions");
       expect(options.headers.Authorization).toBe("Bearer moonshot-key");
       expect(options.headers["x-api-key"]).toBeUndefined();
+      expect(JSON.parse(options.body).model).toBe("kimi-for-coding");
       return new Response("{}", { status: 200 });
     });
 

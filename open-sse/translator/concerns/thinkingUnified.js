@@ -175,12 +175,13 @@ function toClaudeAdaptiveEffort(cfg, caps, provider) {
   return "high";
 }
 
+/** Fold client effort spellings to the exact Kimi Code wire enum. */
 function toKimiReasoningEffort(cfg) {
   const level = toLevel(cfg);
-  if (level === "auto") return "high";
-  if (level === "minimal") return "low";
-  if (level === "xhigh") return "max";
-  if (["low", "medium", "high", "max"].includes(level)) return level;
+  if (level === "auto" || level == null) return "high";
+  if (["ultra", "max", "xhigh"].includes(level)) return "max";
+  if (["high", "medium"].includes(level)) return "high";
+  if (["low", "minimum", "minimal", "light"].includes(level)) return "low";
   return null;
 }
 /** Map unified effort onto Ox Alpha's always-on low/high/max wire enum. */

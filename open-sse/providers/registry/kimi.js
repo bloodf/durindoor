@@ -1,4 +1,4 @@
-import { CLAUDE_API_HEADERS, KIMI_CODING_BASE_URL } from "../shared.js";
+import { CLAUDE_API_HEADERS, KIMI_CODING_BASE_URL, KIMI_CODING_OPENAI_URL, KIMI_PLATFORM_CHAT_URL } from "../shared.js";
 
 export default {
   id: "kimi",
@@ -9,16 +9,15 @@ export default {
     icon: "psychology",
     color: "#1E3A8A",
     textIcon: "KM",
-    website: "https://kimi.moonshot.cn",
+    website: "https://www.kimi.com",
     notice: {
       apiKeyUrl: "https://platform.moonshot.ai/console/api-keys",
     },
   },
   category: "apikey",
   transport: {
-    baseUrl: "https://api.kimi.com/coding/v1/messages",
+    baseUrl: KIMI_CODING_BASE_URL,
     format: "claude",
-    urlSuffix: "?beta=true",
     headers: { ...CLAUDE_API_HEADERS },
     reasoningInject: {
       scope: "all",
@@ -33,39 +32,34 @@ export default {
   transports: [
     {
       format: "openai",
-      baseUrl: "https://api.kimi.com/coding/v1/chat/completions",
+      baseUrl: KIMI_CODING_OPENAI_URL,
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
     },
     {
       format: "claude",
-      baseUrl: "https://api.kimi.com/coding/v1/messages",
-      urlSuffix: "?beta=true",
+      baseUrl: KIMI_CODING_BASE_URL,
       headers: { ...CLAUDE_API_HEADERS },
       auth: { combined: true, header: "x-api-key", scheme: "raw" },
     },
-    // API-key (platform) endpoint. api.moonshot.cn is the platform API base;
-    // intl platform keys work there too. An apikey connection must NOT be sent
-    // to the Kimi Code subscription endpoint above (decolua/9router#3088,
-    // upstream issue #2881). The `-apikey` suffix is a transport lookup key,
-    // not an output format.
+    // Kimi Open Platform API keys use the documented international endpoint.
+    // The `-apikey` suffix is a transport lookup key, not an output format.
     {
       format: "openai-apikey",
-      baseUrl: "https://api.moonshot.cn/v1/chat/completions",
+      baseUrl: KIMI_PLATFORM_CHAT_URL,
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
     },
   ],
   models: [
-    { id: "kimi-k3", name: "Kimi K3" },
-    { id: "kimi-k2.7-code", name: "Kimi K2.7 Code" },
-    { id: "kimi-k2.7-code-highspeed", name: "Kimi K2.7 Code Highspeed" },
-    { id: "kimi-k2.6", name: "Kimi K2.6" },
-    { id: "kimi-k2.5", name: "Kimi K2.5" },
-    { id: "kimi-k2.5-thinking", name: "Kimi K2.5 Thinking" },
+    /** `k3[1m]` is documented only as a Claude Code inbound spelling; emit canonical `k3`. */
+    { id: "k3", name: "Kimi K3", aliases: ["k3[1m]"] },
+    { id: "k3-256k", name: "Kimi K3 256K" },
+    { id: "kimi-for-coding", name: "Kimi K2.7 Code" },
+    { id: "kimi-for-coding-highspeed", name: "Kimi K2.7 Code HighSpeed" },
   ],
   serviceKinds: ["llm","webSearch"],
   searchViaChat: {
-    defaultModel: "kimi-k2.5",
-    endpoint: "https://api.moonshot.cn/v1/chat/completions",
+    defaultModel: "kimi-for-coding",
+    endpoint: KIMI_PLATFORM_CHAT_URL,
     pricingUrl: "https://platform.moonshot.ai/docs/pricing/chat",
   },
   oauth: {

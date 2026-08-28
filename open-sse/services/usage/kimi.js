@@ -11,21 +11,18 @@
 
 import { parseResetTime, toFiniteNumber, fetchTextWithTimeout } from "./shared.js";
 import { buildKimiHeaders } from "../../config/appConstants.js";
+import { KIMI_CODING_USAGE_URL, KIMI_PLANS } from "../../providers/shared.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
-const USAGE_URL = "https://api.kimi.com/coding/v1/usages";
+const QUOTA_PAGE = "https://www.kimi.com/membership/subscription?tab=quota";
+const PRICING_PAGE = "https://www.kimi.com/membership/pricing?from=server_k3_error";
 
-const PLAN_LEVELS = {
-  LEVEL_BASIC: "Moderato",
-  LEVEL_INTERMEDIATE: "Allegretto",
-  LEVEL_ADVANCED: "Allegro",
-  LEVEL_STANDARD: "Vivace"
-};
+/** Map documented membership names while preserving unknown wire levels conservatively. */
 
 function getKimiPlanName(level) {
   if (!level) return "";
   const key = String(level);
-  if (PLAN_LEVELS[key]) return PLAN_LEVELS[key];
+  if (KIMI_PLANS[key]) return KIMI_PLANS[key];
   return key.replace(/^LEVEL_/, "").toLowerCase();
 }
 
@@ -48,7 +45,10 @@ export function formatKimiUsageError(status, responseText) {
   "";
 
   if (status === 401) {
-    return "Kimi authentication expired. Please re-authorize.";
+    if (/subscription|access to|model id|context|highspeed/i.test(`${localized} ${responseText || ""}`)) {
+      return `Kimi plan does not include this model or context limit. Upgrade or choose an available model: ${PRICING_PAGE}`;
+    }
+    return "Kimi authentication expired or the API key is invalid. Please re-authorize.";
   }
 
   // Live OAuth token without Kimi Code usage entitlement returns 403
@@ -64,6 +64,14 @@ export function formatKimiUsageError(status, responseText) {
       localized ||
       "Kimi connected, but this account has no permission to view usage. Subscribe to Kimi Code to access quota.");
 
+  }
+
+  if (status === 403) {
+    return `Kimi quota is unavailable or exhausted. Check weekly, monthly, and rolling 5-hour quota: ${QUOTA_PAGE}`;
+  }
+
+  if (status === 429) {
+    return "Kimi is temporarily overloaded or receiving too many concurrent requests. Wait briefly and retry.";
   }
 
   const snippet = (localized || responseText || "").slice(0, 100);
@@ -122,7 +130,7 @@ providerSpecificData = null)
 
   try {
     const { response, text: responseText } = await fetchTextWithTimeout(
-      USAGE_URL,
+      KIMI_CODING_USAGE_URL,
       {
         method: "GET",
         headers: {
@@ -182,7 +190,7 @@ providerSpecificData = null)
       const resetTime = detail.resetTime || detail.reset_at || detail.resetAt;
       if (limit > 0) {
         const rem = Number.isFinite(remaining) ? remaining : Math.max(0, limit);
-        quotas.Ratelimit = makeQuota({
+        quotas["Rolling 5-hour"] = makeQuota({
           used: Math.max(0, limit - rem),
           total: limit,
           remaining: rem,

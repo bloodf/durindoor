@@ -4259,22 +4259,22 @@ exports[`GOLDEN buildUrl (default executor providers) > kimchi → url (stream +
 
 exports[`GOLDEN buildUrl (default executor providers) > kimi → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://api.kimi.com/coding/v1/messages?beta=true",
-  "stream": "https://api.kimi.com/coding/v1/messages?beta=true",
+  "nonStream": "https://api.kimi.com/coding/v1/messages",
+  "stream": "https://api.kimi.com/coding/v1/messages",
 }
 `;
 
 exports[`GOLDEN buildUrl (default executor providers) > kimi-coding → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://api.kimi.com/coding/v1/messages?beta=true",
-  "stream": "https://api.kimi.com/coding/v1/messages?beta=true",
+  "nonStream": "https://api.kimi.com/coding/v1/messages",
+  "stream": "https://api.kimi.com/coding/v1/messages",
 }
 `;
 
 exports[`GOLDEN buildUrl (default executor providers) > kimi-coding-apikey → url (stream + non-stream) 1`] = `
 {
-  "nonStream": "https://api.kimi.com/coding/v1/messages?beta=true",
-  "stream": "https://api.kimi.com/coding/v1/messages?beta=true",
+  "nonStream": "https://api.kimi.com/coding/v1/messages",
+  "stream": "https://api.kimi.com/coding/v1/messages",
 }
 `;
 

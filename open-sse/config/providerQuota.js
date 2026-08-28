@@ -5,6 +5,7 @@
  * workers never have to import the generated provider registry.
  */
 import { isObject } from "../../src/shared/utils/typeChecks.js";
+import { KIMI_CODING_USAGE_URL } from "../providers/shared.js";
 
 function deepFreeze(value) {
   if (!value || !isObject(value) || Object.isFrozen(value)) return value;
@@ -114,7 +115,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
   "kimi-coding": {
     adapter: "kimi",
     sourceId: "kimi-coding:coding-usages:v1",
-    url: "https://api.kimi.com/coding/v1/usages",
+    url: KIMI_CODING_USAGE_URL,
     platform: "omniroute",
     version: "2.1.2",
     runtimeScopes: { cooldown: "model", exhausted: "account" },
@@ -123,7 +124,7 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
   "kimi-coding-apikey": {
     adapter: "kimi",
     sourceId: "kimi-coding-apikey:coding-usages:v1",
-    url: "https://api.kimi.com/coding/v1/usages",
+    url: KIMI_CODING_USAGE_URL,
     platform: "omniroute",
     version: "2.1.2",
     runtimeScopes: { cooldown: "model", exhausted: "account" },

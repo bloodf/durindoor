@@ -48,6 +48,25 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
     expect(typeof body.input[0].content).not.toBe("string");
   });
 
+  it("diagnoses a Responses request that cannot translate to messages", async () => {
+    global.fetch = vi.fn();
+    const body = { input: { unexpected: true } };
+    const diagnostics = {};
+
+    const data = await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://headroom.test",
+      model: "gpt-5",
+      format: "openai-responses",
+      diagnostics,
+    });
+
+    expect(data).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(body).toEqual({ input: { unexpected: true } });
+    expect(diagnostics.reason).toBe("openai-responses request did not translate to messages[]");
+  });
+
   it("skips Responses tool/reasoning history instead of collapsing it into a message (#2132)", async () => {
     global.fetch = vi.fn(async () => ({
       ok: true,

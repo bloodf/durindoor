@@ -1043,6 +1043,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         headroomEnabled: !!chatSettings.headroomEnabled,
         headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
         headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
+        headroomTimeoutMs: chatSettings.headroomTimeoutMs,
         pxpipeEnabled: !!chatSettings.pxpipeEnabled,
         cavemanEnabled: !!chatSettings.cavemanEnabled,
         cavemanLevel: chatSettings.cavemanLevel || "full",

@@ -6,6 +6,13 @@ proxy, and the Token Saver dashboard configures and reports on it. Headroom is
 optional: if its proxy is unavailable, the gateway continues without
 compression.
 
+## Request timeout
+
+`headroomTimeoutMs` controls the Headroom compression request timeout. Its
+default is 15000 ms; the Token Saver dashboard's **Timeout (ms)** field and the
+settings API accept whole numbers from 1000 through 120000 ms. Invalid values
+that reach the compression layer fail safe to the 15000 ms default.
+
 ## Compression extras
 
 DurinDoor installs these Headroom extras by default:

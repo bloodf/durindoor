@@ -131,6 +131,13 @@ export async function PATCH(request) {
         return NextResponse.json({ error: "Invalid pxpipeTimeoutMs" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
     }
+    /** Headroom uses the same 1–120 second request-timeout bounds as PXPIPE. */
+    if (Object.prototype.hasOwnProperty.call(body, "headroomTimeoutMs")) {
+      const v = body.headroomTimeoutMs;
+      if (!Number.isSafeInteger(v) || v < 1000 || v > 120000) {
+        return NextResponse.json({ error: "Invalid headroomTimeoutMs" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(body, "pxpipeEnabled") && !isBoolean(body.pxpipeEnabled)) {
       return NextResponse.json({ error: "Invalid pxpipeEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }

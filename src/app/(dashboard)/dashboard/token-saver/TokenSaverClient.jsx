@@ -47,6 +47,8 @@ export default function TokenSaverClient({ view = "overview" }) {
   const [pxpipeActionError, setPxpipeActionError] = useState("");
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
   const [headroomUrl, setHeadroomUrl] = useState("http://localhost:8787");
+  const [headroomTimeoutMs, setHeadroomTimeoutMs] = useState("15000");
+  const [headroomTimeoutInputValue, setHeadroomTimeoutInputValue] = useState("15000");
   const [headroomStatus, setHeadroomStatus] = useState({
     installed: false,
     running: false,
@@ -140,6 +142,21 @@ export default function TokenSaverClient({ view = "overview" }) {
     setHeadroomUrl(next);
     await patchSetting({ headroomUrl: next });
     refreshHeadroomStatus();
+  };
+
+  /** Persist a validated Headroom request timeout, or restore the saved value. */
+  const handleHeadroomTimeoutBlur = () => {
+    if (headroomTimeoutInputValue === "") {
+      setHeadroomTimeoutInputValue(headroomTimeoutMs);
+      return;
+    }
+    const n = Number(headroomTimeoutInputValue);
+    if (Number.isSafeInteger(n) && n >= 1000 && n <= 120000) {
+      setHeadroomTimeoutMs(headroomTimeoutInputValue);
+      patchSetting({ headroomTimeoutMs: n });
+    } else {
+      setHeadroomTimeoutInputValue(headroomTimeoutMs);
+    }
   };
 
   const refreshHeadroomStatus = useCallback(async () => {
@@ -412,6 +429,8 @@ export default function TokenSaverClient({ view = "overview" }) {
           setRtkEnabledState(data.rtkEnabled !== false);
           setHeadroomEnabled(!!data.headroomEnabled);
           setHeadroomUrl(data.headroomUrl || "http://localhost:8787");
+          setHeadroomTimeoutMs(String(data.headroomTimeoutMs ?? 15000));
+          setHeadroomTimeoutInputValue(String(data.headroomTimeoutMs ?? 15000));
           setCavemanEnabled(!!data.cavemanEnabled);
           setCavemanLevel(data.cavemanLevel || "full");
           setPonytailEnabled(!!data.ponytailEnabled);
@@ -928,6 +947,23 @@ export default function TokenSaverClient({ view = "overview" }) {
             <p className="text-xs text-text-muted">
               Use a local proxy for Start/Stop, or an external Docker sidecar
               like http://headroom:8787.
+            </p>
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium">Timeout (ms)</p>
+            <Input
+                type="number"
+                min="1000"
+                max="120000"
+                step="1000"
+                value={headroomTimeoutInputValue}
+                onChange={(e) => setHeadroomTimeoutInputValue(e.target.value)}
+                onBlur={handleHeadroomTimeoutBlur}
+                placeholder="15000"
+                className="font-mono text-sm" />
+
+            <p className="text-xs text-text-muted">
+              Request timeout in milliseconds. Defaults to 15000 ms.
             </p>
           </div>
           {headroomManaged ?

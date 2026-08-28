@@ -61,6 +61,7 @@ const DEFAULT_SETTINGS = {
   headroomEnabled: false,
   headroomUrl: DEFAULT_HEADROOM_URL,
   headroomCompressUserMessages: false,
+  headroomTimeoutMs: 15000,
   pxpipeEnabled: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,

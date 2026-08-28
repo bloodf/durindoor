@@ -383,6 +383,41 @@ describe("compressWithHeadroom", () => {
     expect(stats.tokens_saved).toBe(80);
     expect(timeoutSpy).toHaveBeenCalledWith(15000);
   });
+  describe("timeout normalization", () => {
+    it("passes a valid timeout to AbortSignal.timeout", async () => {
+      global.fetch = vi.fn(async () => new Response(JSON.stringify({
+        messages: [{ role: "user", content: "short" }],
+        tokens_saved: 1,
+      }), { status: 200 }));
+      const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
+
+      await compressWithHeadroom(
+        { messages: [{ role: "user", content: "long" }] },
+        { enabled: true, url: "http://localhost:8787", timeoutMs: 5000 },
+      );
+
+      expect(timeoutSpy).toHaveBeenCalledWith(5000);
+    });
+
+    it.each([null, 0, -1, NaN, Infinity, "5000"])(
+      "falls back to 15s for invalid timeout %s",
+      async (timeoutMs) => {
+        global.fetch = vi.fn(async () => new Response(JSON.stringify({
+          messages: [{ role: "user", content: "short" }],
+          tokens_saved: 1,
+        }), { status: 200 }));
+        const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
+
+        await compressWithHeadroom(
+          { messages: [{ role: "user", content: "long" }] },
+          { enabled: true, url: "http://localhost:8787", timeoutMs },
+        );
+
+        expect(timeoutSpy).toHaveBeenCalledWith(15000);
+      },
+    );
+  });
+
 });
 
 describe("formatHeadroomLog", () => {

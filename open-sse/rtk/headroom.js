@@ -11,7 +11,7 @@ import {
   incrementHeadroomFailures,
   resetHeadroomCircuit } from
 "./headroomCircuit.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const RETRY_BACKOFF_MS = 100;
@@ -21,6 +21,11 @@ export {
   getHeadroomStatusStats,
   resetHeadroomCircuit } from
 "./headroomCircuit.js";
+
+/** Return a finite positive timeout, preserving the fork's 15-second default. */
+function normalizeTimeout(value) {
+  return isNumber(value) && Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
+}
 
 function jsonBytes(value) {
   try {
@@ -342,6 +347,7 @@ async function callCompress(url, messages, model, timeoutMs, compressUserMessage
  * @returns {Promise<object|null>} Compression stats, or null when bypassed.
  */
 export async function compressWithHeadroom(body, { enabled, url, model, format, compressUserMessages, timeoutMs = DEFAULT_TIMEOUT_MS, diagnostics = null } = {}) {
+  timeoutMs = normalizeTimeout(timeoutMs);
   if (!enabled) {
     setDiagnostic(diagnostics, "disabled");
     return null;

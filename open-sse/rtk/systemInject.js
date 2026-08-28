@@ -1,119 +1,155 @@
-// Shared system-prompt injector: appends an instruction into the system message of
-// the final request body, dispatching by format so it works for translated and
-// native-passthrough flows. Used by caveman.js and ponytail.js.
+// Shared system-prompt injector for Caveman and Ponytail. It mutates only
+// recognized translated wire shapes and keeps injection exact-idempotent.
 
-import { FORMATS } from "../translator/formats.js";
 import { OPENAI_BLOCK, RESPONSES_ITEM, ROLE } from "../translator/schema/index.js";
+import { FORMATS } from "../translator/formats.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const SEP = "\n\n";
 
 /**
- * Whether `prompt` is already present in `content`, keyed off its first 100
- * trimmed characters. Returns `false` when `prompt` is empty or non-string.
- * `content` is assumed to be a string by callers.
+ * Reports whether a complete prompt block already exists in string content.
+ * Boundaries use the same separator as injection, so shared prefixes and
+ * unrelated substrings do not suppress distinct prompts.
  *
  * @param {string} content Existing system text to inspect.
  * @param {string} prompt Prompt candidate about to be injected.
- * @returns {boolean} `true` when the prompt signature is already present.
+ * @returns {boolean} `true` when the exact prompt is a complete block.
  */
 function isPromptAlreadyInjected(content, prompt) {
-  if (!content || !prompt) return false;
-  const needle = isString(prompt) ? prompt.trim() : '';
-  if (!needle) return false;
-
-  // Check if the first 100 chars of the prompt appear in content
-  const signature = needle.slice(0, 100);
-  return content.includes(signature);
+  if (!isString(content) || !isString(prompt) || !prompt) return false;
+  return content === prompt ||
+    content.startsWith(`${prompt}${SEP}`) ||
+    content.endsWith(`${SEP}${prompt}`) ||
+    content.includes(`${SEP}${prompt}${SEP}`);
 }
 
 /**
- * Inject system prompt using the request shape selected by `format`.
- * Responses/Codex use `body.instructions`; OpenAI chat uses the system/developer message.
- * No-op when `body`/`prompt` empty or the prompt is already present. Mutates `body` in place.
+ * Inject a system prompt using translated wire-shape precedence. Claude's
+ * final format is authoritative because valid Claude bodies also carry a
+ * `messages[]` field; other provider labels remain shape fallbacks.
+ * Mutates `body` in place.
+ *
  * @param {object} body translated request body (mutated)
- * @param {string} format one of FORMATS
+ * @param {string} format translated provider format
  * @param {string} prompt system/token-saver text to inject
  */
 export function injectSystemPrompt(body, format, prompt) {
-  if (!body || !prompt) return;
+  try {
+    if (body === null || !isObject(body) || !isString(prompt) || !prompt) return;
+    /**
+     * Responses Lite keeps system prompts in `input[]` after its tools envelope,
+     * even when top-level `instructions` is present.
+     */
+    const isResponsesLite = Array.isArray(body.input) &&
+      body.input.some((item) => item?.type === "additional_tools");
 
-  switch (format) {
-    case FORMATS.CLAUDE:
+
+    if (isKiroBody(body) || format === FORMATS.KIRO) {
+      injectKiroSystem(body, prompt);
+    } else if (format === FORMATS.CLAUDE) {
       injectClaudeSystem(body, prompt);
-      return;
-    case FORMATS.GEMINI:
-    case FORMATS.GEMINI_CLI:
-    case FORMATS.VERTEX:
-    case FORMATS.ANTIGRAVITY:
-      // Antigravity wraps Gemini shape in body.request → injectGeminiSystem handles it
-      injectGeminiSystem(body, prompt);
-      return;
-    default:
-      // OpenAI and OpenAI-shaped formats (responses/codex/cursor/kiro/ollama)
-      injectMessagesSystem(body, prompt, format);
+    } else if (isResponsesLite) {
+      injectOpenAIArray(body.input, prompt, true);
+    } else if (isString(body.instructions)) {
+      injectInstructionsSystem(body, prompt);
+    } else if (Array.isArray(body.messages)) {
+      injectOpenAIArray(body.messages, prompt, false);
+    } else if (Array.isArray(body.input)) {
+      injectOpenAIArray(body.input, prompt, true);
+    } else if (isString(body.input)) {
+      /** Bare Responses input strings stay intact; prompts belong in top-level instructions. */
+      switch (format) {
+        case FORMATS.OPENAI_RESPONSES:
+        case FORMATS.OPENAI_RESPONSE:
+        case FORMATS.CODEX:
+          injectInstructionsSystem(body, prompt);
+      }
+    } else {
+      switch (format) {
+        case FORMATS.GEMINI:
+        case FORMATS.GEMINI_CLI:
+        case FORMATS.VERTEX:
+        case FORMATS.ANTIGRAVITY:
+          injectGeminiSystem(body, prompt);
+          break;
+      }
+    }
+  } catch {
+    // Token-saver injection must never break provider dispatch.
   }
 }
 
-// OpenAI-shaped: messages[] (chat) or input[] (responses) or instructions (responses string)
-function injectMessagesSystem(body, prompt, format) {
-  // Responses Lite carries an `additional_tools` envelope at the head of input[];
-  // the system prompt must land in a developer message AFTER it, never inside the
-  // envelope and never as top-level instructions (Codex rejects both). Detect the
-  // envelope BEFORE the Responses/Codex top-level-instructions branch so only the
-  // Lite shape routes through input[].
-  const isResponsesLite = Array.isArray(body.input) && body.input.some((m) => m?.type === "additional_tools");
+function tryMutate(mutation) {
+  try {
+    mutation();
+  } catch {
+    // Frozen and hostile provider bodies stay unchanged.
+  }
+}
 
-  // OpenAI Responses API: Codex rejects instruction messages in input[]; use top-level instructions.
-  if (!isResponsesLite && (format === FORMATS.OPENAI_RESPONSES || format === FORMATS.OPENAI_RESPONSE || format === FORMATS.CODEX || isString(body.instructions))) {
-    if (isPromptAlreadyInjected(body.instructions, prompt)) return;
-    body.instructions = body.instructions ?
-    `${body.instructions}${SEP}${prompt}` :
-    prompt;
+function isKiroBody(body) {
+  return isString(body.conversationState?.currentMessage?.userInputMessage?.content);
+}
+
+function injectInstructionsSystem(body, prompt) {
+  if (isPromptAlreadyInjected(body.instructions, prompt)) return;
+  const next = body.instructions ? `${body.instructions}${SEP}${prompt}` : prompt;
+  tryMutate(() => { body.instructions = next; });
+}
+
+function hasPromptBlock(parts, prompt) {
+  return parts.some((part) => isString(part?.text) && isPromptAlreadyInjected(part.text, prompt));
+}
+
+/**
+ * Injects into Chat `messages[]` or Responses `input[]` without interpreting
+ * non-message Responses items as messages or changing their order.
+ */
+function injectOpenAIArray(arr, prompt, isResponses) {
+  const partType = isResponses ? RESPONSES_ITEM.INPUT_TEXT : OPENAI_BLOCK.TEXT;
+  const isEligible = (item) => item &&
+    (!isResponses || item.type === RESPONSES_ITEM.MESSAGE) &&
+    (item.role === ROLE.SYSTEM || item.role === ROLE.DEVELOPER);
+  const eligible = arr.filter(isEligible);
+
+  if (eligible.some((item) => {
+    const content = item.content;
+    return isString(content) ?
+      isPromptAlreadyInjected(content, prompt) :
+      Array.isArray(content) && hasPromptBlock(content, prompt);
+  })) return;
+
+  if (eligible.length > 0) {
+    appendToOpenAIMessage(eligible[0], prompt, partType);
     return;
   }
 
-  const isChatMessages = Array.isArray(body.messages);
-  const arr = isChatMessages ? body.messages :
-  Array.isArray(body.input) ? body.input :
-  null;
-  if (!arr) {
-    // Responses also accepts a bare string input with no top-level instructions yet.
-    if (isString(body.input)) body.instructions = prompt;
+  if (!isResponses) {
+    tryMutate(() => { arr.unshift({ role: ROLE.SYSTEM, content: prompt }); });
     return;
   }
 
-  const isResponses = arr === body.input;
-  const partType = isChatMessages ? OPENAI_BLOCK.TEXT : RESPONSES_ITEM.INPUT_TEXT;
-  const idx = arr.findIndex((m) =>
-  m && (!m.type || m.type === "message") && (m.role === ROLE.SYSTEM || m.role === ROLE.DEVELOPER)
-  );
-  if (idx >= 0) {
-    // Check if already injected before appending
-    const existing = extractTextFromOpenAIMessage(arr[idx]);
-    if (isPromptAlreadyInjected(existing, prompt)) return;
-    appendToOpenAIMessage(arr[idx], prompt, partType);
-  } else if (isResponses) {
-    // Responses Lite puts an `additional_tools` envelope first; system prompt
-    // must land in a developer message AFTER it, never inside the envelope.
-    const insertAt = arr.findIndex((m) => m?.type !== "additional_tools");
+  const insertAt = arr.findIndex((item) => item?.type !== "additional_tools");
+  tryMutate(() => {
     arr.splice(insertAt < 0 ? arr.length : insertAt, 0, {
       type: RESPONSES_ITEM.MESSAGE,
       role: ROLE.DEVELOPER,
       content: [{ type: partType, text: prompt }]
     });
-  } else {
-    arr.unshift({ role: ROLE.SYSTEM, content: prompt });
-  }
+  });
 }
 
-function extractTextFromOpenAIMessage(msg) {
-  if (isString(msg.content)) {
-    return msg.content;
-  } else if (Array.isArray(msg.content)) {
-    return msg.content.map((part) => part.text || '').join(' ');
-  }
-  return '';
+/**
+ * Kiro carries its system-like prefix only in current user content. Prepend
+ * there exactly once; never invent upstream's unsupported `systemPrompt`.
+ */
+function injectKiroSystem(body, prompt) {
+  const message = body.conversationState?.currentMessage?.userInputMessage;
+  if (!message || !isString(message.content) && message.content != null) return;
+  if (isPromptAlreadyInjected(message.content, prompt)) return;
+  const next = message.content ? `${prompt}${SEP}${message.content}` : prompt;
+  tryMutate(() => { message.content = next; });
 }
 
 /**
@@ -125,11 +161,12 @@ function extractTextFromOpenAIMessage(msg) {
  */
 function appendToOpenAIMessage(msg, prompt, partType) {
   if (isString(msg.content)) {
-    msg.content = msg.content ? `${msg.content}${SEP}${prompt}` : prompt;
+    const next = msg.content ? `${msg.content}${SEP}${prompt}` : prompt;
+    tryMutate(() => { msg.content = next; });
   } else if (Array.isArray(msg.content)) {
-    msg.content.push({ type: partType, text: prompt });
+    tryMutate(() => { msg.content.push({ type: partType, text: prompt }); });
   } else {
-    msg.content = prompt;
+    tryMutate(() => { msg.content = prompt; });
   }
 }
 
@@ -138,27 +175,24 @@ function appendToOpenAIMessage(msg, prompt, partType) {
 function injectClaudeSystem(body, prompt) {
   if (isString(body.system) && body.system.length > 0) {
     if (isPromptAlreadyInjected(body.system, prompt)) return;
-    body.system = `${body.system}${SEP}${prompt}`;
+    const next = `${body.system}${SEP}${prompt}`;
+    tryMutate(() => { body.system = next; });
     return;
   }
   if (Array.isArray(body.system)) {
-    // Check if already injected
-    const existingText = body.system.map((block) => block?.text || '').join(' ');
-    if (isPromptAlreadyInjected(existingText, prompt)) return;
-
+    if (hasPromptBlock(body.system, prompt)) return;
     const block = { type: "text", text: prompt };
     let lastCacheIdx = -1;
     for (let i = body.system.length - 1; i >= 0; i--) {
       if (body.system[i]?.cache_control) {lastCacheIdx = i;break;}
     }
-    if (lastCacheIdx >= 0) {
-      body.system.splice(lastCacheIdx, 0, block);
-    } else {
-      body.system.push(block);
-    }
+    tryMutate(() => {
+      if (lastCacheIdx >= 0) body.system.splice(lastCacheIdx, 0, block);
+      else body.system.push(block);
+    });
     return;
   }
-  body.system = prompt;
+  tryMutate(() => { body.system = prompt; });
 }
 
 // Gemini shape: body.system_instruction | body.systemInstruction | body.request.systemInstruction
@@ -169,11 +203,9 @@ function injectGeminiSystem(body, prompt) {
   const key = useSnake ? "system_instruction" : "systemInstruction";
   const sys = target[key];
   if (sys && Array.isArray(sys.parts)) {
-    // Check if already injected
-    const existingText = sys.parts.map((part) => part.text || '').join(' ');
-    if (isPromptAlreadyInjected(existingText, prompt)) return;
-    sys.parts.push({ text: prompt });
+    if (hasPromptBlock(sys.parts, prompt)) return;
+    tryMutate(() => { sys.parts.push({ text: prompt }); });
     return;
   }
-  target[key] = { parts: [{ text: prompt }] };
+  tryMutate(() => { target[key] = { parts: [{ text: prompt }] }; });
 }

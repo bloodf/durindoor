@@ -127,7 +127,6 @@ describe("systemInject deduplication", () => {
     it("creates systemInstruction if none exists", () => {
       const body = {};
       injectSystemPrompt(body, FORMATS.GEMINI, TEST_PROMPT);
-      expect(body.systemInstruction).toBeDefined();
       expect(body.systemInstruction.parts[0].text).toBe(TEST_PROMPT);
     });
 

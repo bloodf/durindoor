@@ -100,11 +100,10 @@ vi.mock("../../open-sse/rtk/index.js", () => ({
   resolveTokenSaverEnabled: vi.fn(() => true),
 }));
 
-vi.mock("../../open-sse/rtk/headroom.js", () => ({
+/** Preserve real exports such as classifyHeadroomDiagnostic so new imports do not break this mock. */
+vi.mock("../../open-sse/rtk/headroom.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   compressWithHeadroom: vi.fn(async () => null),
-  formatHeadroomLog: vi.fn(() => ""),
-  formatHeadroomSizeLog: vi.fn(() => ""),
-  isHeadroomPhantomSavings: vi.fn(() => false),
 }));
 
 vi.mock("../../open-sse/providers/capabilities.js", () => ({

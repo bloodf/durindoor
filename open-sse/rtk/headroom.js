@@ -58,8 +58,8 @@ function hasMeaningfulByteShrink(beforeBytes, candidate) {
   return jsonBytes(candidate) < beforeBytes * 0.95;
 }
 
-// Reject proxy output that changes message ordering or tool routing identity.
-function validateOpenAIMessageShape(sourceMessages, candidateMessages, diagnostics) {
+/** Return whether proxy output preserves OpenAI message ordering and tool routing identity. */
+function preservesOpenAIConversationContract(sourceMessages, candidateMessages, diagnostics) {
   if (!Array.isArray(candidateMessages) || candidateMessages.length !== sourceMessages.length) {
     setDiagnostic(diagnostics, "proxy response did not preserve message count or order");
     return false;
@@ -493,7 +493,7 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       }
       const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data) return null;
-      if (!validateOpenAIMessageShape(oai.messages, data.messages, diagnostics)) return null;
+      if (!preservesOpenAIConversationContract(oai.messages, data.messages, diagnostics)) return null;
       const claudeBody = openaiToClaudeRequest(model, { ...oai, messages: data.messages }, false);
       if (!Array.isArray(claudeBody?.messages) || claudeBody.messages.length !== body.messages.length ||
           claudeBody.messages.some((message, index) => message?.role !== body.messages[index]?.role ||
@@ -578,7 +578,7 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
     const sourceMessages = body[key];
     const data = await callCompress(url, sourceMessages, model, timeoutMs, compressUserMessages, diagnostics || {});
     if (!data) return null;
-    if (!validateOpenAIMessageShape(sourceMessages, data.messages, diagnostics)) return null;
+    if (!preservesOpenAIConversationContract(sourceMessages, data.messages, diagnostics)) return null;
     if (!hasMeaningfulByteShrink(sizeSnapshot.bodyBytes, { ...body, [key]: data.messages })) {
       setDiagnostic(diagnostics, "phantom savings — keeping original (>95% size)");
       return null;

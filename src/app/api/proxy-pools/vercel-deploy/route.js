@@ -25,18 +25,29 @@ export default async function handler(req) {
   headers.delete("x-relay-path");
   headers.delete("host");
 
-  const response = await fetch(targetUrl, {
-    method: req.method,
-    headers,
-    body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-    redirect: "error",
-    duplex: "half",
-  });
+  try {
+    /** Keep redirect handling explicit instead of relying on runtime-specific fetch errors. */
+    const response = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+      redirect: "manual",
+      duplex: "half",
+    });
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error("Upstream redirects are not allowed");
+    }
 
-  return new Response(response.body, {
-    status: response.status,
-    headers: response.headers,
-  });
+    return new Response(response.body, {
+      status: response.status,
+      headers: response.headers,
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
+  }
 }
 `;
 

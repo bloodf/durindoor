@@ -19,7 +19,7 @@ export default {
     const newRequestInit = {
       method: request.method,
       headers: new Headers(request.headers),
-      redirect: "error",
+      redirect: "manual",
     };
 
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -32,7 +32,11 @@ export default {
     newRequestInit.headers.delete("host");
 
     try {
+      /** Keep redirect handling portable across workerd and Fetch runtimes. */
       const response = await fetch(targetUrl, newRequestInit);
+      if (response.status >= 300 && response.status < 400) {
+        throw new Error("Upstream redirects are not allowed");
+      }
       return new Response(response.body, {
         status: response.status,
         headers: response.headers,

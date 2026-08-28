@@ -46,6 +46,12 @@ export const REVIEWED_ORPHANS = new Map([
   ["pricing:kimi-k3", "priced third-party registry alias"],
   ["pricing:kimi-k2.5-thinking", "priced third-party registry alias"],
 
+  /** #599 ports #3423 forward pricing before matching registry models ship. */
+  ["pricing:qwen3.8-max", "#599/#3423 intentional forward-priced id"],
+  ["pricing:qwen3.8-27b", "#599/#3423 intentional forward-priced id"],
+  ["pricing:qwen3.8-2.4t-a95b", "#599/#3423 intentional forward-priced id"],
+  ["pricing-pattern:*muse-glimmer*", "#599/#3423 intentional forward glob"],
+
   ["pricing-pattern:*-codex-mini-*", "intentional forward glob"],
   ["pricing-pattern:codex-*", "intentional forward glob"],
 ]);

@@ -59,4 +59,21 @@ describe("model catalog consistency", () => {
       )}`
     ).toEqual([]);
   });
+
+  it("reviews exactly the intended #599 Qwen 3.8 and Muse pricing orphans", async () => {
+    const { REVIEWED_ORPHANS } = await import("../../open-sse/config/catalogAllowlist.js");
+    const expected = [
+      "pricing:qwen3.8-max",
+      "pricing:qwen3.8-27b",
+      "pricing:qwen3.8-2.4t-a95b",
+      "pricing-pattern:*muse-glimmer*",
+    ];
+    const related = [...REVIEWED_ORPHANS.keys()].filter(
+      (key) =>
+        (key.startsWith("pricing:") || key.startsWith("pricing-pattern:")) &&
+        (key.includes("qwen3.8") || key.includes("muse"))
+    );
+
+    expect(related.sort()).toEqual(expected.sort());
+  });
 });

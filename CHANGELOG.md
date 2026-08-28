@@ -8,6 +8,7 @@
 - Model discovery exposes additive human-readable model/provider metadata while preserving every existing callable model ID and harness configuration.
 - OpenCode Go and CommandCode now expose DeepSeek V4 Flash Vision Exp with vision/reasoning capabilities; OpenCode Go enables all three declared request formats, and CommandCode preserves OpenAI image URLs and data URIs. Ports decolua/9router#3482. Closes #585.
 - Grok CLI **Bulk Add** imports single, array, or `accounts` JSON with snake/camel token keys, derived identity/expiry, serial priority assignment, and token-safe partial results. Ports decolua/9router#3443. Closes #600.
+- Headroom compression request timeout is now configurable (`headroomTimeoutMs`, default 15000 ms, validated 1–120 s) from the Token Saver dashboard and settings API; invalid values fail safe to the default. Ports decolua/9router#3417. Refs #602.
 
 ## Fixed
 - Headroom now records a diagnostic when an OpenAI Responses request cannot translate to compression `messages[]`, while preserving fail-open behavior (ports decolua/9router#3535). Refs #602.

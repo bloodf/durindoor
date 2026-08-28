@@ -22,6 +22,11 @@ export {
   resetHeadroomCircuit } from
 "./headroomCircuit.js";
 
+/** Return a finite positive timeout, preserving the fork's 15-second default. */
+function normalizeTimeout(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
+}
+
 function jsonBytes(value) {
   try {
     return new TextEncoder().encode(JSON.stringify(value) || "").length;
@@ -342,6 +347,7 @@ async function callCompress(url, messages, model, timeoutMs, compressUserMessage
  * @returns {Promise<object|null>} Compression stats, or null when bypassed.
  */
 export async function compressWithHeadroom(body, { enabled, url, model, format, compressUserMessages, timeoutMs = DEFAULT_TIMEOUT_MS, diagnostics = null } = {}) {
+  timeoutMs = normalizeTimeout(timeoutMs);
   if (!enabled) {
     setDiagnostic(diagnostics, "disabled");
     return null;

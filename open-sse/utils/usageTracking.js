@@ -183,11 +183,11 @@ export function normalizeUsage(usage) {
  *   cache_creation_input_tokens = cache-write portion (subset of prompt_tokens)
  *   completion_tokens, reasoning_tokens, total_tokens
  *
- * Discriminator: Claude reports cache_read_input_tokens with a prompt that
- * EXCLUDES cache, so we fold cache into prompt. OpenAI/Gemini report
- * cached_tokens already counted inside prompt, so we pass through. Idempotent:
- * once folded the output carries cached_tokens (not cache_read_input_tokens),
- * so re-running takes the passthrough branch and does not double-add.
+ * Discriminator: provider-flat cache fields report cache amounts excluded from
+ * prompt, so we fold both flat amounts into prompt. Once folded, Responses and
+ * OpenAI/Gemini usage carry inclusive cached fields instead. Idempotent: the
+ * inclusive output has no cache_read_input_tokens, and nested cache creation
+ * identifies cache_creation_input_tokens as an inclusive subset.
  *
  * @param {object} usage - a normalizeUsage()-shaped object
  * @returns {object|null} canonical token object, or null for invalid input
@@ -197,32 +197,26 @@ export function canonicalizeUsage(usage) {
 
   const num = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
   const completion = num(usage.completion_tokens ?? usage.output_tokens);
-  const reasoning = num(usage.reasoning_tokens ?? usage.completion_tokens_details?.reasoning_tokens);
-  // Fall back to the nested prompt_tokens_details.cache_creation_tokens shape
-  // (buildUsage()'s OpenAI-forwarding format) when the top-level field is
-  // absent, so callers that pass a buildUsage() object through don't silently
-  // drop cache_creation.
-  const cacheCreation = num(usage.cache_creation_input_tokens ?? usage.prompt_tokens_details?.cache_creation_tokens);
+  const inputDetails = usage.prompt_tokens_details ?? usage.input_tokens_details;
+  const outputDetails = usage.completion_tokens_details ?? usage.output_tokens_details;
+  const reasoning = num(usage.reasoning_tokens ?? outputDetails?.reasoning_tokens);
+  const hasExclusiveCache = usage.cache_read_input_tokens !== undefined || (
+  usage.cache_creation_input_tokens !== undefined &&
+  usage.cached_tokens === undefined &&
+  inputDetails?.cache_creation_tokens === undefined);
+  const cacheCreation = hasExclusiveCache ?
+  num(usage.cache_creation_input_tokens) :
+  num(usage.cache_creation_input_tokens ?? inputDetails?.cache_creation_tokens);
 
   let prompt = num(usage.prompt_tokens ?? usage.input_tokens);
   let cached;
 
-  // Claude path: prompt excludes cache; cache_read_input_tokens and/or
-  // cache_creation_input_tokens are separate. A cache-miss "first write" only
-  // carries cache_creation_input_tokens (no cache_read_input_tokens yet), so
-  // check both fields — otherwise a first-write request falls through to the
-  // OpenAI passthrough branch below and cache_creation never gets folded in.
-  // Guard on the absence of `cached_tokens`: our own canonical output always
-  // sets that key (even to 0), so re-running canonicalizeUsage on an already-
-  // folded result takes the passthrough branch instead of folding again.
-  const foldsExclusiveCache = usage.cached_tokens === undefined && (
-  usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined);
-  if (foldsExclusiveCache) {
+  if (hasExclusiveCache) {
     cached = num(usage.cache_read_input_tokens);
     prompt = prompt + cached + cacheCreation;
   } else {
-    // OpenAI/Gemini path (or already-canonical input): prompt already includes cached_tokens.
-    cached = num(usage.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens);
+    // OpenAI/Gemini/Responses path: cache fields are subsets of inclusive input.
+    cached = num(usage.cached_tokens ?? inputDetails?.cached_tokens);
   }
 
   const componentTotal = prompt + completion;
@@ -231,9 +225,9 @@ export function canonicalizeUsage(usage) {
   const result = {
     prompt_tokens: prompt,
     completion_tokens: completion,
-    // Claude's exclusive cache fold changes the component sum, so its incoming
-    // total becomes stale. Other providers' explicit totals are authoritative.
-    total_tokens: foldsExclusiveCache ? componentTotal : explicitTotal > 0 ? explicitTotal : componentTotal,
+    // Exclusive cache normalization changes the component sum, so its incoming
+    // total becomes stale. Inclusive providers' explicit totals stay authoritative.
+    total_tokens: hasExclusiveCache ? componentTotal : explicitTotal > 0 ? explicitTotal : componentTotal,
     cached_tokens: cached,
     cache_creation_input_tokens: cacheCreation
   };
@@ -348,18 +342,23 @@ export function extractUsage(chunk) {
     });
   }
 
-  // OpenAI Responses API format (response.completed or response.done)
+  // OpenAI Responses API format (response.completed or response.done).
+  // Cache fields already follow the inclusive Responses contract here.
   if ((chunk.type === "response.completed" || chunk.type === "response.done") && chunk.response?.usage && isObject(chunk.response.usage)) {
     const usage = chunk.response.usage;
-    const cachedTokens = usage.input_tokens_details?.cached_tokens;
+    const inputDetails = usage.input_tokens_details;
+    const cachedTokens = usage.cached_tokens ?? inputDetails?.cached_tokens;
+    const cacheCreationTokens = usage.cache_creation_input_tokens ?? inputDetails?.cache_creation_tokens;
     return normalizeUsage({
-      prompt_tokens: usage.input_tokens || usage.prompt_tokens || 0,
-      completion_tokens: usage.output_tokens || usage.completion_tokens || 0,
+      prompt_tokens: usage.input_tokens ?? usage.prompt_tokens ?? 0,
+      completion_tokens: usage.output_tokens ?? usage.completion_tokens ?? 0,
+      total_tokens: usage.total_tokens,
       cached_tokens: cachedTokens,
+      cache_creation_input_tokens: cacheCreationTokens,
       reasoning_tokens: usage.output_tokens_details?.reasoning_tokens,
       cost_in_usd: usage.cost_in_usd,
       cost_in_usd_ticks: usage.cost_in_usd_ticks,
-      prompt_tokens_details: cachedTokens ? { cached_tokens: cachedTokens } : undefined
+      prompt_tokens_details: inputDetails
     });
   }
 

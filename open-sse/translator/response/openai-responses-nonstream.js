@@ -1,15 +1,16 @@
 import { ROLE, CLAUDE_BLOCK, RESPONSES_ITEM, MODEL_FALLBACK } from "../schema/index.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { toResponsesUsage } from "../concerns/usage.js";
 
 function n(value) {
   return isNumber(value) ? value : 0;
 }
 
 function usageFromResponses(responseUsage) {
-  const raw = responseUsage && isObject(responseUsage) ? responseUsage : {};
-  const inputTotal = n(raw.input_tokens) || n(raw.prompt_tokens);
-  const outputTokens = n(raw.output_tokens) || n(raw.completion_tokens);
-  const cacheRead = n(raw.input_tokens_details?.cached_tokens) || n(raw.cache_read_input_tokens);
+  const raw = toResponsesUsage(responseUsage) || {};
+  const inputTotal = n(raw.input_tokens);
+  const outputTokens = n(raw.output_tokens);
+  const cacheRead = n(raw.cached_tokens);
   const cacheCreate = n(raw.cache_creation_input_tokens);
   const freshInput = Math.max(0, inputTotal - cacheRead - cacheCreate);
 
@@ -24,7 +25,12 @@ function usageFromResponses(responseUsage) {
       prompt_tokens: inputTotal,
       completion_tokens: outputTokens,
       total_tokens: inputTotal + outputTokens,
-      ...(cacheRead > 0 ? { prompt_tokens_details: { cached_tokens: cacheRead } } : null)
+      ...(cacheRead > 0 || cacheCreate > 0 ? {
+        prompt_tokens_details: {
+          ...(cacheRead > 0 ? { cached_tokens: cacheRead } : null),
+          ...(cacheCreate > 0 ? { cache_creation_tokens: cacheCreate } : null)
+        }
+      } : null)
     }
   };
 }

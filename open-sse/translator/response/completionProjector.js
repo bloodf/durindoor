@@ -1,5 +1,6 @@
 import { FORMATS } from "../formats.js";
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
+import { toResponsesUsage } from "../concerns/usage.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -171,12 +172,11 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
     }
   }));
 
-  const usage = responseBody?.usage || {};
-  const inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
-  const outputTokens = usage.output_tokens || usage.completion_tokens || 0;
-  const cachedTokens = usage.cache_read_input_tokens || usage.cached_tokens || 0;
+  const usage = toResponsesUsage(responseBody?.usage) || {};
+  const inputTokens = usage.input_tokens || 0;
+  const outputTokens = usage.output_tokens || 0;
+  const cachedTokens = usage.cached_tokens || 0;
   const cacheCreationTokens = usage.cache_creation_input_tokens || 0;
-  const promptTokens = inputTokens + cachedTokens + cacheCreationTokens;
   const promptTokenDetails = cachedTokens || cacheCreationTokens ?
   {
     ...(cachedTokens ? { cached_tokens: cachedTokens } : null),
@@ -199,10 +199,10 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
     model: responseBody?.model || fallbackModel || "unknown",
     choices: [{ index: 0, message, finish_reason: finishReason }],
     usage: {
-      prompt_tokens: promptTokens,
+      prompt_tokens: inputTokens,
       ...(promptTokenDetails ? { prompt_tokens_details: promptTokenDetails } : null),
       completion_tokens: outputTokens,
-      total_tokens: usage.total_tokens || promptTokens + outputTokens
+      total_tokens: usage.total_tokens || inputTokens + outputTokens
     }
   };
 }

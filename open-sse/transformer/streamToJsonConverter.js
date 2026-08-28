@@ -6,13 +6,14 @@
 import { FORMATS } from "../translator/formats.js";
 import { MAX_RESPONSES_OUTPUT_ITEMS } from "../config/runtimeConfig.js";
 import { readBoundedResponseText } from "../utils/error.js";
+import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 
 
 /**
  * Process a single SSE message and update state accordingly.
  */
-import { isFunction, isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 function processSSEMessage(msg, state) {
   if (!msg.trim()) return;
   if (msg.trim().startsWith(":")) return;
@@ -57,18 +58,9 @@ function processSSEMessage(msg, state) {
       state.status = eventType === "response.incomplete" ? "incomplete" : "completed";
     }
     if (parsed.response?.usage) {
-      const u = parsed.response.usage;
-      state.usage.input_tokens = u.input_tokens || 0;
-      state.usage.output_tokens = u.output_tokens || 0;
-      state.usage.total_tokens = u.total_tokens || 0;
-      if (u.cache_read_input_tokens || u.cache_creation_input_tokens) {
-        if (u.cache_read_input_tokens) state.usage.cache_read_input_tokens = u.cache_read_input_tokens;
-        if (u.cache_creation_input_tokens) state.usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
-      }
-      const details = u.input_tokens_details || u.prompt_tokens_details;
-      if (details && isNumber(details.cached_tokens)) {
-        state.usage.cache_read_input_tokens = details.cached_tokens;
-      }
+      // Normalize aliases and flat provider fields without discarding any
+      // standard input/output detail keys from the completed Responses event.
+      state.usage = toResponsesUsage(parsed.response.usage) || state.usage;
     }
   }
 }

@@ -616,13 +616,17 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
     if (responseUsage && isObject(responseUsage)) {
-      const inputTokens = responseUsage.input_tokens || responseUsage.prompt_tokens || 0;
-      const outputTokens = responseUsage.output_tokens || responseUsage.completion_tokens || 0;
-      // OpenAI Responses API: input_tokens already includes cached_tokens
-      // Cache info is in input_tokens_details.cached_tokens
-      const cacheReadTokens = responseUsage.input_tokens_details?.cached_tokens || responseUsage.cache_read_input_tokens || 0;
-
-      state.usage = buildUsage({ promptTokens: inputTokens, completionTokens: outputTokens, totalTokens: inputTokens + outputTokens, cachedTokens: cacheReadTokens });
+      /** Malformed provider usage must keep the stream transform total. */
+      const normalized = toResponsesUsage(responseUsage) || { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+      state.usage = buildUsage({
+        promptTokens: normalized.input_tokens,
+        completionTokens: normalized.output_tokens,
+        totalTokens: normalized.total_tokens,
+        cachedTokens: normalized.cached_tokens,
+        cacheCreationTokens: normalized.cache_creation_input_tokens,
+        reasoningTokens: normalized.output_tokens_details?.reasoning_tokens,
+        outputTokensDetails: normalized.output_tokens_details
+      });
     }
 
     if (!state.finishReasonSent) {

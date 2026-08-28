@@ -148,6 +148,14 @@ describe("calculateCostFromTokens (canonical inclusive convention)", () => {
     const expected = (100 * 3 + 30 * 15 + 20 * 30) / 1_000_000;
     expect(cost).toBeCloseTo(expected, 12);
   });
+
+  it("charges OpenAI reasoning tokens once at the output rate", () => {
+    const cost = calculateCostFromTokens(
+      { prompt_tokens: 10_000, cached_tokens: 9_000, completion_tokens: 500, reasoning_tokens: 300 },
+      { input: 1.75, output: 14, cached: 0.175, reasoning: 14 },
+    );
+    expect(cost).toBeCloseTo((1_000 * 1.75 + 9_000 * 0.175 + 500 * 14) / 1_000_000, 12);
+  });
 });
 
 describe("Anthropic streaming usage (message_start carries cache, message_delta output-only)", () => {

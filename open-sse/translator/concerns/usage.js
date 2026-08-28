@@ -97,24 +97,60 @@ export function toOpenAIUsage(raw, kind) {
   return buildUsage(extract(raw));
 }
 
-// OpenAI chat-completions usage → Responses API usage (Codex requires input_tokens).
+/**
+ * Convert usage to the cache-inclusive Responses contract.
+ *
+ * Provider-flat `cache_read_input_tokens` is cache-exclusive, so it and cache
+ * creation are folded into `input_tokens` once, then the exclusive field is
+ * dropped. When either flat field selects exclusive normalization, both flat
+ * values are authoritative and stale nested cache values are removed.
+ */
 export function toResponsesUsage(raw) {
   if (!raw || !isObject(raw) || Array.isArray(raw)) return null;
 
-  const inputTokens = n(raw.input_tokens) || n(raw.prompt_tokens);
+  const baseInputTokens = n(raw.input_tokens) || n(raw.prompt_tokens);
   const outputTokens = n(raw.output_tokens) || n(raw.completion_tokens);
+  const rawInputDetails = raw.input_tokens_details || raw.prompt_tokens_details;
+  const inputDetails = rawInputDetails && isObject(rawInputDetails) && !Array.isArray(rawInputDetails) ?
+  { ...rawInputDetails } : {};
+  const hasExclusiveCache = raw.cache_read_input_tokens !== undefined || (
+  raw.cache_creation_input_tokens !== undefined &&
+  raw.cached_tokens === undefined &&
+  inputDetails.cache_creation_tokens === undefined);
+  const cachedTokens = hasExclusiveCache ?
+  n(raw.cache_read_input_tokens) :
+  isNumber(raw.cached_tokens) ? raw.cached_tokens : n(inputDetails.cached_tokens);
+  const cacheCreationTokens = hasExclusiveCache ?
+  n(raw.cache_creation_input_tokens) :
+  isNumber(raw.cache_creation_input_tokens) ? raw.cache_creation_input_tokens : n(inputDetails.cache_creation_tokens);
+  const inputTokens = hasExclusiveCache ? baseInputTokens + cachedTokens + cacheCreationTokens : baseInputTokens;
+  if (hasExclusiveCache) {
+    delete inputDetails.cached_tokens;
+    delete inputDetails.cache_creation_tokens;
+  }
 
   const usage = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
-    total_tokens: n(raw.total_tokens) || inputTokens + outputTokens
+    total_tokens: hasExclusiveCache ? inputTokens + outputTokens : n(raw.total_tokens) || inputTokens + outputTokens
   };
 
-  const cachedTokens = n(raw.input_tokens_details?.cached_tokens) || n(raw.prompt_tokens_details?.cached_tokens);
-  if (cachedTokens > 0) usage.input_tokens_details = { cached_tokens: cachedTokens };
+  if (cachedTokens > 0) {
+    usage.cached_tokens = cachedTokens;
+    inputDetails.cached_tokens = cachedTokens;
+  }
+  if (cacheCreationTokens > 0) {
+    usage.cache_creation_input_tokens = cacheCreationTokens;
+    inputDetails.cache_creation_tokens = cacheCreationTokens;
+  }
+  if (Object.keys(inputDetails).length > 0) usage.input_tokens_details = inputDetails;
 
-  const reasoningTokens = n(raw.output_tokens_details?.reasoning_tokens) || n(raw.completion_tokens_details?.reasoning_tokens);
-  if (reasoningTokens > 0) usage.output_tokens_details = { reasoning_tokens: reasoningTokens };
+  const rawOutputDetails = raw.output_tokens_details || raw.completion_tokens_details;
+  const outputDetails = rawOutputDetails && isObject(rawOutputDetails) && !Array.isArray(rawOutputDetails) ?
+  { ...rawOutputDetails } : {};
+  const reasoningTokens = n(raw.reasoning_tokens);
+  if (reasoningTokens > 0 && !isNumber(outputDetails.reasoning_tokens)) outputDetails.reasoning_tokens = reasoningTokens;
+  if (Object.keys(outputDetails).length > 0) usage.output_tokens_details = outputDetails;
 
   return usage;
 }

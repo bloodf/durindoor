@@ -23,15 +23,17 @@ test("converts Responses body to Claude message with usage fallback when usage i
   assert.deepEqual(out.usage, { input_tokens: 0, output_tokens: 0 });
 });
 
-test("converts Responses usage to Claude fresh input plus cache read", () => {
+test("converts Responses usage to Claude fresh input plus cache details", () => {
   const out = openAIResponsesBodyToClaude({
     id: "resp_2",
     model: "model-a",
     output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }],
     usage: {
-      input_tokens: 105,
+      input_tokens: 107,
       output_tokens: 7,
-      input_tokens_details: { cached_tokens: 100 },
+      cached_tokens: 100,
+      cache_creation_input_tokens: 2,
+      input_tokens_details: { cached_tokens: 100, cache_creation_tokens: 2 },
     },
   });
 
@@ -39,6 +41,7 @@ test("converts Responses usage to Claude fresh input plus cache read", () => {
     input_tokens: 5,
     output_tokens: 7,
     cache_read_input_tokens: 100,
+    cache_creation_input_tokens: 2,
   });
 });
 
@@ -121,23 +124,25 @@ test("converts Responses body to OpenAI chat shape with usage fallback", () => {
   assert.deepEqual(out.usage, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
 });
 
-test("converts Responses cached usage to OpenAI prompt_tokens_details", () => {
+test("converts Responses cached usage to coherent OpenAI prompt_tokens_details", () => {
   const out = openAIResponsesBodyToOpenAI({
     id: "resp_4",
     model: "model-a",
     output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }],
     usage: {
-      input_tokens: 105,
+      input_tokens: 107,
       output_tokens: 7,
-      input_tokens_details: { cached_tokens: 100 },
+      cached_tokens: 100,
+      cache_creation_input_tokens: 2,
+      input_tokens_details: { cached_tokens: 100, cache_creation_tokens: 2 },
     },
   });
 
   assert.deepEqual(out.usage, {
-    prompt_tokens: 105,
+    prompt_tokens: 107,
     completion_tokens: 7,
-    total_tokens: 112,
-    prompt_tokens_details: { cached_tokens: 100 },
+    total_tokens: 114,
+    prompt_tokens_details: { cached_tokens: 100, cache_creation_tokens: 2 },
   });
 });
 

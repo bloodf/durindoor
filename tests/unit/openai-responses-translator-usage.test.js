@@ -27,6 +27,7 @@ describe("toResponsesUsage", () => {
       input_tokens: 12,
       output_tokens: 7,
       total_tokens: 19,
+      cached_tokens: 4,
       input_tokens_details: { cached_tokens: 4 },
     });
   });
@@ -56,5 +57,19 @@ describe("openai-responses translator", () => {
       { id: "chatcmpl-z", choices: [{ index: 0, delta: { role: "assistant", content: "ok" } }] },
       { id: "chatcmpl-z", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
     ])).toEqual({ input_tokens: 0, output_tokens: 0, total_tokens: 0 });
+  });
+
+  it("zero-fills malformed Responses usage arrays", () => {
+    const state = initState(FORMATS.OPENAI_RESPONSES);
+    let chunks;
+
+    expect(() => {
+      chunks = translateResponse(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, {
+        type: "response.completed",
+        response: { usage: [] },
+      }, state);
+    }).not.toThrow();
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].usage).toEqual({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
   });
 });

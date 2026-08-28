@@ -5,6 +5,7 @@ import { addBufferToUsage, claudeUsageToOpenAI, filterUsageForFormat } from "../
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { EMPTY_CONTENT_COOLDOWN_MS } from "../../config/errorConfig.js";
 import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
@@ -30,13 +31,62 @@ function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 
-
 const GEMINI_FAMILY_FORMATS = new Set([
-FORMATS.GEMINI,
-FORMATS.GEMINI_CLI,
-FORMATS.ANTIGRAVITY,
-FORMATS.VERTEX]
-);
+  FORMATS.GEMINI,
+  FORMATS.GEMINI_CLI,
+  FORMATS.VERTEX,
+  FORMATS.ANTIGRAVITY
+]);
+
+/**
+ * Check the emitted response shape for client-usable text, reasoning, or tools.
+ * Translation can emit a shape other than the client's source dialect, so the
+ * body itself—not sourceFormat—selects the content fields inspected here.
+ */
+function hasUsefulContent(response) {
+  /** Translation may emit OpenAI choices regardless of the client's source dialect. */
+  if (Array.isArray(response?.choices)) {
+    const message = response.choices[0]?.message;
+    return isString(message?.content) && message.content.trim().length > 0 ||
+    Array.isArray(message?.content) && message.content.length > 0 ||
+    isString(message?.reasoning_content) && message.reasoning_content.trim().length > 0 ||
+    isString(message?.reasoning) && message.reasoning.trim().length > 0 ||
+    Array.isArray(message?.tool_calls) && message.tool_calls.length > 0 ||
+    Boolean(message?.function_call);
+  }
+  if (response?.type === "message") {
+    return Array.isArray(response.content) && response.content.some((block) =>
+    block?.type === "tool_use" ||
+    block?.type === "thinking" && isString(block.thinking) && block.thinking.trim() ||
+    block?.type === "text" && isString(block.text) && block.text.trim());
+  }
+
+  if (Array.isArray(response?.output)) {
+    return response.output.some((item) =>
+    item?.type === "function_call" ||
+    item?.type === "custom_tool_call" ||
+    item?.type === "reasoning" && (
+    isString(item.reasoning) && item.reasoning.trim() ||
+    Array.isArray(item.summary) && item.summary.some((part) => isString(part?.text) && part.text.trim())) ||
+    item?.type === "message" && Array.isArray(item.content) && item.content.some((part) =>
+    isString(part?.text) && part.text.trim()));
+  }
+
+  const candidates = response?.candidates ?? response?.response?.candidates;
+  if (Array.isArray(candidates)) {
+    return candidates.some((candidate) =>
+    Array.isArray(candidate?.content?.parts) && candidate.content.parts.some((part) =>
+    isString(part?.text) && part.text.trim() || part?.functionCall || part?.inlineData || part?.inline_data));
+  }
+
+  if (response?.message || isString(response?.response)) {
+    return isString(response?.message?.content) && response.message.content.trim().length > 0 ||
+    isString(response?.response) && response.response.trim().length > 0 ||
+    Array.isArray(response?.message?.tool_calls) && response.message.tool_calls.length > 0;
+  }
+
+  return false;
+}
 
 // Claude Code classifier compat: detect classifier-shaped requests by the
 // security-monitor system prompt or the "</block>" stop sequence, gated by the
@@ -455,15 +505,6 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat });
     responseBody = inlineThinking.responseBody;
 
-    const usage = extractUsageFromResponse(responseBody);
-    appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
-    /**
-     * Upstream PR #3111 logs resolved route/session identity from the provider
-     * request body without altering client-facing response usage.
-     */
-    const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
-    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
     const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
     let translatedResponse = translateNonStreamingResponse(
@@ -484,6 +525,27 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       );
       if (claudeCompat) translatedResponse = stripClaudeThinking(translatedResponse);
     }
+
+    const usage = extractUsageFromResponse(responseBody);
+    appendLog({ tokens: usage, status: "200 OK" });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
+
+    if (!hasUsefulContent(translatedResponse)) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
+      log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
+      return createErrorResult(
+        HTTP_STATUS.BAD_GATEWAY,
+        `Empty response content from ${provider}/${model}`,
+        Date.now() + EMPTY_CONTENT_COOLDOWN_MS
+      );
+    }
+
+    /**
+     * Upstream PR #3111 logs resolved route/session identity from the provider
+     * request body without altering client-facing response usage.
+     */
+    const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
+    if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
     const isClaudeMessageResponse = sourceFormat === FORMATS.CLAUDE && translatedResponse?.type === "message";
 
     const isOpenAIChatResponse = Array.isArray(translatedResponse?.choices);

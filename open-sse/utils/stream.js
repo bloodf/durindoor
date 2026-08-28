@@ -357,12 +357,21 @@ export function createSSEStream(options = {}) {
   let accumulatedContent = "";
   let accumulatedThinking = "";
   let ttftAt = null;
+  /** Tool-call frames are useful output even when providers omit usage and text. */
+  let hadToolCalls = false;
   let sseLineCount = 0;
   let sseEmittedCount = 0;
   const eventTypeCounts = {};
   let onStreamCompleteFired = false; // guard so terminal-chunk completion + flush() both fire onStreamComplete only once
   const recordCompletionData = (parsed, { summary = true, trackUsage = true, content = false } = {}) => {
     if (summary) providerSummary.ingest(parsed);
+    const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
+    hadToolCalls = hadToolCalls ||
+    parsed.choices?.some?.((choice) => choice?.delta?.tool_calls?.length > 0 || choice?.delta?.function_call) ||
+    parsed.type === "content_block_start" && parsed.content_block?.type === "tool_use" ||
+    parsed.item?.type === "function_call" || parsed.item?.type === "custom_tool_call" ||
+    geminiParts.some((part) => part?.functionCall) ||
+    parsed.message?.tool_calls?.length > 0;
     const extracted = extractUsage(parsed);
     if (trackUsage && extracted) usage = mergeUsage(usage, extracted);
     if (!content) return extracted;
@@ -380,8 +389,8 @@ export function createSSEStream(options = {}) {
         }
       }
     }
-    const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
-    for (const part of geminiParts) {
+    const geminiTextParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
+    for (const part of geminiTextParts) {
       if (!isString(part?.text) || !part.text) continue;
       totalContentLength += part.text.length;
       if (part.thought === true) accumulatedThinking += part.text;else
@@ -840,7 +849,7 @@ export function createSSEStream(options = {}) {
                 }
                 onStreamCompleteFired = true;
                 onStreamComplete(
-                  { content: accumulatedContent, thinking: accumulatedThinking },
+                  { content: accumulatedContent, thinking: accumulatedThinking, ...(hadToolCalls ? { hadToolCalls: true } : null) },
                   usage,
                   ttftAt,
                   providerSummary.finalize(usage)
@@ -907,7 +916,7 @@ export function createSSEStream(options = {}) {
           rawDone: parsed?.done === true
         });
         currentUpstreamEvent = null;
-        providerSummary.ingest(parsed);
+        recordCompletionData(parsed, { trackUsage: false });
 
         if (isOpenAIResponsesStream && isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)) {
           openAIResponsesTerminalSeen = true;
@@ -1005,7 +1014,7 @@ export function createSSEStream(options = {}) {
         if ((provider === "antigravity" || provider === "agy") && parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason) && onStreamComplete && !onStreamCompleteFired) {
           if (!hasValidUsage(state.usage) && totalContentLength > 0) state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
           onStreamCompleteFired = true;
-          onStreamComplete({ content: accumulatedContent, thinking: accumulatedThinking }, state.usage, ttftAt, providerSummary.finalize(state.usage));
+          onStreamComplete({ content: accumulatedContent, thinking: accumulatedThinking, ...(hadToolCalls ? { hadToolCalls: true } : null) }, state.usage, ttftAt, providerSummary.finalize(state.usage));
         }
 
         // Provider-specific normalization must also run in TRANSLATE mode:
@@ -1161,7 +1170,8 @@ export function createSSEStream(options = {}) {
             onStreamCompleteFired = true;
             onStreamComplete({
               content: accumulatedContent,
-              thinking: accumulatedThinking
+              thinking: accumulatedThinking,
+              ...(hadToolCalls ? { hadToolCalls: true } : null)
             }, usage, ttftAt, providerSummary.finalize(usage));
           }
           return;
@@ -1176,7 +1186,8 @@ export function createSSEStream(options = {}) {
           const trimmedBuffer = buffer.trim();
           currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
           const parsed = parseSSELine(trimmedBuffer, targetFormat);
-          if (parsed && !parsed.done) providerSummary.ingest(parsed);
+          /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
+          if (parsed && !parsed.done) recordCompletionData(parsed, { trackUsage: false });
           if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
             const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 
@@ -1247,7 +1258,8 @@ export function createSSEStream(options = {}) {
           onStreamCompleteFired = true;
           onStreamComplete({
             content: accumulatedContent,
-            thinking: accumulatedThinking
+            thinking: accumulatedThinking,
+            ...(hadToolCalls ? { hadToolCalls: true } : null)
           }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
         }
       } catch (error) {

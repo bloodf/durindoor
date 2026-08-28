@@ -251,30 +251,37 @@ describe("chat upstream body lifecycle", () => {
     expect(success).toHaveBeenCalledTimes(expectedCalls);
   });
 
-  it.each([
-    ["Claude content:null", {
-      id: "msg-empty",
-      type: "message",
-      role: "assistant",
-      model: "MiniMax-M3",
-      content: null,
-      stop_reason: "max_tokens",
-      usage: { input_tokens: 2, output_tokens: 1 },
-    }],
-    ["OpenAI-shaped Claude compatibility", {
-      id: "chatcmpl-xiaomi",
-      choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
-    }],
-  ])("accepts the documented %s non-stream shape", async (_label, payload) => {
+  it("rejects the documented Claude content:null shape as empty output", async () => {
     const result = await handleNonStreamingResponse({
       ...common(vi.fn()),
       targetFormat: FORMATS.CLAUDE,
       stream: false,
       streamToClient: false,
-      providerResponse: new Response(JSON.stringify(payload), {
-        headers: { "content-type": "application/json" },
-      }),
-      reqLogger: { logProviderResponse: vi.fn(), logConvertedResponse: vi.fn() },
+      providerResponse: new Response(JSON.stringify({
+        id: "msg-empty",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M3",
+        content: null,
+        stop_reason: "max_tokens",
+        usage: { input_tokens: 2, output_tokens: 1 }
+      }), { headers: { "content-type": "application/json" } }),
+      reqLogger: { logProviderResponse: vi.fn(), logConvertedResponse: vi.fn() }
+    });
+    expect(result).toMatchObject({ success: false, status: 502 });
+  });
+
+  it("accepts an OpenAI-shaped Claude compatibility response", async () => {
+    const result = await handleNonStreamingResponse({
+      ...common(vi.fn()),
+      targetFormat: FORMATS.CLAUDE,
+      stream: false,
+      streamToClient: false,
+      providerResponse: new Response(JSON.stringify({
+        id: "chatcmpl-xiaomi",
+        choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }]
+      }), { headers: { "content-type": "application/json" } }),
+      reqLogger: { logProviderResponse: vi.fn(), logConvertedResponse: vi.fn() }
     });
     expect(result.success).toBe(true);
     expect((await result.response.json()).choices?.[0]?.finish_reason).toBeTruthy();

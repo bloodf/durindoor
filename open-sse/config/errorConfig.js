@@ -76,6 +76,9 @@ export const BACKOFF_CONFIG = resolveBackoffConfig();
 // Default cooldown for transient/unknown errors
 export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 
+/** Cooldown for HTTP 200 responses that contain no usable model output. */
+export const EMPTY_CONTENT_COOLDOWN_MS = 7 * 60 * 1000;
+
 // Envoy emits this transport-level marker when its retry buffer overflows.
 export const REQUEST_REPLAY_BUFFER_ERROR = "exceeded request buffer limit while retrying upstream";
 

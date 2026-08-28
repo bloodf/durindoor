@@ -10,12 +10,166 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
+import { HTTP_STATUS, STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
 import { isBoolean, isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
+
+const SSE_CONTENT_TYPE = "text/event-stream";
+const COMBO_STREAM_PEEK_MAX_BYTES = 256 * 1024;
+
+function nonEmptyString(value) {
+  return isString(value) && value.length > 0;
+}
+
+
+function frameCarriesContent(line) {
+  if (!line.startsWith("data:")) return false;
+  const payload = line.slice(5).trim();
+  if (!payload || payload === "[DONE]") return false;
+
+  let parsed;
+  try {parsed = JSON.parse(payload);} catch {return false;}
+
+
+  const delta = parsed.choices?.[0]?.delta;
+  if (
+  nonEmptyString(delta?.content) ||
+  nonEmptyString(delta?.reasoning_content) ||
+  nonEmptyString(delta?.reasoning) ||
+  delta?.tool_calls?.length > 0 ||
+  delta?.function_call)
+  return true;
+
+  if (parsed.type === "content_block_delta") {
+    const content = parsed.delta;
+    if (
+    nonEmptyString(content?.text) ||
+    nonEmptyString(content?.partial_json) ||
+    nonEmptyString(content?.thinking))
+    return true;
+  }
+  if (parsed.type === "content_block_start" && parsed.content_block?.type === "tool_use") return true;
+
+  if (isString(parsed.type) && parsed.type.endsWith(".delta") && nonEmptyString(parsed.delta)) return true;
+
+  /** Antigravity wraps native Gemini stream members in a response envelope. */
+  const geminiResponse = parsed.response || parsed;
+  const parts = geminiResponse.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts) && parts.some((part) =>
+  nonEmptyString(part?.text) || part?.functionCall || part?.inlineData))
+  return true;
+
+  return nonEmptyString(parsed.message?.content) ||
+  nonEmptyString(parsed.response) ||
+  parsed.message?.tool_calls?.length > 0;
+}
+
+function replayStream(reader, chunks, upstreamDone) {
+  let index = 0;
+  let finished = false;
+  const finish = (controller) => {
+    if (finished) return;
+    finished = true;
+    try {reader.releaseLock();} catch {}
+    controller.close();
+  };
+
+  return new ReadableStream({
+    async pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(chunks[index++]);
+        return;
+      }
+      if (upstreamDone) {
+        finish(controller);
+        return;
+      }
+      try {
+        const { done, value } = await reader.read();
+        if (done) finish(controller);else
+        controller.enqueue(value);
+      } catch (error) {
+        try {reader.releaseLock();} catch {}
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      try {await reader.cancel(reason);} finally {try {reader.releaseLock();} catch {}}
+    }
+  });
+}
+
+/**
+ * Inspect a bounded SSE prefix for output before combo success accounting.
+ * Consumed bytes replay unchanged before the unread live body; non-SSE bodies
+ * are never locked or read. The existing first-chunk timeout bounds providers
+ * that emit keepalives indefinitely.
+ *
+ * @param {Response} response
+ * @param {number} [timeoutMs]
+ * @returns {Promise<{hasContent:boolean, body:ReadableStream|null}>}
+ */
+async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS) {
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes(SSE_CONTENT_TYPE) || !response.body) {
+    return { hasContent: true, body: null };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks = [];
+  let bytes = 0;
+  let pending = "";
+  let upstreamDone = false;
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
+  });
+
+  try {
+    while (bytes < COMBO_STREAM_PEEK_MAX_BYTES) {
+      const next = await Promise.race([reader.read(), timeout]);
+      if (next?.timedOut) break;
+      const { done, value } = next;
+      if (done) {
+        upstreamDone = true;
+        pending += decoder.decode();
+        if (pending.trim() && frameCarriesContent(pending.trim())) {
+          return { hasContent: true, body: replayStream(reader, chunks, true) };
+        }
+        break;
+      }
+
+      chunks.push(value);
+      bytes += value.byteLength;
+      pending += decoder.decode(value, { stream: true });
+      let newline;
+      while ((newline = pending.indexOf("\n")) !== -1) {
+        const line = pending.slice(0, newline).trim();
+        pending = pending.slice(newline + 1);
+        if (frameCarriesContent(line)) {
+          return { hasContent: true, body: replayStream(reader, chunks, false) };
+        }
+      }
+    }
+
+    if (bytes >= COMBO_STREAM_PEEK_MAX_BYTES) {
+      return { hasContent: true, body: replayStream(reader, chunks, upstreamDone) };
+    }
+    try {await reader.cancel("combo stream contained no meaningful frame");} finally {try {reader.releaseLock();} catch {}}
+    return { hasContent: false, body: null };
+  } catch {
+    try {await reader.cancel("combo stream peek failed");} catch {}
+    try {reader.releaseLock();} catch {}
+    return { hasContent: false, body: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // Prefixes used when flattening tool turns into plain prose for panel models.
 const TOOL_CALL_PREFIX = "[Called tools: ";
@@ -951,22 +1105,36 @@ async function isBodyEmpty(response) {
   try {
     bodyText = await response.clone().text();
   } catch {
-    return false; // opaque/streaming — trust the transport layer
+    return false;
   }
-  return (
-    !bodyText ||
-    bodyText === "{}" ||
-    bodyText === "[]" ||
-    bodyText === '{"choices":[]}' ||
-    bodyText === '{"choices":""}' ||
-    bodyText === '{"choices":[{}]}' ||
-    bodyText === '{"choices":[{"delta":{},"finish_reason":null}]}' ||
-    bodyText === '{"choices":[{"message":{"content":""}}]}' ||
-    bodyText === '{"choices":[{"message":{}}]}' ||
-    bodyText === '{"content":""}' ||
-    bodyText === '{"content":[]}' ||
-    bodyText === '{"text":""}');
+  if (!bodyText.trim()) return true;
 
+  let payload;
+  try {payload = JSON.parse(bodyText);} catch {return false;}
+  if (!payload || Array.isArray(payload) && payload.length === 0) return true;
+  if (!isObject(payload) || Object.keys(payload).length === 0) return true;
+
+  if (Array.isArray(payload.choices)) {
+    if (payload.choices.length === 0) return true;
+    return payload.choices.every((choice) => {
+      const message = choice?.message ?? choice?.delta;
+      if (!message || !isObject(message)) return true;
+      return !nonEmptyString(message.content) &&
+      !(Array.isArray(message.content) && message.content.length > 0) &&
+      !nonEmptyString(message.reasoning_content) &&
+      !nonEmptyString(message.reasoning) &&
+      !(Array.isArray(message.tool_calls) && message.tool_calls.length > 0) &&
+      !message.function_call;
+    });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "content")) {
+    return !nonEmptyString(payload.content) &&
+    !(Array.isArray(payload.content) && payload.content.length > 0);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "text")) return !nonEmptyString(payload.text);
+  if (Array.isArray(payload.output)) return payload.output.length === 0;
+  return false;
 }
 
 export async function handleComboChat({
@@ -1195,6 +1363,40 @@ export async function handleComboChat({
           log.warn("COMBO", `Model ${modelStr} returned 200 with an error, trying next`);
           continue;
         }
+
+        let successfulResult = result;
+        const contentType = (result.headers?.get?.("content-type") || "").toLowerCase();
+        if (contentType.includes(SSE_CONTENT_TYPE)) {
+          const { hasContent, body: replayBody } = await peekStreamForContent(result);
+          if (!hasContent) {
+            if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.SERVICE_UNAVAILABLE);
+            releaseFailedAffinity(modelStr, i);
+            lastError = "Provider returned an empty stream";
+            if (!lastStatus) lastStatus = HTTP_STATUS.SERVICE_UNAVAILABLE;
+            log.warn("COMBO", `Model ${modelStr} returned an empty stream, trying next`);
+            continue;
+          }
+          if (replayBody) {
+            successfulResult = new Response(replayBody, {
+              status: result.status,
+              statusText: result.statusText,
+              headers: result.headers
+            });
+          }
+        } else if (!body?.stream && await isBodyEmpty(result)) {
+          log.warn("COMBO", `Model ${modelStr} returned 200 but empty body, retrying once`);
+          const retryResult = await handleSingleModel(body, modelStr);
+          if (!retryResult.ok || await isBodyEmpty(retryResult)) {
+            if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.BAD_GATEWAY);
+            releaseFailedAffinity(modelStr, i);
+            lastError = "Provider returned empty content";
+            if (!lastStatus) lastStatus = HTTP_STATUS.BAD_GATEWAY;
+            log.warn("COMBO", `Model ${modelStr} still empty after retry, falling to next`);
+            continue;
+          }
+          successfulResult = retryResult;
+        }
+
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
         if (comboStrategy === "round-robin") {
           const actuallyRotated = modelStr !== rotatedModels[0];
@@ -1202,25 +1404,8 @@ export async function handleComboChat({
             advanceRoundRobinPointerPastServedModel(activeModels, comboName, comboStickyLimit, modelStr);
           }
         }
-        // Non-streaming only: some providers return 200 with an empty body when
-        // the model produced no output. Retry the same model once before falling
-        // to the next; streaming responses are trusted (reading them would defeat
-        // streaming) (#2689).
-        if (!body?.stream && (await isBodyEmpty(result))) {
-          log.warn("COMBO", `Model ${modelStr} returned 200 but empty body, retrying once`);
-          const retryResult = await handleSingleModel(body, modelStr);
-          if (retryResult.ok && !(await isBodyEmpty(retryResult))) {
-            log.info("COMBO", `Model ${modelStr} succeeded on retry`);
-            return retryResult;
-          }
-          // Still empty after retry: fall to the next model without setting
-          // lastError so the final failure reflects a genuine error, not empty.
-          log.warn("COMBO", `Model ${modelStr} still empty after retry, falling to next`);
-          releaseFailedAffinity(modelStr, i);
-          continue;
-        }
         log.info("COMBO", `Model ${modelStr} succeeded`);
-        return result;
+        return successfulResult;
       }
 
       // Extract error info from response

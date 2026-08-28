@@ -35,6 +35,7 @@ import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
 import { resolveTokenSaverEnabled } from "open-sse/rtk/index.js";
 import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
+import { EMPTY_CONTENT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
 import { isAntigravityCapacityError, isRequestReplayBufferError } from "open-sse/services/accountFallback.js";
@@ -1085,6 +1086,20 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             attemptStartedAt,
             signal: requestSignal
           });
+        },
+        // Streaming headers are already committed when emptiness becomes known.
+        // Bench this account so the client's retry selects another candidate.
+        onEmptyStream: async () => {
+          if (!Number.isSafeInteger(latestAttemptStartedAt) || latestAttemptStartedAt <= 0) return;
+          await markAccountUnavailable(
+            credentials.connectionId,
+            HTTP_STATUS.BAD_GATEWAY,
+            `Empty streaming response from ${provider}/${model}`,
+            provider,
+            model,
+            Date.now() + EMPTY_CONTENT_COOLDOWN_MS,
+            { attemptStartedAt: latestAttemptStartedAt, signal: requestSignal }
+          );
         },
         // Empty-stream retries exhausted mid-stream (headers already sent, so no
         // pre-stream fallback is possible): bench the account so the client's

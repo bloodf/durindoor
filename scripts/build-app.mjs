@@ -92,6 +92,11 @@ try {
       path.join(process.cwd(), "src", "shared", "utils", "normalizeEnv.js"),
       path.join(standaloneDir, "src", "shared", "utils", "normalizeEnv.js"),
     );
+    /** runtimeConfig.js imports this ESM helper outside Next's NFT trace. */
+    fs.copyFileSync(
+      path.join(process.cwd(), "src", "shared", "utils", "typeChecks.js"),
+      path.join(standaloneDir, "src", "shared", "utils", "typeChecks.js"),
+    );
     // custom-server.js requires this CJS helper at import time (#551); like
     // every post-build entry dependency it is outside Next's NFT trace, so a
     // missing copy crash-loops the deployed server with MODULE_NOT_FOUND.

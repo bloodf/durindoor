@@ -33,6 +33,8 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/custom-server.js ./custom-server.js
 # custom-server.js requires this at its first line (OmniRoute #6828 empty-env guard).
 COPY --from=builder /app/src/shared/utils/normalizeEnv.js ./src/shared/utils/normalizeEnv.js
+# open-sse/config/runtimeConfig.js imports this ESM helper at runtime.
+COPY --from=builder /app/src/shared/utils/typeChecks.js ./src/shared/utils/typeChecks.js
 # custom-server.js requires this CJS helper at import time (#551).
 COPY --from=builder /app/src/shared/utils/typeChecks.cjs ./src/shared/utils/typeChecks.cjs
 COPY --from=builder /app/open-sse ./open-sse

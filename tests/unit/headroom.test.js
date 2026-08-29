@@ -5,6 +5,7 @@ import { MAX_COMPRESS_BODY_BYTES } from "../../open-sse/config/runtimeConfig.js"
 afterEach(() => {
   vi.restoreAllMocks();
 });
+const VERBOSE = "verbose original context ".repeat(40);
 
 describe("compressWithHeadroom", () => {
   it("no-ops when disabled", async () => {
@@ -25,7 +26,7 @@ describe("compressWithHeadroom", () => {
       tokens_after: 20,
       tokens_saved: 80,
     }), { status: 200 }));
-    const body = { messages: [{ role: "user", content: "long" }] };
+    const body = { messages: [{ role: "user", content: VERBOSE }] };
 
     const stats = await compressWithHeadroom(body, { enabled: true, url: "http://headroom:8787/", model: "gpt-4o" });
 
@@ -34,7 +35,7 @@ describe("compressWithHeadroom", () => {
     expect(global.fetch).toHaveBeenCalledWith("http://headroom:8787/v1/compress", expect.objectContaining({ method: "POST" }));
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({
       model: "gpt-4o",
-      messages: [{ role: "user", content: "long" }],
+      messages: [{ role: "user", content: VERBOSE }],
     });
   });
 
@@ -45,7 +46,7 @@ describe("compressWithHeadroom", () => {
     }), { status: 200 }));
     const oversizeContent = "x".repeat(MAX_COMPRESS_BODY_BYTES);
     const oversizeBody = { messages: [{ role: "user", content: oversizeContent }] };
-    const normalBody = { messages: [{ role: "user", content: "long" }] };
+    const normalBody = { messages: [{ role: "user", content: VERBOSE }] };
     const diagnostics = {};
 
     const skipped = await compressWithHeadroom(oversizeBody, {
@@ -70,7 +71,7 @@ describe("compressWithHeadroom", () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({
       messages: [{ role: "user", content: "short" }],
     }), { status: 200 }));
-    const body = { input: [{ role: "user", content: "long" }] };
+    const body = { input: [{ role: "user", content: VERBOSE }] };
 
     await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787" });
 
@@ -121,7 +122,7 @@ describe("compressWithHeadroom", () => {
         ],
         currentMessage: {
           userInputMessage: {
-            content: "current user",
+            content: VERBOSE,
             modelId: "claude-sonnet-4.5",
             systemInstruction: "native system instruction",
             userInputMessageContext: {
@@ -165,7 +166,7 @@ describe("compressWithHeadroom", () => {
           ],
         },
         { role: "system", content: "native system instruction" },
-        { role: "user", content: "current user" },
+        { role: "user", content: VERBOSE },
         { role: "tool", content: "long tool output", tool_call_id: "tool_1" },
       ],
     });
@@ -180,6 +181,43 @@ describe("compressWithHeadroom", () => {
       .toEqual([{ toolSpecification: { name: "read_file" } }]);
   });
 
+  it("keeps Kiro body unchanged when projection shrinks but full provider body does not", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [{ role: "user", content: "short" }],
+      tokens_before: 100,
+      tokens_after: 20,
+      tokens_saved: 80,
+    }), { status: 200 }));
+    const body = {
+      conversationState: {
+        history: [],
+        currentMessage: {
+          userInputMessage: {
+            content: VERBOSE,
+            modelId: "claude-sonnet-4.5",
+            userInputMessageContext: {
+              tools: [{ toolSpecification: { name: "read_file", description: "untouched ".repeat(4000) } }],
+            },
+          },
+        },
+      },
+    };
+    const original = structuredClone(body);
+    const diagnostics = {};
+
+    const stats = await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://localhost:8787",
+      model: "claude-sonnet-4.5",
+      format: "kiro",
+      diagnostics,
+    });
+
+    expect(stats).toBeNull();
+    expect(body).toEqual(original);
+    expect(diagnostics.reason).toBe("phantom savings — keeping original (>95% size)");
+  });
+
   it("fails open when Kiro Headroom output does not preserve message order", async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({
       messages: [{ role: "assistant", content: "wrong role" }],
@@ -189,7 +227,7 @@ describe("compressWithHeadroom", () => {
       conversationState: {
         currentMessage: {
           userInputMessage: {
-            content: "original",
+            content: VERBOSE,
             modelId: "claude-sonnet-4.5",
           },
         },
@@ -231,8 +269,8 @@ describe("compressWithHeadroom", () => {
             modelId: "claude-sonnet-4.5",
             userInputMessageContext: {
               toolResults: [
-                { toolUseId: "tool_a", status: "success", content: [{ text: "output A" }] },
-                { toolUseId: "tool_b", status: "success", content: [{ text: "output B" }] },
+                { toolUseId: "tool_a", status: "success", content: [{ text: VERBOSE }] },
+                { toolUseId: "tool_b", status: "success", content: [{ text: VERBOSE }] },
               ],
             },
           },
@@ -277,7 +315,7 @@ describe("compressWithHeadroom", () => {
                 {
                   toolUseId: "tool_a",
                   status: "success",
-                  content: [{ text: "part one" }, { text: "part two" }],
+                  content: [{ text: VERBOSE }, { text: VERBOSE }],
                 },
               ],
             },
@@ -376,7 +414,7 @@ describe("compressWithHeadroom", () => {
       tokens_saved: 80,
     }), { status: 200 }));
     const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
-    const body = { messages: [{ role: "user", content: "long" }] };
+    const body = { messages: [{ role: "user", content: VERBOSE }] };
 
     const stats = await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787" });
 
@@ -392,7 +430,7 @@ describe("compressWithHeadroom", () => {
       const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
 
       await compressWithHeadroom(
-        { messages: [{ role: "user", content: "long" }] },
+        { messages: [{ role: "user", content: VERBOSE }] },
         { enabled: true, url: "http://localhost:8787", timeoutMs: 5000 },
       );
 
@@ -409,7 +447,7 @@ describe("compressWithHeadroom", () => {
         const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
 
         await compressWithHeadroom(
-          { messages: [{ role: "user", content: "long" }] },
+          { messages: [{ role: "user", content: VERBOSE }] },
           { enabled: true, url: "http://localhost:8787", timeoutMs },
         );
 
@@ -418,6 +456,196 @@ describe("compressWithHeadroom", () => {
     );
   });
 
+
+  it("uses one proxy call and leaves body untouched on HTTP failure", async () => {
+    global.fetch = vi.fn(async () => new Response("", { status: 503 }));
+    const body = { messages: [{ role: "user", content: VERBOSE }] };
+    const original = structuredClone(body);
+
+    expect(await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787" })).toBeNull();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(body).toEqual(original);
+  });
+
+  it.each([
+    ["compression skip", { compression_skipped: true, skip_reason: "  remote   reason  " }, "remote reason"],
+    ["CCR hashes", { ccr_hashes: ["abc"], messages: [{ role: "user", content: "short" }] }, "CCR"],
+    ["CCR marker", { messages: [{ role: "user", content: "<<ccr:abc>>" }] }, "CCR"],
+    ["zero gain", { messages: [{ role: "user", content: "short" }], tokens_saved: "0" }, "no token saving"],
+    ["phantom tokens", { messages: [{ role: "user", content: "short" }], tokens_before: "100", tokens_after: "95", tokens_saved: "5" }, "phantom"],
+    ["conflicting tokens", { messages: [{ role: "user", content: "short" }], tokens_before: 100, tokens_after: 101, tokens_saved: 1 }, "conflicting"],
+  ])("rejects %s before mutation", async (_name, response, reason) => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(response), { status: 200 }));
+    const body = { messages: [{ role: "user", content: VERBOSE }] };
+    const original = structuredClone(body);
+    const diagnostics = {};
+
+    expect(await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://localhost:8787",
+      diagnostics,
+    })).toBeNull();
+    expect(body).toEqual(original);
+    expect(diagnostics.reason).toContain(reason);
+  });
+
+  it("bounds proxy-controlled diagnostics", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      compression_skipped: true,
+      skip_reason: `  ${"x".repeat(3000)}  `,
+    }), { status: 200 }));
+    const diagnostics = {};
+
+    await compressWithHeadroom({ messages: [{ role: "user", content: VERBOSE }] }, {
+      enabled: true,
+      url: "http://localhost:8787",
+      diagnostics,
+    });
+
+    expect(diagnostics.reason.length).toBeLessThanOrEqual(200);
+  });
+
+  it("rejects reordered messages and changed tool identities", async () => {
+    const toolCall = { id: "call_1", type: "function", function: { name: "read", arguments: "{}" } };
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [
+        { role: "assistant", content: null, tool_calls: [{ ...toolCall, id: "changed" }] },
+        { role: "user", content: "short" },
+      ],
+      tokens_before: 100,
+      tokens_after: 10,
+      tokens_saved: 90,
+    }), { status: 200 }));
+    const body = { messages: [{ role: "user", content: VERBOSE }, { role: "assistant", content: null, tool_calls: [toolCall] }] };
+    const original = structuredClone(body);
+
+    expect(await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787" })).toBeNull();
+    expect(body).toEqual(original);
+  });
+
+  it.each([
+    ["openai", { messages: [{ role: "tool", tool_call_id: "call_1", content: "failed", is_error: true }] }],
+    ["claude", { messages: [{ role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "failed", is_error: true }] }] }],
+    ["openai-responses", { input: [{ type: "function_call_output", call_id: "call_1", output: "failed", status: "error" }] }],
+    ["kiro", { conversationState: { history: [], currentMessage: { userInputMessage: { content: "failed", userInputMessageContext: { toolResults: [{ toolUseId: "call_1", status: "error", content: [{ text: "failed" }] }] } } } } }],
+  ])("skips explicit %s error tool results before fetch", async (format, body) => {
+    global.fetch = vi.fn();
+    const diagnostics = {};
+
+    expect(await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://localhost:8787",
+      format,
+      diagnostics,
+    })).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(diagnostics.reason).toContain("error tool result");
+  });
+
+  it("does not infer tool errors from plain text", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [{ role: "tool", tool_call_id: "call_1", content: "short" }],
+      tokens_before: 100,
+      tokens_after: 10,
+      tokens_saved: 90,
+    }), { status: 200 }));
+    const body = { messages: [{ role: "tool", tool_call_id: "call_1", content: `${VERBOSE} error` }] };
+
+    expect(await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787" })).not.toBeNull();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects byte-shrink phantom savings before mutation", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [{ role: "user", content: `${VERBOSE.slice(0, -1)}` }],
+      tokens_before: 1000,
+      tokens_after: 10,
+      tokens_saved: 990,
+    }), { status: 200 }));
+    const body = { messages: [{ role: "user", content: VERBOSE }] };
+    const original = structuredClone(body);
+    const diagnostics = {};
+
+    expect(await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", diagnostics })).toBeNull();
+    expect(body).toEqual(original);
+    expect(diagnostics.reason).toContain("phantom savings");
+  });
+
+  it("commits valid string-encoded token gains", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [{ role: "user", content: "short" }],
+      tokens_before: "100",
+      tokens_after: "10",
+      tokens_saved: "90",
+    }), { status: 200 }));
+    const body = { messages: [{ role: "user", content: VERBOSE }] };
+
+    expect(await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787" })).not.toBeNull();
+    expect(body.messages[0].content).toBe("short");
+  });
+
+  it("rejects Claude byte-shrink phantom savings before mutation", async () => {
+    global.fetch = vi.fn(async (_url, init) => {
+      const request = JSON.parse(init.body);
+      return new Response(JSON.stringify({
+        messages: request.messages.map((message) => ({ ...message, content: `${message.content}x` })),
+        tokens_before: 1000,
+        tokens_after: 10,
+        tokens_saved: 990,
+      }), { status: 200 });
+    });
+    const body = { messages: [{ role: "user", content: VERBOSE }] };
+    const original = structuredClone(body);
+
+    expect(await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://localhost:8787",
+      model: "claude-sonnet-4.5",
+      format: "claude",
+    })).toBeNull();
+    expect(body).toEqual(original);
+  });
+
+  it("rejects Responses byte-shrink phantom savings before mutation", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [{ role: "user", content: `${VERBOSE.slice(0, -1)}` }],
+      tokens_before: 1000,
+      tokens_after: 10,
+      tokens_saved: 990,
+    }), { status: 200 }));
+    const body = { input: [{ role: "user", content: VERBOSE }] };
+    const original = structuredClone(body);
+
+    expect(await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://localhost:8787",
+      format: "openai-responses",
+    })).toBeNull();
+    expect(body).toEqual(original);
+  });
+
+  it("rejects Kiro byte-shrink phantom savings before mutation", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [{ role: "user", content: `${VERBOSE.slice(0, -1)}` }],
+      tokens_before: 1000,
+      tokens_after: 10,
+      tokens_saved: 990,
+    }), { status: 200 }));
+    const body = {
+      conversationState: {
+        history: [],
+        currentMessage: { userInputMessage: { content: VERBOSE, modelId: "claude-sonnet-4.5" } },
+      },
+    };
+    const original = structuredClone(body);
+
+    expect(await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://localhost:8787",
+      format: "kiro",
+    })).toBeNull();
+    expect(body).toEqual(original);
+  });
 });
 
 describe("formatHeadroomLog", () => {

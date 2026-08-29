@@ -35,8 +35,29 @@ function writePid(pid) {
   fs.writeFileSync(PID_FILE, String(pid));
 }
 
-function clearPid() {
-  try {if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE);} catch {/* ignore */}
+// Never delete a PID file rewritten by a newer managed-proxy start.
+function clearPid(expectedPid = null) {
+  try {
+    if (!fs.existsSync(PID_FILE)) return;
+    if (expectedPid !== null && readPid() !== expectedPid) return;
+    fs.unlinkSync(PID_FILE);
+  } catch {/* ignore */}
+}
+
+/** Await bounded TERM→KILL shutdown, returning true only after observed death. */
+async function awaitPidDeath(pid, { termGraceMs = 2000, killWaitMs = 800, pollMs = 100 } = {}) {
+  try { process.kill(pid, "SIGTERM"); } catch { return !isPidAlive(pid); }
+  const termDeadline = Date.now() + termGraceMs;
+  while (Date.now() < termDeadline && isPidAlive(pid)) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  if (!isPidAlive(pid)) return true;
+  try { process.kill(pid, "SIGKILL"); } catch {/* already gone */}
+  const killDeadline = Date.now() + killWaitMs;
+  while (Date.now() < killDeadline && isPidAlive(pid)) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  return !isPidAlive(pid);
 }
 
 // process.kill throws if pid is dead — use this to probe.
@@ -77,12 +98,20 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
   // spawn stdio requires fd numbers, not WriteStream objects.
   const outFd = fs.openSync(LOG_FILE, "a");
 
-  const child = spawn(binary, ["proxy", "--port", String(safePort), ...(kompress ? [] : ["--disable-kompress"])], {
-    stdio: ["ignore", outFd, outFd],
-    detached: true,
-    windowsHide: true,
-    env: { ...process.env }
-  });
+  let child;
+  try {
+    child = spawn(binary, ["proxy", "--port", String(safePort), ...(kompress ? [] : ["--disable-kompress"])], {
+      stdio: ["ignore", outFd, outFd],
+      detached: true,
+      windowsHide: true,
+      env: { ...process.env }
+    });
+  } catch (error) {
+    try { fs.closeSync(outFd); } catch {/* already closed */}
+    const err = new Error(error?.message || "Failed to spawn headroom proxy");
+    err.code = "SPAWN_FAILED";
+    throw err;
+  }
 
   if (!child.pid) {
     fs.closeSync(outFd);
@@ -96,42 +125,51 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
 
   // Wait until the process either stays alive briefly (success) or exits fast (failure).
   await new Promise((resolve, reject) => {
-    let closed = false;
+    let settled = false;
+    let startupTimer;
     const closeOnce = () => {
-      if (closed) return;
-      closed = true;
-      try {fs.closeSync(outFd);} catch {/* already closed */}
+      try { fs.closeSync(outFd); } catch {/* already closed */}
     };
-    const onExit = (code) => {
+    const finish = (callback, value) => {
+      if (settled) return false;
+      settled = true;
       clearTimeout(startupTimer);
-      clearPid();
       closeOnce();
-      reject(new SetupError(createDiagnostic({
-        code: "EARLY_EXIT",
-        summary: "Headroom proxy exited during startup",
-        detail: `The proxy process exited with code ${code}.`,
-        fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${quoteShellArg(LOG_FILE)}` }],
-        logTail: redactSensitive(getHeadroomLogTail(40))
-      })));
+      callback(value);
+      return true;
     };
-    const startupTimer = setTimeout(() => {
+    const startupFailure = (detail) => new SetupError(createDiagnostic({
+      code: "EARLY_EXIT",
+      summary: "Headroom proxy exited during startup",
+      detail,
+      fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${quoteShellArg(LOG_FILE)}` }],
+      logTail: redactSensitive(getHeadroomLogTail(40))
+    }));
+    const onExit = (code) => {
+      if (finish(reject, startupFailure(`The proxy process exited with code ${code}.`))) clearPid(child.pid);
+    };
+    const onError = (error) => {
+      const err = new Error(error?.message || "Failed to spawn headroom proxy");
+      err.code = error?.code || "SPAWN_FAILED";
+      if (finish(reject, err)) clearPid(child.pid);
+    };
+    startupTimer = setTimeout(() => {
       child.removeListener("exit", onExit);
       if (isPidAlive(child.pid)) {
-        closeOnce();
-        resolve();
+        finish(resolve);
         return;
       }
-      clearPid();
-      closeOnce();
-      reject(new SetupError(createDiagnostic({
-        code: "EARLY_EXIT",
-        summary: "Headroom proxy exited during startup",
-        detail: `The proxy process ${child.pid} was no longer running after ${STARTUP_TIMEOUT_MS}ms.`,
-        fixes: [{ label: "Inspect the Headroom proxy log", command: `tail -n 40 ${quoteShellArg(LOG_FILE)}` }],
-        logTail: redactSensitive(getHeadroomLogTail(40))
-      })));
+      if (finish(reject, startupFailure(`The proxy process ${child.pid} was no longer running after ${STARTUP_TIMEOUT_MS}ms.`))) {
+        clearPid(child.pid);
+      }
     }, STARTUP_TIMEOUT_MS);
+    child.once("error", onError);
     child.once("exit", onExit);
+  });
+
+  const spawnedPid = child.pid;
+  child.once("exit", () => {
+    try { if (!isPidAlive(spawnedPid)) clearPid(spawnedPid); } catch {/* ignore late cleanup */}
   });
 
   // Parent fd was closed after startup resolution.
@@ -139,27 +177,17 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
   return { pid: child.pid, alreadyRunning: false, source };
 }
 
-export function stopHeadroomProxy() {
+export async function stopHeadroomProxy() {
   const pid = getManagedPid();
   if (!pid) return { stopped: false, reason: "not_running" };
-  try {
-    process.kill(pid, "SIGTERM");
-    // Keep the pid until the process is confirmed dead; otherwise a delayed
-    // SIGKILL can target a reused pid after a fresh proxy start.
-    const escalationTimer = setTimeout(() => {
-      if (isPidAlive(pid)) {
-        try {process.kill(pid, "SIGKILL");} catch {/* already gone */}
-      }
-      if (!isPidAlive(pid)) clearPid();
-    }, 2000);
-    escalationTimer.unref?.();
-    return { stopped: true, pid };
-  } catch (e) {
-    clearPid();
-    const err = new Error(`Failed to stop headroom proxy: ${e.message}`);
+  const stopped = await awaitPidDeath(pid);
+  if (!stopped) {
+    const err = new Error(`Failed to stop headroom proxy (pid ${pid} still alive) — see proxy.log`);
     err.code = "STOP_FAILED";
     throw err;
   }
+  clearPid(pid);
+  return { stopped: true, pid };
 }
 
 export function getHeadroomLogTail(maxLines = 200) {
@@ -219,12 +247,19 @@ export async function installHeadroomExtras(extras) {
     // the kind of long hyphenated runs a redactor can eat.
     const failInstall = (reason) => createInstallError({ python, requested, manualCommand, reason, rawLog: getLogTail(installLog, 40) });
 
-    return new Promise((resolve, reject) => {
-      const child = spawn(python, args, {
+    let child;
+    try {
+      child = spawn(python, args, {
         stdio: ["ignore", outFd, outFd],
         windowsHide: true,
         env: { ...process.env, TMPDIR: scratchDir, PIP_CACHE_DIR: path.join(scratchDir, "cache") }
       });
+    } catch (error) {
+      try { fs.closeSync(outFd); } catch {/* already closed */}
+      throw error;
+    }
+
+    return new Promise((resolve, reject) => {
 
       let settled = false;
       let timeoutTimer = null;

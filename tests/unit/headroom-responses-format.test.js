@@ -12,15 +12,18 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
 
   it("keeps body.input in Responses format after compressing an openai-responses request", async () => {
     // Headroom always returns compressed OpenAI-style messages.
-    global.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        messages: [{ role: "user", content: "compressed text" }],
-        tokens_before: 100,
-        tokens_after: 90,
-        tokens_saved: 10,
-      }),
-    }));
+    global.fetch = vi.fn(async (_url, options) => {
+      const request = JSON.parse(options.body);
+      return {
+        ok: true,
+        json: async () => ({
+          messages: request.messages.map((message) => ({ ...message, content: "compressed text" })),
+          tokens_before: 100,
+          tokens_after: 90,
+          tokens_saved: 10,
+        }),
+      };
+    });
 
     const body = {
       input: [
@@ -46,6 +49,151 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
     expect(body.input[0]).toMatchObject({ type: "message", role: "user" });
     expect(Array.isArray(body.input[0].content)).toBe(true);
     expect(typeof body.input[0].content).not.toBe("string");
+  });
+
+  it.each([
+    [
+      "reorders messages",
+      [
+        { role: "assistant", content: "compressed assistant" },
+        { role: "user", content: "compressed user" },
+      ],
+      "proxy response did not preserve message count or order",
+    ],
+    [
+      "alters tool identity",
+      [
+        {
+          role: "user",
+          content: "compressed user",
+          tool_calls: [{ id: "injected", type: "function", function: { name: "read", arguments: "{}" } }],
+        },
+        { role: "assistant", content: "compressed assistant" },
+      ],
+      "proxy response did not preserve tool pairing identity",
+    ],
+  ])("fails open when Headroom %s", async (_case, messages, reason) => {
+    global.fetch = vi.fn(async (_url, options) => {
+      const request = JSON.parse(options.body);
+      const orderKey = Object.keys(request.messages[0]).find(
+        (key) => !["role", "content", "tool_calls", "tool_call_id"].includes(key),
+      );
+      return {
+        ok: true,
+        json: async () => ({
+          messages: messages.map((message, index) => ({
+            ...message,
+            ...(orderKey ? { [orderKey]: request.messages[index][orderKey] } : {}),
+          })),
+          tokens_before: 100,
+          tokens_after: 20,
+          tokens_saved: 80,
+        }),
+      };
+    });
+    const body = {
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "first ".repeat(80) }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "second ".repeat(80) }] },
+      ],
+    };
+    const original = structuredClone(body);
+    const diagnostics = {};
+
+    const data = await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://headroom.test",
+      model: "gpt-5",
+      format: "openai-responses",
+      diagnostics,
+    });
+
+    expect(data).toBeNull();
+    expect(body).toEqual(original);
+    expect(diagnostics.reason).toBe(reason);
+    expect(diagnostics.reason.length).toBeLessThanOrEqual(200);
+  });
+
+  it("fails open when adjacent same-role Responses messages are swapped", async () => {
+    let orderKey;
+    global.fetch = vi.fn(async (_url, options) => {
+      const request = JSON.parse(options.body);
+      orderKey = Object.keys(request.messages[0]).find((key) => !["role", "content"].includes(key));
+      return {
+        ok: true,
+        json: async () => ({
+          messages: [...request.messages].reverse().map((message, index) => ({
+            ...message,
+            content: `compressed ${index}`,
+          })),
+          tokens_before: 100,
+          tokens_after: 20,
+          tokens_saved: 80,
+        }),
+      };
+    });
+    const body = {
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "first ".repeat(80) }] },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "second ".repeat(80) }] },
+      ],
+    };
+    const original = structuredClone(body);
+    const diagnostics = {};
+
+    const data = await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://headroom.test",
+      model: "gpt-5",
+      format: "openai-responses",
+      diagnostics,
+    });
+
+    expect(orderKey).toBeDefined();
+    expect(data).toBeNull();
+    expect(body).toEqual(original);
+    expect(JSON.stringify(body)).not.toContain(orderKey);
+    expect(diagnostics.reason).toBe("proxy response did not preserve message count or order");
+    expect(diagnostics.reason.length).toBeLessThanOrEqual(200);
+  });
+
+  it("retains adjacent same-role order without leaking synthetic metadata", async () => {
+    let orderKey;
+    global.fetch = vi.fn(async (_url, options) => {
+      const request = JSON.parse(options.body);
+      orderKey = Object.keys(request.messages[0]).find((key) => !["role", "content"].includes(key));
+      expect(request.messages.map((message) => message[orderKey])).toEqual([0, 1]);
+      return {
+        ok: true,
+        json: async () => ({
+          messages: request.messages.map((message, index) => ({
+            ...message,
+            content: `compressed ${index}`,
+          })),
+          tokens_before: 100,
+          tokens_after: 20,
+          tokens_saved: 80,
+        }),
+      };
+    });
+    const body = {
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "first ".repeat(80) }] },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "second ".repeat(80) }] },
+      ],
+    };
+
+    const data = await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://headroom.test",
+      model: "gpt-5",
+      format: "openai-responses",
+    });
+
+    expect(orderKey).toBeDefined();
+    expect(body.input.map((message) => message.content[0].text)).toEqual(["compressed 0", "compressed 1"]);
+    expect(JSON.stringify(body)).not.toContain(orderKey);
+    expect(JSON.stringify(data)).not.toContain(orderKey);
   });
 
   it("diagnoses a Responses request that cannot translate to messages", async () => {

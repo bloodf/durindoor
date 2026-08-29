@@ -30,7 +30,7 @@ function respondWithError(error) {
 
 export async function POST() {
   try {
-    const result = stopHeadroomProxy();
+    const result = await stopHeadroomProxy();
     const status = result.stopped ? 200 : 409;
     return NextResponse.json({ ...result }, { status });
   } catch (error) {

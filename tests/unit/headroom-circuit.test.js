@@ -24,14 +24,13 @@ describe("Headroom retry circuit", () => {
     vi.restoreAllMocks();
   });
 
-  it("retries one transient failure and resets after success", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce({ ok: false, status: 503 })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ messages: [{ role: "user", content: "short" }] }) });
+  it("fails open after one transient failure without retrying", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false, status: 503 });
     const body = { messages: [{ role: "user", content: "long" }] };
-    expect(await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", model: "x" })).toBeTruthy();
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect(getHeadroomCircuitState().degraded).toBe(false);
+
+    expect(await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", model: "x" })).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(getHeadroomCircuitState().consecutiveFailures).toBe(1);
   });
 
   it("increments consecutive failures on repeated HTTP errors and opens circuit at threshold", async () => {
@@ -58,10 +57,28 @@ describe("Headroom retry circuit", () => {
     vi.restoreAllMocks();
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ messages: [{ role: "user", content: "short" }] }),
+      json: async () => ({ messages: [{ role: "user", content: "short" }], tokens_saved: 0 }),
     });
     await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", model: "x" });
     expect(getHeadroomCircuitState().degraded).toBe(false);
+    expect(getHeadroomCircuitState().consecutiveFailures).toBe(0);
+  });
+
+  it.each([
+    { compression_skipped: true, skip_reason: "below floor" },
+    { messages: [{ role: "user", content: "short" }], tokens_saved: 0 },
+  ])("does not count semantic skips as proxy failures", async (response) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => response,
+    });
+
+    await compressWithHeadroom({ messages: [{ role: "user", content: "long" }] }, {
+      enabled: true,
+      url: "http://localhost:8787",
+      model: "x",
+    });
+
     expect(getHeadroomCircuitState().consecutiveFailures).toBe(0);
   });
 

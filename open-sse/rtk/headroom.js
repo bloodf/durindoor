@@ -14,7 +14,8 @@ import {
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
-const RETRY_BACKOFF_MS = 100;
+
+const OPENAI_MESSAGE_ORDER_KEY = "__durindoor_headroom_order_7f3b2a91d6e84c05__";
 
 export {
   getHeadroomCircuitState,
@@ -50,10 +51,99 @@ function captureSizeSnapshot(body) {
     messageBytes: messages ? jsonBytes(messages) : 0
   };
 }
+function sanitizeReason(text) {
+  return scrubSensitiveUrlText(String(text ?? "").trim().replace(/\s+/g, " ")).slice(0, 200);
+}
+
+/** Require a candidate request body to shrink by more than five percent. */
+function hasMeaningfulByteShrink(beforeBytes, candidate) {
+  return jsonBytes(candidate) < beforeBytes * 0.95;
+}
+
+/** Return whether proxy output preserves OpenAI message ordering and tool routing identity. */
+function preservesOpenAIConversationContract(sourceMessages, candidateMessages, diagnostics) {
+  if (!Array.isArray(candidateMessages) || candidateMessages.length !== sourceMessages.length) {
+    setDiagnostic(diagnostics, "proxy response did not preserve message count or order");
+    return false;
+  }
+  for (let i = 0; i < sourceMessages.length; i += 1) {
+    const source = sourceMessages[i] || {};
+    const candidate = candidateMessages[i] || {};
+    if (candidate.role !== source.role ||
+        Object.hasOwn(source, OPENAI_MESSAGE_ORDER_KEY) &&
+        (!Object.hasOwn(candidate, OPENAI_MESSAGE_ORDER_KEY) ||
+          candidate[OPENAI_MESSAGE_ORDER_KEY] !== source[OPENAI_MESSAGE_ORDER_KEY])) {
+      setDiagnostic(diagnostics, "proxy response did not preserve message count or order");
+      return false;
+    }
+    const sourceHasCalls = Array.isArray(source.tool_calls) && source.tool_calls.length > 0;
+    const candidateHasCalls = Array.isArray(candidate.tool_calls) && candidate.tool_calls.length > 0;
+    const content = candidate.content;
+    if ((content === null || content === undefined) && !sourceHasCalls && !candidateHasCalls) {
+      setDiagnostic(diagnostics, "proxy response did not preserve message content shape");
+      return false;
+    }
+    if (content !== null && content !== undefined && !isString(content) && !Array.isArray(content) && !isObject(content)) {
+      setDiagnostic(diagnostics, "proxy response did not preserve message content shape");
+      return false;
+    }
+    if ((source.tool_call_id != null || candidate.tool_call_id != null) &&
+        String(candidate.tool_call_id ?? "") !== String(source.tool_call_id ?? "")) {
+      setDiagnostic(diagnostics, "proxy response did not preserve tool pairing identity");
+      return false;
+    }
+    if (sourceHasCalls || candidateHasCalls) {
+      if (!Array.isArray(candidate.tool_calls) || candidate.tool_calls.length !== (source.tool_calls?.length ?? 0)) {
+        setDiagnostic(diagnostics, "proxy response did not preserve tool pairing identity");
+        return false;
+      }
+      for (let j = 0; j < source.tool_calls.length; j += 1) {
+        const expected = source.tool_calls[j] || {};
+        const actual = candidate.tool_calls[j] || {};
+        if (String(actual.id ?? "") !== String(expected.id ?? "") ||
+            String(actual.type ?? "function") !== String(expected.type ?? "function") ||
+            String(actual.function?.name ?? "") !== String(expected.function?.name ?? "") ||
+            String(actual.function?.arguments ?? "") !== String(expected.function?.arguments ?? "")) {
+          setDiagnostic(diagnostics, "proxy response did not preserve tool pairing identity");
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+/** Add collision-resistant positional metadata only to the Responses projection sent to Headroom. */
+function addOpenAIMessageOrderTokens(messages, diagnostics) {
+  if (messages.some((message) => isObject(message) && Object.hasOwn(message, OPENAI_MESSAGE_ORDER_KEY))) {
+    setDiagnostic(diagnostics, "openai-responses projection already contains internal order metadata");
+    return null;
+  }
+  return messages.map((message, index) => ({ ...message, [OPENAI_MESSAGE_ORDER_KEY]: index }));
+}
+
+/** Remove temporary validation metadata before translation, writeback, or return to the caller. */
+function stripOpenAIMessageOrderTokens(messages) {
+  if (!Array.isArray(messages)) return;
+  for (const message of messages) {
+    if (isObject(message)) delete message[OPENAI_MESSAGE_ORDER_KEY];
+  }
+}
+
+function containsCcrMarker(messages) {
+  if (!Array.isArray(messages)) return false;
+  return messages.some((message) => {
+    try { return JSON.stringify(message).includes("<<ccr:"); } catch { return false; }
+  });
+}
+
+function hasCcrHashes(data) {
+  return Array.isArray(data?.ccr_hashes) && data.ccr_hashes.length > 0;
+}
 
 function setDiagnostic(diagnostics, reason, code) {
   if (!diagnostics || diagnostics.reason) return;
-  diagnostics.reason = reason;
+  diagnostics.reason = sanitizeReason(reason);
   if (code) diagnostics.code = code;
 }
 
@@ -101,8 +191,37 @@ function hasUnsafeResponsesInputForCompression(body) {
   if (!Array.isArray(body?.input)) return false;
   return body.input.some((item) => {
     if (!item || !isObject(item) || Array.isArray(item)) return false;
+    if (item.type === "function_call_output" && (item.status === "error" || item.is_error === true)) return true;
     return isString(item.type) && item.type !== "message";
   });
+}
+
+// Skip only explicit provider error shapes; content containing "error" is safe.
+function hasErrorToolBlock(body, format) {
+  try {
+    for (const message of body?.messages || []) {
+      const content = message?.content;
+      const parts = Array.isArray(content) ? content : isObject(content) ? [content] : [];
+      for (const part of parts) {
+        if ((part?.type === "tool_result" || message?.role === "tool") &&
+            (part?.is_error === true || part?.status === "error")) return true;
+      }
+      if (message?.role === "tool" && (message.is_error === true || message.status === "error")) return true;
+    }
+    const state = body?.conversationState;
+    if (state && isObject(state)) {
+      const items = [...(Array.isArray(state.history) ? state.history : []), state.currentMessage].filter(Boolean);
+      for (const item of items) {
+        const results = item?.userInputMessage?.userInputMessageContext?.toolResults;
+        if (Array.isArray(results) && results.some((result) => result?.status === "error" || result?.isError === true)) return true;
+      }
+    }
+    if (format === "openai-responses" && Array.isArray(body?.input)) {
+      return body.input.some((item) => item?.type === "function_call_output" &&
+        (item.status === "error" || item.is_error === true));
+    }
+  } catch { /* malformed optional fields fail open */ }
+  return false;
 }
 
 /**
@@ -292,7 +411,7 @@ function applyKiroHeadroomMessages(projection, compressedMessages, diagnostics) 
   }
   return true;
 }
-// POST messages to Headroom /v1/compress; one transient retry, then fail open.
+// POST messages to Headroom /v1/compress exactly once, then fail open.
 async function callCompress(url, messages, model, timeoutMs, compressUserMessages, diagnostics) {
   const endpoint = buildCompressEndpoint(url);
   diagnostics.endpoint = maskEndpoint(endpoint);
@@ -302,42 +421,56 @@ async function callCompress(url, messages, model, timeoutMs, compressUserMessage
   }
   const payload = { messages, model };
   if (compressUserMessages) payload.config = { compress_user_messages: true };
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(timeoutMs)
-      });
-      if (!res.ok) {
-        if (attempt === 0 && (res.status === 429 || res.status >= 500)) {
-          await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
-          continue;
-        }
-        incrementHeadroomFailures();
-        setDiagnostic(diagnostics, `proxy returned HTTP ${res.status}`, "http-status");
-        return null;
-      }
-      const data = await res.json();
-      if (!Array.isArray(data?.messages)) {
-        incrementHeadroomFailures();
-        setDiagnostic(diagnostics, "proxy response missing messages[]");
-        return null;
-      }
-      resetHeadroomCircuit();
-      return data;
-    } catch (error) {
-      if (attempt === 0) {
-        await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
-        continue;
-      }
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) {
       incrementHeadroomFailures();
-      setDiagnostic(diagnostics, `request failed: ${describeFetchError(error)}`);
+      setDiagnostic(diagnostics, `proxy returned HTTP ${res.status}`, "http-status");
       return null;
     }
+    const data = await res.json();
+    resetHeadroomCircuit();
+    if (hasCcrHashes(data) || containsCcrMarker(data?.messages)) {
+      setDiagnostic(diagnostics, "rejected: response contains CCR markers");
+      return null;
+    }
+    if (data?.compression_skipped === true || (data?.skip_reason && !Array.isArray(data?.messages))) {
+      setDiagnostic(diagnostics, data.skip_reason || "compression_skipped");
+      return null;
+    }
+    if (!Array.isArray(data?.messages)) {
+      incrementHeadroomFailures();
+      setDiagnostic(diagnostics, "proxy response missing messages[]");
+      return null;
+    }
+    const tokensBefore = Number(data.tokens_before);
+    const tokensAfter = Number(data.tokens_after);
+    const tokensSaved = Number(data.tokens_saved);
+    if (Number.isFinite(tokensSaved) && tokensSaved <= 0) {
+      setDiagnostic(diagnostics, data.skip_reason || "no token saving — keeping original");
+      return null;
+    }
+    if (Number.isFinite(tokensBefore) && Number.isFinite(tokensAfter)) {
+      if (tokensAfter > tokensBefore) {
+        setDiagnostic(diagnostics, "conflicting token metrics — keeping original");
+        return null;
+      }
+      if (tokensAfter >= tokensBefore * 0.95) {
+        setDiagnostic(diagnostics, "phantom savings — keeping original (>95% tokens)");
+        return null;
+      }
+    }
+    return data;
+  } catch (error) {
+    incrementHeadroomFailures();
+    setDiagnostic(diagnostics, `request failed: ${describeFetchError(error)}`);
+    return null;
   }
-  return null;
 }
 
 /**
@@ -368,6 +501,10 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       setDiagnostic(diagnostics, `skipped: payload too large (${sizeSnapshot.bodyBytes}B > ${MAX_COMPRESS_BODY_BYTES}B limit)`);
       return null;
     }
+    if (hasErrorToolBlock(body, format)) {
+      setDiagnostic(diagnostics, "skipped: error tool result present — headroom not applied");
+      return null;
+    }
 
     // Claude shape: translate → OpenAI → compress → translate back.
     if (format === "claude") {
@@ -378,9 +515,22 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       }
       const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data) return null;
+      if (!preservesOpenAIConversationContract(oai.messages, data.messages, diagnostics)) return null;
       const claudeBody = openaiToClaudeRequest(model, { ...oai, messages: data.messages }, false);
-      if (Array.isArray(claudeBody?.messages)) body.messages = claudeBody.messages;
-      if (claudeBody?.system !== undefined) body.system = claudeBody.system;
+      if (!Array.isArray(claudeBody?.messages) || claudeBody.messages.length !== body.messages.length ||
+          claudeBody.messages.some((message, index) => message?.role !== body.messages[index]?.role ||
+            (!isString(message?.content) && !Array.isArray(message?.content)))) {
+        setDiagnostic(diagnostics, "proxy response did not preserve Claude message shape");
+        return null;
+      }
+      const candidate = { ...body, messages: claudeBody.messages };
+      if (claudeBody.system !== undefined) candidate.system = claudeBody.system;
+      if (!hasMeaningfulByteShrink(sizeSnapshot.bodyBytes, candidate)) {
+        setDiagnostic(diagnostics, "phantom savings — keeping original (>95% size)");
+        return null;
+      }
+      body.messages = claudeBody.messages;
+      if (claudeBody.system !== undefined) body.system = claudeBody.system;
       if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
       return data;
     }
@@ -399,18 +549,36 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
         setDiagnostic(diagnostics, "openai-responses request did not translate to messages[]");
         return null;
       }
-      const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
-      if (!data) return null;
-      // input: undefined so the translator rebuilds input from the compressed
-      // messages instead of returning the original input unchanged.
-      const responsesBody = openaiToOpenAIResponsesRequest(
-        model,
-        { ...oai, input: undefined, messages: data.messages },
-        false
-      );
-      if (Array.isArray(responsesBody?.input)) body.input = responsesBody.input;
-      if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
-      return data;
+      const orderedMessages = addOpenAIMessageOrderTokens(oai.messages, diagnostics);
+      if (!orderedMessages) return null;
+      let data;
+      try {
+        data = await callCompress(url, orderedMessages, model, timeoutMs, compressUserMessages, diagnostics || {});
+        if (!data) return null;
+        /** Reject missing, altered, or reordered tokens before Responses translation can mutate the request. */
+        if (!preservesOpenAIConversationContract(orderedMessages, data.messages, diagnostics)) return null;
+        stripOpenAIMessageOrderTokens(orderedMessages);
+        stripOpenAIMessageOrderTokens(data.messages);
+        const responsesBody = openaiToOpenAIResponsesRequest(
+          model,
+          { ...oai, input: undefined, messages: data.messages },
+          false
+        );
+        if (!Array.isArray(responsesBody?.input)) {
+          setDiagnostic(diagnostics, "Responses translation did not produce compressed input");
+          return null;
+        }
+        if (!hasMeaningfulByteShrink(sizeSnapshot.bodyBytes, { ...body, input: responsesBody.input })) {
+          setDiagnostic(diagnostics, "phantom savings — keeping original (>95% size)");
+          return null;
+        }
+        body.input = responsesBody.input;
+        if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
+        return data;
+      } finally {
+        stripOpenAIMessageOrderTokens(orderedMessages);
+        stripOpenAIMessageOrderTokens(data?.messages);
+      }
     }
 
     // Kiro shape: conversationState.history/currentMessage are projected to
@@ -424,6 +592,14 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       }
       const data = await callCompress(url, projection.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data) return null;
+      /** Apply write-back to a full-body copy so byte savings and identity are proven before mutation. */
+      const candidate = structuredClone(body);
+      const candidateProjection = collectKiroHeadroomMessages(candidate);
+      if (!candidateProjection || !applyKiroHeadroomMessages(candidateProjection, data.messages, diagnostics)) return null;
+      if (!hasMeaningfulByteShrink(sizeSnapshot.bodyBytes, candidate)) {
+        setDiagnostic(diagnostics, "phantom savings — keeping original (>95% size)");
+        return null;
+      }
       if (!applyKiroHeadroomMessages(projection, data.messages, diagnostics)) return null;
       if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
       return data;
@@ -437,8 +613,14 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       setDiagnostic(diagnostics, `unsupported ${format || "unknown"} request shape`);
       return null;
     }
-    const data = await callCompress(url, body[key], model, timeoutMs, compressUserMessages, diagnostics || {});
+    const sourceMessages = body[key];
+    const data = await callCompress(url, sourceMessages, model, timeoutMs, compressUserMessages, diagnostics || {});
     if (!data) return null;
+    if (!preservesOpenAIConversationContract(sourceMessages, data.messages, diagnostics)) return null;
+    if (!hasMeaningfulByteShrink(sizeSnapshot.bodyBytes, { ...body, [key]: data.messages })) {
+      setDiagnostic(diagnostics, "phantom savings — keeping original (>95% size)");
+      return null;
+    }
     body[key] = data.messages;
     if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
     return data;

@@ -20,7 +20,7 @@ vi.mock("../../../src/lib/headroom/process.js", () => ({
 describe("configureHeadroom", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    processModule.stopHeadroomProxy.mockReturnValue({ stopped: true, pid: 123 });
+    processModule.stopHeadroomProxy.mockResolvedValue({ stopped: true, pid: 123 });
     processModule.startHeadroomProxy.mockResolvedValue({ alreadyRunning: false });
   });
 

@@ -1,3 +1,9 @@
+# Unreleased
+
+## Fixed
+
+- Clean standalone builds and Docker images now ship the ESM `src/shared/utils/typeChecks.js` helper imported by `open-sse/config/runtimeConfig.js`, preventing fresh deployments from failing with `ERR_MODULE_NOT_FOUND`.
+
 # 3.18.0
 
 ## Added

@@ -15,6 +15,8 @@ import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.
 
 const DEFAULT_TIMEOUT_MS = 15000;
 
+const OPENAI_MESSAGE_ORDER_KEY = "__durindoor_headroom_order_7f3b2a91d6e84c05__";
+
 export {
   getHeadroomCircuitState,
   getHeadroomStatusStats,
@@ -67,7 +69,10 @@ function preservesOpenAIConversationContract(sourceMessages, candidateMessages, 
   for (let i = 0; i < sourceMessages.length; i += 1) {
     const source = sourceMessages[i] || {};
     const candidate = candidateMessages[i] || {};
-    if (candidate.role !== source.role) {
+    if (candidate.role !== source.role ||
+        Object.hasOwn(source, OPENAI_MESSAGE_ORDER_KEY) &&
+        (!Object.hasOwn(candidate, OPENAI_MESSAGE_ORDER_KEY) ||
+          candidate[OPENAI_MESSAGE_ORDER_KEY] !== source[OPENAI_MESSAGE_ORDER_KEY])) {
       setDiagnostic(diagnostics, "proxy response did not preserve message count or order");
       return false;
     }
@@ -106,6 +111,23 @@ function preservesOpenAIConversationContract(sourceMessages, candidateMessages, 
     }
   }
   return true;
+}
+
+/** Add collision-resistant positional metadata only to the Responses projection sent to Headroom. */
+function addOpenAIMessageOrderTokens(messages, diagnostics) {
+  if (messages.some((message) => isObject(message) && Object.hasOwn(message, OPENAI_MESSAGE_ORDER_KEY))) {
+    setDiagnostic(diagnostics, "openai-responses projection already contains internal order metadata");
+    return null;
+  }
+  return messages.map((message, index) => ({ ...message, [OPENAI_MESSAGE_ORDER_KEY]: index }));
+}
+
+/** Remove temporary validation metadata before translation, writeback, or return to the caller. */
+function stripOpenAIMessageOrderTokens(messages) {
+  if (!Array.isArray(messages)) return;
+  for (const message of messages) {
+    if (isObject(message)) delete message[OPENAI_MESSAGE_ORDER_KEY];
+  }
 }
 
 function containsCcrMarker(messages) {
@@ -527,26 +549,36 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
         setDiagnostic(diagnostics, "openai-responses request did not translate to messages[]");
         return null;
       }
-      const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
-      if (!data) return null;
-      /** Reject reordered or identity-altered proxy output before Responses translation can mutate the request. */
-      if (!preservesOpenAIConversationContract(oai.messages, data.messages, diagnostics)) return null;
-      const responsesBody = openaiToOpenAIResponsesRequest(
-        model,
-        { ...oai, input: undefined, messages: data.messages },
-        false
-      );
-      if (!Array.isArray(responsesBody?.input)) {
-        setDiagnostic(diagnostics, "Responses translation did not produce compressed input");
-        return null;
+      const orderedMessages = addOpenAIMessageOrderTokens(oai.messages, diagnostics);
+      if (!orderedMessages) return null;
+      let data;
+      try {
+        data = await callCompress(url, orderedMessages, model, timeoutMs, compressUserMessages, diagnostics || {});
+        if (!data) return null;
+        /** Reject missing, altered, or reordered tokens before Responses translation can mutate the request. */
+        if (!preservesOpenAIConversationContract(orderedMessages, data.messages, diagnostics)) return null;
+        stripOpenAIMessageOrderTokens(orderedMessages);
+        stripOpenAIMessageOrderTokens(data.messages);
+        const responsesBody = openaiToOpenAIResponsesRequest(
+          model,
+          { ...oai, input: undefined, messages: data.messages },
+          false
+        );
+        if (!Array.isArray(responsesBody?.input)) {
+          setDiagnostic(diagnostics, "Responses translation did not produce compressed input");
+          return null;
+        }
+        if (!hasMeaningfulByteShrink(sizeSnapshot.bodyBytes, { ...body, input: responsesBody.input })) {
+          setDiagnostic(diagnostics, "phantom savings — keeping original (>95% size)");
+          return null;
+        }
+        body.input = responsesBody.input;
+        if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
+        return data;
+      } finally {
+        stripOpenAIMessageOrderTokens(orderedMessages);
+        stripOpenAIMessageOrderTokens(data?.messages);
       }
-      if (!hasMeaningfulByteShrink(sizeSnapshot.bodyBytes, { ...body, input: responsesBody.input })) {
-        setDiagnostic(diagnostics, "phantom savings — keeping original (>95% size)");
-        return null;
-      }
-      body.input = responsesBody.input;
-      if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
-      return data;
     }
 
     // Kiro shape: conversationState.history/currentMessage are projected to

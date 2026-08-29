@@ -181,6 +181,43 @@ describe("compressWithHeadroom", () => {
       .toEqual([{ toolSpecification: { name: "read_file" } }]);
   });
 
+  it("keeps Kiro body unchanged when projection shrinks but full provider body does not", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [{ role: "user", content: "short" }],
+      tokens_before: 100,
+      tokens_after: 20,
+      tokens_saved: 80,
+    }), { status: 200 }));
+    const body = {
+      conversationState: {
+        history: [],
+        currentMessage: {
+          userInputMessage: {
+            content: VERBOSE,
+            modelId: "claude-sonnet-4.5",
+            userInputMessageContext: {
+              tools: [{ toolSpecification: { name: "read_file", description: "untouched ".repeat(4000) } }],
+            },
+          },
+        },
+      },
+    };
+    const original = structuredClone(body);
+    const diagnostics = {};
+
+    const stats = await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://localhost:8787",
+      model: "claude-sonnet-4.5",
+      format: "kiro",
+      diagnostics,
+    });
+
+    expect(stats).toBeNull();
+    expect(body).toEqual(original);
+    expect(diagnostics.reason).toBe("phantom savings — keeping original (>95% size)");
+  });
+
   it("fails open when Kiro Headroom output does not preserve message order", async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({
       messages: [{ role: "assistant", content: "wrong role" }],

@@ -48,6 +48,60 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
     expect(typeof body.input[0].content).not.toBe("string");
   });
 
+  it.each([
+    [
+      "reorders messages",
+      [
+        { role: "assistant", content: "compressed assistant" },
+        { role: "user", content: "compressed user" },
+      ],
+      "proxy response did not preserve message count or order",
+    ],
+    [
+      "alters tool identity",
+      [
+        {
+          role: "user",
+          content: "compressed user",
+          tool_calls: [{ id: "injected", type: "function", function: { name: "read", arguments: "{}" } }],
+        },
+        { role: "assistant", content: "compressed assistant" },
+      ],
+      "proxy response did not preserve tool pairing identity",
+    ],
+  ])("fails open when Headroom %s", async (_case, messages, reason) => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        messages,
+        tokens_before: 100,
+        tokens_after: 20,
+        tokens_saved: 80,
+      }),
+    }));
+    const body = {
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "first ".repeat(80) }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "second ".repeat(80) }] },
+      ],
+    };
+    const original = structuredClone(body);
+    const diagnostics = {};
+
+    const data = await compressWithHeadroom(body, {
+      enabled: true,
+      url: "http://headroom.test",
+      model: "gpt-5",
+      format: "openai-responses",
+      diagnostics,
+    });
+
+    expect(data).toBeNull();
+    expect(body).toEqual(original);
+    expect(diagnostics.reason).toBe(reason);
+    expect(diagnostics.reason.length).toBeLessThanOrEqual(200);
+  });
+
   it("diagnoses a Responses request that cannot translate to messages", async () => {
     global.fetch = vi.fn();
     const body = { input: { unexpected: true } };

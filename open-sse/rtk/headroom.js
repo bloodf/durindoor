@@ -529,6 +529,8 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       }
       const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data) return null;
+      /** Reject reordered or identity-altered proxy output before Responses translation can mutate the request. */
+      if (!preservesOpenAIConversationContract(oai.messages, data.messages, diagnostics)) return null;
       const responsesBody = openaiToOpenAIResponsesRequest(
         model,
         { ...oai, input: undefined, messages: data.messages },
@@ -558,7 +560,11 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
       }
       const data = await callCompress(url, projection.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data) return null;
-      if (!hasMeaningfulByteShrink(jsonBytes(projection.messages), data.messages)) {
+      /** Apply write-back to a full-body copy so byte savings and identity are proven before mutation. */
+      const candidate = structuredClone(body);
+      const candidateProjection = collectKiroHeadroomMessages(candidate);
+      if (!candidateProjection || !applyKiroHeadroomMessages(candidateProjection, data.messages, diagnostics)) return null;
+      if (!hasMeaningfulByteShrink(sizeSnapshot.bodyBytes, candidate)) {
         setDiagnostic(diagnostics, "phantom savings — keeping original (>95% size)");
         return null;
       }

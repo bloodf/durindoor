@@ -35,6 +35,10 @@ If the dashboard password is lost, use the loopback-only emergency path `POST /a
 
 Remote login with the built-in `123456` password is refused before a dashboard session cookie is issued. Set `INITIAL_PASSWORD` or a stored dashboard password before any remote access. The login screen surfaces the default-password hint only when `settings.password || INITIAL_PASSWORD || 123456` resolves to the literal built-in password, so a stored custom password or OIDC mode hides it.
 
+### Security-critical settings
+
+`PATCH /api/settings` requires a valid dashboard JWT or machine-bound CLI token before it persists auth-critical fields, including `requireLogin` and `requireApiKey`. Loopback placement, trusted wrapper headers, and `requireLogin=false` do not authorize these changes. This prevents an unproved local or remote caller from disabling API-key enforcement while preserving authenticated dashboard and CLI updates.
+
 Recommended controls:
 
 - HTTPS only for remote access.

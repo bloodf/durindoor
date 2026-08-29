@@ -93,22 +93,23 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
   });
 
   it.each([
-    "requireLogin",
-    "authMode",
-    "oidcIssuerUrl",
-    "oidcClientId",
-    "oidcClientSecret",
-    "oidcScopes",
-    "oidcLoginLabel",
-    "tunnelDashboardAccess",
-    "enableObservability",
-    "outboundProxyEnabled",
-    "outboundProxyUrl",
-    "outboundNoProxy",
-    "exposeComboOnly",
-  ])("drops unauthenticated mass assignment of %s", async (key) => {
+    ["requireLogin", false],
+    ["requireApiKey", false],
+    ["authMode", "value-for-authMode"],
+    ["oidcIssuerUrl", "value-for-oidcIssuerUrl"],
+    ["oidcClientId", "value-for-oidcClientId"],
+    ["oidcClientSecret", "value-for-oidcClientSecret"],
+    ["oidcScopes", "value-for-oidcScopes"],
+    ["oidcLoginLabel", "value-for-oidcLoginLabel"],
+    ["tunnelDashboardAccess", "value-for-tunnelDashboardAccess"],
+    ["enableObservability", "value-for-enableObservability"],
+    ["outboundProxyEnabled", "value-for-outboundProxyEnabled"],
+    ["outboundProxyUrl", "value-for-outboundProxyUrl"],
+    ["outboundNoProxy", "value-for-outboundNoProxy"],
+    ["exposeComboOnly", true],
+  ])("drops unauthenticated mass assignment of %s", async (key, value) => {
     await PATCH({
-      json: async () => ({ [key]: key === "requireLogin" ? false : `value-for-${key}` }),
+      json: async () => ({ [key]: value }),
     });
 
     expect(mocks.canModifySecurityCriticalSettings).toHaveBeenCalled();
@@ -117,12 +118,22 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
     expect(persisted).not.toHaveProperty(key);
   });
 
-  it("allows authenticated sessions to persist auth-critical settings", async () => {
+  it("drops requireApiKey while preserving non-critical settings without identity proof", async () => {
+    await PATCH({
+      headers: { get: vi.fn() },
+      json: async () => ({ requireApiKey: false, theme: "dark" }),
+    });
+
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ theme: "dark" });
+  });
+
+  it("allows an identity-proved caller to persist auth-critical settings", async () => {
     mocks.canModifySecurityCriticalSettings.mockResolvedValue(true);
 
     await PATCH({
       json: async () => ({
         requireLogin: false,
+        requireApiKey: false,
         authMode: "oidc",
         oidcIssuerUrl: "https://idp.example.com",
         oidcClientId: "client-id",
@@ -135,6 +146,7 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
 
     expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
       requireLogin: false,
+      requireApiKey: false,
       authMode: "oidc",
       oidcIssuerUrl: "https://idp.example.com",
       oidcClientId: "client-id",

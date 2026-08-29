@@ -22,6 +22,8 @@ export const SECRET_SETTING_KEYS = Object.freeze([
 export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
   "exposeComboOnly",
   "requireLogin",
+  /** API-key enforcement cannot be disabled through an unproved settings PATCH. */
+  "requireApiKey",
   "authMode",
   "oidcIssuerUrl",
   "oidcClientId",

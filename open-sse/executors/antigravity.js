@@ -20,6 +20,21 @@ function sanitizeFunctionName(name) {
   return s.substring(0, 64);
 }
 
+/**
+ * Preserve common OpenCode casing while rewriting branding at the Antigravity boundary.
+ *
+ * @param {unknown} text - Antigravity system-instruction text.
+ * @returns {unknown} Rewritten text, or the original non-string value.
+ */
+function rewriteOpenCodeBranding(text) {
+  if (!isString(text)) return text;
+  return text.replace(/opencode/gi, (match) => {
+    if (match === "OpenCode") return "Antigravity";
+    if (match === "OPENCODE") return "ANTIGRAVITY";
+    return "antigravity";
+  });
+}
+
 const SYSTEM_INSTRUCTION_CHAR_LIMIT = 4000;
 const MAX_RETRY_AFTER_MS = 10000;
 const ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS = 15000;
@@ -367,14 +382,14 @@ export class AntigravityExecutor extends BaseExecutor {
     const { contents: _originalContents, tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
     stripBlacklisted(requestWithoutTools);
 
-    // Rewrite competitive system prompts (e.g. Zed IDE's Claude SDK marker) to prevent
-    // Antigravity from flagging the request and immediately blocking it with a 429 Quota
-    // Exhausted response. Narrow, exact-string match only (upstream decolua/9router#3223) —
-    // see docs/campaigns/upstream-3223-antigravity-prompt-ledger.md for why this stays narrow.
+    // Rewrite competitive system prompts only after translation reaches the Antigravity
+    // provider boundary. Conversation content and shared Gemini translators stay untouched.
     if (requestWithoutTools.systemInstruction?.parts) {
       const competitiveMarker = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
       for (const part of requestWithoutTools.systemInstruction.parts) {
-        if (isString(part.text) && part.text.includes(competitiveMarker)) {
+        if (!isString(part.text)) continue;
+        part.text = rewriteOpenCodeBranding(part.text);
+        if (part.text.includes(competitiveMarker)) {
           part.text = part.text.split(competitiveMarker).join("");
         }
       }

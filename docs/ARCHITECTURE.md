@@ -107,7 +107,7 @@ The translation layer converts between OpenAI, Anthropic Claude, Gemini, OpenAI 
 Provider-specific stream formats are handled by executors and response translators. Tool calls, reasoning blocks, image content, and audio content need the most careful tests because not every upstream format supports the same fields.
 
 For providers with multiple wire-format endpoints, routing selects transport from the final outbound format. A model-level `targetFormat` therefore moves translated requests to the matching endpoint, headers, and authentication scheme; unpinned models can still use a client-format endpoint directly when their registry metadata declares support.
-Gemini and Antigravity request translation rewrites `OpenCode` branding in system instructions to case-matched `Antigravity` branding before provider dispatch. User and assistant message content stays unchanged.
+Antigravity's executor rewrites `OpenCode` branding in provider-bound system instructions to case-matched `Antigravity` branding after translation. Plain Gemini, Gemini CLI, Vertex, and conversation content stay unchanged.
 
 ## Persistence
 

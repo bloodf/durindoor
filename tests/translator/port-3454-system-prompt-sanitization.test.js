@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
 import {
   openaiToAntigravityRequest,
+  openaiToGeminiCLIRequest,
   openaiToGeminiRequest,
 } from "../../open-sse/translator/request/openai-to-gemini.js";
+import { openaiToVertexRequest } from "../../open-sse/translator/request/openai-to-vertex.js";
 
+const credentials = { projectId: "project-1", connectionId: "connection-1" };
 const messages = [
   { role: "system", content: "OpenCode, opencode, OPENCODE. Keep this." },
   { role: "user", content: "Do not rewrite OpenCode here." },
@@ -20,50 +24,67 @@ const messages = [
   { role: "user", content: "Continue." },
 ];
 
-/** Regression coverage for decolua/9router#3454 system-prompt sanitization. */
-describe("Gemini/Antigravity system prompt sanitization", () => {
-  it("sanitizes OpenCode casing in Gemini system prompts only", () => {
-    const result = openaiToGeminiRequest("gemini-test", { messages }, false);
+const transformAntigravity = (model, requestMessages) => new AntigravityExecutor().transformRequest(
+  model,
+  openaiToAntigravityRequest(model, { messages: requestMessages }, false, credentials),
+  false,
+  credentials,
+);
 
-    expect(result.systemInstruction.parts).toEqual([
-      { text: "Antigravity, antigravity, ANTIGRAVITY. Keep this." },
-    ]);
-    expect(result.contents[0].parts).toEqual([
-      { text: "Do not rewrite OpenCode here." },
-    ]);
-    expect(result.contents.find(({ role }) => role === "model").parts).toContainEqual(
-      { text: "OpenCode remains in assistant content." },
-    );
-    const toolResponse = result.contents.flatMap(({ parts }) => parts).find((part) => part.functionResponse);
-    expect(JSON.stringify(toolResponse.functionResponse.response)).toContain("OpenCode remains in tool content.");
-  });
+function expectConversationUnchanged(request) {
+  expect(request.contents[0].parts).toEqual([{ text: "Do not rewrite OpenCode here." }]);
+  expect(request.contents.find(({ role }) => role === "model").parts).toContainEqual(
+    { text: "OpenCode remains in assistant content." },
+  );
+  const toolResponse = request.contents.flatMap(({ parts }) => parts).find((part) => part.functionResponse);
+  expect(JSON.stringify(toolResponse.functionResponse.response)).toContain("OpenCode remains in tool content.");
+}
 
-  it("sanitizes a system-only Gemini request", () => {
-    const result = openaiToGeminiRequest("gemini-test", {
-      messages: [{ role: "system", content: "OpenCode only" }],
-    }, false);
-
-    expect(result.contents[0].parts).toEqual([{ text: "Antigravity only" }]);
-  });
-
-  it("sanitizes OpenCode casing in Claude-backed Antigravity system prompts only", () => {
-    const result = openaiToAntigravityRequest(
-      "claude-opus-test",
-      { messages },
-      false,
-      { projectId: "project-1", connectionId: "connection-1" },
-    );
+/** Regression coverage for corrected decolua/9router#3454 Antigravity-only scope. */
+describe("Antigravity system prompt sanitization", () => {
+  it("sanitizes Gemini-backed Antigravity system prompts after translation", () => {
+    const result = transformAntigravity("gemini-test", messages);
 
     expect(result.request.systemInstruction.parts).toEqual([
       { text: "Antigravity, antigravity, ANTIGRAVITY. Keep this." },
     ]);
-    expect(result.request.contents[0].parts).toEqual([
-      { text: "Do not rewrite OpenCode here." },
+    expectConversationUnchanged(result.request);
+  });
+
+  it("sanitizes Claude-backed Antigravity system prompts after translation", () => {
+    const result = transformAntigravity("claude-opus-test", messages);
+
+    expect(result.request.systemInstruction.parts).toEqual([
+      { text: "Antigravity, antigravity, ANTIGRAVITY. Keep this." },
     ]);
-    expect(result.request.contents.find(({ role }) => role === "model").parts).toContainEqual(
-      { text: "OpenCode remains in assistant content." },
-    );
-    const toolResponse = result.request.contents.flatMap(({ parts }) => parts).find((part) => part.functionResponse);
-    expect(JSON.stringify(toolResponse.functionResponse.response)).toContain("OpenCode remains in tool content.");
+    expectConversationUnchanged(result.request);
+  });
+
+  it.each(["gemini-test", "claude-opus-test"])(
+    "sanitizes a system-only %s Antigravity request",
+    (model) => {
+      const result = transformAntigravity(model, [{ role: "system", content: "OpenCode only" }]);
+
+      expect(result.request.systemInstruction.parts).toEqual([{ text: "Antigravity only" }]);
+    },
+  );
+
+  it("leaves plain Gemini, Gemini CLI, and Vertex system prompts unchanged", () => {
+    const body = { messages: [{ role: "system", content: "OpenCode only" }, { role: "user", content: "Go" }] };
+
+    expect(openaiToGeminiRequest("gemini-test", body, false).systemInstruction.parts)
+      .toEqual([{ text: "OpenCode only" }]);
+    expect(openaiToGeminiCLIRequest("gemini-test", body, false).systemInstruction.parts)
+      .toEqual([{ text: "OpenCode only" }]);
+    expect(openaiToVertexRequest("gemini-test", body, false, credentials).systemInstruction.parts)
+      .toEqual([{ text: "OpenCode only" }]);
+
+    const systemOnlyBody = { messages: [{ role: "system", content: "OpenCode only" }] };
+    expect(openaiToGeminiRequest("gemini-test", systemOnlyBody, false).contents[0].parts)
+      .toEqual([{ text: "OpenCode only" }]);
+    expect(openaiToGeminiCLIRequest("gemini-test", systemOnlyBody, false).contents[0].parts)
+      .toEqual([{ text: "OpenCode only" }]);
+    expect(openaiToVertexRequest("gemini-test", systemOnlyBody, false, credentials).contents[0].parts)
+      .toEqual([{ text: "OpenCode only" }]);
   });
 });

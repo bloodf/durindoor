@@ -93,6 +93,12 @@ Protect:
 - database backups
 - exported logs
 
+### Outbound web fetch and Kiro regions
+
+Web-fetch request targets must be public HTTP(S) URLs without embedded credentials. Private, loopback, link-local, cloud-metadata, and malformed targets are rejected before any provider call. Fetch-provider endpoints use the shared outbound URL guard: active modes validate connection-time DNS answers through the pinned Undici dispatcher, and all modes use manual redirects so an upstream 3xx cannot silently open a second connection. The explicit self-hosted Firecrawl policy still permits its configured loopback or LAN endpoint, but never metadata or link-local hosts.
+
+Kiro API-key and refresh-token imports validate AWS regions before cache lookup, token refresh, profile discovery, or persistence. Dashboard connection tests apply the same canonical region validation to stored provider metadata before constructing an AWS OIDC refresh URL, so a tampered database row fails without outbound traffic. Auto-import treats the local AWS SSO cache as untrusted and replaces a malformed cached region with `us-east-1`; valid regional IDs and profile ARNs remain unchanged.
+
 ### Provider quota fetch isolation
 
 Provider quota refreshes use fixed HTTPS endpoint configuration, reject URL credentials and redirects, bound response size and retry deadlines, and never retain raw response bodies. Provider/account/resource identities are validated namespaced values; private upstream identifiers are one-way hashed before persistence. API keys, OAuth tokens, refresh tokens, cookies, proxy credentials, emails, raw device IDs, and token-derived cache keys are forbidden in snapshots, fetch states, cache identities, and quota export metadata.

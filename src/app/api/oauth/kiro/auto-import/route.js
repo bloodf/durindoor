@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveKiroCredentialsFromSsoCache } from "open-sse/services/kiroModels.js";
+import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
 
 /**
  * GET /api/oauth/kiro/auto-import
@@ -14,13 +15,22 @@ export async function GET() {
     const { refreshToken, source, clientId, clientSecret, region, authMethod, profileArn, rawAuth } =
     await resolveKiroCredentialsFromSsoCache();
 
+    let safeRegion;
+    try {
+      // Local cache JSON is untrusted input and the dashboard sends this value
+      // back to an endpoint that interpolates it into an AWS hostname.
+      safeRegion = normalizeKiroRegion(region || "us-east-1");
+    } catch {
+      safeRegion = "us-east-1";
+    }
+
     return NextResponse.json({
       found: true,
       refreshToken,
       source,
       clientId,
       clientSecret,
-      region,
+      region: safeRegion,
       authMethod,
       profileArn,
       // Full CLIProxyAPI-shaped auth payload for external_idp tokens so the

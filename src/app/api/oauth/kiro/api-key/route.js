@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
 
 /**
  * POST /api/oauth/kiro/api-key
@@ -20,12 +21,21 @@ export async function POST(request) {
       );
     }
 
+    let safeRegion;
+    try {
+      // Region is interpolated into an AWS hostname downstream; reject it at
+      // the request boundary before credential validation opens a socket.
+      safeRegion = normalizeKiroRegion(region || "us-east-1");
+    } catch (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
     const kiroService = new KiroService();
 
     // Validate the key and resolve its profileArn via ListAvailableProfiles
     const credential = await kiroService.validateApiKey(
       apiKey,
-      region || "us-east-1"
+      safeRegion
     );
 
     // Extract email from JWT if the key happens to be a JWT (optional display)

@@ -1,6 +1,11 @@
 import { validateFirecrawlBaseUrl, validateFirecrawlHeaders, parseFirecrawlHeaders } from "open-sse/shared/firecrawlConfig.js";
 // Returns normalized shape across all providers
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import {
+  OutboundUrlGuardError,
+  assertOutboundUrlAllowed,
+  guardedProbeFetch
+} from "../../utils/outboundUrlGuard.js";
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_FORMAT = "markdown";
 
@@ -24,7 +29,9 @@ function getDefaultFormat() {
  */
 
 /**
- * Fetch with timeout abort.
+ * Fetch with timeout abort through the shared DNS-pinned outbound URL guard.
+ * Manual redirects prevent a validated public endpoint from redirecting the
+ * connection to a private or cloud-metadata address.
  * @param {string} url
  * @param {RequestInit} init
  * @param {number} timeoutMs
@@ -43,7 +50,7 @@ async function tryFetch(url, init, timeoutMs) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: ctrl.signal });
+    const res = await guardedProbeFetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: ctrl.signal });
     return { ok: true, res };
   } catch (err) {
     const isAbort = err?.name === "AbortError";
@@ -102,6 +109,21 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
   }
   if (!provider) {
     return { success: false, status: 400, error: "provider is required" };
+  }
+
+  // User-controlled fetch targets cross the trust boundary here. Validate the
+  // target even when a third-party fetch provider receives it in a JSON body.
+  try {
+    assertOutboundUrlAllowed(url, "public-only");
+  } catch (error) {
+    if (error instanceof OutboundUrlGuardError) {
+      return {
+        success: false,
+        status: error.code === "OUTBOUND_URL_INVALID" ? 400 : 403,
+        error: error.message
+      };
+    }
+    throw error;
   }
 
   const fmt = format || getDefaultFormat();

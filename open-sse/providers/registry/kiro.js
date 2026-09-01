@@ -69,9 +69,11 @@ export default {
     { id: "claude-haiku-4.5", name: "Claude Haiku 4.5" },
     // Non-Anthropic
     { id: "deepseek-3.2", name: "DeepSeek 3.2", strip: ["image","audio"] },
+    { id: "simple-task", name: "Simple Task", strip: ["image","audio"] },
     { id: "qwen3-coder-next", name: "Qwen3 Coder Next", strip: ["image","audio"] },
     { id: "glm-5", name: "GLM 5" },
     { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
+    { id: "minimax-m2.1", name: "MiniMax M2.1", strip: ["image","audio"] },
     // Thinking variants
     { id: "claude-sonnet-5-thinking", name: "Claude Sonnet 5 (Thinking)" },
     { id: "claude-sonnet-4.5-thinking", name: "Claude Sonnet 4.5 (Thinking)" },

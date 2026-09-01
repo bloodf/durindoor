@@ -11,7 +11,7 @@ import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from 
 import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
-import { createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
+import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
@@ -103,7 +103,8 @@ function aggregateParsedChunks(chunks, fallbackModel, {
           contentParts: [],
           reasoningParts: [],
           toolCallMap: new Map(),
-          finishReason: null
+          finishReason: null,
+          nativeFinishReason: null
         });
       }
 
@@ -114,6 +115,7 @@ function aggregateParsedChunks(chunks, fallbackModel, {
       const reasoning = extractReasoningText(delta);
       if (reasoning) accumulator.reasoningParts.push(reasoning);
       if (choice?.finish_reason) accumulator.finishReason = choice.finish_reason;
+      if (choice?.native_finish_reason) accumulator.nativeFinishReason = choice.native_finish_reason;
 
       // Tool-call indexes are scoped to a response choice, not the response.
       for (const toolCall of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) {
@@ -164,7 +166,8 @@ function aggregateParsedChunks(chunks, fallbackModel, {
     return {
       index: accumulator.index,
       message,
-      finish_reason: accumulator.finishReason || "stop"
+      finish_reason: accumulator.finishReason || "stop",
+      ...(accumulator.nativeFinishReason ? { native_finish_reason: accumulator.nativeFinishReason } : null)
     };
   });
 
@@ -335,6 +338,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       const inlineThinking = normalizeInlineThinkingResponse(parsed, { provider, model, targetFormat });
       parsed = inlineThinking.responseBody;
+
+      const maskedGatewayError = classifyMaskedGatewayError(parsed);
+      if (maskedGatewayError) {
+        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Upstream provider error: ${maskedGatewayError}`);
+      }
 
       const usage = parsed.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });

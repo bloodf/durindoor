@@ -15,6 +15,34 @@ const RESPONSES_FAILURE_EVENTS = new Set([
 "error"]
 );
 
+const MASKED_GATEWAY_ERROR_REASONS = new Set([
+"network_error",
+"error",
+"server_error",
+"timeout"
+]);
+
+function choiceHasOutput(choice) {
+  const message = choice?.message || choice?.delta || {};
+  const hasToolCall = Array.isArray(message.tool_calls) &&
+  message.tool_calls.some((toolCall) => isString(toolCall?.function?.name) && toolCall.function.name.length > 0);
+  return isString(message.content) && message.content.trim().length > 0 ||
+  Array.isArray(message.content) && message.content.length > 0 ||
+  isString(message.reasoning_content) && message.reasoning_content.trim().length > 0 ||
+  isString(message.reasoning) && message.reasoning.trim().length > 0 ||
+  hasToolCall ||
+  isString(message.function_call?.name) && message.function_call.name.length > 0;
+}
+
+/** Return an upstream error reason hidden inside an otherwise successful OpenAI response. */
+export function classifyMaskedGatewayError(response) {
+  for (const choice of response?.choices || []) {
+    const reason = isString(choice?.native_finish_reason) ? choice.native_finish_reason.toLowerCase() : null;
+    if (MASKED_GATEWAY_ERROR_REASONS.has(reason) && !choiceHasOutput(choice)) return reason;
+  }
+  return null;
+}
+
 function responseEventName(eventName, chunk) {
   if (isString(eventName) && eventName) return eventName;
   return isString(chunk?.type) ? chunk.type : null;

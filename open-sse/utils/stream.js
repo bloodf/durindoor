@@ -408,6 +408,33 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false; // track duplicate [DONE] across transform + flush
+  // OpenAI choices terminate independently. Suppress only repeated terminal
+  // chunks for the same index; another choice may still finish later.
+  const passthroughFinishedChoices = new Set();
+  const normalizeOpenAIPassthroughChunk = (parsed) => {
+    if (targetFormat !== FORMATS.OPENAI || !Array.isArray(parsed?.choices)) {
+      return { changed: false, keep: true };
+    }
+    let changed = false;
+    for (const choice of parsed.choices) {
+      const delta = choice?.delta;
+      if (isString(delta?.reasoning) && delta.reasoning.trim() && !delta.reasoning_content) {
+        delta.reasoning_content = delta.reasoning;
+        changed = true;
+      }
+    }
+    const choiceCount = parsed.choices.length;
+    parsed.choices = parsed.choices.filter((choice, position) => {
+      if (!choice?.finish_reason) return true;
+      const index = Number.isInteger(choice.index) ? choice.index : position;
+      if (passthroughFinishedChoices.has(index)) return false;
+      passthroughFinishedChoices.add(index);
+      return true;
+    });
+    changed = parsed.choices.length !== choiceCount || changed;
+    return { changed, keep: choiceCount === 0 || parsed.choices.length > 0 || Boolean(parsed.usage) };
+  };
+
   let claudeTerminalSeen = false;
   let upstreamErrorForwarded = false;
   const terminalBody = providerBody || body;
@@ -584,6 +611,7 @@ export function createSSEStream(options = {}) {
           const upstreamEventForLine = isDataLine ? currentUpstreamEvent : null;
           if (isDataLine) currentUpstreamEvent = null;
           if (isDoneLine) {
+            if (streamDoneSent) continue;
             pendingInlineThinkingOutput = flushInlineThinkingStates();
             streamDoneSent = true;
             upstreamTerminal.observe({ rawDone: true, eventName: upstreamEventForLine });
@@ -592,13 +620,6 @@ export function createSSEStream(options = {}) {
           if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? trimmed.slice(5).trim() : trimmed)) {
             try {
               const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
-              upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
-              recordCompletionData(parsed, { trackUsage: false });
-              if (
-              targetFormat === FORMATS.CLAUDE &&
-              parsed?.type === "message_stop" &&
-              upstreamTerminal.outcome === "success")
-              claudeTerminalSeen = true;
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
@@ -685,6 +706,22 @@ export function createSSEStream(options = {}) {
               // delta.reasoning -> delta.reasoning_content) runs before the
               // hasValuableContent gate so reasoning-only chunks survive.
               fieldsInjected = PROVIDERS[provider]?.normalizeStreamChunk?.(parsed) || fieldsInjected;
+
+              // Same-format OpenAI passthrough uses reasoning_content on the
+              // client wire and terminates each choice once. Provider-specific
+              // normalizers already ran, so canonical values remain authoritative.
+              const normalized = normalizeOpenAIPassthroughChunk(parsed);
+              fieldsInjected = normalized.changed || fieldsInjected;
+              if (!normalized.keep) continue;
+
+              upstreamTerminal.observe({ chunk: parsed, eventName: upstreamEventForLine });
+              if (
+              targetFormat === FORMATS.CLAUDE &&
+              parsed?.type === "message_stop" &&
+              upstreamTerminal.outcome === "success")
+              claudeTerminalSeen = true;
+              recordCompletionData(parsed, { trackUsage: false });
+
 
               // Usage-only OpenAI chunks have choices:[] and would otherwise
               // be discarded as empty before accounting sees them.
@@ -1113,22 +1150,38 @@ export function createSSEStream(options = {}) {
 
           if (buffer) {
             const trimmedBuffer = buffer.trim();
-            currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
             const parsed = parseSSELine(trimmedBuffer, targetFormat);
-            if (parsed && !parsed.done) recordCompletionData(parsed, { content: true });
-            let output;
-            if (/^data:\s*\[DONE\]$/.test(trimmedBuffer)) {
-              output = "data: [DONE]\n\n";
-              streamDoneSent = true;
+            let output = "";
+            if (parsed?.done) {
+              if (!streamDoneSent) {
+                upstreamTerminal.observe({ rawDone: true, eventName: currentUpstreamEvent });
+                currentUpstreamEvent = null;
+                streamDoneSent = true;
+                output = "data: [DONE]\n\n";
+              }
+            } else if (parsed && targetFormat === FORMATS.OPENAI) {
+              PROVIDERS[provider]?.normalizeStreamChunk?.(parsed);
+              const normalized = normalizeOpenAIPassthroughChunk(parsed);
+              if (normalized.keep) {
+                upstreamTerminal.observe({ chunk: parsed, eventName: currentUpstreamEvent });
+                currentUpstreamEvent = null;
+                recordCompletionData(parsed, { content: true });
+                const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
+                output = `${prefix}${JSON.stringify(parsed)}\n\n`;
+              }
             } else {
+              currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
+              if (parsed) recordCompletionData(parsed, { content: true });
               output = buffer;
               if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
                 output = "data: " + buffer.slice(5);
               }
               if (!/\r?\n\r?\n$/.test(output)) output = `${output.replace(/\s+$/, "")}\n\n`;
             }
-            reqLogger?.appendConvertedChunk?.(output);
-            controller.enqueue(sharedEncoder.encode(output));
+            if (output) {
+              reqLogger?.appendConvertedChunk?.(output);
+              controller.enqueue(sharedEncoder.encode(output));
+            }
           }
 
           if (!hasValidUsage(usage) && totalContentLength > 0) {

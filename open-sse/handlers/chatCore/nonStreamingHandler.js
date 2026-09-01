@@ -18,7 +18,7 @@ import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
-import { isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
+import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
@@ -478,6 +478,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
       }
       responseBody = unwrapped;
+    }
+    const maskedGatewayError = classifyMaskedGatewayError(responseBody);
+    if (maskedGatewayError) {
+      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Upstream provider error: ${maskedGatewayError}`);
     }
     if (!isCoherentNonStreamingResponse(responseBody, targetFormat)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });

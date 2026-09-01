@@ -489,8 +489,8 @@ function trailingUserItems(arr) {
 }
 
 // Detect which capabilities a request needs. Modalities (vision/audioInput/pdf) are
-// scanned only on the current user turn; "search" and "reasoning" are request-wide.
-// Returns a Set of: "vision" | "audioInput" | "pdf" | "search" | "reasoning".
+// scanned only on the current user turn; "search", "tools", and "reasoning" are request-wide.
+// Returns a Set of: "vision" | "audioInput" | "pdf" | "search" | "tools" | "reasoning".
 export function detectRequiredCapabilities(body) {
   const required = new Set();
   if (!body || !isObject(body)) return required;
@@ -568,6 +568,13 @@ export function detectRequiredCapabilities(body) {
   for (const tool of body.tools || []) {
     const type = tool?.type || tool?.function?.name || tool?.name;
     if (isString(type) && /^web_search/.test(type)) required.add("search");
+    if (
+    tool?.type === "function" && isObject(tool.function) ||
+    isString(tool?.name) && isObject(tool.input_schema) ||
+    Array.isArray(tool?.functionDeclarations) && tool.functionDeclarations.some(isObject))
+    {
+      required.add("tools");
+    }
   }
 
   const effort = body.reasoning_effort || body.reasoning?.effort;

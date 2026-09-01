@@ -38,7 +38,7 @@ import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.j
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, normalizeOpenRouterToolSchemas } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
@@ -629,6 +629,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       log?.debug?.("TOOLDEDUP", `stripped ${stripped.length}: ${stripped.slice(0, 3).join(", ")}${stripped.length > 3 ? "..." : ""}`);
     }
   }
+
+  if (Array.isArray(translatedBody.tools)) translatedBody.tools = normalizeOpenRouterToolSchemas(provider, translatedBody.tools);
 
   // Token savers: applied at the final body just before dispatch
   // Covers both passthrough (source shape) and translated (target shape) flows

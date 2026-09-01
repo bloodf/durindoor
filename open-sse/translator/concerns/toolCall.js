@@ -73,6 +73,7 @@ export function createGeminiToolNameAliaser(maxLength = 64) {
  * @param {number} [maxLength=64] - Maximum outbound-name length.
  * @returns {Map<string,string>} alias → original name, for the response path.
  */
+const DATA_KEYWORDS = new Set(["default", "const", "examples", "enum"]);
 export function normalizeOpenAIToolNames(body, maxLength = 64) {
   const { alias, aliases } = createToolNameAliaser({ invalidCharacters: /[^a-zA-Z0-9_-]/g, maxLength });
   if (!body || !isObject(body)) return aliases;
@@ -107,6 +108,50 @@ export function normalizeOpenAIToolNames(body, maxLength = 64) {
   }
 
   return aliases;
+}
+
+function normalizeSchemaPatterns(value, inProperties = false) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeSchemaPatterns(item));
+  }
+  if (!value || !isObject(value)) return value;
+
+  const normalized = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (!inProperties && DATA_KEYWORDS.has(key)) {
+      normalized[key] = child;
+      continue;
+    }
+    if (key === "pattern" && !inProperties && isString(child)) {
+      try {
+        new RegExp(child);
+      } catch {
+        continue;
+      }
+    }
+    normalized[key] = normalizeSchemaPatterns(child, !inProperties && key === "properties");
+  }
+  return normalized;
+}
+
+/**
+ * Remove only malformed JSON-Schema regex constraints at OpenRouter's final
+ * OpenAI-format boundary. Property names remain literal and caller input is
+ * never mutated.
+ */
+export function normalizeOpenRouterToolSchemas(provider, tools) {
+  if (provider !== "openrouter" || !Array.isArray(tools)) return tools;
+
+  return tools.map((tool) => {
+    if (!tool?.function || !isObject(tool.function)) return tool;
+    return {
+      ...tool,
+      function: {
+        ...tool.function,
+        parameters: normalizeSchemaPatterns(tool.function.parameters),
+      },
+    };
+  });
 }
 
 /**

@@ -166,6 +166,65 @@ function makeOptions(bodyStream) {
   };
 }
 
+function schemaTool(name = "find_files") {
+  return {
+    type: "function",
+    function: {
+      name,
+      description: "Find matching files",
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: { type: "string", description: "literal property", pattern: "[" },
+          valid: { type: "string", pattern: "^[a-z]+$", enum: ["ok"] },
+          count: { type: "integer", pattern: 7, minimum: 1 },
+          nested: {
+            anyOf: [
+              { type: "string", pattern: "(" },
+              { type: "array", items: { type: "string", pattern: "^ok$" } },
+            ],
+          },
+          composed: {
+            allOf: [{ type: "string", pattern: "\\" }],
+            oneOf: [{ type: "string", pattern: "^one$" }],
+          },
+          properties: {
+            type: "object",
+            pattern: "[",
+            properties: {
+              pattern: { type: "string", pattern: "(" },
+            },
+          },
+          configured: {
+            type: "object",
+            pattern: "[",
+            default: { pattern: "[" },
+            const: { pattern: "(" },
+            examples: [{ pattern: "[" }],
+            enum: [{ pattern: "(" }],
+          },
+        },
+        required: ["pattern"],
+      },
+    },
+  };
+}
+
+function makeOpenRouterOptions(body) {
+  return {
+    body,
+    modelInfo: { provider: "openrouter", model: "openai/gpt-4o-mini" },
+    credentials: { apiKey: "sk-or-test" },
+    clientRawRequest: {
+      endpoint: "/v1/chat/completions",
+      body,
+      headers: { accept: "application/json", "user-agent": "GitHubCopilotChat/1.0" },
+    },
+    connectionId: "test-openrouter-connection",
+    log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
+}
+
 function makeCrossFormatOptions(provider, model) {
   const body = {
     model,
@@ -542,6 +601,101 @@ describe("forceStream provider config", () => {
     });
   });
 
+  it("normalizes malformed OpenRouter tool regexes only at final dispatch", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const body = {
+      model: "openai/gpt-4o-mini",
+      messages: [{ role: "user", content: "find files" }],
+      tools: [schemaTool(), schemaTool("second_tool")],
+      stream: false,
+    };
+    const original = structuredClone(body);
+
+    await handleChatCore(makeOpenRouterOptions(body));
+
+    const outbound = executeMock.mock.calls[0][0].body;
+    const parameters = outbound.tools[0].function.parameters;
+    expect(parameters.properties).toHaveProperty("pattern");
+    expect(parameters.properties.pattern).toEqual({ type: "string", description: "literal property" });
+    expect(parameters.properties.valid).toEqual({ type: "string", pattern: "^[a-z]+$", enum: ["ok"] });
+    expect(parameters.properties.count).toEqual({ type: "integer", pattern: 7, minimum: 1 });
+    expect(parameters.properties.nested.anyOf).toEqual([
+      { type: "string" },
+      { type: "array", items: { type: "string", pattern: "^ok$" } },
+    ]);
+    expect(parameters.properties.composed).toEqual({
+      allOf: [{ type: "string" }],
+      oneOf: [{ type: "string", pattern: "^one$" }],
+    });
+    expect(parameters.required).toEqual(["pattern"]);
+    expect(parameters.properties.properties).toEqual({
+      type: "object",
+      properties: { pattern: { type: "string" } },
+    });
+    expect(parameters.properties.configured).toEqual({
+      type: "object",
+      default: { pattern: "[" },
+      const: { pattern: "(" },
+      examples: [{ pattern: "[" }],
+      enum: [{ pattern: "(" }],
+    });
+    expect(outbound.tools).toHaveLength(2);
+    expect(body).toEqual(original);
+  });
+
+  it("does not add a tools key to a body without tools", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+    await handleChatCore(makeOptions(false));
+
+    expect(executeMock.mock.calls[0][0].body).not.toHaveProperty("tools");
+  });
+
+  it("leaves malformed tool regexes unchanged for non-OpenRouter dispatch", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const options = makeOptions(false);
+    options.body.tools = [schemaTool()];
+    options.clientRawRequest.body = options.body;
+
+    await handleChatCore(options);
+
+    expect(executeMock.mock.calls[0][0].body.tools[0].function.parameters.properties.pattern.pattern).toBe("[");
+  });
+
+  it.each(["Claude", "Gemini"])("normalizes translated %s tools at the OpenRouter dispatch boundary", async (format) => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const openaiTool = schemaTool();
+    const body = format === "Claude" ? {
+      model: "openai/gpt-4o-mini",
+      system: "Be concise",
+      messages: [{ role: "user", content: [{ type: "text", text: "find files" }] }],
+      tools: [{
+        name: openaiTool.function.name,
+        description: openaiTool.function.description,
+        input_schema: openaiTool.function.parameters,
+      }],
+    } : {
+      model: "openai/gpt-4o-mini",
+      contents: [{ role: "user", parts: [{ text: "find files" }] }],
+      tools: [{ functionDeclarations: [openaiTool.function] }],
+    };
+
+    await handleChatCore(makeOpenRouterOptions(body));
+
+    const outbound = executeMock.mock.calls[0][0].body;
+    expect(outbound.tools[0]).toMatchObject({ type: "function", function: { name: "find_files" } });
+    expect(outbound.tools[0].function.parameters.properties.pattern).not.toHaveProperty("pattern");
+  });
+
+
+  it("returns non-OpenRouter and non-array tool values by reference", async () => {
+    const { normalizeOpenRouterToolSchemas } = await import("../../open-sse/translator/concerns/toolCall.js");
+    const tools = [schemaTool()];
+    const nonArray = { function: schemaTool().function };
+
+    expect(normalizeOpenRouterToolSchemas("openai", tools)).toBe(tools);
+    expect(normalizeOpenRouterToolSchemas("openrouter", nonArray)).toBe(nonArray);
+  });
   it("synthesizes SSE for streaming clients when Galadriel is forced non-streaming upstream", async () => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
     executeMock.mockResolvedValueOnce({

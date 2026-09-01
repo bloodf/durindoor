@@ -18,6 +18,7 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
+import { resolveClineModels } from "open-sse/services/clineModels.js";
 import {
   resolveLiveAnthropicModels,
   resolveLiveCloudflareModels,
@@ -125,6 +126,7 @@ const KIMI_LIVE_MODEL_PROVIDERS = new Set(["kimi", "kimi-coding", "kimi-coding-a
 const LIVE_MODEL_UNION_PROVIDERS = new Set([
 "anthropic",
 "claude",
+"cline",
 "codex",
 "groq",
 "minimax",
@@ -265,6 +267,10 @@ const LIVE_MODEL_RESOLVERS = {
     const models = result.models.
     filter((m) => isString(m.id)).
     map((m) => ({ id: m.id, ...(isString(m.name) ? { name: m.name } : null) }));
+    return models.length ? { models } : null;
+  },
+  cline: async (conn) => {
+    const models = await resolveClineModels(conn, await liveResolverOptions(conn));
     return models.length ? { models } : null;
   },
   clinepass: async (conn) => {

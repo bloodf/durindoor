@@ -3,6 +3,7 @@
 ## Added
 
 - Kiro's static model catalog now advertises `simple-task` and `minimax-m2.1`, and its MITM picker labels `simple-task` correctly. Ports decolua/9router#3610 while retaining the fork-evidenced case-sensitive `MiniMax-M2.5` wire ID.
+- Cline OAuth connections keep `z-ai/glm-5.3-flash` as a static fallback and gain a proxy-aware, deterministic live model resolver that excludes ClinePass IDs. Ports open decolua/9router#3626 into the fork's extracted model-list builder; live discovery stays behind `CLINE_LIVE_CATALOG=false` until a disposable OAuth connection can re-probe the upstream contract.
 
 ## Fixed
 

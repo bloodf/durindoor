@@ -832,10 +832,10 @@ function startServer(updatePromise) {
           const { clearScreen } = require("./src/cli/utils/display");
           clearScreen();
 
-          // Enable auto startup on OS boot
+          // Enable auto startup once, without overriding later user choices.
           try {
-            const { enableAutoStart } = require("./src/cli/tray/autostart");
-            enableAutoStart(__filename);
+            const { ensureAutoStart } = require("./src/cli/tray/autostart");
+            ensureAutoStart(__filename);
           } catch (e) { }
 
           if (process.platform === "darwin") {

@@ -8,6 +8,7 @@
 
 - Responses clients now receive ordered text and function-call items in terminal `response.completed.response.output`; Gemini/Antigravity non-stream and forced-SSE responses are projected to Responses shape instead of leaking Chat Completions JSON. Ports decolua/9router#3589 while retaining DurinDoor's bounded body reads, terminal validation, and robust SSE framing with single-newline compatibility and multi-line `data:` joining instead of upstream's lossy line parser. Closes #662.
 - GLM/Z.AI 429 prose matching `reset at YYYY-MM-DD HH:mm:ss` now supplies bounded rate-limit evidence when executor, `Retry-After`, reset-header, and structured-body evidence are absent. DurinDoor adopts the UTC reading asserted by open, unmerged decolua/9router#3612 for its observed sample (`Your limit will reset at 2026-08-17 02:56:15`) without provider-scoped proof; a wrong offset can shift the deadline by hours but remains bounded by the seven-day cooldown cap.
+- Reloads now apply valid persisted light, dark, and system themes before first paint, preventing a light flash without changing DurinDoor's Zustand theme state or CSP policy. Adapts open decolua/9router#3660 to the fork's persisted envelope and same-origin script authorization.
 
 # 3.18.1
 

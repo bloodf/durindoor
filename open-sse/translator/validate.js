@@ -45,8 +45,6 @@ const GEMINI_ROLES = new Set([GEMINI_ROLE.USER, GEMINI_ROLE.MODEL]);
 const CLAUDE_BLOCK_TYPES = new Set([
 ...Object.values(CLAUDE_BLOCK),
 // Extended Claude-compatible blocks emitted by some clients / tool systems.
-"server_tool_use",
-"web_search_tool_result",
 "mcp_tool_use",
 "mcp_tool_result",
 "search_result",

@@ -18,12 +18,13 @@ import {
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
-import { getModelInfo, getComboModels, getComboCanonicalName, loadCustomCapabilities, parseModel } from "../services/model.js";
+import { getModelInfo, getComboModels, getComboCanonicalName, createRoutableModelIdChecker, loadCustomCapabilities, parseModel } from "../services/model.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { warmLiveModelLimits } from "open-sse/services/liveModelLimits.js";
+import { decodeClaudeCodeModelId } from "../../app/api/v1/models/_claudeCompat.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { authErrorResponse, errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
@@ -37,7 +38,7 @@ import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } 
 import { resolveTokenSaverEnabled } from "open-sse/rtk/index.js";
 import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
 import { EMPTY_CONTENT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
-import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
+import { FORMATS, detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
 import { isAntigravityCapacityError, isRequestReplayBufferError } from "open-sse/services/accountFallback.js";
 import { resolveClientSessionId } from "open-sse/utils/sessionManager.js";
@@ -336,17 +337,26 @@ export async function handleChat(request, clientRawRequest = null) {
     return earlyRejection;
   }
 
-  // Build clientRawRequest for logging (if not provided)
+  const originalClientModel = body.model;
+  // Keep model identity outside mutable working bodies: combo attempts replace
+  // their routed model, but Claude response metadata must echo this exact value.
   if (!clientRawRequest) {
     const url = new URL(request.url);
     clientRawRequest = {
       endpoint: url.pathname,
-      body,
-      headers: Object.fromEntries(request.headers.entries())
+      body: { ...body },
+      headers: Object.fromEntries(request.headers.entries()),
+      originalModel: originalClientModel,
     };
+  } else {
+    clientRawRequest = { ...clientRawRequest, originalModel: originalClientModel };
   }
   cacheClaudeHeaders(clientRawRequest.headers);
 
+  const sourceFormat = detectFormatByEndpoint(
+    clientRawRequest?.endpoint || new URL(request.url).pathname,
+    body,
+  ) || detectFormat(body);
   let modelStr = body.model;
 
   // Request summary is emitted as the unified "▶" line in chatCore (has fmt/thinking/account)
@@ -369,19 +379,10 @@ export async function handleChat(request, clientRawRequest = null) {
     return authErrorResponse(clientRawRequest.endpoint, "Invalid API key");
   }
 
-  // Per-key combo access control. Retain the authenticated record so local
-  // commands can expose only this key's own lifetime totals.
+  // Retain the authenticated record so local commands can expose only this
+  // key's own lifetime totals. Combo ACL runs after Claude model decoding.
   let authenticatedKeyRecord = null;
-  if (apiKey && modelStr) {
-    authenticatedKeyRecord = await getApiKeyByKey(apiKey);
-    if (authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
-      const comboName = await getComboCanonicalName(modelStr);
-      if (comboName && !authenticatedKeyRecord.allowedCombos.includes(comboName)) {
-        log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${comboName}"`);
-        return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${comboName}" is not allowed for this API key`);
-      }
-    }
-  }
+  if (apiKey) authenticatedKeyRecord = await getApiKeyByKey(apiKey);
 
   if (apiKey) {
     let limitStatus;
@@ -400,6 +401,19 @@ export async function handleChat(request, clientRawRequest = null) {
       const limit = Math.round(limitStatus.limitTokens);
       log.warn("AUTH", `API key daily token limit exceeded (${used}/${limit})`);
       return errorResponse(HTTP_STATUS.RATE_LIMITED, `API key daily token limit exceeded (${used}/${limit} tokens)`);
+    }
+  }
+
+  if (sourceFormat === FORMATS.CLAUDE) {
+    modelStr = await decodeClaudeCodeModelId(modelStr, createRoutableModelIdChecker());
+    if (modelStr !== body.model) body = { ...body, model: modelStr };
+  }
+
+  if (authenticatedKeyRecord && Array.isArray(authenticatedKeyRecord.allowedCombos) && authenticatedKeyRecord.allowedCombos.length > 0) {
+    const comboName = await getComboCanonicalName(modelStr);
+    if (comboName && !authenticatedKeyRecord.allowedCombos.includes(comboName)) {
+      log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to access combo "${comboName}"`);
+      return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: combo "${comboName}" is not allowed for this API key`);
     }
   }
 
@@ -426,10 +440,6 @@ export async function handleChat(request, clientRawRequest = null) {
   const tokenSaverEnabled = resolveTokenSaverEnabled(clientRawRequest?.headers);
 
   // Ponytail slash commands are local-only: respond before any account/credential lookup.
-  const sourceFormat = detectFormatByEndpoint(
-    clientRawRequest?.endpoint || new URL(request.url).pathname,
-    body
-  ) || detectFormat(body);
   const acceptHeader = clientRawRequest?.headers?.accept || "";
   if (tokenSaverEnabled) {
     const ponytailResponse = await handlePonytailCommands(body, modelStr, {

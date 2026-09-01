@@ -68,6 +68,7 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import {
   getModelAliases,
+  getCombos,
   getComboForModel,
   getProviderNodes,
   getProviderConnections,
@@ -110,6 +111,51 @@ export function parseModel(modelStr) {
 export async function resolveModelAlias(alias) {
   const aliases = await getModelAliases();
   return resolveModelAliasFromMap(alias, aliases);
+}
+
+const DOCUMENTED_BRACKET_MODEL = /^(glm-5\.3|k3)\[1m\]$/i;
+
+function registryHasModel(modelStr) {
+  const parsed = parseModel(modelStr);
+  if (!parsed.providerAlias || !parsed.model) return false;
+  const registry = REGISTRY.find((entry) =>
+    entry.id === parsed.provider || entry.alias === parsed.providerAlias ||
+    entry.uiAlias === parsed.providerAlias || entry.aliases?.includes(parsed.providerAlias));
+  if (!registry) return false;
+  const requested = DOCUMENTED_BRACKET_MODEL.test(parsed.model)
+    ? parsed.model.replace(/\[1m\]$/i, "")
+    : parsed.model;
+  return registry.models?.some((model) =>
+    (model.id === requested && (requested === parsed.model || DOCUMENTED_BRACKET_MODEL.test(parsed.model))) ||
+    model.aliases?.includes(parsed.model)) === true;
+}
+
+/** Build one request-scoped routability checker over one snapshot of DB sources. */
+export function createRoutableModelIdChecker() {
+  let sourcesPromise;
+  const loadSources = () => sourcesPromise ||= Promise.all([
+    getCombos(),
+    getModelAliases(),
+    getProviderNodes({ type: "openai-compatible" }),
+    getProviderNodes({ type: "anthropic-compatible" }),
+    getCustomModels(),
+  ]);
+
+  return async (modelStr) => {
+    if (!modelStr) return false;
+    if (registryHasModel(modelStr)) return true;
+
+    const [combos, aliases, openaiNodes, anthropicNodes, customModels] = await loadSources();
+    if (combos.some((combo) => combo.name?.toLowerCase() === modelStr.toLowerCase())) return true;
+    if (resolveModelAliasFromMap(modelStr, aliases)) return true;
+
+    const parsed = parseModel(modelStr);
+    if (!parsed.providerAlias || !parsed.model) return false;
+    if ([...openaiNodes, ...anthropicNodes].some((node) =>
+      node.id === parsed.providerAlias || node.prefix === parsed.providerAlias)) return true;
+    return customModels.some((model) =>
+      model.providerAlias === parsed.providerAlias && model.id === parsed.model);
+  };
 }
 
 /**

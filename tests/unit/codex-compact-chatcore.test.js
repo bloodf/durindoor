@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   logClientRawRequest: vi.fn(),
   logRawRequest: vi.fn(),
   logTargetRequest: vi.fn(),
+  appendRequestLog: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../../open-sse/executors/index.js", () => ({
@@ -70,7 +71,7 @@ vi.mock("../../open-sse/handlers/chatCore/nonStreamingHandler.js", () => ({
 
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(),
-  appendRequestLog: vi.fn(() => Promise.resolve()),
+  appendRequestLog: mocks.appendRequestLog,
   saveRequestDetail: vi.fn(() => Promise.resolve()),
 }));
 
@@ -295,4 +296,78 @@ describe("Codex compact request context in chatCore", () => {
     const out = await result.response.json();
     expect(out.model).toBe("gpt-5.5");
   });
+  function claudeEchoOptions({ originalModel, provider, physicalModel }) {
+    const body = {
+      model: physicalModel,
+      stream: true,
+      max_tokens: 64,
+      messages: [{ role: "user", content: "hello" }],
+    };
+    return baseClaudeOptions({
+      body,
+      modelInfo: { provider, model: physicalModel },
+      clientRawRequest: {
+        endpoint: "/v1/messages",
+        body: { ...body, model: originalModel },
+        originalModel,
+        headers: { accept: "text/event-stream", "anthropic-version": "2023-06-01" },
+      },
+      sourceFormatOverride: "claude",
+    });
+  }
+
+  function baseClaudeOptions(overrides) {
+    return {
+      credentials: { apiKey: "test-key", providerSpecificData: {} },
+      connectionId: "test-conn",
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      ...overrides,
+    };
+  }
+
+  function claudeMessageStart(physicalModel) {
+    const frame = `event: message_start\ndata: ${JSON.stringify({
+      type: "message_start",
+      message: { id: "msg_1", type: "message", role: "assistant", model: physicalModel, content: [] },
+    })}\n\n`;
+    return {
+      response: new Response(frame, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+      url: "https://provider.test/messages",
+      headers: {},
+      transformedBody: { model: physicalModel },
+    };
+  }
+
+  it("echoes the original Claude combo alias while dispatch retains physical identity", async () => {
+    const originalModel = "claude-fast[1m]";
+    mocks.execute.mockResolvedValue(claudeMessageStart("gpt-5.5"));
+
+    const result = await handleChatCore(claudeEchoOptions({
+      originalModel,
+      provider: "openai",
+      physicalModel: "gpt-5.5",
+    }));
+
+    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-5.5" }));
+    expect(mocks.logRawRequest).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-5.5" }));
+    expect(mocks.appendRequestLog).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-5.5", provider: "openai" }));
+    expect(await result.response.text()).toContain(`"model":"${originalModel}"`);
+  });
+
+  it("echoes the original Claude alias across an Antigravity Gemini route", async () => {
+    const originalModel = "claude-antigravity/gemini-3.1-pro";
+    mocks.execute.mockResolvedValue(claudeMessageStart("gemini-3.1-pro"));
+
+    const result = await handleChatCore(claudeEchoOptions({
+      originalModel,
+      provider: "antigravity",
+      physicalModel: "gemini-3.1-pro",
+    }));
+
+    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-3.1-pro" }));
+    expect(mocks.logRawRequest).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-3.1-pro" }));
+    expect(mocks.appendRequestLog).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-3.1-pro", provider: "antigravity" }));
+    expect(await result.response.text()).toContain(`"model":"${originalModel}"`);
+  });
+
 });

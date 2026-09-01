@@ -1,5 +1,6 @@
 import { getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
+import { projectClaudeCodeModel } from "./_claudeCompat.js";
 
 function isCodexUserAgent(request) {
   const originator = request.headers.get("originator") ?? "";
@@ -38,16 +39,16 @@ function toCodexModel(m) {
 function toAnthropicModel(m) {
   const id = isString(m.id) ? m.id : "";
   const displayName =
-  isString(m.display_name) && m.display_name ||
-  isString(m.name) && m.name ||
-  id;
+    (isString(m.display_name) && m.display_name) ||
+    (isString(m.name) && m.name) ||
+    id;
   return {
     type: "model",
-    id,
+    id: projectClaudeCodeModel(m),
     display_name: displayName,
     // Anthropic ModelInfo.created_at is a required ISO string; epoch when unknown.
     created_at:
-    isString(m.created_at) && m.created_at ? m.created_at : "1970-01-01T00:00:00Z"
+      isString(m.created_at) && m.created_at ? m.created_at : "1970-01-01T00:00:00Z",
   };
 }
 
@@ -61,17 +62,18 @@ function toAnthropicModel(m) {
  * @returns {Response} JSON `200` envelope.
  */
 function buildAnthropicModelsResponse(data, headers) {
-  const ids = data.
-  map((m) => isString(m.id) ? m.id : null).
-  filter((id) => id !== null);
+  const projected = data.map(toAnthropicModel);
+  const ids = projected
+    .map((m) => (isString(m.id) ? m.id : null))
+    .filter((id) => id !== null);
   return Response.json(
     {
-      data: data.map(toAnthropicModel),
+      data: projected,
       has_more: false,
       first_id: ids.length > 0 ? ids[0] : null,
-      last_id: ids.length > 0 ? ids[ids.length - 1] : null
+      last_id: ids.length > 0 ? ids[ids.length - 1] : null,
     },
-    { headers }
+    { headers },
   );
 }
 

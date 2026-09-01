@@ -194,6 +194,23 @@ function hasStructuredQuotaExhaustion(text) {
   return visit(root, 0);
 }
 
+function absoluteResetFromText(text, now, maxDelayMs) {
+  if (!isString(text) || text.length > 64 * 1024) return null;
+  // Open, unmerged decolua/9router#3612 asserts UTC for its observed GLM/Z.AI
+  // sample (`Your limit will reset at 2026-08-17 02:56:15`) without
+  // provider-scoped proof. DurinDoor adopts that reading only as this
+  // lower-priority prose fallback, after executor, Retry-After, reset-header,
+  // and structured-body evidence. A wrong offset can shift the deadline by
+  // hours but remains bounded by the seven-day MAX_RATE_LIMIT_COOLDOWN_MS.
+  let resetAtMs = null;
+  for (const match of text.matchAll(/\breset(?:s)?\s+at\s+(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})(?![A-Za-z0-9:+-])/gi)) {
+    if (resetAtMs !== null) return null;
+    resetAtMs = absoluteFromIso(`${match[1].replace(" ", "T")}Z`, now, maxDelayMs);
+    if (!resetAtMs) return null;
+  }
+  return resetAtMs;
+}
+
 function durationResetFromText(text, now, maxDelayMs) {
   if (!isString(text) || text.length > 64 * 1024) return null;
   const unitMs = {
@@ -273,7 +290,8 @@ export function parseRateLimitEvidence({
     } catch {/* non-JSON provider body */}
   }
   if (!resetAtMs) {
-    resetAtMs = durationResetFromText(bodyText, safeNow, maxDelayMs);
+    resetAtMs = absoluteResetFromText(bodyText, safeNow, maxDelayMs) ||
+    durationResetFromText(bodyText, safeNow, maxDelayMs);
     if (resetAtMs) source = "quota_text";
   }
 

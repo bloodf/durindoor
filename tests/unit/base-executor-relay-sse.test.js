@@ -183,13 +183,13 @@ describe("BaseExecutor relay SSE lifecycle (OmniRoute#7093 port)", () => {
     }
   });
 
-  it("forwards the client's x-request-id into the relayed headers", async () => {
+  it("forwards the trusted server request ID into relayed headers and ignores the client ID", async () => {
     hookFetch(() => Promise.resolve(sseResponse()));
     const ex = makeExecutor();
     const { response } = await executeRelay(ex, {
-      requestContext: { clientHeaders: { "X-Request-ID": "bifrost-sse-lifecycle-test" } },
+      requestContext: { requestId: "server-request-id", clientHeaders: { "X-Request-ID": "spoofed-client-id" } },
     });
-    expect(new Headers(capturedInit.init.headers).get("x-request-id")).toBe("bifrost-sse-lifecycle-test");
+    expect(new Headers(capturedInit.init.headers).get("x-request-id")).toBe("server-request-id");
     await response.body.cancel();
   });
 
@@ -201,7 +201,7 @@ describe("BaseExecutor relay SSE lifecycle (OmniRoute#7093 port)", () => {
       body: { stream: true },
       stream: true,
       credentials: {},
-      requestContext: { clientHeaders: { "x-request-id": "client-id" } },
+      requestContext: { requestId: "server-request-id", clientHeaders: { "x-request-id": "client-id" } },
     });
     expect(new Headers(capturedInit.init.headers).get("x-request-id")).toBeNull();
     await response.body.cancel();
@@ -212,7 +212,7 @@ describe("BaseExecutor relay SSE lifecycle (OmniRoute#7093 port)", () => {
     const ex = makeExecutor();
     ex.buildHeaders = () => ({ "x-request-id": "executor-id" });
     const { response } = await executeRelay(ex, {
-      requestContext: { clientHeaders: { "x-request-id": "client-id" } },
+      requestContext: { requestId: "server-request-id", clientHeaders: { "x-request-id": "client-id" } },
     });
     expect(new Headers(capturedInit.init.headers).get("x-request-id")).toBe("executor-id");
     await response.body.cancel();

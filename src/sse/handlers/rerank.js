@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
@@ -21,7 +22,7 @@ import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../servi
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-export async function handleRerank(request) {
+async function handleRerankHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -134,3 +135,4 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey) {
     return result.response;
   }
 }
+export const handleRerank = withRequestCorrelation(handleRerankHandler);

@@ -184,6 +184,14 @@ callback, and the settings discovery test (`POST /api/auth/oidc/test`). Public
 issuer URLs continue to work. DNS pinning for other outbound probes lives in
 `outboundUrlGuard` and is not duplicated on this path.
 
+## Trusted request correlation
+
+Public inference, media, batch, file, and catch-all API responses use a fresh server-generated UUID in `x-request-id`. DurinDoor ignores inbound client `x-request-id` values and relays only its trusted request ID unless an executor intentionally supplies a provider-facing ID. This prevents clients from spoofing operator correlation records.
+
+JSON errors carry the same server UUID at the error envelope's correlation level: `error.request_id` for OpenAI-shaped errors, and top-level `request_id` for Anthropic `{ type: "error" }` and flat error bodies. Strictly validated provider identifiers may appear only at that same level as `error.upstream_request_id` or top-level `upstream_request_id`; malformed, whitespace-containing, delimited, Unicode, control-character, and oversized values are dropped. Reflected diagnostic text continues through DurinDoor's credential-aware bounded error sanitizers.
+
+Correlation identity is intentionally separate from conversation identity. `resolveSessionId()` remains stable across turns and continues to drive provider affinity, provider sessions, and prompt-cache keys while each HTTP request receives a distinct correlation UUID.
+
 ## Request Logs
 
 Optional request logs persist metadata only: timestamps, stages, statuses, payload presence/type/byte length, sanitized endpoint paths, and sanitized headers. They do not persist request or response payloads, stream chunks, stacks, or URL query/fragment content. Usage → Details uses the same intentional redaction model, and MITM dumps count response bytes without buffering or decompressing intercepted content for logging.

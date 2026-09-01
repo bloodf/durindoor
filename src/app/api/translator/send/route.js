@@ -2,6 +2,7 @@ import { getProviderConnections, updateProviderConnection } from "@/lib/localDb.
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
 import { getExecutor } from "open-sse/index.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 
 async function persistRefreshedCredentials(connection, newCredentials) {
   const updateData = {};
@@ -34,7 +35,7 @@ async function persistRefreshedCredentials(connection, newCredentials) {
   }
 }
 
-export async function POST(request) {
+async function POSTHandler(request) {
   try {
     const { provider, model, body } = await request.json();
 
@@ -108,3 +109,5 @@ export async function POST(request) {
     return Response.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+export const POST = withRequestCorrelation(POSTHandler);

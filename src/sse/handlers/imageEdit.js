@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
@@ -23,7 +24,7 @@ export const maxDuration = 300;
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-export async function handleImageEdit(request) {
+async function handleImageEditHandler(request) {
   let formData;
   try {
     formData = await request.formData();
@@ -117,3 +118,4 @@ async function handleSingleModelImageEdit(modelStr, formData, request, apiKey) {
     return result.response || errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image edit failed");
   }
 }
+export const handleImageEdit = withRequestCorrelation(handleImageEditHandler);

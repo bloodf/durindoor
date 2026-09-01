@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
@@ -22,7 +23,7 @@ import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../servi
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-export async function handleModerations(request) {
+async function handleModerationsHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -148,3 +149,4 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey) {
     return result.response;
   }
 }
+export const handleModerations = withRequestCorrelation(handleModerationsHandler);

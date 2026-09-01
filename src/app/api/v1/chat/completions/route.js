@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { requireJsonContentType } from "open-sse/translator/validate.js";
@@ -17,7 +18,7 @@ async function ensureInitialized() {
 /**
  * Handle CORS preflight
  */
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -27,7 +28,7 @@ export async function OPTIONS() {
   });
 }
 
-export async function POST(request) {
+async function POSTHandler(request) {
   // #6414: reject non-JSON Content-Type with 415 before touching the body.
   const ctRejection = requireJsonContentType(request);
   if (ctRejection) return ctRejection;
@@ -37,4 +38,5 @@ export async function POST(request) {
 
   return await handleChat(request);
 }
-
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const POST = withRequestCorrelation(POSTHandler);

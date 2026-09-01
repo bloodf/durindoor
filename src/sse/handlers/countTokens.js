@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { getProviderCredentials, resolveClientApiKey } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -13,7 +14,7 @@ import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-export async function handleCountTokens(request) {
+async function handleCountTokensHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -51,3 +52,4 @@ export async function handleCountTokens(request) {
   const result = await handleCountTokensCore({ body, modelInfo: { provider, model }, credentials, log });
   return result.response;
 }
+export const handleCountTokens = withRequestCorrelation(handleCountTokensHandler);

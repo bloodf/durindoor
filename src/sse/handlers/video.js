@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError, resolveClientApiKey } from "../services/auth.js";
 import { getSettings, getProviderConnectionById } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -24,7 +25,7 @@ function shouldMarkAccountUnavailable(status) {
     || [HTTP_STATUS.UNAUTHORIZED, HTTP_STATUS.PAYMENT_REQUIRED, HTTP_STATUS.FORBIDDEN, HTTP_STATUS.RATE_LIMITED].includes(code);
 }
 
-export async function handleVideoGeneration(request) {
+async function handleVideoGenerationHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -136,7 +137,7 @@ function withConnectionHeader(response, connectionId) {
  * Ported from decolua/9router#2593, adapted to fork auth (`resolveClientApiKey`
  * + `enforceApiKeyModelPolicy`) and single-credential dispatch.
  */
-export async function handleVideoCreate(request, action) {
+async function handleVideoCreateHandler(request, action) {
   if (!VIDEO_ACTIONS.has(action)) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown video action: ${action}`);
   }
@@ -233,7 +234,7 @@ export async function handleVideoCreate(request, action) {
  * Jobs are account-bound upstream, so no cross-account rotation here: the
  * caller pins the creating account via `x-connection-id` (returned on create).
  */
-export async function handleVideoGet(request, requestId) {
+async function handleVideoGetHandler(request, requestId) {
   const settings = await getSettings();
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
@@ -302,3 +303,6 @@ export async function handleVideoGet(request, requestId) {
   }
   return result.response;
 }
+export const handleVideoGeneration = withRequestCorrelation(handleVideoGenerationHandler);
+export const handleVideoCreate = withRequestCorrelation(handleVideoCreateHandler);
+export const handleVideoGet = withRequestCorrelation(handleVideoGetHandler);

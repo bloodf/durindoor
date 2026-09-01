@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI Batches collection — create + list.
 import { createOpenAIBatch, listBatches } from "open-sse/services/localFilesBatches.js";
 import { makeDefaultExecutor } from "open-sse/handlers/localBatchExecutor.js";
@@ -15,16 +16,16 @@ const CORS = {
 const json = (body, status = 200) =>
 new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, { headers: CORS });
 }
 
-export async function HEAD() {
+async function HEADHandler() {
   return new Response(null, { status: 200, headers: CORS });
 }
 
 /** GET /v1/batches — list batches (most recent first). */
-export async function GET(request) {
+async function GETHandler(request) {
   const ownership = await resolveResourceOwner(request);
   if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   return json(await listBatches({ surface: "openai", ...ownership }));
@@ -35,7 +36,7 @@ export async function GET(request) {
  * Body: { input_file_id, endpoint, completion_window?, metadata? }.
  * Per O-A convention: non-JSON POST → 415.
  */
-export async function POST(request) {
+async function POSTHandler(request) {
   const ownership = await resolveResourceOwner(request);
   if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   const ct = (request.headers.get("content-type") || "").toLowerCase();
@@ -59,3 +60,7 @@ export async function POST(request) {
     return errorResponse(e.statusCode || HTTP_STATUS.BAD_REQUEST, e.message);
   }
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const HEAD = withRequestCorrelation(HEADHandler);
+export const GET = withRequestCorrelation(GETHandler);
+export const POST = withRequestCorrelation(POSTHandler);

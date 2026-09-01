@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
@@ -24,7 +25,7 @@ import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../servi
  * @param {Request} request
  */
 import { isString } from "../../shared/utils/typeChecks.js";
-export async function handleSearch(request) {
+async function handleSearchHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -260,3 +261,4 @@ export function normalizeSearchProviderInput(providerInput) {
   }
   return providerInput;
 }
+export const handleSearch = withRequestCorrelation(handleSearchHandler);

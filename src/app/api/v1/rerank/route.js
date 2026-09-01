@@ -1,6 +1,7 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleRerank } from "@/sse/handlers/rerank.js";
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,8 @@ export async function OPTIONS() {
 }
 
 /** POST /v1/rerank - Cohere/Jina/Voyage-style rerank passthrough. */
-export async function POST(request) {
+async function POSTHandler(request) {
   return await handleRerank(request);
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const POST = withRequestCorrelation(POSTHandler);

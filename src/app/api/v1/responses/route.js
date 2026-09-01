@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { withEarlyStreamKeepalive } from "open-sse/utils/earlyStreamKeepalive.js";
@@ -11,7 +12,7 @@ async function ensureInitialized() {
   }
 }
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -26,7 +27,7 @@ export async function OPTIONS() {
  * Explicit `stream: true` requests open an early SSE response even when clients
  * omit the Accept header, keeping slow provider setup alive until data arrives.
  */
-export async function POST(request) {
+async function POSTHandler(request) {
   await ensureInitialized();
   const body = await request.clone().json().catch(() => null);
 
@@ -42,3 +43,5 @@ export async function POST(request) {
 
   return await handleChat(request);
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const POST = withRequestCorrelation(POSTHandler);

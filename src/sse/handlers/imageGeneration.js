@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
@@ -22,7 +23,7 @@ const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
  * Handle image generation request
  * @param {Request} request
  */
-export async function handleImageGeneration(request) {
+async function handleImageGenerationHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -169,3 +170,4 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, { wantsSt
     return result.response;
   }
 }
+export const handleImageGeneration = withRequestCorrelation(handleImageGenerationHandler);

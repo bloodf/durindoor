@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI File detail — metadata + delete.
 import { getFile, deleteFile } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
@@ -13,11 +14,11 @@ const CORS = {
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, { headers: CORS });
 }
 
-export async function HEAD(request, context) {
+async function HEADHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
   if (!ownership.authorized) return new Response(null, { status: 401, headers: CORS });
   const { id } = await context.params;
@@ -26,7 +27,7 @@ export async function HEAD(request, context) {
 }
 
 /** GET /v1/files/<id> — metadata. */
-export async function GET(request, context) {
+async function GETHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
   if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   const { id } = await context.params;
@@ -41,7 +42,7 @@ export async function GET(request, context) {
 }
 
 /** DELETE /v1/files/<id>. */
-export async function DELETE(request, context) {
+async function DELETEHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
   if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   const { id } = await context.params;
@@ -54,3 +55,7 @@ export async function DELETE(request, context) {
   if (!result) return errorResponse(HTTP_STATUS.NOT_FOUND, "file not found");
   return json(result);
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const HEAD = withRequestCorrelation(HEADHandler);
+export const GET = withRequestCorrelation(GETHandler);
+export const DELETE = withRequestCorrelation(DELETEHandler);

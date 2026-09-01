@@ -22,6 +22,7 @@ describe("resolveSessionId", () => {
     expect(resolveSessionId(opts)).toBe(resolveSessionId(opts));
   });
 
+
   it("different connectionId -> different id", () => {
     const a = resolveSessionId({ body: bodyWithAssistant, connectionId: "connA", scope: "codex" });
     const b = resolveSessionId({ body: bodyWithAssistant, connectionId: "connB", scope: "codex" });

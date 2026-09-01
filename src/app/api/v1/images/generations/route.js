@@ -1,6 +1,7 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleImageGeneration } from "@/sse/handlers/imageGeneration.js";
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,8 @@ export async function OPTIONS() {
 }
 
 /** POST /v1/images/generations - OpenAI-compatible image generation endpoint */
-export async function POST(request) {
+async function POSTHandler(request) {
   return await handleImageGeneration(request);
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const POST = withRequestCorrelation(POSTHandler);

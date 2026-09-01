@@ -170,7 +170,7 @@ describe("POST /v1/completions", () => {
     expect(mocks.handleChat).not.toHaveBeenCalled();
   });
 
-  it("passes non-2xx error responses through unchanged", async () => {
+  it("preserves non-2xx error fields while replacing untrusted correlation", async () => {
     const errorPayload = { error: { type: "invalid_request_error", message: "Missing API key" } };
     mocks.handleChat.mockResolvedValue(
       new Response(JSON.stringify(errorPayload), {
@@ -181,10 +181,14 @@ describe("POST /v1/completions", () => {
     );
 
     const response = await POST(postRequest({ model: "openai/gpt-4o", prompt: "hi" }));
+    const requestId = response.headers.get("x-request-id");
     expect(response.status).toBe(401);
     expect(response.statusText).toBe("Unauthorized");
-    expect(response.headers.get("x-request-id")).toBe("req-err");
-    expect(await response.json()).toEqual(errorPayload);
+    expect(requestId).not.toBe("req-err");
+    expect(requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(await response.json()).toEqual({
+      error: { ...errorPayload.error, request_id: requestId },
+    });
   });
 
   it("stream: maps chat.completion.chunk → text_completion and preserves [DONE], split across chunks", async () => {

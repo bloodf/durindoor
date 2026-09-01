@@ -354,16 +354,12 @@ export class BaseExecutor {
         requestContext
       );
       const headers = this.buildHeaders(credentials, stream, requestContext, model);
-      // Forward the client's request id through the relay (OmniRoute#7093),
-      // without overriding an id the executor already set. Headers may arrive
-      // under any casing, so read them through a Headers instance. Relay-only:
-      // direct provider requests keep their existing header shape.
-      if (proxyOptions?.vercelRelayUrl) {
-        const clientRequestId = new Headers(requestContext?.clientHeaders ?? {}).get("x-request-id");
-        if (clientRequestId && new Headers(headers).get("x-request-id") == null) {
-          if (headers instanceof Headers) headers.set("x-request-id", clientRequestId);else
-          headers["x-request-id"] = clientRequestId;
-        }
+      // Relay correlation is server-owned. Never trust the client's x-request-id;
+      // preserve an executor-supplied upstream ID when one is intentional.
+      if (proxyOptions?.vercelRelayUrl && requestContext?.requestId &&
+      new Headers(headers).get("x-request-id") == null) {
+        if (headers instanceof Headers) headers.set("x-request-id", requestContext.requestId);else
+        headers["x-request-id"] = requestContext.requestId;
       }
       if (transformedBody?.thinking?.display === "summarized") {
         removeBetaFlag(headers, "redact-thinking-2026-02-12");

@@ -89,11 +89,14 @@ describe("Anthropic count_tokens estimator", () => {
     }));
 
     expect(response.status).toBe(400);
+    const requestId = response.headers.get("x-request-id");
+    expect(requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(await response.json()).toEqual({
       error: {
         message: "Invalid JSON body",
         type: "invalid_request_error",
         code: "bad_request",
+        request_id: requestId,
       },
     });
   });

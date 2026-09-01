@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 // Provider → internal voices API. Edge/local-device share the generic endpoint.
@@ -11,7 +12,7 @@ const PROVIDER_API = {
   "local-device": (origin) => `${origin}/api/media-providers/tts/voices?provider=local-device`,
 };
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, {
     headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS" },
   });
@@ -19,7 +20,7 @@ export async function OPTIONS() {
 
 // GET /v1/audio/voices?provider={p}[&lang=xx]
 // Returns OpenAI-style list with each voice's full model id ready for /v1/audio/speech
-export async function GET(request) {
+async function GETHandler(request) {
   try {
     const { searchParams, origin } = new URL(request.url);
     const provider = searchParams.get("provider");
@@ -68,3 +69,5 @@ export async function GET(request) {
     );
   }
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const GET = withRequestCorrelation(GETHandler);

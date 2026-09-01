@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // Anthropic Message Batch results — JSONL stream.
 import { getAnthropicResultsJsonl } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
@@ -10,12 +11,12 @@ const CORS = {
   "Access-Control-Allow-Headers": "*",
 };
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, { headers: CORS });
 }
 
 /** GET /v1/messages/batches/<id>/results — JSONL {custom_id,result:{type,message|error}}. */
-export async function GET(request, context) {
+async function GETHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
   if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   const { id } = await context.params;
@@ -31,3 +32,5 @@ export async function GET(request, context) {
     headers: { "Content-Type": "application/x-ndjson", ...CORS },
   });
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const GET = withRequestCorrelation(GETHandler);

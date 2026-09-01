@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
@@ -19,7 +20,7 @@ import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../servi
  *
  * @param {Request} request
  */
-export async function handleEmbeddings(request) {
+async function handleEmbeddingsHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -144,3 +145,4 @@ export async function handleEmbeddings(request) {
     return result.response;
   }
 }
+export const handleEmbeddings = withRequestCorrelation(handleEmbeddingsHandler);

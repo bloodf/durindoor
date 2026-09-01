@@ -19,6 +19,7 @@
 - OpenAI-compatible streams now preserve non-empty `delta.reasoning` frames and include them in completion thinking/accounting when canonical `reasoning_content` is absent, preferring the canonical field when both appear. Ports open decolua/9router#3601 while extending its gate-only coverage through DurinDoor's full passthrough and translation stream paths. Closes #668.
 - Mixed-provider Claude sessions now recover instead of repeatedly failing with Anthropic 400 responses when history contains foreign `server_tool_use` IDs. Ports open decolua/9router#3686 while diverging non-lossily: paired foreign `tool_result` and `web_search_tool_result` content is demoted to ordinary text rather than deleted. Closes #687.
 - Repeated reset-free Antigravity 429s now open a bounded 15-minute persisted model lock after three strikes in one original 60-second window, reducing stale-quota retry storms across logical requests. Ports the intent of open decolua/9router#3684 while adding DurinDoor-specific persisted locking, success and authoritative-evidence resets, fixed-window counting, and 409 exclusion.
+- RTK system-prompt injection now treats Responses `input[]` items with omitted `type` as messages, extending existing system/developer content without adding duplicate instructions while still excluding explicit non-message items. Ports open decolua/9router#3652 through DurinDoor's unified injector rather than upstream's split helpers. Closes #674.
 
 # 3.18.1
 

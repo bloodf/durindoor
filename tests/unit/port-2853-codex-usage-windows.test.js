@@ -33,4 +33,22 @@ describe("port-2853: Codex quota window duration", () => {
       },
     });
   });
+
+  it("labels a sole seven-day primary window as weekly", async () => {
+    mocks.proxyAwareFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: { used_percent: 1, limit_window_seconds: 604800 },
+        },
+      }),
+    });
+
+    const { getCodexUsage } = await import("../../open-sse/services/usage/codex.js");
+    const usage = await getCodexUsage("token");
+
+    expect(usage.quotas.session).toBeUndefined();
+    expect(usage.quotas.weekly).toMatchObject({ used: 1, windowSeconds: 604800 });
+  });
 });

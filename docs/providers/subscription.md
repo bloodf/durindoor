@@ -79,9 +79,11 @@ If all OpenAI connections fail, combo fallback may try the next model
 
 DurinDoor uses provider identifiers internally and in model strings. Examples include `openai`, `anthropic`, `gemini`, `cc`, `kiro`, and custom compatible prefixes. The exact list comes from the provider registry in the running version.
 
-### Live Provider Catalogs
+### Provider Catalogs
 
-Some providers load account-specific catalogs at runtime. Qoder uses its authenticated COSY model list and keeps a static fallback containing current `lite`, `qmodel_38max` (Qwen3.8-Max), and `gmodel` (GLM-5.3) identifiers; vision-capable Qoder models accept OpenAI URL/data-URI images and Claude base64 image blocks. OpenAI-compatible providers such as `hcnsec` load available models from the upstream `/v1/models` endpoint. Use the dashboard or DurinDoor's `GET /v1/models` response as the source of truth.
+Registry-backed providers can load account-specific catalogs at runtime. Qoder uses its authenticated COSY model list and keeps a static fallback containing current `lite`, `qmodel_38max` (Qwen3.8-Max), and `gmodel` (GLM-5.3) identifiers; vision-capable Qoder models accept OpenAI URL/data-URI images and Claude base64 image blocks. Registry-backed OpenAI-compatible nodes such as `hcnsec` keep their live upstream catalog.
+
+For custom OpenAI-compatible and Anthropic-compatible nodes, the operator's saved **Available Models** rows and compatible aliases are the authoritative public list. An empty saved list exposes no models for that node; use the dashboard's **Import** action to discover upstream models before saving them. Clients should treat DurinDoor's `GET /v1/models` response as the source of truth.
 
 When the add-key dialog creates default connection names, it chooses the first unused name in the `main`, `main-2`, `main-3`, ... sequence. Reopening the dialog after a successful add clears prior secrets and provider-specific fields; background refreshes while the dialog is open preserve in-progress input.
 

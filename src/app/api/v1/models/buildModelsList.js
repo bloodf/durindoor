@@ -387,6 +387,21 @@ function customModelKind(m) {
   return MODEL_TYPE_TO_KIND[raw] ?? LLM_KIND;
 }
 
+function getCompatiblePublicIds({ customModelIds, modelAliases, providerId, staticAlias, outputAlias }) {
+  const prefixes = new Set([providerId, staticAlias, outputAlias].filter((value) => isString(value) && value));
+  const aliasIds = Object.values(modelAliases).flatMap((fullModel) => {
+    if (!isString(fullModel)) return [];
+    for (const prefix of prefixes) {
+      if (fullModel.startsWith(`${prefix}/`)) {
+        const modelId = fullModel.slice(prefix.length + 1).trim();
+        return modelId ? [modelId] : [];
+      }
+    }
+    return [];
+  });
+  return { ids: customModelIds, aliasIds };
+}
+
 
 /**
  * Fetch model IDs for passthrough local providers (lm-studio, vllm, lemonade)
@@ -496,11 +511,10 @@ function visibleComboMembers(combo, comboByName, hidePaidModels) {
 
 /**
  * Build OpenAI-format models filtered by service kind. Built-in catalogs are a
- * DB-read failure fallback; a healthy empty DB exposes only explicit custom,
- * combo, and keyless catalogs rather than pretending every provider is saved.
- * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
- * @param {{ exposeComboOnly?: boolean }} [options] - Internal catalog exposure override.
- * @returns {Promise<object[]>} OpenAI-format model entries.
+ * fallback only when the DB is unavailable; a healthy DB exposes configured
+ * connections, persisted custom rows, aliases, and combos. Custom-compatible
+ * connections are allowlist-only here: dashboard import discovery remains in
+ * `/api/providers/[id]/models` and does not contribute to public catalogs.
  */
 async function buildModelsListImpl(kindFilter, guard, options = {}) {
   // Start the real aggregation FIRST so `getProviderConnections()` is called
@@ -612,6 +626,17 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     aliasToProviderId[providerId] = providerId;
   }
 
+  const compatibleStorageAliases = new Set();
+  for (const [providerId, conn] of activeConnectionByProvider) {
+    if (!isOpenAICompatibleProvider(providerId) && !isAnthropicCompatibleProvider(providerId)) continue;
+    const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
+    const prefix = isRecord(conn.providerSpecificData) ? conn.providerSpecificData.prefix : undefined;
+    const outputAlias = ((isString(prefix) ? prefix : undefined) || getProviderAlias(providerId) || staticAlias).trim();
+    compatibleStorageAliases.add(providerId);
+    compatibleStorageAliases.add(staticAlias);
+    compatibleStorageAliases.add(outputAlias);
+  }
+
   const attachModelLimits = (model, providerId, modelId, explicitCaps = {}, liveLimits = null) => {
     // #3218: expose proven limits in OpenAI's flat model schema. Generic
     // default capabilities are not evidence of a provider guarantee. Live
@@ -702,6 +727,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     if (!kindFilter.includes(LLM_KIND)) continue;
     const providerAlias = customModel.providerAlias;
     if (!providerAlias) continue;
+    if (compatibleStorageAliases.has(providerAlias)) continue;
 
     const modelId = String(customModel.id).trim();
     if (!modelId) continue;
@@ -761,7 +787,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         value.trim() !== "" &&
         value !== "public" &&
         value !== "sk_durindoor");
-        let rawModelIds = hasExplicitEnabledModels ?
+        let rawModelIds = isCompatibleProvider ? [] : hasExplicitEnabledModels ?
         Array.from(
           new Set(
             enabledModels.filter(
@@ -797,17 +823,15 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         filter((modelId) => modelId !== "");
 
         // Live metadata precedence is user override > live upstream > static
-        // catalog > default. `explicitCaps` below applies custom/user metadata
-        // after live caps; static/default capability resolution is merged first.
-        // Generic OpenAI-compatible discovery is cached per endpoint/credential
-        // and fail-soft, so upstream errors leave rawModelIds and static caps intact.
-        const providerLiveResolver = LIVE_MODEL_RESOLVERS[providerId];
+        // catalog > default. Custom-compatible public catalogs are persisted
+        // allowlists, so only registry-backed/Kimi OpenAI-style discovery runs here.
+        const providerLiveResolver = isCompatibleProvider ? null : LIVE_MODEL_RESOLVERS[providerId];
         const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
         const genericFetcher = registryFetcher && OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type) ?
         registryFetcher :
         null;
         const isKimiLiveProvider = KIMI_LIVE_MODEL_PROVIDERS.has(providerId);
-        const compatibleLiveResolver = (isCompatibleProvider || genericFetcher || isKimiLiveProvider) && customModelIds.length === 0 ?
+        const openAIStyleLiveResolver = !isCompatibleProvider && (genericFetcher || isKimiLiveProvider) && customModelIds.length === 0 ?
         async (connection, liveGuard) => {
           const psd = isRecord(connection.providerSpecificData) ? connection.providerSpecificData : {};
           const proxyOptions = await resolveConnectionProxyConfig(psd);
@@ -816,18 +840,18 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             guard: liveGuard,
             proxyOptions,
             endpoint: genericFetcher?.url || (isKimiLiveProvider ? KIMI_CODING_MODELS_URL : undefined),
-            anthropic: isAnthropicCompatibleProvider(providerId),
+            anthropic: false,
             modelAliases: undefined
           });
         } :
         null;
-        const liveResolver = providerLiveResolver || compatibleLiveResolver;
-        if (liveResolver && (!hasExplicitEnabledModels || providerLiveResolver || compatibleLiveResolver)) {
+        const liveResolver = providerLiveResolver || openAIStyleLiveResolver;
+        if (liveResolver && (!hasExplicitEnabledModels || providerLiveResolver || openAIStyleLiveResolver)) {
           try {
             const live = await liveResolver(conn, guard);
             if (live?.models?.length) {
               const enrichExistingOnly = !LIVE_MODEL_UNION_PROVIDERS.has(providerId) && (
-              hasExplicitEnabledModels || Boolean(compatibleLiveResolver) || providerId === "cloudflare-ai") &&
+              hasExplicitEnabledModels || Boolean(openAIStyleLiveResolver) || providerId === "cloudflare-ai") &&
               rawModelIds.length > 0;
               const servedIds = new Set(rawModelIds);
               const liveModels = enrichExistingOnly ?
@@ -852,9 +876,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
               }
             }
           } catch {
-
             // Live discovery is optional metadata; static catalog remains authoritative fallback.
-          }} else if (providerId === "ollama-local" && liveResolver && hasExplicitEnabledModels) {
+          }
+        } else if (providerId === "ollama-local" && liveResolver && hasExplicitEnabledModels) {
           // ollama-local only: explicit enabledModels keep the user's
           // selection, but /api/tags still supplies kind metadata so a
           // selected bge-m3 classifies as embedding instead of falling
@@ -875,6 +899,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         // Local passthrough live discovery (lm-studio, vllm, lemonade). Hits
         // transport.baseUrl + /models with optional Bearer apiKey.
         if (
+        !isCompatibleProvider &&
         rawModelIds.length === 0 &&
         AI_PROVIDERS[providerId]?.passthroughModels &&
         !AI_PROVIDERS[providerId]?.modelsFetcher)
@@ -889,36 +914,33 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
         const modelIds = rawModelIds.
         map((modelId) => {
-          if (modelId.startsWith(`${outputAlias}/`)) {
-            return modelId.slice(outputAlias.length + 1);
-          }
-          if (modelId.startsWith(`${staticAlias}/`)) {
-            return modelId.slice(staticAlias.length + 1);
-          }
-          if (modelId.startsWith(`${providerId}/`)) {
-            return modelId.slice(providerId.length + 1);
-          }
+          if (modelId.startsWith(`${outputAlias}/`)) return modelId.slice(outputAlias.length + 1);
+          if (modelId.startsWith(`${staticAlias}/`)) return modelId.slice(staticAlias.length + 1);
+          if (modelId.startsWith(`${providerId}/`)) return modelId.slice(providerId.length + 1);
           return modelId;
         }).
         filter((modelId) => isString(modelId) && modelId.trim() !== "");
 
-        const aliasModelIds = Object.values(modelAliases).
+        const aliasModelIds = isCompatibleProvider ? [] : Object.values(modelAliases).
         filter((fullModel) => isString(fullModel) && fullModel.includes("/")).
         map((fullModel) => {
-          if (fullModel.startsWith(`${outputAlias}/`)) {
-            return fullModel.slice(outputAlias.length + 1);
-          }
-          if (fullModel.startsWith(`${staticAlias}/`)) {
-            return fullModel.slice(staticAlias.length + 1);
-          }
-          if (fullModel.startsWith(`${providerId}/`)) {
-            return fullModel.slice(providerId.length + 1);
-          }
+          if (fullModel.startsWith(`${outputAlias}/`)) return fullModel.slice(outputAlias.length + 1);
+          if (fullModel.startsWith(`${staticAlias}/`)) return fullModel.slice(staticAlias.length + 1);
+          if (fullModel.startsWith(`${providerId}/`)) return fullModel.slice(providerId.length + 1);
           return fullModel;
         }).
         filter((modelId) => isString(modelId) && modelId.trim() !== "");
-
-        const mergedModelIds = Array.from(new Set([...modelIds, ...customModelIds, ...aliasModelIds]));
+        const compatiblePublicIds = isCompatibleProvider ? getCompatiblePublicIds({
+          customModelIds,
+          modelAliases,
+          providerId,
+          staticAlias,
+          outputAlias
+        }) :
+        null;
+        const mergedModelIds = Array.from(new Set(compatiblePublicIds ?
+        [...compatiblePublicIds.ids, ...compatiblePublicIds.aliasIds] :
+        [...modelIds, ...customModelIds, ...aliasModelIds]));
         const perProviderModels = [];
 
         for (const modelId of mergedModelIds) {

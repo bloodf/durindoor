@@ -10,15 +10,8 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { cleanJSONSchemaForAntigravity } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
-
-// Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
+import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
-function sanitizeFunctionName(name) {
-  if (!name) return "_unknown";
-  let s = name.replace(/[^a-zA-Z0-9_.:\-]/g, "_");
-  if (!/^[a-zA-Z_]/.test(s)) s = "_" + s;
-  return s.substring(0, 64);
-}
 
 /**
  * Preserve common OpenCode casing while rewriting branding at the Antigravity boundary.
@@ -323,6 +316,7 @@ export class AntigravityExecutor extends BaseExecutor {
 
     // Sanitize tool schemas and function names before sending to Antigravity.
     let tools = body.request?.tools;
+    const { alias: sanitizeFunctionName, aliases: toolNameMap } = createGeminiToolNameAliaser();
 
     if (tools && tools.length > 0) {
       // Merge all groups into a single functionDeclarations group (Gemini expects 1 group)
@@ -331,6 +325,7 @@ export class AntigravityExecutor extends BaseExecutor {
       for (const group of tools) {
         for (const fn of group.functionDeclarations || []) {
           const name = sanitizeFunctionName(fn.name);
+
           if (seenToolNames.has(name)) continue;
           seenToolNames.add(name);
           let cleanedParams;
@@ -377,6 +372,24 @@ export class AntigravityExecutor extends BaseExecutor {
       dbg("TOOLS", `Processed ${allDeclarations.length} tool declarations for Antigravity (~${Math.round(bodyEstimate / 1024)}KB): [${Array.from(seenToolNames).slice(0, 10).join(", ")}${seenToolNames.size > 10 ? "..." : ""}]`);
       tools = allDeclarations.length > 0 ? [{ functionDeclarations: allDeclarations }] : [];
     }
+    for (const content of contents || []) {
+      for (const part of content.parts || []) {
+        if (part.functionCall?.name) part.functionCall.name = sanitizeFunctionName(part.functionCall.name);
+        if (part.functionResponse?.name) part.functionResponse.name = sanitizeFunctionName(part.functionResponse.name);
+      }
+    }
+
+    const functionCallingConfig = body.request?.toolConfig?.functionCallingConfig;
+    const toolConfig = functionCallingConfig ? {
+      ...body.request.toolConfig,
+      functionCallingConfig: {
+        ...functionCallingConfig,
+        ...(Array.isArray(functionCallingConfig.allowedFunctionNames) && {
+          allowedFunctionNames: functionCallingConfig.allowedFunctionNames.map(sanitizeFunctionName)
+        })
+      }
+    } : null;
+
 
     // Strip contents/tools/toolConfig (handled separately) and blacklisted fields that Google rejects
     const { contents: _originalContents, tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
@@ -406,7 +419,8 @@ export class AntigravityExecutor extends BaseExecutor {
       ...(tools && { tools }),
       sessionId: body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, scope: "antigravity" }),
       safetySettings: undefined,
-      ...(tools?.length > 0 && { toolConfig: { functionCallingConfig: { mode: "VALIDATED" } } })
+      ...(tools?.length > 0 && { toolConfig: toolConfig || { functionCallingConfig: { mode: "VALIDATED" } } })
+
     };
 
     // Large system prompts exhaust the systemInstruction limit; preserve them in user content.
@@ -438,7 +452,7 @@ export class AntigravityExecutor extends BaseExecutor {
 
     this._lastSessionId = transformedRequest.sessionId; // cached for buildHeaders (base.execute order)
 
-    return {
+    const transformedBody = {
       ...body,
       project: projectId,
       model: model,
@@ -447,6 +461,15 @@ export class AntigravityExecutor extends BaseExecutor {
       requestId: buildIdeRequestId({ body, request: transformedRequest, credentials, model, requestType: "agent" }),
       request: transformedRequest
     };
+    if (toolNameMap.size) {
+      const existing = body._toolNameMap instanceof Map ? body._toolNameMap : new Map();
+      const composed = new Map(existing);
+      for (const [alias, source] of toolNameMap) composed.set(alias, existing.get(source) || source);
+      // Internal response metadata must survive execute() without entering provider JSON.
+      delete transformedBody._toolNameMap;
+      Object.defineProperty(transformedBody, "_toolNameMap", { value: composed, configurable: true });
+    }
+    return transformedBody;
   }
 
   async refreshCredentials(credentials, log, proxyOptions = null) {

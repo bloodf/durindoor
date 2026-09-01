@@ -4,22 +4,15 @@ import { DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult }
 import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
-
-function sanitizeGeminiToolName(name, toolNameMap) {
-  let sanitized = String(name || "_unknown").replace(/[^a-zA-Z0-9_.:-]/g, "_");
-  if (!/^[a-zA-Z_]/.test(sanitized)) sanitized = `_${sanitized}`;
-  sanitized = sanitized.slice(0, 64);
-  toolNameMap.set(sanitized, name);
-  return sanitized;
-}
+import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 
 function historicalToolResult(name, content) {
   return `[Historical tool result for ${name}]: ${content}`;
 }
 
 export function claudeToGeminiRequest(model, body, stream, credentials = null) {
-  const toolNameMap = new Map();
-  const sanitize = (name) => sanitizeGeminiToolName(name, toolNameMap);
+  const { alias: sanitize, memo: toolNameMemo } = createGeminiToolNameAliaser();
+
   const provider = credentials?._provider;
   const stripFunctionCallId = provider === "vertex" || provider === "vertex-partner";
   const signatureNamespace = isString(credentials?._signatureNamespace) ? credentials._signatureNamespace : null;
@@ -82,8 +75,11 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
 
   const declarations = (body.tools || []).flatMap((tool) => tool?.name && tool.input_schema ? [{ name: sanitize(tool.name), description: tool.description || "", parameters: tool.input_schema }] : []);
   if (declarations.length) result.tools = [{ functionDeclarations: declarations }];
+  if (body.tool_choice?.type === "tool" && body.tool_choice.name) {
+    result.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitize(body.tool_choice.name)] } };
+  }
 
-  result._toolNameMap = new Map([...toolNameMap].map(([sanitized, original]) => [sanitized.toLowerCase(), original]));
+  result._toolNameMap = new Map([...toolNameMemo].flatMap(([original, outbound]) => outbound.toLowerCase() === outbound ? [[outbound, original]] : [[outbound, original], [outbound.toLowerCase(), original]]));
   return result;
 }
 

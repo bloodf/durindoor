@@ -87,7 +87,7 @@ describe("antigravity computeRetryDelay hook (D3)", () => {
     expect(await ag.computeRetryDelay(r, 1)).toBe(false);
   });
 
-  it("deduplicates sanitized tool names", () => {
+  it("keeps colliding sanitized tool names distinct while deduplicating exact repeats", () => {
     const out = ag.transformRequest("claude-opus-4-6-thinking", {
       request: {
         contents: [{ role: "user", parts: [{ text: "hi" }] }],
@@ -99,7 +99,10 @@ describe("antigravity computeRetryDelay hook (D3)", () => {
       },
     }, true, { projectId: "project-1", connectionId: "conn-1" });
 
-    expect(out.request.tools[0].functionDeclarations.map(fn => fn.name)).toEqual(["read_file"]);
+    const names = out.request.tools[0].functionDeclarations.map(fn => fn.name);
+    expect(new Set(names).size).toBe(2);
+    expect(names.length).toBe(2);
+    expect(names.every((name) => /^read_file_[a-f0-9]{20}$/.test(name))).toBe(true);
   });
 
   it("registry uses the official IDE cloudcode host and user agent", () => {

@@ -21,21 +21,7 @@ import {
 import { parseDataUri } from "../concerns/image.js";
 import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.js";
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
-
-// Sanitize function names for Gemini API.
-// Gemini requires: starts with [a-zA-Z_], followed by [a-zA-Z0-9_.:\-], max 64 chars.
-// Replace any invalid character with '_' and truncate to 64.
-function sanitizeGeminiFunctionName(name) {
-  if (!name) return "_unknown";
-  // Replace any char not in [a-zA-Z0-9_.:\-] with '_'
-  let sanitized = name.replace(/[^a-zA-Z0-9_.:\-]/g, "_");
-  // First char must be letter or underscore
-  if (!/^[a-zA-Z_]/.test(sanitized)) {
-    sanitized = "_" + sanitized;
-  }
-  // Truncate to 64 chars
-  return sanitized.substring(0, 64);
-}
+import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 
 /**
  * Keep Gemini history legal by isolating function responses and ensuring a
@@ -102,6 +88,8 @@ function normalizeGeminiContents(contents) {
  * @returns {object} Gemini-shaped generateContent request.
  */
 function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG_SIGNATURE) {
+  const { alias: sanitizeToolName, aliases: toolNameMap } = createGeminiToolNameAliaser();
+
   const isGemma4 = isString(model) && /gemma-4/i.test(model);
   const result = {
     model: model,
@@ -197,7 +185,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
             const functionCallPart = {
               functionCall: {
                 id: tc.id,
-                name: sanitizeGeminiFunctionName(tc.function.name),
+                name: sanitizeToolName(tc.function.name),
                 args: args
               }
             };
@@ -241,7 +229,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
               toolParts.push({
                 functionResponse: {
                   id: fid,
-                  name: sanitizeGeminiFunctionName(name),
+                  name: sanitizeToolName(name),
                   response: { result: parsedResp }
                 }
               });
@@ -265,7 +253,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       if (t.name && t.input_schema) {
         const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(t.input_schema || { type: "object", properties: {} }));
         functionDeclarations.push({
-          name: sanitizeGeminiFunctionName(t.name),
+          name: sanitizeToolName(t.name),
           description: t.description || "",
           parameters: cleanedSchema
         });
@@ -275,7 +263,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
         const fn = t.function;
         const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(fn.parameters || { type: "object", properties: {} }));
         functionDeclarations.push({
-          name: sanitizeGeminiFunctionName(fn.name),
+          name: sanitizeToolName(fn.name),
           description: fn.description || "",
           parameters: cleanedSchema
         });
@@ -286,6 +274,10 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       result.tools = [{ functionDeclarations }];
     }
   }
+  if (body.tool_choice?.type === OPENAI_BLOCK.FUNCTION && body.tool_choice.function?.name) {
+    result.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitizeToolName(body.tool_choice.function.name)] } };
+  }
+  if (toolNameMap.size) result._toolNameMap = toolNameMap;
 
   result.contents = normalizeGeminiContents(result.contents);
   return result;
@@ -340,9 +332,12 @@ function wrapInCloudCodeEnvelope(model, geminiCLI, credentials = null, isAntigra
       contents: geminiCLI.contents,
       systemInstruction: geminiCLI.systemInstruction,
       generationConfig: geminiCLI.generationConfig,
-      tools: geminiCLI.tools
+      tools: geminiCLI.tools,
+      toolConfig: geminiCLI.toolConfig
+
     }
   };
+  if (geminiCLI._toolNameMap) envelope._toolNameMap = geminiCLI._toolNameMap;
 
   // Antigravity specific fields
   if (isAntigravity) {
@@ -352,7 +347,7 @@ function wrapInCloudCodeEnvelope(model, geminiCLI, credentials = null, isAntigra
     envelope.request.safetySettings = geminiCLI.safetySettings;
   }
 
-  if (geminiCLI.tools?.length > 0) {
+  if (geminiCLI.tools?.length > 0 && !envelope.request.toolConfig) {
     envelope.request.toolConfig = {
       functionCallingConfig: { mode: "VALIDATED" }
     };
@@ -363,6 +358,7 @@ function wrapInCloudCodeEnvelope(model, geminiCLI, credentials = null, isAntigra
 
 // Wrap Claude format in Cloud Code envelope for Antigravity
 function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = null, signature = DEFAULT_THINKING_AG_SIGNATURE) {
+  const { alias: sanitizeToolName, aliases } = createGeminiToolNameAliaser();
   const projectId = credentials?.projectId || generateProjectId();
 
   const envelope = {
@@ -416,7 +412,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
               thoughtSignature: signature,
               functionCall: {
                 id: block.id,
-                name: sanitizeGeminiFunctionName(block.name),
+                name: sanitizeToolName(block.name),
                 args: block.input || {}
               }
             });
@@ -451,7 +447,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
             }
             // Resolve the original tool name from the id — Gemini requires it to match the functionCall name
             const resolvedName = toolUseIdToName[block.tool_use_id] ?
-            sanitizeGeminiFunctionName(toolUseIdToName[block.tool_use_id]) :
+            sanitizeToolName(toolUseIdToName[block.tool_use_id]) :
             "tool";
             const functionResponse = {
               id: block.tool_use_id,
@@ -482,7 +478,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
       if (tool.name && tool.input_schema) {
         const cleanedSchema = cleanJSONSchemaForAntigravity(tool.input_schema);
         functionDeclarations.push({
-          name: sanitizeGeminiFunctionName(tool.name),
+          name: sanitizeToolName(tool.name),
           description: tool.description || "",
           parameters: cleanedSchema
         });
@@ -495,6 +491,10 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
       };
     }
   }
+  if (claudeRequest.tool_choice?.type === "tool" && claudeRequest.tool_choice.name) {
+    envelope.request.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitizeToolName(claudeRequest.tool_choice.name)] } };
+  }
+
 
   const systemParts = [];
   // Merge user system prompt from claudeRequest
@@ -512,6 +512,14 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
     envelope.request.systemInstruction = { role: GEMINI_ROLE.USER, parts: systemParts };
   }
 
+  if (aliases.size || claudeRequest._toolNameMap?.size) {
+    envelope._toolNameMap = new Map(
+      [...aliases].map(([alias, source]) => [alias, claudeRequest._toolNameMap?.get(source) || source])
+    );
+    for (const [alias, original] of claudeRequest._toolNameMap || []) {
+      if (!envelope._toolNameMap.has(alias)) envelope._toolNameMap.set(alias, original);
+    }
+  }
   envelope.request.contents = normalizeGeminiContents(envelope.request.contents);
   return envelope;
 }

@@ -1062,6 +1062,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
   let terminalProvenance = null;
+  const captureExecutorToolNameMap = (body) => {
+    if (!(body?._toolNameMap instanceof Map)) return;
+    toolNameMap = new Map([...(toolNameMap || new Map()), ...body._toolNameMap]);
+    delete body._toolNameMap;
+  };
+
   let latestProviderAttemptStartedAt = null;
   const beginProviderAttempt = () => {
     const allocated = isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
@@ -1138,6 +1144,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     providerUrl = result.url;
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
+    captureExecutorToolNameMap(finalBody);
     terminalProvenance = result.terminalProvenance || null;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
@@ -1262,6 +1269,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           providerUrl = retryResult.url;
           providerHeaders = retryResult.headers;
           finalBody = retryResult.transformedBody;
+          captureExecutorToolNameMap(finalBody);
           terminalProvenance = retryResult.terminalProvenance || null;
           if (!providerResponse.ok) parsedError = await parseAndRestateError(providerResponse);
         } catch (error) {
@@ -1313,6 +1321,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           providerUrl = retry.url;
           providerHeaders = retry.headers;
           finalBody = retry.transformedBody;
+          captureExecutorToolNameMap(finalBody);
           reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
           if (providerResponse.ok) {
             log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after one historical-thinking retry`);

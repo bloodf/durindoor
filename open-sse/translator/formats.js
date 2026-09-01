@@ -15,6 +15,13 @@ export const FORMATS = {
   COMMANDCODE: "commandcode"
 };
 
+export const GEMINI_FAMILY_FORMATS = new Set([
+  FORMATS.GEMINI,
+  FORMATS.GEMINI_CLI,
+  FORMATS.VERTEX,
+  FORMATS.ANTIGRAVITY
+]);
+
 /**
  * Detect source format from request URL pathname + body.
  * Returns null to fall back to body-based detection.

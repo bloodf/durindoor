@@ -4,6 +4,10 @@
 
 - Kiro's static model catalog now advertises `simple-task` and `minimax-m2.1`, and its MITM picker labels `simple-task` correctly. Ports decolua/9router#3610 while retaining the fork-evidenced case-sensitive `MiniMax-M2.5` wire ID.
 
+## Fixed
+
+- Responses clients now receive ordered text and function-call items in terminal `response.completed.response.output`; Gemini/Antigravity non-stream and forced-SSE responses are projected to Responses shape instead of leaking Chat Completions JSON. Ports decolua/9router#3589 while retaining DurinDoor's bounded body reads, terminal validation, and robust SSE framing with single-newline compatibility and multi-line `data:` joining instead of upstream's lossy line parser. Closes #662.
+
 # 3.18.1
 
 ## Fixed

@@ -5,8 +5,10 @@ vi.mock("@/lib/usageDb.js", () => ({ appendRequestLog: vi.fn(async () => {}), sa
 const { EMPTY_CONTENT_COOLDOWN_MS } = await import("../../open-sse/config/errorConfig.js");
 const { FORMATS } = await import("../../open-sse/translator/formats.js");
 const { handleNonStreamingResponse, translateNonStreamingResponse } = await import("../../open-sse/handlers/chatCore/nonStreamingHandler.js");
+const { handleForcedSSEToJson, parseSSEToOpenAIResponse } = await import("../../open-sse/handlers/chatCore/sseToJsonHandler.js");
 const { buildOnStreamComplete, handleStreamingResponse } = await import("../../open-sse/handlers/chatCore/streamingHandler.js");
 const { createStreamController } = await import("../../open-sse/utils/streamHandler.js");
+const { createSSETransformStreamWithLogger } = await import("../../open-sse/utils/stream.js");
 
 function options(responseBody, overrides = {}) {
   return {
@@ -140,6 +142,129 @@ describe("non-stream empty-content fallback (#3465)", () => {
     expect(translated.choices[0].message.content).toBe("answer");
   });
 
+});
+
+describe("Responses projection for Gemini-family providers (#3589)", () => {
+  const antigravityChunk = (parts, finishReason) => ({
+    response: {
+      responseId: "ag-response",
+      modelVersion: "gemini-test",
+      candidates: [{ content: { parts }, ...(finishReason ? { finishReason } : null) }]
+    }
+  });
+
+  const antigravitySse = () => [
+    `data: ${JSON.stringify(antigravityChunk([{ text: "hello" }]))}`,
+    "data:    ",
+    `data: ${JSON.stringify(antigravityChunk([{ functionCall: { id: "call_lookup", name: "lookup", args: { city: "Paris" } } }]))}`,
+    `data: ${JSON.stringify(antigravityChunk([], "STOP"))}`,
+    "data: [DONE]",
+    ""
+  ].join("\n\n");
+
+  it("projects non-streaming Antigravity text and tools into a Responses object", () => {
+    const translated = translateNonStreamingResponse({
+      response: {
+        responseId: "ag-json",
+        modelVersion: "gemini-test",
+        candidates: [{
+          content: { parts: [
+            { text: "hello" },
+            { functionCall: { name: "lookup", args: { city: "Paris" } } }
+          ] },
+          finishReason: "STOP"
+        }]
+      }
+    }, FORMATS.ANTIGRAVITY, FORMATS.OPENAI_RESPONSES);
+
+    expect(translated.object).toBe("response");
+    expect(translated).not.toHaveProperty("choices");
+    expect(translated.output.map(({ type }) => type)).toEqual(["message", "function_call"]);
+    expect(translated.output[0].content[0].text).toBe("hello");
+    expect(translated.output[1]).toMatchObject({ name: "lookup", arguments: '{"city":"Paris"}' });
+  });
+
+  it("keeps intermediate output-item events and terminal output in an Antigravity stream", async () => {
+    const input = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(antigravitySse()));
+        controller.close();
+      }
+    });
+    const output = input.pipeThrough(createSSETransformStreamWithLogger(
+      FORMATS.ANTIGRAVITY,
+      FORMATS.OPENAI_RESPONSES,
+      "antigravity",
+      null,
+      null,
+      "gemini-test"
+    ));
+    const events = (await new Response(output).text()).split("\n").
+    filter((line) => line.startsWith("data: {")).
+    map((line) => JSON.parse(line.slice(6)));
+    const added = events.filter(({ type }) => type === "response.output_item.added");
+    const completed = events.find(({ type }) => type === "response.completed");
+
+    expect(added).toHaveLength(2);
+    expect(completed.response.output.map(({ id, type }) => ({ id, type }))).toEqual(
+      added.map(({ item }) => ({ id: item.id, type: item.type }))
+    );
+  });
+
+  it("converts forced Antigravity SSE to Responses JSON without forwarding empty events", async () => {
+    const trackDone = vi.fn();
+    const result = await handleForcedSSEToJson({
+      providerResponse: new Response(antigravitySse(), { headers: { "content-type": "text/event-stream" } }),
+      sourceFormat: FORMATS.OPENAI_RESPONSES,
+      targetFormat: FORMATS.ANTIGRAVITY,
+      provider: "antigravity",
+      model: "gemini-test",
+      body: { model: "gemini-test", input: "hello", stream: false },
+      stream: false,
+      translatedBody: null,
+      finalBody: null,
+      requestStartTime: Date.now(),
+      connectionId: "connection-test",
+      apiKey: null,
+      clientRawRequest: { endpoint: "/v1/responses" },
+      onRequestSuccess: vi.fn(async () => {}),
+      trackDone,
+      appendLog: vi.fn(),
+      reqTag: "test",
+      log: null,
+      terminalProvenance: "upstream"
+    });
+    const response = await result.response.json();
+
+    expect(result.success).toBe(true);
+    expect(trackDone).toHaveBeenCalledOnce();
+    expect(response.object).toBe("response");
+    expect(response.output.map(({ type }) => type)).toEqual(["message", "function_call"]);
+    expect(response.output[0].content[0].text).toBe("hello");
+  });
+
+  it("joins multi-line SSE data before parsing", () => {
+    const parsed = parseSSEToOpenAIResponse([
+      'data: {"id":"multi",',
+      'data: "choices":[{"index":0,"delta":{"content":"joined"},"finish_reason":"stop"}]}',
+      "",
+      "data: [DONE]",
+      ""
+    ].join("\n"), "gpt-test");
+
+    expect(parsed.choices[0].message.content).toBe("joined");
+  });
+
+  it("accepts single-newline-delimited SSE events", () => {
+    const parsed = parseSSEToOpenAIResponse([
+      'data: {"id":"single","choices":[{"index":0,"delta":{"content":"one"},"finish_reason":null}]}',
+      'data: {"id":"single","choices":[{"index":0,"delta":{"content":" two"},"finish_reason":"stop"}]}',
+      "data: [DONE]",
+      ""
+    ].join("\n"), "gpt-test");
+
+    expect(parsed.choices[0].message.content).toBe("one two");
+  });
 });
 
 describe("stream empty-content cooldown (#3465)", () => {

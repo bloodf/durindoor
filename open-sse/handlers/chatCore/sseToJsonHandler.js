@@ -2,7 +2,9 @@ import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConv
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
-import { FORMATS } from "../../translator/formats.js";
+import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
+import { geminiToOpenAIResponse } from "../../translator/response/gemini-to-openai.js";
+import { extractCompleteSseFrames } from "../../utils/streamHelpers.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from "../../translator/response/completionProjector.js";
@@ -34,16 +36,41 @@ function shouldEnableClaudeCompat(mode, sourceFormat, body) {
   stopSequences.includes("</block>");
 }
 
-/**
- * Parse OpenAI-style SSE text into a single chat completion JSON.
- * Used when provider forces streaming but client wants non-streaming.
- */
-export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
-  format = FORMATS.OPENAI,
-  providerBody = null
-} = {}) {
-  const chunks = [];
-  let eventName = null;
+function parseSseEvents(rawSSE) {
+  const text = String(rawSSE || "");
+  const { frames, remainder } = extractCompleteSseFrames(text);
+  if (remainder.trim()) frames.push(remainder);
+
+  return frames.flatMap((frame) => {
+    let eventName = null;
+    const dataLines = [];
+    for (const line of frame.split(/\r?\n/)) {
+      if (line.startsWith("event:")) eventName = line.slice(6).trim() || null;
+      if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (dataLines.length === 0) return [];
+    const data = dataLines.join("\n");
+    if (!data.trim()) return [];
+    if (dataLines.length === 1 || data.trim() === "[DONE]") {
+      return [{ eventName, data, done: data.trim() === "[DONE]" }];
+    }
+    try {
+      JSON.parse(data);
+      return [{ eventName, data, done: false }];
+    } catch {
+      return dataLines.
+      filter((line) => line.trim()).
+      map((line) => ({ eventName, data: line, done: line.trim() === "[DONE]" }));
+    }
+  });
+}
+
+function aggregateParsedChunks(chunks, fallbackModel, {
+  format,
+  providerBody,
+  terminalObservations = null,
+  synthesizedRawDone = false
+}) {
   const terminal = createUpstreamTerminalTracker({
     format,
     expectedChoiceCount: providerBody?.n,
@@ -52,29 +79,12 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
     providerBody?.generationConfig?.candidateCount ??
     providerBody?.generation_config?.candidate_count
   });
-
-  for (const line of String(rawSSE || "").split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("event:")) {
-      eventName = trimmed.slice(6).trim() || null;
-      continue;
-    }
-    if (!trimmed.startsWith("data:")) continue;
-    const payload = trimmed.slice(5).trim();
-    if (!payload) continue;
-    if (payload === "[DONE]") {
-      terminal.observe({ rawDone: true, eventName });
-      eventName = null;
-      continue;
-    }
-    try {
-      const parsed = JSON.parse(payload);
-      chunks.push(parsed);
-      terminal.observe({ chunk: parsed, eventName });
-    } catch {terminal.fail();}
-    eventName = null;
+  if (terminalObservations) {
+    for (const observation of terminalObservations) terminal.observe(observation);
+  } else {
+    for (const chunk of chunks) terminal.observe({ chunk });
   }
-
+  if (synthesizedRawDone) terminal.observe({ rawDone: true });
   if (chunks.length === 0 || terminal.outcome !== "success") return null;
 
   const first = chunks[0];
@@ -167,6 +177,49 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
   };
   if (usage) result.usage = usage;
   return result;
+}
+
+/**
+ * Parse OpenAI-style SSE text into a single chat completion JSON.
+ * Used when provider forces streaming but client wants non-streaming.
+ */
+export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
+  format = FORMATS.OPENAI,
+  providerBody = null
+} = {}) {
+  const chunks = [];
+  const terminalObservations = [];
+  for (const { eventName, data, done } of parseSseEvents(rawSSE)) {
+    if (done) {
+      terminalObservations.push({ rawDone: true, eventName });
+      continue;
+    }
+    try {
+      const chunk = JSON.parse(data);
+      chunks.push(chunk);
+      terminalObservations.push({ chunk, eventName });
+    } catch {return null;}
+  }
+  return aggregateParsedChunks(chunks, fallbackModel, { format, providerBody, terminalObservations });
+}
+
+function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap) {
+  const state = { toolNameMap };
+  const chunks = [];
+
+  for (const { data, done } of parseSseEvents(rawSSE)) {
+    if (done) continue;
+    let parsed;
+    try {parsed = JSON.parse(data);} catch {return null;}
+    const translated = geminiToOpenAIResponse(parsed, state);
+    if (translated) chunks.push(...translated);
+  }
+
+  return aggregateParsedChunks(chunks, fallbackModel, {
+    format: FORMATS.OPENAI,
+    providerBody,
+    synthesizedRawDone: true
+  });
 }
 
 /**
@@ -268,10 +321,13 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         maxBytes: MAX_PROVIDER_BODY_BYTES,
         timeoutMs: responseBodyTimeoutMs
       });
+      const isGeminiFamily = GEMINI_FAMILY_FORMATS.has(targetFormat);
       const terminalFormat = [FORMATS.KIRO, FORMATS.COMMANDCODE, FORMATS.CURSOR].includes(targetFormat) ?
       targetFormat :
       FORMATS.OPENAI;
-      let parsed = parseSSEToOpenAIResponse(sseText, model, {
+      let parsed = isGeminiFamily ?
+      parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap) :
+      parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
         providerBody: finalBody || translatedBody
       });

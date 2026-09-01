@@ -102,6 +102,93 @@ describe("Codex fast tier and capacity handling", () => {
     expect(body.reasoning.effort).toBe(expectedEffort);
   });
 
+  it.each([
+    ["gpt-5.3-codex-spark", "gpt-5.3-codex-spark"],
+    ["gpt-5.3-codex-spark-review", "gpt-5.3-codex-spark"],
+  ])("omits reasoning summary for Spark request %s", (model, expectedModel) => {
+    const body = new CodexExecutor().transformRequest(model, {
+      model,
+      input: "hi",
+      reasoning: { effort: "low", summary: "detailed" },
+    }, true, {});
+
+    expect(body.model).toBe(expectedModel);
+    expect(body.reasoning).toEqual({ effort: "low" });
+  });
+
+  it("omits Spark summary while retaining normalized effort from the model suffix", () => {
+    const body = new CodexExecutor().transformRequest("gpt-5.3-codex-spark-high", {
+      model: "gpt-5.3-codex-spark-high",
+      input: "hi",
+    }, true, {});
+
+    expect(body.model).toBe("gpt-5.3-codex-spark");
+    expect(body.reasoning).toEqual({ effort: "high" });
+  });
+
+  it("keeps the reasoning summary default for non-Spark Codex models", () => {
+    const body = new CodexExecutor().transformRequest("gpt-5.5", {
+      model: "gpt-5.5",
+      input: "hi",
+    }, true, {});
+
+    expect(body.reasoning).toEqual({ effort: "low", summary: "auto" });
+  });
+
+  it.each([
+    [75000, 75000],
+    [100001, 100000],
+  ])("normalizes Spark compaction threshold %s to %s", (requested, expected) => {
+    const body = new CodexExecutor().transformRequest("gpt-5.3-codex-spark", {
+      model: "gpt-5.3-codex-spark",
+      input: "hi",
+      context_management: [
+        { type: "retention", retain: 2 },
+        { type: "compaction", compact_threshold: requested },
+        { type: "compaction", compact_threshold: 1 },
+      ],
+    }, true, {});
+
+    expect(body.context_management).toEqual([
+      { type: "compaction", compact_threshold: expected },
+    ]);
+  });
+
+  it.each([
+    [undefined],
+    [[]],
+    [[{ type: "compaction", compact_threshold: 0 }]],
+    [[{ type: "compaction", compact_threshold: -1 }]],
+    [[{ type: "compaction", compact_threshold: Number.POSITIVE_INFINITY }]],
+    [[{ type: "compaction", compact_threshold: "50000" }]],
+    [[{ type: "retention", compact_threshold: 50000 }]],
+    [{ type: "compaction", compact_threshold: 50000 }],
+  ])("defaults invalid Spark context management %# to the 100K policy", (contextManagement) => {
+    const body = new CodexExecutor().transformRequest("gpt-5.3-codex-spark", {
+      model: "gpt-5.3-codex-spark",
+      input: "hi",
+      ...(contextManagement === undefined ? {} : { context_management: contextManagement }),
+    }, true, {});
+
+    expect(body.context_management).toEqual([
+      { type: "compaction", compact_threshold: 100000 },
+    ]);
+  });
+
+  it("removes context management from request-scoped standalone compact requests", () => {
+    const body = new CodexExecutor().transformRequest("gpt-5.3-codex-spark", {
+      model: "gpt-5.3-codex-spark",
+      input: "hi",
+      context_management: [{ type: "compaction", compact_threshold: 50000 }],
+      tool_choice: "auto",
+      text: { format: { type: "text" } },
+    }, false, {}, { compact: true });
+
+    expect(body.context_management).toBeUndefined();
+    expect(body.tool_choice).toBeUndefined();
+    expect(body.text).toEqual({ format: { type: "text" } });
+  });
+
   it("uses ChatGPT workspace header fallback", () => {
     const executor = new CodexExecutor();
     const headers = executor.buildHeaders({

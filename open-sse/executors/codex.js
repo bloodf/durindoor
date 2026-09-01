@@ -32,6 +32,8 @@ import { cancelAndReleaseReader, releaseReader } from "../utils/streamReader.js"
 // routing normalization: transformRequest strips the suffix from the wire id.
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 const CODEX_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
+const CODEX_SPARK_MODEL = "gpt-5.3-codex-spark";
+const CODEX_SPARK_COMPACT_THRESHOLD = 100_000;
 
 /**
  * Split a Codex model id into its bare upstream id and recognized effort suffix.
@@ -50,6 +52,20 @@ function splitCodexEffortSuffix(modelId) {
     }
   }
   return { model, effort: null };
+}
+
+function isCodexSparkModel(model) {
+  return model === CODEX_SPARK_MODEL;
+}
+
+function normalizeSparkContextManagement(value) {
+  const compactThreshold = Array.isArray(value) ?
+    value.find((entry) => entry?.type === "compaction")?.compact_threshold :
+    undefined;
+  const threshold = isNumber(compactThreshold) && Number.isFinite(compactThreshold) && compactThreshold > 0 ?
+    Math.min(compactThreshold, CODEX_SPARK_COMPACT_THRESHOLD) :
+    CODEX_SPARK_COMPACT_THRESHOLD;
+  return [{ type: "compaction", compact_threshold: threshold }];
 }
 
 // SSE error patterns inside 200-OK bodies. Some retry same account first; capacity rotates accounts.
@@ -309,7 +325,7 @@ const CODEX_PASSTHROUGH_TOOL_TYPES = new Set(["custom"]);
 const RESPONSES_API_ALLOWLIST = new Set([
 "model", "input", "instructions", "tools", "tool_choice", "parallel_tool_calls", "stream", "store",
 "reasoning", "service_tier", "include", "prompt_cache_key", "client_metadata",
-"text"]
+"text", "context_management"]
 );
 
 // Convert role=system → role=developer in body.input (keeps content in cacheable prefix)
@@ -936,18 +952,29 @@ export class CodexExecutor extends BaseExecutor {
       body.model = effortSplit.model;
     }
 
+    const isSpark = isCodexSparkModel(body.model);
     // Priority: explicit reasoning.effort > reasoning_effort param > model suffix > default (low)
     // resolveOpenAiEffort keeps model-aware semantic support; resolveCodexWireEffort maps Ultra→Max for wire.
     if (!body.reasoning) {
       const semantic = resolveOpenAiEffort(body.reasoning_effort || modelEffort || 'low', "codex", body.model);
       const effort = resolveCodexWireEffort(semantic, this.config);
-      body.reasoning = { effort, summary: "auto" };
+      body.reasoning = isSpark ? { effort } : { effort, summary: "auto" };
     } else {
       const semantic = resolveOpenAiEffort(body.reasoning.effort, "codex", body.model);
       body.reasoning.effort = resolveCodexWireEffort(semantic, this.config);
-      if (!body.reasoning.summary) body.reasoning.summary = "auto";
+      if (isSpark) {
+        delete body.reasoning.summary;
+      } else if (!body.reasoning.summary) {
+        body.reasoning.summary = "auto";
+      }
     }
     delete body.reasoning_effort;
+
+    if (isCompact) {
+      delete body.context_management;
+    } else if (isSpark) {
+      body.context_management = normalizeSparkContextManagement(body.context_management);
+    }
 
     // Include reasoning encrypted content (required by Codex backend for reasoning models);
     // compact requests omit the include field entirely.

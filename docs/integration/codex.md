@@ -38,6 +38,8 @@ Codex clients may call `/v1/responses/compact` to compact conversation context. 
 
 Compact mode and prompt-cache session affinity are request-scoped. They remain stable if DurinDoor refreshes an OAuth token, retries a temporary Codex overload, or tries another configured base URL, and concurrent compact and regular requests cannot inherit one another's routing state.
 
+GPT-5.3 Codex Spark has a 128K context limit. Regular Responses requests omit unsupported `reasoning.summary` and carry one compaction policy capped at 100K tokens; a smaller positive client threshold is preserved. Standalone `/v1/responses/compact` requests never carry `context_management`, with that distinction derived from immutable request context.
+
 Codex can report overload or model-capacity errors inside an HTTP 200 event stream. DurinDoor only acts on complete, explicitly structured SSE error events within a bounded prefix. Normal output, comments, incomplete events, and ordinary data that merely mention an error phrase are replayed unchanged. Capacity errors rotate accounts; transient overloads retry the same account according to the configured 503 policy.
 
 ## Model Selection

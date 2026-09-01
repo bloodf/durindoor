@@ -21,6 +21,10 @@ const DEVICE_CODE_PROVIDERS = new Set([
 );
 const FIXED_PORT_PROVIDERS = new Set(["codex", "xai"]);
 const STATELESS_CALLBACK_PROVIDERS = new Set(["cline", "clinepass"]);
+function isLoopbackHostname(hostname) {
+  return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
+}
+
 
 function errorMessage(error, fallback = "Authentication failed") {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -308,9 +312,10 @@ export default function OAuthModal({
         throw new Error("No authorization URL returned from OAuth provider");
       }
 
+      const browserIsLoopback = isLoopbackHostname(window.location.hostname);
       let fixedProxyActive = false;
       let serverSide = false;
-      if (FIXED_PORT_PROVIDERS.has(flow.provider)) {
+      if (FIXED_PORT_PROVIDERS.has(flow.provider) && (flow.provider !== "codex" || browserIsLoopback)) {
         const proxyResponse = await fetch(`/api/oauth/${flow.provider}/start-proxy`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -341,8 +346,7 @@ export default function OAuthModal({
         codexServerSide: flow.provider === "codex" && serverSide,
         xaiServerSide: flow.provider === "xai" && serverSide
       });
-      const isLocalhost = window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
+      const isLocalhost = browserIsLoopback;
       const canUsePopup = fixedProxyActive ||
       !FIXED_PORT_PROVIDERS.has(flow.provider) && isLocalhost;
       if (canUsePopup) {
@@ -601,31 +605,33 @@ export default function OAuthModal({
         {proxyPoolsReady && (step === "waiting" || step === "input") && !isDeviceCode &&
         <>
             <div className="flex flex-col gap-2 rounded-lg border border-border bg-sidebar/50 px-3 py-2">
+              {step === "waiting" &&
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined animate-spin text-base text-primary">progress_activity</span>
                 <span className="text-sm">
                   {isXaiProvider ? "Waiting for Grok Build OAuth…" : "Waiting for popup authorization…"}
                 </span>
               </div>
+              }
               {authData?.authUrl &&
-            <div className="flex flex-col gap-2 sm:flex-row">
-                  <Input value={authData.authUrl} readOnly className="min-w-0 flex-1 font-mono text-xs" />
-                  <Button
-                variant="secondary"
-                icon={copied === "auth_url" ? "check" : "content_copy"}
-                onClick={() => copy(authData.authUrl, "auth_url")}>
-                
-                    Copy
-                  </Button>
-                  <Button
-                variant="ghost"
-                icon="open_in_new"
-                onClick={() => window.open(authData.authUrl, "_blank", "noopener,noreferrer")}>
-                
-                    Open
-                  </Button>
-                </div>
-            }
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input value={authData.authUrl} readOnly className="min-w-0 flex-1 font-mono text-xs" />
+                <Button
+                  variant="secondary"
+                  icon={copied === "auth_url" ? "check" : "content_copy"}
+                  onClick={() => copy(authData.authUrl, "auth_url")}>
+
+                  Copy
+                </Button>
+                <Button
+                  variant="ghost"
+                  icon="open_in_new"
+                  onClick={() => window.open(authData.authUrl, "_blank", "noopener,noreferrer")}>
+
+                  Open
+                </Button>
+              </div>
+              }
             </div>
 
             <div className="flex items-center gap-3 my-1">

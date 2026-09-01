@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleVideoCreate, handleVideoGet } from "@/sse/handlers/video.js";
 
 /**
@@ -23,7 +24,7 @@ import { handleVideoCreate, handleVideoGet } from "@/sse/handlers/video.js";
  * Ported from decolua/9router#2593 (CLI `9router xai video` drives these same
  * endpoints through the running gateway).
  */
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -40,14 +41,17 @@ function badRequest(message) {
   });
 }
 
-export async function POST(request, { params }) {
+async function POSTHandler(request, { params }) {
   const { path = [] } = await params;
   if (path.length !== 1) return badRequest("Expected /v1/videos/{generations|edits|extensions}");
   return await handleVideoCreate(request, path[0]);
 }
 
-export async function GET(request, { params }) {
+async function GETHandler(request, { params }) {
   const { path = [] } = await params;
   if (path.length !== 1) return badRequest("Expected /v1/videos/{request_id}");
   return await handleVideoGet(request, path[0]);
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const POST = withRequestCorrelation(POSTHandler);
+export const GET = withRequestCorrelation(GETHandler);

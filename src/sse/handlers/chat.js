@@ -27,6 +27,7 @@ import { warmLiveModelLimits } from "open-sse/services/liveModelLimits.js";
 import { decodeClaudeCodeModelId } from "../../app/api/v1/models/_claudeCompat.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { authErrorResponse, errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { getRequestId, validateProviderRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
 import {
   getComboModelQuotaHealth,
@@ -347,7 +348,7 @@ function fixMessageOrdering(messages) {
  * Supports: OpenAI, Claude, Gemini, OpenAI Responses API formats
  * Format detection and translation handled by translator
  */
-export async function handleChat(request, clientRawRequest = null) {
+async function handleChatHandler(request, clientRawRequest = null, requestId = getRequestId(request)) {
   if (requestAborted(request)) return errorResponse(499, "Request aborted");
   let body;
   try {
@@ -377,9 +378,10 @@ export async function handleChat(request, clientRawRequest = null) {
       body: { ...body },
       headers: Object.fromEntries(request.headers.entries()),
       originalModel: originalClientModel,
+      requestId,
     };
   } else {
-    clientRawRequest = { ...clientRawRequest, originalModel: originalClientModel };
+    clientRawRequest = { ...clientRawRequest, originalModel: originalClientModel, requestId };
   }
   cacheClaudeHeaders(clientRawRequest.headers);
 
@@ -1195,6 +1197,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       latestAttemptStartedAt;
       const resultErrorBody = result.errorBody && isObject(result.errorBody) ? result.errorBody : null;
       const resultHeaders = result.headers ?? null;
+      const upstreamRequestId = ["x-request-id", "request-id", "x-correlation-id"]
+        .map((name) => validateProviderRequestId(new Headers(resultHeaders || {}).get(name)))
+        .find(Boolean);
+      if (upstreamRequestId) {
+        const responseHeaders = new Headers(result.response.headers);
+        responseHeaders.set("x-upstream-request-id", upstreamRequestId);
+        result.response = new Response(result.response.body, {
+          status: result.response.status,
+          statusText: result.response.statusText,
+          headers: responseHeaders,
+        });
+      }
       const antigravityProvider = provider === "antigravity" || provider === "agy";
       const authoritativeResetAt = Number(result.rateLimitEvidence?.resetAtMs);
       const authoritativeReset = Number.isFinite(result.resetsAtMs) ||
@@ -1291,3 +1305,4 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (lastTokenSaverEvent && !tokenSaverCollector) await recordTokenSaverEvent(lastTokenSaverEvent);
   }
 }
+export const handleChat = withRequestCorrelation(handleChatHandler);

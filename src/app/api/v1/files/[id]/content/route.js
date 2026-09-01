@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI File content — raw bytes download.
 import path from "node:path";
 import { getFileContent } from "open-sse/services/localFilesBatches.js";
@@ -11,12 +12,12 @@ const CORS = {
   "Access-Control-Allow-Headers": "*",
 };
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, { headers: CORS });
 }
 
 /** GET /v1/files/<id>/content — raw file bytes. */
-export async function GET(request, context) {
+async function GETHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
   if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   const { id } = await context.params;
@@ -39,3 +40,5 @@ export async function GET(request, context) {
     },
   });
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const GET = withRequestCorrelation(GETHandler);

@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI Batch detail — retrieve.
 import { getBatch } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
@@ -13,12 +14,12 @@ const CORS = {
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, { headers: CORS });
 }
 
 /** GET /v1/batches/<id>. */
-export async function GET(request, context) {
+async function GETHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
   if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   const { id } = await context.params;
@@ -31,3 +32,5 @@ export async function GET(request, context) {
   if (!view) return errorResponse(HTTP_STATUS.NOT_FOUND, "batch not found");
   return json(view);
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const GET = withRequestCorrelation(GETHandler);

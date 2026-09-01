@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { getProviderCredentialsWithQuotaPreflight, resolveClientApiKey, markAccountUnavailable } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
@@ -6,7 +7,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
-export async function handleMusicGeneration(request) {
+async function handleMusicGenerationHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -66,3 +67,4 @@ export async function handleMusicGeneration(request) {
     return result.response || errorResponse(result.status, result.error);
   }
 }
+export const handleMusicGeneration = withRequestCorrelation(handleMusicGenerationHandler);

@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { LLM_KIND, buildModelsList } from "../buildModelsList.js";
 import { buildModelsResponse } from "../_shared.js";
 import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
@@ -48,7 +49,7 @@ function modelNotFoundResponse(model) {
   );
 }
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
       ...CORS_HEADERS,
@@ -65,7 +66,7 @@ export async function OPTIONS() {
  * A single unknown segment deliberately retains the legacy `Unknown model kind`
  * response. Provider-prefixed misses use OpenAI's `model_not_found` contract.
  */
-export async function GET(request, { params }) {
+async function GETHandler(request, { params }) {
   try {
     const { model } = await params;
     const path = Array.isArray(model) ? model : [model];
@@ -99,7 +100,7 @@ export async function GET(request, { params }) {
  * HEAD stays catalog-free: known kinds and provider-prefixed lookup paths are
  * routable; unknown legacy one-segment kinds remain 404.
  */
-export async function HEAD(_request, { params }) {
+async function HEADHandler(_request, { params }) {
   const { model } = await params;
   const path = Array.isArray(model) ? model : [model];
   const identifier = path.filter(Boolean).join("/");
@@ -108,3 +109,7 @@ export async function HEAD(_request, { params }) {
   }
   return headNotFoundResponse();
 }
+
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const GET = withRequestCorrelation(GETHandler);
+export const HEAD = withRequestCorrelation(HEADHandler);

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CodexExecutor } from "../../open-sse/executors/codex.js";
 
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
@@ -168,6 +169,39 @@ describe("Codex compact request context in chatCore", () => {
     expect(first.body).not.toHaveProperty("_compact");
     expect(second.body).not.toHaveProperty("_compact");
     expect(options.credentials).not.toHaveProperty("_isCompact");
+  });
+
+  it("keeps provider and Codex session identity stable across correlated turns", async () => {
+    const wireRequests = [];
+    mocks.execute.mockImplementation(async ({ model, body, stream, credentials, requestContext }) => {
+      const executor = new CodexExecutor();
+      wireRequests.push({
+        requestContext,
+        headers: executor.buildHeaders(credentials, stream, requestContext),
+        body: executor.transformRequest(model, structuredClone(body), stream, credentials, requestContext),
+      });
+      return providerResult(200);
+    });
+    const first = makeOptions({ endpoint: "/v1/responses" });
+    const second = makeOptions({ endpoint: "/v1/responses" });
+    first.clientRawRequest.requestId = "11111111-1111-4111-8111-111111111111";
+    second.clientRawRequest.requestId = "22222222-2222-4222-8222-222222222222";
+
+    await handleChatCore(first);
+    await handleChatCore(second);
+
+    expect(wireRequests).toHaveLength(2);
+    expect(wireRequests[0].requestContext).not.toBe(wireRequests[1].requestContext);
+    expect(wireRequests[0].requestContext.sessionId).toBe("request-session");
+    expect(wireRequests[1].requestContext.sessionId).toBe(wireRequests[0].requestContext.sessionId);
+    expect(wireRequests.map(({ requestContext }) => requestContext.requestId)).toEqual([
+      first.clientRawRequest.requestId,
+      second.clientRawRequest.requestId,
+    ]);
+    expect(wireRequests[0].headers.session_id).toBe("request-session");
+    expect(wireRequests[1].headers.session_id).toBe(wireRequests[0].headers.session_id);
+    expect(wireRequests[0].body.prompt_cache_key).toBe("request-session");
+    expect(wireRequests[1].body.prompt_cache_key).toBe(wireRequests[0].body.prompt_cache_key);
   });
 
   it("keeps strict-pool routing on the 401 refresh and request retry", async () => {

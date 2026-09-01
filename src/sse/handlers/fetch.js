@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
@@ -26,7 +27,7 @@ import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../servi
  * @param {Request} request
  */
 import { isString } from "../../shared/utils/typeChecks.js";
-export async function handleFetch(request) {
+async function handleFetchHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -294,3 +295,4 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Fetch failed");
   }
 }
+export const handleFetch = withRequestCorrelation(handleFetchHandler);

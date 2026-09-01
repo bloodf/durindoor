@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 
@@ -10,7 +11,7 @@ async function ensureInitialized() {
   }
 }
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -25,7 +26,9 @@ export async function OPTIONS() {
  * The original Request is preserved. The chat pipeline derives compact routing
  * from the endpoint instead of injecting an internal field into client JSON.
  */
-export async function POST(request) {
+async function POSTHandler(request) {
   await ensureInitialized();
   return await handleChat(request);
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const POST = withRequestCorrelation(POSTHandler);

@@ -70,6 +70,8 @@ describe("translator send provider error sanitation", () => {
     expect(response.status).toBe(502);
     expect(providerResponse.bodyUsed).toBe(true);
     expect(result.error).toBe("Provider error: 502");
+    expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(result.request_id).toBe(response.headers.get("x-request-id"));
     expect(result.details.length).toBeLessThanOrEqual(4096);
     for (const canary of rawCanaries) expect(exposed).not.toContain(canary);
     expect(exposed).not.toMatch(/[\u0000\r\n]/);

@@ -193,7 +193,7 @@ function captureRequestContext(body, clientRawRequest, modelCapabilities, sessio
   body?._compact === true ||
   clientRawRequest?.body?._compact === true;
   const clientHeaders = Object.freeze({ ...(clientRawRequest?.headers || {}) });
-  return Object.freeze({ compact, clientHeaders, modelCapabilities, sessionId });
+  return Object.freeze({ compact, clientHeaders, modelCapabilities, sessionId, requestId: clientRawRequest?.requestId });
 }
 
 function stripLegacyCompactMarker(body, clientRawRequest) {

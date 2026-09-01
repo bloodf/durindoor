@@ -1,9 +1,10 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleEmbeddings } from "@/sse/handlers/embeddings.js";
 
 /**
  * Handle CORS preflight
  */
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -16,6 +17,8 @@ export async function OPTIONS() {
 /**
  * POST /v1/embeddings - OpenAI-compatible embeddings endpoint
  */
-export async function POST(request) {
+async function POSTHandler(request) {
   return await handleEmbeddings(request);
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const POST = withRequestCorrelation(POSTHandler);

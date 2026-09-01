@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   resolveClientApiKey,
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
@@ -20,7 +21,7 @@ const CREDENTIALED_PROVIDERS = new Set(
     .map(([id]) => id)
 );
 
-export async function handleTts(request) {
+async function handleTtsHandler(request) {
   let body;
   try {
     body = await request.json();
@@ -141,3 +142,4 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
     return result.response || errorResponse(result.status, result.error);
   }
 }
+export const handleTts = withRequestCorrelation(handleTtsHandler);

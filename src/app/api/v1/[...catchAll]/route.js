@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { jsonNotFoundResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
 
 /**
@@ -17,25 +18,32 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "*",
 };
 
-export async function OPTIONS() {
+async function OPTIONSHandler() {
   return new Response(null, { headers: CORS_HEADERS });
 }
 
-export async function GET(request) {
+async function GETHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function POST(request) {
+async function POSTHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function PUT(request) {
+async function PUTHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function PATCH(request) {
+async function PATCHHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function DELETE(request) {
+async function DELETEHandler(request) {
   return jsonNotFoundResponse(request);
 }
-export async function HEAD() {
+async function HEADHandler() {
   return headNotFoundResponse();
 }
+export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
+export const GET = withRequestCorrelation(GETHandler);
+export const POST = withRequestCorrelation(POSTHandler);
+export const PUT = withRequestCorrelation(PUTHandler);
+export const PATCH = withRequestCorrelation(PATCHHandler);
+export const DELETE = withRequestCorrelation(DELETEHandler);
+export const HEAD = withRequestCorrelation(HEADHandler);

@@ -1,3 +1,4 @@
+import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   resolveClientApiKey,
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
@@ -18,7 +19,7 @@ const CREDENTIALED_PROVIDERS = new Set(
     .map(([id]) => id)
 );
 
-export async function handleStt(request) {
+async function handleSttHandler(request) {
   let formData;
   try {
     formData = await request.formData();
@@ -97,3 +98,4 @@ export async function handleStt(request) {
     return result.response || errorResponse(result.status, result.error);
   }
 }
+export const handleStt = withRequestCorrelation(handleSttHandler);

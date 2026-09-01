@@ -2,9 +2,34 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { execSync } = require("child_process");
+const { getAppDataDir } = require("../appDataDir");
 
 const APP_NAME = "9router";
 const APP_LABEL = "com.9router.autostart";
+const AUTOSTART_DECIDED_FILE = "autostart-decided";
+
+function getAutoStartDecisionFile() {
+  return path.join(getAppDataDir(), AUTOSTART_DECIDED_FILE);
+}
+
+function hasAutoStartDecision() {
+  try {
+    return fs.existsSync(getAutoStartDecisionFile());
+  } catch (err) {
+    // Fail closed: an unreadable data directory must not recreate autostart.
+    return true;
+  }
+}
+
+function rememberAutoStartDecision() {
+  try {
+    const marker = getAutoStartDecisionFile();
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, new Date().toISOString());
+  } catch (err) {
+    // Autostart is optional; the explicit platform operation still proceeds.
+  }
+}
 
 /**
  * Resolve the absolute path to this package's cli.js.
@@ -51,13 +76,25 @@ function enableAutoStart(cliPath) {
   if (platform === "linux" && !process.env.DISPLAY) return false;
 
   try {
-    if (platform === "darwin") return enableMacOS(cliPath);
-    if (platform === "win32") return enableWindows(cliPath);
-    if (platform === "linux") return enableLinux(cliPath);
+    let enabled = false;
+    if (platform === "darwin") enabled = enableMacOS(cliPath);
+    if (platform === "win32") enabled = enableWindows(cliPath);
+    if (platform === "linux") enabled = enableLinux(cliPath);
+    if (enabled) rememberAutoStartDecision();
+    return enabled;
   } catch (err) {
     // Silent fail — autostart is optional
   }
   return false;
+}
+
+/**
+ * Enable autostart only before the user has made or inherited a decision.
+ * @returns {boolean} whether this call wrote an autostart entry
+ */
+function ensureAutoStart(cliPath) {
+  if (hasAutoStartDecision()) return false;
+  return enableAutoStart(cliPath);
 }
 
 /**
@@ -66,6 +103,8 @@ function enableAutoStart(cliPath) {
  */
 function disableAutoStart() {
   const platform = process.platform;
+  // Persist refusal before removal so absent or failed removals remain durable.
+  rememberAutoStartDecision();
   try {
     if (platform === "darwin") return disableMacOS();
     if (platform === "win32") return disableWindows();
@@ -301,6 +340,7 @@ function disableLinux() {
 
 module.exports = {
   enableAutoStart,
+  ensureAutoStart,
   disableAutoStart,
   isAutoStartEnabled
 };

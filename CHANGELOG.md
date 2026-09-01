@@ -3,6 +3,7 @@
 ## Fixed
 
 - Clean standalone builds and Docker images now ship the ESM `src/shared/utils/typeChecks.js` helper imported by `open-sse/config/runtimeConfig.js`, preventing fresh deployments from failing with `ERR_MODULE_NOT_FOUND`.
+- Tray mode now enables OS autostart only before the first recorded decision, preserving explicit disable, manual startup-entry removal, and later explicit re-enable choices across Windows, macOS, and Linux. Ports decolua/9router#3651 while reusing DurinDoor's `DATA_DIR`-aware app-data resolver.
 
 # 3.18.0
 

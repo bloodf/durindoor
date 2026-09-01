@@ -17,20 +17,20 @@ function headers(values = {}) {
 
 describe("bounded 429 evidence parsing", () => {
   it("uses executor reset, Retry-After seconds/date, and epoch reset headers in precedence order", () => {
-    expect(parseRateLimitEvidence({ status: 429, executorResetAtMs: NOW + 5_000, headers: headers({ "retry-after": "60" }), now: NOW }))
+    expect(parseRateLimitEvidence({ status: 429, executorResetAtMs: NOW + 5_000, headers: headers({ "retry-after": "60" }), bodyText: "reset at 2026-07-10 17:00:00", now: NOW }))
       .toMatchObject({ resetAtMs: NOW + 5_000, source: "executor" });
-    expect(parseRateLimitEvidence({ status: 429, headers: headers({ "retry-after": "60" }), now: NOW }))
+    expect(parseRateLimitEvidence({ status: 429, headers: headers({ "retry-after": "60" }), bodyText: "reset at 2026-07-10 17:00:00", now: NOW }))
       .toMatchObject({ resetAtMs: NOW + 60_000, source: "retry_after" });
-    expect(parseRateLimitEvidence({ status: 429, headers: headers({ "retry-after": new Date(NOW + 120_000).toUTCString() }), now: NOW }))
+    expect(parseRateLimitEvidence({ status: 429, headers: headers({ "retry-after": new Date(NOW + 120_000).toUTCString() }), bodyText: "reset at 2026-07-10 17:00:00", now: NOW }))
       .toMatchObject({ resetAtMs: NOW + 120_000, source: "retry_after" });
-    expect(parseRateLimitEvidence({ status: 429, headers: headers({ "x-ratelimit-reset": String((NOW + 180_000) / 1000) }), now: NOW }))
+    expect(parseRateLimitEvidence({ status: 429, headers: headers({ "x-ratelimit-reset": String((NOW + 180_000) / 1000) }), bodyText: "reset at 2026-07-10 17:00:00", now: NOW }))
       .toMatchObject({ resetAtMs: NOW + 180_000, source: "reset_header" });
   });
 
   it("parses allowlisted JSON fields and compound quota durations", () => {
     expect(parseRateLimitEvidence({
       status: 429,
-      bodyText: JSON.stringify({ error: { retry_after_ms: 90_000 } }),
+      bodyText: JSON.stringify({ error: { retry_after_ms: 90_000, message: "reset at 2026-07-10 17:00:00" } }),
       now: NOW,
     })).toMatchObject({ resetAtMs: NOW + 90_000, source: "structured_body", state: "cooldown" });
     expect(parseRateLimitEvidence({
@@ -67,6 +67,45 @@ describe("bounded 429 evidence parsing", () => {
       bodyText: "Too many requests; retry in 1 minute.",
       now: NOW,
     })).toMatchObject({ resetAtMs: NOW + 60_000, source: "quota_text", state: "cooldown" });
+  });
+
+  it("parses GLM/Z.AI bare reset timestamps as UTC", () => {
+    expect(parseRateLimitEvidence({
+      status: 429,
+      bodyText: "Usage limit reached for 5 hour. Your limit will reset at 2026-07-10 17:00:00",
+      now: NOW,
+    })).toMatchObject({
+      resetAtMs: Date.parse("2026-07-10T17:00:00.000Z"),
+      source: "quota_text",
+      state: "exhausted",
+    });
+  });
+
+  it("rejects past and over-cap GLM/Z.AI reset timestamps", () => {
+    for (const timestamp of ["2026-07-10 11:59:59", "2026-07-17 12:00:01"]) {
+      expect(parseRateLimitEvidence({
+        status: 429,
+        bodyText: `Your limit will reset at ${timestamp}`,
+        now: NOW,
+      })).toMatchObject({ resetAtMs: null, source: "local_policy" });
+    }
+  });
+
+  it("propagates a GLM/Z.AI prose reset through parseUpstreamError", async () => {
+    const parsed = await parseUpstreamError(new Response(JSON.stringify({
+      error: { message: "Usage limit reached. Your limit will reset at 2026-07-10 17:00:00" },
+    }), { status: 429 }), null, { now: NOW });
+
+    expect(parsed).toMatchObject({
+      statusCode: 429,
+      message: "Rate limit exceeded",
+      resetsAtMs: Date.parse("2026-07-10T17:00:00.000Z"),
+      rateLimitEvidence: {
+        resetAtMs: Date.parse("2026-07-10T17:00:00.000Z"),
+        source: "quota_text",
+        state: "exhausted",
+      },
+    });
   });
 
   it("rejects malformed, past, negative, and over-cap hints", () => {

@@ -1,5 +1,5 @@
 // Check if running in Node.js environment (has fs module)
-import { isBrowser, isFunction, isObject, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { isBrowser, isFunction, isString, isUndefined, runtimeTypeName } from "../../src/shared/utils/typeChecks.js";
 const isNode = !isUndefined(globalThis.process) && process.versions?.node && !isBrowser();
 
 // Check if logging is enabled via environment variable (default: false)
@@ -45,8 +45,10 @@ async function createLogSession(sourceFormat, targetFormat, model) {
     }
 
     const timestamp = formatTimestamp();
-    const safeModel = (model || "unknown").replace(/[/:]/g, "-");
-    const folderName = `${sourceFormat}_${targetFormat}_${safeModel}_${timestamp}`;
+    const safeSource = String(sourceFormat || "unknown").replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 32);
+    const safeTarget = String(targetFormat || "unknown").replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 32);
+    const safeModel = String(model || "unknown").replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 128);
+    const folderName = `${safeSource}_${safeTarget}_${safeModel}_${timestamp}`;
     const sessionPath = path.join(LOGS_DIR, folderName);
 
     fs.mkdirSync(sessionPath, { recursive: true, mode: 0o700 });
@@ -74,7 +76,6 @@ const REDACTED = "[redacted]";
 const SESSION_METADATA_PATTERN = "session[-_]?id|chatgpt[-_]?account[-_]?id|prompt[-_]?cache[-_]?key";
 const SENSITIVE_HEADER_RE = new RegExp(`(?:authorization|auth|cookie|token|secret|signature|password|credential|(?:^|[-_])key(?:$|[-_])|${SESSION_METADATA_PATTERN})`, "i");
 const SENSITIVE_QUERY_RE = new RegExp(`^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|api[-_]?key|key|auth|authorization|cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|${SESSION_METADATA_PATTERN})$`, "i");
-const SENSITIVE_FIELD_RE = new RegExp(`^(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig|${SESSION_METADATA_PATTERN})$`, "i");
 
 export function maskSensitiveText(value) {
   return String(value ?? "").
@@ -90,21 +91,6 @@ export function maskSensitiveText(value) {
   );
 }
 
-/** Recursively redact credential fields and credential-shaped text in logs. */
-export function maskSensitiveValue(value, seen = new WeakSet(), depth = 0) {
-  if (isString(value)) return maskSensitiveText(value);
-  if (value == null || !isObject(value) || depth >= 12) return value;
-  if (seen.has(value)) return "[circular]";
-  seen.add(value);
-  if (Array.isArray(value)) {
-    return value.map((entry) => maskSensitiveValue(entry, seen, depth + 1));
-  }
-  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
-  key,
-  SENSITIVE_FIELD_RE.test(key) ? REDACTED : maskSensitiveValue(entry, seen, depth + 1)]
-  ));
-}
-
 /**
  * Redact credentials before writing optional request diagnostics to disk.
  * Header names remain visible for troubleshooting, but their values never do.
@@ -118,6 +104,13 @@ export function maskSensitiveHeaders(headers) {
   key,
   SENSITIVE_HEADER_RE.test(String(key)) ? REDACTED : value]
   ));
+}
+
+function diagnosticHeaders(headers) {
+  return Object.fromEntries(Object.entries(maskSensitiveHeaders(headers)).slice(0, 64).map(([key, value]) => [
+    String(key).replace(/[\r\n\0]/g, " ").slice(0, 128),
+    String(value ?? "").replace(/[\r\n\0]/g, " ").slice(0, 1024)
+  ]));
 }
 
 /** Redact credential-bearing query parameters while preserving the target. */
@@ -147,6 +140,58 @@ export function maskSensitiveUrl(value) {
       `$1${REDACTED}`
     );
   }
+}
+
+function diagnosticUrl(value) {
+  if (value == null) return value;
+  try {
+    const raw = String(value);
+    const absolute = /^[a-z][a-z\d+.-]*:\/\//i.test(raw);
+    const parsed = new URL(raw, "http://request-log.invalid");
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return (absolute ? parsed.toString() : parsed.pathname).slice(0, 2048);
+  } catch {
+    return String(value).split(/[?#]/, 1)[0].slice(0, 2048);
+  }
+}
+
+function diagnosticLabel(value, fallback = "unknown") {
+  const label = maskSensitiveText(value ?? fallback).replace(/[\r\n\0]/g, " ").trim();
+  return label.slice(0, 128) || fallback;
+}
+
+function payloadMetadata(value) {
+  if (value == null) return { redacted: true, present: false, type: "none", bytes: 0 };
+  const type = value instanceof Uint8Array ? "bytes" : runtimeTypeName(value);
+  let bytes = 0;
+  try {
+    bytes = value instanceof Uint8Array
+      ? value.byteLength
+      : Buffer.byteLength(isString(value) ? value : JSON.stringify(value), "utf8");
+  } catch {
+    // Circular and otherwise non-serializable values remain content-free.
+  }
+  return { redacted: true, present: true, type, bytes };
+}
+
+function errorMetadata(error) {
+  const name = isString(error?.name) && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(error.name) ? error.name : "Error";
+  return { name, message: payloadMetadata(error?.message ?? error) };
+}
+
+function writeStreamMetadata(sessionPath, filename, state, chunk) {
+  const metadata = payloadMetadata(chunk);
+  if (state.chunks === 0 || metadata.type === "bytes") state.type = metadata.type;
+  state.bytes += metadata.bytes;
+  state.chunks += 1;
+  writeJsonFile(sessionPath, filename, {
+    timestamp: new Date().toISOString(),
+    body: { redacted: true, present: state.chunks > 0, type: state.type, bytes: state.bytes },
+    chunks: state.chunks
+  });
 }
 
 // No-op logger when logging is disabled
@@ -181,6 +226,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 
   // Wait for session to be created before returning logger
   const sessionPath = await createLogSession(sourceFormat, targetFormat, model);
+  const providerStream = { bytes: 0, chunks: 0 };
+  const openAIStream = { bytes: 0, chunks: 0 };
+  const convertedStream = { bytes: 0, chunks: 0 };
 
   return {
     get sessionPath() {return sessionPath;},
@@ -189,9 +237,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logClientRawRequest(endpoint, body, headers = {}) {
       writeJsonFile(sessionPath, "1_req_client.json", {
         timestamp: new Date().toISOString(),
-        endpoint: maskSensitiveUrl(endpoint),
-        headers: maskSensitiveHeaders(headers),
-        body: maskSensitiveValue(body)
+        endpoint: diagnosticUrl(endpoint),
+        headers: diagnosticHeaders(headers),
+        body: payloadMetadata(body)
       });
     },
 
@@ -199,8 +247,8 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logRawRequest(body, headers = {}) {
       writeJsonFile(sessionPath, "2_req_source.json", {
         timestamp: new Date().toISOString(),
-        headers: maskSensitiveHeaders(headers),
-        body: maskSensitiveValue(body)
+        headers: diagnosticHeaders(headers),
+        body: payloadMetadata(body)
       });
     },
 
@@ -208,7 +256,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logOpenAIRequest(body) {
       writeJsonFile(sessionPath, "3_req_openai.json", {
         timestamp: new Date().toISOString(),
-        body: maskSensitiveValue(body)
+        body: payloadMetadata(body)
       });
     },
 
@@ -216,9 +264,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logTargetRequest(url, headers, body) {
       writeJsonFile(sessionPath, "4_req_target.json", {
         timestamp: new Date().toISOString(),
-        url: maskSensitiveUrl(url),
-        headers: maskSensitiveHeaders(headers),
-        body: maskSensitiveValue(body)
+        url: diagnosticUrl(url),
+        headers: diagnosticHeaders(headers),
+        body: payloadMetadata(body)
       });
     },
 
@@ -228,60 +276,39 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
       writeJsonFile(sessionPath, filename, {
         timestamp: new Date().toISOString(),
         status,
-        statusText,
-        headers: maskSensitiveHeaders(headers),
-        body: maskSensitiveValue(body)
+        headers: diagnosticHeaders(headers),
+        body: payloadMetadata(body)
       });
     },
 
     // 5. Append streaming chunk to provider response
     appendProviderChunk(chunk) {
-      if (!fs || !sessionPath) return;
-      try {
-        const filePath = path.join(sessionPath, "5_res_provider.txt");
-        fs.appendFileSync(filePath, maskSensitiveText(chunk));
-      } catch (err) {
-
-        // Ignore append errors
-      }},
+      writeStreamMetadata(sessionPath, "5_res_provider.txt", providerStream, chunk);
+    },
 
     // 6. Append OpenAI intermediate chunks (target → openai)
     appendOpenAIChunk(chunk) {
-      if (!fs || !sessionPath) return;
-      try {
-        const filePath = path.join(sessionPath, "6_res_openai.txt");
-        fs.appendFileSync(filePath, maskSensitiveText(chunk));
-      } catch (err) {
-
-        // Ignore append errors
-      }},
+      writeStreamMetadata(sessionPath, "6_res_openai.txt", openAIStream, chunk);
+    },
 
     // 7. Log converted response to client (for non-streaming)
     logConvertedResponse(body) {
       writeJsonFile(sessionPath, "7_res_client.json", {
         timestamp: new Date().toISOString(),
-        body: maskSensitiveValue(body)
+        body: payloadMetadata(body)
       });
     },
 
     // 7. Append streaming chunk to converted response
     appendConvertedChunk(chunk) {
-      if (!fs || !sessionPath) return;
-      try {
-        const filePath = path.join(sessionPath, "7_res_client.txt");
-        fs.appendFileSync(filePath, maskSensitiveText(chunk));
-      } catch (err) {
-
-        // Ignore append errors
-      }},
+      writeStreamMetadata(sessionPath, "7_res_client.txt", convertedStream, chunk);
+    },
 
     // 6. Log error
-    logError(error, requestBody = null) {
+    logError(error) {
       writeJsonFile(sessionPath, "6_error.json", {
         timestamp: new Date().toISOString(),
-        error: maskSensitiveText(error?.message || String(error)),
-        stack: error?.stack ? maskSensitiveText(error.stack) : undefined,
-        requestBody: maskSensitiveValue(requestBody)
+        error: errorMetadata(error)
       });
     }
   };
@@ -290,7 +317,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
 // Legacy functions for backward compatibility
 export function logRequest() {}
 export function logResponse() {}
-export function logError(provider, { error, url, model, requestBody }) {
+export function logError(provider, { error, url, model }) {
   if (!fs || !LOGS_DIR) return;
 
   try {
@@ -299,20 +326,16 @@ export function logError(provider, { error, url, model, requestBody }) {
     }
 
     const date = new Date().toISOString().split("T")[0];
-    const logPath = path.join(LOGS_DIR, `${provider}-${date}.log`);
+    const logPath = path.join(LOGS_DIR, `${diagnosticLabel(provider).replace(/[^A-Za-z0-9_-]/g, "-")}-${date}.log`);
 
     const logEntry = {
       timestamp: new Date().toISOString(),
-      type: "error",
-      provider,
-      model,
-      url: maskSensitiveUrl(url),
-      error: maskSensitiveText(error?.message || String(error)),
-      stack: error?.stack ? maskSensitiveText(error.stack) : undefined,
-      requestBody: maskSensitiveValue(requestBody)
+      provider: diagnosticLabel(provider),
+      model: diagnosticLabel(model),
+      url: diagnosticUrl(url),
+      error: errorMetadata(error)
     };
-
-    fs.appendFileSync(logPath, JSON.stringify(logEntry) + "\n");
+    fs.appendFileSync(logPath, JSON.stringify(logEntry) + "\n", { mode: 0o600 });
   } catch (err) {
     console.log("[LOG] Failed to write error log:", err.message);
   }

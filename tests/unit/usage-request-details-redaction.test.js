@@ -38,16 +38,24 @@ describe("GET /api/usage/request-details payload redaction", () => {
     mocks.getRequestDetails.mockResolvedValue({ details: [sensitive], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1, hasNext: false, hasPrev: false } });
   });
 
-  it("never returns request, providerRequest, providerResponse, or response to dashboard consumers", async () => {
+  it("returns only stable redaction metadata for former payload fields", async () => {
     const res = await route.GET(request());
     const body = res.body;
     const detail = body.details[0];
 
     expect(res.status).toBe(200);
-    expect(detail.request).toBeUndefined();
-    expect(detail.providerRequest).toBeUndefined();
-    expect(detail.providerResponse).toBeUndefined();
-    expect(detail.response).toBeUndefined();
+    const expectedBytes = {
+      request: Buffer.byteLength(JSON.stringify(sensitive.request)),
+      providerRequest: Buffer.byteLength(JSON.stringify(sensitive.providerRequest)),
+      providerResponse: Buffer.byteLength(JSON.stringify(sensitive.providerResponse)),
+      response: Buffer.byteLength(JSON.stringify(sensitive.response)),
+    };
+    for (const field of ["request", "providerRequest", "providerResponse", "response"]) {
+      expect(detail[field]).toEqual({ redacted: true, version: 1, present: true, type: "object" });
+      expect(detail[field]).not.toHaveProperty("bytes");
+      expect(expectedBytes[field]).toBeGreaterThan(0);
+    }
+    expect(JSON.stringify(detail)).not.toMatch(/secret prompt|secret upstream body|secret upstream response|secret reply/);
     expect(detail.id).toBe("req-1");
     expect(detail.provider).toBe("openai");
     expect(detail.model).toBe("gpt-4o");
@@ -57,5 +65,16 @@ describe("GET /api/usage/request-details payload redaction", () => {
     expect(detail.tokens).toEqual({ input: 10, output: 20 });
     expect(detail.pxpipe).toEqual({ applied: true });
     expect(detail.timestamp).toBe("2026-08-14T00:00:00.000Z");
+  });
+
+  it("passes through validated stored metadata without exposing extra stored keys", async () => {
+    mocks.getRequestDetails.mockResolvedValue({
+      details: [{ ...sensitive, request: { redacted: true, version: 1, present: true, type: "object", bytes: 123, preview: "RAW-CANARY" } }],
+      pagination: {},
+    });
+
+    const detail = (await route.GET(request())).body.details[0];
+    expect(detail.request).toEqual({ redacted: true, version: 1, present: true, type: "object", bytes: 123 });
+    expect(JSON.stringify(detail)).not.toContain("RAW-CANARY");
   });
 });

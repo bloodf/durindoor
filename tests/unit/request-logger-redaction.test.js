@@ -1,11 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   maskSensitiveHeaders,
   maskSensitiveText,
   maskSensitiveUrl,
-  maskSensitiveValue,
 } from "../../open-sse/utils/requestLogger.js";
 import { sanitizeErrorMessage } from "../../open-sse/utils/error.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+const originalCwd = process.cwd();
+
+afterEach(() => {
+  process.chdir(originalCwd);
+  delete process.env.ENABLE_REQUEST_LOGS;
+  vi.resetModules();
+});
 
 describe("request logger credential redaction", () => {
   it("redacts secret header values while retaining diagnostic headers", () => {
@@ -88,35 +98,6 @@ describe("request logger credential redaction", () => {
       .toBe("request failed?session_id=[redacted]&model=gpt");
   });
 
-  it("recursively redacts response and request body credential fields", () => {
-    expect(maskSensitiveValue({
-      error: "request failed?ctoken=secret",
-      nested: {
-        accessToken: "secret-token",
-        refresh_token: "refresh-secret",
-        api_key: "api-secret",
-        auth: "auth-secret",
-        "x-api-key": "x-api-secret",
-        session_id: "private-session",
-        prompt_cache_key: "private-cache",
-        safe: "model-1",
-      },
-      rows: [{ cookie: "session=secret", "set-cookie": "server-secret" }],
-    })).toEqual({
-      error: "request failed?ctoken=[redacted]",
-      nested: {
-        accessToken: "[redacted]",
-        refresh_token: "[redacted]",
-        api_key: "[redacted]",
-        auth: "[redacted]",
-        "x-api-key": "[redacted]",
-        session_id: "[redacted]",
-        prompt_cache_key: "[redacted]",
-        safe: "model-1",
-      },
-      rows: [{ cookie: "[redacted]", "set-cookie": "[redacted]" }],
-    });
-  });
 
   it("redacts credentials embedded in transport error messages", () => {
     const message = sanitizeErrorMessage(
@@ -146,5 +127,78 @@ describe("request logger credential redaction", () => {
     expect(message).toContain("https://[redacted]@proxy.example:8443");
     expect(message).toContain("code=[redacted]");
     expect(message).toContain("state=[redacted]");
+  });
+});
+
+describe("request logger metadata-only persistence", () => {
+  it("writes bounded metadata without any stage, stream, error, or legacy payload content", async () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-request-log-"));
+    process.chdir(temp);
+    process.env.ENABLE_REQUEST_LOGS = "true";
+    vi.resetModules();
+    const loggerModule = await import("../../open-sse/utils/requestLogger.js");
+    const logger = await loggerModule.createRequestLogger("openai", "claude", "model-test");
+    const canaries = {
+      client: "CLIENT-PROMPT-CANARY",
+      normalized: "NORMALIZED-CANARY",
+      intermediate: "INTERMEDIATE-SOURCE-CANARY",
+      target: "TRANSLATED-PROVIDER-CANARY",
+      provider: "PROVIDER-RESPONSE-CANARY",
+      converted: "CONVERTED-CLIENT-CANARY",
+      providerChunk: "PROVIDER-CHUNK-CANARY",
+      openaiChunk: "OPENAI-CHUNK-CANARY",
+      convertedChunk: "CLIENT-CHUNK-CANARY",
+      binaryChunk: "BINARY-CHUNK-CANARY",
+      error: "ERROR-MESSAGE-CANARY",
+      stack: "STACK-CANARY",
+      requestBody: "ERROR-REQUEST-BODY-CANARY",
+      source: "function confidentialSource() {}",
+    };
+
+    try {
+      logger.logClientRawRequest("https://user:url-pass@example.test/chat?token=query-secret#access_token=fragment-secret", { prompt: canaries.client, source: canaries.source }, { authorization: "Bearer header-secret" });
+      logger.logRawRequest({ prompt: canaries.normalized });
+      logger.logOpenAIRequest({ input: canaries.intermediate });
+      logger.logTargetRequest("https://example.test/v1?api_key=target-secret", { cookie: "cookie-secret" }, { input: canaries.target });
+      logger.logProviderResponse(200, "OK", { "content-type": "application/json" }, { output: canaries.provider });
+      logger.appendProviderChunk(canaries.providerChunk);
+      logger.appendProviderChunk(new TextEncoder().encode(canaries.binaryChunk));
+      logger.appendOpenAIChunk(new Uint8Array());
+      logger.logConvertedResponse({ output: canaries.converted });
+      logger.appendConvertedChunk(canaries.convertedChunk);
+      const error = new Error(canaries.error);
+      error.stack = `${canaries.error}\n    at ${canaries.stack}`;
+      logger.logError(error, { prompt: canaries.requestBody });
+      loggerModule.logError("openai", {
+        error,
+        url: "https://user:legacy-pass@example.test/chat?token=legacy-query-secret",
+        model: "model-test",
+        requestBody: { prompt: canaries.requestBody },
+      });
+
+      const files = [
+        ...fs.readdirSync(logger.sessionPath).map((name) => path.join(logger.sessionPath, name)),
+        ...fs.readdirSync(path.join(temp, "logs"))
+          .filter((name) => name.endsWith(".log"))
+          .map((name) => path.join(temp, "logs", name)),
+      ];
+      const output = files.map((file) => fs.readFileSync(file, "utf8")).join("\n");
+
+      for (const canary of Object.values(canaries)) expect(output).not.toContain(canary);
+      expect(output).not.toMatch(/header-secret|url-pass|query-secret|fragment-secret|target-secret|cookie-secret|legacy-pass/);
+      expect(output).not.toContain("stack");
+
+      const clientMetadata = JSON.parse(fs.readFileSync(path.join(logger.sessionPath, "1_req_client.json"), "utf8"));
+      expect(clientMetadata.body).toEqual({ redacted: true, present: true, type: "object", bytes: Buffer.byteLength(JSON.stringify({ prompt: canaries.client, source: canaries.source })) });
+      const providerStream = JSON.parse(fs.readFileSync(path.join(logger.sessionPath, "5_res_provider.txt"), "utf8"));
+      expect(providerStream.body).toEqual({ redacted: true, present: true, type: "bytes", bytes: Buffer.byteLength(canaries.providerChunk) + Buffer.byteLength(canaries.binaryChunk) });
+      expect(providerStream.chunks).toBe(2);
+      const openAIStream = JSON.parse(fs.readFileSync(path.join(logger.sessionPath, "6_res_openai.txt"), "utf8"));
+      expect(openAIStream.body).toEqual({ redacted: true, present: true, type: "bytes", bytes: 0 });
+      expect(openAIStream.chunks).toBe(1);
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
   });
 });

@@ -223,7 +223,7 @@ For more SDK examples and the dashboard workflow, see the [Usage Guide](docs/gui
 | Chat Completions | OpenAI-compatible `/v1/chat/completions`, the common entry point for most tools. |
 | Responses | `/v1/responses` with compatibility rewrites for selected clients. |
 | Claude Messages | `/v1/messages` for Claude-compatible clients and translation testing. |
-| Models | `/v1/models` lists models available through configured providers, aliases, and nodes. |
+| Models | `/v1/models` lists models available through configured providers, aliases, and nodes; `/v1/models/{provider}/{model}` returns one exact configured model. |
 | Embeddings | `/v1/embeddings` routed to embedding-capable providers. |
 | Images | `/v1/images/generations` and `/v1/images/edits`. Provider-dependent. |
 | Audio | `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/audio/voices`. Provider-dependent. |
@@ -284,7 +284,7 @@ Use DurinDoor API keys generated in the dashboard; do not send upstream provider
 | `/v1/responses` | POST | Responses API with compatibility rewrites. |
 | `/v1/messages` | POST | Claude Messages for Claude-compatible clients. |
 | `/v1/messages/count_tokens` | POST | Token counting (provider-dependent). |
-| `/v1/models` | GET | Available models, aliases, and nodes. |
+| `/v1/models` and `/v1/models/{provider}/{model}` | GET | Available models or one exact configured provider-prefixed model. |
 | `/v1/embeddings` | POST | Embeddings. |
 | `/v1/images/generations` | POST | Text-to-image. |
 | `/v1/images/edits` | POST | Image edits. |

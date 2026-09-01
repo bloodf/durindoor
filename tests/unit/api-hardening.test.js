@@ -386,10 +386,9 @@ describe("buildModelsList coalescing (#6440)", () => {
   });
 });
 
-// --- route-handler integration (mocked DB) --------------------------------
-// Exercise the actual GET/HEAD handlers imported from both route modules so
-// the focused run proves filters, status codes, and CORS flow through the real
-// handler code — not just the coalescing wrapper in isolation.
+// Exercise the actual GET/HEAD/OPTIONS handlers imported from both route modules
+// so the focused run proves filters, lookup semantics, projections, status codes,
+// CORS, and cheap probes flow through real handler code.
 
 describe("GET /v1/models route handler (mocked DB)", () => {
   it("returns 200 with {object:'list', data} and CORS for llm filter", async () => {
@@ -404,25 +403,90 @@ describe("GET /v1/models route handler (mocked DB)", () => {
   });
 });
 
-describe("GET /v1/models/{kind} route handler (mocked DB)", () => {
-  it("returns 200 for a known kind with CORS", async () => {
-    const { GET } = await import("../../src/app/api/v1/models/[kind]/route.js");
-    db.getProviderConnections.mockResolvedValue([]);
-    const res = await GET(new Request("http://x/v1/models/image"), { params: Promise.resolve({ kind: "image" }) });
+describe("GET /v1/models/{kind-or-model} route handler (mocked DB)", () => {
+  async function importRoute() {
+    return import("../../src/app/api/v1/models/[...model]/route.js");
+  }
+
+  function context(model) {
+    return { params: Promise.resolve({ model }) };
+  }
+
+  it("returns a known kind through the established projected list response", async () => {
+    const { GET } = await importRoute();
+    const request = new Request("http://x/v1/models/image", {
+      headers: { "anthropic-version": "2023-06-01" },
+    });
+    const res = await GET(request, context(["image"]));
+
     expect(res.status).toBe(200);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const body = await res.json();
-    expect(body.object).toBe("list");
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body).toHaveProperty("has_more", false);
   });
 
-  it("returns 404 invalid_request_error for an unknown kind", async () => {
-    const { GET } = await import("../../src/app/api/v1/models/[kind]/route.js");
-    const res = await GET(new Request("http://x/v1/models/nope"), { params: Promise.resolve({ kind: "nope" }) });
+  it.each([
+    [["custom", "single-model"]],
+    [["custom/single-model"]],
+  ])("returns an exact configured provider-prefixed model for decoded segments %j", async (model) => {
+    const { GET } = await importRoute();
+    db.getCustomModels.mockResolvedValue([
+      { providerAlias: "custom", id: "single-model", kind: "llm" },
+    ]);
+
+    const res = await GET(
+      new Request("http://x/v1/models/custom%2Fsingle-model"),
+      context(model),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await res.json()).toMatchObject({
+      id: "custom/single-model",
+      object: "model",
+      owned_by: "custom",
+    });
+  });
+
+  it("returns OpenAI model_not_found for a missing provider-prefixed model", async () => {
+    const { GET } = await importRoute();
+    const res = await GET(
+      new Request("http://x/v1/models/custom/missing"),
+      context(["custom", "missing"]),
+    );
+    const body = await res.json();
+
     expect(res.status).toBe(404);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(body.error).toMatchObject({
+      type: "invalid_request_error",
+      code: "model_not_found",
+    });
+  });
+
+  it("preserves legacy Unknown model kind for an unknown one-segment path", async () => {
+    const { GET } = await importRoute();
+    const res = await GET(
+      new Request("http://x/v1/models/nope"),
+      context(["nope"]),
+    );
     const body = await res.json();
+
+    expect(res.status).toBe(404);
     expect(body.error.type).toBe("invalid_request_error");
-    expect(body.error.message).toContain("nope");
+    expect(body.error.code).toBeUndefined();
+    expect(body.error.message).toContain("Unknown model kind: nope");
+    expect(db.getProviderConnections).not.toHaveBeenCalled();
+  });
+
+  it("advertises GET, HEAD, OPTIONS with CORS", async () => {
+    const { OPTIONS } = await importRoute();
+    const res = await OPTIONS();
+
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-methods")).toBe("GET, HEAD, OPTIONS");
+    expect(res.headers.get("access-control-allow-headers")).toBe("*");
   });
 });
 
@@ -434,16 +498,23 @@ describe("HEAD /v1/models route handler (mocked DB)", () => {
     expect(res.headers.get("content-type")).toBe("application/json");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     expect(await res.text()).toBe("");
-    expect(db.getProviderConnections).not.toHaveBeenCalled(); // fast-path HEAD
+    expect(db.getProviderConnections).not.toHaveBeenCalled();
   });
 
-  it("returns 404 for unknown kind, 200 for known kind — both null body", async () => {
-    const { HEAD } = await import("../../src/app/api/v1/models/[kind]/route.js");
-    const miss = await HEAD(new Request("http://x/v1/models/nope"), { params: Promise.resolve({ kind: "nope" }) });
-    expect(miss.status).toBe(404);
-    expect(await miss.text()).toBe("");
-    const hit = await HEAD(new Request("http://x/v1/models/tts"), { params: Promise.resolve({ kind: "tts" }) });
-    expect(hit.status).toBe(200);
-    expect(await hit.text()).toBe("");
+  it.each([
+    [["nope"], 404],
+    [["tts"], 200],
+    [["custom", "single-model"], 200],
+    [["custom/single-model"], 200],
+  ])("returns cheap status for %j without building the catalog", async (model, status) => {
+    const { HEAD } = await import("../../src/app/api/v1/models/[...model]/route.js");
+    const res = await HEAD(
+      new Request(`http://x/v1/models/${model.join("/")}`),
+      { params: Promise.resolve({ model }) },
+    );
+
+    expect(res.status).toBe(status);
+    expect(await res.text()).toBe("");
+    expect(db.getProviderConnections).not.toHaveBeenCalled();
   });
 });

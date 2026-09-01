@@ -6,7 +6,7 @@ import { FORMATS } from "../translator/formats.js";
 // gc/ (Gemini Cloud Code Assist) occasionally prepends terminal control chars
 // (cursor-up, clear-line, carriage-return) to SSE frames before the "data:" prefix,
 // which masks the prefix and causes strict client SSE parsers to crash or hang.
-import { isObject } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 const ANSI_ESCAPE_RE = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[A-Z\[\]\\^_`])|[\x00-\x08\x0b\x0c\x0e-\x1f]/g;
 
 /**
@@ -78,6 +78,7 @@ export function hasValuableContent(chunk, format) {
       if (!delta) return Boolean(choice?.finish_reason);
       return delta.content && delta.content !== "" ||
       delta.reasoning_content && delta.reasoning_content !== "" ||
+      isString(delta.reasoning) && delta.reasoning.trim() !== "" ||
       delta.tool_calls && delta.tool_calls.length > 0 ||
       /** Generated images arrive as standalone OpenAI deltas and must survive the stream gate. */
       delta.images && delta.images.length > 0 ||

@@ -6,6 +6,7 @@ import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { U, parseResetTime, toFiniteNumber } from "./shared.js";
 import { applyCodexAccountHeader, resolveCodexAccountId } from "../../shared/codexAccountId.js";
 import { resolveCodexSparkRateLimit } from "../../shared/codexSparkRateLimit.js";
+import { classifyCodexQuotaWindow } from "../../shared/codexQuotaWindow.js";
 
 // Codex (OpenAI) API config
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -173,11 +174,19 @@ function appendCodexQuotaWindows(quotas, prefix, snapshot) {
   let added = false;
 
   if (primary) {
-    quotas[prefix ? `${prefix}_session` : "session"] = formatCodexWindow(primary);
+    const { name, windowSeconds } = classifyCodexQuotaWindow(primary, "session");
+    quotas[prefix ? `${prefix}_${name}` : name] = {
+      ...formatCodexWindow(primary),
+      windowSeconds
+    };
     added = true;
   }
   if (secondary) {
-    quotas[prefix ? `${prefix}_weekly` : "weekly"] = formatCodexWindow(secondary);
+    const { name, windowSeconds } = classifyCodexQuotaWindow(secondary, "weekly");
+    quotas[prefix ? `${prefix}_${name}` : name] = {
+      ...formatCodexWindow(secondary),
+      windowSeconds
+    };
     added = true;
   }
 

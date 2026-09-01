@@ -3,6 +3,7 @@ import {
   resolveCodexAccountId } from
 "../../../shared/codexAccountId.js";
 import { resolveCodexSparkRateLimit } from "../../../shared/codexSparkRateLimit.js";
+import { classifyCodexQuotaWindow } from "../../../shared/codexQuotaWindow.js";
 import {
   asArray,
   asRecord,
@@ -50,19 +51,23 @@ function appendWindows(rows, value, {
   ["session", body.primary_window ?? body.primaryWindow ?? body.primary],
   ["weekly", body.secondary_window ?? body.secondaryWindow ?? body.secondary]];
 
-  for (const [name, rawWindow] of windows) {
+  for (const [fallbackName, rawWindow] of windows) {
     if (rawWindow === null || rawWindow === undefined) continue;
     const window = asRecord(rawWindow);
     if (!window) return false;
     const usedRatio = quotaPercent(window.used_percent ?? window.usedPercent ?? window.percent_used);
     if (usedRatio === null) return false;
+    const { name, windowSeconds } = classifyCodexQuotaWindow(window, fallbackName);
     const row = ratioQuotaRow({
       accountKey,
       resourceKey,
       dimensionKey: quotaScopedKey("requests", name),
       remainingRatio: 1 - usedRatio,
       resetAt: resetAtForWindow(window, now),
-      metadata: quotaMetadata({ plan, windowSeconds: name === "session" ? 5 * 60 * 60 : 7 * 24 * 60 * 60 })
+      metadata: quotaMetadata({
+        plan,
+        windowSeconds: windowSeconds ?? (name === "session" ? 5 * 60 * 60 : 7 * 24 * 60 * 60)
+      })
     });
     if (!row) return false;
     rows.push(row);

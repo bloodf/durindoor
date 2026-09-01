@@ -123,6 +123,22 @@ describe("Google and Codex quota normalizers", () => {
     expect(JSON.stringify(rows)).not.toContain("acct-secret");
   });
 
+  it("classifies a supplied seven-day Codex primary window as weekly", () => {
+    const rows = normalizeCodexQuota({
+      plan_type: "pro",
+      rate_limit: {
+        primary_window: { used_percent: 1, limit_window_seconds: 604800 },
+      },
+    }, { now: NOW });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        dimensionKey: "requests:weekly",
+        metadata: expect.objectContaining({ windowSeconds: 604800 }),
+      }),
+    ]);
+  });
+
   it("rejects malformed Codex percentages instead of defaulting them", () => {
     expect(normalizeCodexQuota({ rate_limit: { primary_window: { used_percent: 101 } } }, { now: NOW })).toBeNull();
   });

@@ -203,6 +203,59 @@ describe("dashboard guard public LLM API access", () => {
     expect(response.body.error).toBe("API key required for remote API access");
   });
 
+  it("rejects remote root responses rewrite without API key", async () => {
+    const response = await proxy(request("/responses", { host: "router.example.com" }, "POST"));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it.each([
+    ["Bearer", { authorization: "Bearer sk-bearer" }, "sk-bearer"],
+    ["x-api-key", { "x-api-key": "sk-header" }, "sk-header"],
+  ])("allows remote root responses rewrite with valid %s credential", async (_label, credential, key) => {
+    mocks.validateApiKey.mockImplementation(async (candidate) => candidate === key);
+
+    const response = await proxy(request("/responses", {
+      host: "router.example.com",
+      ...credential,
+    }, "POST"));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).toHaveBeenCalledWith(key);
+  });
+
+  it("rejects forged localhost for a wrapper-trusted non-loopback responses peer", async () => {
+    const response = await proxy(request("/responses", {
+      host: "localhost",
+      "x-9r-real-ip": "10.204.111.34",
+    }, "POST"));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
+  it("allows a wrapper-trusted loopback peer through the root responses rewrite", async () => {
+    const response = await proxy(request("/responses", {
+      host: "router.example.com",
+      "x-9r-real-ip": "127.0.0.1",
+    }, "POST"));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("allows only credential-free OPTIONS on the remote root responses rewrite", async () => {
+    const headers = { host: "router.example.com" };
+
+    const preflight = await proxy(request("/responses", headers, "OPTIONS"));
+    expect(preflight.status).toBe(204);
+
+    const response = await proxy(request("/responses", headers, "GET"));
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("API key required for remote API access");
+  });
+
   it("rejects remote codex rewrite without API key", async () => {
     const response = await proxy(request("/codex/x", { host: "router.example.com" }));
 

@@ -49,6 +49,24 @@ The response contains models available through configured providers, aliases, co
 
 Model rows keep the callable `id` and standard `owned_by` values used by existing clients. DurinDoor also adds optional presentation fields: `name`, `provider_name`, `provider_alias`, and `gateway_provider`. Clients must continue sending `id` in requests; friendly names are display metadata and do not replace aliases or routing identities.
 
+Retrieve one configured LLM model by its exact provider-prefixed ID:
+
+```bash
+curl http://localhost:20128/v1/models/PROVIDER/MODEL \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+For example, an ID returned as `cc/claude-sonnet-5` is available at
+`GET /v1/models/cc/claude-sonnet-5`. The response is that OpenAI-compatible
+model object. Unknown provider-prefixed IDs return HTTP 404 with
+`error.code: "model_not_found"`; an unknown single segment retains the legacy
+`Unknown model kind` response because single-segment paths are capability
+filters. `HEAD` remains a catalog-free route probe: known capability segments
+and provider-prefixed paths return 200 without proving that a model exists.
+
+Capability lists remain available at `GET /v1/models/{kind}` for `image`,
+`tts`, `stt`, `embedding`, `image-to-text`, `web`, and `rerank`.
+
 Operators can enable **Profile → Model catalog → Expose combos only** to make
 `GET /v1/models` return only configured combo names. The setting defaults off.
 Combo rows use `owned_by: "combo"`; web search and fetch combos also retain

@@ -1,4 +1,4 @@
-import { FORMATS } from "../../translator/formats.js";
+import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
 import { addBufferToUsage, claudeUsageToOpenAI, filterUsageForFormat } from "../../utils/usageTracking.js";
@@ -30,13 +30,6 @@ import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
-
-const GEMINI_FAMILY_FORMATS = new Set([
-  FORMATS.GEMINI,
-  FORMATS.GEMINI_CLI,
-  FORMATS.VERTEX,
-  FORMATS.ANTIGRAVITY
-]);
 
 /**
  * Check the emitted response shape for client-usable text, reasoning, or tools.
@@ -285,7 +278,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   }
 
   // Gemini / Antigravity
-  if (targetFormat === FORMATS.GEMINI || targetFormat === FORMATS.ANTIGRAVITY || targetFormat === FORMATS.GEMINI_CLI || targetFormat === FORMATS.VERTEX) {
+  if (GEMINI_FAMILY_FORMATS.has(targetFormat)) {
     const response = responseBody.response || responseBody;
     if (!response?.candidates?.[0]) return responseBody;
 
@@ -335,7 +328,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (usage) {
       result.usage = toOpenAIUsage(usage, "gemini");
     }
-    return result;
+    return sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE ?
+    projectCompletionToClientFormat(result, sourceFormat, { ...options, customToolNames }) :
+    result;
   }
 
   // Claude

@@ -18,10 +18,18 @@ import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } fro
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+function recordFinalOutputItem(state, eventType, data) {
+  if (eventType !== "response.output_item.added" && eventType !== "response.output_item.done") return;
+  const outputIndex = Number(data.output_index);
+  if (!Number.isInteger(outputIndex) || !data.item) return;
+  (state.finalOutputItems ||= [])[outputIndex] = data.item;
+}
+
 function createEventEmitter(state) {
   const events = [];
   const emit = (eventType, data) => {
     data.sequence_number = ++state.seq;
+    recordFinalOutputItem(state, eventType, data);
     events.push({ event: eventType, data });
   };
   return { events, emit };
@@ -493,6 +501,7 @@ function sendCompleted(state, emit) {
         status: "completed",
         background: false,
         error: null,
+        output: (state.finalOutputItems || []).filter(Boolean),
         usage
       }
     });

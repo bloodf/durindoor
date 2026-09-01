@@ -71,6 +71,36 @@ import { isObject } from "../../shared/utils/typeChecks.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
+const ANTIGRAVITY_STRIKE_WINDOW_MS = 60_000;
+const ANTIGRAVITY_STRIKE_BLOCK_MS = 15 * 60_000;
+const antigravity429Strikes = new Map();
+
+function antigravityStrikeKey(connectionId, model) {
+  return `${connectionId}|${model}`;
+}
+
+function clearAntigravity429Strikes(connectionId, model) {
+  antigravity429Strikes.delete(antigravityStrikeKey(connectionId, model));
+}
+
+function recordAntigravity429Strike(connectionId, model, now = Date.now()) {
+  const key = antigravityStrikeKey(connectionId, model);
+  const previous = antigravity429Strikes.get(key);
+  // First strike anchors the window; success resets it, and threshold expiry is persisted through the existing model-lock path.
+  const strike = !previous || now - previous.windowStartedAt > ANTIGRAVITY_STRIKE_WINDOW_MS ?
+  { count: 1, windowStartedAt: now } :
+  { count: previous.count + 1, windowStartedAt: previous.windowStartedAt };
+  if (strike.count < 3) {
+    antigravity429Strikes.set(key, strike);
+    return null;
+  }
+  antigravity429Strikes.delete(key);
+  return now + ANTIGRAVITY_STRIKE_BLOCK_MS;
+}
+
+export function __resetAntigravity429StrikesForTests() {
+  antigravity429Strikes.clear();
+}
 
 function requestAborted(request, signal = null) {
   return signal?.aborted === true || request?.signal?.aborted === true;
@@ -1095,6 +1125,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           }
         } : null),
         onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {
+          if (provider === "antigravity" || provider === "agy") {
+            clearAntigravity429Strikes(credentials.connectionId, model);
+          }
           if (!Number.isSafeInteger(attemptStartedAt) || attemptStartedAt <= 0) return;
           await clearAccountError(credentials.connectionId, refreshedCredentials, model, {
             provider,
@@ -1162,14 +1195,21 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       latestAttemptStartedAt;
       const resultErrorBody = result.errorBody && isObject(result.errorBody) ? result.errorBody : null;
       const resultHeaders = result.headers ?? null;
+      const antigravityProvider = provider === "antigravity" || provider === "agy";
+      const authoritativeResetAt = Number(result.rateLimitEvidence?.resetAtMs);
+      const authoritativeReset = Number.isFinite(result.resetsAtMs) ||
+      Number.isFinite(authoritativeResetAt) && authoritativeResetAt > Date.now();
+      if (antigravityProvider && result.status === 429 && authoritativeReset) {
+        clearAntigravity429Strikes(credentials.connectionId, model);
+      }
       /**
        * Antigravity 409s and 429s without executor reset metadata may describe
        * exact model quota. Refresh the shared repository before creating any
        * legacy lock; only a fresh exact-source blocker owns the reselect.
        */
       const shouldRefreshAntigravityQuota =
-        (provider === "antigravity" || provider === "agy") &&
-        (result.status === 409 || (result.status === 429 && !Number.isFinite(result.resetsAtMs))) &&
+        antigravityProvider &&
+        (result.status === 409 || (result.status === 429 && !authoritativeReset)) &&
         activeConnection &&
         !refreshedQuotaConnectionIds.has(credentials.connectionId);
       if (shouldRefreshAntigravityQuota) {
@@ -1189,6 +1229,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           }) :
           null;
           if (decision?.skip) {
+            clearAntigravity429Strikes(credentials.connectionId, model);
             log.info("AUTH", `${provider} | refreshed quota blocked ${credentials.connectionId.slice(0, 8)} (reason=${decision.reason || "unknown"}); reselecting`);
             lastError = result.error;
             lastStatus = result.status;
@@ -1202,16 +1243,24 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         }
       }
 
+      const strikeBreakerResetAt = antigravityProvider && result.status === 429 && !authoritativeReset ?
+      recordAntigravity429Strike(credentials.connectionId, model) :
+      null;
+      const fallbackResetAt = strikeBreakerResetAt ?? result.resetsAtMs;
+      const fallbackEvidence = strikeBreakerResetAt === null ?
+      result.rateLimitEvidence || null :
+      { state: result.rateLimitEvidence?.state === "exhausted" ? "exhausted" : "cooldown", resetAtMs: strikeBreakerResetAt, source: "antigravity_strike_breaker" };
+
       const fallbackState = await markAccountUnavailable(
         credentials.connectionId,
         result.status,
         result.error,
         provider,
         model,
-        result.resetsAtMs,
+        fallbackResetAt,
         {
           attemptStartedAt: resultAttemptStartedAt,
-          rateLimitEvidence: result.rateLimitEvidence || null,
+          rateLimitEvidence: fallbackEvidence,
           headers: resultHeaders,
           errorBody: resultErrorBody,
           signal: requestSignal

@@ -1,19 +1,32 @@
 import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/usageDb";
+import { runtimeTypeName } from "@/shared/utils/typeChecks.js";
 
-const SENSITIVE_PAYLOAD_FIELDS = new Set([
-  "request",
-  "providerRequest",
-  "providerResponse",
-  "response",
-]);
+const PAYLOAD_FIELDS = ["request", "providerRequest", "providerResponse", "response"];
+const PAYLOAD_TYPES = new Set(["none", "string", "object", "array", "bytes", "buffer", "stream", "boolean", "number"]);
+
+function safePayloadMetadata(value) {
+  const storedMetadata = value?.redacted === true && value?.version === 1;
+  const present = storedMetadata ? value.present === true : value != null;
+  const inferredType = value == null ? "none" : runtimeTypeName(value);
+  const type = storedMetadata && PAYLOAD_TYPES.has(value.type) ? value.type : inferredType;
+  const metadata = {
+    redacted: true,
+    version: 1,
+    present,
+    type
+  };
+  if (storedMetadata && Number.isSafeInteger(value.bytes) && value.bytes >= 0) metadata.bytes = value.bytes;
+  return metadata;
+}
 
 function redactPayloads(result) {
   return {
     ...result,
-    details: result.details.map((detail) => Object.fromEntries(
-      Object.entries(detail).filter(([key]) => !SENSITIVE_PAYLOAD_FIELDS.has(key))
-    )),
+    details: result.details.map((detail) => ({
+      ...detail,
+      ...Object.fromEntries(PAYLOAD_FIELDS.map((field) => [field, safePayloadMetadata(detail[field])]))
+    }))
   };
 }
 

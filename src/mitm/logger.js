@@ -1,9 +1,9 @@
 const fs = require("fs");
 const path = require("path");
-const zlib = require("zlib");
 const { DATA_DIR } = require("./paths");
 const { LOG_BLACKLIST_URL_PARTS } = require("./config");
 const { sanitizeHeaders } = require("./sanitizeHeaders");
+const { runtimeTypeName } = require("../shared/utils/typeChecks.cjs");
 
 function time() {
   return new Date().toLocaleTimeString("en-US", { hour12: false });
@@ -32,7 +32,6 @@ function clearDumpDir() {
   } catch { /* ignore */ }
 }
 
-const EMPTY_BODY_RE = /^\s*(\{\s*\}|\[\s*\]|null)?\s*$/;
 
 function slugify(s, max = 80) {
   return String(s).replace(/[^a-zA-Z0-9]/g, "_").substring(0, max);
@@ -43,70 +42,79 @@ function isBlacklisted(url) {
   return LOG_BLACKLIST_URL_PARTS.some(part => url.includes(part));
 }
 
-// Decode body buffer based on content-encoding header
-function decodeBody(buf, encoding) {
-  if (!buf || buf.length === 0) return buf;
+function stripUrlContent(url) {
+  if (!url) return "";
   try {
-    const enc = (encoding || "").toLowerCase();
-    if (enc.includes("gzip")) return zlib.gunzipSync(buf);
-    if (enc.includes("br")) return zlib.brotliDecompressSync(buf);
-    if (enc.includes("deflate")) return zlib.inflateSync(buf);
-  } catch { /* return raw on failure */ }
-  return buf;
+    const parsed = new URL(String(url), "https://mitm.invalid");
+    return `${parsed.pathname}`;
+  } catch {
+    return String(url).split(/[?#]/, 1)[0];
+  }
 }
 
-// Save raw request: method + url + headers + body
+function bodyMetadata(body, type) {
+  const bytes = body == null ? 0 : Buffer.isBuffer(body) || body instanceof Uint8Array
+    ? body.byteLength
+    : Buffer.byteLength(String(body), "utf8");
+  return { redacted: true, present: bytes > 0, type, bytes };
+}
+
+function boundedHeaders(headers) {
+  return Object.fromEntries(Object.entries(sanitizeHeaders(headers || {})).slice(0, 64).map(([key, value]) => [
+    String(key).replace(/[\r\n\0]/g, " ").slice(0, 128),
+    String(value ?? "").replace(/[\r\n\0]/g, " ").slice(0, 1024)
+  ]));
+}
+
+// Save request metadata without intercepted payload content.
 function dumpRequest(req, bodyBuffer, tag = "raw") {
   if (isBlacklisted(req.url)) return null;
   try {
     ensureDumpDir();
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    const slug = slugify((req.headers.host || "") + req.url);
+    const url = stripUrlContent(req.url).slice(0, 2048);
+    const host = String(req.headers?.host || "").replace(/[\r\n\0]/g, " ").slice(0, 255);
+    const slug = slugify(host + url);
     const file = path.join(DUMP_DIR, `${ts}_${tag}_${slug}.req.json`);
-    let parsed = null;
-    try { parsed = JSON.parse(bodyBuffer.toString()); } catch { /* not JSON */ }
     fs.writeFileSync(file, JSON.stringify({
-      method: req.method,
-      url: req.url,
-      host: req.headers.host,
-      headers: sanitizeHeaders(req.headers),
-      body: parsed ?? bodyBuffer.toString("utf8")
-    }, null, 2));
+      method: String(req.method || "").replace(/[^A-Za-z]/g, "").slice(0, 16),
+      url,
+      host,
+      headers: boundedHeaders(req.headers),
+      body: bodyMetadata(bodyBuffer, Buffer.isBuffer(bodyBuffer) ? "buffer" : runtimeTypeName(bodyBuffer))
+    }, null, 2), { mode: 0o600 });
     return file;
   } catch { return null; }
 }
 
-// Buffer-based response dumper — collects chunks then decodes + writes once on end()
-// Trade-off: holds response in RAM, but enables gzip/br decoding for readable output.
+// Count response bytes without buffering, decoding, or decompressing content.
 function createResponseDumper(req, tag = "raw") {
   if (isBlacklisted(req.url)) return null;
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const slug = slugify((req.headers.host || "") + req.url);
+  const url = stripUrlContent(req.url).slice(0, 2048);
+  const host = String(req.headers?.host || "").replace(/[\r\n\0]/g, " ").slice(0, 255);
+  const slug = slugify(host + url);
   const file = path.join(DUMP_DIR, `${ts}_${tag}_${slug}.res.txt`);
   let status = 0;
   let headers = {};
-  const chunks = [];
+  let bytes = 0;
+  let chunks = 0;
   return {
-    writeHeader: (s, h) => { status = s; headers = sanitizeHeaders(h || {}); },
+    writeHeader: (s, h) => { status = Number.isInteger(s) ? s : 0; headers = boundedHeaders(h); },
     writeChunk: (chunk) => {
       if (chunk == null) return;
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      bytes += bodyMetadata(chunk, "stream").bytes;
+      chunks += 1;
     },
     end: () => {
       try {
         ensureDumpDir();
-        const raw = Buffer.concat(chunks);
-        const enc = headers["content-encoding"] || headers["Content-Encoding"];
-        const decoded = decodeBody(raw, enc);
-        const text = decoded.toString("utf8");
-        // Skip empty / trivially-empty bodies
-        if (EMPTY_BODY_RE.test(text)) return;
-        // Strip content-encoding since body is now decoded
-        const cleanHeaders = { ...headers };
-        delete cleanHeaders["content-encoding"];
-        delete cleanHeaders["Content-Encoding"];
-        const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(cleanHeaders, null, 2)}\n---BODY---\n${text}`;
-        fs.writeFileSync(file, out);
+        fs.writeFileSync(file, JSON.stringify({
+          status,
+          url,
+          headers,
+          body: { redacted: true, present: bytes > 0, type: "stream", bytes, chunks }
+        }, null, 2), { mode: 0o600 });
       } catch { /* ignore */ }
     },
     file

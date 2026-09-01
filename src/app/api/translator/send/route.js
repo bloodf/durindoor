@@ -89,9 +89,10 @@ export async function POST(request) {
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Translator] Provider error ${response.status}:`, errorText.slice(0, 500));
-      return Response.json({ success: false, error: `Provider error: ${response.status}`, details: errorText }, { status: response.status });
+      await response.body?.cancel().catch(() => {});
+      const details = `Upstream provider returned HTTP ${response.status}`;
+      console.error(`[Translator] Provider error ${response.status}: ${details}`);
+      return Response.json({ success: false, error: `Provider error: ${response.status}`, details }, { status: response.status });
     }
 
     return new Response(response.body, {

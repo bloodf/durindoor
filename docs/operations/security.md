@@ -186,13 +186,15 @@ issuer URLs continue to work. DNS pinning for other outbound probes lives in
 
 ## Request Logs
 
-Detailed request logs may include prompts, responses, tool output, filenames, URLs, source code, and customer data.
+Optional request logs persist metadata only: timestamps, stages, statuses, payload presence/type/byte length, sanitized endpoint paths, and sanitized headers. They do not persist request or response payloads, stream chunks, stacks, or URL query/fragment content. Usage → Details uses the same intentional redaction model, and MITM dumps count response bytes without buffering or decompressing intercepted content for logging.
 
 Use:
 
 ```bash
 ENABLE_REQUEST_LOGS=false
 ```
+
+Metadata can still identify providers, models, timing, traffic size, endpoints, and request outcomes. Enable diagnostics only for short debugging windows, restrict operator access, and define retention and deletion policies. Diagnostic directories and files retain their existing private permission and safe-directory protections.
 
 ### Default dashboard password
 
@@ -201,8 +203,6 @@ When effective dashboard password is built-in `123456`, remote login returns
 IP-bound, one-time proof which can only set a replacement password through
 `POST /api/auth/change-password`. That endpoint creates a dashboard session only
 after persisting the new password.
-
-Enable detailed logs only for short debugging windows. If logs must be retained, define retention, access, and deletion policies.
 
 ## Tunnels and Public URLs
 

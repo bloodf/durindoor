@@ -12,12 +12,15 @@
 - Hosted Codex dashboards now skip the server-side port-1455 proxy, open authorization separately, and immediately show manual callback entry while preserving exact OAuth state validation; loopback dashboards retain automatic proxy, popup, polling, and teardown behavior. Ports decolua/9router#3639 without its JWT-shaped-code state bypass. Closes #679.
 - The Indonesian dashboard catalog now has exact key parity with DurinDoor's canonical English catalog, adapts product-facing branding and keys for the fork, and corrects deployment, proxy, public-exposure, fragment, and routing terminology defects. Ports decolua/9router#3666.
 
+- Diagnostic request logs, Request Details, and MITM dumps now persist bounded metadata instead of request, response, tool, stream, stack, URL query/fragment, or raw provider-error content. Usage → Details explicitly shows the redaction state, and translator failures cancel raw provider-error bodies before returning status-only diagnostics. Ports the payload-at-rest half (`#3689a`) of decolua/9router#3689 while leaving its correlation behavior to separate issue #689. Closes #686.
+
 # 3.18.1
 
 ## Fixed
 
 - Clean standalone builds and Docker images now ship the ESM `src/shared/utils/typeChecks.js` helper imported by `open-sse/config/runtimeConfig.js`, preventing fresh deployments from failing with `ERR_MODULE_NOT_FOUND`.
 - Tray mode now enables OS autostart only before the first recorded decision, preserving explicit disable, manual startup-entry removal, and later explicit re-enable choices across Windows, macOS, and Linux. Ports decolua/9router#3651 while reusing DurinDoor's `DATA_DIR`-aware app-data resolver.
+
 
 # 3.18.0
 

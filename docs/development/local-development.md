@@ -113,4 +113,4 @@ CURSOR_PROTOBUF_DEBUG=1
 DEBUG_MITM=1
 ```
 
-Request logs may include prompts, responses, filenames, and URLs. Disable them after diagnosis.
+Request logs, Usage → Details, and MITM dumps retain metadata rather than payload content: timestamps, provider/model identifiers, statuses, sizes, sanitized endpoint paths, and sanitized headers may remain. Payloads, stream chunks, URL query/fragment content, and raw provider errors are not retained by these surfaces. Use test data, keep diagnostics opt-in, protect local files, and disable them after diagnosis.

@@ -1,15 +1,10 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { isObject } from "../../../shared/utils/typeChecks.js";
-import { redactHeaders } from "../../observability/redact.js";
+import { isString, runtimeTypeName } from "../../../shared/utils/typeChecks.js";
 
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;
 const DEFAULT_FLUSH_INTERVAL_MS = 5000;
-const DEFAULT_MAX_JSON_SIZE = 5 * 1024;
-// Tools definitions get a dedicated, generous budget so they survive even when
-// the full request (message history + tools) blows past DEFAULT_MAX_JSON_SIZE.
-const TOOLS_MAX_JSON_SIZE = 64 * 1024;
 const CONFIG_CACHE_TTL_MS = 5000;
 
 let cachedConfig = null;
@@ -41,7 +36,6 @@ async function getObservabilityConfig() {
       maxRecords: settings.observabilityMaxRecords || parseInt(process.env.OBSERVABILITY_MAX_RECORDS || String(DEFAULT_MAX_RECORDS), 10),
       batchSize: settings.observabilityBatchSize || parseInt(process.env.OBSERVABILITY_BATCH_SIZE || String(DEFAULT_BATCH_SIZE), 10),
       flushIntervalMs: settings.observabilityFlushIntervalMs || parseInt(process.env.OBSERVABILITY_FLUSH_INTERVAL_MS || String(DEFAULT_FLUSH_INTERVAL_MS), 10),
-      maxJsonSize: (settings.observabilityMaxJsonSize || parseInt(process.env.OBSERVABILITY_MAX_JSON_SIZE || "5", 10)) * 1024
     };
   } catch {
     cachedConfig = {
@@ -49,7 +43,6 @@ async function getObservabilityConfig() {
       maxRecords: DEFAULT_MAX_RECORDS,
       batchSize: DEFAULT_BATCH_SIZE,
       flushIntervalMs: DEFAULT_FLUSH_INTERVAL_MS,
-      maxJsonSize: DEFAULT_MAX_JSON_SIZE
     };
   }
   cachedConfigTs = Date.now();
@@ -60,9 +53,6 @@ let writeBuffer = [];
 let flushTimer = null;
 let isFlushing = false;
 
-function sanitizeHeaders(headers) {
-  return redactHeaders(headers, { keepKeys: false });
-}
 
 function generateDetailId(model) {
   const timestamp = new Date().toISOString();
@@ -71,23 +61,25 @@ function generateDetailId(model) {
   return `${timestamp}-${random}-${modelPart}`;
 }
 
-function truncateField(obj, maxSize) {
-  const str = JSON.stringify(obj || {});
-  if (str.length > maxSize) {
-    return { _truncated: true, _originalSize: str.length, _preview: str.substring(0, 200) };
+function payloadMetadata(value) {
+  if (value == null) return { redacted: true, version: 1, present: false, type: "none" };
+  const type = value instanceof Uint8Array ? "bytes" : runtimeTypeName(value);
+  let bytes;
+  try {
+    bytes = value instanceof Uint8Array
+      ? value.byteLength
+      : Buffer.byteLength(isString(value) ? value : JSON.stringify(value), "utf8");
+  } catch {
+    // Non-serializable payloads still receive a stable content-free sentinel.
   }
-  return obj || {};
-}
-
-// When a request field gets truncated, its `tools` are lost along with the
-// message history. Re-attach the tools (truncated with their own generous
-// budget) so the UI can always show them regardless of message-history size.
-function truncateRequestField(obj, maxSize) {
-  const truncated = truncateField(obj, maxSize);
-  if (truncated?._truncated && obj && isObject(obj) && obj.tools !== undefined) {
-    return { ...truncated, tools: truncateField(obj.tools, TOOLS_MAX_JSON_SIZE) };
-  }
-  return truncated;
+  const metadata = {
+    redacted: true,
+    version: 1,
+    present: true,
+    type
+  };
+  if (Number.isSafeInteger(bytes)) metadata.bytes = bytes;
+  return metadata;
 }
 
 async function flushToDatabase() {
@@ -105,7 +97,6 @@ async function flushToDatabase() {
         for (const item of items) {
           if (!item.id) item.id = generateDetailId(item.model);
           if (!item.timestamp) item.timestamp = new Date().toISOString();
-          if (item.request?.headers) item.request.headers = sanitizeHeaders(item.request.headers);
 
           const record = {
             id: item.id,
@@ -117,10 +108,10 @@ async function flushToDatabase() {
             latency: item.latency || {},
             tokens: item.tokens || {},
             pxpipe: item.pxpipe || undefined,
-            request: truncateRequestField(item.request, config.maxJsonSize),
-            providerRequest: truncateRequestField(item.providerRequest, config.maxJsonSize),
-            providerResponse: truncateField(item.providerResponse, config.maxJsonSize),
-            response: truncateField(item.response, config.maxJsonSize)
+            request: payloadMetadata(item.request),
+            providerRequest: payloadMetadata(item.providerRequest),
+            providerResponse: payloadMetadata(item.providerResponse),
+            response: payloadMetadata(item.response)
           };
 
           db.run(

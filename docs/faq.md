@@ -60,7 +60,7 @@ Account fallback is retrying another credential for the same provider and model.
 
 ## Is request logging safe?
 
-Request logs can contain sensitive prompts, responses, filenames, URLs, or credentials if enabled too broadly. Keep detailed request logging off unless you are debugging and have permission to store that data.
+Optional request logs, Usage → Details, and MITM dumps are metadata-only: they retain bounded operational fields such as provider/model identifiers, timestamps, statuses, payload presence/type/size, sanitized endpoint paths, and sanitized headers. They do not retain payloads, stream chunks, URL query/fragment content, or raw provider-error bodies. Metadata can still be sensitive, so keep diagnostics opt-in, restrict operator access, and use suitable retention and deletion policies.
 
 ## Can I expose DurinDoor publicly?
 

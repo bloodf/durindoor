@@ -2,13 +2,11 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildModelsList.js";
 
 // Port of 9router PR #3252 (fix(models): curated custom-provider model list
-// suppresses live catalog). Upstream gated the live-discovery fetch on
-// `!hasConfiguredCustomModels`, a bare alias match that ignored kind filtering
-// and empty ids — so any custom-model row for a provider (even one of the
-// wrong kind, or with a blank id) permanently blocked live catalog discovery.
-// The fix gates on `customModelIds.length === 0`, the actual post-filter
-// curated id list, so a stray non-matching custom-model row no longer
-// suppresses live discovery.
+// suppresses live catalog). Port #3623 supersedes this contract for
+// `openai-compatible-*` and `anthropic-compatible-*` ids: compatible nodes no
+// longer perform public live discovery. These cases retain #3252 coverage for
+// the registry-backed hcnsec provider, where discovery remains supported and
+// must be gated by the post-kind-filter curated id list.
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(),
@@ -36,7 +34,7 @@ function stubConnections(connections) {
   disabledModelsDb.getDisabledModels.mockResolvedValue({});
 }
 
-const providerId = "openai-compatible-chat-deadbeef-1234-5678-90ab-cdef01234567";
+const providerId = "hcnsec";
 
 function stubbedConn(prefix, port) {
   return {

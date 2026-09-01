@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anchorClaudeCache, normalizeClaudePassthrough } from "../../open-sse/translator/formats/claude.js";
+import { anchorClaudeCache, normalizeClaudePassthrough, prepareClaudeRequest } from "../../open-sse/translator/formats/claude.js";
 
 // These cases isolate system-turn folding/hoisting and intentionally assert the
 // pre-policy assistant shape. Opt out explicitly; default trailing-assistant
@@ -96,6 +96,76 @@ describe("Claude passthrough cache-control anchoring", () => {
 
     expect(body.messages[1].content).toMatchObject([{ type: "text", text: "answer" }]);
     expect(body.messages[1].content[0].cache_control).toEqual({ type: "ephemeral" });
+  });
+});
+
+describe("Claude deferred-tool cache-control anchoring", () => {
+  const tool = (name, extra = {}) => ({
+    name,
+    description: name,
+    input_schema: { type: "object", properties: {} },
+    ...extra,
+  });
+
+  it("moves the one-hour marker backward from a deferred final tool", () => {
+    const body = {
+      tools: [
+        tool("first", { cache_control: { type: "ephemeral" } }),
+        tool("cacheable"),
+        tool("deferred", { defer_loading: true, cache_control: { type: "ephemeral" } }),
+      ],
+    };
+
+    anchorClaudeCache(body);
+
+    expect(body.tools).toEqual([
+      tool("first"),
+      tool("cacheable", { cache_control: { type: "ephemeral", ttl: "1h" } }),
+      tool("deferred", { defer_loading: true }),
+    ]);
+  });
+
+  it("leaves all-deferred tools free of client and synthesized markers", () => {
+    const body = {
+      tools: [
+        tool("first", { defer_loading: true, cache_control: { type: "ephemeral" } }),
+        tool("last", { defer_loading: true }),
+      ],
+    };
+
+    anchorClaudeCache(body);
+
+    expect(body.tools).toEqual([
+      tool("first", { defer_loading: true }),
+      tool("last", { defer_loading: true }),
+    ]);
+  });
+
+  it("preserves defer_loading through prepareClaudeRequest and uses the same selection", () => {
+    const body = prepareClaudeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      tools: [tool("cacheable"), tool("deferred", { defer_loading: true })],
+    }, "claude");
+
+    expect(body.tools).toEqual([
+      tool("cacheable", { cache_control: { type: "ephemeral", ttl: "1h" } }),
+      tool("deferred", { defer_loading: true }),
+    ]);
+  });
+
+  it.each(["ollama", "ollama-local"])("keeps %s cache-control stripping unchanged", (provider) => {
+    const body = prepareClaudeRequest({
+      messages: [{ role: "user", content: "hi" }],
+      tools: [
+        tool("cacheable", { cache_control: { type: "ephemeral" } }),
+        tool("deferred", { defer_loading: true, cache_control: { type: "ephemeral" } }),
+      ],
+    }, provider);
+
+    expect(body.tools).toEqual([
+      tool("cacheable"),
+      tool("deferred", { defer_loading: true }),
+    ]);
   });
 });
 

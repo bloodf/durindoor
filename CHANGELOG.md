@@ -10,6 +10,7 @@
 - GLM/Z.AI 429 prose matching `reset at YYYY-MM-DD HH:mm:ss` now supplies bounded rate-limit evidence when executor, `Retry-After`, reset-header, and structured-body evidence are absent. DurinDoor adopts the UTC reading asserted by open, unmerged decolua/9router#3612 for its observed sample (`Your limit will reset at 2026-08-17 02:56:15`) without provider-scoped proof; a wrong offset can shift the deadline by hours but remains bounded by the seven-day cooldown cap.
 - Codex seven-day primary quota windows now appear as Weekly in both legacy dashboard usage and canonical preflight rows, preserving supplied duration metadata while retaining positional fallback when duration is absent. Ports decolua/9router#3633 and extends it across DurinDoor's fork-only canonical quota path. Closes #672.
 - Hosted Codex dashboards now skip the server-side port-1455 proxy, open authorization separately, and immediately show manual callback entry while preserving exact OAuth state validation; loopback dashboards retain automatic proxy, popup, polling, and teardown behavior. Ports decolua/9router#3639 without its JWT-shaped-code state bypass. Closes #679.
+- The Indonesian dashboard catalog now has exact key parity with DurinDoor's canonical English catalog, adapts product-facing branding and keys for the fork, and corrects deployment, proxy, public-exposure, fragment, and routing terminology defects. Ports decolua/9router#3666.
 
 # 3.18.1
 

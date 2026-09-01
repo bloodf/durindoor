@@ -383,9 +383,12 @@ export function createSSEStream(options = {}) {
           totalContentLength += delta.content.length;
           accumulatedContent += delta.content;
         }
-        if (isString(delta?.reasoning_content) && delta.reasoning_content) {
-          totalContentLength += delta.reasoning_content.length;
-          accumulatedThinking += delta.reasoning_content;
+        const reasoning = isString(delta?.reasoning_content) && delta.reasoning_content ?
+        delta.reasoning_content :
+        isString(delta?.reasoning) && delta.reasoning.trim() ? delta.reasoning : "";
+        if (reasoning) {
+          totalContentLength += reasoning.length;
+          accumulatedThinking += reasoning;
         }
       }
     }
@@ -971,10 +974,13 @@ export function createSSEStream(options = {}) {
           totalContentLength += parsed.choices[0].delta.content.length;
           accumulatedContent += parsed.choices[0].delta.content;
         }
-        // OpenAI format - reasoning
-        if (parsed.choices?.[0]?.delta?.reasoning_content) {
-          totalContentLength += parsed.choices[0].delta.reasoning_content.length;
-          accumulatedThinking += parsed.choices[0].delta.reasoning_content;
+        const openAIReasoningDelta = parsed.choices?.[0]?.delta;
+        const openAIReasoning = isString(openAIReasoningDelta?.reasoning_content) && openAIReasoningDelta.reasoning_content ?
+        openAIReasoningDelta.reasoning_content :
+        isString(openAIReasoningDelta?.reasoning) && openAIReasoningDelta.reasoning.trim() ? openAIReasoningDelta.reasoning : "";
+        if (openAIReasoning) {
+          totalContentLength += openAIReasoning.length;
+          accumulatedThinking += openAIReasoning;
         }
 
         // Gemini format

@@ -20,6 +20,8 @@ import { describe, it, expect } from "vitest";
 import "./registerAll.js";
 import { translateResponse, initState } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { createSSEStream } from "../../open-sse/utils/stream.js";
+import { hasValuableContent } from "../../open-sse/utils/streamHelpers.js";
 
 function runStream(targetFormat, sourceFormat, events) {
   const state = initState(sourceFormat);
@@ -30,6 +32,38 @@ function runStream(targetFormat, sourceFormat, events) {
     else if (out) all.push(out);
   }
   return all;
+}
+
+const openAIChunk = (delta, finishReason = null) => ({
+  id: "chatcmpl-reasoning",
+  object: "chat.completion.chunk",
+  created: 1,
+  model: "reasoning-model",
+  choices: [{ index: 0, delta, finish_reason: finishReason }],
+});
+
+async function runSSE(options, chunks) {
+  let completion;
+  const stream = createSSEStream({
+    ...options,
+    body: {},
+    onStreamComplete(result) {
+      completion = result;
+    },
+  });
+  const output = new Response(stream.readable).text();
+  const writer = stream.writable.getWriter();
+  const frames = chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("");
+  await writer.write(new TextEncoder().encode(`${frames}data: [DONE]\n\n`));
+  await writer.close();
+  return { output: await output, completion };
+}
+
+function parseDataFrames(output) {
+  return output
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data: {"))
+    .map((line) => JSON.parse(line.slice(6)));
 }
 
 const claudeThinkingThenText = [
@@ -129,5 +163,94 @@ describe("Claude → Responses full pivot (the #454 end-to-end scenario)", () =>
     expect(text).toBe("Hello");
     expect(text).not.toContain("<think>");
     expect(text).not.toContain("</think>");
+  });
+});
+
+describe("OpenAI delta.reasoning stream preservation (#3601)", () => {
+  it.each([
+    ["missing", {}, false],
+    ["empty", { reasoning: "" }, false],
+    ["whitespace-only", { reasoning: " \t" }, false],
+    ["non-string", { reasoning: { text: "thinking" } }, false],
+    ["non-empty", { reasoning: "thinking" }, true],
+  ])("treats %s delta.reasoning according to the stream gate", (_name, delta, expected) => {
+    expect(hasValuableContent(openAIChunk(delta), FORMATS.OPENAI)).toBe(expected);
+  });
+
+  it("forwards every alternate-reasoning frame and reports accumulated thinking", async () => {
+    const { output, completion } = await runSSE(
+      {
+        mode: "passthrough",
+        targetFormat: FORMATS.OPENAI,
+        sourceFormat: FORMATS.OPENAI,
+      },
+      [
+        openAIChunk({ role: "assistant" }),
+        openAIChunk({ reasoning: "think" }),
+        openAIChunk({ reasoning: " harder" }),
+        openAIChunk({ content: "Answer" }),
+        openAIChunk({}, "stop"),
+      ],
+    );
+
+    const chunks = parseDataFrames(output);
+    expect(chunks).toHaveLength(5);
+    expect(chunks.map((chunk) => chunk.choices[0]?.delta?.reasoning).filter(Boolean)).toEqual(["think", " harder"]);
+    expect(completion).toEqual({ content: "Answer", thinking: "think harder" });
+  });
+
+  it("canonicalizes alternate reasoning to Claude thinking without loss", async () => {
+    const { output, completion } = await runSSE(
+      {
+        targetFormat: FORMATS.OPENAI,
+        sourceFormat: FORMATS.CLAUDE,
+      },
+      [
+        openAIChunk({ role: "assistant" }),
+        openAIChunk({ reasoning: "think" }),
+        openAIChunk({ reasoning: " harder" }),
+        openAIChunk({ content: "Answer" }),
+        openAIChunk({}, "stop"),
+      ],
+    );
+
+    const events = parseDataFrames(output);
+    const thinking = events.map((event) => event?.delta?.thinking || "").join("");
+    expect(thinking).toBe("think harder");
+    expect(completion).toEqual({ content: "Answer", thinking: "think harder" });
+  });
+
+  it("prefers canonical reasoning during translated-stream accounting", async () => {
+    const { completion } = await runSSE(
+      {
+        targetFormat: FORMATS.OPENAI,
+        sourceFormat: FORMATS.CLAUDE,
+      },
+      [
+        openAIChunk({ reasoning: "alternate", reasoning_content: "canonical" }),
+        openAIChunk({}, "stop"),
+      ],
+    );
+
+    expect(completion.thinking).toBe("canonical");
+  });
+
+  it.each([
+    ["alternate only", { reasoning: "alternate" }, "alternate"],
+    ["canonical only", { reasoning_content: "canonical" }, "canonical"],
+    ["both", { reasoning: "alternate", reasoning_content: "canonical" }, "canonical"],
+    ["neither", { content: "Answer" }, ""],
+  ])("accounts for %s without double-counting", async (_name, delta, expected) => {
+    const { completion } = await runSSE(
+      {
+        mode: "passthrough",
+        targetFormat: FORMATS.OPENAI,
+        sourceFormat: FORMATS.OPENAI,
+      },
+      [openAIChunk(delta), openAIChunk({}, "stop")],
+    );
+
+    expect(completion.thinking).toBe(expected);
+    expect(completion.thinking).toHaveLength(expected.length);
   });
 });

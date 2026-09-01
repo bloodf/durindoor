@@ -13,6 +13,7 @@
 - The Indonesian dashboard catalog now has exact key parity with DurinDoor's canonical English catalog, adapts product-facing branding and keys for the fork, and corrects deployment, proxy, public-exposure, fragment, and routing terminology defects. Ports decolua/9router#3666.
 
 - Diagnostic request logs, Request Details, and MITM dumps now persist bounded metadata instead of request, response, tool, stream, stack, URL query/fragment, or raw provider-error content. Usage → Details explicitly shows the redaction state, and translator failures cancel raw provider-error bodies before returning status-only diagnostics. Ports the payload-at-rest half (`#3689a`) of decolua/9router#3689 while leaving its correlation behavior to separate issue #689. Closes #686.
+- OpenAI-compatible streams now preserve non-empty `delta.reasoning` frames and include them in completion thinking/accounting when canonical `reasoning_content` is absent, preferring the canonical field when both appear. Ports open decolua/9router#3601 while extending its gate-only coverage through DurinDoor's full passthrough and translation stream paths. Closes #668.
 
 # 3.18.1
 

@@ -8,7 +8,7 @@ import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
@@ -89,6 +89,8 @@ export function hasValidContent(msg) {
     block.type === CLAUDE_BLOCK.TEXT && block.text?.trim() ||
     block.type === CLAUDE_BLOCK.TOOL_USE ||
     block.type === CLAUDE_BLOCK.TOOL_RESULT ||
+    block.type === CLAUDE_BLOCK.SERVER_TOOL_USE && !hasForeignClaudeServerToolId(block) ||
+    block.type === CLAUDE_BLOCK.WEB_SEARCH_TOOL_RESULT ||
     block.type === CLAUDE_BLOCK.IMAGE ||
     block.type === CLAUDE_BLOCK.DOCUMENT ||
     block.type === CLAUDE_BLOCK.THINKING ||
@@ -163,42 +165,64 @@ export function fixToolUseOrdering(messages) {
     if (msg.role !== ROLE.USER || !Array.isArray(msg.content)) continue;
 
     const previous = merged[i - 1];
-    const validIds = new Set(
-      previous?.role === ROLE.ASSISTANT && Array.isArray(previous.content) ?
-      previous.content.
-      filter((block) => block.type === CLAUDE_BLOCK.TOOL_USE && block.id).
-      map((block) => block.id) :
-      []
-    );
+    const regularToolIds = new Set();
+    const serverToolIds = new Set();
+    if (previous?.role === ROLE.ASSISTANT && Array.isArray(previous.content)) {
+      for (const block of previous.content) {
+        if (!block.id) continue;
+        if (block.type === CLAUDE_BLOCK.TOOL_USE) regularToolIds.add(block.id);
+        if (block.type === CLAUDE_BLOCK.SERVER_TOOL_USE) serverToolIds.add(block.id);
+      }
+    }
     const pairedById = new Map();
     const otherContent = [];
 
     for (const block of msg.content) {
+      if (block.type === CLAUDE_BLOCK.WEB_SEARCH_TOOL_RESULT) {
+        if (serverToolIds.has(block.tool_use_id)) otherContent.push(block);
+        else otherContent.push(demoteUnpairedToolResult(block));
+        continue;
+      }
       if (block.type !== CLAUDE_BLOCK.TOOL_RESULT) {
         otherContent.push(block);
         continue;
       }
-      if (validIds.has(block.tool_use_id) && !pairedById.has(block.tool_use_id)) {
+      if (serverToolIds.has(block.tool_use_id)) {
+        otherContent.push(block);
+        continue;
+      }
+      if (regularToolIds.has(block.tool_use_id) && !pairedById.has(block.tool_use_id)) {
         pairedById.set(block.tool_use_id, block);
         continue;
       }
-      const serialized = isString(block.content) ?
-      block.content :
-      JSON.stringify(block.content ?? "");
-      otherContent.push({
-        type: CLAUDE_BLOCK.TEXT,
-        text: `[Unpaired tool result ${block.tool_use_id || "unknown"}]\n${serialized ?? ""}`
-      });
+      otherContent.push(demoteUnpairedToolResult(block));
     }
 
-    if (pairedById.size === 0 && msg.content.every((b) => b.type !== CLAUDE_BLOCK.TOOL_RESULT)) continue;
-    const pairedResults = [...validIds].map((id) =>
+    if (pairedById.size === 0 && !msg.content.some((block) =>
+      block.type === CLAUDE_BLOCK.TOOL_RESULT || block.type === CLAUDE_BLOCK.WEB_SEARCH_TOOL_RESULT
+    )) continue;
+    const pairedResults = [...regularToolIds].map((id) =>
     pairedById.get(id) || { type: CLAUDE_BLOCK.TOOL_RESULT, tool_use_id: id, content: "" }
     );
     msg.content = [...pairedResults, ...otherContent];
   }
 
   return merged;
+}
+
+function demoteUnpairedToolResult(block) {
+  let serialized;
+  try {
+    serialized = isString(block.content) ? block.content : JSON.stringify(block.content ?? "");
+  } catch {
+    serialized = String(block.content ?? "");
+  }
+  const text = {
+    type: CLAUDE_BLOCK.TEXT,
+    text: `[Unpaired tool result ${block.tool_use_id || "unknown"}]\n${serialized ?? ""}`
+  };
+  if (block.cache_control) text.cache_control = block.cache_control;
+  return text;
 }
 
 // Models that reject thinking.type "adaptive" + output_config.effort (Opus 4.5+/Sonnet 4.6+ only)
@@ -281,12 +305,25 @@ export function reconcileClaudeThinkingBudget(body, provider = "claude", customM
 
   return body;
 }
+const CLAUDE_SERVER_TOOL_USE_ID = /^srvtoolu_[a-zA-Z0-9_]+$/;
+
+// Anthropic server_tool_use only; ordinary tool_use IDs must never use this predicate.
+function hasForeignClaudeServerToolId(block) {
+  return block?.type === CLAUDE_BLOCK.SERVER_TOOL_USE &&
+  (!isString(block.id) || !CLAUDE_SERVER_TOOL_USE_ID.test(block.id));
+}
+
+function serverToolIdKey(id) {
+  if (id === null) return "null";
+  return isObject(id) ? "object" : `${runtimeTypeName(id)}:${String(id)}`;
+}
 
 // Normalize a native Claude passthrough body to match Anthropic Messages API spec.
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
 // 1. thinking.type "adaptive" → unsupported on Haiku
 // 2. output_config.effort → unsupported on Haiku
 // 3. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
+// 4. server_tool_use blocks carrying foreign IDs → rejected outright
 export function normalizeClaudePassthrough(body, model = "", provider = "claude", customMaxOutput = null, options = null) {
   if (!body || !isObject(body)) return body;
 
@@ -356,15 +393,20 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
   normalizeClaudeServerToolModels(body.tools);
 
   // 3. Drop thinking blocks whose signature is not Claude's (combo mixes models,
-  // so foreign signatures leak into history and Anthropic rejects them).
+  // so foreign signatures leak into history and Anthropic rejects them). Drop
+  // foreign server-tool references in the same pass and preserve their results
+  // below as ordinary text.
   // Fable/Mythos also reject unsigned/default-placeholder history and never get
   // synthetic placeholders.
   const thinkingEnabled = body.thinking?.type === "enabled";
+  const removedServerToolIds = new Set();
+  const emptiedByServerToolFilter = new Set();
   if (Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       if (msg.role !== ROLE.ASSISTANT || !Array.isArray(msg.content)) continue;
       let hasToolUse = false;
       let hasKeptThinking = false;
+      let removedServerTool = false;
       const kept = [];
       for (const block of msg.content) {
         if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) {
@@ -382,13 +424,32 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
           }
           continue;
         }
+        if (hasForeignClaudeServerToolId(block)) {
+          removedServerToolIds.add(serverToolIdKey(block.id));
+          removedServerTool = true;
+          continue;
+        }
         if (block.type === CLAUDE_BLOCK.TOOL_USE) hasToolUse = true;
         kept.push(block);
       }
       msg.content = kept;
+      if (removedServerTool && kept.length === 0) emptiedByServerToolFilter.add(msg);
       if (thinkingEnabled && !hasKeptThinking && hasToolUse && !isAdaptiveThinkingModel(model)) {
         msg.content.unshift(buildThinkingPlaceholder("claude"));
       }
+    }
+
+    if (removedServerToolIds.size > 0) {
+      for (const msg of body.messages) {
+        if (!Array.isArray(msg.content)) continue;
+        msg.content = msg.content.map((block) =>
+        (block?.type === CLAUDE_BLOCK.TOOL_RESULT || block?.type === CLAUDE_BLOCK.WEB_SEARCH_TOOL_RESULT) &&
+        removedServerToolIds.has(serverToolIdKey(block.tool_use_id)) ?
+        demoteUnpairedToolResult(block) :
+        block
+        );
+      }
+      body.messages = body.messages.filter((msg) => !emptiedByServerToolFilter.has(msg));
     }
   }
 

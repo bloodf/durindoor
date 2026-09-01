@@ -17,6 +17,7 @@
 
 - Diagnostic request logs, Request Details, and MITM dumps now persist bounded metadata instead of request, response, tool, stream, stack, URL query/fragment, or raw provider-error content. Usage → Details explicitly shows the redaction state, and translator failures cancel raw provider-error bodies before returning status-only diagnostics. Ports the payload-at-rest half (`#3689a`) of decolua/9router#3689 while leaving its correlation behavior to separate issue #689. Closes #686.
 - OpenAI-compatible streams now preserve non-empty `delta.reasoning` frames and include them in completion thinking/accounting when canonical `reasoning_content` is absent, preferring the canonical field when both appear. Ports open decolua/9router#3601 while extending its gate-only coverage through DurinDoor's full passthrough and translation stream paths. Closes #668.
+- Mixed-provider Claude sessions now recover instead of repeatedly failing with Anthropic 400 responses when history contains foreign `server_tool_use` IDs. Ports open decolua/9router#3686 while diverging non-lossily: paired foreign `tool_result` and `web_search_tool_result` content is demoted to ordinary text rather than deleted. Closes #687.
 
 # 3.18.1
 

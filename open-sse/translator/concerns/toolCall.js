@@ -580,7 +580,7 @@ export function salvageOrphanedToolResults(body) {
         }
         if (Array.isArray(msg.content)) {
           for (const block of msg.content) {
-            if (block?.type === "tool_use" && isString(block.id)) {
+            if ((block?.type === CLAUDE_BLOCK.TOOL_USE || block?.type === CLAUDE_BLOCK.SERVER_TOOL_USE) && isString(block.id)) {
               knownCallIds.add(block.id);
             }
           }
@@ -606,7 +606,7 @@ export function salvageOrphanedToolResults(body) {
           let orphanCount = 0;
           const rebuiltContent = [];
           for (const block of msg.content) {
-            if (block?.type !== "tool_result") {
+            if (block?.type !== CLAUDE_BLOCK.TOOL_RESULT) {
               rebuiltContent.push(block);
               continue;
             }

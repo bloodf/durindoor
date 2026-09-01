@@ -30,6 +30,10 @@ Every change developed in this repository — regardless of stream (upstream-por
 
 The Hermes cron agent — and any other look-after-the-repo agent — MUST verify both items are satisfied in a PR before merging, fast-forwarding, or otherwise declaring the work complete.
 
+### 1.1 Cline model catalog
+
+Cline keeps `z-ai/glm-5.3-flash` in its static registry as fail-soft fallback. Its live `/api/v1/models` resolver is proxy-aware, rejects `cline-pass/` IDs, and remains disabled unless `CLINE_LIVE_CATALOG=true` because no disposable OAuth connection was available to re-probe the upstream contract for decolua/9router#3626.
+
 ## 2. Forbidden edits in this repository
 
 - Do NOT rewrite existing API key secret strings (e.g. user keys stored in the DB). The server's validator (`src/shared/utils/apiKey.js`) accepts both legacy `sk-<8 hex>` and current `sk-<machineId>-<keyId>-<crc8>` shapes; legacy keys remain valid without rotation.

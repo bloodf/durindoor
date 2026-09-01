@@ -22,7 +22,7 @@ import {
   settleProviderAttemptDispatch } from
 "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
-import { applyResponseModelEcho, resolveResponsesEchoModel } from "../services/responseModelEcho.js";
+import { applyClaudeResponseModelEcho, applyResponseModelEcho, resolveClaudeEchoModel, resolveResponsesEchoModel } from "../services/responseModelEcho.js";
 import { getUsageForProvider } from "../services/usage.js";
 
 import { getExecutor } from "../executors/index.js";
@@ -1519,12 +1519,19 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // untouched. The echo id comes from the ORIGINAL client body model (never the
   // routed upstream id), and is empty when there is nothing safe to echo.
   const responsesEchoModel =
-  sourceFormat === FORMATS.OPENAI_RESPONSES &&
-  requestContext.compact !== true &&
-  isCodexOriginatedHeaders(clientRawRequest?.headers) ?
-  resolveResponsesEchoModel(clientRawRequest) : null;
-  const finalizeResponse = async (result) =>
-  withCompressionHeader(await applyResponseModelEcho(result, responsesEchoModel), compressionHeaderValue);
+    sourceFormat === FORMATS.OPENAI_RESPONSES &&
+    requestContext.compact !== true &&
+    isCodexOriginatedHeaders(clientRawRequest?.headers)
+      ? resolveResponsesEchoModel(clientRawRequest) : null;
+  const claudeEchoModel = sourceFormat === FORMATS.CLAUDE
+    ? resolveClaudeEchoModel(clientRawRequest) : null;
+  const finalizeResponse = async (result) => {
+    const codexEchoed = await applyResponseModelEcho(result, responsesEchoModel);
+    return withCompressionHeader(
+      applyClaudeResponseModelEcho(codexEchoed, claudeEchoModel),
+      compressionHeaderValue,
+    );
+  };
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {

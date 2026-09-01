@@ -142,11 +142,11 @@ describe("/v1/models Anthropic envelope", () => {
     for (const value of ["2023-06-01", ""]) {
       const body = await json(buildModelsResponse(req({ "anthropic-version": value }), data));
       expect(body.has_more).toBe(false);
-      expect(body.first_id).toBe("anthropic/claude-opus-4");
-      expect(body.last_id).toBe("openai/gpt-5");
+      expect(body.first_id).toBe("claude-anthropic/claude-opus-4");
+      expect(body.last_id).toBe("claude-openai/gpt-5");
       expect(body.data).toEqual([
-        { type: "model", id: "anthropic/claude-opus-4", display_name: "anthropic/claude-opus-4", created_at: "1970-01-01T00:00:00Z" },
-        { type: "model", id: "openai/gpt-5", display_name: "openai/gpt-5", created_at: "1970-01-01T00:00:00Z" },
+        { type: "model", id: "claude-anthropic/claude-opus-4", display_name: "anthropic/claude-opus-4", created_at: "1970-01-01T00:00:00Z" },
+        { type: "model", id: "claude-openai/gpt-5", display_name: "openai/gpt-5", created_at: "1970-01-01T00:00:00Z" },
       ]);
       // No OpenAI leakage; created_at always a string (epoch when unknown).
       for (const entry of body.data) {

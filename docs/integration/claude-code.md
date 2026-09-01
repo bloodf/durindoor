@@ -36,6 +36,14 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="coding-fast"
 
 Use stable combo names when you want to change routing in DurinDoor without changing shell configuration.
 
+## Model Discovery Compatibility
+
+Claude Code sends `GET /v1/models` with an `anthropic-version` header. DurinDoor keeps that endpoint and projects routable IDs as reversible `claude-<provider>/<model>` names so non-Anthropic providers appear in Claude Code's picker. A `[1m]` suffix is advertised only when DurinDoor's existing model-limit resolver proves a context window of at least 1,048,576 tokens.
+
+Messages requests decode only IDs DurinDoor can route. Unknown official `claude-*` names and exact configured IDs remain unchanged. When Claude Code adds a recognized trailing `[1m]`, DurinDoor removes the routing annotation before model, combo, and API-key resolution while preserving the original spelling in Anthropic `message_start.message.model` response metadata. The `anthropic-beta` header remains untouched and continues to carry the 1M capability request upstream.
+
+This ports the compatibility boundary from open upstream PRs decolua/9router#3595, #3691, and #3693 without their separate context store, per-request DB index rebuild, dashboard/statistics rewrite, or deploy tooling.
+
 ## Dashboard Helper
 
 The dashboard includes CLI tool helpers for Claude Code. Use `Dashboard -> CLI Tools -> Claude Code` to copy current endpoint, API key, and model settings.

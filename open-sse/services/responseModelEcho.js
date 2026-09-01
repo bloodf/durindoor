@@ -1,23 +1,11 @@
 /**
- * Response model echo — Codex CLI compatibility shim (OmniRoute #6820, issue
- * #3697).
+ * Client-visible response model identity compatibility.
  *
- * The Codex CLI status line / model button reads the `model` field of
- * Responses API payloads (`response.created` / `response.in_progress` /
- * `response.completed`, and the final non-streaming JSON body) to display the
- * active model + reasoning effort (e.g. `gpt-5.5-xhigh`). The upstream wire id
- * must stay the bare catalog id (`gpt-5.5`), so the echo rewrites the
- * client-visible `model` on the response side only.
- *
- * Detection is by request *client* headers (`originator` / `User-Agent`),
- * never by the routed provider, so the shim still fires when
- * `codex/gpt-5.5-xhigh` is routed through a combo to a non-Codex upstream.
- *
- * Two shapes are handled:
- *  - SSE streams: frame-accurate rewrite of the nested `response.model` on the
- *    three Responses lifecycle events (created / in_progress / completed).
- *  - Unary JSON bodies: set/overwrite the top-level `model` (the forced-SSE→
- *    JSON converter may omit it entirely).
+ * Codex Responses payloads echo effort-qualified client IDs in lifecycle SSE
+ * and unary JSON. Anthropic streaming payloads echo the exact original Claude
+ * Code selection in `message_start.message.model`, independent of combo or
+ * provider routing. Both rewrites happen only at the common response boundary;
+ * provider dispatch, limits, usage, logs, and diagnostics keep routed identity.
  */
 
 import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
@@ -106,6 +94,68 @@ export function createResponsesModelEchoStream(echoModel) {
       }
     }
   });
+}
+
+function rewriteClaudeSseFrame(frame, echoModel) {
+  if (!frame.includes("message_start") || !frame.includes("data:")) return frame;
+  const eol = frame.includes("\r\n") ? "\r\n" : "\n";
+  let changed = false;
+  const lines = frame.split(/\r?\n/).map((line) => {
+    if (!line.startsWith("data:")) return line;
+    let value = line.slice(5);
+    if (value.startsWith(" ")) value = value.slice(1);
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed?.type !== "message_start" || !isObject(parsed.message) || Array.isArray(parsed.message)) return line;
+      parsed.message.model = echoModel;
+      changed = true;
+      return `data: ${JSON.stringify(parsed)}`;
+    } catch {
+      return line;
+    }
+  });
+  return changed ? lines.join(eol) : frame;
+}
+
+export function createClaudeModelEchoStream(echoModel) {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  return new TransformStream({
+    transform(chunk, controller) {
+      buffer += isString(chunk) ? chunk : decoder.decode(chunk, { stream: true });
+      const batch = extractCompleteSseFrames(buffer);
+      buffer = batch.remainder;
+      for (const frame of batch.frames) {
+        const delimiter = frame.includes("\r\n") ? "\r\n\r\n" : "\n\n";
+        controller.enqueue(encoder.encode(`${rewriteClaudeSseFrame(frame, echoModel)}${delimiter}`));
+      }
+    },
+    flush(controller) {
+      buffer += decoder.decode();
+      if (buffer) controller.enqueue(encoder.encode(rewriteClaudeSseFrame(buffer, echoModel)));
+    },
+  });
+}
+
+export function applyClaudeResponseModelEcho(result, echoModel) {
+  if (!echoModel || !result || result.success === false || !result.response?.body) return result;
+  const headers = new Headers(result.response.headers);
+  if (!(headers.get("content-type") || "").toLowerCase().includes("text/event-stream")) return result;
+  headers.delete("content-length");
+  return {
+    ...result,
+    response: new Response(result.response.body.pipeThrough(createClaudeModelEchoStream(echoModel)), {
+      status: result.response.status,
+      statusText: result.response.statusText,
+      headers,
+    }),
+  };
+}
+
+export function resolveClaudeEchoModel(clientRawRequest) {
+  const original = clientRawRequest?.originalModel;
+  return isString(original) && original ? original : null;
 }
 
 /**

@@ -1,8 +1,61 @@
 import { createHash } from "node:crypto";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
 import { CLAUDE_BLOCK, ROLE } from "../schema/index.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 // Tool call helper functions for translator
+
+/**
+ * Create a request-scoped, deterministic tool-name aliaser.
+ *
+ * Reusing `alias` returns the same outbound name for each original name,
+ * regardless of whether declarations, forced choice, or history are visited
+ * first.
+ *
+ * @param {object} options - Aliasing constraints.
+ * @param {RegExp} options.invalidCharacters - Characters replaced with `_`.
+ * @param {RegExp|null} [options.validLeadingCharacter=null] - Required first-character pattern.
+ * @param {number} [options.maxLength=64] - Maximum outbound-name length.
+ * @param {number} [options.hashLength=12] - Deterministic SHA-256 suffix length.
+ * @param {string|null} [options.fallbackName=null] - Name returned for empty input.
+ * @returns {{alias: (name: unknown) => unknown, aliases: Map<string,string>, memo: Map<string,string>}} Alias function, changed alias-to-original map, and complete original-to-outbound memo.
+ */
+function createToolNameAliaser({ invalidCharacters, validLeadingCharacter = null, maxLength = 64, hashLength = 12, fallbackName = null }) {
+  const aliases = new Map();
+  const memo = new Map();
+  const alias = (name) => {
+    if (!name) return fallbackName ?? name;
+    if (!isString(name)) return name;
+    if (memo.has(name)) return memo.get(name);
+
+    let safe = name.replace(invalidCharacters, "_");
+    if (validLeadingCharacter && !validLeadingCharacter.test(safe)) safe = `_${safe}`;
+    const changed = safe !== name || safe.length > maxLength;
+    const shortened = changed ?
+    `${safe.slice(0, maxLength - hashLength - 1)}_${createHash("sha256").update(name).digest("hex").slice(0, hashLength)}` :
+    safe;
+
+    if (shortened !== name) aliases.set(shortened, name);
+    memo.set(name, shortened);
+    return shortened;
+  };
+  return { alias, aliases, memo };
+}
+
+/**
+ * Build one request-scoped Gemini alias function. Every declaration, forced
+ * choice, and historical call/response must use this same function; its
+ * 80-bit SHA-256 suffix keeps normalized or truncated names collision-safe.
+ */
+export function createGeminiToolNameAliaser(maxLength = 64) {
+  return createToolNameAliaser({
+    invalidCharacters: /[^a-zA-Z0-9_.:-]/g,
+    validLeadingCharacter: /^[a-zA-Z_]/,
+    maxLength,
+    hashLength: 20,
+    fallbackName: "_unknown"
+  });
+}
 
 /**
  * Normalize function/tool names to the OpenAI naming constraint
@@ -16,28 +69,13 @@ import { CLAUDE_BLOCK, ROLE } from "../schema/index.js";
  *
  * Ported from decolua/9router#3116.
  *
+ * @param {object} body - Request body to normalize in place.
+ * @param {number} [maxLength=64] - Maximum outbound-name length.
  * @returns {Map<string,string>} alias → original name, for the response path.
  */
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 export function normalizeOpenAIToolNames(body, maxLength = 64) {
-  const aliases = new Map();
+  const { alias, aliases } = createToolNameAliaser({ invalidCharacters: /[^a-zA-Z0-9_-]/g, maxLength });
   if (!body || !isObject(body)) return aliases;
-  const memo = new Map();
-
-  const alias = (name) => {
-    if (!name || !isString(name)) return name;
-    if (memo.has(name)) return memo.get(name);
-
-    const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const changed = safe !== name || safe.length > maxLength;
-    const shortened = changed ?
-    `${safe.slice(0, maxLength - 13)}_${createHash("sha256").update(name).digest("hex").slice(0, 12)}` :
-    safe;
-
-    if (shortened !== name) aliases.set(shortened, name);
-    memo.set(name, shortened);
-    return shortened;
-  };
 
   if (Array.isArray(body.tools)) {
     for (const tool of body.tools) {

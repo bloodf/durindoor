@@ -31,12 +31,17 @@ describe("Kiro MITM model slots", () => {
     expect(auto.alias).toBe("auto");
   });
 
-  it("offers a mappable slot for the background sub-task model id 'simple-task'", () => {
-    const simpleTask = kiro.defaultModels.find((m) => m.id === "simple-task");
-    expect(simpleTask).toBeTruthy();
-    expect(simpleTask.alias).toBe("simple-task");
-  });
+  it("offers mappable slots for the non-Anthropic Kiro model ids", () => {
+    const byId = new Map(kiro.defaultModels.map((model) => [model.id, model]));
 
+    expect(byId.get("simple-task")).toMatchObject({
+      name: "Simple Task",
+      alias: "simple-task",
+    });
+    expect(byId.get("minimax-m2.1")).toMatchObject({
+      alias: "minimax-m2.1",
+    });
+  });
 
   // decolua/9router#2596 — static MITM picker slots for the GPT-5.6 family.
   // These mirror KIRO_GPT_5_6_FAMILY in providers/models/kiroVariants.js
@@ -59,6 +64,16 @@ describe("Kiro static provider models", () => {
       "claude-sonnet-5-agentic",
       "claude-sonnet-5-thinking-agentic",
     ]));
+  });
+
+  it("includes Kiro's non-Anthropic picker models without changing the MiniMax M2.5 wire id", () => {
+    const ids = (PROVIDER_MODELS.kr || []).map((model) => model.id);
+    expect(ids).toEqual(expect.arrayContaining([
+      "simple-task",
+      "minimax-m2.1",
+      "MiniMax-M2.5",
+    ]));
+    expect(ids).not.toContain("minimax-m2.5");
   });
 });
 

@@ -1,3 +1,9 @@
+# Unreleased
+
+## Added
+
+- Kiro's static model catalog now advertises `simple-task` and `minimax-m2.1`, and its MITM picker labels `simple-task` correctly. Ports decolua/9router#3610 while retaining the fork-evidenced case-sensitive `MiniMax-M2.5` wire ID.
+
 # 3.18.1
 
 ## Fixed

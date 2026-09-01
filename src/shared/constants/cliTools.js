@@ -72,7 +72,7 @@ export const MITM_TOOLS = {
       { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", alias: "gpt-5.6-sol", contextLength: 1050000, rateMultiplier: 2.4 },
       { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", alias: "gpt-5.6-terra", contextLength: 1050000, rateMultiplier: 1.2 },
       { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", alias: "gpt-5.6-luna", contextLength: 1050000, rateMultiplier: 0.6 },
-      { id: "simple-task", name: "Qwen3 Coder Next", alias: "simple-task" },
+      { id: "simple-task", name: "Simple Task", alias: "simple-task" },
     ],
   },
   // cursor: {

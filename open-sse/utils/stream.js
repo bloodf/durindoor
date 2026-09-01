@@ -354,8 +354,15 @@ export function createSSEStream(options = {}) {
   })();
 
   let totalContentLength = 0;
-  let accumulatedContent = "";
-  let accumulatedThinking = "";
+  const contentChunks = [];
+  const thinkingChunks = [];
+  /** Append chunks without copying growing prefixes; join only at observable completion/snapshot boundaries. */
+  const appendContent = (chunk) => contentChunks.push(chunk);
+  const appendThinking = (chunk) => thinkingChunks.push(chunk);
+  const getAccumulatedCompletion = () => ({
+    content: contentChunks.join(""),
+    thinking: thinkingChunks.join("")
+  });
   let ttftAt = null;
   /** Tool-call frames are useful output even when providers omit usage and text. */
   let hadToolCalls = false;
@@ -381,14 +388,14 @@ export function createSSEStream(options = {}) {
         const delta = choice?.delta;
         if (isString(delta?.content) && delta.content) {
           totalContentLength += delta.content.length;
-          accumulatedContent += delta.content;
+          appendContent(delta.content);
         }
         const reasoning = isString(delta?.reasoning_content) && delta.reasoning_content ?
         delta.reasoning_content :
         isString(delta?.reasoning) && delta.reasoning.trim() ? delta.reasoning : "";
         if (reasoning) {
           totalContentLength += reasoning.length;
-          accumulatedThinking += reasoning;
+          appendThinking(reasoning);
         }
       }
     }
@@ -396,8 +403,8 @@ export function createSSEStream(options = {}) {
     for (const part of geminiTextParts) {
       if (!isString(part?.text) || !part.text) continue;
       totalContentLength += part.text.length;
-      if (part.thought === true) accumulatedThinking += part.text;else
-      accumulatedContent += part.text;
+      if (part.thought === true) appendThinking(part.text);else
+      appendContent(part.text);
     }
     return extracted;
   };
@@ -526,13 +533,13 @@ export function createSSEStream(options = {}) {
       if (pending.content) {
         delta.content = pending.content;
         totalContentLength += pending.content.length;
-        accumulatedContent += pending.content;
+        appendContent(pending.content);
       }
       if (pending.reasoning) {
         delta.reasoning_content = appendInlineThinkingReasoning(choiceState, undefined, pending.reasoning);
         trackInlineThinkingReasoning(choiceState, delta.reasoning_content, "inline");
         totalContentLength += delta.reasoning_content.length;
-        accumulatedThinking += delta.reasoning_content;
+        appendThinking(delta.reasoning_content);
       }
       if (Object.keys(delta).length > 0) {
         choices.push({ index, delta, finish_reason: null });
@@ -562,8 +569,7 @@ export function createSSEStream(options = {}) {
     estimateUsage(body, totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
     null;
     return {
-      content: accumulatedContent,
-      thinking: accumulatedThinking,
+      ...getAccumulatedCompletion(),
       usage: resolvedUsage,
       ttftAt
     };
@@ -736,11 +742,11 @@ export function createSSEStream(options = {}) {
                 const reasoning = delta?.reasoning_content;
                 if (content && isString(content)) {
                   totalContentLength += content.length;
-                  accumulatedContent += content;
+                  appendContent(content);
                 }
                 if (reasoning && isString(reasoning)) {
                   totalContentLength += reasoning.length;
-                  accumulatedThinking += reasoning;
+                  appendThinking(reasoning);
                 }
                 // Upstream still reasons; don't forward thinking fields to OpenAI
                 // clients (OpenCode renders them).
@@ -792,7 +798,7 @@ export function createSSEStream(options = {}) {
                           finish_reason: null
                         });
                         totalContentLength += pending.content.length;
-                        accumulatedContent += pending.content;
+                        appendContent(pending.content);
                       }
                     }
                   } else if (!choiceState.bypass && isString(delta.content)) {
@@ -889,7 +895,7 @@ export function createSSEStream(options = {}) {
                 }
                 onStreamCompleteFired = true;
                 onStreamComplete(
-                  { content: accumulatedContent, thinking: accumulatedThinking, ...(hadToolCalls ? { hadToolCalls: true } : null) },
+                  { ...getAccumulatedCompletion(), ...(hadToolCalls ? { hadToolCalls: true } : null) },
                   usage,
                   ttftAt,
                   providerSummary.finalize(usage)
@@ -988,36 +994,37 @@ export function createSSEStream(options = {}) {
         // final assistant payload, and request logging must see it too.
         if (isString(parsed.message?.content) && parsed.message.content) {
           totalContentLength += parsed.message.content.length;
-          accumulatedContent += parsed.message.content;
+          appendContent(parsed.message.content);
         }
         if (isString(parsed.message?.thinking) && parsed.message.thinking) {
           totalContentLength += parsed.message.thinking.length;
-          accumulatedThinking += parsed.message.thinking;
+          appendThinking(parsed.message.thinking);
         }
 
         // Claude format - content
         if (parsed.delta?.text) {
           totalContentLength += parsed.delta.text.length;
-          accumulatedContent += parsed.delta.text;
+          appendContent(parsed.delta.text);
         }
         // Claude format - thinking
         if (parsed.delta?.thinking) {
           totalContentLength += parsed.delta.thinking.length;
-          accumulatedThinking += parsed.delta.thinking;
+          appendThinking(parsed.delta.thinking);
         }
 
         // OpenAI format - content
         if (parsed.choices?.[0]?.delta?.content) {
           totalContentLength += parsed.choices[0].delta.content.length;
-          accumulatedContent += parsed.choices[0].delta.content;
+          appendContent(parsed.choices[0].delta.content);
         }
+        // OpenAI format - reasoning (reasoning_content preferred, `reasoning` fallback)
         const openAIReasoningDelta = parsed.choices?.[0]?.delta;
         const openAIReasoning = isString(openAIReasoningDelta?.reasoning_content) && openAIReasoningDelta.reasoning_content ?
         openAIReasoningDelta.reasoning_content :
         isString(openAIReasoningDelta?.reasoning) && openAIReasoningDelta.reasoning.trim() ? openAIReasoningDelta.reasoning : "";
         if (openAIReasoning) {
           totalContentLength += openAIReasoning.length;
-          accumulatedThinking += openAIReasoning;
+          appendThinking(openAIReasoning);
         }
 
         // Gemini format
@@ -1028,9 +1035,9 @@ export function createSSEStream(options = {}) {
               totalContentLength += part.text.length;
               // Check if this is thinking content
               if (part.thought === true) {
-                accumulatedThinking += part.text;
+                appendThinking(part.text);
               } else {
-                accumulatedContent += part.text;
+                appendContent(part.text);
               }
             }
           }
@@ -1057,7 +1064,7 @@ export function createSSEStream(options = {}) {
         if ((provider === "antigravity" || provider === "agy") && parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason) && onStreamComplete && !onStreamCompleteFired) {
           if (!hasValidUsage(state.usage) && totalContentLength > 0) state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
           onStreamCompleteFired = true;
-          onStreamComplete({ content: accumulatedContent, thinking: accumulatedThinking, ...(hadToolCalls ? { hadToolCalls: true } : null) }, state.usage, ttftAt, providerSummary.finalize(state.usage));
+          onStreamComplete({ ...getAccumulatedCompletion(), ...(hadToolCalls ? { hadToolCalls: true } : null) }, state.usage, ttftAt, providerSummary.finalize(state.usage));
         }
 
         // Provider-specific normalization must also run in TRANSLATE mode:
@@ -1118,11 +1125,11 @@ export function createSSEStream(options = {}) {
             if (tail.content || tail.reasoning) {
               if (tail.reasoning) {
                 totalContentLength += tail.reasoning.length;
-                accumulatedThinking += tail.reasoning;
+                appendThinking(tail.reasoning);
               }
               if (tail.content) {
                 totalContentLength += tail.content.length;
-                accumulatedContent += tail.content;
+                appendContent(tail.content);
               }
               const flushedDelta = {
                 ...(tail.content ? { content: tail.content } : null),
@@ -1228,8 +1235,7 @@ export function createSSEStream(options = {}) {
           if (onStreamComplete && !onStreamCompleteFired) {
             onStreamCompleteFired = true;
             onStreamComplete({
-              content: accumulatedContent,
-              thinking: accumulatedThinking,
+              ...getAccumulatedCompletion(),
               ...(hadToolCalls ? { hadToolCalls: true } : null)
             }, usage, ttftAt, providerSummary.finalize(usage));
           }
@@ -1316,8 +1322,7 @@ export function createSSEStream(options = {}) {
         if (onStreamComplete && !onStreamCompleteFired) {
           onStreamCompleteFired = true;
           onStreamComplete({
-            content: accumulatedContent,
-            thinking: accumulatedThinking,
+            ...getAccumulatedCompletion(),
             ...(hadToolCalls ? { hadToolCalls: true } : null)
           }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
         }

@@ -73,7 +73,7 @@ vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
 }));
 
 
-const { handleChat, rankComboModelsByQuota } = await import("../../src/sse/handlers/chat.js");
+const { handleChat, rankComboModelsByQuota, __resetAntigravity429StrikesForTests } = await import("../../src/sse/handlers/chat.js");
 
 function request(model = "codex/gpt-5.4", signal = null) {
   return new Request("http://localhost/v1/chat/completions", {
@@ -131,6 +131,17 @@ function exhaustedQuotaSnapshot(connectionId, provider, model, resetAt) {
       reasonCode: "quota_exhausted",
       metadata: {},
     },
+  };
+}
+
+function antigravityFailure(options, status = 429, extra = {}) {
+  return {
+    success: false,
+    status,
+    error: `HTTP ${status}`,
+    response: new Response(`HTTP ${status}`, { status }),
+    attemptStartedAt: options.onProviderAttempt(),
+    ...extra,
   };
 }
 
@@ -352,6 +363,7 @@ describe("chat combo quota preview", () => {
 describe("chat quota fallback orchestration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetAntigravity429StrikesForTests();
     mocks.getSettings.mockResolvedValue({
       requireApiKey: false,
       rtkEnabled: false,
@@ -591,6 +603,295 @@ describe("chat quota fallback orchestration", () => {
       resetAtMs,
       expect.objectContaining({ attemptStartedAt: expect.any(Number) }),
     );
+  });
+
+  it("persists a 15-minute model lock on the third optimistic Antigravity 429", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-strike", "antigravity");
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options));
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    try {
+      await handleChat(request(`antigravity/${model}`));
+      await handleChat(request(`antigravity/${model}`));
+      await handleChat(request(`antigravity/${model}`));
+
+      expect(mocks.markAccountUnavailable.mock.calls.map((call) => call[5])).toEqual([
+        undefined,
+        undefined,
+        Date.parse("2026-09-01T00:15:00.000Z"),
+      ]);
+      expect(mocks.markAccountUnavailable.mock.calls.at(-1)[6].rateLimitEvidence).toEqual({
+        state: "cooldown",
+        resetAtMs: Date.parse("2026-09-01T00:15:00.000Z"),
+        source: "antigravity_strike_breaker",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("makes a new logical request skip the persisted strike-locked connection", async () => {
+    const model = "claude-opus-4-6-thinking";
+    const primary = selected("ag-primary", "antigravity");
+    const secondary = selected("ag-secondary", "antigravity");
+    let primaryLocked = false;
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockImplementation(async (_provider, excluded) =>
+      !primaryLocked && !excluded?.has(primary.connectionId) ? primary : secondary,
+    );
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.handleChatCore.mockImplementation(async (options) => {
+      if (options.connectionId === secondary.connectionId) {
+        return { success: true, response: new Response("ok", { status: 200 }) };
+      }
+      return antigravityFailure(options);
+    });
+    mocks.markAccountUnavailable.mockImplementation(async (_id, _status, _error, _provider, _model, resetsAtMs) => {
+      if (Number.isFinite(resetsAtMs)) primaryLocked = true;
+      return { shouldFallback: false, cooldownMs: 0 };
+    });
+
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+    const callsBeforeNewRequest = mocks.handleChatCore.mock.calls.length;
+    await handleChat(request(`antigravity/${model}`));
+
+    expect(primaryLocked).toBe(true);
+    expect(mocks.handleChatCore.mock.calls[callsBeforeNewRequest][0].connectionId).toBe(secondary.connectionId);
+  });
+
+  it("clears optimistic strikes after a successful request", async () => {
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-success-reset", "antigravity");
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+    mocks.handleChatCore
+      .mockImplementationOnce(async (options) => antigravityFailure(options))
+      .mockImplementationOnce(async (options) => {
+        const attemptStartedAt = options.onProviderAttempt();
+        await options.onRequestSuccess({ attemptStartedAt });
+        return { success: true, response: new Response("ok", { status: 200 }), attemptStartedAt };
+      })
+      .mockImplementation(async (options) => antigravityFailure(options));
+
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+
+    expect(mocks.markAccountUnavailable.mock.calls.map((call) => call[5])).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("anchors the strike window at the first qualifying 429", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-fixed-window", "antigravity");
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options));
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    try {
+      await handleChat(request(`antigravity/${model}`));
+      vi.advanceTimersByTime(50_000);
+      await handleChat(request(`antigravity/${model}`));
+      vi.advanceTimersByTime(11_000);
+      await handleChat(request(`antigravity/${model}`));
+
+      expect(mocks.markAccountUnavailable.mock.calls.map((call) => call[5])).toEqual([undefined, undefined, undefined]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never counts HTTP 409 toward the Antigravity strike breaker", async () => {
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-409", "antigravity");
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options, 409));
+
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options));
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+
+    expect(mocks.markAccountUnavailable.mock.calls.map((call) => call[5])).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("counts reset-free 429s when reactive quota refresh fails", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("agy-refresh-failed", "agy");
+    mocks.getModelInfo.mockResolvedValue({ provider: "agy", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockRejectedValue(new Error("quota API unavailable"));
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options));
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    try {
+      await handleChat(request(`agy/${model}`));
+      await handleChat(request(`agy/${model}`));
+      await handleChat(request(`agy/${model}`));
+
+      expect(mocks.markAccountUnavailable.mock.calls.at(-1)[5]).toBe(Date.parse("2026-09-01T00:15:00.000Z"));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears strikes when exact refreshed quota is exhausted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-exact-reset", "antigravity");
+    const retryAfter = "2026-09-01T00:01:00.000Z";
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options));
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    try {
+      await handleChat(request(`antigravity/${model}`));
+      mocks.refreshProviderQuota.mockResolvedValueOnce({
+        outcome: "success",
+        snapshots: [exhaustedQuotaSnapshot(account.connectionId, "antigravity", model, retryAfter)],
+      });
+      mocks.getProviderCredentials
+        .mockResolvedValueOnce(account)
+        .mockResolvedValueOnce({ allRateLimited: true, retryAfter, retryAfterHuman: "reset after 60s", lastError: "Rate limited", lastErrorCode: 429 });
+      await handleChat(request(`antigravity/${model}`));
+      mocks.getProviderCredentials.mockResolvedValue(account);
+      await handleChat(request(`antigravity/${model}`));
+      await handleChat(request(`antigravity/${model}`));
+
+      expect(mocks.refreshProviderQuota).toHaveBeenCalledTimes(4);
+      expect(mocks.getProviderCredentials).toHaveBeenCalledTimes(5);
+      expect(mocks.markAccountUnavailable).toHaveBeenCalledTimes(3);
+      expect(mocks.markAccountUnavailable.mock.calls.map((call) => call[5])).toEqual([undefined, undefined, undefined]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refreshes exhausted body evidence and preserves it on the strike breaker", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-exhausted-evidence", "antigravity");
+    const evidence = { state: "exhausted", resetAtMs: null, source: "executor" };
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options, 429, {
+      rateLimitEvidence: evidence,
+    }));
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    try {
+      await handleChat(request(`antigravity/${model}`));
+      await handleChat(request(`antigravity/${model}`));
+      await handleChat(request(`antigravity/${model}`));
+
+      expect(mocks.refreshProviderQuota).toHaveBeenCalledTimes(3);
+      expect(mocks.markAccountUnavailable.mock.calls.map((call) => call[5])).toEqual([
+        undefined,
+        undefined,
+        Date.parse("2026-09-01T00:15:00.000Z"),
+      ]);
+      expect(mocks.markAccountUnavailable.mock.calls.at(-1)[6].rateLimitEvidence).toEqual({
+        state: "exhausted",
+        resetAtMs: Date.parse("2026-09-01T00:15:00.000Z"),
+        source: "antigravity_strike_breaker",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears strikes when executor-authoritative reset evidence owns the cooldown", async () => {
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-authoritative-reset", "antigravity");
+    const resetAtMs = Date.now() + 60_000;
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+    mocks.handleChatCore
+      .mockImplementationOnce(async (options) => antigravityFailure(options))
+      .mockImplementationOnce(async (options) => antigravityFailure(options, 429, {
+        resetsAtMs: resetAtMs,
+        rateLimitEvidence: { state: "cooldown", resetAtMs, source: "executor" },
+      }))
+      .mockImplementation(async (options) => antigravityFailure(options));
+
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+
+    expect(mocks.markAccountUnavailable.mock.calls.map((call) => call[5])).toEqual([
+      undefined,
+      resetAtMs,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("applies equally to aliases while isolating connection and model keys", async () => {
+    const cases = [
+      ["antigravity", "ag-one", "model-a"],
+      ["agy", "agy-one", "model-a"],
+      ["antigravity", "ag-one", "model-b"],
+    ];
+    mocks.getModelInfo.mockImplementation(async (modelStr) => {
+      const [provider, model] = modelStr.split("/");
+      return { provider, model };
+    });
+    mocks.getProviderCredentials.mockImplementation(async (provider, _excluded, model) => selected(
+      cases.find(([candidateProvider, , candidateModel]) => candidateProvider === provider && candidateModel === model)?.[1],
+      provider,
+    ));
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options));
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    for (const [provider, , model] of cases) {
+      await handleChat(request(`${provider}/${model}`));
+      await handleChat(request(`${provider}/${model}`));
+    }
+    expect(mocks.markAccountUnavailable.mock.calls.every((call) => call[5] === undefined)).toBe(true);
+    for (const [provider, , model] of cases) await handleChat(request(`${provider}/${model}`));
+
+    const breakerCalls = mocks.markAccountUnavailable.mock.calls.filter((call) => Number.isFinite(call[5]));
+    expect(breakerCalls.map((call) => [call[0], call[3], call[4]])).toEqual([
+      ["ag-one", "antigravity", "model-a"],
+      ["agy-one", "agy", "model-a"],
+      ["ag-one", "antigravity", "model-b"],
+    ]);
   });
 
   it("passes Kimi temporary resets through final fallback with its exact model scope", async () => {

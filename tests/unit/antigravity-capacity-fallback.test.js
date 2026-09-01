@@ -223,4 +223,24 @@ describe("Antigravity secondary-account quota fallback (U-16 #2514)", () => {
     expect(second.connectionId).toBe("agy-secondary");
     expect(second.accessToken).toBe("tok-secondary");
   });
+
+  it("skips a connection on a new request after a 15-minute strike deadline is persisted", async () => {
+    const model = "claude-opus-4-6-thinking";
+    const resetAtMs = Date.now() + 15 * 60_000;
+
+    const mark = await markAccountUnavailable(
+      "agy-primary",
+      429,
+      "Rate limited",
+      "agy",
+      model,
+      resetAtMs,
+      { rateLimitEvidence: { state: "cooldown", resetAtMs, source: "antigravity_strike_breaker" } },
+    );
+    const nextRequest = await getProviderCredentials("agy", null, model);
+
+    expect(mark.shouldFallback).toBe(true);
+    expect(Math.abs(new Date(connections[0][`modelLock_${model}`]).getTime() - resetAtMs)).toBeLessThan(5000);
+    expect(nextRequest.connectionId).toBe("agy-secondary");
+  });
 });

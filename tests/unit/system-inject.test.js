@@ -112,6 +112,57 @@ describe("injectSystemPrompt", () => {
     ]);
     expect(body).toEqual(afterFirst);
   });
+  it.each(["system", "developer"])("extends an untyped %s Responses message", (role) => {
+    const body = { input: [{ role, content: [{ type: "input_text", text: "base" }] }] };
+
+    injectSystemPrompt(body, FORMATS.OPENAI_RESPONSES, "injected");
+
+    expect(body.input).toEqual([{
+      role,
+      content: [
+        { type: "input_text", text: "base" },
+        { type: "input_text", text: "injected" },
+      ],
+    }]);
+  });
+
+  it("deduplicates against a later untyped Responses message", () => {
+    const body = {
+      input: [
+        { type: "message", role: "system", content: [{ type: "input_text", text: "base" }] },
+        { role: "developer", content: [{ type: "input_text", text: "injected" }] },
+      ],
+    };
+
+    injectSystemPrompt(body, FORMATS.OPENAI_RESPONSES, "injected");
+
+    expect(body.input[0].content).toEqual([{ type: "input_text", text: "base" }]);
+    expect(body.input).toHaveLength(2);
+  });
+
+  it("excludes explicit non-message Responses items and inserts a typed developer message", () => {
+    const functionCall = {
+      type: "function_call",
+      role: "system",
+      call_id: "call-1",
+      name: "lookup",
+      arguments: "{}",
+    };
+    const body = { input: [functionCall, { role: "user", content: "hello" }] };
+
+    injectSystemPrompt(body, FORMATS.OPENAI_RESPONSES, "injected");
+
+    expect(body.input).toEqual([
+      {
+        type: "message",
+        role: "developer",
+        content: [{ type: "input_text", text: "injected" }],
+      },
+      functionCall,
+      { role: "user", content: "hello" },
+    ]);
+  });
+
 });
 
 describe("upstream #3491 wire-safe injection", () => {

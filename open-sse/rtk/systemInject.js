@@ -109,7 +109,7 @@ function hasPromptBlock(parts, prompt) {
 function injectOpenAIArray(arr, prompt, isResponses) {
   const partType = isResponses ? RESPONSES_ITEM.INPUT_TEXT : OPENAI_BLOCK.TEXT;
   const isEligible = (item) => item &&
-    (!isResponses || item.type === RESPONSES_ITEM.MESSAGE) &&
+    (!isResponses || !item.type || item.type === RESPONSES_ITEM.MESSAGE) &&
     (item.role === ROLE.SYSTEM || item.role === ROLE.DEVELOPER);
   const eligible = arr.filter(isEligible);
 

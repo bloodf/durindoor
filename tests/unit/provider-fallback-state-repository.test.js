@@ -214,6 +214,98 @@ describe("atomic provider fallback health state", () => {
     expect(JSON.stringify(stored)).toContain("access-fallback-canary");
   });
 
+  it("isolates explicit web-fetch locks from chat and account scopes", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const base = Date.now();
+    const createdAt = new Date(base - 60_000).toISOString();
+    const chatLock = new Date(base + 180_000).toISOString();
+    const modelLock = new Date(base + 120_000).toISOString();
+    const chatHealth = {
+      testStatus: "active",
+      lastError: null,
+      lastErrorAt: null,
+      errorCode: null,
+      backoffLevel: 0,
+    };
+    db.run(
+      `INSERT INTO providerConnections(id, provider, authType, name, isActive, data, createdAt, updatedAt)
+       VALUES('conn-webfetch', 'ollama', 'apikey', 'Ollama', 1, ?, ?, ?)`,
+      [JSON.stringify({
+        "modelLock___all": chatLock,
+        "modelStateObserved___all": new Date(base - 1_000).toISOString(),
+        "modelLock_gpt-oss:120b": modelLock,
+        "modelStateObserved_gpt-oss:120b": new Date(base - 1_000).toISOString(),
+        ...chatHealth,
+      }), createdAt, createdAt],
+    );
+
+    await database.recordProviderConnectionFallbackState("conn-webfetch", {
+      status: 502,
+      reasonCode: "network_error",
+      cooldownMs: 60_000,
+      backoffLevel: 4,
+      observedAt: base + 500,
+      webFetch: true,
+    }, { now: base + 500 });
+    let stored = await database.getProviderConnectionById("conn-webfetch");
+    expect(stored["modelLock_webfetch:ollama"]).toBeTruthy();
+    expect(stored.modelLock___all).toBe(chatLock);
+    expect(stored["modelLock_gpt-oss:120b"]).toBe(modelLock);
+    expect(stored).toMatchObject(chatHealth);
+
+    await database.clearProviderConnectionFallbackState("conn-webfetch", {
+      observedAt: base + 1_000,
+      webFetch: true,
+    }, { now: base + 1_000 });
+    stored = await database.getProviderConnectionById("conn-webfetch");
+    expect(stored["modelLock_webfetch:ollama"]).toBeNull();
+    expect(stored).toMatchObject(chatHealth);
+    expect(stored.modelLock___all).toBe(chatLock);
+    expect(stored["modelLock_gpt-oss:120b"]).toBe(modelLock);
+  });
+
+  it("restores chat health while preserving an active web-fetch lock", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const base = Date.now();
+    const createdAt = new Date(base - 60_000).toISOString();
+    const webFetchLock = new Date(base + 180_000).toISOString();
+    const chatLock = new Date(base + 120_000).toISOString();
+    db.run(
+      `INSERT INTO providerConnections(id, provider, authType, name, isActive, data, createdAt, updatedAt)
+       VALUES('conn-chat-success', 'ollama', 'apikey', 'Ollama', 1, ?, ?, ?)`,
+      [JSON.stringify({
+        "modelLock_webfetch:ollama": webFetchLock,
+        "modelLock_gpt-oss:120b": chatLock,
+        "modelStateObserved_gpt-oss:120b": new Date(base - 1_000).toISOString(),
+        testStatus: "unavailable",
+        lastError: "Chat failed",
+        lastErrorAt: new Date(base - 1_000).toISOString(),
+        errorCode: 503,
+        backoffLevel: 3,
+      }), createdAt, createdAt],
+    );
+
+    const result = await database.clearProviderConnectionFallbackState("conn-chat-success", {
+      model: "gpt-oss:120b",
+      observedAt: base,
+    }, { now: base });
+
+    expect(result.applied).toBe(true);
+    expect(result.connection).toMatchObject({
+      "modelLock_webfetch:ollama": webFetchLock,
+      "modelLock_gpt-oss:120b": null,
+      testStatus: "active",
+      lastError: null,
+      lastErrorAt: null,
+      errorCode: null,
+      backoffLevel: 0,
+    });
+  });
+
   it("collapses unknown model strings to one bounded account scope and rejects future clocks", async () => {
     const database = await import("@/lib/db/index.js");
     const { getAdapter } = await import("@/lib/db/driver.js");

@@ -28,7 +28,7 @@ describe("direct Claude protocol parity", () => {
   it("emits the current CLI fingerprint for the host OS and architecture", () => {
     expect(claude.transport.headers).toBe(CLAUDE_CLI_SPOOF_HEADERS);
     expect(CLAUDE_CLI_SPOOF_HEADERS).toMatchObject({
-      "User-Agent": "claude-cli/2.1.220 (external, sdk-cli)",
+      "User-Agent": "claude-code/2.1.258",
       "X-Stainless-Package-Version": "0.94.0",
       "X-Stainless-Os": mapStainlessOs(),
       "X-Stainless-Arch": mapStainlessArch(),
@@ -53,7 +53,7 @@ describe("direct Claude protocol parity", () => {
     expect(credentials._clientSessionId).toBe("session-123");
     expect(headers["X-Claude-Code-Session-Id"]).toBe("session-123");
     expect(JSON.parse(body.metadata.user_id).session_id).toBe("session-123");
-    expect(body.system[0].text).toMatch(/cc_version=2\.1\.220\.[0-9a-f]{3};/);
+    expect(body.system[0].text).toMatch(/cc_version=2\.1\.258\.[0-9a-f]{3};/);
   });
 
   it("omits the Claude session header when no client session id is present", () => {

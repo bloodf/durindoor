@@ -77,7 +77,7 @@ describe("claude-settings POST", () => {
       ANTHROPIC_DEFAULT_OPUS_MODEL: "cc/claude-opus-5",
       ANTHROPIC_DEFAULT_SONNET_MODEL: "cc/claude-sonnet-5",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "cc/claude-haiku-4-5-20251001",
-      ANTHROPIC_DEFAULT_FABLE_MODEL: "cc/claude-fable-5",
+      ANTHROPIC_DEFAULT_FABLE_MODEL: "cc/claude-fable-5-1",
     });
 
     expect(response.status).toBe(200);
@@ -85,7 +85,7 @@ describe("claude-settings POST", () => {
     expect(written.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("claude-opus-5");
     expect(written.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("claude-sonnet-5");
     expect(written.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("claude-haiku-4-5-20251001");
-    expect(written.env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("claude-fable-5");
+    expect(written.env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("claude-fable-5-1");
   });
 
   it("preserves non-cc namespaced model IDs", async () => {
@@ -133,13 +133,13 @@ describe("claude-settings POST", () => {
     expect(CLI_TOOLS.claude.modelAliases).toContain("sonnet[1m]");
   });
 
-  it("maps opus default to cc/claude-opus-5 and keeps other defaults", () => {
+  it("maps Claude defaults to Fable 5.1 without changing Opus", () => {
     const opus = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "opus");
     expect(opus.defaultValue).toBe("cc/claude-opus-5");
     const sonnet = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "sonnet");
     expect(sonnet.defaultValue).toBe("cc/claude-sonnet-5");
     const fable = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "fable");
-    expect(fable.defaultValue).toBe("cc/claude-fable-5");
+    expect(fable.defaultValue).toBe("cc/claude-fable-5-1");
     const haiku = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "haiku");
     expect(haiku.defaultValue).toBe("cc/claude-haiku-4-5-20251001");
   });

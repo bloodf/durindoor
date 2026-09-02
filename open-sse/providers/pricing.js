@@ -172,6 +172,7 @@ export const MODEL_PRICING = {
   "claude-opus-4-5-thinking": { input: 5.00, output: 25.00, cached: 0.50, reasoning: 37.50, cache_creation: 5.00 },
   "claude-opus-4-6-thinking": { input: 5.00, output: 25.00, cached: 0.50, reasoning: 37.50, cache_creation: 5.00 },
   "claude-fable-5": { input: 10.00, output: 50.00, cached: 1.00, reasoning: 50.00, cache_creation: 12.50 },
+  "claude-fable-5-1": { input: 10.00, output: 50.00, cached: 0.25, reasoning: 50.00, cache_creation: 12.50 },
 
   // === OpenAI / GPT ===
   // Official standard-tier list prices in $/1M tokens. OpenAI reports

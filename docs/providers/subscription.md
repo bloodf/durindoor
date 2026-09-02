@@ -90,7 +90,7 @@ When the add-key dialog creates default connection names, it chooses the first u
 ### Current 1M model catalog corrections
 
 - Claude Code exposes `claude-opus-5`; the dashboard's default Opus mapping points to `cc/claude-opus-5`.
-- Anthropic Opus 5, Sonnet 5, Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, and Sonnet 4.6 use a native 1M context window and do not require a beta header.
+- Anthropic Opus 5, Sonnet 5, Fable 5.1, Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, and Sonnet 4.6 use a native 1M context window and do not require a beta header.
 - Direct OpenAI GPT-5.6 (`gpt-5.6`, Sol, Terra, Luna) and GPT-5.5 resolve with a 1.05M context window and 128k max output.
 - Kiro GPT-5.6 Sol/Terra/Luna use the same approved 1.05M catalog context in DurinDoor while keeping Kiro's existing 32k output capability.
 - OpenCode Go and CommandCode expose `deepseek-v4-flash-vision-exp` as a 1M-context vision model. CommandCode also accepts `deepseek/deepseek-v4-flash-vision-exp`; its OpenAI request translator preserves remote image URLs and data URIs as native image blocks.

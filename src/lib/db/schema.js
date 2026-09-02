@@ -5,13 +5,13 @@ import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 export const SCHEMA_VERSION = 13;
 
 export const PRAGMA_SQL = `
+PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 PRAGMA temp_store = MEMORY;
 PRAGMA mmap_size = 30000000;
 PRAGMA cache_size = -64000;
 PRAGMA foreign_keys = ON;
-PRAGMA busy_timeout = 5000;
 `;
 
 // Declarative current schema. Used by syncSchemaFromTables() to

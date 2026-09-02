@@ -650,11 +650,11 @@ function pruneConversationAffinity(now = Date.now()) {
   }
 }
 
-function normalizeFingerprintText(value) {
+function normalizeFingerprintText(value, maxChars = 12000) {
   return String(value || "").
   replace(/\s+/g, " ").
   trim().
-  slice(0, 12000);
+  slice(0, maxChars);
 }
 
 function collectText(value, out = []) {
@@ -897,8 +897,102 @@ function allRoleText(items, roles, contentKey = "content") {
   join("\n"));
 }
 
-function hashConversationSeed(seed) {
-  const normalized = normalizeFingerprintText(seed);
+function firstNonEmptyTools(body) {
+  const candidates = [
+  body?.tools,
+  body?.request?.tools,
+  body?.tool_config?.tools,
+  body?.toolConfig?.tools];
+  for (const items of candidates) {
+    if (Array.isArray(items) && items.length > 0) return items;
+  }
+  return [];
+}
+
+function stableToolFingerprint(tools, maxChars = 16384) {
+  if (!Array.isArray(tools) || tools.length === 0) return "";
+  const seen = new WeakSet();
+  const parts = [];
+  let budget = maxChars;
+
+  const emit = (chunk) => {
+    if (budget <= 0) return false;
+    const collapsed = chunk.replace(/\s+/g, " ");
+    const text = collapsed.length > budget ? collapsed.slice(0, budget) : collapsed;
+    parts.push(text);
+    budget -= text.length;
+    return true;
+  };
+  const ignored = (value) => value === undefined || isFunction(value);
+  const stack = [{ kind: "value", value: tools }];
+
+  // Continuations schedule one child at a time, bounding stack growth for
+  // wide schemas. Separators are emitted only after ignored values are skipped.
+  while (stack.length > 0 && budget > 0) {
+    const frame = stack.pop();
+
+    if (frame.kind === "array") {
+      let index = frame.index;
+      while (index < frame.items.length && ignored(frame.items[index])) index++;
+      if (index === frame.items.length) {
+        emit("]");
+        continue;
+      }
+      if (frame.wrote && !emit(",")) break;
+      stack.push({ ...frame, index: index + 1, wrote: true });
+      stack.push({ kind: "value", value: frame.items[index] });
+      continue;
+    }
+
+    if (frame.kind === "object") {
+      let index = frame.index;
+      while (index < frame.keys.length && ignored(frame.value[frame.keys[index]])) index++;
+      if (index === frame.keys.length) {
+        emit("}");
+        continue;
+      }
+      const key = frame.keys[index];
+      if (frame.wrote && !emit(",")) break;
+      if (!emit(`${JSON.stringify(key)}:`)) break;
+      stack.push({ ...frame, index: index + 1, wrote: true });
+      stack.push({ kind: "value", value: frame.value[key] });
+      continue;
+    }
+
+    const value = frame.value;
+    if (value === null) {
+      emit("null");
+      continue;
+    }
+    if (isString(value) || isNumber(value) || isBoolean(value)) {
+      emit(JSON.stringify(value));
+      continue;
+    }
+    if (!isObject(value)) continue;
+    if (seen.has(value)) {
+      emit("[Circular]");
+      continue;
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      if (!emit("[")) break;
+      if (value.length === 0) { emit("]"); continue; }
+      stack.push({ kind: "array", items: value, index: 0, wrote: false });
+      continue;
+    }
+
+    if (!emit("{")) break;
+    const keys = Object.keys(value).sort();
+    if (keys.length === 0) { emit("}"); continue; }
+    stack.push({ kind: "object", value, keys, index: 0, wrote: false });
+  }
+
+  return normalizeFingerprintText(parts.join(""), maxChars);
+}
+
+function hashConversationSeed(seed, maxChars) {
+  const normalized = normalizeFingerprintText(seed, maxChars);
   if (!normalized) return null;
   return createHash("sha1").update(normalized).digest("hex").slice(0, 24);
 }
@@ -932,6 +1026,8 @@ export function getConversationCacheKey(body) {
   const userRoles = new Set(["user"]);
   const contents = body.contents || body.request?.contents;
 
+  const tools = firstNonEmptyTools(body);
+  const toolFingerprint = stableToolFingerprint(tools);
   const seedParts = [
   collectText(body.system).join("\n"),
   collectText(body.instructions).join("\n"),
@@ -943,9 +1039,13 @@ export function getConversationCacheKey(body) {
   firstRoleText(contents, userRoles, "parts"),
   body.query,
   body.url].
-  filter(Boolean);
+  filter(Boolean).
+  join("\n");
 
-  return hashConversationSeed(seedParts.join("\n"));
+  if (!toolFingerprint) return hashConversationSeed(seedParts);
+  const promptFingerprint = normalizeFingerprintText(seedParts);
+  if (!promptFingerprint) return null;
+  return hashConversationSeed(`${promptFingerprint}\n${toolFingerprint}`, 12000 + 1 + toolFingerprint.length);
 }
 
 /**

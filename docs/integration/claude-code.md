@@ -46,7 +46,7 @@ This ports the compatibility boundary from open upstream PRs decolua/9router#359
 
 ## Claude Code 2.1.258 and Claude Fable 5.1
 
-Use Claude Code 2.1.258 or newer for Fable 5.1. DurinDoor identifies the Claude Code transport as `claude-code/2.1.258`, exposes `cc/claude-fable-5-1` for Claude Code OAuth and `anthropic/claude-fable-5-1` for Anthropic API keys, and keeps the retained Fable 5 IDs available. The `fable` default alias (`ANTHROPIC_DEFAULT_FABLE_MODEL`) is `cc/claude-fable-5-1`; Opus remains `cc/claude-opus-5`. There is no `claude-opus-5-1`.
+Use Claude Code 2.1.258 or newer for Fable 5.1. DurinDoor's static fallback fingerprint matches a captured Claude Code 2.1.258 request: `claude-cli/2.1.258 (external, sdk-cli)`, SDK package `0.112.1`, Node runtime `v26.3.0`, captured beta flags, and `X-Stainless-Helper-Method` absent. The capture host was Linux x64, so the dynamic `X-Stainless-Os` and `X-Stainless-Arch` values reflect the running host. It exposes `cc/claude-fable-5-1` for Claude Code OAuth and `anthropic/claude-fable-5-1` for Anthropic API keys, and keeps the retained Fable 5 IDs available. The `fable` default alias (`ANTHROPIC_DEFAULT_FABLE_MODEL`) is `cc/claude-fable-5-1`; Opus remains `cc/claude-opus-5`. There is no `claude-opus-5-1`.
 
 Fable 5.1 has a 1,000,000-token context window, 128,000-token output limit, vision, search, and always-on adaptive thinking. It preserves forced Claude-native tool choices such as `{ type: "tool", name: "record_summary" }`; do not downgrade that choice during translation.
 

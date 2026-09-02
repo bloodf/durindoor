@@ -44,24 +44,15 @@ function sanitize(headers) {
       .replace(/kimi-\d{10,}/g, "kimi-<TS>")
       .replace(/9Router\/\d+\.\d+\.\d+\S*/g, "9Router/<VER>")
       .replaceAll(process.version, "<NODEVER>")        // e.g. v20.20.2
-      // Some provider fingerprints deliberately advertise a fixed platform
-      // (for example Gitlawb always sends `linux`) rather than the runner OS.
-      // Normalize the supported Node platform literals, not only process.platform.
       .replace(/\b(?:aix|android|darwin|freebsd|haiku|linux|openbsd|sunos|win32)\b/g, "<PLATFORM>")
       .replaceAll(process.arch, "<ARCH>");             // e.g. x64 / arm64
-    // App version cũng xuất hiện trần trong các header này.
     if (k === "X-CLIENT-VERSION" || k === "X-CORE-VERSION") s = "<VER>";
-    // X-Stainless-* fingerprint values are environment-dependent:
-    // X-Stainless-Os is derived via mapStainlessOs(), and X-Stainless-Arch
-    // via mapStainlessArch() or hardcoded in a provider. Normalize both to
-    // stable placeholders so snapshots are portable across OS/arch/CI.
     if (k === "X-Stainless-Os") s = "<OS>";
     if (k === "X-Stainless-Arch") s = "<ARCH>";
     out[k] = s;
   }
   return out;
 }
-
 const providerIds = Object.keys(PROVIDERS).filter((p) => !SPECIALIZED.has(p)).sort();
 
 describe("GOLDEN buildUrl (default executor providers)", () => {

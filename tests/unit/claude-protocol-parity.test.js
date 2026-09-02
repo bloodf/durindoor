@@ -3,11 +3,7 @@ import { describe, expect, it } from "vitest";
 import "../translator/registerAll.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import claude from "../../open-sse/providers/registry/claude.js";
-import {
-  CLAUDE_CLI_SPOOF_HEADERS,
-  mapStainlessArch,
-  mapStainlessOs,
-} from "../../open-sse/providers/shared.js";
+import { CLAUDE_CLI_SPOOF_HEADERS, mapStainlessArch, mapStainlessOs } from "../../open-sse/providers/shared.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
@@ -25,18 +21,24 @@ const translateToClaude = (body, credentials, sourceFormat = FORMATS.OPENAI) => 
 );
 
 describe("direct Claude protocol parity", () => {
-  it("emits the current CLI fingerprint for the host OS and architecture", () => {
+  it("matches the captured Claude Code 2.1.258 static fingerprint", () => {
     expect(claude.transport.headers).toBe(CLAUDE_CLI_SPOOF_HEADERS);
-    expect(CLAUDE_CLI_SPOOF_HEADERS).toMatchObject({
-      "User-Agent": "claude-code/2.1.258",
-      "X-Stainless-Package-Version": "0.94.0",
-      "X-Stainless-Os": mapStainlessOs(),
+    expect(CLAUDE_CLI_SPOOF_HEADERS).toEqual({
+      "Anthropic-Version": "2023-06-01",
+      "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
+      "Anthropic-Dangerous-Direct-Browser-Access": "true",
+      "User-Agent": "claude-cli/2.1.258 (external, sdk-cli)",
+      "X-App": "cli",
+      "X-Stainless-Retry-Count": "0",
+      "X-Stainless-Runtime-Version": "v26.3.0",
+      "X-Stainless-Package-Version": "0.112.1",
+      "X-Stainless-Runtime": "node",
+      "X-Stainless-Lang": "js",
       "X-Stainless-Arch": mapStainlessArch(),
+      "X-Stainless-Os": mapStainlessOs(),
+      "X-Stainless-Timeout": "600",
     });
-    expect(mapStainlessOs("darwin")).toBe("MacOS");
-    expect(mapStainlessOs("other-os")).toBe("Other::other-os");
-    expect(mapStainlessArch("ia32")).toBe("x86");
-    expect(mapStainlessArch("other-arch")).toBe("other::other-arch");
+    expect(CLAUDE_CLI_SPOOF_HEADERS).not.toHaveProperty("X-Stainless-Helper-Method");
   });
 
   it("emits the captured client session id in headers and cloaked metadata", () => {

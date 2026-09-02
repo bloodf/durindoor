@@ -22,7 +22,7 @@ describe("AgentRouter provider registry entry", () => {
   it("includes a Claude Code User-Agent fallback", () => {
     const executor = getExecutor("agentrouter");
     const headers = executor.buildHeaders({ apiKey: "sk-test" }, true);
-    expect(headers["User-Agent"]).toContain("claude-code");
+    expect(headers["User-Agent"]).toBe("claude-cli/2.1.258 (external, sdk-cli)");
   });
 
   it("builds URL that targets agentrouter, not anthropic", () => {

@@ -44,6 +44,14 @@ Messages requests decode only IDs DurinDoor can route. Unknown official `claude-
 
 This ports the compatibility boundary from open upstream PRs decolua/9router#3595, #3691, and #3693 without their separate context store, per-request DB index rebuild, dashboard/statistics rewrite, or deploy tooling.
 
+## Claude Code 2.1.258 and Claude Fable 5.1
+
+Use Claude Code 2.1.258 or newer for Fable 5.1. DurinDoor identifies the Claude Code transport as `claude-code/2.1.258`, exposes `cc/claude-fable-5-1` for Claude Code OAuth and `anthropic/claude-fable-5-1` for Anthropic API keys, and keeps the retained Fable 5 IDs available. The `fable` default alias (`ANTHROPIC_DEFAULT_FABLE_MODEL`) is `cc/claude-fable-5-1`; Opus remains `cc/claude-opus-5`. There is no `claude-opus-5-1`.
+
+Fable 5.1 has a 1,000,000-token context window, 128,000-token output limit, vision, search, and always-on adaptive thinking. It preserves forced Claude-native tool choices such as `{ type: "tool", name: "record_summary" }`; do not downgrade that choice during translation.
+
+Source: [Anthropic Claude Code release notes](https://docs.claude.com/en/release-notes/claude-code).
+
 ## Dashboard Helper
 
 The dashboard includes CLI tool helpers for Claude Code. Use `Dashboard -> CLI Tools -> Claude Code` to copy current endpoint, API key, and model settings.

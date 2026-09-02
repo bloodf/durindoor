@@ -14,8 +14,18 @@ describe("getCapabilitiesForModel", () => {
     search: true,
   };
 
-  it("maps Fable-5 to claude-adaptive thinking format", () => {
+  it("maps Fable 5.1 to its exact always-on adaptive-thinking capability", () => {
+    expect(getCapabilitiesForModel("claude", "claude-fable-5-1")).toMatchObject({
+      vision: true,
+      reasoning: true,
+      search: true,
+      thinkingFormat: "claude-adaptive",
+      thinkingCanDisable: false,
+      contextWindow: 1000000,
+      maxOutput: 128000,
+    });
     expect(getCapabilitiesForModel("claude", "claude-fable-5")).toMatchObject({ reasoning: true, thinkingFormat: "claude-adaptive" });
+    expect(getCapabilitiesForModel("claude", "claude-fable-5").thinkingCanDisable).not.toBe(false);
     expect(getCapabilitiesForModel("claude", "claude-mythos-5")).toMatchObject({ reasoning: true, thinkingFormat: "claude-adaptive" });
   });
 

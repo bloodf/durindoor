@@ -11,7 +11,7 @@ describe("AgentRouter provider", () => {
     expect(headers).toMatchObject({
       "Anthropic-Version": "2023-06-01",
       "Anthropic-Beta": expect.stringContaining("claude-code-20250219"),
-      "User-Agent": expect.stringContaining("claude-cli/"),
+      "User-Agent": expect.stringContaining("claude-code/"),
       "X-App": "cli",
       "X-Stainless-Helper-Method": "stream",
       "X-Stainless-Lang": "js",

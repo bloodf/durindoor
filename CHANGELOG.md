@@ -4,6 +4,10 @@
 
 - Claude Code static fallback headers now match a local Claude Code 2.1.258 capture: `claude-cli/2.1.258 (external, sdk-cli)`, SDK package `0.112.1`, Node runtime `v26.3.0`, captured beta flags, and no helper-method header. Claude Fable 5.1 is selectable as `cc/claude-fable-5-1` and `anthropic/claude-fable-5-1`; `fable` selects it. Fable 5 remains available, forced Claude-native tool choices remain intact, and no Opus 5.1 row is added. Source: [Anthropic Claude Code release notes](https://docs.claude.com/en/release-notes/claude-code).
 
+## Fixed
+
+- SQLite initializers now apply the shared five-second busy timeout before enabling WAL mode, so file-backed startup waits out a concurrent writer instead of failing immediately with `database is locked`.
+
 # 3.19.0
 
 ## Added

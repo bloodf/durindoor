@@ -296,6 +296,153 @@ describe("#6607 single survivor honors explicit judge", () => {
   });
 });
 
+describe("combo cache affinity tools", () => {
+  const prompt = { messages: [{ role: "user", content: "Search this" }] };
+
+  it("uses tool declarations to distinguish otherwise identical prompts", () => {
+    const weather = getConversationCacheKey({
+      ...prompt,
+      tools: [{ type: "function", function: { name: "weather", parameters: { type: "object" } } }],
+    });
+    const stocks = getConversationCacheKey({
+      ...prompt,
+      tools: [{ type: "function", function: { name: "stocks", parameters: { type: "object" } } }],
+    });
+
+    expect(weather).not.toBe(stocks);
+  });
+
+  it("distinguishes same-named tools with different schemas", () => {
+    const simple = getConversationCacheKey({
+      ...prompt,
+      tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+    });
+    const detailed = getConversationCacheKey({
+      ...prompt,
+      tools: [{
+        type: "function",
+        function: {
+          name: "lookup",
+          parameters: { type: "object", required: ["city"], properties: { city: { type: "string" } } },
+        },
+      }],
+    });
+
+    expect(simple).not.toBe(detailed);
+  });
+
+  it("stabilizes deeply equivalent tool declarations despite object key order", () => {
+    const left = getConversationCacheKey({
+      ...prompt,
+      tools: [{ function: { parameters: { required: ["city"], type: "object", properties: { city: { type: "string" } } }, name: "weather" }, type: "function" }],
+    });
+    const right = getConversationCacheKey({
+      ...prompt,
+      tools: [{ type: "function", function: { name: "weather", parameters: { properties: { city: { type: "string" } }, type: "object", required: ["city"] } } }],
+    });
+
+    expect(left).toBe(right);
+  });
+
+  it("fingerprints cyclic tool schemas", () => {
+    const parameters = { type: "object" };
+    parameters.properties = { self: parameters };
+    const cyclic = getConversationCacheKey({
+      ...prompt,
+      tools: [{ type: "function", function: { name: "cyclic", parameters } }],
+    });
+    const promptOnly = getConversationCacheKey(prompt);
+
+    expect(cyclic).toMatch(/^[a-f0-9]{24}$/);
+    expect(cyclic).not.toBe(promptOnly);
+  });
+
+  it("ignores functions and undefined entries without leaving stray separators", () => {
+    const bare = getConversationCacheKey({
+      ...prompt,
+      tools: [{ type: "function", function: { name: "weather" } }],
+    });
+    const withNoise = getConversationCacheKey({
+      ...prompt,
+      tools: [
+        undefined,
+        { type: "function", function: { name: "weather", extra: undefined, handler: () => {} } },
+        undefined,
+      ],
+    });
+
+    expect(withNoise).toBe(bare);
+  });
+
+  it("distinguishes tools after a prompt saturates the normalizer", () => {
+    const messages = [{ role: "user", content: "x".repeat(15000) }];
+    const weather = getConversationCacheKey({
+      messages,
+      tools: [{ type: "function", function: { name: "weather" } }],
+    });
+    const stocks = getConversationCacheKey({
+      messages,
+      tools: [{ type: "function", function: { name: "stocks" } }],
+    });
+
+    expect(weather).not.toBe(stocks);
+    expect(weather).toMatch(/^[a-f0-9]{24}$/);
+    expect(stocks).toMatch(/^[a-f0-9]{24}$/);
+  });
+
+  it("normalizes whitespace before bounding a tool fingerprint", () => {
+    const description = " ".repeat(20000);
+    const weather = getConversationCacheKey({
+      ...prompt,
+      tools: [{ type: "function", function: { description, name: "weather" } }],
+    });
+    const stocks = getConversationCacheKey({
+      ...prompt,
+      tools: [{ type: "function", function: { description, name: "stocks" } }],
+    });
+
+    expect(weather).not.toBe(stocks);
+  });
+
+  it("reads tools from body.request.tools when body.tools is empty", () => {
+    const direct = getConversationCacheKey({
+      ...prompt,
+      tools: [{ type: "function", function: { name: "weather" } }],
+    });
+    const nested = getConversationCacheKey({
+      ...prompt,
+      tools: [],
+      request: { tools: [{ type: "function", function: { name: "weather" } }] },
+    });
+
+    expect(nested).toBe(direct);
+  });
+
+  it("returns null when the prompt is empty even if tools are declared", () => {
+    const key = getConversationCacheKey({
+      tools: [{ type: "function", function: { name: "weather" } }],
+    });
+
+    expect(key).toBeNull();
+  });
+
+
+  it("keeps explicit session identity authoritative over tool declarations", () => {
+    const left = getConversationCacheKey({
+      ...prompt,
+      session_id: "session-42",
+      tools: [{ type: "function", function: { name: "weather" } }],
+    });
+    const right = getConversationCacheKey({
+      ...prompt,
+      session_id: "session-42",
+      tools: [{ type: "function", function: { name: "stocks" } }],
+    });
+
+    expect(left).toBe(right);
+  });
+});
+
 describe("model-family helpers (#6509 / #6453)", () => {
   it("exposes the ordered family list and auto/<family> catalog ids", () => {
     expect([...MODEL_FAMILIES]).toEqual(["glm", "minimax", "mimo", "zai", "gemma", "llama", "gemini"]);

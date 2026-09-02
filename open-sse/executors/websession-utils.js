@@ -10,14 +10,21 @@ export function mergeAbortSignals(...signals) {
   if (isFunction(AbortSignal.any)) return AbortSignal.any(live);
 
   const controller = new AbortController();
-  const abort = (event) => controller.abort(event?.target?.reason);
+  const handlers = [];
   for (const signal of live) {
     if (signal.aborted) {
+      for (const { signal: prev, handler } of handlers) prev.removeEventListener("abort", handler);
       controller.abort(signal.reason);
-      break;
+      return controller.signal;
     }
-    signal.addEventListener("abort", abort, { once: true });
+    const handler = (event) => controller.abort(event?.target?.reason);
+    handlers.push({ signal, handler });
+    signal.addEventListener("abort", handler, { once: true });
   }
+  controller.signal.addEventListener("abort", () => {
+    for (const { signal: prev, handler } of handlers) prev.removeEventListener("abort", handler);
+    handlers.length = 0;
+  }, { once: true });
   return controller.signal;
 }
 
@@ -29,21 +36,59 @@ export function withTimeoutSignal(signal, timeoutMs = WEBSESSION_FETCH_TIMEOUT_M
 export async function fetchWithTimeout(input, init, { timeoutMs = WEBSESSION_FETCH_TIMEOUT_MS, proxyOptions = null } = {}) {
   const controller = new AbortController();
   const callerSignal = init?.signal;
-  if (callerSignal) {
-    if (callerSignal.aborted) {
-      controller.abort(callerSignal.reason);
-    } else {
-      callerSignal.addEventListener("abort", () => controller.abort(callerSignal.reason), { once: true });
-    }
+  let forwardAbort;
+  if (callerSignal?.aborted) controller.abort(callerSignal.reason);
+  else if (callerSignal) {
+    forwardAbort = () => controller.abort(callerSignal.reason);
+    callerSignal.addEventListener("abort", forwardAbort, { once: true });
   }
   const timer = setTimeout(() => controller.abort(new DOMException("The operation timed out.", "TimeoutError")), timeoutMs);
-  try {
-    if (proxyOptions) {
-      return await proxyAwareFetch(input, { ...init, signal: controller.signal }, proxyOptions);
-    }
-    return await fetch(input, { ...init, signal: controller.signal });
-  } finally {
+  const cleanup = () => {
     clearTimeout(timer);
+    if (forwardAbort) callerSignal.removeEventListener("abort", forwardAbort);
+    forwardAbort = undefined;
+  };
+  try {
+    const response = proxyOptions
+      ? await proxyAwareFetch(input, { ...init, signal: controller.signal }, proxyOptions)
+      : await fetch(input, { ...init, signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.body) { cleanup(); return response; }
+    const reader = response.body.getReader();
+    let streamController;
+    const abortBody = () => {
+      const reason = controller.signal.reason;
+      cleanup();
+      reader.cancel(reason).catch(() => {});
+      streamController?.error(reason);
+    };
+    controller.signal.addEventListener("abort", abortBody, { once: true });
+    const body = new ReadableStream({
+      async pull(next) {
+        streamController = next;
+        try {
+          const { done, value } = await reader.read();
+          if (done) { cleanup(); controller.signal.removeEventListener("abort", abortBody); next.close(); }
+          else next.enqueue(value);
+        } catch (error) { cleanup(); controller.signal.removeEventListener("abort", abortBody); next.error(error); }
+      },
+      cancel(reason) { cleanup(); controller.signal.removeEventListener("abort", abortBody); return reader.cancel(reason); }
+    });
+    const bodyProperties = new Set(["body", "bodyUsed", "arrayBuffer", "blob", "bytes", "formData", "json", "text", "clone"]);
+    const wrapped = new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+    return new Proxy(response, {
+      get(target, property) {
+        if (bodyProperties.has(property)) {
+          const value = wrapped[property];
+          return isFunction(value) ? value.bind(wrapped) : value;
+        }
+        const value = target[property];
+        return isFunction(value) ? value.bind(target) : value;
+      }
+    });
+  } catch (error) {
+    cleanup();
+    throw error;
   }
 }
 

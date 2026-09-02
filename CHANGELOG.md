@@ -7,6 +7,7 @@
 ## Fixed
 
 - SQLite initializers now apply the shared five-second busy timeout before enabling WAL mode, so file-backed startup waits out a concurrent writer instead of failing immediately with `database is locked`.
+- `fetchWithTimeout`, the manual `mergeAbortSignals` fallback, and Kiro's `fetchKiroCatalogRaw` now remove their `addEventListener` registrations on every settlement path (success, rejection, streamed-body EOF/cancel/error, timeout, caller abort, fallback merge) instead of leaking listeners on a long-lived signal. `fetchWithTimeout` keeps its caller-abort forwarding listener alive through the returned response's streamed body and removes it exactly once when the body closes, errors, is cancelled, or the caller aborts mid-stream; the fallback registers one named handler per input and removes them all when the merged controller aborts; Kiro removes its outer-signal forwarding listener in the request `finally` and forwards an already-aborted caller's reason directly without registering one. Native `AbortSignal.any` is still preferred, and `signal.reason`/the timeout `DOMException` are preserved.
 
 # 3.19.0
 

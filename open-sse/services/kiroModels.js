@@ -345,8 +345,12 @@ async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("timeout"), FETCH_TIMEOUT_MS);
   // Forward outer cancellation if any.
-  if (signal && isFunction(signal.addEventListener)) {
-    signal.addEventListener("abort", () => controller.abort(signal.reason));
+  let forwardAbort;
+  if (signal?.aborted) {
+    controller.abort(signal.reason);
+  } else if (signal && isFunction(signal.addEventListener)) {
+    forwardAbort = () => controller.abort(signal.reason);
+    signal.addEventListener("abort", forwardAbort);
   }
 
   let response;
@@ -358,6 +362,7 @@ async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
     }, proxyOptions);
   } finally {
     clearTimeout(timer);
+    if (forwardAbort && isFunction(signal.removeEventListener)) signal.removeEventListener("abort", forwardAbort);
   }
 
   if (!response.ok) {

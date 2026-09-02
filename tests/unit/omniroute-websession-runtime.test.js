@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { fetchWithTimeout } from "open-sse/executors/websession-utils.js";
+import { fetchWithTimeout, mergeAbortSignals, withTimeoutSignal } from "open-sse/executors/websession-utils.js";
 import { parseJsonlLine, readJsonlResponse } from "open-sse/executors/huggingchat/jsonlStream.js";
 import { buildYuanbaoCookie, YuanbaoWebExecutor } from "open-sse/executors/yuanbao-web.js";
 import { detectIntent } from "open-sse/executors/veoaifree-web.js";
@@ -13,10 +13,20 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function trackAbortListeners(signal) {
+  const add = vi.spyOn(signal, "addEventListener");
+  const remove = vi.spyOn(signal, "removeEventListener");
+  return () => {
+    expect(add.mock.calls.length).toBeGreaterThan(0);
+    expect(remove).toHaveBeenCalledTimes(add.mock.calls.length);
+  };
+}
+
 describe("ported OmniRoute web/session runtime helpers", () => {
   it("fetchWithTimeout covers only request setup, not the returned stream body", async () => {
     vi.useFakeTimers();
     const controller = new AbortController();
+    const assertClean = trackAbortListeners(controller.signal);
     const fetchSpy = vi.fn(async (_url, init) => {
       expect(init.signal).toBeDefined();
       return new Response(
@@ -39,6 +49,169 @@ describe("ported OmniRoute web/session runtime helpers", () => {
     const reader = response.body.getReader();
     const { value } = await reader.read();
     expect(new TextDecoder().decode(value)).toBe("late-chunk");
+    const { done } = await reader.read();
+    expect(done).toBe(true);
+    assertClean();
+  });
+
+  it("removes abort listeners across success, rejection, timeout, and caller abort on a shared long-lived signal", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const assertClean = trackAbortListeners(controller.signal);
+    const success = new Response("ok");
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce(success)
+      .mockRejectedValueOnce(new Error("network failure"))
+      .mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+      }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const successfulResponse = await fetchWithTimeout("http://test/success", { signal: controller.signal });
+    await successfulResponse.text();
+    assertClean();
+
+    await expect(fetchWithTimeout("http://test/failure", { signal: controller.signal })).rejects.toThrow("network failure");
+    assertClean();
+
+    const timeout = fetchWithTimeout("http://test/timeout", { signal: controller.signal }, { timeoutMs: 1 });
+    const expectTimeout = expect(timeout).rejects.toMatchObject({ name: "TimeoutError" });
+    await vi.advanceTimersByTimeAsync(1);
+    await expectTimeout;
+    assertClean();
+
+    const cancelled = fetchWithTimeout("http://test/cancel", { signal: controller.signal });
+    controller.abort("caller cancelled");
+    await expect(cancelled).rejects.toBe("caller cancelled");
+    assertClean();
+  });
+
+  it("cleans fallback merged listeners with one named handler per input while preserving caller abort reason", () => {
+    const caller = new AbortController();
+    const timeout = new AbortController();
+    const originalDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, "any");
+    const assertCaller = trackAbortListeners(caller.signal);
+    const assertTimeout = trackAbortListeners(timeout.signal);
+    Object.defineProperty(AbortSignal, "any", { configurable: true, writable: true, value: undefined });
+    try {
+      const merged = mergeAbortSignals(caller.signal, timeout.signal);
+      const reason = new Error("caller reason");
+      caller.abort(reason);
+      expect(merged.reason).toBe(reason);
+      assertCaller();
+      assertTimeout();
+    } finally {
+      Object.defineProperty(AbortSignal, "any", originalDescriptor);
+    }
+  });
+
+  it("preserves timeout DOMException reason in the merged fallback when the timeout input aborts", async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, "any");
+    const caller = new AbortController();
+    const assertCaller = trackAbortListeners(caller.signal);
+    Object.defineProperty(AbortSignal, "any", { configurable: true, writable: true, value: undefined });
+    try {
+      const merged = withTimeoutSignal(caller.signal, 1);
+      await new Promise((resolve) => merged.addEventListener("abort", resolve, { once: true }));
+      expect(merged.aborted).toBe(true);
+      expect(merged.reason).toBeInstanceOf(DOMException);
+      expect(merged.reason.name).toBe("TimeoutError");
+      assertCaller();
+    } finally {
+      Object.defineProperty(AbortSignal, "any", originalDescriptor);
+    }
+  });
+
+  it("cleans a live second input's listener when the first input is already aborted", () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, "any");
+    const alreadyAborted = new AbortController();
+    const live = new AbortController();
+    const reason = new Error("first already aborted");
+    alreadyAborted.abort(reason);
+    const assertLive = trackAbortListeners(live.signal);
+    Object.defineProperty(AbortSignal, "any", { configurable: true, writable: true, value: undefined });
+    try {
+      const merged = mergeAbortSignals(live.signal, alreadyAborted.signal);
+      expect(merged.reason).toBe(reason);
+      assertLive();
+    } finally {
+      Object.defineProperty(AbortSignal, "any", originalDescriptor);
+    }
+  });
+
+  it("removes caller abort listener once the streamed response body completes naturally", async () => {
+    const controller = new AbortController();
+    const assertClean = trackAbortListeners(controller.signal);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("streamed payload", { status: 201, headers: { "X-Trace": "abc" } })));
+    const response = await fetchWithTimeout("http://test/stream", { signal: controller.signal });
+    expect(response.status).toBe(201);
+    expect(response.headers.get("X-Trace")).toBe("abc");
+    expect(await response.text()).toBe("streamed payload");
+    assertClean();
+  });
+
+  it("removes caller abort listener when response.json() drains the body", async () => {
+    const controller = new AbortController();
+    const assertClean = trackAbortListeners(controller.signal);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    const response = await fetchWithTimeout("http://test/json", { signal: controller.signal });
+    expect(await response.json()).toEqual({ ok: true });
+    assertClean();
+  });
+
+  it("removes caller abort listener when the response body is cancelled without reading", async () => {
+    const controller = new AbortController();
+    const assertClean = trackAbortListeners(controller.signal);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      new ReadableStream({ start(ctrl) { ctrl.enqueue(new TextEncoder().encode("chunk-1")); } }),
+      { status: 200 }
+    )));
+    const response = await fetchWithTimeout("http://test/cancel-body", { signal: controller.signal });
+    await response.body.cancel();
+    assertClean();
+  });
+
+  it("removes caller abort listener when caller aborts mid-stream, rejecting the pending read with the same reason", async () => {
+    const controller = new AbortController();
+    const assertClean = trackAbortListeners(controller.signal);
+    let pull;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      new ReadableStream({
+        start(ctrl) { ctrl.enqueue(new TextEncoder().encode("chunk-1")); },
+        pull() { pull ??= new Promise(() => {}); return pull; },
+      }),
+      { status: 200 }
+    )));
+    const response = await fetchWithTimeout("http://test/midstream", { signal: controller.signal });
+    const reader = response.body.getReader();
+    await reader.read();
+    const pendingRead = reader.read();
+    const reason = new Error("caller done");
+    controller.abort(reason);
+    await expect(pendingRead).rejects.toBe(reason);
+    assertClean();
+  });
+
+  it("removes caller abort listener when upstream response has no body", async () => {
+    const controller = new AbortController();
+    const assertClean = trackAbortListeners(controller.signal);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    const response = await fetchWithTimeout("http://test/no-body", { signal: controller.signal });
+    expect(response.status).toBe(204);
+    assertClean();
+  });
+
+  it("removes caller abort listener when upstream body errors", async () => {
+    const controller = new AbortController();
+    const assertClean = trackAbortListeners(controller.signal);
+    const error = new Error("upstream body failure");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      new ReadableStream({ start(stream) { stream.error(error); } }),
+      { status: 200 }
+    )));
+    const response = await fetchWithTimeout("http://test/body-error", { signal: controller.signal });
+    await expect(response.text()).rejects.toBe(error);
+    assertClean();
   });
 
   it("Yuanbao streaming chat can still emit after the old 30s web-session timeout", async () => {

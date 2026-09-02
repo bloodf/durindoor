@@ -358,6 +358,26 @@ The canonical documentation is Markdown in this repository; GitHub-rendered Mark
 
 Contributions are welcome. Read [Contributing](CONTRIBUTING.md), [Local Development](docs/development/local-development.md), and [Architecture](docs/ARCHITECTURE.md) before opening a pull request, and follow the [pull request template](.github/PULL_REQUEST_TEMPLATE.md).
 
-## 🙏 Acknowledgments
+
+## 🎨 Durin DS design system preview
+
+A warm "Moria stone" / "Parchment" design language for the next DurinDoor
+dashboard, previewed in Storybook before any production wiring. The work
+lives entirely in `src/shared/ui/` (tokens, 25 primitives, shell, page
+mocks) so upstream 9router PRs remain mechanically portable.
+
+- Full reference: [docs/development/durin-ds.md](docs/development/durin-ds.md)
+- Quick tour: [src/shared/ui/README.md](src/shared/ui/README.md)
+
+Run the preview:
+
+```bash
+cd .omc/wt-durin-ds
+npm install --no-audit --no-fund
+npm run storybook   # http://localhost:6006
+```
+
+Use the Theme toolbar (sun/moon icon) to flip between **Dark — Moria
+
 
 DurinDoor is a fork of [9router](https://github.com/decolua/9router), created by [decolua](https://github.com/decolua). This project builds on that foundation with a new identity, enhanced features, and an emphasis on keeping the doors of your AI stack open. Upstream documentation and branding remain the property of their respective authors and are not presented as DurinDoor's source of truth.

@@ -82,3 +82,6 @@ scripts/__pycache__/
 
 # Local catalog comparison output (`npm run catalog:diff`); do not commit.
 model-catalog-report.md
+
+# Storybook static build output (`npm run storybook:build`)
+storybook-static/

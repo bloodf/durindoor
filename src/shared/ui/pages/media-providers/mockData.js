@@ -1,0 +1,17 @@
+export const mediaProviders = [
+  { id: "openrouter", name: "OpenRouter", status: "No connections" },
+  { id: "nvidia", name: "NVIDIA NIM", status: "No connections" },
+  { id: "openai", name: "OpenAI", status: "No connections" },
+  { id: "copilot", name: "GitHub Copilot", status: "No connections" },
+  { id: "voyage-ai", name: "Voyage AI", status: "No connections" },
+  { id: "gemini", name: "Gemini", status: "No connections" },
+  { id: "fireworks", name: "Fireworks AI", status: "No connections" },
+  { id: "cloudflare", name: "Cloudflare", status: "Disabled" },
+  { id: "together", name: "Together AI", status: "No connections" },
+  { id: "nebius", name: "Nebius AI", status: "No connections" },
+  { id: "mistral", name: "Mistral", status: "No connections" },
+  { id: "venice", name: "Venice AI", status: "No connections" },
+  { id: "vercel", name: "Vercel AI Gateway", status: "No connections" },
+  { id: "jina-ai", name: "Jina AI", status: "No connections" },
+  { id: "ollama-local", name: "Ollama Local", status: "1 Connected" },
+];

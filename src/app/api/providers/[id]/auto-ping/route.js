@@ -17,7 +17,7 @@ export async function PATCH(request, { params }) {
     const result = await setProviderConnectionAutoPing(id, body.enabled);
     if (!result) return NextResponse.json({ error: "Connection not found" }, { status: 404 });
 
-    notifyQuotaAutoPingSettingChanged(result.provider, result.connectionId, result.enabled);
+    notifyQuotaAutoPingSettingChanged(result.provider, result.connectionId, result.enabled, result.config);
     return NextResponse.json(result);
   } catch (error) {
     if (error?.code === "AUTO_PING_INELIGIBLE") {

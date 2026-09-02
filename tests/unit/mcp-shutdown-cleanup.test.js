@@ -43,10 +43,10 @@ afterEach(() => {
   delete global.__appSingleton;
 });
 
-function wireAppMocks({ killAllBridges }) {
+function wireAppMocks({ killAllBridges, getSettings, startQuotaAutoPing }) {
   vi.doMock("@/lib/localDb", () => ({
     cleanupProviderConnections: async () => {},
-    getSettings: async () => ({}),
+    getSettings: getSettings || (async () => ({})),
     updateSettings: async () => {},
     getApiKeys: async () => [],
   }));
@@ -69,7 +69,7 @@ function wireAppMocks({ killAllBridges }) {
     loadEncryptedPassword: () => null, initDbHooks: () => {},
     restoreToolDNS: () => {}, isSudoPasswordRequired: () => false,
   }));
-  vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: () => {} }));
+  vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: startQuotaAutoPing || (() => {}) }));
   vi.doMock("@/lib/mitmAliasCache", () => ({ syncToJson: async () => {} }));
   vi.doMock("@/lib/mcp/stdioSseBridge", () => ({ killAllBridges }));
 }
@@ -89,6 +89,20 @@ describe("initializeApp SIGTERM cleanup", () => {
     expect(killAllBridges).toHaveBeenCalledTimes(1);
     expect(exitSpy).toHaveBeenCalledWith(0);
   }, 15000);
+});
+
+describe("initializeApp quota auto-ping scheduler reuse", () => {
+  it("starts the scheduler with the settings already loaded", async () => {
+    const settingsSnapshot = { claudeAutoPing: { connections: { c: true } } };
+    const getSettings = vi.fn().mockResolvedValue(settingsSnapshot);
+    const startQuotaAutoPing = vi.fn();
+    wireAppMocks({ killAllBridges: vi.fn(), getSettings, startQuotaAutoPing });
+
+    const { initializeApp } = await import("@/shared/services/initializeApp.js");
+    await initializeApp();
+
+    expect(startQuotaAutoPing).toHaveBeenCalledWith(settingsSnapshot);
+  });
 });
 
 describe("MCP bridge cleanup contract (real module)", () => {

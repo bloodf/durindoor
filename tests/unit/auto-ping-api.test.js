@@ -42,15 +42,16 @@ describe("connection auto-ping API", () => {
     expect(mocks.notifyQuotaAutoPingSettingChanged).not.toHaveBeenCalled();
   });
 
-  it("persists one eligible connection and notifies the scheduler", async () => {
-    const result = { connectionId: "conn-1", provider: "claude", enabled: true };
+  it("persists one eligible connection then reconciles the scheduler with durable config", async () => {
+    const config = { connections: { "conn-1": true } };
+    const result = { connectionId: "conn-1", provider: "claude", enabled: true, config };
     mocks.setProviderConnectionAutoPing.mockResolvedValue(result);
 
     const response = await route.PATCH(request({ enabled: true }), { params: Promise.resolve({ id: "conn-1" }) });
 
     expect(response).toMatchObject({ status: 200, body: result });
     expect(mocks.setProviderConnectionAutoPing).toHaveBeenCalledWith("conn-1", true);
-    expect(mocks.notifyQuotaAutoPingSettingChanged).toHaveBeenCalledWith("claude", "conn-1", true);
+    expect(mocks.notifyQuotaAutoPingSettingChanged).toHaveBeenCalledWith("claude", "conn-1", true, config);
   });
 
   it("maps eligibility failures to 400 without notifying", async () => {

@@ -12,6 +12,7 @@ import {
 import { getUsageForProvider } from "../../open-sse/services/usage.js";
 import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
+import { CLAUDE_CLI_SPOOF_HEADERS } from "../../open-sse/providers/shared.js";
 import { USAGE_APIKEY_PROVIDERS } from "../../src/shared/constants/providers.js";
 
 function jsonResponse(body, status = 200) {
@@ -65,7 +66,11 @@ describe("Claude usage", () => {
 
     const headers = proxyAwareFetch.mock.calls[0][1].headers;
     expect(headers["X-App"]).toBe("cli");
-    expect(headers["Anthropic-Beta"]).toContain("oauth-2025-04-20");
+    expect(headers["Anthropic-Beta"]).toBe(
+      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01,oauth-2025-04-20"
+    );
+    expect(CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]).not.toContain("oauth-2025-04-20");
+    expect(headers).not.toHaveProperty("X-Stainless-Helper-Method");
     expect(Object.keys(headers)).not.toContain("anthropic-beta");
   });
 

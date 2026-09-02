@@ -34,17 +34,23 @@ export const CLAUDE_API_HEADERS = {
   "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
 };
 
-// Full Claude CLI fingerprint — required by providers that gate on client identity (e.g. agentrouter)
+// Full Claude CLI fingerprint captured from Claude Code 2.1.258.
+// Static stable values (UA, beta flags, package/runtime versions, runtime,
+// language, retry, timeout, API version, dangerous browser header, x-app) are
+// pinned to the captured wire literal. OS and architecture use the live
+// host-derived Stainless mappers — the 2.1.258 capture ran on Linux x64, so
+// other hosts will report different values while every other field stays
+// exact. The optional helper-method header from older captures is omitted
+// because the 2.1.258 request did not include it.
 export const CLAUDE_CLI_SPOOF_HEADERS = {
   "Anthropic-Version": ANTHROPIC_API_VERSION,
-  "Anthropic-Beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
+  "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
   "Anthropic-Dangerous-Direct-Browser-Access": "true",
-  "User-Agent": `claude-code/${CLAUDE_CLI_VERSION}`,
+  "User-Agent": `claude-cli/${CLAUDE_CLI_VERSION} (external, sdk-cli)`,
   "X-App": "cli",
-  "X-Stainless-Helper-Method": "stream",
   "X-Stainless-Retry-Count": "0",
-  "X-Stainless-Runtime-Version": "v24.14.0",
-  "X-Stainless-Package-Version": "0.94.0",
+  "X-Stainless-Runtime-Version": "v26.3.0",
+  "X-Stainless-Package-Version": "0.112.1",
   "X-Stainless-Runtime": "node",
   "X-Stainless-Lang": "js",
   "X-Stainless-Arch": mapStainlessArch(),

@@ -16,13 +16,13 @@ const CLAUDE_CONFIG = {
   apiVersion: ANTHROPIC_API_VERSION
 };
 
-// Primary OAuth usage endpoint headers. Reuses the exported CLI fingerprint so
-// the usage call matches chat identity and avoids unnecessary 429s. The shared
-// fingerprint already contains Anthropic-Beta including oauth-2025-04-20.
+// Primary OAuth usage endpoint headers. The shared fingerprint exactly mirrors
+// Messages traffic; this separate OAuth endpoint retains its required beta flag.
 function buildOAuthUsageHeaders(accessToken) {
   return {
     "Authorization": `Bearer ${accessToken}`,
-    ...CLAUDE_CLI_SPOOF_HEADERS
+    ...CLAUDE_CLI_SPOOF_HEADERS,
+    "Anthropic-Beta": `${CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]},oauth-2025-04-20`
   };
 }
 

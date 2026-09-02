@@ -1,0 +1,45 @@
+/**
+ * Storybook preview chrome for Durin DS.
+ *
+ * - @font-face for Inter (served from /fonts via staticDirs in main.js),
+ *   matching the four weights the app loads through next/font/local.
+ * - Overrides the app body colors (globals.css) with the Durin DS tokens so
+ *   the preview canvas itself follows the active dd theme.
+ */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/Inter-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/Inter-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/Inter-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/Inter-Bold.woff2") format("woff2");
+}
+
+body {
+  background-color: var(--dd-bg);
+  color: var(--dd-text);
+}

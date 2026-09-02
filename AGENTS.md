@@ -170,6 +170,48 @@ Provider-agnostic SSE engine: one OpenAI-style request → any provider (LLM cha
 - Special binary/protobuf formats (kiro EventStream, cursor protobuf, commandcode NDJSON) don't round-trip through OpenAI — handle in their executor.
 - `rtk/` + `headroom.js` mutate the request body in-place and are **fail-open**: any error returns null and leaves the body untouched — never throw out of them. RTK skips `is_error` / `status:"error"` tool results to preserve traces.
 
+## 5A. UI — Durin DS design system
+
+The dashboard ships a preview-only design system ("Durin DS") for the next
+generation of styled pages. Reference: [`docs/development/durin-ds.md`](docs/development/durin-ds.md).
+Port playbook: [`docs/development/porting-upstream-ui.md`](docs/development/porting-upstream-ui.md).
+
+- **Ownership.** `src/shared/ui/**`, `.storybook/**`, and the two docs files
+  above are DurinDoor-owned. `src/app/(dashboard)/**`,
+  `src/shared/components/**`, and `src/app/globals.css` are
+  upstream-tracking. Merge rule for styled pages: preserve upstream
+  behavior (state, effects, data flow, error handling, a11y wiring) and
+  apply the Durin DS primitives; class strings and structural JSX change
+  as the rules require (e.g. raw `<select>` → `Select`, raw `<table>`
+  → `DataTable`, `window.prompt` → `PromptDialog`).
+- **Token-only styling.** `bg-dd-*` / `text-dd-*` / `border-dd-*` /
+  `rounded-dd*` / `shadow-dd-*` only. No hex, no raw Tailwind palette
+  utilities.
+- **No `window.prompt` / `window.confirm` / native `<select>`** in ported
+  app code. Use `PromptDialog` / `ConfirmDialog` / `Select`. The one
+  allowed exception is the rows-per-page control that `Pagination`
+  renders internally (`src/shared/ui/components/Pagination.jsx:14,97`):
+  call `Pagination` (or `DataTable`'s `pagination` prop) and never write
+  your own `<select>` for rows-per-page.
+- **Data surfaces.** Tables → `DataTable` + `Pagination` (rows-per-page
+  `[10, 25, 50, 100, "all"]`); range filters → `RangeSelector`;
+  provider branding → `ProviderLogo`; modal confirms → `ConfirmDialog`;
+  modal prompts → `PromptDialog`.
+- **Charts.** Single graph with multiple series; primary
+  `var(--dd-accent)`, secondary `var(--dd-accent-2)`. Never split the
+  same metric into tabbed sub-graphs.
+- **Focus + density.** `outline-none focus-visible:shadow-dd-focus` on
+  every interactive primitive. Body `text-[13px]`, meta `text-xs`,
+  metrics `dd-tnum`. Icons via `<span className="material-symbols-outlined"
+  aria-hidden="true">{name}</span>`.
+- **New shared component.** Goes to `src/shared/ui/components/<Name>.jsx`
+  with a `<Name>.stories.jsx` next to it (one CSF3 story per meaningful
+  prop axis). Do not add DS components under `src/shared/components/`.
+- **`globals.css` is read-only** from a Durin DS PR. `tokens.css` is
+  the DS Tailwind root; `src/app/globals.css` stays neutral so upstream
+  PRs keep merging.
+- **UI migration campaign.** Executed per `docs/development/ui-migration/` (phases, page map, per-page recipe, harness runbook).
+
 ## 6. Pull request workflow
 
 ### 6.1 Target

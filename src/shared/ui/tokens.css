@@ -1,0 +1,179 @@
+/**
+ * Durin DS design-token layer.
+ *
+ * Raw `--dd-*` custom properties are defined per theme (`:root` = light
+ * "parchment", `.dark` = dark "Moria stone") and mapped into Tailwind v4 via
+ * `@theme inline`, generating utilities such as:
+ *   bg-dd-surface | text-dd-muted | border-dd-border | bg-dd-accent
+ *   text-dd-accent | bg-dd-success | rounded-dd | rounded-dd-lg
+ *   shadow-dd-focus | shadow-dd-elevated
+ *
+ * This file is a self-contained Tailwind root (its own `@import "tailwindcss"`)
+ * because `src/app/globals.css` must stay untouched: Tailwind v4 only generates
+ * utilities for `@theme` tokens visible in the same compilation, so the dd-*
+ * theme and the utility scan live here. Storybook's preview imports this file
+ * before `globals.css`; duplicate framework output is identical and harmless.
+ *
+ * Loaded by `.storybook/preview.jsx`. Component authors: use the `*-dd-*`
+ * utilities (never hardcoded hex) so components flip with the Theme toggle.
+ */
+@import "tailwindcss" source("../../");
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
+   Light theme — "parchment" (default, :root)
+   ============================================================ */
+:root {
+  /* Surfaces & backgrounds */
+  --dd-bg: #FAF6EC;
+  --dd-bg-alt: #F3EEDF;
+  --dd-surface: #FFFFFF;
+  --dd-surface-2: #F5F0E2;
+  --dd-surface-3: #EAE3D0;
+
+  /* Borders */
+  --dd-border: #E4DCC8;
+  --dd-border-subtle: #EEE8D8;
+
+  /* Text */
+  --dd-text: #1C1913;
+  --dd-text-muted: #6B6353;
+  --dd-text-subtle: #9A917D;
+
+  /* Accent — emerald (logo), gold kept as secondary accent */
+  --dd-accent: #059669;
+  --dd-accent-hover: #047857;
+  --dd-accent-soft: rgba(5, 150, 105, 0.12);
+  --dd-on-accent: #FFFFFF;
+  --dd-accent-2: #A8851B;
+  --dd-accent-2-hover: #8F7014;
+  --dd-accent-2-soft: rgba(168, 133, 27, 0.12);
+
+  /* Status */
+  --dd-success: #2E7D32;
+  --dd-warning: #B45309;
+  --dd-danger: #B91C1C;
+  --dd-info: #1D4ED8;
+  --dd-on-danger: #FFFFFF;
+  --dd-backdrop: rgba(0, 0, 0, 0.6);
+
+  /* Radii (theme-independent) */
+  --dd-radius: 8px;
+  --dd-radius-lg: 12px;
+
+  /* Focus ring — emerald at 35% alpha */
+  --dd-focus: 0 0 0 3px rgba(5, 150, 105, 0.35);
+
+  /* Warm elevated shadow */
+  --dd-shadow-elevated:
+    0 12px 28px -8px rgba(60, 50, 25, 0.12),
+    0 2px 8px -2px rgba(60, 50, 25, 0.08);
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   Dark theme — "Moria stone" (warm, NOT blue-gray)
+   ============================================================ */
+.dark {
+  /* Surfaces & backgrounds */
+  --dd-bg: #0E0D0B;
+  --dd-bg-alt: #14120F;
+  --dd-surface: #1A1815;
+  --dd-surface-2: #22201C;
+  --dd-surface-3: #2C2924;
+
+  /* Borders */
+  --dd-border: #332F29;
+  --dd-border-subtle: #26231F;
+
+  /* Text */
+  --dd-text: #EDE6D8;
+  --dd-text-muted: #A89F8D;
+  --dd-text-subtle: #6E675A;
+
+  /* Accent — emerald (logo #10E882), gold kept as secondary accent */
+  --dd-accent: #10E882;
+  --dd-accent-hover: #3CF09A;
+  --dd-accent-soft: rgba(16, 232, 130, 0.14);
+  --dd-on-accent: #032A1A;
+  --dd-accent-2: #D4AF37;
+  --dd-accent-2-hover: #E3C15A;
+  --dd-accent-2-soft: rgba(212, 175, 55, 0.14);
+
+  /* Status */
+  --dd-success: #4ADE80;
+  --dd-warning: #FBBF24;
+  --dd-danger: #EF4444;
+  --dd-info: #60A5FA;
+  --dd-on-danger: #FFFFFF;
+  --dd-backdrop: rgba(0, 0, 0, 0.6);
+
+  /* Focus ring — emerald at 35% alpha */
+  --dd-focus: 0 0 0 3px rgba(16, 232, 130, 0.35);
+
+  /* Warm elevated shadow */
+  --dd-shadow-elevated:
+    0 12px 28px -8px rgba(0, 0, 0, 0.55),
+    0 2px 8px -2px rgba(16, 232, 130, 0.05);
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   Tailwind v4 mapping — `inline` so utilities emit var(--dd-*)
+   references and therefore follow the active theme at runtime.
+   ============================================================ */
+@theme inline {
+  /* Surfaces & backgrounds */
+  --color-dd-bg: var(--dd-bg);
+  --color-dd-bg-alt: var(--dd-bg-alt);
+  --color-dd-surface: var(--dd-surface);
+  --color-dd-surface-2: var(--dd-surface-2);
+  --color-dd-surface-3: var(--dd-surface-3);
+
+  /* Borders */
+  --color-dd-border: var(--dd-border);
+  --color-dd-border-subtle: var(--dd-border-subtle);
+
+  /* Text */
+  --color-dd-text: var(--dd-text);
+  --color-dd-muted: var(--dd-text-muted);
+  --color-dd-subtle: var(--dd-text-subtle);
+
+  /* Accent — emerald (logo), gold as accent-2 */
+  --color-dd-accent: var(--dd-accent);
+  --color-dd-accent-hover: var(--dd-accent-hover);
+  --color-dd-accent-soft: var(--dd-accent-soft);
+  --color-dd-on-accent: var(--dd-on-accent);
+  --color-dd-accent-2: var(--dd-accent-2);
+  --color-dd-accent-2-hover: var(--dd-accent-2-hover);
+  --color-dd-accent-2-soft: var(--dd-accent-2-soft);
+
+  /* Status */
+  --color-dd-success: var(--dd-success);
+  --color-dd-warning: var(--dd-warning);
+  --color-dd-danger: var(--dd-danger);
+  --color-dd-info: var(--dd-info);
+  --color-dd-on-danger: var(--dd-on-danger);
+  --color-dd-backdrop: var(--dd-backdrop);
+
+  /* Radii */
+  --radius-dd: var(--dd-radius);
+  --radius-dd-lg: var(--dd-radius-lg);
+
+  /* Shadows */
+  --shadow-dd-focus: var(--dd-focus);
+  --shadow-dd-elevated: var(--dd-shadow-elevated);
+}
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+
+/* Tabular figures for metrics/numbers. */
+.dd-tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

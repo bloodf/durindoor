@@ -112,6 +112,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     result.generationConfig.maxOutputTokens = body.max_tokens;
   }
 
+
   // Build tool_call_id -> name map
   const tcID2Name = {};
   if (body.messages && Array.isArray(body.messages)) {
@@ -278,6 +279,17 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     result.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitizeToolName(body.tool_choice.function.name)] } };
   }
   if (toolNameMap.size) result._toolNameMap = toolNameMap;
+
+  const responseSchema = body.response_format?.json_schema?.schema;
+  const hasFunctionDeclarations = result.tools?.[0]?.functionDeclarations?.length > 0;
+  if (body.response_format?.type === "json_schema" && isObject(responseSchema) &&
+    (!hasFunctionDeclarations || /^gemini-3(?:[.-]|$)/i.test(model))) {
+    result.generationConfig.responseMimeType = "application/json";
+    result.generationConfig.responseSchema = cleanJSONSchemaForAntigravity(
+      structuredClone(responseSchema),
+      { preserveNullable: true }
+    );
+  }
 
   result.contents = normalizeGeminiContents(result.contents);
   return result;
@@ -543,6 +555,14 @@ export function openaiToAntigravityRequest(model, body, stream, credentials = nu
   if (body.messages?.length === 1 && body.messages[0]?.role === ROLE.SYSTEM) {
     geminiCLI.systemInstruction = { role: GEMINI_ROLE.USER, parts: geminiCLI.contents[0]?.parts || [] };
     geminiCLI.contents = [];
+  }
+  // The Antigravity agent does not support structured output: drop both
+  // responseSchema and its required responseMimeType sibling regardless of
+  // model or declared tools. Other generationConfig fields and any tool
+  // declarations are left intact.
+  if (geminiCLI.generationConfig) {
+    delete geminiCLI.generationConfig.responseSchema;
+    delete geminiCLI.generationConfig.responseMimeType;
   }
   return wrapInCloudCodeEnvelope(model, geminiCLI, credentials, true);
 }

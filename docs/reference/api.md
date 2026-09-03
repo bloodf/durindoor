@@ -99,6 +99,9 @@ curl http://localhost:20128/v1/chat/completions \
 
 Use this endpoint for most OpenAI-compatible chat clients.
 
+OpenAI chat requests sent to Gemini-family providers may set `response_format: { type: "json_schema", json_schema: { schema } }`. DurinDoor maps that schema to Gemini's `generationConfig.responseSchema` and sets `generationConfig.responseMimeType` to `application/json`. Nullable JSON Schema unions (`type: ["T", "null"]`, `anyOf`, or `oneOf`) become Gemini's supported `nullable: true` form while retaining the selected non-null schema. Tool parameter schemas keep their existing compatibility normalization.
+Combined structured output and function calling is only honored on Gemini 3 models (`/^gemini-3(?:[.-]|$)/i`); on Gemini 2.5 or unknown models, the request still emits function declarations and the existing `toolConfig`, but omits `responseSchema`/`responseMimeType` to avoid the documented 400. Requests without any tools always emit the structured-output fields on any model. The Antigravity route (which does not support structured output) hard-strips both fields regardless of model or tools while preserving every other `generationConfig` value and the `tools` array.
+
 ## Responses API
 
 ```bash

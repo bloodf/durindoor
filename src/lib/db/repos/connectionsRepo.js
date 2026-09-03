@@ -361,8 +361,8 @@ export async function updateProviderConnection(id, data, {
 const MODEL_LOCK_PREFIX = "modelLock_";
 const MODEL_STATE_VERSION_PREFIX = "modelStateObserved_";
 
-function boundedModelScope(provider, model) {
-  return resolveFallbackModelScope(provider, model) || "__all";
+function boundedModelScope(provider, model, options) {
+  return resolveFallbackModelScope(provider, model, options) || "__all";
 }
 
 function eventTimestamp(value, now = Date.now()) {
@@ -394,7 +394,8 @@ export async function recordProviderConnectionFallbackState(id, {
   reason = null,
   cooldownMs,
   backoffLevel = 0,
-  observedAt
+  observedAt,
+  webFetch = false
 } = {}, { signal = null, now = Date.now() } = {}) {
   const eventMs = eventTimestamp(observedAt, now);
   if (!Number.isSafeInteger(cooldownMs) || cooldownMs < 0 || cooldownMs > 7 * 24 * 60 * 60 * 1000) {
@@ -420,7 +421,7 @@ export async function recordProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
-    const scope = boundedModelScope(existing.provider, model);
+    const scope = boundedModelScope(existing.provider, model, { webFetch });
     const lockKey = `${MODEL_LOCK_PREFIX}${scope}`;
     const versionKey = `${MODEL_STATE_VERSION_PREFIX}${scope}`;
     const storedVersion = Date.parse(existing[versionKey] || "") || 0;
@@ -435,16 +436,18 @@ export async function recordProviderConnectionFallbackState(id, {
       ...existing,
       [lockKey]: new Date(expiry).toISOString(),
       [versionKey]: new Date(eventMs).toISOString(),
-      testStatus: "unavailable",
-      lastError: storedReason,
-      errorCode: Number(status) || null,
-      lastErrorAt: new Date(eventMs).toISOString(),
-      backoffLevel: Math.max(Number(existing.backoffLevel) || 0, Number(backoffLevel) || 0),
       // Runtime health is not a credential revision. Keeping updatedAt stable
       // prevents successful/failing traffic from invalidating quota fetch
       // dedupe and OAuth compare-and-swap keys.
       updatedAt: existing.updatedAt
     };
+    if (!webFetch) {
+      merged.testStatus = "unavailable";
+      merged.lastError = storedReason;
+      merged.errorCode = Number(status) || null;
+      merged.lastErrorAt = new Date(eventMs).toISOString();
+      merged.backoffLevel = Math.max(Number(existing.backoffLevel) || 0, Number(backoffLevel) || 0);
+    }
     upsert(db, merged);
     result = { applied: true, connection: merged };
   });
@@ -458,7 +461,8 @@ export async function recordProviderConnectionFallbackState(id, {
  */
 export async function clearProviderConnectionFallbackState(id, {
   model = null,
-  observedAt
+  observedAt,
+  webFetch = false
 } = {}, { signal = null, now = Date.now() } = {}) {
   const eventMs = eventTimestamp(observedAt, now);
   const db = await getAdapter();
@@ -470,8 +474,8 @@ export async function clearProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
-    const scope = boundedModelScope(existing.provider, model);
-    const relevantScopes = scope === "__all" ? [scope] : [scope, "__all"];
+    const scope = boundedModelScope(existing.provider, model, { webFetch });
+    const relevantScopes = webFetch || scope === "__all" ? [scope] : [scope, "__all"];
     const primaryVersion = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${scope}`] || "") || 0;
     if (eventMs <= primaryVersion) {
       result = { applied: false, connection: existing };
@@ -492,12 +496,16 @@ export async function clearProviderConnectionFallbackState(id, {
       merged[`${MODEL_LOCK_PREFIX}${candidate}`] = null;
       merged[`${MODEL_STATE_VERSION_PREFIX}${candidate}`] = new Date(eventMs).toISOString();
     }
-    for (const [key, value] of Object.entries(existing)) {
-      if (!key.startsWith(MODEL_LOCK_PREFIX) || acceptedScopes.some((candidate) => key === `${MODEL_LOCK_PREFIX}${candidate}`)) continue;
-      if (Date.parse(value || "") <= eventMs) merged[key] = null;
+    if (!webFetch) {
+      for (const [key, value] of Object.entries(existing)) {
+        if (!key.startsWith(MODEL_LOCK_PREFIX) || acceptedScopes.some((candidate) => key === `${MODEL_LOCK_PREFIX}${candidate}`)) continue;
+        if (Date.parse(value || "") <= eventMs) merged[key] = null;
+      }
     }
     const activeLocks = Object.entries(merged).some(
-      ([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) && activeTimestamp(value, eventMs)
+      ([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) &&
+      !key.startsWith(`${MODEL_LOCK_PREFIX}webfetch:`) &&
+      activeTimestamp(value, eventMs)
     );
     // A durable reauth_required state means the OAuth refresh token is dead and
     // only a fresh OAuth reconnect can revive the account. Ordinary request
@@ -505,7 +513,7 @@ export async function clearProviderConnectionFallbackState(id, {
     // looks healthy while every request 401s. Only a successful OAuth
     // replacement (updateProviderConnection with testStatus:"active") clears it.
     const reauthPinned = existing.testStatus === "reauth_required" || existing.errorCode === "REAUTH";
-    if (!reauthPinned && !activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
+    if (!webFetch && !reauthPinned && !activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
       Object.assign(merged, {
         testStatus: "active",
         lastError: null,

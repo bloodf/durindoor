@@ -54,7 +54,7 @@ export default {
     { id: "qwen3.5", name: "Qwen3.5" },
     { id: "minimax-m3", name: "MiniMax M3" },
   ],
-  serviceKinds: ["llm", "webSearch"],
+  serviceKinds: ["llm", "webSearch", "webFetch"],
   searchConfig: {
     baseUrl: "https://ollama.com/api/web_search",
     method: "POST",
@@ -67,6 +67,18 @@ export default {
     maxMaxResults: 10,
     timeoutMs: 10000,
     cacheTTLMs: 300000,
+  },
+  fetchConfig: {
+    baseUrl: "https://ollama.com/api/web_fetch",
+    method: "POST",
+    authType: "apikey",
+    authHeader: "bearer",
+    costPerQuery: 0,
+    freeMonthlyQuota: 1000,
+    formats: ["markdown"],
+    maxCharacters: 4096,
+    truncateBytes: 4096,
+    timeoutMs: 5000,
   },
   features: {
     usage: true,

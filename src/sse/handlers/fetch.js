@@ -12,7 +12,7 @@ import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
-import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { getAutoComboCatalog } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
@@ -225,7 +225,12 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(
+      providerId,
+      excludeConnectionIds,
+      null,
+      { webFetch: true }
+    );
 
     // All accounts unavailable or provider disabled
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
@@ -258,21 +263,11 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       provider: resolvedProvider.id,
       providerConfig: fetchConfig,
       credentials: refreshedCredentials,
-      log,
-      onCredentialsRefreshed: async (newCreds) => {
-        await updateProviderCredentials(credentials.connectionId, {
-          accessToken: newCreds.accessToken,
-          refreshToken: newCreds.refreshToken,
-          providerSpecificData: newCreds.providerSpecificData,
-          testStatus: "active"
-        });
-      },
-      onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials);
-      }
+      log
     });
 
     if (result.success) {
+      await clearAccountError(credentials.connectionId, credentials, null, { webFetch: true });
       const response = new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
@@ -282,7 +277,15 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       });
     }
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId);
+    const { shouldFallback } = await markAccountUnavailable(
+      credentials.connectionId,
+      result.status,
+      result.error,
+      providerId,
+      null,
+      null,
+      { webFetch: true }
+    );
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

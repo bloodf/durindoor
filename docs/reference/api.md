@@ -257,7 +257,7 @@ curl http://localhost:20128/v1/web/fetch \
   }'
 ```
 
-The model catalog advertises fetch providers as `<provider>/fetch`; the historical bare provider form remains accepted.
+The model catalog advertises fetch providers as `<provider>/fetch`; the historical bare provider form remains accepted. Ollama Cloud uses the existing Ollama connection and is available as `ollama/fetch`. Web-fetch failures and cooldowns are scoped to `webfetch:ollama`, so they do not lock that connection for chat.
 
 ## Rerank and Moderation
 

@@ -6,6 +6,7 @@ import {
   assertOutboundUrlAllowed,
   guardedProbeFetch
 } from "../../utils/outboundUrlGuard.js";
+import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_FORMAT = "markdown";
 
@@ -65,14 +66,28 @@ function truncate(text, max) {
   if (!max || max <= 0) return text;
   return text.length > max ? text.slice(0, max) : text;
 }
+function truncateUtf8(text, maxBytes) {
+  if (!isString(text) || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) return text || "";
+  let bytes = 0;
+  let end = 0;
+  while (end < text.length) {
+    const codePoint = text.codePointAt(end);
+    const width = codePoint <= 0x7F ? 1 : codePoint <= 0x7FF ? 2 : codePoint <= 0xFFFF ? 3 : 4;
+    if (bytes + width > maxBytes) break;
+    bytes += width;
+    end += codePoint > 0xFFFF ? 2 : 1;
+  }
+  return end === text.length ? text : text.slice(0, end);
+}
+
 
 function parseJinaTitle(text) {
   const m = String(text || "").match(/^\s*#\s+(.+)$/m);
   return m ? m[1].trim() : null;
 }
 
-function buildData({ provider, url, title, format, text, costUsd, responseMs, upstreamMs }) {
-  return {
+function buildData({ provider, url, title, format, text, links, costUsd, responseMs, upstreamMs }) {
+  const data = {
     provider,
     url,
     title: title || null,
@@ -81,6 +96,8 @@ function buildData({ provider, url, title, format, text, costUsd, responseMs, up
     usage: { fetch_cost_usd: costUsd ?? null },
     metrics: { response_time_ms: responseMs, upstream_latency_ms: upstreamMs }
   };
+  if (Array.isArray(links)) data.links = links;
+  return data;
 }
 
 async function readJsonOrText(res) {
@@ -147,6 +164,9 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
     }
     if (provider === "tinyfish") {
       return await runTinyfish({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
+    }
+    if (provider === "ollama") {
+      return await runOllama({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, providerConfig });
     }
     return { success: false, status: 400, error: `Unsupported provider: ${provider}` };
   } catch (err) {
@@ -339,6 +359,48 @@ async function runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery
     data: buildData({
       provider: "exa", url, title: first.title || null, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
+    })
+  };
+}
+
+async function runOllama({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, providerConfig }) {
+  const upstreamStart = Date.now();
+  const r = await tryFetch(providerConfig.baseUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({ url })
+  }, timeoutMs);
+
+  if (!r.ok) {
+    return { success: false, status: r.timeout ? 504 : 502, error: r.error };
+  }
+  const upstreamMs = Date.now() - upstreamStart;
+  const { json, text: responseText } = await readJsonOrText(r.res);
+  if (!r.res.ok) {
+    const rawError = isString(json?.error) ? json.error :
+      isString(json?.error?.message) ? json.error.message :
+      isString(json?.message) ? json.message :
+      responseText || r.res.statusText || "upstream request failed";
+    const error = sanitizeErrorMessageWithSecrets(rawError.slice(0, 500), [apiKey]);
+    return { success: false, status: r.res.status, error: `Ollama upstream error (${r.res.status}): ${error}` };
+  }
+  if (!isString(json?.content) || !json.content.trim()) {
+    return { success: false, status: 502, error: "Ollama response normalization failed: content must be a non-empty string" };
+  }
+  if (json.links !== undefined && !Array.isArray(json.links)) {
+    return { success: false, status: 502, error: "Ollama response normalization failed: links must be an array" };
+  }
+
+  const byteLimited = truncateUtf8(json.content, providerConfig.truncateBytes);
+  const text = truncate(byteLimited, maxCharacters);
+  return {
+    success: true,
+    data: buildData({
+      provider: "ollama", url, title: isString(json.title) ? json.title : null, format: fmt, text,
+      links: json.links, costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
     })
   };
 }

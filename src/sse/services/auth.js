@@ -459,7 +459,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     throwIfAborted(signal);
 
-    const boundedModel = resolveFallbackModelScope(providerId, model);
+    const boundedModel = resolveFallbackModelScope(providerId, model, { webFetch: options?.webFetch === true });
 
     const connections = await getProviderConnections({ provider: providerId, isActive: true });
     throwIfAborted(signal);
@@ -1042,7 +1042,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   );
   const providerRuleConnectionWide = fallbackResult.scope === "connection";
   const fallbackModel = resolveFallbackModelScope(provider, model, {
-    accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide
+    accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide,
+    webFetch: context?.webFetch === true
   });
   let atomicApplied = false;
   try {
@@ -1055,7 +1056,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         reason,
         cooldownMs: legacyCooldownMs,
         backoffLevel: newBackoffLevel ?? backoffLevel,
-        observedAt
+        observedAt,
+        webFetch: context?.webFetch === true
       }, { signal });
       atomicApplied = true;
     }
@@ -1065,7 +1067,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
   if (!atomicApplied) {
     const lockUpdate = buildModelLockUpdate(fallbackModel, legacyCooldownMs);
-    await updateProviderConnection(connectionId, {
+    await updateProviderConnection(connectionId, context?.webFetch === true ? lockUpdate : {
       ...lockUpdate,
       testStatus: "unavailable",
       lastError: reason,
@@ -1125,12 +1127,16 @@ export async function clearAccountError(connectionId, currentConnection, model =
   context.attemptStartedAt :
   Date.now();
   const provider = context?.provider || conn?.provider;
-  const fallbackModel = resolveFallbackModelScope(provider, model);
+  const fallbackModel = resolveFallbackModelScope(provider, model, { webFetch: context?.webFetch === true });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");
     if (isFunction(db.clearProviderConnectionFallbackState)) {
-      await db.clearProviderConnectionFallbackState(connectionId, { model: fallbackModel, observedAt: now }, { signal });
+      await db.clearProviderConnectionFallbackState(connectionId, {
+        model: fallbackModel,
+        observedAt: now,
+        webFetch: context?.webFetch === true
+      }, { signal });
       atomicApplied = true;
     }
   } catch (error) {
@@ -1140,14 +1146,18 @@ export async function clearAccountError(connectionId, currentConnection, model =
 
   const allLockKeys = Object.keys(conn).filter((k) => k.startsWith("modelLock_"));
   if (!atomicApplied && (conn.testStatus || conn.lastError || allLockKeys.length > 0)) {
-    const keysToClear = allLockKeys.filter((k) => {
+    const webFetch = context?.webFetch === true;
+    const relevantLockKeys = webFetch ?
+    allLockKeys.filter((k) => k === `modelLock_${fallbackModel}`) :
+    allLockKeys.filter((k) => !k.startsWith("modelLock_webfetch:"));
+    const keysToClear = relevantLockKeys.filter((k) => {
       if (fallbackModel && k === `modelLock_${fallbackModel}`) return true;
       if (model && k === `modelLock_${model}`) return true;
       if (model && k === "modelLock___all") return true;
       const expiry = conn[k];
       return expiry && new Date(expiry).getTime() <= now;
     });
-    const remainingActiveLocks = allLockKeys.filter((k) => {
+    const remainingActiveLocks = relevantLockKeys.filter((k) => {
       if (keysToClear.includes(k)) return false;
       const expiry = conn[k];
       return expiry && new Date(expiry).getTime() > now;
@@ -1157,7 +1167,7 @@ export async function clearAccountError(connectionId, currentConnection, model =
     // only a successful OAuth reconnect (which writes testStatus:"active"
     // directly) may revive the account. See connectionsRepo fallback-clear guard.
     const reauthPinned = conn.testStatus === "reauth_required" || conn.errorCode === "REAUTH";
-    if (!reauthPinned && remainingActiveLocks.length === 0) {
+    if (!webFetch && !reauthPinned && remainingActiveLocks.length === 0) {
       Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
     }
     if (Object.keys(clearObj).length > 0) await updateProviderConnection(connectionId, clearObj);

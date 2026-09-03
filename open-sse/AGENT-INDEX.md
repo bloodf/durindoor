@@ -98,6 +98,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `baseten` |  | apikey | `https://inference.baseten.co/v1/chat/completions` |
 | `bazaarlink` |  | apikey | `https://bazaarlink.ai/api/v1/chat/completions` |
 | `bedrock` | openai | apikey | `https://bedrock-runtime.us-east-1.amazonaws.com` |
+| `bigmodel` |  | apikey | `https://open.bigmodel.cn/api/paas/v4/chat/completions` |
 | `black-forest-labs` |  | apikey | `` |
 | `blackbox` |  | apikey | `https://api.blackbox.ai/v1/chat/completions` |
 | `bluesminds` |  | apikey | `https://api.bluesminds.com/v1/chat/completions` |

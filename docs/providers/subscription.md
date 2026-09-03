@@ -83,6 +83,8 @@ DurinDoor uses provider identifiers internally and in model strings. Examples in
 
 Registry-backed providers can load account-specific catalogs at runtime. Qoder uses its authenticated COSY model list and keeps a static fallback containing current `lite`, `qmodel_38max` (Qwen3.8-Max), and `gmodel` (GLM-5.3) identifiers; vision-capable Qoder models accept OpenAI URL/data-URI images and Claude base64 image blocks. Registry-backed OpenAI-compatible nodes such as `hcnsec` keep their live upstream catalog.
 
+BigModel (`bigmodel`) uses its standard OpenAI-compatible chat endpoint with a static `glm-5.3` (text-only) and `glm-5.3-flash` (vision) catalog. Both models advertise a vendor-labelled 1M-token context window (the catalog value 1000000; BigModel does not publish the exact integer) and BigModel's published `max_tokens.maximum` of 131072. Reasoning is always on for both models via the `low`/`high`/`max` `reasoning_effort` enum and cannot be disabled. It does not use the separate GLM Coding Plan endpoint and does not perform live model discovery.
+
 For custom OpenAI-compatible and Anthropic-compatible nodes, the operator's saved **Available Models** rows and compatible aliases are the authoritative public list. An empty saved list exposes no models for that node; use the dashboard's **Import** action to discover upstream models before saving them. Clients should treat DurinDoor's `GET /v1/models` response as the source of truth.
 
 When the add-key dialog creates default connection names, it chooses the first unused name in the `main`, `main-2`, `main-3`, ... sequence. Reopening the dialog after a successful add clears prior secrets and provider-specific fields; background refreshes while the dialog is open preserve in-progress input.

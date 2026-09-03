@@ -538,6 +538,21 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
   if (cfg.authHeader === "x-api-key") headers["X-API-Key"] = connection.apiKey;else
   headers.Authorization = `Bearer ${connection.apiKey}`;
 
+  if (cfg.probeUsesBaseUrl) {
+    const res = await fetchWithConnectionProxy(cfg.baseUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: connection.defaultModel || getDefaultModel(connection.provider) || "test",
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 1,
+        stream: false
+      })
+    }, effectiveProxy);
+    const valid = res.status !== 401 && res.status !== 403;
+    return { valid, error: valid ? null : "Invalid API key" };
+  }
+
   // Use cfg.modelsUrl when present; scoped providers may not expose /models
   // beside their chat endpoint.
   const modelsUrl = cfg.modelsUrl || cfg.baseUrl.replace(/\/chat\/completions$/, "/models").replace(/\/chatbot$/, "/models");
@@ -738,6 +753,11 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           }, effectiveProxy);
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
+        }
+      case "bigmodel":{
+          const res = await testRegistryOpenAIConnection(connection, effectiveProxy);
+          if (res) return res;
+          break;
         }
       case "glm-cn":{
           const res = await fetchWithConnectionProxy("https://open.bigmodel.cn/api/coding/paas/v4/chat/completions", {

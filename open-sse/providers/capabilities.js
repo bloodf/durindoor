@@ -364,6 +364,16 @@ export const PROVIDER_CAPABILITIES = {
       maxOutput: 32768
     }
   },
+
+  // Standard BigModel endpoint: BigModel labels the context window “1M”;
+  // no exact integer is published, so retain the approved 1000000 catalog
+  // value. Both models advertise `max_tokens.maximum = 131072` (vendor labels
+  // it 128K output). Wire format is OpenAI's `reasoning_effort` enum {low, high,
+  // max}; reasoning is always on and cannot be disabled.
+  bigmodel: {
+    "glm-5.3": { vision: false, reasoning: true, thinkingFormat: "openai-low-high-max", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+    "glm-5.3-flash": { vision: true, reasoning: true, thinkingFormat: "openai-low-high-max", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 }
+  },
   // Native MiniMax endpoints serve the full 1M M3 window (see MINIMAX_M3_NATIVE_CAPS).
   minimax: MINIMAX_M3_NATIVE_CAPS,
   "minimax-cn": MINIMAX_M3_NATIVE_CAPS,

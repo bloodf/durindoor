@@ -18,6 +18,7 @@ import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
+import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
 import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
@@ -293,8 +294,13 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
         if (part.thought === true && part.text) reasoningContent += part.text;else
         if (part.text !== undefined) textContent += part.text;
         if (part.functionCall) {
+          // Mirror the streaming translator (#676): prefer the upstream call id
+          // and carry any provider-issued thought signature in the transport id
+          // so the next-turn request translator can replay it.
+          const partSignature = part.thoughtSignature || part.thought_signature || null;
+          const rawId = part.functionCall.id || `call_${part.functionCall.name}_${Date.now()}_${toolCalls.length}`;
           toolCalls.push({
-            id: `call_${part.functionCall.name}_${Date.now()}_${toolCalls.length}`,
+            id: encodeToolCallIdWithSignature(rawId, partSignature),
             type: "function",
             function: { name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) }
           });

@@ -3,6 +3,7 @@
 - port(upstream): #3629 - avoid repeated SSE completion string copies; accumulate reasoning/content deltas in chunk arrays joined once at stream boundaries instead of string concatenation per delta (open-sse/utils/stream.js)
 - port(upstream): #3687 - avoid cache breakpoints on deferred tools; Claude cache_control markers now skip tool definitions deferred from the active turn so cache breakpoints land on stable prefix blocks only (open-sse/translator/formats/claude.js)
 - port(upstream): #3665 - normalize OpenRouter tool schemas; drop invalid regex `pattern` keywords outside `properties` while preserving `default`/`const`/`examples`/`enum` data keywords (open-sse/translator/concerns/toolCall.js)
+- port(upstream): #3676 - preserve Gemini thought signatures across tool-call turns; the antigravity translator now round-trips `thoughtSignature` on function-call parts via a signature transport map instead of dropping it, so multi-turn Gemini/Antigravity tool calls no longer fail with INVALID_ARGUMENT signature errors. Synthetic signatures are never invented; unsigned upstream parts stay unsigned.
 
 ## Added
 

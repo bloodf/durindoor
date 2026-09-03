@@ -438,3 +438,97 @@ describe("Claude → Antigravity image preservation", () => {
     expect(toolText).not.toContain("data:image/png");
   });
 });
+
+// #676 (upstream decolua/9router#3645): provider-issued Gemini thought signatures
+// must survive the Gemini → OpenAI → Gemini tool-call round trip. The OpenAI
+// intermediate has no signature field, so the transport rides in the tool-call id.
+describe("Gemini thought signature round trip (#676)", () => {
+  const wrap = (response) => ({ response });
+  const SIG = "provider-issued-signature-xyz";
+  const RAW_ID = "gemini-call-1234";
+
+  const streamToolCall = () => {
+    const state = initState(FORMATS.OPENAI);
+    const events = translateResponse(FORMATS.ANTIGRAVITY, FORMATS.OPENAI, wrap({
+      responseId: "r1",
+      candidates: [{
+        content: {
+          parts: [{
+            thoughtSignature: SIG,
+            functionCall: { id: RAW_ID, name: "search", args: { q: "x" } },
+          }],
+        },
+        finishReason: "STOP",
+      }],
+    }), state);
+    const toolChunk = events.find((e) => e?.choices?.[0]?.delta?.tool_calls);
+    return toolChunk?.choices[0].delta.tool_calls[0];
+  };
+
+  it("streaming: raw id and signature survive to the next-turn Gemini request", () => {
+    const tc = streamToolCall();
+    expect(tc, "no tool_call chunk emitted").toBeTruthy();
+    expect(tc.id, "transport id must satisfy Anthropic tool_use constraint").toMatch(/^[a-zA-Z0-9_-]+$/);
+
+    const request = openaiToAntigravityRequest("gemini-3-pro", {
+      messages: [
+        { role: "user", content: "find x" },
+        { role: "assistant", tool_calls: [{ id: tc.id, type: "function", function: { name: "search", arguments: "{\"q\":\"x\"}" } }] },
+        { role: "tool", tool_call_id: tc.id, content: "result" },
+      ],
+    }, true, { projectId: "p1" });
+
+    const modelTurn = request.request.contents.find((c) => c.role === "model" && c.parts.some((p) => p.functionCall));
+    const fc = modelTurn.parts.find((p) => p.functionCall);
+    expect(fc.functionCall.id, "raw upstream call id not replayed").toBe(RAW_ID);
+    expect(fc.thoughtSignature, "provider-issued signature not replayed").toBe(SIG);
+
+    const respTurn = request.request.contents.find((c) => c.parts.some((p) => p.functionResponse));
+    expect(respTurn.parts[0].functionResponse.id, "tool response must map to raw upstream id").toBe(RAW_ID);
+    expect(respTurn.parts[0].functionResponse.name, "tool response name lost").toBe("search");
+  });
+
+  it("non-streaming: handler path carries the signature identically", async () => {
+    const { translateNonStreamingResponse } = await import("../../open-sse/handlers/chatCore/nonStreamingHandler.js");
+    const body = translateNonStreamingResponse(wrap({
+      responseId: "r2",
+      candidates: [{
+        content: {
+          parts: [{
+            thoughtSignature: SIG,
+            functionCall: { id: RAW_ID, name: "search", args: { q: "x" } },
+          }],
+        },
+        finishReason: "STOP",
+      }],
+    }), FORMATS.ANTIGRAVITY, FORMATS.OPENAI);
+    // targetFormat is the upstream/provider format here; the Gemini branch keys on it
+    const tc = body?.choices?.[0]?.message?.tool_calls?.[0];
+    expect(tc, "no tool_calls in non-streaming conversion").toBeTruthy();
+
+    const request = openaiToAntigravityRequest("gemini-3-pro", {
+      messages: [
+        { role: "assistant", tool_calls: [{ id: tc.id, type: "function", function: { name: "search", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: tc.id, content: "r" },
+      ],
+    }, true, { projectId: "p1" });
+    const fc = request.request.contents.find((c) => c.parts.some((p) => p.functionCall)).parts.find((p) => p.functionCall);
+    expect(fc.functionCall.id).toBe(RAW_ID);
+    expect(fc.thoughtSignature).toBe(SIG);
+  });
+
+  it("no-signature calls keep existing fallback behavior and ids stay uncorrupted", () => {
+    const request = openaiToAntigravityRequest("gemini-3-pro", {
+      messages: [
+        { role: "assistant", tool_calls: [{ id: "toolu_plain_01", type: "function", function: { name: "search", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "toolu_plain_01", content: "r" },
+      ],
+    }, true, { projectId: "p1" });
+    const fc = request.request.contents.find((c) => c.parts.some((p) => p.functionCall)).parts.find((p) => p.functionCall);
+    expect(fc.functionCall.id, "unencoded id must pass through untouched").toBe("toolu_plain_01");
+    expect(typeof fc.thoughtSignature, "synthetic default signature must remain for legacy calls").toBe("string");
+    expect(fc.thoughtSignature).not.toBe(SIG);
+    const respTurn = request.request.contents.find((c) => c.parts.some((p) => p.functionResponse));
+    expect(respTurn.parts[0].functionResponse.id).toBe("toolu_plain_01");
+  });
+});

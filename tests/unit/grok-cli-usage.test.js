@@ -196,6 +196,83 @@ describe("parseGrokCliBilling", () => {
     expect(parsed.quotas["On-demand"]).toBeUndefined();
   });
 
+  it.each([
+    ["omitted", {}],
+    ["null", { creditUsagePercent: null }],
+  ])("treats a valid sparse config with %s creditUsagePercent as unused Credits", (_label, config) => {
+    const parsed = parseGrokCliBilling({ config }, SUPERGROK_USER);
+
+    expect(parsed.quotas).toEqual({
+      Credits: expect.objectContaining({
+        used: 0,
+        total: 100,
+        remainingPercentage: 100,
+      }),
+    });
+    expect(parsed.exhausted).toBe(false);
+  });
+
+  it("preserves the current-period reset on a sparse Credits row", () => {
+    const parsed = parseGrokCliBilling({
+      config: {
+        currentPeriod: { end: "2026-07-17T18:08:56.887518+00:00" },
+      },
+    }, SUPERGROK_USER);
+
+    expect(parsed.quotas.Credits).toMatchObject({
+      used: 0,
+      total: 100,
+      remainingPercentage: 100,
+      resetAt: "2026-07-17T18:08:56.887Z",
+    });
+  });
+
+  it.each([null, undefined, {}])("does not synthesize Credits for missing billing config: %j", (billing) => {
+    expect(parseGrokCliBilling(billing, SUPERGROK_USER).quotas).toEqual({});
+  });
+
+  it.each([{ config: null }, { config: [] }])("does not synthesize Credits for malformed billing config: %j", (billing) => {
+    expect(parseGrokCliBilling(billing, SUPERGROK_USER).quotas).toEqual({});
+  });
+
+  it("does not synthesize Credits for a malformed aggregate percentage", () => {
+    expect(parseGrokCliBilling({
+      config: { creditUsagePercent: "not-a-number" },
+    }, SUPERGROK_USER).quotas).toEqual({});
+  });
+
+  it("surfaces explicit zero aggregate as a zero-used Credits row", () => {
+    const parsed = parseGrokCliBilling({
+      config: {
+        creditUsagePercent: 0,
+        onDemandCap: { val: 0 },
+        onDemandUsed: { val: 0 },
+        isUnifiedBillingUser: true,
+      },
+    }, SUPERGROK_USER);
+    expect(parsed.quotas.Credits).toMatchObject({
+      used: 0,
+      total: 100,
+      remainingPercentage: 100,
+    });
+  });
+
+  it("surfaces explicit nonzero aggregate as a normal Credits row", () => {
+    const parsed = parseGrokCliBilling({
+      config: {
+        creditUsagePercent: 42.5,
+        onDemandCap: { val: 0 },
+        onDemandUsed: { val: 0 },
+        isUnifiedBillingUser: true,
+      },
+    }, SUPERGROK_USER);
+    expect(parsed.quotas.Credits).toMatchObject({
+      used: 42.5,
+      total: 100,
+      remainingPercentage: 57.5,
+    });
+  });
+
   it("merges plain monthly limit/used into Monthly bar", () => {
     const parsed = parseGrokCliBilling(
       UNIFIED_ACTIVE_BILLING,
@@ -300,6 +377,32 @@ describe("getUsageForProvider(grok-cli)", () => {
     vi.clearAllMocks();
   });
 
+  it("surfaces a zero-used Credits row from sparse billing without calling gRPC", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse({ config: {} }))
+      .mockResolvedValueOnce(jsonResponse({ config: {} }))
+      .mockResolvedValueOnce(jsonResponse(SUPERGROK_USER));
+
+    const usage = await getUsageForProvider({
+      provider: "grok-cli",
+      accessToken: "test-token",
+    });
+
+    expect(usage.message).toBeUndefined();
+    expect(usage.plan).toBe("X Premium Plus");
+    expect(usage.quotas).toEqual({
+      Credits: expect.objectContaining({
+        used: 0,
+        total: 100,
+        remainingPercentage: 100,
+      }),
+    });
+    expect(Object.keys(usage.quotas)).toEqual(["Credits"]);
+    // No gRPC fallback on a successful sparse credits response.
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(3);
+    expect(proxyAwareFetch.mock.calls.map((c) => c[0])).not.toContain(GRPC_CREDITS_URL);
+  });
+
   it("returns normalized quotas from billing + user endpoints", async () => {
     // credits, plain monthly, user
     proxyAwareFetch
@@ -367,6 +470,20 @@ describe("getUsageForProvider(grok-cli)", () => {
     expect(usage.quotas.Monthly.used).toBe(6689);
   });
 
+  it("rejects malformed successful billing JSON instead of synthesizing a quota", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError("bad JSON")) })
+      .mockResolvedValueOnce(jsonResponse({ config: {} }))
+      .mockResolvedValueOnce(jsonResponse(SUPERGROK_USER));
+
+    const usage = await getUsageForProvider({
+      provider: "grok-cli",
+      accessToken: "test-token",
+    });
+
+    expect(usage).toEqual({ message: "Grok CLI billing response was not JSON." });
+  });
+
   it("surfaces auth-expired message on 401", async () => {
     proxyAwareFetch
       .mockResolvedValueOnce(jsonResponse({ error: "unauthorized" }, 401))
@@ -411,7 +528,7 @@ describe("getUsageForProvider(grok-cli)", () => {
     ).toISOString();
 
     proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse({ config: {} }))
+      .mockResolvedValueOnce(jsonResponse({}))
       .mockResolvedValueOnce(jsonResponse({ config: {} }))
       .mockResolvedValueOnce(jsonResponse({ ...USER_PROFILE, subscriptionTier: "XPremiumPlus" }))
       .mockResolvedValueOnce(binaryResponse(buildCreditsResponseBuffer(0.35, resetSeconds, resetNanos)));
@@ -443,7 +560,7 @@ describe("getUsageForProvider(grok-cli)", () => {
 
   it("keeps subscription message when REST empty and gRPC fails open", async () => {
     proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse({ config: {} }))
+      .mockResolvedValueOnce(jsonResponse({}))
       .mockResolvedValueOnce(jsonResponse({ config: {} }))
       .mockResolvedValueOnce(jsonResponse({ ...USER_PROFILE, subscriptionTier: "XPremiumPlus" }))
       .mockResolvedValueOnce(binaryResponse(Buffer.alloc(0), 500));
@@ -460,7 +577,7 @@ describe("getUsageForProvider(grok-cli)", () => {
 
   it("does not throw when gRPC network fails after empty REST quotas", async () => {
     proxyAwareFetch
-      .mockResolvedValueOnce(jsonResponse({ config: {} }))
+      .mockResolvedValueOnce(jsonResponse({}))
       .mockResolvedValueOnce(jsonResponse({ config: {} }))
       .mockResolvedValueOnce(jsonResponse({ ...USER_PROFILE, subscriptionTier: "XPremiumPlus" }))
       .mockRejectedValueOnce(new Error("network down"));

@@ -181,10 +181,9 @@ export function parseGrokCliBilling(billing, user = null, plainBilling = null) {
     }
   }
 
-  const creditUsagePercent = unwrapVal(
-    config.creditUsagePercent ?? root.creditUsagePercent,
-    NaN
-  );
+  const rawCreditUsagePercent =
+    config.creditUsagePercent ?? root.creditUsagePercent;
+  const creditUsagePercent = unwrapVal(rawCreditUsagePercent, NaN);
   // Overall credits bar when no per-product rows (or as single summary when only overall exists)
   if (!hasPercentQuota && Number.isFinite(creditUsagePercent)) {
     quotas.Credits = makePercentQuota(creditUsagePercent, periodEnd);
@@ -285,6 +284,15 @@ export function parseGrokCliBilling(billing, user = null, plainBilling = null) {
         resetAt: monthlyReset
       });
     }
+  }
+
+  // Successful credits responses can omit the aggregate before any usage
+  // (proto3 zero-elision). A present object-valued config is a successful read
+  // even when no quota row is materialized; render a 0% Credits bar instead of
+  // falling through to the gRPC/no-allotment path. Absent or malformed config
+  // — and malformed non-null aggregates — keep the existing fallthrough.
+  if (Object.keys(quotas).length === 0 && config !== root && rawCreditUsagePercent == null) {
+    quotas.Credits = makePercentQuota(0, periodEnd);
   }
 
   // Exhausted when every finite quota bar is at 0% remaining

@@ -7,14 +7,17 @@ import { reasoningDelta } from "../concerns/reasoning.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
 import { stripAnsiCodes } from "../../utils/streamHelpers.js";
+import { encodeToolCallIdWithSignature } from "../concerns/signatureTransport.js";
 
 // Build chunk meta for current gemini state
 function chunkMeta(state) {
   return { id: `chatcmpl-${state.messageId}`, created: Math.floor(Date.now() / 1000), model: state.model };
 }
 
-// Build a tool_call chunk from a gemini functionCall part (shared by sig/non-sig branches)
-function emitFunctionCall(functionCall, state) {
+// Build a tool_call chunk from a gemini functionCall part (shared by sig/non-sig branches).
+// `thoughtSignature` is the provider-issued signature from the surrounding part, if any;
+// it rides inside the emitted OpenAI tool-call id so the request translator can replay it.
+function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   const rawName = functionCall.name;
   // Restore original tool name from mapping (AG cloaking)
   const fcName = state.toolNameMap?.get(rawName) || rawName;
@@ -28,7 +31,7 @@ function emitFunctionCall(functionCall, state) {
   const rawId = upstreamId && !state.seenToolCallIds.has(upstreamId)
     ? upstreamId
     : `${fcName}_${Date.now()}_${toolCallIndex}`;
-  const id = rawId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const id = encodeToolCallIdWithSignature(rawId, thoughtSignature);
   state.seenToolCallIds.add(id);
   if (upstreamId) state.seenToolCallIds.add(upstreamId);
   const toolCall = {
@@ -117,7 +120,7 @@ export function geminiToOpenAIResponse(chunk, state) {
         }
         
         if (hasFunctionCall) {
-          results.push(emitFunctionCall(part.functionCall, state));
+          results.push(emitFunctionCall(part.functionCall, state, hasThoughtSig));
         }
         continue;
       }

@@ -22,6 +22,7 @@ import { parseDataUri } from "../concerns/image.js";
 import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.js";
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
+import { decodeToolCallId } from "../concerns/signatureTransport.js";
 
 /**
  * Keep Gemini history legal by isolating function responses and ensuring a
@@ -120,7 +121,9 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       if (msg.role === ROLE.ASSISTANT && msg.tool_calls) {
         for (const tc of msg.tool_calls) {
           if (tc.type === OPENAI_BLOCK.FUNCTION && tc.id && tc.function?.name) {
-            tcID2Name[tc.id] = tc.function.name;
+            // Decode signature-transport ids (#676) so name/response maps key
+            // on the raw upstream id; plain ids decode to themselves.
+            tcID2Name[decodeToolCallId(tc.id).id] = tc.function.name;
           }
         }
       }
@@ -132,7 +135,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   if (body.messages && Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       if (msg.role === ROLE.TOOL && msg.tool_call_id) {
-        toolResponses[msg.tool_call_id] = msg.content;
+        toolResponses[decodeToolCallId(msg.tool_call_id).id] = msg.content;
       }
     }
   }
@@ -183,19 +186,27 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
             if (tc.type !== OPENAI_BLOCK.FUNCTION) continue;
 
             const args = tryParseJSON(tc.function?.arguments || "{}");
+            // Recover the raw upstream call id and any provider-issued thought
+            // signature carried in the transport id (#676, upstream #3645).
+            const decoded = decodeToolCallId(tc.id);
             const functionCallPart = {
               functionCall: {
-                id: tc.id,
+                id: decoded.id,
                 name: sanitizeToolName(tc.function.name),
                 args: args
               }
             };
-            // Synthetic thought signatures are useful for Gemini/Antigravity
-            // replay, but Gemma 4 on Gemini API rejects them on functionCall
-            // history parts with a generic INVALID_ARGUMENT.
-            if (!isGemma4) functionCallPart.thoughtSignature = signature;
+            // Replay the provider-issued signature when one was preserved;
+            // otherwise keep the synthetic default. Gemma 4 on Gemini API
+            // rejects signatures on functionCall history parts with a generic
+            // INVALID_ARGUMENT, so it gets neither.
+            if (decoded.signature) {
+              functionCallPart.thoughtSignature = decoded.signature;
+            } else if (!isGemma4) {
+              functionCallPart.thoughtSignature = signature;
+            }
             parts.push(functionCallPart);
-            toolCallIds.push(tc.id);
+            toolCallIds.push(decoded.id);
           }
 
           if (parts.length > 0) {

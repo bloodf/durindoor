@@ -58,6 +58,19 @@ describe("Antigravity capacity fallback", () => {
     expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
+  it("does not persist an external 499 for Antigravity", async () => {
+    const result = await markAccountUnavailable(
+      "ag-1",
+      499,
+      "Client closed request",
+      "antigravity",
+      "claude-opus-4-6-thinking",
+    );
+
+    expect(result).toEqual({ shouldFallback: false, cooldownMs: 0 });
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+  });
+
   it("keeps normal cooldown behavior for non-Antigravity capacity text", async () => {
     const result = await markAccountUnavailable(
       "ag-1",

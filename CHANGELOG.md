@@ -7,6 +7,7 @@
 
 ## Fixed
 
+- External HTTP 499 responses no longer trigger account fallback or a cooldown; `checkFallbackError` returns a terminal `{ shouldFallback: false, cooldownMs: 0, scope: null }` immediately, so `markAccountUnavailable` never rotates or persists state. The combo layer's own 499 timeout-signal branch, which advances to the next model when its per-attempt deadline aborts a slow model, is unaffected.
 - Grok CLI now renders a zero-used `Credits` quota for successful sparse credits billing responses with an object-valued `config` and omitted or `null` aggregate percentage. Missing or malformed config continues to use the existing gRPC/no-allotment path; explicit aggregate, product, on-demand, and prepaid quota rows remain authoritative.
 - SQLite initializers now apply the shared five-second busy timeout before enabling WAL mode, so file-backed startup waits out a concurrent writer instead of failing immediately with `database is locked`.
 - Quota auto-ping now starts only when a Claude or Codex OAuth connection explicitly opts in, reconciles immediately after durable setting updates and successful database imports, aborts active pings and removes its interval when the final opt-in is disabled, reuses initialization's loaded settings instead of issuing its own second read, and cancels queued follow-up ticks when the scheduler stops or restarts before they flush so a stopped scheduler never spends upstream quota refresh work.

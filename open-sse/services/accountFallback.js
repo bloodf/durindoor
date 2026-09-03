@@ -55,6 +55,11 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
+  // External/client HTTP 499 is terminal; combo-owned timeout fallback is handled in combo.js.
+  if (Number(status) === 499) {
+    return { shouldFallback: false, cooldownMs: 0, scope: null };
+  }
+
   /** #3386: terminal client errors win before message-based transient rules. */
   const terminalRule = ERROR_RULES.find((rule) => rule.status === status && rule.fallback === false);
   if (terminalRule) {

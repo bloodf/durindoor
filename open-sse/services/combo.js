@@ -627,7 +627,7 @@ function advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyL
     // and start its sticky counter so subsequent requests continue from it.
     comboRotationState.set(comboName || "__default__", {
       index: servedIndex,
-      consecutiveUseCount: 0
+      consecutiveUseCount: 1
     });
   } else {
     comboRotationState.set(comboName || "__default__", {

@@ -8,10 +8,12 @@ const log = {
   error() {},
 };
 
-async function servedConnection(comboName, stickyLimit) {
+// Unique per-request message content prevents getRotatedModels' conversation-affinity
+// pinning from short-circuiting rotation, so the sticky counter under test actually runs.
+async function servedConnection(comboName, stickyLimit, message = "hi") {
   let served = "";
   await handleComboChat({
-    body: { messages: [{ role: "user", content: "hi" }] },
+    body: { messages: [{ role: "user", content: message }] },
     models: ["provider/a", "provider/b", "provider/c"],
     comboName,
     comboStrategy: "round-robin",
@@ -41,15 +43,25 @@ describe("combo round-robin fallback pointer", () => {
     expect(second).toBe("provider/c");
   });
 
-  it("pins served model as the sticky base for sticky round-robin after fallback", async () => {
-    const comboName = `rr-fallback-sticky-${Date.now()}`;
-    resetComboRotation(comboName);
+  it("counts fallback winner's successful request toward sticky round-robin limit", async () => {
+    const stickyThreeComboName = `rr-fallback-sticky-three-${Date.now()}`;
+    resetComboRotation(stickyThreeComboName);
 
-    const first = await servedConnection(comboName, 3);
-    const second = await servedConnection(comboName, 3);
+    const stickyThreeWinners = [];
+    for (let request = 0; request < 4; request++) {
+      stickyThreeWinners.push(await servedConnection(stickyThreeComboName, 3, `sticky-three-${request}`));
+    }
 
-    expect(first).toBe("provider/b");
-    expect(second).toBe("provider/b");
+    const stickyOneComboName = `rr-fallback-sticky-one-${Date.now()}`;
+    resetComboRotation(stickyOneComboName);
+
+    const stickyOneWinners = [];
+    for (let request = 0; request < 2; request++) {
+      stickyOneWinners.push(await servedConnection(stickyOneComboName, 1, `sticky-one-${request}`));
+    }
+
+    expect(stickyThreeWinners).toEqual(["provider/b", "provider/b", "provider/b", "provider/c"]);
+    expect(stickyOneWinners).toEqual(["provider/b", "provider/c"]);
   });
 });
 

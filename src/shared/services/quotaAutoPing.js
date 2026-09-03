@@ -539,14 +539,15 @@ function createDefaultDeps() {
   };
 }
 
-export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g) {
+export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g, settingsSnapshot) {
   if (state.running) {
+    if (settingsSnapshot) state.rerunSnapshot = settingsSnapshot;
     state.rerunRequested = true;
     return;
   }
   state.running = true;
   try {
-    const settings = await deps.getSettings();
+    const settings = settingsSnapshot ?? await deps.getSettings();
 
     for (const [provider, providerConfig] of Object.entries(C.providers)) {
       const handler = providerHandlers[provider];
@@ -573,26 +574,76 @@ export async function runQuotaAutoPingTick(deps = createDefaultDeps(), state = g
     state.running = false;
     if (state.rerunRequested) {
       state.rerunRequested = false;
-      queueMicrotask(() => {runQuotaAutoPingTick(deps, state).catch(() => {});});
+      const rerunSnapshot = state.rerunSnapshot;
+      const generation = state.generation;
+      delete state.rerunSnapshot;
+      queueMicrotask(() => {
+        if (state.generation !== generation) return;
+        runQuotaAutoPingTick(deps, state, rerunSnapshot).catch(() => {});
+      });
     }
   }
 }
 
-export function notifyQuotaAutoPingSettingChanged(provider, connectionId, enabled, state = g) {
+export function hasQuotaAutoPingOptIns(settings) {
+  return ["claudeAutoPing", "codexAutoPing"].some((key) =>
+    Object.values(settings?.[key]?.connections || {}).some((enabled) => enabled === true)
+  );
+}
+
+function syncQuotaAutoPingOptIns(settings, state) {
+  state.optIns ||= {};
+  for (const [provider, config] of Object.entries(C.providers)) {
+    state.optIns[provider] = { ...(settings?.[config.settingsKey]?.connections || {}) };
+  }
+}
+
+function hasTrackedQuotaAutoPingOptIns(state) {
+  return Object.keys(C.providers).some((provider) =>
+    Object.values(state.optIns?.[provider] || {}).some((enabled) => enabled === true)
+  );
+}
+
+export function stopQuotaAutoPing(state = g) {
+  clearInterval(state.interval);
+  state.interval = null;
+  state.rerunRequested = false;
+  state.rerunSnapshot = undefined;
+  state.generation = (state.generation || 0) + 1;
+  for (const controller of Object.values(state.inflightControllers || {})) controller.abort(new DOMException("Auto-ping stopped", "AbortError"));
+}
+
+export function notifyQuotaAutoPingSettingChanged(provider, connectionId, enabled, config, state = g) {
   const key = cacheKey(provider, connectionId);
   state.inflightControllers ||= {};
   state.pingFailureUntil ||= {};
-  if (enabled !== true) {
-    state.inflightControllers[key]?.abort(new DOMException("Auto-ping disabled", "AbortError"));
+  state.optIns ||= {};
+  if (config && C.providers[provider]) {
+    state.optIns[provider] = { ...(config.connections || {}) };
+  } else if (C.providers[provider]) {
+    state.optIns[provider] ||= {};
+    if (enabled === true) state.optIns[provider][connectionId] = true;
+    else delete state.optIns[provider][connectionId];
+    if (Object.keys(state.optIns[provider]).length === 0) delete state.optIns[provider];
   }
+  if (enabled !== true) state.inflightControllers[key]?.abort(new DOMException("Auto-ping disabled", "AbortError"));
   delete state.pingFailureUntil[key];
-  if (enabled === true) runQuotaAutoPingTick().catch(() => {});
+  if (!hasTrackedQuotaAutoPingOptIns(state)) { stopQuotaAutoPing(state); return; }
+  startQuotaAutoPing(undefined, state, state.deps);
 }
 
-export function startQuotaAutoPing() {
-  if (g.interval) return;
+export function startQuotaAutoPing(settings, state = g, deps = state.deps || createDefaultDeps()) {
+  state.deps = deps;
+  if (settings) syncQuotaAutoPingOptIns(settings, state);
+  if (!hasTrackedQuotaAutoPingOptIns(state)) { stopQuotaAutoPing(state); return; }
+  if (state.interval) {
+    const snapshot = settings || Object.fromEntries(Object.entries(C.providers).map(([provider, config]) => [config.settingsKey, { connections: state.optIns[provider] || {} }]));
+    runQuotaAutoPingTick(deps, state, snapshot).catch(() => {});
+    return;
+  }
   console.log("[AutoPing] scheduler started");
-  runQuotaAutoPingTick().catch(() => {});
-  g.interval = setInterval(() => {runQuotaAutoPingTick().catch(() => {});}, C.tickIntervalMs);
-  if (g.interval.unref) g.interval.unref();
+  const snapshot = settings || Object.fromEntries(Object.entries(C.providers).map(([provider, config]) => [config.settingsKey, { connections: state.optIns[provider] || {} }]));
+  runQuotaAutoPingTick(deps, state, snapshot).catch(() => {});
+  state.interval = setInterval(() => {runQuotaAutoPingTick(deps, state).catch(() => {});}, C.tickIntervalMs);
+  if (state.interval.unref) state.interval.unref();
 }

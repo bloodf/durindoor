@@ -84,6 +84,8 @@ describe("quota auto-ping", () => {
   const codexTerminalSse = 'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n';
   let runQuotaAutoPingTick;
   let notifyQuotaAutoPingSettingChanged;
+  let hasQuotaAutoPingOptIns;
+  let stopQuotaAutoPing;
   let startQuotaAutoPing;
   let deps;
   let state;
@@ -149,6 +151,8 @@ describe("quota auto-ping", () => {
     ({
       runQuotaAutoPingTick,
       notifyQuotaAutoPingSettingChanged,
+      hasQuotaAutoPingOptIns,
+      stopQuotaAutoPing,
       startQuotaAutoPing,
     } = await import("../../src/shared/services/quotaAutoPing.js"));
 
@@ -907,7 +911,7 @@ describe("quota auto-ping", () => {
 
     const tick = runQuotaAutoPingTick(deps, state);
     await vi.waitFor(() => expect(getClaudeUsage).toHaveBeenCalledOnce());
-    notifyQuotaAutoPingSettingChanged("claude", "claude-1", false, state);
+    notifyQuotaAutoPingSettingChanged("claude", "claude-1", false, undefined, state);
     resolveUsage({ quotas: { "session (5h)": { resetAt: "2026-01-01T11:59:00.000Z" } } });
     await tick;
 
@@ -932,7 +936,7 @@ describe("quota auto-ping", () => {
     const tick = runQuotaAutoPingTick(deps, state);
     await vi.waitFor(() => expect(deps.proxyAwareFetch).toHaveBeenCalledOnce());
     const signal = deps.proxyAwareFetch.mock.calls[0][1].signal;
-    notifyQuotaAutoPingSettingChanged("claude", "claude-1", false, state);
+    notifyQuotaAutoPingSettingChanged("claude", "claude-1", false, undefined, state);
     await tick;
 
     expect(signal.aborted).toBe(true);
@@ -1044,20 +1048,194 @@ describe("quota auto-ping", () => {
     expect(state.rerunRequested).toBe(false);
   });
 
-  it("starts exactly one process-wide interval", async () => {
+  it("starts no scheduler without Claude or Codex opt-ins", async () => {
     vi.useFakeTimers();
-    const { getSettings } = await import("@/lib/localDb");
-    getSettings.mockResolvedValue({});
+    const getSettings = vi.fn();
+    const schedulerState = { interval: null, running: false, rerunRequested: false, inflightControllers: {}, pingFailureUntil: {} };
 
-    startQuotaAutoPing();
-    startQuotaAutoPing();
+    expect(hasQuotaAutoPingOptIns({ claudeAutoPing: { connections: { c: false } }, codexAutoPing: { connections: { x: false } } })).toBe(false);
+    startQuotaAutoPing({ claudeAutoPing: { connections: { c: false } }, codexAutoPing: { connections: { x: false } } }, schedulerState, { getSettings });
     await Promise.resolve();
 
+    expect(vi.getTimerCount()).toBe(0);
+    expect(getSettings).not.toHaveBeenCalled();
+  });
+
+  it("stops an active scheduler and clears tracked opt-ins when an imported snapshot has none", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const schedulerState = { interval: setInterval(() => {}, 60000), running: false, rerunRequested: true, rerunSnapshot: { claudeAutoPing: { connections: { c1: true } } }, optIns: { claude: { c1: true } }, inflightControllers: { "claude:c1": controller }, pingFailureUntil: {} };
+
+    startQuotaAutoPing({}, schedulerState, { getSettings: vi.fn() });
+
+    expect(schedulerState.interval).toBeNull();
+    expect(schedulerState.optIns).toEqual({ claude: {}, codex: {} });
+    expect(schedulerState.rerunRequested).toBe(false);
+    expect(schedulerState.rerunSnapshot).toBeUndefined();
+    expect(controller.signal.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("starts, dedupes, and stops the scheduler through notify-driven lifecycle for both providers", async () => {
+    vi.useFakeTimers();
+    const getSettings = vi.fn();
+    const schedulerState = { interval: null, running: false, rerunRequested: false, inflightControllers: {}, pingFailureUntil: {} };
+
+    startQuotaAutoPing({ claudeAutoPing: { connections: {} }, codexAutoPing: { connections: {} } }, schedulerState, { getSettings });
+    expect(schedulerState.interval).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+
+    notifyQuotaAutoPingSettingChanged("claude", "c1", true, undefined, schedulerState);
+    notifyQuotaAutoPingSettingChanged("claude", "c1", true, undefined, schedulerState);
+    await Promise.resolve();
     expect(vi.getTimerCount()).toBe(1);
-    expect(getSettings).toHaveBeenCalledOnce();
+    expect(getSettings).not.toHaveBeenCalled();
+
+    notifyQuotaAutoPingSettingChanged("codex", "x1", true, undefined, schedulerState);
+    expect(vi.getTimerCount()).toBe(1);
+
+    notifyQuotaAutoPingSettingChanged("claude", "c1", false, undefined, schedulerState);
+    expect(vi.getTimerCount()).toBe(1);
+
+    const stateRef = schedulerState;
+    const controller = new AbortController();
+    schedulerState.inflightControllers["codex:x1"] = controller;
+    schedulerState.rerunSnapshot = { codexAutoPing: { connections: { x1: true } } };
+    notifyQuotaAutoPingSettingChanged("codex", "x1", false, undefined, schedulerState);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(schedulerState.interval).toBeNull();
+    expect(schedulerState.rerunRequested).toBe(false);
+    expect(schedulerState.rerunSnapshot).toBeUndefined();
+    expect(schedulerState).toBe(stateRef);
+    expect(controller.signal.aborted).toBe(true);
+
+    notifyQuotaAutoPingSettingChanged("codex", "x1", true, undefined, schedulerState);
+    expect(vi.getTimerCount()).toBe(1);
+    stopQuotaAutoPing(schedulerState);
+  });
+
+  it("reconciles every enabled notification without duplicating its interval", async () => {
+    vi.useFakeTimers();
+    const getProviderConnections = vi.fn().mockResolvedValue([]);
+    const schedulerState = { interval: null, running: false, rerunRequested: false, inflightControllers: {}, pingFailureUntil: {} };
+    const schedulerDeps = { getSettings: vi.fn(), getProviderConnections };
+    startQuotaAutoPing({ claudeAutoPing: { connections: {} }, codexAutoPing: { connections: {} } }, schedulerState, schedulerDeps);
+    notifyQuotaAutoPingSettingChanged("claude", "c1", true, undefined, schedulerState);
+    await vi.waitFor(() => expect(getProviderConnections).toHaveBeenCalledWith({ provider: "claude", isActive: true }));
+    await vi.waitFor(() => expect(schedulerState.running).toBe(false));
+    notifyQuotaAutoPingSettingChanged("codex", "x1", true, undefined, schedulerState);
+    await vi.waitFor(() => expect(getProviderConnections).toHaveBeenCalledWith({ provider: "codex", isActive: true }));
+
+    expect(vi.getTimerCount()).toBe(1);
+    stopQuotaAutoPing(schedulerState);
+  });
+
+  it("tracks only supported opt-ins and removes disabled entries", () => {
+    const schedulerState = { interval: null, running: false, rerunRequested: false, inflightControllers: {}, pingFailureUntil: { "other:o1": 1 } };
+    const controller = new AbortController();
+    schedulerState.inflightControllers["other:o1"] = controller;
+    notifyQuotaAutoPingSettingChanged("other", "o1", false, undefined, schedulerState);
+    notifyQuotaAutoPingSettingChanged("other", "o2", true, undefined, schedulerState);
+    notifyQuotaAutoPingSettingChanged("claude", "c1", true, undefined, schedulerState);
+    notifyQuotaAutoPingSettingChanged("claude", "c1", false, undefined, schedulerState);
+
+    expect(schedulerState.optIns).not.toHaveProperty("other");
+    expect(schedulerState.optIns).not.toHaveProperty("claude");
+    expect(schedulerState.pingFailureUntil).not.toHaveProperty("other:o1");
+    expect(controller.signal.aborted).toBe(true);
+  });
+
+  it("coalesces a blocked tick into one follow-up that reconciles with the latest snapshot, not a fresh read", async () => {
+    let releaseFirst;
+    const getSettings = vi.fn();
+    const getProviderConnections = vi.fn().mockImplementationOnce(() => new Promise((resolve) => { releaseFirst = resolve; })).mockResolvedValue([]);
+    const schedulerState = { interval: null, running: false, rerunRequested: false, rerunSnapshot: undefined, inflightControllers: {}, pingFailureUntil: {} };
+    const schedulerDeps = { getSettings, getProviderConnections };
+
+    startQuotaAutoPing({ claudeAutoPing: { connections: { c1: true } } }, schedulerState, schedulerDeps);
+    await vi.waitFor(() => expect(schedulerState.running).toBe(true));
+    notifyQuotaAutoPingSettingChanged("claude", "c1", true, undefined, schedulerState);
+    notifyQuotaAutoPingSettingChanged("codex", "x1", true, undefined, schedulerState);
+    await vi.waitFor(() => expect(getProviderConnections).toHaveBeenCalled());
+    expect(getSettings).not.toHaveBeenCalled();
+    expect(schedulerState.rerunRequested).toBe(true);
+    releaseFirst([]);
+    await vi.waitFor(() => expect(getProviderConnections).toHaveBeenCalledWith({ provider: "codex", isActive: true }));
+    expect(getSettings).not.toHaveBeenCalled();
+    stopQuotaAutoPing(schedulerState);
+  });
+
+  it("does not run queued scheduler work after stop before its rerun microtask flushes", async () => {
+    let releaseFirst;
+    let queuedRerun;
+    const queueMicrotaskSpy = vi.spyOn(global, "queueMicrotask").mockImplementation((callback) => { queuedRerun = callback; });
+    const getProviderConnections = vi.fn().mockImplementationOnce(() => new Promise((resolve) => { releaseFirst = resolve; })).mockResolvedValue([]);
+    const schedulerState = { interval: { unref: vi.fn() }, running: false, rerunRequested: false, rerunSnapshot: undefined, inflightControllers: {}, pingFailureUntil: {} };
+    const schedulerDeps = { getSettings: vi.fn(), getProviderConnections };
+
+    try {
+      const first = runQuotaAutoPingTick(schedulerDeps, schedulerState, { claudeAutoPing: { connections: { c1: true } } });
+      await vi.waitFor(() => expect(schedulerState.running).toBe(true));
+      await runQuotaAutoPingTick(schedulerDeps, schedulerState, { codexAutoPing: { connections: { x1: true } } });
+      releaseFirst([]);
+      await first;
+      expect(queuedRerun).toBeTypeOf("function");
+
+      stopQuotaAutoPing(schedulerState);
+      startQuotaAutoPing({ claudeAutoPing: { connections: { c1: true } } }, schedulerState, schedulerDeps);
+      await vi.waitFor(() => expect(getProviderConnections).toHaveBeenCalledTimes(2));
+      queuedRerun();
+      await Promise.resolve();
+
+      expect(getProviderConnections).toHaveBeenCalledTimes(2);
+      expect(schedulerState.rerunRequested).toBe(false);
+    } finally {
+      queueMicrotaskSpy.mockRestore();
+    }
+  });
+
+  it("reconciles one scheduler across Claude and Codex lifecycle changes", async () => {
+    vi.useFakeTimers();
+    const getSettings = vi.fn().mockResolvedValue({ codexAutoPing: { connections: { x: true } } });
+    const controller = new AbortController();
+    const schedulerState = { interval: null, running: true, rerunRequested: true, inflightControllers: { "claude:c": controller }, pingFailureUntil: {} };
+
+    startQuotaAutoPing({ claudeAutoPing: { connections: { c: true } } }, schedulerState, { getSettings });
+    startQuotaAutoPing({ claudeAutoPing: { connections: { c: true } } }, schedulerState, { getSettings });
+    await Promise.resolve();
+    expect(vi.getTimerCount()).toBe(1);
+
+    stopQuotaAutoPing(schedulerState);
+    expect(controller.signal.aborted).toBe(true);
+    expect(schedulerState.interval).toBeNull();
+    expect(schedulerState.rerunRequested).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+
+    startQuotaAutoPing({ codexAutoPing: { connections: { x: true } } }, schedulerState, { getSettings });
+    await Promise.resolve();
+    expect(vi.getTimerCount()).toBe(1);
+    stopQuotaAutoPing(schedulerState);
+  });
+
+  it("ticks the interval with the same deps and state, never duplicating it", async () => {
+    vi.useFakeTimers();
+    const getSettings = vi.fn().mockResolvedValue({ claudeAutoPing: { connections: { c1: true } } });
+    const schedulerState = { interval: null, running: false, rerunRequested: false, inflightControllers: {}, pingFailureUntil: {} };
+    const schedulerDeps = { getSettings, getProviderConnections: vi.fn().mockResolvedValue([]) };
+
+    startQuotaAutoPing({ claudeAutoPing: { connections: { c1: true } } }, schedulerState, schedulerDeps);
+    await Promise.resolve();
+    expect(getSettings).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(getSettings).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
 
     await vi.advanceTimersByTimeAsync(60000);
     expect(getSettings).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(1);
+
+    stopQuotaAutoPing(schedulerState);
   });
 });

@@ -104,7 +104,7 @@ export async function initializeApp() {
     startWatchdog();
     startNetworkMonitor();
     autoStartMitm();
-    startQuotaAutoPing();
+    startQuotaAutoPing(settings);
 
     // Proactive OAuth token refresh, independent of inbound requests (e.g.
     // grok-cli's ~6h TTL expires while the router is idle). The scheduler is

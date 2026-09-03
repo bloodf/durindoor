@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { exportDb, getSettings, importDb } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
+import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { hasValidCliToken, hasValidToken } from "@/dashboardGuard";
 import { DATABASE_IMPORT_MAX_BYTES } from "@/shared/constants/quota";
@@ -102,14 +103,21 @@ export async function POST(request) {
     }
     await importDb(payload);
 
-    // Ensure proxy settings take effect immediately after a DB import.
+    // Ensure proxy settings and the quota auto-ping scheduler take effect
+    // immediately after a DB import. Each reconciliation is independent: one
+    // failing must not block the other.
+    let settings;
     try {
-      const settings = await getSettings();
+      settings = await getSettings();
       applyOutboundProxyEnv(settings);
     } catch (err) {
       console.warn("[Settings][DatabaseImport] Failed to re-apply outbound proxy env:", err);
     }
-
+    try {
+      if (settings) startQuotaAutoPing(settings);
+    } catch (err) {
+      console.warn("[Settings][DatabaseImport] Failed to reconcile quota auto-ping scheduler:", err);
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.log("Error importing database:", error);

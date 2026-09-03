@@ -40,6 +40,11 @@ export default defineConfig({
     ],
     // Allow many it.concurrent cases (real provider smoke runs ~50 providers in parallel)
     maxConcurrency: 60,
+    // Full-suite runs contend on shared SQLite fixtures; observed worst-case
+    // per-test wall time under contention is ~9.4s, which flakes against the
+    // Vitest 5s default. Set an explicit ceiling with headroom so slow-but-real
+    // hangs still fail while contention-bound tests pass deterministically.
+    testTimeout: 15_000,
     // Suppress noisy console output from handlers under test
     silent: false,
   },

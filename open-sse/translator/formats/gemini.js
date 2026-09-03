@@ -457,6 +457,49 @@ function flattenTypeArrays(obj) {
   }
 }
 
+// True when `node` carries BOTH a `"null"` branch and at least one non-null
+// branch: a `type` array with `"null"` plus a non-null member, or an
+// `anyOf`/`oneOf` containing `{ type: "null" }` alongside a non-null member.
+// Pure-null unions (no winner to encode) intentionally fall through so the
+// existing placeholders pass keeps handling them.
+function hasNullBranch(node) {
+  if (Array.isArray(node.type)) {
+    return node.type.includes("null") && node.type.some((type) => type && type !== "null");
+  }
+  for (const key of ["anyOf", "oneOf"]) {
+    const variants = node[key];
+    if (!Array.isArray(variants)) continue;
+    if (!variants.some((variant) => variant?.type === "null")) continue;
+    if (variants.some((variant) => variant && variant.type !== "null")) return true;
+  }
+  return false;
+}
+
+// Gemini's `responseSchema` accepts OpenAPI's `nullable: true`, not JSON
+// Schema null unions. Track null-union node identities in a local Set while
+// also stamping them before flattening. The existing flattenAnyOfOneOf pass
+// may `Object.assign(obj, selected)`: selected can carry `nullable: false`,
+// and a nested selected node can become detached from the schema root. A Set
+// deliberately retains those identities until the final re-stamp. No
+// schema-visible sentinel is used, so caller-supplied keys cannot influence
+// tracking.
+function collectNullableNodes(obj, hits) {
+  if (!obj || !isObject(obj)) return;
+
+  if (hasNullBranch(obj)) {
+    hits.add(obj);
+    obj.nullable = true;
+  }
+
+  for (const value of Object.values(obj)) {
+    if (value && isObject(value)) collectNullableNodes(value, hits);
+  }
+}
+
+function restoreNullableNodes(hits) {
+  for (const node of hits) node.nullable = true;
+}
+
 /**
  * Infer missing `type: "object"` on schema nodes that carry `properties` but no
  * explicit `type` (Gemini requires the explicit type).
@@ -486,7 +529,7 @@ function ensureObjectType(obj) {
 }
 
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
-export function cleanJSONSchemaForAntigravity(schema) {
+export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false } = {}) {
   if (!schema || !isObject(schema)) return schema;
 
   // Mutate directly (schema is only used once per request)
@@ -504,9 +547,11 @@ export function cleanJSONSchemaForAntigravity(schema) {
 
   // Phase 2: Flatten complex structures
   mergeAllOf(cleaned);
+  const nullableNodes = preserveNullable ? new Set() : null;
+  if (nullableNodes) collectNullableNodes(cleaned, nullableNodes);
   flattenAnyOfOneOf(cleaned);
   flattenTypeArrays(cleaned);
-
+  if (nullableNodes) restoreNullableNodes(nullableNodes);
   // Phase 2.5: Infer missing type=object when properties exist (Gemini requirement)
   ensureObjectType(cleaned);
 

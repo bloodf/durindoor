@@ -15,6 +15,14 @@ describe("account fallback request-error classification", () => {
     });
   });
 
+  it("keeps external HTTP 499 terminal", () => {
+    expect(checkFallbackError(499, "Client closed request")).toEqual({
+      shouldFallback: false,
+      cooldownMs: 0,
+      scope: null,
+    });
+  });
+
   it("still rotates accounts for 401 auth and 429 quota errors", () => {
     expect(checkFallbackError(401, "Invalid API key").shouldFallback).toBe(true);
     expect(checkFallbackError(429, "Rate limit reached").shouldFallback).toBe(true);

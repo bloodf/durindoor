@@ -85,6 +85,25 @@ describe("combo per-model timeout", () => {
     expect(calls).toBe(2);
   });
 
+  it("returns an external 499 without trying the next model", async () => {
+    let calls = 0;
+    const result = await handleComboChat({
+      body: { messages: [] },
+      models: ["a/client-abort", "a/fast"],
+      handleSingleModel: async () => {
+        calls++;
+        return makeAbortResponse();
+      },
+      log: fakeLog,
+      comboName: "combo-external-499",
+      comboStrategy: "fallback",
+      comboTimeoutMs: 0,
+    });
+
+    expect(result.status).toBe(499);
+    expect(calls).toBe(1);
+  });
+
   it("does not pollute lastError with the timeout message", async () => {
     let calls = 0;
     const result = await handleComboChat({

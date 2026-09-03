@@ -45,6 +45,15 @@ const PATTERN_THINKING = [
   { pattern: "*gpt-5.6-terra*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
   // Luna accepts max; ultra falls back to max in applyThinking.
   { pattern: "*gpt-5.6-luna*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+  // codebuddy-cn per-model effort sets — server-delivered supportedEfforts read
+  // off the client picker (upstream e014cb537, 2026-08-30). The gateway speaks
+  // thinkingFormat "openai" but rejects levels outside each model's set. Placed
+  // before broad *kimi-k3* so future CodeBuddy K3 rules are not shadowed
+  // (first-match semantics).
+  { provider: "codebuddy-cn", pattern: "glm-5.3*", levels: ["low", "high", "max"] },
+  { provider: "codebuddy-cn", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
+  { provider: "codebuddy-cn", pattern: "hy3*", levels: ["low", "high"] },
+  { provider: "codebuddy-cn", pattern: "hy4*", levels: ["high"] },
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking

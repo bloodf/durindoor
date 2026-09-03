@@ -2,7 +2,7 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
-import { isObject } from "../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 export function resolveCustomCapabilities(provider, model, requestPrefix, customModels) {
   if (!Array.isArray(customModels) || !model) return null;
@@ -82,6 +82,7 @@ import { applyNoAuthAutoComboGate } from "open-sse/services/combo.js";
 import { NOAUTH_PROVIDERS } from "open-sse/config/providers.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { PROVIDER_MODELS } from "open-sse/providers/index.js";
+import { getDisabledModels } from "@/lib/disabledModelsDb";
 
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
 const LOCAL_PROVIDER_ALIASES = {
@@ -293,6 +294,37 @@ export async function getAutoComboCatalog() {
  * @param {boolean} [hidePaidModels=false]
  * @returns {Promise<string[]|null>} Array of models (empty for empty auto pool), or null if not a combo
  */
+function buildDisabledComboMemberMatcher(disabledByProvider, aliases, nodes) {
+  const nodeRows = Array.isArray(nodes) ? nodes : [];
+
+  return (member) => {
+    if (!isString(member)) return false;
+    let parsed = parseModel(member);
+    if (parsed.isAlias) {
+      const resolved = resolveModelAliasFromMap(member, aliases);
+      if (!resolved) return false;
+      parsed = { ...resolved, providerAlias: resolved.provider };
+    }
+    if (!parsed.providerAlias || !parsed.model) return false;
+
+    const candidates = new Set([parsed.providerAlias]);
+    const owner = REGISTRY.find((entry) => entry.id === parsed.provider) || REGISTRY.find((entry) =>
+      entry.alias === parsed.providerAlias || entry.uiAlias === parsed.providerAlias || entry.aliases?.includes(parsed.providerAlias));
+    if (owner?.id) candidates.add(owner.id);
+    if (owner?.alias) candidates.add(owner.alias);
+    if (owner?.uiAlias) candidates.add(owner.uiAlias);
+    for (const alias of owner?.aliases || []) candidates.add(alias);
+
+    const node = !RESERVED_PROVIDER_PREFIXES.has(parsed.providerAlias) && nodeRows.find((entry) =>
+      entry.id === parsed.providerAlias || entry.prefix === parsed.providerAlias);
+    if (node) {
+      candidates.add(node.id);
+      candidates.add(node.prefix);
+    }
+    return [...candidates].some((provider) => disabledByProvider?.[provider]?.includes(parsed.model));
+  };
+}
+
 export async function getComboModels(modelStr, hidePaidModels = false) {
   if (isAutoComboId(modelStr)) {
     const family = familyOfAutoId(modelStr);
@@ -307,10 +339,23 @@ export async function getComboModels(modelStr, hidePaidModels = false) {
   // the basename. Callers that still want provider-prefixed combo resolution
   // must save the combo under the full `provider/name` form.
   const combo = await getComboForModel(modelStr);
-  if (combo && combo.models && combo.models.length > 0) {
+  if (!combo || !Array.isArray(combo.models)) return null;
+  const disabledByProvider = await getDisabledModels().catch(() => ({}));
+  if (!Object.values(disabledByProvider || {}).some((ids) => Array.isArray(ids) && ids.length)) {
     return filterPaidModels(combo.models, hidePaidModels === true);
   }
-  return null;
+  const [aliases, openaiNodes, anthropicNodes] = await Promise.all([
+    getModelAliases().catch(() => ({})),
+    getProviderNodes({ type: "openai-compatible" }).catch(() => []),
+    getProviderNodes({ type: "anthropic-compatible" }).catch(() => []),
+  ]);
+  const isDisabled = buildDisabledComboMemberMatcher(
+    disabledByProvider,
+    aliases,
+    [...openaiNodes, ...anthropicNodes],
+  );
+  const enabledMembers = combo.models.filter((member) => !isDisabled(member));
+  return filterPaidModels(enabledMembers.length === combo.models.length ? combo.models : enabledMembers, hidePaidModels === true);
 }
 
 // Canonical stored combo name for a request string, so ACL checks, per-combo

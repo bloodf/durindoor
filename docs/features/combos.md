@@ -120,6 +120,12 @@ Name: interactive-safe
 4. Confirm the next member is used.
 5. Check usage logs for selected provider, model, latency, and errors.
 
+## Disabled Members
+
+Disable a model from **Settings → Providers → Models** by passing its model id (the bare id shown in the catalog) to `POST /api/models/disabled` with the corresponding `providerAlias`. Matching for saved combos checks the exact provider form the combo member was saved under (registry id or registry alias, whichever the member uses), the registry's other static alias for that same provider, a resolved model alias's target provider, and — for openai/anthropic-compatible connections — both the connection's storage id and its configured output prefix. A disabled row keyed by one provider's registry id does not reach a saved member of a *different* provider that happens to share a canonical resolution target; only the saved member's own literal form and its direct registry/node counterpart are checked. The combo's stored `models` array is never mutated. Non-string legacy entries (`null`, numbers, `{kind:"combo-ref"}`, `{providerId,model}`) are kept untouched.
+
+Each of the three supporting reads — `getDisabledModels`, `getModelAliases`, and the two `getProviderNodes` lookups — fails open on rejection, but the practical effect differs per read: a disabled-models store outage returns every original member unfiltered (no matching happens at all); a model-alias outage makes every bare model-alias member (not `provider/model` form) unmatchable and therefore kept, because its target provider/model cannot be resolved without the alias map; a compatible-node outage still matches a member on its own literal form (so a prefix-keyed disabled row still filters a member saved under that same prefix), but the matcher can no longer cross-reference the node's other identity — a member saved under the storage id will not be caught by a disabled row keyed by the output prefix, or vice versa, until the node lookup succeeds again.
+
 ## Operating Notes
 
 - Keep combo names stable because users copy them into external tools.

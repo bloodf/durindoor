@@ -488,3 +488,36 @@ describe("getCapabilitiesForModel — codebuddy-cn provider overrides", () => {
     expect(caps.thinkingFormat).toBe("deepseek");
   });
 });
+
+describe("getCapabilitiesForModel — codebuddy-cn 2026-08 catalog refresh", () => {
+  it("retired glm-5.0 and glm-4.7 no longer resolve provider entries", () => {
+    for (const id of ["glm-5.0", "glm-4.7"]) {
+      const caps = getCapabilitiesForModel("codebuddy-cn", id);
+      // Must not report the old provider-pinned 200000/48000 openai entry.
+      expect(caps?.maxOutput === 48000 && caps?.contextWindow === 200000).toBe(false);
+    }
+  });
+
+  it("hy3/hy3-x share hy3-preview caps; hy4-preview gets 1M window", () => {
+    for (const id of ["hy3", "hy3-x"]) {
+      const caps = getCapabilitiesForModel("codebuddy-cn", id);
+      expect(caps.vision).toBe(true);
+      expect(caps.thinkingCanDisable).toBe(false);
+      expect(caps.contextWindow).toBe(192000);
+    }
+    for (const id of ["hy4-preview", "hy4-preview-x"]) {
+      expect(getCapabilitiesForModel("codebuddy-cn", id).contextWindow).toBe(1000000);
+    }
+  });
+
+  it("glm-5.3 gets 1M window; glm-5.3-flash keeps documented 200000 fallback", () => {
+    expect(getCapabilitiesForModel("codebuddy-cn", "glm-5.3").contextWindow).toBe(1000000);
+    expect(getCapabilitiesForModel("codebuddy-cn", "glm-5.3-flash").contextWindow).toBe(200000);
+  });
+
+  it("kimi-k3-1 is vision-capable with 256000 window", () => {
+    const caps = getCapabilitiesForModel("codebuddy-cn", "kimi-k3-1");
+    expect(caps.vision).toBe(true);
+    expect(caps.contextWindow).toBe(256000);
+  });
+});

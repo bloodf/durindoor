@@ -9,6 +9,8 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
 // Basic constraints (not supported by Gemini API)
 "minLength", "maxLength", "exclusiveMinimum", "exclusiveMaximum",
 "minItems", "maxItems", "multipleOf", "format",
+// Tuple-array keywords; converted to items first, leftovers stripped
+"prefixItems", "additionalItems",
 // Claude rejects these in VALIDATED mode
 "default", "examples",
 // JSON Schema meta keywords ($ref/$defs are resolved by resolveJsonSchemaRefs in Phase 0;
@@ -528,6 +530,37 @@ function ensureObjectType(obj) {
   if (obj.items && isObject(obj.items)) ensureObjectType(obj.items);
 }
 
+// Convert prefixItems (tuple validation) to items — Gemini cannot express tuples,
+// and a type:"array" schema without items is rejected with "missing field"
+function convertPrefixItems(obj) {
+  if (!obj || typeof obj !== "object") return;
+
+  if (Array.isArray(obj.prefixItems) && obj.prefixItems.length > 0) {
+    const variants = obj.prefixItems.filter(s => s && s.type !== "null");
+    if (!obj.items && variants.length === 1) {
+      obj.items = variants[0];
+    } else if (!obj.items && variants.length > 1) {
+      obj.items = { anyOf: variants };
+    }
+    delete obj.prefixItems;
+  }
+
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === "object") {
+      convertPrefixItems(value);
+    }
+  }
+}
+
+// Gemini requires items on every type:"array" schema — fill a permissive placeholder
+function ensureArrayItems(obj) {
+  if (!obj || typeof obj !== "object") return;
+  if (obj.type === "array" && !obj.items) {
+    obj.items = { type: "string" };
+  }
+  for (const v of Object.values(obj)) if (v && typeof v === "object") ensureArrayItems(v);
+}
+
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
 export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false } = {}) {
   if (!schema || !isObject(schema)) return schema;
@@ -549,11 +582,13 @@ export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false
   mergeAllOf(cleaned);
   const nullableNodes = preserveNullable ? new Set() : null;
   if (nullableNodes) collectNullableNodes(cleaned, nullableNodes);
+  convertPrefixItems(cleaned);
   flattenAnyOfOneOf(cleaned);
   flattenTypeArrays(cleaned);
   if (nullableNodes) restoreNullableNodes(nullableNodes);
   // Phase 2.5: Infer missing type=object when properties exist (Gemini requirement)
   ensureObjectType(cleaned);
+  ensureArrayItems(cleaned);
 
   // Phase 3: Remove all unsupported keywords at ALL levels (including inside arrays)
   removeUnsupportedKeywords(cleaned, UNSUPPORTED_SCHEMA_CONSTRAINTS);

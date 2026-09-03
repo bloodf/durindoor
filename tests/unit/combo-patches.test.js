@@ -13,6 +13,44 @@ import {
   getConversationCacheKey,
 } from "../../open-sse/services/combo.js";
 
+const disabledComboMocks = vi.hoisted(() => ({
+  getComboForModel: vi.fn(),
+  getModelAliases: vi.fn(),
+  getProviderNodes: vi.fn(),
+  getProviderConnections: vi.fn(),
+  getCombos: vi.fn().mockResolvedValue([]),
+  getCustomModels: vi.fn().mockResolvedValue([]),
+  getSettings: vi.fn().mockResolvedValue({ disabledFreeProviders: [] }),
+  getDisabledModels: vi.fn(),
+}));
+
+vi.mock("@/lib/localDb", () => ({
+  getComboForModel: disabledComboMocks.getComboForModel,
+  getModelAliases: disabledComboMocks.getModelAliases,
+  getProviderNodes: disabledComboMocks.getProviderNodes,
+  getProviderConnections: disabledComboMocks.getProviderConnections,
+  getCombos: disabledComboMocks.getCombos,
+  getCustomModels: disabledComboMocks.getCustomModels,
+  getSettings: disabledComboMocks.getSettings,
+}));
+vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: disabledComboMocks.getDisabledModels }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  disabledComboMocks.getComboForModel.mockResolvedValue(null);
+  disabledComboMocks.getModelAliases.mockResolvedValue({});
+  disabledComboMocks.getProviderNodes.mockResolvedValue([]);
+  disabledComboMocks.getProviderConnections.mockResolvedValue([]);
+  disabledComboMocks.getCombos.mockResolvedValue([]);
+  disabledComboMocks.getCustomModels.mockResolvedValue([]);
+  disabledComboMocks.getSettings.mockResolvedValue({ disabledFreeProviders: [] });
+  disabledComboMocks.getDisabledModels.mockResolvedValue({});
+});
+
+async function loadGetComboModels() {
+  return (await import("../../src/sse/services/model.js")).getComboModels;
+}
+
 const log = { info: () => {}, warn: () => {}, debug: () => {} };
 
 function okResponse(content) {
@@ -39,6 +77,30 @@ describe("#6546 empty pool fail-fast", () => {
       handleSingleModel,
       log,
       comboName: "empty",
+      comboStrategy: "fallback",
+    });
+    expect(handleSingleModel).not.toHaveBeenCalled();
+    expect(res.status).toBe(503);
+  });
+
+  it("returns 503 when a recognized combo's all-disabled resolution feeds the dispatcher", async () => {
+    // Pipes the live getComboModels output for an all-disabled saved combo into handleComboChat
+    // to confirm the existing terminal-503 boundary also catches the disabled-filter path.
+    disabledComboMocks.getComboForModel.mockResolvedValue({ name: "all-disabled", models: ["alibaba/qwen3"] });
+    disabledComboMocks.getModelAliases.mockResolvedValue({});
+    disabledComboMocks.getProviderNodes.mockResolvedValue([]);
+    disabledComboMocks.getDisabledModels.mockResolvedValue({ ali: ["qwen3"] });
+    const getComboModels = await loadGetComboModels();
+    const resolved = await getComboModels("all-disabled");
+    expect(resolved).toEqual([]);
+
+    const handleSingleModel = vi.fn();
+    const res = await handleComboChat({
+      body: { messages: [{ role: "user", content: "hi" }] },
+      models: resolved,
+      handleSingleModel,
+      log,
+      comboName: "all-disabled",
       comboStrategy: "fallback",
     });
     expect(handleSingleModel).not.toHaveBeenCalled();

@@ -50,6 +50,15 @@ describe("detectRequiredCapabilities", () => {
     expect(r.has("search")).toBe(true);
   });
 
+  it.each([
+    ["OpenAI", [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }]],
+    ["Claude", [{ name: "read_file", input_schema: { type: "object" } }]],
+    ["Gemini", [{ functionDeclarations: [{ name: "read_file", parameters: { type: "object" } }] }]],
+  ])("%s function declarations require tools", (_format, tools) => {
+    const r = detectRequiredCapabilities({ tools });
+    expect(r.has("tools")).toBe(true);
+  });
+
   it("responses input_image -> vision", () => {
     const r = detectRequiredCapabilities({ input: [{ role: "user", content: [
       { type: "input_image", image_url: "x" },
@@ -94,6 +103,20 @@ describe("reorderByCapabilities", () => {
     const out = reorderByCapabilities(models, new Set(["vision"]));
     // reorder returns a fresh array (a sort); contents unchanged when nothing matches.
     expect(out).toStrictEqual(models);
+  });
+
+  it("floats a tool-capable model without dropping or duplicating members", () => {
+    const models = ["openai/gpt-image-1", "deepseek/deepseek-chat"];
+    const out = reorderByCapabilities(models, detectRequiredCapabilities({ tools: [
+      { type: "function", function: { name: "read_file", parameters: { type: "object" } } },
+    ] }));
+    expect(out).toEqual(["deepseek/deepseek-chat", "openai/gpt-image-1"]);
+    expect(new Set(out)).toEqual(new Set(models));
+  });
+
+  it("keeps non-tool request order unchanged", () => {
+    const models = ["openai/gpt-image-1", "deepseek/deepseek-chat"];
+    expect(reorderByCapabilities(models, detectRequiredCapabilities({ messages: [] }))).toBe(models);
   });
 
   it("single model -> unchanged", () => {

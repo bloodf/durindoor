@@ -14,6 +14,13 @@ import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
 
+function lastCacheableToolIndex(tools) {
+  for (let i = tools.length - 1; i >= 0; i--) {
+    if (tools[i]?.defer_loading !== true) return i;
+  }
+  return -1;
+}
+
 const HOISTABLE_SYSTEM_BLOCKS = new Set([CLAUDE_BLOCK.TEXT]);
 const USER_SYSTEM_FOLDABLE_BLOCKS = new Set([
 CLAUDE_BLOCK.TEXT,
@@ -51,7 +58,7 @@ export function anchorClaudeCache(body) {
   }
 
   if (Array.isArray(body.tools)) {
-    const last = body.tools.length - 1;
+    const last = lastCacheableToolIndex(body.tools);
     body.tools.forEach((tool, i) => {
       if (i === last) tool.cache_control = { ...CACHE_CONTROL_1H };else
       delete tool.cache_control;
@@ -615,9 +622,10 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       });
     }
 
+    const lastCacheable = lastCacheableToolIndex(body.tools);
     body.tools = body.tools.map((tool, i) => {
       const { cache_control, ...rest } = tool;
-      if (allowCacheControl && i === body.tools.length - 1) {
+      if (allowCacheControl && i === lastCacheable) {
         return { ...rest, cache_control: { type: "ephemeral", ttl: "1h" } };
       }
       return rest;

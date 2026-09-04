@@ -11,6 +11,7 @@ import Badge from "./Badge";
 import Card from "./Card";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
 import UsageTable, { fmt, fmtTime } from "@/app/(dashboard)/dashboard/usage/components/UsageTable";
+import { formatCompactToken } from "@/shared/utils/formatCompact";
 import dynamic from "next/dynamic";
 // Lazy-load: keeps @xyflow/react out of the shared bundle until topology renders
 import { isString } from "../utils/typeChecks.js";
@@ -478,7 +479,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           lastProvider={stats.recentRequests?.[0]?.provider || ""}
           errorProvider={stats.errorProvider || ""} />
         
-          <RequestsPanel recentRequests={stats.recentRequests || []} activeSessions={stats.activeSessions || []} />
+          <RequestsPanel recentRequests={stats.recentRequests || []} activeSessions={stats.activeSessions || []} formatToken={formatCompactToken} />
         </div>
       }
 

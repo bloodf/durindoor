@@ -27,6 +27,21 @@ const detail = {
   response: { redacted: true, version: 1, present: true, type: "object", bytes: 444 },
 };
 
+function mockSettingsResponse(enableObservability) {
+  return (url) => {
+    if (String(url) === "/api/settings") {
+      return Promise.resolve({ ok: true, json: async () => ({ enableObservability }) });
+    }
+    if (String(url).startsWith("/api/usage/request-details")) {
+      return Promise.resolve({ ok: true, json: async () => ({ details: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 0 } }) });
+    }
+    if (String(url) === "/api/usage/providers") {
+      return Promise.resolve({ ok: true, json: async () => ({ providers: [{ id: "openai", name: "OpenAI" }] }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ nodes: [] }) });
+  };
+}
+
 describe("Request Details metadata-only UI", () => {
   let container;
   let root;
@@ -35,13 +50,6 @@ describe("Request Details metadata-only UI", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
-    globalThis.fetch = vi.fn(async (url) => ({
-      json: async () => String(url).startsWith("/api/usage/request-details")
-        ? { details: [detail], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } }
-        : String(url) === "/api/usage/providers"
-          ? { providers: [{ id: "openai", name: "OpenAI" }] }
-          : { nodes: [] },
-    }));
   });
 
   afterEach(() => {
@@ -51,6 +59,14 @@ describe("Request Details metadata-only UI", () => {
   });
 
   it("explains all four redacted stages and offers no raw payload copy or view path", async () => {
+    globalThis.fetch = vi.fn(async (url) => ({
+      json: async () => String(url).startsWith("/api/usage/request-details")
+        ? { details: [detail], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } }
+        : String(url) === "/api/usage/providers"
+          ? { providers: [{ id: "openai", name: "OpenAI" }] }
+          : { nodes: [] },
+    }));
+
     await act(async () => {
       root.render(React.createElement(RequestDetailsTab));
       await Promise.resolve();
@@ -67,5 +83,37 @@ describe("Request Details metadata-only UI", () => {
       expect(container.textContent).toContain(bytes);
     }
     expect(container.textContent).not.toMatch(/Copy|Provider Response \(Raw\)|Client Request \(Input\)|No data available/);
+  });
+
+  it("renders the observability callout with a settings link when observability is disabled", async () => {
+    globalThis.fetch = vi.fn(mockSettingsResponse(false));
+
+    await act(async () => {
+      root.render(React.createElement(RequestDetailsTab));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const callout = container.querySelector("[data-observability-callout=\"off\"]");
+    expect(callout).not.toBeNull();
+    expect(callout.textContent).toContain("Request details logging is turned off");
+    const link = callout.querySelector("a[href=\"/dashboard/profile\"]");
+    expect(link).not.toBeNull();
+    expect(link.textContent.trim()).toBe("Open Settings");
+  });
+
+  it("renders the ordinary empty state when observability is enabled", async () => {
+    globalThis.fetch = vi.fn(mockSettingsResponse(true));
+
+    await act(async () => {
+      root.render(React.createElement(RequestDetailsTab));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector("[data-observability-callout=\"off\"]")).toBeNull();
+    expect(container.textContent).toContain("No request details found");
   });
 });

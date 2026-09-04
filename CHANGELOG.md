@@ -12,6 +12,8 @@
 - port(upstream): #3703 - provider-limit dashboard quota polling now runs every five minutes; scheduler and displayed countdown both derive from one interval constant, while Claude keeps its deliberate ten-minute tick ratio.
 - port(upstream): #3772 - fix Responses parallel function-call streaming; each `output_item.added` event now allocates a distinct, stable tool-call index keyed by its call ID (`open-sse/translator/response/openai-responses.js`), so batched parallel calls no longer collide onto shared index 0. Argument deltas resolve their index from the `fc_`/`ctc_` item ID with a same-turn fallback for variants that omit it; `output_item.done` is now index-neutral. Only the parallel-index half of decolua/9router#3772 is ported; the `tool_result` image-blob placeholder half is tracked separately (#752).
 
+- OpenCode Go now lists Muse Spark 1.2 and 1.3 Contributor models with their native Responses transport. Requests automatically receive an opaque `x-opencode-session` derived from the fork session resolver, so callers cannot control provider session affinity.
+
 ## Added
 
 - Claude Code static fallback headers now match a local Claude Code 2.1.258 capture: `claude-cli/2.1.258 (external, sdk-cli)`, SDK package `0.112.1`, Node runtime `v26.3.0`, captured beta flags, and no helper-method header. Claude Fable 5.1 is selectable as `cc/claude-fable-5-1` and `anthropic/claude-fable-5-1`; `fable` selects it. Fable 5 remains available, forced Claude-native tool choices remain intact, and no Opus 5.1 row is added. Source: [Anthropic Claude Code release notes](https://docs.claude.com/en/release-notes/claude-code).

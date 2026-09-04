@@ -2651,15 +2651,18 @@ exports[`GOLDEN buildHeaders (default executor providers) > opencode-go → head
     "Accept": "text/event-stream",
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
+    "x-opencode-session": "ses_<SESSION>",
   },
   "nonStream": {
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
+    "x-opencode-session": "ses_<SESSION>",
   },
   "oauth": {
     "Accept": "text/event-stream",
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
+    "x-opencode-session": "ses_<SESSION>",
   },
 }
 `;

@@ -12,6 +12,8 @@
 
 ## Fixed
 
+- Kiro streaming responses no longer duplicate tool-call or stop events when upstream sends repeated finish signals; cumulative tool-argument snapshots now remain single JSON payloads.
+
 - External HTTP 499 responses no longer trigger account fallback or a cooldown; `checkFallbackError` returns a terminal `{ shouldFallback: false, cooldownMs: 0, scope: null }` immediately, so `markAccountUnavailable` never rotates or persists state. The combo layer's own 499 timeout-signal branch, which advances to the next model when its per-attempt deadline aborts a slow model, is unaffected.
 - Sticky round-robin combo fallback now counts the successful fallback winner as its first sticky use, so a configured limit applies exactly across the fallback request and later requests before rotating to the next model.
 - Grok CLI now renders a zero-used `Credits` quota for successful sparse credits billing responses with an object-valued `config` and omitted or `null` aggregate percentage. Missing or malformed config continues to use the existing gRPC/no-allotment path; explicit aggregate, product, on-demand, and prepaid quota rows remain authoritative.

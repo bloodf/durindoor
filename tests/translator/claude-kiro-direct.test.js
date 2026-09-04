@@ -428,4 +428,57 @@ describe("Kiro → Claude (direct route, OpenAI-shaped chunks from executor)", (
     const md = events.find((e) => e.type === "message_delta");
     expect(md.delta.stop_reason).toBe("tool_use");
   });
+
+  it("deduplicates cumulative tool arguments and repeated finish chunks", () => {
+    const state = {};
+    const first = R(
+      {
+        id: "c", object: "chat.completion.chunk", model: "m",
+        choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "tu1", type: "function", function: { name: "search", arguments: "" } }] }, finish_reason: null }],
+      },
+      state
+    );
+    const snapshot = R(
+      {
+        id: "c", object: "chat.completion.chunk", model: "m",
+        choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"q":' } }] }, finish_reason: null }],
+      },
+      state
+    );
+    const finished = R(
+      {
+        id: "c", object: "chat.completion.chunk", model: "m",
+        choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"q":"x"}' } }] }, finish_reason: "tool_calls" }],
+      },
+      state
+    );
+    const repeatedFinish = R(
+      {
+        id: "c", object: "chat.completion.chunk", model: "m",
+        choices: [{
+          index: 0,
+          // Upstream resends the full tool_calls payload (including id) on
+          // the second finish chunk — must not reopen a closed block.
+          delta: { tool_calls: [{ index: 0, id: "tu1", type: "function", function: { name: "search", arguments: '{"q":"x"}' } }] },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 5, completion_tokens: 3 },
+      },
+      state
+    );
+    const events = [...first, ...(snapshot || []), ...finished, ...(repeatedFinish || [])];
+    const inputJsonDeltas = events.filter(
+      (event) => event.type === "content_block_delta" && event.delta.type === "input_json_delta"
+    );
+
+    expect(inputJsonDeltas).toHaveLength(1);
+    expect(inputJsonDeltas[0].delta.partial_json).toBe('{"q":"x"}');
+    expect(events.filter((event) => event.type === "content_block_start")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "content_block_stop")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "message_delta")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "message_stop")).toHaveLength(1);
+    expect(events.findIndex((event) => event.type === "message_delta")).toBeLessThan(
+      events.findIndex((event) => event.type === "message_stop")
+    );
+  });
 });

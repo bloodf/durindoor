@@ -13,15 +13,18 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
-import { stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
+import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 // Opt-in prompt-cache key injection for openai-compatible providers.
 // OpenAI-style upstreams (Chat Completions + Responses) accept an optional
 // `prompt_cache_key` routing hint that pins a conversation to a cache shard,
 // the same mechanism the Codex executor uses. We do NOT enable it by default:
 // some strict openai-compatible gateways reject unknown fields. A custom
 // provider opts in via providerSpecificData.enablePromptCacheKey === true.
-import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+// Client-supplied keys pass only when selected transport advertises
+// `transport.quirks.preservePromptCacheKey`; final wire guard below shares this
+// configured seam and never replaces opaque client values (decolua/9router#3733).
 export function normalizePromptCacheKey(provider, sessionId) {
   if (!sessionId) return "";
   const scoped = `${provider || "openai-compatible"}:${sessionId}`;
@@ -352,6 +355,7 @@ export class DefaultExecutor extends BaseExecutor {
       }
       injectPromptCacheKey(this.provider, transformed, credentials);
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
+      stripUnsupportedChatExtensions(transformed, credentials?.runtimeTransport, this.config);
       applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
       /**

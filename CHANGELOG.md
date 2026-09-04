@@ -9,6 +9,7 @@
 - port(upstream): #3745 - quiet successful proxy direct-fallback logs and suppress only undici's non-actionable SOCKS5 `ExperimentalWarning`, leaving strict proxy failures and unrelated warnings visible.
 - port(upstream): #3703 - provider-limit dashboard quota polling now runs every five minutes; scheduler and displayed countdown both derive from one interval constant, while Claude keeps its deliberate ten-minute tick ratio.
 
+- port(upstream): #3733 - preserve client-supplied `prompt_cache_key` on transports advertising `transport.quirks.preservePromptCacheKey`; final DefaultExecutor and Azure wire guards strip it across Chat and Responses paths for every no-quirk transport.
 ## Added
 
 - Claude Code static fallback headers now match a local Claude Code 2.1.258 capture: `claude-cli/2.1.258 (external, sdk-cli)`, SDK package `0.112.1`, Node runtime `v26.3.0`, captured beta flags, and no helper-method header. Claude Fable 5.1 is selectable as `cc/claude-fable-5-1` and `anthropic/claude-fable-5-1`; `fable` selects it. Fable 5 remains available, forced Claude-native tool choices remain intact, and no Opus 5.1 row is added. Source: [Anthropic Claude Code release notes](https://docs.claude.com/en/release-notes/claude-code).

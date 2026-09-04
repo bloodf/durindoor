@@ -56,6 +56,8 @@ export default {
       "x-grok-client-version": "0.2.93",
       "x-authenticateresponse": "authenticate-response",
     },
+    // Chat accepts the Responses `prompt_cache_key` extension after lowering.
+    quirks: { preservePromptCacheKey: true },
     // Compaction threshold mirrored from CLI (x-compaction-at).
     compactionAt: 400000,
     retry: {

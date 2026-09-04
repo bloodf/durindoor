@@ -11,27 +11,51 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need full history to read ported `port(upstream): #N` subjects
       - name: Scan upstream PRs
         run: |
           echo "Fetching upstream PRs from decolua/9router..."
           gh pr list --repo decolua/9router --state open \
             --json number,title,author,additions,deletions,createdAt \
-            --limit 50 > upstream-prs.json
-          COUNT=$(jq 'length' upstream-prs.json)
-          echo "Found $COUNT open upstream PRs"
+            --limit 1000 > upstream-prs.json
+          # Ported set = `port(upstream): #N` commit subjects UNION the reviewed
+          # ledger at .github/upstream-ported.json (one commit often lands
+          # several upstream PRs, so subjects alone under-report).
+          ./scripts/upstream-ported-ids.sh . > ported.json
+          # Emits report/body.md plus report/comment-NNN.md continuation pages.
+          # Their union is the COMPLETE unported set — nothing is truncated.
+          ./scripts/upstream-scan-report.sh upstream-prs.json ported.json report
+          NEW_COUNT=$(jq 'length' report/new-prs.json)
           # Create or update a tracking issue so the Hermes agent can see it
           # The Hermes agent (durindoor-scan.sh) is the PRIMARY scanner.
           # This workflow is a fallback that surfaces candidates as an issue.
           gh label create upstream-scan --force --repo bloodf/durindoor --description "Automated upstream PR scan" 2>/dev/null || true
           EXISTING=$(gh issue list --repo bloodf/durindoor --label "upstream-scan" --state open --json number --jq '.[0].number // empty')
-          BODY=$(jq -r '.[] | "- #\(.number) +\(.additions)/-\(.deletions) @\(.author.login): \(.title)"' upstream-prs.json)
           if [ -n "$EXISTING" ]; then
-            gh issue edit "$EXISTING" --repo bloodf/durindoor --body "$BODY"
-          else
-            gh issue create --repo bloodf/durindoor \
+            ISSUE="$EXISTING"
+            gh issue edit "$ISSUE" --repo bloodf/durindoor --body-file report/body.md
+            # Drop the previous run's continuation pages so stale candidates
+            # (now ported or closed upstream) don't linger in the report.
+            gh api --paginate "repos/bloodf/durindoor/issues/$ISSUE/comments" \
+              --jq '.[] | select(.body | startswith("Unported upstream PRs — page")) | .id' \
+              | while read -r id; do
+                  gh api -X DELETE "repos/bloodf/durindoor/issues/comments/$id"
+                done
+          elif [ "$NEW_COUNT" -gt 0 ]; then
+            # `gh issue create` prints the issue URL; the number is its last segment.
+            ISSUE=$(gh issue create --repo bloodf/durindoor \
               --title "Upstream PR Scan Report" \
               --label "upstream-scan" \
-              --body "$BODY"
+              --body-file report/body.md | sed -nE 's#.*/([0-9]+)$#\1#p')
+          else
+            ISSUE=""
+          fi
+          if [ -n "$ISSUE" ]; then
+            for page in report/comment-*.md; do
+              [ -e "$page" ] || break
+              gh issue comment "$ISSUE" --repo bloodf/durindoor --body-file "$page"
+            done
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,101 @@
+{
+  "_comment": [
+    "Explicit ledger of decolua/9router PR numbers already ported into this fork",
+    "that are NOT discoverable from a `port(upstream): #N` commit subject.",
+    "",
+    "The upstream scan (.github/workflows/upstream-watch.yml) treats the union of",
+    "commit subjects and this file as the ported set, and reports everything else.",
+    "",
+    "Two ways a PR lands here without its own commit subject:",
+    "  1. It was ported inside a commit naming a DIFFERENT upstream number",
+    "     (one commit often lands several upstream PRs).",
+    "  2. Its concern was implemented independently rather than cherry-picked.",
+    "     That still counts as ported: the scan exists to surface work NOT yet",
+    "     made here, so re-proposing implemented behavior is a false positive.",
+    "",
+    "CHANGELOG prose is deliberately NOT parsed. It cannot encode completion:",
+    "entries say 'Independent of 9router #3500' for behavior that IS implemented,",
+    "so a naive parser would both miss real ports and mislabel others. Membership",
+    "is decided by reviewed evidence recorded below.",
+    "",
+    "To add an entry: confirm the behavior is actually present in this fork, then",
+    "record the number with the commit, source path, or test that proves it.",
+    "Entries are reviewed like code — a wrong entry hides a real candidate."
+  ],
+  "ported": [
+    {
+      "pr": 2533,
+      "why": "MiniMax-M3 OpenAI transport + tool_choice clamp; CHANGELOG 'upstream decolua/9router#2533'"
+    },
+    {
+      "pr": 2596,
+      "why": "Kiro GPT-5.6 family synthetic variants; CHANGELOG 'upstream decolua/9router#2596'"
+    },
+    {
+      "pr": 3433,
+      "why": "ported with #3547; CHANGELOG 'ports decolua/9router#3547 and #3433'"
+    },
+    {
+      "pr": 3447,
+      "why": "ported with #3509; CHANGELOG 'Ports decolua/9router#3509, #3483, #3447, and #3451'"
+    },
+    {
+      "pr": 3451,
+      "why": "ported with #3509; same CHANGELOG entry as #3447"
+    },
+    {
+      "pr": 3465,
+      "why": "ported with #3560; CHANGELOG 'Ports upstream 9router #3560 and #3465'"
+    },
+    {
+      "pr": 3483,
+      "why": "ported with #3509; same CHANGELOG entry as #3447"
+    },
+    {
+      "pr": 3484,
+      "why": "ported with #3506; CHANGELOG 'Ports decolua/9router#3506 and #3484'"
+    },
+    {
+      "pr": 3498,
+      "why": "MCP LOCAL_ONLY in-handler gate + SSE session release. Implemented independently (CHANGELOG: 'intent of 9router #3498 / #3527; not a cherry-pick'), but the behavior IS present: src/app/api/mcp/[plugin]/sse/route.js and message/route.js. Closes #564."
+    },
+    {
+      "pr": 3500,
+      "why": "Database export/import dual auth (CLI token or JWT session, plus dashboard password). Independent implementation of GHSA-qvfm intent; behavior present with src/app/api/settings/database/route.js and 15 tests in tests/unit/database-route-dual-auth.test.js."
+    },
+    {
+      "pr": 3501,
+      "why": "Explicit JWT_SECRET required; loadJwtSecret() in src/lib/auth/dashboardSession.js fails closed on fresh installs and no longer auto-writes DATA_DIR/jwt-secret. Independent implementation of GHSA-jphh intent; behavior present. Closes #550."
+    },
+    {
+      "pr": 3513,
+      "why": "ported with #3542; CHANGELOG 'ports decolua/9router#3542 and #3513'"
+    },
+    {
+      "pr": 3519,
+      "why": "ported with #3522; CHANGELOG 'Ports decolua/9router#3522 and #3519'"
+    },
+    {
+      "pr": 3527,
+      "why": "SSE bridge abort cleanup: src/app/api/mcp/[plugin]/sse/route.js wires both request.signal 'abort' and ReadableStream.cancel() so disconnects cannot leave unreaped stdio children. Landed with #3498."
+    },
+    {
+      "pr": 3553,
+      "why": "ported with #3552; CHANGELOG 'ports decolua/9router#3552 and #3553'"
+    },
+    {
+      "pr": 3556,
+      "why": "CHANGELOG 'Ports decolua/9router#3556'; no matching port(upstream) subject"
+    },
+    {
+      "pr": 3691,
+      "why": "ported with #3595; CHANGELOG 'Ports the compatibility boundary from open decolua/9router#3595, #3691, and #3693'"
+    },
+    {
+      "pr": 3693,
+      "why": "ported with #3595; same CHANGELOG entry as #3691"
+    }
+  ],
+  "_note_independent": "An independently implemented upstream concern still counts as PORTED for scan purposes: the point of the scan is to surface work NOT yet made in this fork. #3498/#3500/#3501/#3527 were written independently rather than cherry-picked, but their behavior and tests exist here, so re-proposing them would be a false positive.",
+  "_note_3497": "#3497 IS ported (commit 'port(upstream): #3497 - block web-fetch and Kiro region SSRF (#651)'), covered by the commit-subject source. The separate 'Independent of 9router #3497' CHANGELOG line refers to a different OIDC-discovery change — not a contradiction."
+}

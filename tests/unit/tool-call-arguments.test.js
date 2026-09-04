@@ -39,6 +39,70 @@ describe("ensureToolCallIds function arguments", () => {
   });
 });
 
+/** Regression coverage for decolua/9router#3765 malformed tool-call entries. */
+describe("ensureToolCallIds malformed entries", () => {
+  it("skips a null message before regenerating a later valid call's ID", () => {
+    const body = {
+      messages: [
+        null,
+        { role: "assistant", tool_calls: [{ id: "!!!", function: { name: "probe" } }] },
+      ],
+    };
+
+    expect(() => ensureToolCallIds(body)).not.toThrow();
+    expect(body.messages[1].tool_calls[0].id).toBe("call_msg1_tc0_probe");
+  });
+
+  it("skips a null tool call before regenerating a later valid call's ID", () => {
+    const body = {
+      messages: [{
+        role: "assistant",
+        tool_calls: [null, { id: "!!!", function: { name: "probe" } }],
+      }],
+    };
+
+    expect(() => ensureToolCallIds(body)).not.toThrow();
+    expect(body.messages[0].tool_calls[1].id).toBe("call_msg0_tc1_probe");
+  });
+
+  it("skips a null content block before regenerating a later tool_use block's ID", () => {
+    const body = {
+      messages: [{
+        role: "assistant",
+        content: [
+          null,
+          { type: "tool_use", id: "!!!", name: "probe" },
+        ],
+      }],
+    };
+
+    expect(() => ensureToolCallIds(body)).not.toThrow();
+    expect(body.messages[0].content[1].id).toBe("call_msg0_tc1_probe");
+  });
+
+  it("uses a name-free fallback ID for a numeric function name", () => {
+    const body = {
+      messages: [{ role: "assistant", tool_calls: [{ id: "!!!", function: { name: 123 } }] }],
+    };
+
+    expect(() => ensureToolCallIds(body)).not.toThrow();
+    expect(body.messages[0].tool_calls[0].id).toBe("call_msg0_tc0");
+  });
+
+  it("skips malformed lookahead entries before matching a later tool result", () => {
+    const body = {
+      messages: [
+        { role: "assistant", tool_calls: [{ id: "!!!", function: { name: "probe" } }] },
+        null,
+        { role: "tool", content: "result" },
+      ],
+    };
+
+    expect(() => ensureToolCallIds(body)).not.toThrow();
+    expect(body.messages[2].tool_call_id).toBe("call_msg0_tc0_probe");
+  });
+});
+
 /** Regression coverage for decolua/9router#3310 Xiaomi Token Plan capabilities. */
 describe("Xiaomi Token Plan chat capabilities", () => {
   const openAiModels = ["mimo-v2.5-pro", "mimo-v2.5"];

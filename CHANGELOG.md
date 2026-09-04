@@ -1,5 +1,6 @@
 # Unreleased
 
+- port(upstream): #3765 - guard ensureToolCallIds against malformed entries; non-object messages, tool calls, and content blocks are skipped instead of throwing, numeric function names produce a name-free fallback ID, and the pending-ID lookahead (a boundary upstream patch missed) tolerates malformed intermediate entries without letting them consume a later valid tool result (open-sse/translator/concerns/toolCall.js)
 - port(upstream): #3629 - avoid repeated SSE completion string copies; accumulate reasoning/content deltas in chunk arrays joined once at stream boundaries instead of string concatenation per delta (open-sse/utils/stream.js)
 - port(upstream): #3687 - avoid cache breakpoints on deferred tools; Claude cache_control markers now skip tool definitions deferred from the active turn so cache breakpoints land on stable prefix blocks only (open-sse/translator/formats/claude.js)
 - port(upstream): #3665 - normalize OpenRouter tool schemas; drop invalid regex `pattern` keywords outside `properties` while preserving `default`/`const`/`examples`/`enum` data keywords (open-sse/translator/concerns/toolCall.js)

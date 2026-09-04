@@ -10,7 +10,6 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { toCodexPlanEntry, buildCodexPlanMap } from "@/shared/utils/codexPlanLabel";
 import { translate } from "@/i18n/runtime";
-import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
@@ -640,19 +639,22 @@ export default function ProviderDetailPage() {
     fetchDisabledModels();
   }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels]);
 
-  // Fetch suggested models from provider's public API (if configured)
   useEffect(() => {
-    const fetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
-    if (!fetcher) return;
-    fetchSuggestedModels(fetcher).then(setSuggestedModels);
+    setSuggestedModels([]);
+    setModelsFetchedAt(null);
   }, [providerId]);
 
   const handleSyncModels = async () => {
-    const fetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
-    if (!fetcher) return;
+    const connection = connections.find((item) => item.isActive !== false);
+    if (!connection?.id) return;
+
     setSyncingModels(true);
     try {
-      setSuggestedModels(await fetchSuggestedModels(fetcher, { force: true }));
+      const response = await fetch(`/api/providers/${encodeURIComponent(connection.id)}/models?refresh=1`, {
+        cache: "no-store"
+      });
+      const data = response.ok ? await response.json() : null;
+      setSuggestedModels(Array.isArray(data?.models) ? data.models : []);
       setModelsFetchedAt(new Date());
     } finally {
       setSyncingModels(false);

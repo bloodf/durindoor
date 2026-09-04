@@ -7,6 +7,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const fetchMock = vi.fn();
 const refreshNow = vi.fn();
+let schedulerOnCountdown;
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard/usage",
@@ -80,7 +81,7 @@ vi.mock("@/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.
 
 vi.mock("@/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js", () => ({
   QUOTA_CACHE_KEY: "quotaCacheData",
-  REFRESH_INTERVAL_MS: 60000,
+  REFRESH_INTERVAL_MS: 300000,
   CLAUDE_REFRESH_INTERVAL_MS: 600000,
   DEPLETED_QUOTA_THRESHOLD: 5,
   AUTO_REFRESH_STORAGE_KEY: "quotaAutoRefresh",
@@ -111,9 +112,11 @@ vi.mock("@/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js", 
   reconcileConnectionsPage: (value) => value,
   getQuotaCache: () => null,
   setQuotaCache: () => {},
-  createAutoRefreshScheduler: ({ onRefresh }) => ({
+  createAutoRefreshScheduler: ({ onRefresh, onCountdown }) => ({
     refreshNow: () => refreshNow(onRefresh(true)),
-    start: () => {},
+    start: () => {
+      schedulerOnCountdown = onCountdown;
+    },
     stop: () => {},
   }),
   refreshProviderQuotas: async (connections, force, fetchQuota) => {
@@ -183,6 +186,11 @@ describe("ProviderLimits Refresh All manual button", () => {
     expect(refreshNow).not.toHaveBeenCalled();
 
     await act(async () => {
+      schedulerOnCountdown(299);
+    });
+    expect(container.textContent).toContain("(299s)");
+
+    await act(async () => {
       refreshAllButton.click();
     });
     await act(async () => {
@@ -197,6 +205,8 @@ describe("ProviderLimits Refresh All manual button", () => {
     for (const url of quotaCalls) {
       expect(url).toContain("?force=1");
     }
+
+    expect(container.textContent).toContain("(300s)");
    });
 
   it("omits ?force=1 on the initial quota fetch when the dashboard mounts", async () => {

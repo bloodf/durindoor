@@ -62,6 +62,10 @@ export function kiroToClaudeResponse(chunk, state) {
   }
 
   if (!data || !data.choices?.[0]) return null;
+  // Claude message_stop is terminal. Drop every later Kiro chunk, including
+  // repeated tool-call snapshots and usage attached to a duplicate finish.
+  if (state.kiroClaudeFinishHandled) return null;
+
 
   const results = [];
   const choice = data.choices[0];
@@ -195,25 +199,34 @@ export function kiroToClaudeResponse(chunk, state) {
           }
         });
       }
-      if (tc.function?.arguments) {
-        const toolInfo = state.toolCalls.get(idx);
-        if (toolInfo) {
-          state.toolArgBuffers.set(
-            idx,
-            (state.toolArgBuffers.get(idx) || "") + tc.function.arguments
-          );
+        if (tc.function?.arguments) {
+          const toolInfo = state.toolCalls.get(idx);
+          if (toolInfo) {
+            const current = state.toolArgBuffers.get(idx) || "";
+            // Snapshot-aware: cumulative upstream resends (full args starting
+            // with what we already have) do not double the buffer.
+            const next = tc.function.arguments === current ?
+            current :
+            tc.function.arguments.startsWith(current) ?
+            tc.function.arguments :
+            current + tc.function.arguments;
+            state.toolArgBuffers.set(idx, next);
+          }
         }
-      }
     }
   }
 
-  // Finish.
-  if (choice.finish_reason) {
+  // Repeated Kiro finish chunks must not re-close tool blocks or emit events
+  // after Claude's terminal message_stop. Later usage is intentionally dropped.
+  if (choice.finish_reason && !state.kiroClaudeFinishHandled) {
+    state.kiroClaudeFinishHandled = true;
     stopThinkingBlock(state, results);
     stopTextBlock(state, results);
 
     if (state.toolCalls) {
       for (const [idx, toolInfo] of state.toolCalls) {
+        if (toolInfo.closed) continue;
+        toolInfo.closed = true;
         const buffered = state.toolArgBuffers?.get(idx);
         if (buffered) {
           results.push({

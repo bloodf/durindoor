@@ -380,4 +380,6 @@ npm run storybook   # http://localhost:6006
 Use the Theme toolbar (sun/moon icon) to flip between **Dark — Moria
 
 
+## Acknowledgments
+
 DurinDoor is a fork of [9router](https://github.com/decolua/9router), created by [decolua](https://github.com/decolua). This project builds on that foundation with a new identity, enhanced features, and an emphasis on keeping the doors of your AI stack open. Upstream documentation and branding remain the property of their respective authors and are not presented as DurinDoor's source of truth.

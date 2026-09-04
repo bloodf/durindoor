@@ -17,6 +17,7 @@
 - port(upstream): #3781 - preserve literal OpenAI-shaped `max_tokens` and `tool_use` finish reasons when projecting responses to Claude stop reasons, instead of collapsing them to `end_turn`.
 - port(upstream): #3751 - future `claude-fable-*` model IDs now receive Claude Fable pricing ($10 input, $50 output/reasoning, $1 cached, and $12.50 cache creation per MTok) instead of generic Claude rates.
 - port(upstream): #3713 - Antigravity requests now omit blank text parts, preventing Gemini `400 INVALID_ARGUMENT` errors while preserving non-text parts and existing turn normalization.
+- port(upstream): #3693 - Claude streaming responses now echo the client-requested model when state was seeded from the routed model (e.g. `claude-*` alias behind a non-Claude provider) instead of overwriting it with the upstream provider's `chunk.model`; the existing provider-model and `MODEL_FALLBACK` fallbacks remain for unseeded state (open-sse/translator/response/openai-to-claude.js)
 
 - OpenCode Go now lists Muse Spark 1.2 and 1.3 Contributor models with their native Responses transport. Requests automatically receive an opaque `x-opencode-session` derived from the fork session resolver, so callers cannot control provider session affinity.
 

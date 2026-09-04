@@ -41,6 +41,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Blocking pre-paint bootstrap reads Zustand's {state:{theme}} envelope.
+            A same-origin file stays CSP-authorizable via script-src 'self' without unsafe-inline. */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts -- must run before first paint */}
+        <script src="/theme-bootstrap.js"></script>
         <script
           dangerouslySetInnerHTML={{
             __html: `if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){document.documentElement.classList.add('fonts-loaded')})}else{document.documentElement.classList.add('fonts-loaded')}`,

@@ -140,10 +140,35 @@ export function getProviderByAlias(alias) {
   return null;
 }
 
-// Helper: Get provider ID from alias
-export function resolveProviderId(aliasOrId) {
-  const provider = getProviderByAlias(aliasOrId);
-  return provider?.id || aliasOrId;
+/**
+ * Is this something the router could route to at all, as opposed to a name it has
+ * never heard of?
+ *
+ * Two things count. The registry, resolved through aliases so "cc" is as valid as
+ * "claude". And the user-defined compatible nodes, whose ids carry a prefix and
+ * are deliberately absent from the registry — they reach account selection by
+ * exactly the same path, so a registry-only check would report a user's own
+ * node as an unknown provider the moment its connection went inactive.
+ *
+ * Says nothing about whether an account is connected. That is a separate
+ * question with a separate answer for the caller.
+ *
+ * @param {string | null | undefined} aliasOrId
+ * @returns {boolean}
+ */
+export function isRoutableProvider(aliasOrId) {
+  if (!aliasOrId) return false;
+  if (getProviderByAlias(aliasOrId)) return true;
+  return (
+    (isOpenAICompatibleProvider(aliasOrId) && aliasOrId.length > OPENAI_COMPATIBLE_PREFIX.length) ||
+    (isAnthropicCompatibleProvider(aliasOrId) && aliasOrId.length > ANTHROPIC_COMPATIBLE_PREFIX.length)
+  );
+}
+
+ // Helper: Get provider ID from alias
+ export function resolveProviderId(aliasOrId) {
+   const provider = getProviderByAlias(aliasOrId);
+   return provider?.id || aliasOrId;
 }
 
 /**

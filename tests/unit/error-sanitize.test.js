@@ -187,6 +187,18 @@ describe("root seam: buildErrorBody/errorResponse/writeStreamError", () => {
     expect(body.error.code).toBe("internal_server_error");
   });
 
+  it("keeps an overridden 404 sanitized", () => {
+    const body = buildErrorBody(404, LEAK, { code: "provider_not_configured" });
+
+    expect(body.error.code).toBe("provider_not_configured");
+    expect(body.error.message).not.toContain("/home/omni/secret");
+    expect(body.error.message).toContain("<path>");
+  });
+
+  it("keeps the default 404 diagnosis unchanged", () => {
+    expect(buildErrorBody(404, "missing").error.code).toBe("model_not_found");
+  });
+
   it("errorResponse emits a sanitized body with the original status code", async () => {
     const res = errorResponse(500, LEAK);
     expect(res.status).toBe(500);

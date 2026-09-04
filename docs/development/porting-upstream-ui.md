@@ -322,7 +322,7 @@ Steps:
   v4's `border-*` utilities map to `--color-dd-*`, and
   `dd-subtle` is defined as `--color-dd-subtle: var(--dd-text-subtle)`.
   Use `hover:border-dd-border-subtle` instead. (See
-  [`durin-ds.md` §"Inconsistencies"](./durin-ds.md#inconsistencies).)
+  [`durin-ds.md` §"Token reference"](./durin-ds.md#token-reference).)
 - **Interpolated class names generate no CSS.** Tailwind v4 scans source
   text. Lookup maps of full literals (e.g. `VARIANTS`, `SIZES`,
   `TONE_CLASSES`) are the project pattern — do not template-literal

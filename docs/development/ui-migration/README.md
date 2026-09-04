@@ -67,7 +67,7 @@ commands in [`phases.md`](./phases.md).
 
 These run before `git push`; a PR is not ready until all five are green
 locally (and on CI, or with the local-output fallback in
-[`AGENTS.md` §6.4](../../AGENTS.md#64-ci-gates)).
+[`AGENTS.md` §6.4](../../../AGENTS.md#64-ci-gates)).
 
 1. **Storybook build** — catches broken prop signatures, missing imports,
    classic-JSX-runtime regressions, and orphaned mocks.
@@ -105,7 +105,7 @@ locally (and on CI, or with the local-output fallback in
 
 ## Related references
 
-- [`AGENTS.md` §5A](../../AGENTS.md#5a-ui--durin-ds-design-system) — ownership, golden rules, anti-patterns.
+- [`AGENTS.md` §5A](../../../AGENTS.md#5a-ui--durin-ds-design-system) — ownership, golden rules, anti-patterns.
 - [`docs/development/durin-ds.md`](../durin-ds.md) — token reference, component inventory, shell, page mocks.
 - [`docs/development/porting-upstream-ui.md`](../porting-upstream-ui.md) — upstream-portability rules and the per-port checklist.
 - [`phases.md`](./phases.md) — phased rollout with verification commands.

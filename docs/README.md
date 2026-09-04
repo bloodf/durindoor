@@ -71,6 +71,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Upstream Sync Watch](UPSTREAM_SYNC.md)
 - [tests/README.md](../tests/README.md)
 - [DurinDoor omp Extension](../omp-extension/README.md)
+- [UI Migration Campaign](development/ui-migration/README.md)
 
 ## API & Reference
 

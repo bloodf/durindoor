@@ -72,7 +72,7 @@ you write the import — DS exports vary (default vs. named).
 
 ## 4. Replace raw markup per the golden rules
 
-From [`AGENTS.md` §5A](../../AGENTS.md#5a-ui--durin-ds-design-system) and
+From [`AGENTS.md` §5A](../../../AGENTS.md#5a-ui--durin-ds-design-system) and
 [`porting-upstream-ui.md` §2](../porting-upstream-ui.md):
 
 1. **Token-only styling.** `bg-dd-*` / `text-dd-*` / `border-dd-*` /

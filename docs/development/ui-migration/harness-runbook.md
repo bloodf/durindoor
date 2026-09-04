@@ -6,7 +6,7 @@
 
 ## 1. Worktree + branch discipline
 
-Per [`AGENTS.md` §6.2](../../AGENTS.md#62-worktree-discipline):
+Per [`AGENTS.md` §6.2](../../../AGENTS.md#62-worktree-discipline):
 
 - One worktree per task. Path follows `.omc/wt-<short-name>/` (e.g.
   `.omc/wt-ds-foundation/`, `.omc/wt-ds-shell/`, `.omc/wt-ds-health/`,
@@ -36,7 +36,7 @@ the page slug.
 
 ## 3. Commit + PR title format
 
-Per [`AGENTS.md` §6.3](../../AGENTS.md#63-commit-and-pr-title-format):
+Per [`AGENTS.md` §6.3](../../../AGENTS.md#63-commit-and-pr-title-format):
 
 - Commit subject: `feat(ui): migrate <page> to Durin DS` (commitlint
   ≤ 100 chars, type `feat`, scope `ui`).
@@ -137,7 +137,7 @@ Verify by inspection of the diff before pushing:
 
 ## 6. Merge conflicts with concurrent upstream ports
 
-Per [`AGENTS.md` §5A](../../AGENTS.md#5a-ui--durin-ds-design-system) and
+Per [`AGENTS.md` §5A](../../../AGENTS.md#5a-ui--durin-ds-design-system) and
 [`porting-upstream-ui.md` §1](../porting-upstream-ui.md):
 
 - The migration PR owns `src/app/(dashboard)/<route>/**`. The

@@ -125,6 +125,7 @@
 
 ## Security
 
+- `POST /api/cli-tools/cowork-mcp-tools` now SSRF-guards the `url` body field via the existing `assertPublicUrl` and `isLocalRequest` primitives: non-local callers submitting a private, loopback, or `localhost` target receive HTTP 400 with no outbound fetch, while the deliberate local-peer exemption for self-hosted MCP servers is preserved. Ports open decolua/9router#3783.
 - Remote requests to the root `/responses` rewrite now require DurinDoor's existing API-key authorization path before Next.js rewrites the route. Ports open decolua/9router#3679 while retaining wrapper-trusted peer, proxy-hop, CLI-token, and multi-key classification.
 
 - Public tunnel subdomains now use unbiased OS CSPRNG sampling instead of predictable `Math.random()` state, and Cloudflare tunnel startup accepts either the preferred relay URL or direct URL as health proof while still failing when both are unavailable. Ports decolua/9router#3522 and #3519. Closes #605.

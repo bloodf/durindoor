@@ -2,6 +2,20 @@
 // module below can snapshot them; "" must behave like "not set".
 require("./src/shared/utils/normalizeEnv").normalizeProcessEnv();
 
+// Suppress undici's SOCKS5 ExperimentalWarning: the proxy-fetch path handles
+// SOCKS5 dispatcher failures gracefully, so the noise is not actionable.
+// Matches the inline filter shape used by nodeSqliteAdapter.js for its own
+// ExperimentalWarning. Other process warnings (e.g. the SQLite one) stay visible.
+const emitProcessWarning = process.emit;
+process.emit = function (name, warning, ...args) {
+  if (name === "warning" && warning?.name === "ExperimentalWarning" && /SOCKS5/i.test(warning.message || "")) {
+    return false;
+  }
+  return emitProcessWarning.call(process, name, warning, ...args);
+};
+
+
+
 const { isFunction, isString } = require("./src/shared/utils/typeChecks.cjs");
 
 const crypto = require("crypto");

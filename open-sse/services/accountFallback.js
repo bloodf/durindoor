@@ -154,6 +154,18 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
   for (const rule of ERROR_RULES) {
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {
+      if (rule.fallback === false) return { shouldFallback: false, cooldownMs: 0 };
+      if (rule.backoff) {
+        const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
+        return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
+      }
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+    }
+
+    // Pattern-based rule: regex match, for phrases the model name sits inside
+    // ("Model does-not-exist-xyz is not supported") that a substring cannot span.
+    if (rule.pattern && lowerError && rule.pattern.test(lowerError)) {
+      if (rule.fallback === false) return { shouldFallback: false, cooldownMs: 0 };
       if (rule.backoff) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
@@ -163,6 +175,7 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
 
     // Status-based rule: match HTTP status code
     if (rule.status && rule.status === status) {
+      if (rule.fallback === false) return { shouldFallback: false, cooldownMs: 0 };
       if (rule.backoff) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };

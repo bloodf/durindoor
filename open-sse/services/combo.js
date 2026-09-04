@@ -4,7 +4,7 @@
 
 import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
-import { unavailableResponse } from "../utils/error.js";
+import { unavailableResponse, getClientStatusFromError } from "../utils/error.js";
 import { isLocalStreamLifecycleError } from "../utils/streamLifecycle.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
@@ -1613,7 +1613,7 @@ export async function handleComboChat({
   // the request itself is invalid, but here the providers are simply unavailable
   // or have no active credentials. 503 is more accurate and retryable by clients.
   const allDisabled = lastError && lastError.toLowerCase().includes("no credentials");
-  const status = allDisabled ? 503 : lastStatus || 503;
+  const status = allDisabled ? HTTP_STATUS.SERVICE_UNAVAILABLE : getClientStatusFromError(lastStatus, lastError);
   const msg = lastError || "All combo models unavailable";
 
   if (earliestRetryAfter) {

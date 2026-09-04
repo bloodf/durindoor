@@ -11,6 +11,7 @@
 - port(upstream): #3745 - quiet successful proxy direct-fallback logs and suppress only undici's non-actionable SOCKS5 `ExperimentalWarning`, leaving strict proxy failures and unrelated warnings visible.
 - port(upstream): #3703 - provider-limit dashboard quota polling now runs every five minutes; scheduler and displayed countdown both derive from one interval constant, while Claude keeps its deliberate ten-minute tick ratio.
 - port(upstream): #3772 - fix Responses parallel function-call streaming; each `output_item.added` event now allocates a distinct, stable tool-call index keyed by its call ID (`open-sse/translator/response/openai-responses.js`), so batched parallel calls no longer collide onto shared index 0. Argument deltas resolve their index from the `fc_`/`ctc_` item ID with a same-turn fallback for variants that omit it; `output_item.done` is now index-neutral. Only the parallel-index half of decolua/9router#3772 is ported; the `tool_result` image-blob placeholder half is tracked separately (#752).
+- Custom OpenAI-compatible connections configured with the exact OpenCode Zen API base URL now route Muse models through `/responses` and omit Zen-rejected token caps. Same-named models on other custom nodes stay on Chat Completions; Luna stays unchanged pending endpoint proof. Ports the narrow safe theme from decolua/9router#3694. Refs #753.
 
 ## Added
 

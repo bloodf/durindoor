@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import "../translator/registerAll.js";
 import { PROVIDER_MODELS, getModelSupportedFormats, getModelTargetFormat } from "../../open-sse/config/providerModels.js";
 import { OpenCodeExecutor } from "../../open-sse/executors/opencode.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { resolveRequestTransport } from "../../open-sse/handlers/chatCore.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
@@ -44,6 +46,54 @@ describe("OpenCode Muse Responses routing", () => {
       sourceFormat: FORMATS.CLAUDE,
       credentials: { apiKey: "test" },
     }).targetFormat).not.toBe(FORMATS.OPENAI_RESPONSES);
+  });
+
+  it("routes custom OpenAI-compatible Zen Muse through Responses only", () => {
+    const zenCredentials = {
+      apiKey: "test",
+      providerSpecificData: { baseUrl: "https://opencode.ai/zen/v1" },
+    };
+    const zenRequest = {
+      provider: "openai-compatible-chat-zen",
+      alias: "openai-compatible-chat-zen",
+      model: "muse-spark-1.2",
+      sourceFormat: FORMATS.OPENAI,
+      credentials: zenCredentials,
+    };
+
+    const zenTransport = resolveRequestTransport(zenRequest);
+    expect(zenTransport).toMatchObject({
+      runtimeTransport: { format: FORMATS.OPENAI_RESPONSES, baseUrl: "https://opencode.ai/zen/v1/responses" },
+      targetFormat: FORMATS.OPENAI_RESPONSES,
+    });
+    expect(new DefaultExecutor(zenRequest.provider).buildUrl(zenRequest.model, true, 0, {
+      ...zenCredentials,
+      runtimeTransport: zenTransport.runtimeTransport,
+    })).toBe("https://opencode.ai/zen/v1/responses");
+
+    const zenBody = new DefaultExecutor(zenRequest.provider).transformRequest(
+      zenRequest.model,
+      { max_tokens: 100, max_completion_tokens: 200, max_output_tokens: 300 },
+      true,
+      { ...zenCredentials, runtimeTransport: zenTransport.runtimeTransport },
+    );
+    expect(zenBody).toEqual({});
+    const nonZenCredentials = { ...zenCredentials, providerSpecificData: { baseUrl: "https://example.test/v1" } };
+    expect(resolveRequestTransport({ ...zenRequest, model: "luna" }).targetFormat).toBe(FORMATS.OPENAI);
+    const nonZenProvider = "openai-compatible-chat-other";
+    expect(resolveRequestTransport({
+      ...zenRequest,
+      provider: nonZenProvider,
+      alias: nonZenProvider,
+      credentials: nonZenCredentials,
+    }).targetFormat).toBe(FORMATS.OPENAI);
+    const nonZenBody = new DefaultExecutor(nonZenProvider).transformRequest(
+      zenRequest.model,
+      { max_tokens: 100, max_completion_tokens: 200, max_output_tokens: 300 },
+      true,
+      nonZenCredentials,
+    );
+    expect(nonZenBody).toMatchObject({ max_tokens: 100, max_output_tokens: 300 });
   });
 
   it("drops every translated token-cap spelling only for OpenCode Muse models", () => {

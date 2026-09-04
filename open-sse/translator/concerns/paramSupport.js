@@ -11,6 +11,9 @@ const STRIP_RULES = [
 { match: /claude/i, drop: ["temperature"] },
 // GitHub Copilot gpt-5.4: temperature unsupported.
 { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
+// OpenAI GPT-6 Astra supports neither sampling nor top-logprob controls.
+// Chat rejects `logprobs`; Responses rejects only its output-text include entry.
+{ provider: "openai", match: /^gpt-6-astra$/i, drop: ["temperature", "top_p", "top_logprobs"], dropChat: ["logprobs"], dropInclude: ["message.output_text.logprobs"] },
 // GitHub Copilot Claude (except opus/sonnet 4.6): thinking + reasoning_effort rejected. #713
 { provider: "github", match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m), drop: ["thinking", "reasoning_effort"] },
 // xAI Grok Composer: rejects reasoningEffort entirely (including "none") — omit param upstream.
@@ -68,6 +71,15 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     // Drop top-level params (guard: a rule may omit `drop`, e.g. message-only rules).
     for (const key of rule.drop || []) {
       if (body[key] !== undefined) delete body[key];
+    }
+    if (Array.isArray(rule.dropChat) && Array.isArray(body.messages)) {
+      for (const key of rule.dropChat) {
+        if (body[key] !== undefined) delete body[key];
+      }
+    }
+    if (Array.isArray(rule.dropInclude) && Array.isArray(body.include)) {
+      body.include = body.include.filter((entry) => !rule.dropInclude.includes(entry));
+      if (body.include.length === 0) delete body.include;
     }
     // Drop per-message fields some providers reject in history, e.g. Mistral rejects
     // assistant reasoning_content with 422 extra_forbidden (#1649).

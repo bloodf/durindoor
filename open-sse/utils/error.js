@@ -9,10 +9,16 @@ import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
  * Build OpenAI-compatible error response body
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
+ * @param {{ type?: string, code?: string }} [overrides] - Structured field
+ *   overrides for the status's default type/code (e.g. distinguishing 404
+ *   `provider_not_configured` from `model_not_found`). SECURITY SEAM: this
+ *   only selects structured type/code fields already known to the caller —
+ *   it never bypasses sanitizeErrorMessage or injects raw/untrusted text
+ *   into `error.message`.
  * @returns {object} Error response object
  */
 import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
-export function buildErrorBody(statusCode, message) {
+export function buildErrorBody(statusCode, message, overrides = null) {
   const errorInfo = ERROR_TYPES[statusCode] || (
   statusCode >= 500 ?
   { type: "server_error", code: "internal_server_error" } :
@@ -25,12 +31,13 @@ export function buildErrorBody(statusCode, message) {
   // message still yields the status default, never `""`. A caller-supplied
   // structured errorBody bypasses this builder; createErrorResult sanitizes
   // that shape's `error.message` separately. Other structured fields (e.g.
-  // `upstream_details`) are not rewritten here.
+  // `upstream_details`) are not rewritten here. `overrides` (type/code only)
+  // never touches `message`, so this contract holds for overridden bodies too.
   return {
     error: {
       message: sanitizeErrorMessage(message || DEFAULT_ERROR_MESSAGES[statusCode] || "An error occurred"),
-      type: errorInfo.type,
-      code: errorInfo.code
+      type: overrides?.type || errorInfo.type,
+      code: overrides?.code || errorInfo.code
     }
   };
 }
@@ -39,10 +46,11 @@ export function buildErrorBody(statusCode, message) {
  * Create error Response object (for non-streaming)
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
+ * @param {{ type?: string, code?: string }} [overrides] - See buildErrorBody.
  * @returns {Response} HTTP Response object
  */
-export function errorResponse(statusCode, message) {
-  return new Response(JSON.stringify(buildErrorBody(statusCode, message)), {
+export function errorResponse(statusCode, message, overrides = null) {
+  return new Response(JSON.stringify(buildErrorBody(statusCode, message, overrides)), {
     status: statusCode,
     headers: {
       "Content-Type": "application/json",
@@ -50,6 +58,7 @@ export function errorResponse(statusCode, message) {
     }
   });
 }
+
 
 /**
  * Return a generic 401 using the client's native error envelope.

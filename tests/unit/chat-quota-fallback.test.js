@@ -386,6 +386,57 @@ describe("chat quota fallback orchestration", () => {
     mocks.clearAccountError.mockResolvedValue();
   });
 
+  it("reports an unconfigured registered provider with an actionable 404", async () => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "codex", model: "gpt-5.4" });
+    mocks.getProviderCredentials.mockResolvedValue(null);
+
+    const response = await handleChat(request());
+
+    expect(response.status).toBe(404);
+    expect((await response.json()).error).toMatchObject({
+      code: "provider_not_configured",
+      message: "No active credentials for provider: codex. Connect an account for this provider in the dashboard.",
+    });
+  });
+
+  it("reports an unknown provider as model_not_found", async () => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "unknown-provider", model: "missing-model" });
+    mocks.getProviderCredentials.mockResolvedValue(null);
+
+    const response = await handleChat(request("unknown-provider/missing-model"));
+
+    expect(response.status).toBe(404);
+    expect((await response.json()).error).toMatchObject({
+      code: "model_not_found",
+      message: "Unknown provider \"unknown-provider\" in model \"unknown-provider/missing-model\". See /v1/models for what this router serves.",
+    });
+  });
+
+  it.each([
+    "cc",
+    "openai-compatible-mybox",
+    "anthropic-compatible-mybox",
+  ])("recognizes %s as a routable provider", async (provider) => {
+    mocks.getModelInfo.mockResolvedValue({ provider, model: "missing-model" });
+    mocks.getProviderCredentials.mockResolvedValue(null);
+
+    const response = await handleChat(request(`${provider}/missing-model`));
+
+    expect((await response.json()).error.code).toBe("provider_not_configured");
+  });
+
+  it.each([
+    "openai-compatible-",
+    "anthropic-compatible-",
+  ])("does not treat bare compatible prefix %s as routable", async (provider) => {
+    mocks.getModelInfo.mockResolvedValue({ provider, model: "missing-model" });
+    mocks.getProviderCredentials.mockResolvedValue(null);
+
+    const response = await handleChat(request(`${provider}/missing-model`));
+
+    expect((await response.json()).error.code).toBe("model_not_found");
+  });
+
   it.each([
     ["quota exhaustion", 429, { error: { message: "额度不足", type: "quota_exhausted" } }, "connection"],
     ["model denial", 403, { error: { message: "无权访问模型 claude-opus", type: "auth_error" } }, "model"],

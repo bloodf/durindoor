@@ -197,3 +197,15 @@ describe("injectReasoningContent — native Kimi thinking round-trip", () => {
     expect(assistant.reasoning_content.length).toBeGreaterThan(0);
   });
 });
+
+describe("injectReasoningContent — malformed messages", () => {
+  it.each(["hello", 42, { role: "user" }, null])(
+    "returns body unchanged for non-array messages (%p)",
+    (messages) => {
+      const body = { messages };
+      const result = injectReasoningContent({ provider: "deepseek", model: "deepseek-chat", body });
+
+      expect(result).toBe(body);
+    }
+  );
+});

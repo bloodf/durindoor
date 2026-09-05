@@ -4,59 +4,60 @@ Canonical disposition ledger for [#749](https://github.com/bloodf/durindoor/issu
 
 ## Scope and status
 
-- **Snapshot:** states and delivery outcomes below were refreshed from live GitHub at **2026-09-05T02:03:24Z**. They record that instant, not a promise about later merge or closure state; GitHub remains authoritative.
+- **Snapshot:** states and delivery outcomes below were refreshed from live GitHub at **2026-09-05T03:23:00Z**. They record that instant, not a promise about later merge or closure state; GitHub remains authoritative.
 - **34 original campaign issues:** #735 and #737–#769 are retained below. #735 is the parent audit/reconciliation record, not a claim that 734 upstream rows were implemented.
 - **Authorization:** maintainer waived issue-requested human pauses and authorized automatically reviewed green serial merges. Authentication, credential handling, SSRF, dual-auth, secret-export, and live-verification requirements were not waived.
 - **Operational boundary:** no authenticated provider calls, credential inspection, production mutation, deployment, or service restart occurred. Rows requiring authenticated proof remain blocked, even where public endpoint evidence exists.
 - **Provider count:** 120 disposition rows, exactly once in [provider matrix](#provider-coverage-matrix-120-rows). Reconciliation can close audit #767; it does not claim those providers shipped.
 - **Parent scan count:** 734 scan IDs: 26 selected scan IDs map to 28 child issues because #3772 and #3694 each split into two issues; 708 scan IDs remain unselected. Every scan ID appears exactly once in [scan appendix](#parent-735-scan-reconciliation-734-rows).
 - **Icon policy:** policy approved: identification-only, unchanged marks, source attribution, third-party rights retained, no endorsement, documented removal path. MIT does not grant rights to third-party marks; no permission, fair-use, or other legal conclusion is asserted.
+- **AI Horde icon provenance:** vendor: Haidra / AI Horde; source: unchanged official site asset [`logo.png`](https://aihorde.net/assets/img/logo.png); retrieved **2026-09-05**. The official [Haidra asset repository](https://github.com/Haidra-Org/haidra-assets) notes that some images may represent Haidra trademarks; no asset-specific license is published, so third-party rights remain retained under the policy above.
 - **Primary-checkout recovery:** during campaign, subagent edits leaked into seven previously clean primary-checkout files; complete diff and copies were archived under `/tmp/durindoor-20260904-campaign/primary-recovery`, only campaign-owned leaks were restored, initially staged `.omp` agents plus user `UsageTable` and settings-route edits were preserved, and subsequent status matched initial dirty state. Primary original state was restored; no production files or data were touched.
 
 ## Selected issue map
 
 | Ledger ID | Issue | Upstream/theme | Current disposition | Evidence / remaining requirement |
 | --- | ---: | --- | --- | --- |
-|  | [#735](https://github.com/bloodf/durindoor/issues/735) | 734-row scan audit | reconciliation complete / ledger closure pending | Parent audit only: all 734 scan IDs are retained below as 26 selected and 708 unselected. This does not claim 734 implementations. Ledger PR may close the audit after gates and merge. |
+|  | [#735](https://github.com/bloodf/durindoor/issues/735) | 734-row scan audit | closed — reconciliation complete | Parent audit only: all 734 scan IDs are retained below as 26 selected and 708 unselected. This does not claim 734 implementations. Closed after the complete reconciliation was recorded in merged [PR #795](https://github.com/bloodf/durindoor/pull/795). |
 | A11 | [#737](https://github.com/bloodf/durindoor/issues/737) | #3779 | merged | Delivered by merged [PR #771](https://github.com/bloodf/durindoor/pull/771). |
 | A12 | [#738](https://github.com/bloodf/durindoor/issues/738) | #3770 | merged | Delivered by merged [PR #772](https://github.com/bloodf/durindoor/pull/772). |
 | A13 | [#739](https://github.com/bloodf/durindoor/issues/739) | #3745 | merged | Delivered by merged [PR #775](https://github.com/bloodf/durindoor/pull/775). |
-| A1 | [#740](https://github.com/bloodf/durindoor/issues/740) | #3785 | pending merge | Corrected candidate is in open [PR #787](https://github.com/bloodf/durindoor/pull/787); no merged delivery claim. |
-| A2 | [#741](https://github.com/bloodf/durindoor/issues/741) | #3783 | pending merge | Corrected candidate is in open [PR #788](https://github.com/bloodf/durindoor/pull/788); no merged delivery claim. |
+| A1 | [#740](https://github.com/bloodf/durindoor/issues/740) | #3785 | merged | Delivered by merged [PR #787](https://github.com/bloodf/durindoor/pull/787). |
+| A2 | [#741](https://github.com/bloodf/durindoor/issues/741) | #3783 | merged | Delivered by merged [PR #788](https://github.com/bloodf/durindoor/pull/788). |
 | A3 | [#742](https://github.com/bloodf/durindoor/issues/742) | #3778 | merged | Delivered by merged [PR #776](https://github.com/bloodf/durindoor/pull/776). |
 | A14 | [#743](https://github.com/bloodf/durindoor/issues/743) | #3703 | merged | Delivered by merged [PR #777](https://github.com/bloodf/durindoor/pull/777). |
 | D4 | [#744](https://github.com/bloodf/durindoor/issues/744) | #3654 | merged | Delivered by merged [PR #779](https://github.com/bloodf/durindoor/pull/779). Selective transfer includes the UI-token prerequisite and secure DB export/import: shared dual-auth, bounded JSON, secret-free preview, credentials omitted by default, explicit acknowledged secret export, atomic validated import, and preservation of unrelated rows and omitted credentials. |
 | A4 | [#745](https://github.com/bloodf/durindoor/issues/745) | #3765 | merged | Delivered by merged [PR #778](https://github.com/bloodf/durindoor/pull/778). |
-| B1 | [#746](https://github.com/bloodf/durindoor/issues/746) | #3733 | pending merge | Corrected candidate is in open [PR #789](https://github.com/bloodf/durindoor/pull/789); no merged delivery claim. |
+| B1 | [#746](https://github.com/bloodf/durindoor/issues/746) | #3733 | merged | Delivered by merged [PR #789](https://github.com/bloodf/durindoor/pull/789). |
 | D6 | [#747](https://github.com/bloodf/durindoor/issues/747) | #3748 | pending implementation delivery | Deferred D6 combo allow-list work remains unmerged. Raw API-key bulk export remains forbidden pending separate security review. |
-| D5 | [#748](https://github.com/bloodf/durindoor/issues/748) | #3768 | pending implementation delivery | Deferred D5 combo weights and Antigravity catalog remain unmerged. Preserve `gemini-3.5-flash-low`; reject unrelated upstream hunks. |
-|  | [#749](https://github.com/bloodf/durindoor/issues/749) | Ledger | pending ledger delivery | This canonical ledger may close #749 only after its own gate and merge. |
-| B2 | [#750](https://github.com/bloodf/durindoor/issues/750) | #3771 | pending merge | Corrected candidate is in open [PR #790](https://github.com/bloodf/durindoor/pull/790); no merged delivery claim. |
+| D5 | [#748](https://github.com/bloodf/durindoor/issues/748) | #3768 | merged | Delivered by merged [PR #796](https://github.com/bloodf/durindoor/pull/796), including combo weights with migration 015; required Antigravity aliases remain preserved. |
+|  | [#749](https://github.com/bloodf/durindoor/issues/749) | Ledger | closed — merged | Canonical ledger delivered by merged [PR #795](https://github.com/bloodf/durindoor/pull/795). |
+| B2 | [#750](https://github.com/bloodf/durindoor/issues/750) | #3771 | merged | Delivered by merged [PR #790](https://github.com/bloodf/durindoor/pull/790). |
 | A5 | [#751](https://github.com/bloodf/durindoor/issues/751) | #3772a | merged | Delivered by merged [PR #780](https://github.com/bloodf/durindoor/pull/780). |
 | A6 | [#752](https://github.com/bloodf/durindoor/issues/752) | #3772b | merged | Delivered by merged [PR #781](https://github.com/bloodf/durindoor/pull/781). |
 | A15 | [#753](https://github.com/bloodf/durindoor/issues/753) | #3694-zen | merged | Delivered by merged [PR #782](https://github.com/bloodf/durindoor/pull/782). |
 | A7 | [#754](https://github.com/bloodf/durindoor/issues/754) | #3781 | merged | Delivered by merged [PR #783](https://github.com/bloodf/durindoor/pull/783). |
 | C1 | [#755](https://github.com/bloodf/durindoor/issues/755) | #3776 | open / blocked — live verification | Kiro runtime/API behavior needs authenticated live verification. |
-| A8 | [#756](https://github.com/bloodf/durindoor/issues/756) | #3693 | pending merge | Corrected candidate is in open [PR #792](https://github.com/bloodf/durindoor/pull/792); no merged delivery claim. |
+| A8 | [#756](https://github.com/bloodf/durindoor/issues/756) | #3693 | merged | Delivered by merged [PR #792](https://github.com/bloodf/durindoor/pull/792). |
 | A9 | [#757](https://github.com/bloodf/durindoor/issues/757) | #3751 | merged | Delivered by merged [PR #784](https://github.com/bloodf/durindoor/pull/784). |
 | C2 | [#758](https://github.com/bloodf/durindoor/issues/758) | #3694-cc | open / blocked — live verification | CommandCode monthly-cap behavior needs authenticated live verification. |
 | A10 | [#759](https://github.com/bloodf/durindoor/issues/759) | #3713 | merged | Delivered by merged [PR #785](https://github.com/bloodf/durindoor/pull/785). |
-| D1 | [#760](https://github.com/bloodf/durindoor/issues/760) | #3661 | pending merge | Security-sensitive API-key provider-account scoping and migration are in open [PR #791](https://github.com/bloodf/durindoor/pull/791); no merged delivery claim. |
+| D1 | [#760](https://github.com/bloodf/durindoor/issues/760) | #3661 | merged | Security-sensitive API-key provider-account scoping and migration 014 delivered by merged [PR #791](https://github.com/bloodf/durindoor/pull/791). |
 | D2 | [#761](https://github.com/bloodf/durindoor/issues/761) | #3754 | pending implementation delivery | Explicit combo capability caps remain unmerged. |
 | D3 | [#762](https://github.com/bloodf/durindoor/issues/762) | #3663 | open / blocked — live verification | Alibaba Token Plan live catalog/media/thinking requires authenticated proof. |
-| B3 | [#763](https://github.com/bloodf/durindoor/issues/763) | #3780 | open / blocked — correction and live verification | [PR #786](https://github.com/bloodf/durindoor/pull/786) is open. Public documentation identifies two contributor models and session header; acceptance still requires correction and authenticated evidence. |
-| B6 | [#764](https://github.com/bloodf/durindoor/issues/764) | #3747 | pending correction | Candidate needs correction before acceptance; no merged delivery PR. |
+| B3 | [#763](https://github.com/bloodf/durindoor/issues/763) | #3780 | merged / still blocked — live verification | Candidate delivered by merged [PR #786](https://github.com/bloodf/durindoor/pull/786); authenticated acceptance evidence remains blocked. |
+| B6 | [#764](https://github.com/bloodf/durindoor/issues/764) | #3747 | merged | Delivered by merged [PR #793](https://github.com/bloodf/durindoor/pull/793). |
 | B4 | [#765](https://github.com/bloodf/durindoor/issues/765) | #3757 | open / blocked — live verification | Meta AI provider needs authenticated live verification. |
-| B5 | [#766](https://github.com/bloodf/durindoor/issues/766) | #3655 | pending correction | Candidate needs correction before acceptance; no merged delivery PR. |
-|  | [#767](https://github.com/bloodf/durindoor/issues/767) | OmniRoute audit | reconciliation complete / ledger closure pending | All 120 provider dispositions are reconciled below. Ledger PR may close this audit after gates and merge; closure means audit completion, not provider shipment. Separate merged [PR #774](https://github.com/bloodf/durindoor/pull/774) delivered Astra catalog configuration and implements no provider-audit row. Every `PORT-*` row remains blocked because authenticated evidence was not collected. |
+| B5 | [#766](https://github.com/bloodf/durindoor/issues/766) | #3655 | merged | Delivered by merged [PR #794](https://github.com/bloodf/durindoor/pull/794). |
+|  | [#767](https://github.com/bloodf/durindoor/issues/767) | OmniRoute audit | reconciliation complete / AI Horde delivery pending | All 120 provider dispositions are reconciled below. Merged [PR #795](https://github.com/bloodf/durindoor/pull/795) delivered the ledger; this audit can close after the verified anonymous AI Horde exception ships. Other `PORT-*` rows requiring authenticated proof remain blocked. |
 |  | [#768](https://github.com/bloodf/durindoor/issues/768) | Sarvam | open / blocked — live verification | Sarvam requires authenticated chat round-trip and authenticated `/v1/models` fixture. |
-|  | [#769](https://github.com/bloodf/durindoor/issues/769) | Trademark policy | policy merged / ledger closure pending | Policy source merged in [PR #773](https://github.com/bloodf/durindoor/pull/773), and exact-ID renderer triage is recorded below. #769 may close only after this ledger's own gate and merge; canonical-asset availability remains distinct from renderer results. |
+|  | [#769](https://github.com/bloodf/durindoor/issues/769) | Trademark policy | closed — policy and triage merged | Policy source delivered by merged [PR #773](https://github.com/bloodf/durindoor/pull/773); exact-ID renderer triage delivered by merged [PR #795](https://github.com/bloodf/durindoor/pull/795). Canonical-asset availability remains distinct from renderer results. |
 
 Selected mapping is deliberately issue-level; it does not invent an implementation plan beyond issue acceptance contracts.
 
 ## Delivery outcomes
 
-Live GitHub state snapshot: **2026-09-05T02:03:24Z**. PR bodies supply issue mappings through `Closes`; unknown mappings remain explicitly unclaimed. These links do not change 734-row scan dispositions or turn audit verdicts into implementation claims.
+Live GitHub state snapshot: **2026-09-05T03:23:00Z**. PR bodies supply issue mappings through `Closes`; unknown mappings remain explicitly unclaimed. These links do not change 734-row scan dispositions or turn audit verdicts into implementation claims.
 
 | PR | Campaign relationship | Snapshot state |
 | ---: | --- | --- |
@@ -76,15 +77,19 @@ Live GitHub state snapshot: **2026-09-05T02:03:24Z**. PR bodies supply issue map
 | [#783](https://github.com/bloodf/durindoor/pull/783) | Closes [#754](https://github.com/bloodf/durindoor/issues/754) | merged |
 | [#784](https://github.com/bloodf/durindoor/pull/784) | Closes [#757](https://github.com/bloodf/durindoor/issues/757) | merged |
 | [#785](https://github.com/bloodf/durindoor/pull/785) | Closes [#759](https://github.com/bloodf/durindoor/issues/759) | merged |
-| [#786](https://github.com/bloodf/durindoor/pull/786) | Closes [#763](https://github.com/bloodf/durindoor/issues/763) if merged; acceptance remains blocked | open |
-| [#787](https://github.com/bloodf/durindoor/pull/787) | Closes [#740](https://github.com/bloodf/durindoor/issues/740) if merged | open |
-| [#788](https://github.com/bloodf/durindoor/pull/788) | Closes [#741](https://github.com/bloodf/durindoor/issues/741) if merged | open |
-| [#789](https://github.com/bloodf/durindoor/pull/789) | Closes [#746](https://github.com/bloodf/durindoor/issues/746) if merged | open |
-| [#790](https://github.com/bloodf/durindoor/pull/790) | Closes [#750](https://github.com/bloodf/durindoor/issues/750) if merged | open |
-| [#791](https://github.com/bloodf/durindoor/pull/791) | Closes [#760](https://github.com/bloodf/durindoor/issues/760) if merged | open |
-| [#792](https://github.com/bloodf/durindoor/pull/792) | Closes [#756](https://github.com/bloodf/durindoor/issues/756) if merged | open |
+| [#786](https://github.com/bloodf/durindoor/pull/786) | Closes [#763](https://github.com/bloodf/durindoor/issues/763); authenticated acceptance evidence remains blocked | merged |
+| [#787](https://github.com/bloodf/durindoor/pull/787) | Closes [#740](https://github.com/bloodf/durindoor/issues/740) | merged |
+| [#788](https://github.com/bloodf/durindoor/pull/788) | Closes [#741](https://github.com/bloodf/durindoor/issues/741) | merged |
+| [#789](https://github.com/bloodf/durindoor/pull/789) | Closes [#746](https://github.com/bloodf/durindoor/issues/746) | merged |
+| [#790](https://github.com/bloodf/durindoor/pull/790) | Closes [#750](https://github.com/bloodf/durindoor/issues/750) | merged |
+| [#791](https://github.com/bloodf/durindoor/pull/791) | Closes [#760](https://github.com/bloodf/durindoor/issues/760) | merged |
+| [#792](https://github.com/bloodf/durindoor/pull/792) | Closes [#756](https://github.com/bloodf/durindoor/issues/756) | merged |
+| [#793](https://github.com/bloodf/durindoor/pull/793) | Closes [#764](https://github.com/bloodf/durindoor/issues/764) | merged |
+| [#794](https://github.com/bloodf/durindoor/pull/794) | Closes [#766](https://github.com/bloodf/durindoor/issues/766) | merged |
+| [#795](https://github.com/bloodf/durindoor/pull/795) | Closes [#749](https://github.com/bloodf/durindoor/issues/749) and [#769](https://github.com/bloodf/durindoor/issues/769); delivers #735/#767 reconciliation | merged |
+| [#796](https://github.com/bloodf/durindoor/pull/796) | Closes [#748](https://github.com/bloodf/durindoor/issues/748) | merged |
 
-No other implementation delivery is claimed at this snapshot. Remaining ordered migration work is #748 migration 015, #761 migration 016, then #747 migration 017; open #791 carries predecessor #760 migration 014.
+All listed PRs through #796 are merged at this snapshot. Remaining ordered migration work is #761 migration 016, then #747 migration 017; AI Horde implementation remains pending in the current exception candidate.
 
 ## Local candidate evidence
 
@@ -122,9 +127,9 @@ Candidate evidence below is historical worktree evidence, not current delivery s
 - **#762:** authenticated Alibaba Token Plan catalog and feature behavior required.
 - **#765:** authenticated Meta AI routing/catalog evidence required.
 - **#768:** required redacted fixture: real Sarvam chat round-trip plus authenticated `/v1/models`; anonymous catalog is not contract. `sarvam-30b` must not be advertised without authenticated proof. Trademark policy approved and no longer the gate.
-- **#767 `PORT-*` rows:** campaign collected no authenticated provider evidence, so every `PORT-*` disposition remains blocked where its original criteria require that evidence. No fixture was fabricated and no static catalog is approved merely from OmniRoute.
+- **#767 `PORT-*` rows:** campaign collected no authenticated provider evidence, so `PORT-*` dispositions remain blocked where original criteria require it. AI Horde is the sole verified anonymous exception: official sentinel `0000000000` supplied live catalog and chat evidence without an account credential. No fixture was fabricated and no static catalog is approved merely from OmniRoute.
 
-Final blocker semantics at snapshot time: #755, #758, #762, #765, and #768 remain open and live-blocked. Open or unimplemented candidates remain pending, including #786–#792 and ordered #748/#761/#747 migrations. After main gates, this ledger PR may close parent audit #735, ledger issue #749, reconciled provider audit #767, and policy/triage issue #769; closure occurs only when the PR merges. These audit/document/policy closures do not claim remaining implementations delivered.
+Final blocker semantics at snapshot time: #755, #758, #762, #765, and #768 remain open and live-blocked. #761 and #747 remain pending ordered migrations 016 and 017. AI Horde implementation is pending in the current anonymous-exception candidate; reconciled provider audit #767 can close after that candidate merges. Parent audit #735, ledger #749, and policy/triage #769 are closed. These audit/document/policy closures do not claim remaining implementations delivered.
 
 ## Provider coverage matrix (120 rows)
 
@@ -133,7 +138,7 @@ Verdict totals: RISKY-deferred 43; REJECT 38; PORT-first-party 19; DUPLICATE 9; 
 | ID | Alias | Provider | Verdict | Campaign disposition / evidence |
 | --- | --- | --- | --- | --- |
 | `agnes` | `agnes` | Agnes AI | **RISKY-deferred** | deferred per approved scope |
-| `aihorde` | `horde` | AI Horde | **PORT-other** | blocked: authenticated provider verification forbidden by user; original criteria require evidence; volunteer compute; queue unstable; live discovery only |
+| `aihorde` | `horde` | AI Horde | **PORT-other** | verified anonymous exception; implementation pending: official public sentinel `0000000000` returned live `/v1/models` catalog and a `200` chat completion through the OpenAI facade; no authenticated credential used; volunteer compute and queue availability remain dynamic; live discovery only |
 | `ainative` | `ainative` | AINative Studio | **RISKY-deferred** | deferred per approved scope |
 | `aion` | `aion` | Aion Labs | **PORT-first-party** | blocked: authenticated provider verification forbidden by user; original criteria require evidence |
 | `ant-ling` | `ling` | Ant Ling / Ring (inclusionAI) | **RISKY-deferred** | deferred per approved scope |

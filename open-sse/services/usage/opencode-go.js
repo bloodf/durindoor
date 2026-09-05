@@ -1,5 +1,6 @@
 /**
- * OpenCode Go usage support from upstream #3250.
+ * OpenCode Go usage support from upstream #3250; 403 EntitlementError
+ * (valid key, no Go subscription) distinction from upstream #3791.
  *
  * `percent` is percent used. A spent plan may answer chat with the same HTTP
  * status as invalid authentication, but identifies itself structurally as a
@@ -78,8 +79,19 @@ export async function getOpenCodeGoUsage(apiKey, proxyOptions = null) {
       10000,
       proxyOptions
     );
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       return { message: "OpenCode Go API key invalid or expired." };
+    }
+    // Upstream #3791: a 403 EntitlementError means the key is valid but has no
+    // Go subscription — report it distinctly instead of as an auth failure.
+    if (response.status === 403) {
+      const error = await response.json().catch(() => null);
+      return {
+        plan: "OpenCode Go",
+        message: error?.error?.type === "EntitlementError" ?
+        "OpenCode Go subscription required for this API key." :
+        "OpenCode Go access forbidden for this API key."
+      };
     }
     if (!response.ok) return { message: `OpenCode Go usage API error (${response.status}).` };
 

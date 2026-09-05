@@ -8,6 +8,7 @@ import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { translateOpenAIToClaudeIfNeeded } from "../../open-sse/translator/response/openai-to-claude-json.js";
 import { translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
+import { fromOpenAIFinish } from "../../open-sse/translator/concerns/finishReason.js";
 import { buildModelsResponse } from "../../src/app/api/v1/models/_shared.js";
 
 const C2O = (body, model = "claude-opus-4") =>
@@ -84,6 +85,29 @@ describe("Non-stream OpenAI → Anthropic projection", () => {
       FORMATS.CLAUDE
     );
     expect(empty.content).toEqual([{ type: "text", text: "" }]);
+  });
+  it("shares all OpenAI and Claude finish-reason aliases", () => {
+    expect(fromOpenAIFinish("stop", FORMATS.CLAUDE)).toBe("end_turn");
+    expect(fromOpenAIFinish("length", FORMATS.CLAUDE)).toBe("max_tokens");
+    expect(fromOpenAIFinish("tool_calls", FORMATS.CLAUDE)).toBe("tool_use");
+    expect(fromOpenAIFinish("content_filter", FORMATS.CLAUDE)).toBe("end_turn");
+    expect(fromOpenAIFinish("max_tokens", FORMATS.CLAUDE)).toBe("max_tokens");
+    expect(fromOpenAIFinish("tool_use", FORMATS.CLAUDE)).toBe("tool_use");
+  });
+  it("maps literal max_tokens / tool_use finish reasons to Claude stop reasons", () => {
+    // Regression for issue #754 / upstream #3781: an OpenAI-shaped provider that
+    // emits the Claude-shaped literals must not be collapsed to end_turn.
+    const literalMaxTokens = translateOpenAIToClaudeIfNeeded(
+      { id: "c3", choices: [{ finish_reason: "max_tokens", message: { role: "assistant", content: "…" } }] },
+      FORMATS.CLAUDE
+    );
+    expect(literalMaxTokens.stop_reason).toBe("max_tokens");
+
+    const literalToolUse = translateOpenAIToClaudeIfNeeded(
+      { id: "c4", choices: [{ finish_reason: "tool_use", message: { role: "assistant", content: "" } }] },
+      FORMATS.CLAUDE
+    );
+    expect(literalToolUse.stop_reason).toBe("tool_use");
   });
 
   it("wires through translateNonStreamingResponse (target OPENAI, source CLAUDE)", () => {

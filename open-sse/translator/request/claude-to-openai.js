@@ -175,6 +175,13 @@ function attachRedactedThinking(message, redactedThinking) {
   return message;
 }
 
+// Nested tool-result media cannot be forwarded as a data URI; retain only a
+// bounded media-type label so binary payloads never enter the upstream request.
+function describeOmittedMedia(mediaType) {
+  const label = isString(mediaType) && mediaType ? mediaType.slice(0, 100) : "image";
+  return `[tool result omitted image: ${label}]`;
+}
+
 // Convert single Claude message - returns single message or array of messages
 function convertClaudeMessage(msg) {
   // Mid-conversation system message -> user (per Anthropic placement rules)
@@ -246,25 +253,26 @@ function convertClaudeMessage(msg) {
           if (isString(block.content)) {
             resultContent = block.content;
           } else if (Array.isArray(block.content)) {
-            // Keep text in the tool message; lift any images out as a following user
-            // turn (OpenAI `tool` messages can't carry images). Without this, an
-            // image-only tool_result is JSON.stringify'd -> base64 as text -> Codex
-            // "input exceeds the context window".
+            // Text stays in the tool message. A nested binary media block
+            // (screenshot, etc.) becomes a bounded placeholder naming the media
+            // type instead of being lifted into a following user turn as a data
+            // URI: OpenAI `tool` messages can't carry images, and forwarding the
+            // raw base64 either way burns ~100KB+ tokens per screenshot and trips
+            // upstream validators on oversized payloads. This is scoped to
+            // *nested* tool_result media only — ordinary top-level user images
+            // (the CLAUDE_BLOCK.IMAGE case above) are untouched and still become
+            // real image_url parts.
             const textParts = [];
-            let hasImage = false;
+            let hasOmittedMedia = false;
             for (const c of block.content) {
               if (c.type === CLAUDE_BLOCK.TEXT) {
                 textParts.push(c.text);
               } else if (c.type === CLAUDE_BLOCK.IMAGE && c.source?.type === "base64") {
-                parts.push({
-                  type: OPENAI_BLOCK.IMAGE_URL,
-                  image_url: { url: encodeDataUri(c.source.media_type, c.source.data) }
-                });
-                hasImage = true;
+                textParts.push(describeOmittedMedia(c.source.media_type));
+                hasOmittedMedia = true;
               }
             }
-            resultContent = textParts.join("\n") || (
-            hasImage ? "[tool returned an image; see attached]" : JSON.stringify(block.content));
+            resultContent = textParts.join("\n") || (hasOmittedMedia ? "[tool result omitted media]" : JSON.stringify(block.content));
           } else if (block.content) {
             resultContent = JSON.stringify(block.content);
           }

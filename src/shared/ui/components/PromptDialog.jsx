@@ -27,6 +27,7 @@ function PromptDialogForm({
   label,
   placeholder,
   defaultValue = "",
+  inputType = "text",
   submitLabel = "Save",
   onSubmit,
   onCancel,
@@ -35,13 +36,10 @@ function PromptDialogForm({
   const inputId = useId();
   const formId = useId();
   const canSubmit = value.trim().length > 0;
-
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!canSubmit) return;
-    onSubmit?.(value);
+    if (canSubmit) onSubmit?.(value);
   };
-
   return (
     <Modal
       open
@@ -73,8 +71,8 @@ function PromptDialogForm({
           {label}
         </label>
         <input
+          type={inputType}
           id={inputId}
-          type="text"
           autoFocus
           value={value}
           placeholder={placeholder}

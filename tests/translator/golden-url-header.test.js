@@ -49,6 +49,12 @@ function sanitize(headers) {
     if (k === "X-CLIENT-VERSION" || k === "X-CORE-VERSION") s = "<VER>";
     if (k === "X-Stainless-Os") s = "<OS>";
     if (k === "X-Stainless-Arch") s = "<ARCH>";
+    // x-opencode-session is minted per-call from crypto.randomUUID()+Date.now()
+    // whenever no connectionId/workspaceId/client session is present (the golden
+    // test's fixed credentials supply none), so its exact hash is never
+    // reproducible across runs — redact to keep the snapshot deterministic while
+    // still locking the header's presence and shape.
+    if (k === "x-opencode-session") s = "ses_<SESSION>";
     out[k] = s;
   }
   return out;

@@ -10,6 +10,7 @@ import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelSupportedFormats, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
+import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { applyStatusRestatement, parseRestatedRateLimitEvidence } from "../config/upstreamStatusRestatement.js";
@@ -120,10 +121,18 @@ export function withCompressionHeader(result, headerValue) {
 
 /**
  * OpenCode Free Muse models require the Responses API; similarly named models
- * on OpenCode Go and Zen keep their registry-selected transports.
+ * on OpenCode Go keep their registry-selected transport. A custom
+ * `openai-compatible-*` connection whose base URL exactly matches
+ * `OPENCODE_ZEN_BASE_URL` shares the same upstream and gets the same routing.
+ * This predicate is exact-match on the configured base URL — never on model
+ * text or generic path fragments — so a provider whose model id contains
+ * "muse" is NOT auto-routed to Responses.
  */
-function isOpenCodeMuse(provider, alias, model) {
-  return (provider === "opencode" || alias === "oc") && /muse/i.test(model);
+function isOpenCodeMuse(provider, alias, model, credentials) {
+  if (!/muse/i.test(model)) return false;
+  if (provider === "opencode" || alias === "oc") return true;
+  return Boolean(provider?.startsWith?.("openai-compatible-")) &&
+  isOpenCodeZenBaseUrl(credentials?.providerSpecificData?.baseUrl);
 }
 
 /**
@@ -134,7 +143,7 @@ function isOpenCodeMuse(provider, alias, model) {
  * unpinned models keep the existing source-format and provider-default behavior.
  */
 export function resolveRequestTransport({ provider, alias, model, sourceFormat, credentials }) {
-  const forceOpenCodeMuseResponses = isOpenCodeMuse(provider, alias, model);
+  const forceOpenCodeMuseResponses = isOpenCodeMuse(provider, alias, model, credentials);
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES : getModelTargetFormat(alias, model);
   const supportedFormats = getModelSupportedFormats(alias, model);
   const apikeyTransportFormat = provider === "kimi" && credentials?.authType === "apikey" ?
@@ -143,7 +152,19 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
   const defaultFormat = getTargetFormat(provider, credentials);
   const preferredFormat = apikeyTransportFormat || modelTargetFormat || directFormat || defaultFormat;
-  const runtimeTransport = credentials ? resolveTransport(provider, preferredFormat) : null;
+  let runtimeTransport = credentials ? resolveTransport(provider, preferredFormat) : null;
+
+  // Custom OpenAI-compatible nodes have no registry `transports` array, so
+  // `resolveTransport` returns null even when the base URL is exactly the
+  // OpenCode Zen endpoint. Synthesize a runtime transport for that case so
+  // downstream code (executor buildUrl, header auth) routes the request to
+  // `/responses` on the same host. The base URL MUST be a string after
+  // isOpenCodeMuse accepts it.
+  if (forceOpenCodeMuseResponses && !runtimeTransport && provider?.startsWith?.("openai-compatible-") && credentials) {
+    const base = String(credentials.providerSpecificData?.baseUrl || "").replace(/\/+$/, "");
+    runtimeTransport = { format: FORMATS.OPENAI_RESPONSES, baseUrl: `${base}/responses` };
+  }
+
   const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
   const targetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
   transportFormat === sourceFormat ? sourceFormat :

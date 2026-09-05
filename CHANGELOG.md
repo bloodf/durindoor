@@ -6,6 +6,7 @@
 - port(upstream): #3665 - normalize OpenRouter tool schemas; drop invalid regex `pattern` keywords outside `properties` while preserving `default`/`const`/`examples`/`enum` data keywords (open-sse/translator/concerns/toolCall.js)
 - port(upstream): #3676 - preserve Gemini thought signatures across tool-call turns; the antigravity translator now round-trips `thoughtSignature` on function-call parts via a signature transport map instead of dropping it, so multi-turn Gemini/Antigravity tool calls no longer fail with INVALID_ARGUMENT signature errors. Synthetic signatures are never invented; unsigned upstream parts stay unsigned.
 - port(upstream): #3770 - requests for registered but unconfigured providers now return sanitized 404 `provider_not_configured`, directing operators to connect an account in the dashboard; unknown providers remain 404 `model_not_found`.
+- port(upstream): #3745 - quiet successful proxy direct-fallback logs and suppress only undici's non-actionable SOCKS5 `ExperimentalWarning`, leaving strict proxy failures and unrelated warnings visible.
 
 ## Added
 

@@ -137,7 +137,8 @@ describe("OAuth strict proxy transport", () => {
     expect(failure?.message).not.toContain("raw-token");
   });
 
-  it("redacts a best-effort proxy failure before logging and falling back", async () => {
+  it("redacts a best-effort proxy failure before debug logging and falling back", async () => {
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const proxyUrl = "http://alice:proxy-secret@proxy.example.test:8080";
     __setProxyDispatcherForTesting(proxyUrl, { close: vi.fn().mockResolvedValue() });
@@ -154,10 +155,11 @@ describe("OAuth strict proxy transport", () => {
     );
 
     expect(await response.text()).toBe("direct");
-    const warning = warn.mock.calls.flat().join(" ");
-    expect(warning).toContain("[redacted]");
-    expect(warning).not.toContain("proxy-secret");
-    expect(warning).not.toContain("raw-token");
+    const output = debug.mock.calls.flat().join(" ");
+    expect(warn).not.toHaveBeenCalled();
+    expect(output).toContain("[redacted]");
+    expect(output).not.toContain("proxy-secret");
+    expect(output).not.toContain("raw-token");
   });
 
   it("does not block new routes while an evicted dispatcher is still streaming", async () => {

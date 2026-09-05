@@ -111,6 +111,31 @@ describe("custom-server.js pre-require normalization contract", () => {
     expect(JSON.parse(result.stdout.trim())).toEqual({ marker: "absent", keep: "0" });
   });
 });
+describe("custom-server.js SOCKS5 experimental warning filter contract", () => {
+  it("suppresses the exact undici SOCKS5 ExperimentalWarning while leaving the SQLite one observable", () => {
+    // Load the REAL entrypoint so its top-level process.emit patch runs,
+    // then drive the real patched process.emit with the warning objects Node
+    // would otherwise forward to the operator's stderr.
+    const script = `
+      const seen = [];
+      process.on("warning", (warning) => seen.push(warning.message));
+      require(${JSON.stringify(path.join(ROOT, "custom-server.js"))});
+      process.emit("warning", {
+        name: "ExperimentalWarning",
+        message: "SOCKS5 proxy support is experimental and subject to change",
+      });
+      process.emit("warning", {
+        name: "ExperimentalWarning",
+        message: "SQLite is an experimental feature",
+      });
+      process.stdout.write(JSON.stringify(seen));
+    `;
+    const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual(["SQLite is an experimental feature"]);
+  });
+});
+
 
 describe("runtime packaging ships the helper", () => {
   it("build-app.mjs copies normalizeEnv.js into the standalone bundle", () => {

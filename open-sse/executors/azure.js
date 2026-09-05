@@ -1,5 +1,5 @@
 import { DefaultExecutor } from "./default.js";
-import { applyParamRenames } from "../translator/concerns/paramSupport.js";
+import { applyParamRenames, stripUnsupportedChatExtensions } from "../translator/concerns/paramSupport.js";
 
 export class AzureExecutor extends DefaultExecutor {
   constructor() {
@@ -57,6 +57,7 @@ export class AzureExecutor extends DefaultExecutor {
     // directly. Clone before mutating to avoid caller side effects. (#6912/#6964)
     const transformed = { ...(body || {}) };
     applyParamRenames("azure", model, transformed);
+    stripUnsupportedChatExtensions(transformed, credentials?.runtimeTransport, this.config);
     return transformed;
   }
 }

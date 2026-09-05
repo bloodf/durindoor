@@ -279,10 +279,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     delete result.max_output_tokens;
   }
 
+
   delete result.input;
   delete result.instructions;
   delete result.include;
-  delete result.prompt_cache_key;
   delete result.store;
   delete result.reasoning;
   // OpenAI-specific Responses API fields not supported by third-party providers (#2311)

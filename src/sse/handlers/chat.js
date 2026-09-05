@@ -26,7 +26,7 @@ import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { warmLiveModelLimits } from "open-sse/services/liveModelLimits.js";
 import { decodeClaudeCodeModelId } from "../../app/api/v1/models/_claudeCompat.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
-import { authErrorResponse, errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { authErrorResponse, errorResponse, unavailableResponse, getClientStatusFromError } from "open-sse/utils/error.js";
 import { getRequestId, validateProviderRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
 import { isRoutableProvider } from "../../shared/constants/providers.js";
@@ -964,7 +964,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           lastError || credentials.lastError || "Unavailable";
           const retryAfter = combinedRateLimit ? combinedRateLimit.retryAt : credentials.retryAfter;
           log.warn("CHAT", `[${provider}/${model}] all accounts unavailable`);
-          return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, retryAfter, retryAfter ? credentials.retryAfterHuman : "");
+          return unavailableResponse(getClientStatusFromError(status, errorMsg), `[${provider}/${model}] ${errorMsg}`, retryAfter, retryAfter ? credentials.retryAfterHuman : "");
         }
         if (excludeConnectionIds.size === 0) {
           // 404 is right either way here, because /v1/models filters on isActive too,
@@ -998,7 +998,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         if (attemptedRateLimit) {
           return unavailableResponse(429, `[${provider}/${model}] ${lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
         }
-        return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+        return errorResponse(getClientStatusFromError(lastStatus, lastError), lastError || "All accounts unavailable");
       }
 
       const allowedAttempts = provider === "antigravity" || provider === "agy" ?
@@ -1013,7 +1013,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           if (attemptedRateLimit) {
             return unavailableResponse(429, `[${provider}/${model}] ${lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
           }
-          return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "All accounts unavailable");
+          return errorResponse(getClientStatusFromError(lastStatus, lastError), lastError || "All accounts unavailable");
         }
         continue;
       }

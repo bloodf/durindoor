@@ -210,6 +210,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     }
   }
 
+
   // Final step: prepare request for Claude format endpoints
   if (targetFormat === FORMATS.CLAUDE) {
     const normalizesNativeClaudeTransport = PROVIDERS[provider]?.quirks?.normalizeNativeClaudeTransport ||

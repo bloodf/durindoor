@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openaiResponsesToOpenAIRequest, openaiToOpenAIResponsesRequest } from "../../open-sse/translator/request/openai-responses.js";
+import { convertResponsesApiFormat } from "../../open-sse/translator/formats/responsesApi.js";
 
 /**
  * Guards fix for issue #2311:
@@ -38,12 +39,12 @@ describe("openaiResponsesToOpenAIRequest — strips Responses-API-only fields", 
     expect(result).not.toHaveProperty("truncation");
   });
 
-  it("also strips the already-handled fields (input, store, include, prompt_cache_key)", () => {
+  it("preserves the already-handled fields except input, store, and include", () => {
     const result = openaiResponsesToOpenAIRequest("gpt-4o", baseBody, false, {});
     expect(result).not.toHaveProperty("input");
     expect(result).not.toHaveProperty("store");
     expect(result).not.toHaveProperty("include");
-    expect(result).not.toHaveProperty("prompt_cache_key");
+    expect(result).toHaveProperty("prompt_cache_key", "abc123");
   });
 
   it("preserves the converted messages content", () => {
@@ -65,6 +66,17 @@ describe("openaiResponsesToOpenAIRequest — strips Responses-API-only fields", 
     if ("temperature" in bodyWithExtra) {
       expect(result.temperature).toBe(0.7);
     }
+  });
+});
+
+describe("convertResponsesApiFormat — prompt cache key", () => {
+  it("preserves a supplied prompt cache key during Responses endpoint lowering", () => {
+    const result = convertResponsesApiFormat({
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      prompt_cache_key: "stable-cache-key",
+    });
+
+    expect(result.prompt_cache_key).toBe("stable-cache-key");
   });
 });
 

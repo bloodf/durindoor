@@ -7,6 +7,7 @@ import { isOpenCodeZenBaseUrl } from "../../providers/shared.js";
 // Each rule: optional provider string/regex, regex match on model, list of params to drop.
 // A param is removed only when it is present (!== undefined).
 import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+
 const STRIP_RULES = [
 /** All Claude models reject the deprecated temperature parameter upstream with HTTP 400. */
 { match: /claude/i, drop: ["temperature"] },
@@ -34,7 +35,6 @@ const STRIP_RULES = [
 { provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },
 { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true }];
 
-
 // Test a rule's match (regex or predicate) against the model id.
 // A rule with no match clause applies to every model for its provider.
 function matches(rule, model) {
@@ -55,6 +55,24 @@ function clampNumber(body, key, ceiling) {
   if (isNumber(body[key]) && Number.isFinite(body[key]) && body[key] > ceiling) {
     body[key] = ceiling;
   }
+}
+
+// Final OpenAI-compatible wire guard for extension fields rejected by strict
+// transports. The selected runtime transport wins; provider config supplies the
+// default when its selected transport omits quirks. Missing or malformed config
+// fails closed. Mutates and returns the same body.
+export function stripUnsupportedChatExtensions(body, transport, defaultTransport = null) {
+  if (!body || !isObject(body)) return body;
+  let quirks;
+  try {
+    quirks = transport?.quirks ?? defaultTransport?.quirks;
+  } catch {
+    quirks = null;
+  }
+  if (!quirks?.preservePromptCacheKey && body.prompt_cache_key !== undefined) {
+    delete body.prompt_cache_key;
+  }
+  return body;
 }
 
 /**

@@ -26,7 +26,7 @@ import {
   resolveLiveOpenAIModels } from
 "open-sse/services/liveModelLimits.js";
 import { getCodexModels } from "open-sse/services/usage/codex.js";
-import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
+import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel, overlayComboCapabilities, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
@@ -510,6 +510,57 @@ function visibleComboMembers(combo, comboByName, hidePaidModels) {
   return members.filter((member) => isVisible(member, new Set([combo.name])));
 }
 
+async function buildComboOnlyModels(kindFilter, hidePaidModels) {
+  let combos = [];
+  let customModels = [];
+  try {
+    combos = (await getCombos()).filter((combo) => combo !== null);
+  } catch (e) {
+    console.log("Could not fetch combos");
+  }
+  try {
+    customModels = await getCustomModels();
+  } catch (e) {
+    console.log("Could not fetch custom models");
+  }
+
+  const comboByName = Object.fromEntries(combos.map((combo) => [combo.name, combo.models || []]));
+  const aliasToProviderId = Object.fromEntries(Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id]));
+  const customCapsById = new Map(
+    customModels
+      .filter((m) => m?.id && m?.providerAlias && (m.kind || m.type || LLM_KIND) === LLM_KIND && isObject(m.capabilities))
+      .map((m) => [`${aliasToProviderId[m.providerAlias] ?? m.providerAlias}/${m.id}`, m.capabilities]),
+  );
+  const capabilityComboByName = Object.fromEntries(
+    combos.map((combo) => [combo.name, {
+      models: Array.isArray(combo.models) ? combo.models.filter(isString) : [],
+      capabilities: isObject(combo.capabilities) ? combo.capabilities : null,
+    }]),
+  );
+  const entries = [];
+  const seenNames = new Set();
+  for (const combo of combos) {
+    if (!comboMatchesKinds(combo, kindFilter) || seenNames.has(combo.name)) continue;
+    const visibleMembers = visibleComboMembers(combo, comboByName, hidePaidModels);
+    if (hidePaidModels && visibleMembers.length === 0) continue;
+    const entry = comboToEntry(combo);
+    if (!entry.kind) {
+      const derived = aggregateComboCapabilities(visibleMembers.filter(isString), capabilityComboByName, aliasToProviderId, 0, customCapsById);
+      const effective = overlayComboCapabilities(derived, isObject(combo.capabilities) ? combo.capabilities : null);
+      if (effective) {
+        entry.capabilities = effective;
+        if ((combo.kind ?? LLM_KIND) === LLM_KIND) {
+          if (Number.isFinite(effective.contextWindow) && effective.contextWindow > 0) entry.context_length = effective.contextWindow;
+          if (Number.isFinite(effective.maxOutput) && effective.maxOutput > 0) entry.max_completion_tokens = effective.maxOutput;
+        }
+      }
+    }
+    seenNames.add(combo.name);
+    entries.push(entry);
+  }
+  return entries;
+}
+
 /**
  * Build OpenAI-format models filtered by service kind. Built-in catalogs are a
  * fallback only when the DB is unavailable; a healthy DB exposes configured
@@ -518,12 +569,6 @@ function visibleComboMembers(combo, comboByName, hidePaidModels) {
  * `/api/providers/[id]/models` and does not contribute to public catalogs.
  */
 async function buildModelsListImpl(kindFilter, guard, options = {}) {
-  // Start the real aggregation FIRST so `getProviderConnections()` is called
-  // synchronously — required by the #6440 coalescing identity test, which holds
-  // the first in-flight promise open via mockReturnValueOnce and asserts it was
-  // called exactly once in this tick. Read the #6495/F-4 opt-in concurrently
-  // (fail-closed to off so a settings DB error never hides paid models).
-  const connectionsPromise = getProviderConnections();
   let settings = null;
   let hidePaidModels = false;
   let exposeComboOnly = false;
@@ -535,6 +580,15 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     hidePaidModels = false;
     exposeComboOnly = false;
   }
+
+  // Combo-only exposure is local state. Skip the provider aggregation entirely
+  // (no live network probes, no per-provider network) so picker calls do not
+  // amplify into upstream fetches.
+  if (exposeComboOnly) return buildComboOnlyModels(kindFilter, hidePaidModels);
+
+  // Settings decide whether provider aggregation is needed. Combo-only mode
+  // returns above without touching connections or live discovery.
+  const connectionsPromise = getProviderConnections();
 
   const isFreeNoAuthDisabled = (providerId) =>
   isFreeNoAuthProviderDisabled(providerId, settings);
@@ -558,21 +612,8 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
   const comboByName = Object.fromEntries(combos.map((combo) => [combo.name, combo.models || []]));
 
-  // decolua/9router#3429: combo-only exposure must return before direct model
-  // catalogs are read or probed. Preserve first occurrence order by combo ID.
-  if (exposeComboOnly) {
-    const seen = new Set();
-    const models = [];
-    for (const combo of combos) {
-      if (!comboMatchesKinds(combo, kindFilter) || seen.has(combo.name)) continue;
-      const visibleMembers = visibleComboMembers(combo, comboByName, hidePaidModels);
-      if (hidePaidModels && visibleMembers.length === 0) continue;
-      seen.add(combo.name);
-      models.push(comboToEntry(combo));
-    }
-    return models;
-  }
-
+  // decolua/9router#3429: combo-only exposure short-circuits above, so by the
+  // time we reach this point the caller wants the full direct+paid catalog.
   let customModels = [];
   try {
     customModels = await getCustomModels();
@@ -593,6 +634,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   } catch (e) {
     console.log("Could not fetch disabled models");
   }
+
   const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && (disabledByAlias[alias] ?? []).includes(modelId);
 
   const activeConnectionByProvider = new Map();
@@ -688,9 +730,13 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     map((m) => [`${aliasToProviderId[m.providerAlias] ?? m.providerAlias}/${m.id}`, m.capabilities])
   );
   // Capability aggregation accepts model IDs only; legacy members remain
-  // visibility evidence but cannot contribute capabilities.
+  // visibility evidence but cannot contribute capabilities. Preserve nested
+  // combo ceilings in the lookup so no outer combo expands an inner cap.
   const capabilityComboByName = Object.fromEntries(
-    Object.entries(comboByName).map(([name, members]) => [name, members.filter(isString)])
+    combos.map((combo) => [combo.name, {
+      models: Array.isArray(combo.models) ? combo.models.filter(isString) : [],
+      capabilities: isObject(combo.capabilities) ? combo.capabilities : null
+    }])
   );
 
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
@@ -706,22 +752,29 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     if (!entry.kind) {
       const comboCaps = aggregateComboCapabilities(visibleMembers.filter(isString), capabilityComboByName, aliasToProviderId, 0, customCapsById);
       if (comboCaps) {
-        entry.capabilities = comboCaps;
-        /**
-         * Expose the same proven flat token limits as individual LLM models.
-         * Combo aggregation already applies member-safe minima and resolves
-         * nested combos, static aliases, and custom connection prefixes.
-         */
-        if ((combo.kind ?? LLM_KIND) === LLM_KIND) {
-          attachModelLimits(entry, null, combo.name, {
-            ...comboCaps,
-            customKeys: new Set(["contextWindow", "maxOutput"])
-          });
+        const explicitCap = isObject(combo.capabilities) ? combo.capabilities : null;
+        const finalCaps = explicitCap ? overlayComboCapabilities(comboCaps, explicitCap) : comboCaps;
+        if (finalCaps) {
+          entry.capabilities = finalCaps;
+          /**
+           * Expose the same proven flat token limits as individual LLM models.
+           * Combo aggregation already applies member-safe minima and resolves
+           * nested combos, static aliases, and custom connection prefixes.
+           * The explicit operator cap is the member-safe-minimum overlay and
+           * never enables a capability the derivation would not already allow.
+           */
+          if ((combo.kind ?? LLM_KIND) === LLM_KIND) {
+            attachModelLimits(entry, null, combo.name, {
+              ...finalCaps,
+              customKeys: new Set(["contextWindow", "maxOutput"])
+            });
+          }
         }
       }
     }
     models.push(entry);
   }
+
 
   for (const customModel of customModels) {
     if (!customModel.id || (customModel.kind || customModel.type) && (customModel.kind || customModel.type) !== "llm") continue;
@@ -1112,10 +1165,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
  */
 export function buildModelsList(kindFilter, guard = getProviderValidationGuard(), options = {}) {
   // #6440: store the impl promise itself so concurrent same-kind callers get
-  // the SAME reference and the aggregation (whose first await is
-  // getProviderConnections) starts in this tick. #6495/F-4 hide-paid filtering
-  // is resolved inside the impl, so the flag does not affect the coalescing key
-  // and one shared build serves all concurrent same-kind callers consistently.
+  // the SAME reference. Map insertion happens synchronously before any caller
+  // can observe the async aggregation result. #6495/F-4 hide-paid filtering is
+  // resolved inside the impl, so one shared build serves all concurrent
+  // same-kind callers consistently.
   // #6966: guard mode and the internal exposure override affect behavior, so
   // both join the coalescing key. Public callers omit the override and retain
   // settings-driven /v1/models behavior.

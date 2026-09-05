@@ -6,10 +6,11 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select } from "@/shared/components";
+import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { filterActiveConnections } from "@/shared/utils/connectionStatus";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
-import { aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
+import { aggregateComboCapabilities, overlayComboCapabilities } from "open-sse/providers/capabilities.js";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
 
@@ -189,7 +190,10 @@ export default function CombosPage() {
       ) : (
         <div className="flex flex-col gap-4">
           {(() => {
-            const comboByName = Object.fromEntries(combos.map((c) => [c.name, c.models]));
+            const comboByName = Object.fromEntries(combos.map((combo) => [combo.name, {
+              models: Array.isArray(combo.models) ? combo.models : [],
+              capabilities: combo.capabilities || null
+            }]));
             return combos.map((combo) => (
               <ComboCard
                 key={combo.id}
@@ -265,7 +269,8 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
   const isFusion = current === "fusion";
-  const comboCaps = aggregateComboCapabilities(combo.models, comboByName);
+  const derivedCaps = aggregateComboCapabilities(combo.models, comboByName);
+  const comboCaps = overlayComboCapabilities(derivedCaps, combo.capabilities);
 
   return (
     <Card padding="sm" className="group">
@@ -285,7 +290,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                     <span>{model}</span>
                     <CapacityBadges caps={
                       comboByName[model]
-                        ? aggregateComboCapabilities(comboByName[model], comboByName)
+                        ? overlayComboCapabilities(aggregateComboCapabilities(comboByName[model].models, comboByName), comboByName[model].capabilities)
                         : getCaps?.(model)
                     } />
                   </code>
@@ -526,6 +531,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   const [models, setModels] = useState(combo?.models || []);
   const [weights, setWeights] = useState(() => Object.fromEntries((combo?.members || []).map((member) => [member.id, member.weight])));
   const [modelError, setModelError] = useState("");
+  const [capabilities, setCapabilities] = useState(combo?.capabilities || {});
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -562,8 +568,13 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   };
 
   useEffect(() => {
-    if (isOpen) fetchModalData();
-  }, [isOpen]);
+    if (!isOpen) return;
+    setName(combo?.name || "");
+    setModels(combo?.models || []);
+    setCapabilities(combo?.capabilities || {});
+    setNameError("");
+    fetchModalData();
+  }, [isOpen, combo]);
 
   const validateName = (value) => {
     if (!value.trim()) {
@@ -636,7 +647,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     const members = models.map((id) => ({ id, weight: Number(weights[id] ?? 1) }));
     if (members.some((member) => !Number.isFinite(member.weight) || member.weight <= 0)) return;
     setSaving(true);
-    await onSave({ name: name.trim(), models, members });
+    await onSave({ name: name.trim(), models, members, capabilities });
     setSaving(false);
   };
 
@@ -708,6 +719,29 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
               Add Model
             </button>
           </div>
+          <fieldset className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+            <legend className="px-1 text-sm font-medium">Capability ceiling</legend>
+            <p className="mb-2 text-[10px] text-text-muted">Optional. Only disables derived features or lowers derived limits; blank fields preserve member-derived capabilities.</p>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {["vision", "pdf", "audioInput", "videoInput", "imageOutput", "audioOutput", "search", "tools", "reasoning"].map((key) => (
+                <Checkbox
+                  key={key}
+                  checked={capabilities[key] === false}
+                  onChange={(checked) => setCapabilities((current) => {
+                    const next = { ...current };
+                    if (checked) next[key] = false; else delete next[key];
+                    return next;
+                  })}
+                  label={`Disable ${key}`}
+                  aria-label={`Disable ${key}`}
+                />
+              ))}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Input label="Context window" type="number" min="1" value={capabilities.contextWindow ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, contextWindow: event.target.value === "" ? undefined : Number(event.target.value) }))} />
+              <Input label="Max output" type="number" min="1" value={capabilities.maxOutput ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, maxOutput: event.target.value === "" ? undefined : Number(event.target.value) }))} />
+            </div>
+          </fieldset>
 
           {/* Actions */}
           <div className="flex flex-col gap-2 pt-1 sm:flex-row">

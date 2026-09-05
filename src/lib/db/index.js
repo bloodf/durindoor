@@ -22,6 +22,7 @@ import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/type
 import { mergeProviderSpecificData } from "./helpers/mergeProviderMetadata.js";
 import { validateComboInvariant } from "@/lib/combos/invariants.js";
 import { normalizeComboMembers } from "./repos/combosRepo.js";
+import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -365,7 +366,7 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         updatedAt: r.updatedAt || null
       })),
       quota: readQuotaPortableStateSync(db, { now: quotaNow }),
-      combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), invariant: r.invariant ? parseJson(r.invariant, null) : null, capabilities: r.capabilities ? parseJson(r.capabilities, null) : null, createdAt: r.createdAt, updatedAt: r.updatedAt })),
       modelAliases: {},
       customModels: [],
       mitmAlias: {},
@@ -504,8 +505,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     }
     for (const c of comboWrites) {
       db.run(
-        `INSERT OR REPLACE INTO combos(id, name, kind, models, members, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-        [c.id, c.name, c.kind || null, stringifyJson(c.models), stringifyJson(c.members), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
+        `INSERT OR REPLACE INTO combos(id, name, kind, models, members, invariant, capabilities, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [c.id, c.name, c.kind || null, stringifyJson(c.models), c.members == null ? null : stringifyJson(c.members), c.invariant ? stringifyJson(c.invariant) : null, c.capabilities ? stringifyJson(c.capabilities) : null, c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
       );
     }
     for (const [a, m] of Object.entries(payload.modelAliases || {})) {
@@ -619,7 +620,7 @@ export async function exportSelectiveDb(selection, { includeSecrets = false } = 
       if (includeSecrets) for (const field of SENSITIVE_CONNECTION_FIELDS) if (isEncryptedBlob(c[field])) c[field] = decryptField(c[field], row.id);
       return transferPublic(c, { includeSecrets });
     }) : [],
-    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map((row) => ({ id: row.id, name: row.name, kind: row.kind, models: parseJson(row.models, []), members: parseJson(row.members, null), invariant: parseJson(row.invariant, null), createdAt: row.createdAt, updatedAt: row.updatedAt })) : []
+    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map((row) => ({ id: row.id, name: row.name, kind: row.kind, models: parseJson(row.models, []), members: parseJson(row.members, null), invariant: parseJson(row.invariant, null), capabilities: parseJson(row.capabilities, null), createdAt: row.createdAt, updatedAt: row.updatedAt })) : []
   }));
 }
 
@@ -632,7 +633,7 @@ export async function getSelectiveTransferCatalog() {
 }
 
 const TRANSFER_COMBO_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/;
-const TRANSFER_COMBO_FIELDS = new Set(["id", "name", "kind", "models", "members", "invariant", "createdAt", "updatedAt"]);
+const TRANSFER_COMBO_FIELDS = new Set(["id", "name", "kind", "models", "members", "invariant", "capabilities", "createdAt", "updatedAt"]);
 
 function validateTransferCombo(row) {
   if (!isTransferObject(row)) throw new Error("Combo transfer row is invalid");
@@ -738,7 +739,7 @@ export async function importSelectiveDb(bundle, selection) {
     const id = comboIds.get(source.id);
     const name = comboNames.get(source.name);
     const models = combo.models.map((model) => isString(model) && comboNames.has(model) ? comboNames.get(model) : model);
-    const existingRow = db.get(`SELECT models, members, createdAt FROM combos WHERE id = ?`, [id]);
+    const existingRow = db.get(`SELECT models, members, capabilities, createdAt FROM combos WHERE id = ?`, [id]);
     const existingModels = existingRow ? parseJson(existingRow.models, []) : null;
     const preserveExistingMembers = !Object.hasOwn(source, "members") && existingRow && JSON.stringify(existingModels) === JSON.stringify(models);
     const remappedMembers = preserveExistingMembers ? parseJson(existingRow.members, null) : combo.members == null ? undefined : combo.members.map((member) => ({
@@ -747,9 +748,15 @@ export async function importSelectiveDb(bundle, selection) {
     }));
     const members = normalizeComboMembers(models, remappedMembers);
     validateComboInvariant({ ...combo, name, models, members, invariant: combo.invariant });
+    const normalizedCapabilities = normalizeComboCapabilities(combo.capabilities);
+    if (!normalizedCapabilities.ok) throw new Error(normalizedCapabilities.error);
+    const capabilities = Object.hasOwn(combo, "capabilities") ?
+    normalizedCapabilities.capabilities :
+    parseJson(existingRow?.capabilities, null);
     return {
       id, name, kind: combo.kind || null, models: stringifyJson(models), members: stringifyJson(members),
       invariant: combo.invariant ? stringifyJson(combo.invariant) : null,
+      capabilities: capabilities === null ? null : stringifyJson(capabilities),
       createdAt: existingRow?.createdAt || combo.createdAt || new Date().toISOString(),
       updatedAt: combo.updatedAt || new Date().toISOString(),
     };
@@ -767,9 +774,9 @@ export async function importSelectiveDb(bundle, selection) {
     }
     for (const w of comboWrites) {
       db.run(
-        `INSERT INTO combos(id, name, kind, models, members, invariant, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, models=excluded.models, members=excluded.members, invariant=excluded.invariant, updatedAt=excluded.updatedAt`,
-        [w.id, w.name, w.kind, w.models, w.members, w.invariant, w.createdAt, w.updatedAt]
+        `INSERT INTO combos(id, name, kind, models, members, invariant, capabilities, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, models=excluded.models, members=excluded.members, invariant=excluded.invariant, capabilities=excluded.capabilities, updatedAt=excluded.updatedAt`,
+        [w.id, w.name, w.kind, w.models, w.members, w.invariant, w.capabilities, w.createdAt, w.updatedAt]
       );
       imported.combos.push(w.id);
     }

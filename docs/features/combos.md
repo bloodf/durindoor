@@ -51,6 +51,18 @@ Fallback can occur when a model attempt fails because of provider errors, accoun
 
 Fallback should not hide invalid client requests. If the request body is malformed or incompatible with the endpoint itself, fixing the request is better than trying unrelated providers.
 
+## Capability Ceilings
+
+Each combo can carry an optional **Capability ceiling** in **Dashboard → Combos → Create/Edit Combo**. This is an operator safety bound over the capabilities DurinDoor derives from combo members. The public model list and dashboard show the effective result.
+
+- Missing fields inherit normal member-derived capabilities. An empty ceiling changes nothing.
+- **Disable** switches may only turn derived boolean capabilities off. Marking a capability enabled cannot make an unsupported member capable.
+- Positive integer **Context window** and **Max output** values only lower known member-derived limits. They never create a limit where member derivation has none.
+- Disabling reasoning clears its thinking metadata.
+- Nested combos retain their own ceiling when used as a member, so an outer combo cannot re-expand an inner combo's advertised capabilities.
+
+Send `capabilities` to `POST /api/combos` or `PUT /api/combos/{id}`. It accepts only known boolean capability keys and positive safe-integer `contextWindow`/`maxOutput` values; unknown keys and invalid values return HTTP 400. Send `null` to clear a saved ceiling.
+
 ## Attachment Capability Routing
 
 With capability-aware routing enabled, DurinDoor chooses a compatible combo member from media on the current user turn. Hermes/Ollama `messages[].images`, Vercel AI SDK `messages[].experimental_attachments` (or `attachments`), direct message image fields, and `data:` image, audio, video, or PDF URLs are recognized. Attachment MIME comes from `contentType`, `mediaType`, or the data URL; known non-media MIME types do not require vision, while attachments without resolvable MIME retain the vision fallback.

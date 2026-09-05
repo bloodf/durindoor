@@ -15,6 +15,7 @@ const db = vi.hoisted(() => ({
   getModelAliases: vi.fn(),
   getDisabledModels: vi.fn(),
   updateProviderCredentials: vi.fn(),
+  getSettings: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -26,6 +27,10 @@ vi.mock("@/lib/localDb", () => ({
 
 vi.mock("@/lib/disabledModelsDb", () => ({
   getDisabledModels: db.getDisabledModels,
+}));
+
+vi.mock("@/lib/db/repos/settingsRepo", () => ({
+  getSettings: db.getSettings,
 }));
 
 vi.mock("@/sse/services/tokenRefresh", () => ({
@@ -72,6 +77,7 @@ function stubEmptyDb() {
   db.getCustomModels.mockResolvedValue([]);
   db.getModelAliases.mockResolvedValue({});
   db.getDisabledModels.mockResolvedValue({});
+  db.getSettings.mockResolvedValue({});
 }
 
 beforeEach(() => {
@@ -351,38 +357,62 @@ describe("unavailableResponse 429 retry_after (#6523)", () => {
 // --- #6440 in-flight coalescing -------------------------------------------
 
 describe("buildModelsList coalescing (#6440)", () => {
-  it("shares one in-flight promise for concurrent identical filters, then clears", async () => {
+  it("shares one in-flight promise and catalog for identical filters, then rebuilds after resolution", async () => {
     const mod = await import("../../src/app/api/v1/models/buildModelsList.js");
-
-    // Hold the first in-flight promise open so the second call observes the
-    // pending map entry and reuses the SAME promise — not a new one.
     let release;
-    const gate = new Promise((resolve) => {
-      release = resolve;
+    let markStarted;
+    const started = new Promise((resolve) => { markStarted = resolve; });
+    const gate = new Promise((resolve) => { release = resolve; });
+    db.getProviderConnections.mockImplementationOnce(() => {
+      markStarted();
+      return gate;
     });
-    db.getProviderConnections.mockReturnValueOnce(gate.then(() => []));
 
-    const a = mod.buildModelsList(["llm"]);
-    const b = mod.buildModelsList(["llm"]);
-    expect(a).toBe(b); // same reference → coalesced while in-flight
-    expect(db.getProviderConnections).toHaveBeenCalledTimes(1); // one aggregation
+    const first = mod.buildModelsList(["llm"]);
+    const concurrent = mod.buildModelsList(["llm"]);
+    let fresh;
+    try {
+      await started;
+      expect(first).toBe(concurrent);
+      expect(db.getProviderConnections).toHaveBeenCalledTimes(1);
 
-    release();
-    await a;
+      release([]);
+      const firstCatalog = await first;
+      expect(await concurrent).toBe(firstCatalog);
 
-    // After resolution the key is cleared; a fresh call yields a new promise.
-    const c = mod.buildModelsList(["llm"]);
-    expect(c).not.toBe(a);
-    await c;
-    expect(db.getProviderConnections).toHaveBeenCalledTimes(2);
+      fresh = mod.buildModelsList(["llm"]);
+      expect(fresh).not.toBe(first);
+      await fresh;
+      expect(db.getProviderConnections).toHaveBeenCalledTimes(2);
+    } finally {
+      release([]);
+      await Promise.allSettled([first, concurrent, fresh].filter(Boolean));
+    }
   });
 
-  it("does not coalesce across different kind filters", async () => {
+  it("runs independent aggregations for different kind filters", async () => {
     const mod = await import("../../src/app/api/v1/models/buildModelsList.js");
+    let release;
+    let markBothStarted;
+    let startedCount = 0;
+    const bothStarted = new Promise((resolve) => { markBothStarted = resolve; });
+    const gate = new Promise((resolve) => { release = resolve; });
+    db.getProviderConnections.mockImplementation(() => {
+      startedCount += 1;
+      if (startedCount === 2) markBothStarted();
+      return gate;
+    });
+
     const llm = mod.buildModelsList(["llm"]);
-    const img = mod.buildModelsList(["image"]);
-    expect(llm).not.toBe(img);
-    await Promise.all([llm, img]);
+    const image = mod.buildModelsList(["image"]);
+    try {
+      await bothStarted;
+      expect(llm).not.toBe(image);
+      expect(db.getProviderConnections).toHaveBeenCalledTimes(2);
+    } finally {
+      release([]);
+      await Promise.allSettled([llm, image]);
+    }
   });
 });
 

@@ -36,7 +36,7 @@ import { stripThinkingSuffix } from "../translator/concerns/thinkingSuffix.js";
  * Safe floor — every resolved result is merged over this so consumers
  * never need null-checks. Most modern LLMs meet these limits.
  */
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export const DEFAULT_CAPABILITIES = {
   // input modalities
   vision: false, // read images
@@ -835,7 +835,8 @@ function minKnownLimit(caps, key) {
  * Conservative: contextWindow = min; maxOutput = min
  *
  * @param {string[]} comboModels
- * @param {Object|null} [comboLookup] optional map of combo name → models array for nested resolution
+ * @param {Object|null} [comboLookup] optional map of combo name → models array
+ *   or `{ models, capabilities }` for nested resolution with an operator cap.
  * @param {Object|null} [aliasToProviderId] optional map of model-list output alias
  *   (incl. custom connection prefixes like `mykr`) → provider id, so combo
  *   member ids keyed by a connection prefix resolve that provider's caps rows
@@ -846,10 +847,14 @@ function minKnownLimit(caps, key) {
 export function aggregateComboCapabilities(comboModels, comboLookup = null, aliasToProviderId = null, _depth = 0, customCapsById = null) {
   if (!comboModels?.length || _depth > 6) return null;
   const allCaps = comboModels.map((fullId) => {
-    // Nested combo: bare name (no slash) that exists in the lookup — recurse
+    // Nested combo: legacy arrays remain supported. Object values carry the
+    // nested combo's ceiling, preventing an outer combo from re-advertising a
+    // capability intentionally capped by an inner combo.
     if (!fullId.includes("/") && comboLookup?.[fullId]) {
-      return aggregateComboCapabilities(comboLookup[fullId], comboLookup, aliasToProviderId, _depth + 1, customCapsById) ??
-      getCapabilitiesForModel(null, fullId);
+      const nested = comboLookup[fullId];
+      const nestedModels = Array.isArray(nested) ? nested : Array.isArray(nested.models) ? nested.models : [];
+      const nestedCaps = aggregateComboCapabilities(nestedModels, comboLookup, aliasToProviderId, _depth + 1, customCapsById) ?? getCapabilitiesForModel(null, fullId);
+      return overlayComboCapabilities(nestedCaps, Array.isArray(nested) ? null : nested.capabilities);
     }
     const slash = fullId.indexOf("/");
     const provider = slash === -1 ? null : fullId.slice(0, slash);
@@ -893,6 +898,115 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
   };
   return sanitizeModelLimits(combined);
 }
+/**
+ * Apply an operator-declared capability ceiling to a member-derived cap set.
+ *
+ * Semantics: `derived ∩ operator_cap` (member-safe minimum).
+ *   • Boolean modality flags (vision, pdf, audioInput, videoInput,
+ *     imageOutput, audioOutput, search, tools, reasoning) may only be
+ *     disabled. A cap cannot enable a modality the derivation would not
+ *     already permit — the cap is an upper bound, not a lower one.
+ *   • Numeric limits (contextWindow, maxOutput) lower an already-derived
+ *     positive safe-integer limit only. Unknown derived limits remain unknown.
+ *     Omitted cap entries leave the derived limit untouched.
+ *   • Missing cap fields preserve the derived value, so an empty cap is
+ *     never an unintended disable.
+ *   • When a cap disables reasoning, thinking metadata is cleared. No thinking
+ *     metadata is configurable through this cap schema.
+ * The cap is `null`/non-object safe: no overlay, derived result returned.
+ * @param {object|null|undefined} derived
+ * @param {object|null|undefined} cap
+ * @returns {object|null}
+ */
+export function overlayComboCapabilities(derived, cap) {
+  if (!derived) return derived;
+  if (!cap || !isObject(cap) || Array.isArray(cap)) return derived;
+  const out = { ...derived };
+  const BOOLEAN_KEYS = [
+    "vision",
+    "pdf",
+    "audioInput",
+    "videoInput",
+    "imageOutput",
+    "audioOutput",
+    "search",
+    "tools",
+    "reasoning"
+  ];
+  for (const key of BOOLEAN_KEYS) {
+    if (key in cap) out[key] = derived[key] === true && cap[key] === true;
+  }
+  if ("contextWindow" in cap) {
+    const capValue = cap.contextWindow;
+    const derivedValue = derived.contextWindow;
+    if (Number.isSafeInteger(capValue) && capValue > 0 && Number.isSafeInteger(derivedValue) && derivedValue > 0) {
+      out.contextWindow = Math.min(derivedValue, capValue);
+    }
+  }
+  if ("maxOutput" in cap) {
+    const capValue = cap.maxOutput;
+    const derivedValue = derived.maxOutput;
+    if (Number.isSafeInteger(capValue) && capValue > 0 && Number.isSafeInteger(derivedValue) && derivedValue > 0) {
+      out.maxOutput = Math.min(derivedValue, capValue);
+    }
+  }
+  if (out.reasoning === false) {
+    out.thinkingFormat = null;
+    out.thinkingCanDisable = true;
+    out.thinkingRange = null;
+  }
+  return sanitizeModelLimits(out);
+}
+
+const ALLOWED_CAPABILITY_KEYS = new Set([
+  "vision",
+  "pdf",
+  "audioInput",
+  "videoInput",
+  "imageOutput",
+  "audioOutput",
+  "search",
+  "tools",
+  "reasoning",
+  "contextWindow",
+  "maxOutput"
+]);
+
+/**
+ * Validate an operator-declared combo capability ceiling. Rejects unknown
+ * keys, non-booleans, and non-positive safe-integer numeric limits. `null`
+ * clears a persisted cap; `{}` stores an intentionally empty cap with no
+ * effective change.
+ * @param {unknown} input
+ * @returns {{ ok: true, capabilities: object|null } | { ok: false, error: string }}
+ */
+export function normalizeComboCapabilities(input) {
+  if (input === null || input === undefined) return { ok: true, capabilities: null };
+  if (!input || !isObject(input) || Array.isArray(input)) {
+    return { ok: false, error: "capabilities must be an object or null" };
+  }
+  const out = {};
+  for (const key of Object.keys(input)) {
+    if (!ALLOWED_CAPABILITY_KEYS.has(key)) {
+      return { ok: false, error: `unknown capability key: ${key}` };
+    }
+  }
+  for (const key of ALLOWED_CAPABILITY_KEYS) {
+    if (!(key in input)) continue;
+    const value = input[key];
+    if (key === "contextWindow" || key === "maxOutput") {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        return { ok: false, error: `${key} must be a positive integer` };
+      }
+    } else if (!isBoolean(value)) {
+      return { ok: false, error: `${key} must be a boolean` };
+    }
+    out[key] = value;
+  }
+  return { ok: true, capabilities: out };
+}
+
+
 
 /** Omit structurally impossible output ceilings while preserving source metadata. */
 function sanitizeModelLimits(caps) {

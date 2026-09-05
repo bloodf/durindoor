@@ -66,7 +66,7 @@ export default function ModelSelectModal({
       return kinds.includes(kindFilter);
     });
   }, [activeProviders, kindFilter]);
-  const { getCaps } = useModelCaps();
+  const { getCaps } = useModelCaps(isOpen);
   const [searchQuery, setSearchQuery] = useState("");
   const [combos, setCombos] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
@@ -675,6 +675,7 @@ export default function ModelSelectModal({
                   <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
                   }
                     {combo.name}
+                    <CapacityBadges caps={getCaps(combo.name)} />
                   </button>);
 
             })}

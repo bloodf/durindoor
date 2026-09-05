@@ -37,7 +37,7 @@ vi.mock("open-sse/services/combo.js", () => ({
   resetComboScoring: mocks.resetComboScoring,
 }));
 
-import { POST } from "../../src/app/api/combos/route.js";
+import { GET, POST } from "../../src/app/api/combos/route.js";
 import { PUT } from "../../src/app/api/combos/[id]/route.js";
 
 const URL = "http://localhost/api/combos";
@@ -119,6 +119,53 @@ describe("combo member validation — POST/PUT 400 mapping", () => {
     const res = await PUT(jsonRequest(`${URL}/c1`, { models: ["p/a", "p/b"], members: [{ id: "p/a", weight: 1 }] }, "PUT"), params("c1"));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/match models/);
+  });
+});
+
+describe("combo capability ceiling API boundary", () => {
+  it("POST persists a valid capability ceiling and returns it", async () => {
+    mocks.getComboByName.mockResolvedValue(null);
+    mocks.createCombo.mockImplementation(async (combo) => ({ id: "c1", ...combo }));
+    const res = await POST(jsonRequest(URL, {
+      name: "bounded",
+      models: ["opencode-go/mimo-v2.5"],
+      capabilities: { vision: false, contextWindow: 100000 },
+    }, "POST"));
+    expect(res.status).toBe(201);
+    expect(mocks.createCombo).toHaveBeenCalledWith(expect.objectContaining({
+      capabilities: { vision: false, contextWindow: 100000 },
+    }));
+    expect((await res.json()).capabilities).toEqual({ vision: false, contextWindow: 100000 });
+  });
+
+  it("POST leaves capabilities null when the field is omitted", async () => {
+    mocks.getComboByName.mockResolvedValue(null);
+    mocks.createCombo.mockImplementation(async (combo) => ({ id: "c1", ...combo }));
+    const res = await POST(jsonRequest(URL, { name: "derived" }, "POST"));
+    expect(res.status).toBe(201);
+    expect(mocks.createCombo).toHaveBeenCalledWith(expect.objectContaining({ capabilities: null }));
+  });
+
+  it("PUT rejects invalid capability values before persisting", async () => {
+    const res = await PUT(jsonRequest(`${URL}/c1`, { capabilities: { vision: "yes" } }, "PUT"), params("c1"));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "vision must be a boolean" });
+    expect(mocks.updateCombo).not.toHaveBeenCalled();
+  });
+
+  it("GET reload reflects the persisted capability ceiling after PUT", async () => {
+    mocks.getComboByName.mockResolvedValue(null);
+    mocks.getComboById.mockResolvedValue({ id: "c1", name: "bounded", capabilities: null });
+    mocks.updateCombo.mockResolvedValue({ id: "c1", name: "bounded", capabilities: { vision: false } });
+    const putRes = await PUT(jsonRequest(`${URL}/c1`, { capabilities: { vision: false } }, "PUT"), params("c1"));
+    expect(putRes.status).toBe(200);
+    expect((await putRes.json()).capabilities).toEqual({ vision: false });
+    expect(mocks.updateCombo).toHaveBeenCalledWith("c1", { capabilities: { vision: false } });
+
+    mocks.getCombos.mockResolvedValue([{ id: "c1", name: "bounded", capabilities: { vision: false } }]);
+    const getRes = await GET();
+    expect(getRes.status).toBe(200);
+    expect((await getRes.json()).combos).toEqual([{ id: "c1", name: "bounded", capabilities: { vision: false } }]);
   });
 });
 

@@ -5,6 +5,7 @@ import Modal from "./Modal";
 import Input from "./Input";
 import Button from "./Button";
 import ModelSelectModal from "./ModelSelectModal";
+import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
@@ -57,6 +58,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
     : "";
   const [name, setName] = useState(initialName);
   const [models, setModels] = useState(combo?.models || []);
+  const [capabilities, setCapabilities] = useState(combo?.capabilities || {});
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -64,9 +66,13 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
 
   useEffect(() => {
     if (!isOpen) return;
+    const nextName = combo?.name ? (forcePrefix && combo.name.startsWith(forcePrefix) ? combo.name.slice(forcePrefix.length) : combo.name) : "";
+    setName(nextName);
+    setModels(combo?.models || []);
+    setCapabilities(combo?.capabilities || {});
+    setNameError("");
     fetch("/api/models/alias").then((r) => r.ok ? r.json() : null).then((d) => d && setModelAliases(d.aliases || {})).catch(() => {});
-  }, [isOpen]);
-
+  }, [isOpen, combo, forcePrefix]);
   const validateName = (value) => {
     if (!value.trim()) { setNameError("Name is required"); return false; }
     const full = forcePrefix + value;
@@ -102,7 +108,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   const handleSave = async () => {
     if (!validateName(name)) return;
     setSaving(true);
-    await onSave({ name: forcePrefix + name.trim(), models });
+    await onSave({ name: forcePrefix + name.trim(), models, capabilities });
     setSaving(false);
   };
 
@@ -156,6 +162,29 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
               Add Model
             </button>
           </div>
+          <fieldset className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+            <legend className="px-1 text-sm font-medium">Capability ceiling</legend>
+            <p className="mb-2 text-[10px] text-text-muted">Optional. Only disables derived features or lowers derived limits; blank fields preserve member-derived capabilities.</p>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {["vision", "pdf", "audioInput", "videoInput", "imageOutput", "audioOutput", "search", "tools", "reasoning"].map((key) => (
+                <Checkbox
+                  key={key}
+                  checked={capabilities[key] === false}
+                  onChange={(checked) => setCapabilities((current) => {
+                    const next = { ...current };
+                    if (checked) next[key] = false; else delete next[key];
+                    return next;
+                  })}
+                  label={`Disable ${key}`}
+                  aria-label={`Disable ${key}`}
+                />
+              ))}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Input label="Context window" type="number" min="1" value={capabilities.contextWindow ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, contextWindow: event.target.value === "" ? undefined : Number(event.target.value) }))} />
+              <Input label="Max output" type="number" min="1" value={capabilities.maxOutput ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, maxOutput: event.target.value === "" ? undefined : Number(event.target.value) }))} />
+            </div>
+          </fieldset>
 
           <div className="flex flex-col gap-2 pt-1 sm:flex-row">
             <Button onClick={onClose} variant="ghost" fullWidth size="sm">Cancel</Button>

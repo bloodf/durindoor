@@ -136,6 +136,50 @@ describe("Antigravity executor", () => {
     expect(system).not.toContain(ANTIGRAVITY_DEFAULT_SYSTEM);
     expect(system).not.toContain("Please ignore the following [ignore]");
   });
+  const expectValidContents = (contents) => {
+    expect(contents.length).toBeGreaterThan(0);
+    for (const content of contents) {
+      expect(content.parts.length).toBeGreaterThan(0);
+      for (const part of content.parts) {
+        if ("text" in part) expect(part.text.trim()).not.toBe("");
+      }
+    }
+    for (let index = 1; index < contents.length; index++) {
+      expect(contents[index].role).not.toBe(contents[index - 1].role);
+    }
+  };
+
+  it("omits blank parts from reasoning-only assistant turns", () => {
+    const request = openaiToAntigravityRequest("gemini-3.7-flash-high", {
+      messages: [
+        { role: "user", content: "Step 1" },
+        { role: "assistant", reasoning_content: "I am thinking", content: "" },
+        { role: "user", content: "Continue" },
+      ],
+    }, true, { projectId: "project-1", connectionId: "conn-1" });
+
+    const out = new AntigravityExecutor().transformRequest("gemini-3.7-flash-high", request, true, { projectId: "project-1", connectionId: "conn-1" });
+    expectValidContents(out.request.contents);
+  });
+
+  it("omits blank parts throughout tool-call and tool-response history", () => {
+    const request = openaiToAntigravityRequest("gemini-3.7-flash-high", {
+      messages: [
+        { role: "user", content: "Calculate" },
+        {
+          role: "assistant",
+          reasoning_content: "Calling tool",
+          content: "   ",
+          tool_calls: [{ id: "call_1", type: "function", function: { name: "calc", arguments: "{}" } }],
+        },
+        { role: "tool", tool_call_id: "call_1", content: "{\"result\":42}" },
+        { role: "user", content: "Continue" },
+      ],
+    }, true, { projectId: "project-1", connectionId: "conn-1" });
+
+    const out = new AntigravityExecutor().transformRequest("gemini-3.7-flash-high", request, true, { projectId: "project-1", connectionId: "conn-1" });
+    expectValidContents(out.request.contents);
+  });
 });
 
 

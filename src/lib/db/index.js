@@ -18,7 +18,9 @@ import { readQuotaPortableStateSync, writeQuotaPortableStateSync } from "./repos
 import { assertNoActiveQuotaReservationsSync } from "./repos/quotaReservationsRepo.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "./repos/connectionsRepo.js";
 import { isEncryptedBlob, decryptField, encryptField } from "../crypto/columnCrypto.js";
-import { isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
+import { mergeProviderSpecificData } from "./helpers/mergeProviderMetadata.js";
+import { validateComboInvariant } from "@/lib/combos/invariants.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -465,6 +467,267 @@ export async function importDb(payload, { now = Date.now() } = {}) {
   });
 
   return await exportDb({ now: quotaNow });
+}
+const TRANSFER_CONNECTION_FIELDS = new Set([
+  "id", "provider", "authType", "name", "email", "priority", "isActive", "createdAt", "updatedAt",
+  "displayName", "globalPriority", "defaultModel", "testStatus", "lastError", "lastErrorAt", "errorCode",
+  "expiresAt", "lastUsedAt", "consecutiveUseCount", "providerSpecificData", ...SENSITIVE_CONNECTION_FIELDS
+]);
+const TRANSFER_SAFE_PSD_FIELDS = new Set([
+  "baseUrl", "azureEndpoint", "deployment", "apiVersion", "accountId", "region", "projectId", "resourceUrl",
+  "proxyPoolId", "cx", "connectionProxyEnabled", "connectionNoProxy", "githubLogin", "githubName", "githubEmail",
+  "githubUserId", "username", "firstName", "lastName", "authMethod", "authKind", "profileArn",
+  "codexFingerprintMode", "openaiStoreEnabled", "copilotTokenExpiresAt"
+]);
+const TRANSFER_BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const TRANSFER_SECRET_LIKE_KEYS = new Set([
+  "accessToken", "refreshToken", "apiKey", "idToken", "firecrawlHeaders",
+  "refresh_token", "proxyPassword", "proxyUrl", "password", "secret", "clientSecret", "copilotToken", "cookie", "authorization"
+]);
+
+function isTransferObject(value) {
+  return value && isObject(value) && !Array.isArray(value) &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+}
+
+function isTransferScalar(value) {
+  return value === null || isString(value) || isNumber(value) || isBoolean(value);
+}
+
+function transferSafeUrl(value) {
+  if (!isString(value) || !value) return value;
+  let parsed;
+  try { parsed = new URL(value); } catch { return value; }
+  return parsed.username || parsed.password ? null : value;
+}
+
+function transferPublic(connection, { includeSecrets = false } = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(connection)) {
+    if (!TRANSFER_CONNECTION_FIELDS.has(key) || TRANSFER_BLOCKED_KEYS.has(key)) continue;
+    if (key === "providerSpecificData") {
+      if (!isTransferObject(value)) continue;
+      const psd = {};
+      for (const [psdKey, psdValue] of Object.entries(value)) {
+        // PSD has no at-rest crypto. Explicit exports therefore include only
+        // top-level SENSITIVE_CONNECTION_FIELDS, which import encrypts.
+        if (!TRANSFER_SAFE_PSD_FIELDS.has(psdKey) || TRANSFER_BLOCKED_KEYS.has(psdKey) || TRANSFER_SECRET_LIKE_KEYS.has(psdKey) || !isTransferScalar(psdValue)) continue;
+        const safe = transferSafeUrl(psdValue);
+        if (safe !== null) psd[psdKey] = safe;
+      }
+      out[key] = psd;
+    } else if (includeSecrets || !SENSITIVE_CONNECTION_FIELDS.includes(key)) {
+      const safe = transferSafeUrl(value);
+      if (safe !== null) out[key] = safe;
+    }
+  }
+  return out;
+}
+
+function validateTransferProvider(row) {
+  if (!isTransferObject(row)) throw new Error("Provider transfer row is invalid");
+  for (const key of Object.keys(row)) {
+    if (TRANSFER_BLOCKED_KEYS.has(key) || !TRANSFER_CONNECTION_FIELDS.has(key)) throw new Error(`Provider transfer row has unsupported field: ${key}`);
+  }
+  if (!isString(row.provider) || !isString(row.authType)) throw new Error("Provider transfer row is incomplete");
+  if (Object.hasOwn(row, "providerSpecificData")) {
+    if (!isTransferObject(row.providerSpecificData)) throw new Error("Provider transfer providerSpecificData must be an object");
+    for (const [key, value] of Object.entries(row.providerSpecificData)) {
+      if (TRANSFER_BLOCKED_KEYS.has(key) || TRANSFER_SECRET_LIKE_KEYS.has(key) || !TRANSFER_SAFE_PSD_FIELDS.has(key) || !isTransferScalar(value) || transferSafeUrl(value) === null) throw new Error(`Provider transfer providerSpecificData has unsupported field: ${key}`);
+    }
+  }
+}
+
+function validateTransferSelection(selection) {
+  if (!selection || !isObject(selection) || Array.isArray(selection)) throw new Error("Transfer selection is required");
+  const ids = (key) => {
+    const value = selection[key] ?? [];
+    if (!Array.isArray(value) || value.some((id) => !isString(id) || !id.trim()) || new Set(value).size !== value.length) {
+      throw new Error(`Transfer ${key} must be unique non-empty IDs`);
+    }
+    return value;
+  };
+  return { providers: ids("providers"), combos: ids("combos") };
+}
+
+/** Build a scoped portable bundle. Secrets require explicit route-level acknowledgement. */
+export async function exportSelectiveDb(selection, { includeSecrets = false } = {}) {
+  const { providers, combos } = validateTransferSelection(selection);
+  const db = await getAdapter();
+  return db.transaction(() => ({
+    format: "durindoor-selective-transfer",
+    version: 1,
+    providerConnections: providers.length ? db.all(`SELECT * FROM providerConnections WHERE id IN (${providers.map(() => "?").join(",")})`, providers).map((row) => {
+      const c = { ...parseJson(row.data, {}), id: row.id, provider: row.provider, authType: row.authType, name: row.name, email: row.email, priority: row.priority, isActive: row.isActive === 1, createdAt: row.createdAt, updatedAt: row.updatedAt };
+      if (includeSecrets) for (const field of SENSITIVE_CONNECTION_FIELDS) if (isEncryptedBlob(c[field])) c[field] = decryptField(c[field], row.id);
+      return transferPublic(c, { includeSecrets });
+    }) : [],
+    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map((row) => ({ id: row.id, name: row.name, kind: row.kind, models: parseJson(row.models, []), invariant: parseJson(row.invariant, null), createdAt: row.createdAt, updatedAt: row.updatedAt })) : []
+  }));
+}
+
+export async function getSelectiveTransferCatalog() {
+  const db = await getAdapter();
+  return db.transaction(() => ({
+    providers: db.all(`SELECT id, provider, name FROM providerConnections ORDER BY provider, name, id`).map((row) => ({ id: row.id, name: row.name || row.provider })),
+    combos: db.all(`SELECT id, name FROM combos ORDER BY name, id`)
+  }));
+}
+
+const TRANSFER_COMBO_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/;
+
+/** Validate complete bundle before one transaction; no-secret input preserves local credentials. */
+export async function importSelectiveDb(bundle, selection) {
+  const effectiveSelection = selection ?? {
+    providers: Array.isArray(bundle?.providerConnections) ? bundle.providerConnections.map((row) => row?.id).filter(Boolean) : [],
+    combos: Array.isArray(bundle?.combos) ? bundle.combos.map((row) => row?.id).filter(Boolean) : [],
+  };
+  if (!bundle || !isObject(bundle) || Array.isArray(bundle) || bundle.format !== "durindoor-selective-transfer" || bundle.version !== 1 || !Array.isArray(bundle.providerConnections) || !Array.isArray(bundle.combos)) throw new Error("Invalid selective transfer bundle");
+  const selected = validateTransferSelection(effectiveSelection);
+  const providerRows = bundle.providerConnections.filter((row) => selected.providers.includes(row?.id));
+  const comboRows = bundle.combos.filter((row) => selected.combos.includes(row?.id));
+  if (providerRows.length !== selected.providers.length || comboRows.length !== selected.combos.length) throw new Error("Transfer bundle does not contain every selected row");
+  for (const row of [...providerRows, ...comboRows]) if (!row || !isObject(row) || !isString(row.id) || !row.id) throw new Error("Transfer row has invalid ID");
+  if (new Set(providerRows.map((row) => row.id)).size !== providerRows.length || new Set(comboRows.map((row) => row.id)).size !== comboRows.length) throw new Error("Transfer bundle has duplicate IDs");
+  for (const row of providerRows) validateTransferProvider(row);
+  for (const row of comboRows) if (!isString(row.name) || !TRANSFER_COMBO_NAME_REGEX.test(row.name) || !Array.isArray(row.models)) throw new Error("Combo transfer row is incomplete or has an invalid name");
+  if (new Set(comboRows.map((row) => row.name.toLowerCase())).size !== comboRows.length) throw new Error("Transfer bundle has duplicate combo names");
+  const db = await getAdapter();
+
+  // ---- Projection phase: all reads, remapping, and validation happen
+  // before any write. A throw here leaves the database untouched. ----
+  const usedNames = new Set(db.all(`SELECT name FROM combos`).map((row) => row.name.toLowerCase()));
+  const comboNames = new Map();
+  const comboIds = new Map();
+  for (const row of comboRows) {
+    const existing = db.get(`SELECT id, name FROM combos WHERE id = ?`, [row.id]);
+    let name = row.name;
+    if (usedNames.has(name.toLowerCase()) && !(existing && existing.name.toLowerCase() === name.toLowerCase())) {
+      const suffixed = `${name}.imported-${row.id.slice(0, 8)}`;
+      if (!TRANSFER_COMBO_NAME_REGEX.test(suffixed) || usedNames.has(suffixed.toLowerCase())) {
+        throw new Error(`Transfer combo name "${row.name}" collides with an existing combo and cannot be remapped`);
+      }
+      name = suffixed;
+    }
+    usedNames.add(name.toLowerCase());
+    comboIds.set(row.id, row.id);
+    comboNames.set(row.name, name);
+  }
+  // A provider/combo row whose ID already exists locally is a same-instance
+  // re-import: merge into the existing row (credential-preserving) instead
+  // of cloning. Only a genuine ID COLLISION between two otherwise-unrelated
+  // connections would need a fresh identity, and the fork's IDs are UUIDs,
+  // so that case does not arise from real transfers.
+  const remap = (value) => {
+    if (Array.isArray(value)) return value.map(remap);
+    if (!isTransferObject(value)) return value;
+    const out = {};
+    for (const [key, item] of Object.entries(value)) if (!TRANSFER_BLOCKED_KEYS.has(key)) out[key] = remap(item);
+    if (out.kind === "combo-ref" && isString(out.model) && comboNames.has(out.model)) {
+      out.model = comboNames.get(out.model);
+    }
+    if (isString(out.comboId) && comboIds.has(out.comboId)) out.comboId = comboIds.get(out.comboId);
+    if (isString(out.comboName) && comboNames.has(out.comboName)) out.comboName = comboNames.get(out.comboName);
+    return out;
+  };
+
+  const providerWrites = providerRows.map((incoming) => {
+    const id = incoming.id;
+    const existingRow = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
+    const existingData = existingRow ? parseJson(existingRow.data, {}) : {};
+    const { id: _id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...incomingData } = remap(incoming);
+    const data = {
+      ...incomingData,
+      // Secret-free exports include only safe PSD metadata. Merge it via
+      // the shared helper so nested OAuth/API credentials and arbitrary
+      // unknown PSD sub-objects survive an import that did not carry them.
+      providerSpecificData: mergeProviderSpecificData(existingData.providerSpecificData, incomingData.providerSpecificData),
+    };
+    for (const field of SENSITIVE_CONNECTION_FIELDS) {
+      if (!Object.hasOwn(data, field)) {
+        if (Object.hasOwn(existingData, field)) data[field] = existingData[field];
+        continue;
+      }
+      const value = data[field];
+      // A bundle-supplied credential is always plaintext explicit-secret
+      // export data; an encrypted blob here can only be a cross-DATA_DIR
+      // ciphertext whose AAD (source row id) no longer matches, so it must
+      // be rejected rather than persisted as unreadable garbage.
+      if (isEncryptedBlob(value)) throw new Error(`Transfer field "${field}" must not contain an encrypted credential blob`);
+      if (isString(value) && value) data[field] = encryptField(value, id);
+      else delete data[field];
+    }
+    return {
+      id, provider, authType, name: name || null, email: email || null, priority: priority || null,
+      isActive: isActive === false ? 0 : 1, data: stringifyJson(data),
+      createdAt: existingRow?.createdAt || createdAt || new Date().toISOString(),
+      updatedAt: updatedAt || new Date().toISOString(),
+    };
+  });
+
+  const comboWrites = comboRows.map((source) => {
+    const combo = remap(source);
+    const id = comboIds.get(source.id);
+    const name = comboNames.get(source.name);
+    validateComboInvariant({ ...combo, name, invariant: combo.invariant });
+    const existingRow = db.get(`SELECT createdAt FROM combos WHERE id = ?`, [id]);
+    return {
+      id, name, kind: combo.kind || null, models: stringifyJson(combo.models),
+      invariant: combo.invariant ? stringifyJson(combo.invariant) : null,
+      createdAt: existingRow?.createdAt || combo.createdAt || new Date().toISOString(),
+      updatedAt: combo.updatedAt || new Date().toISOString(),
+    };
+  });
+
+  const imported = { providers: [], combos: [] };
+  db.transaction(() => {
+    for (const w of providerWrites) {
+      db.run(
+        `INSERT INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET provider=excluded.provider, authType=excluded.authType, name=excluded.name, email=excluded.email, priority=excluded.priority, isActive=excluded.isActive, data=excluded.data, updatedAt=excluded.updatedAt`,
+        [w.id, w.provider, w.authType, w.name, w.email, w.priority, w.isActive, w.data, w.createdAt, w.updatedAt]
+      );
+      imported.providers.push(w.id);
+    }
+    for (const w of comboWrites) {
+      db.run(
+        `INSERT INTO combos(id, name, kind, models, invariant, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, models=excluded.models, invariant=excluded.invariant, updatedAt=excluded.updatedAt`,
+        [w.id, w.name, w.kind, w.models, w.invariant, w.createdAt, w.updatedAt]
+      );
+      imported.combos.push(w.id);
+    }
+  });
+  return { imported };
+}
+
+/** Dry-run an import bundle: validate and project per-row conflicts without writing. */
+export async function previewSelectiveImport(bundle, selection) {
+  if (!bundle || !isObject(bundle) || Array.isArray(bundle) || bundle.format !== "durindoor-selective-transfer" || bundle.version !== 1 || !Array.isArray(bundle.providerConnections) || !Array.isArray(bundle.combos)) throw new Error("Invalid selective transfer bundle");
+  const selected = validateTransferSelection(selection ?? {
+    providers: bundle.providerConnections.map((row) => row?.id).filter(Boolean),
+    combos: bundle.combos.map((row) => row?.id).filter(Boolean),
+  });
+  const providerRows = bundle.providerConnections.filter((row) => selected.providers.includes(row?.id));
+  const comboRows = bundle.combos.filter((row) => selected.combos.includes(row?.id));
+  if (providerRows.length !== selected.providers.length || comboRows.length !== selected.combos.length) throw new Error("Transfer bundle does not contain every selected row");
+  for (const row of [...providerRows, ...comboRows]) if (!row || !isObject(row) || !isString(row.id) || !row.id) throw new Error("Transfer row has invalid ID");
+  for (const row of providerRows) validateTransferProvider(row);
+  for (const row of comboRows) if (!isString(row.name) || !TRANSFER_COMBO_NAME_REGEX.test(row.name) || !Array.isArray(row.models)) throw new Error("Combo transfer row is incomplete or has an invalid name");
+  const db = await getAdapter();
+  const providerConnections = providerRows.map((row) => {
+    const existing = db.get(`SELECT id, provider, name FROM providerConnections WHERE id = ?`, [row.id]);
+    return existing ? { id: row.id, action: "merge", currentName: existing.name, currentProvider: existing.provider, willKeepOmittedSecrets: true } : { id: row.id, action: "insert" };
+  });
+  const usedNames = new Set(db.all(`SELECT name FROM combos`).map((row) => row.name.toLowerCase()));
+  const combos = comboRows.map((row) => {
+    const existing = db.get(`SELECT id, name FROM combos WHERE id = ?`, [row.id]);
+    if (existing) return { id: row.id, action: "merge", currentName: existing.name };
+    const finalName = usedNames.has(row.name.toLowerCase()) ? `${row.name}.imported-${row.id.slice(0, 8)}` : row.name;
+    if (!TRANSFER_COMBO_NAME_REGEX.test(finalName)) throw new Error("Transfer combo name cannot be remapped");
+    return finalName === row.name ? { id: row.id, action: "insert", finalName } : { id: row.id, action: "rename", sourceName: row.name, finalName };
+  });
+  return { providerConnections, combos, secretsIncluded: false };
 }
 
 // Eager init helper (optional)

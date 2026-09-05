@@ -5,6 +5,8 @@ import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { hasValidCliToken, hasValidToken } from "@/dashboardGuard";
 import { DATABASE_IMPORT_MAX_BYTES } from "@/shared/constants/quota";
+export { DATABASE_IMPORT_MAX_BYTES };
+
 
 const PASSWORD_HEADER = "x-9r-password";
 

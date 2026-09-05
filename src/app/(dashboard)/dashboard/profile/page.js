@@ -10,6 +10,7 @@ import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
 import { isBrowser, isUndefined } from "../../../../shared/utils/typeChecks.js";
+import SelectiveTransferPanel from "./SelectiveTransferPanel";
 
 function getLocaleFromCookie() {
   if (isUndefined(globalThis.document)) return "en";
@@ -789,6 +790,7 @@ export default function ProfilePage() {
               </p>
             }
           </div>
+            <SelectiveTransferPanel />
         </Card>
 
         {/* Language */}

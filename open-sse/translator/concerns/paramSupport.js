@@ -1,4 +1,5 @@
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { isOpenCodeZenBaseUrl } from "../../providers/shared.js";
 
 // Strip request params a given provider/model rejects upstream (e.g. HTTP 400).
 // Config-driven: add a rule instead of scattering `delete body.x` across executors.
@@ -80,9 +81,20 @@ export function stripUnsupportedChatExtensions(body, transport, defaultTransport
  * `decolua/9router#3186` RegExp selector integration stays load-bearing in tests.
  * DurinDoor adds no compatible-provider reasoning rule because fork #2800 forces
  * `reasoning_effort` for `openai-compatible-*`.
+ *
+ * A custom OpenAI-compatible Muse request strips token caps only when its
+ * configured base URL exactly identifies OpenCode Zen. Luna remains unchanged:
+ * its Responses endpoint has no independently verified fork contract.
  */
-export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES) {
+export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES, credentials = null) {
   if (!model || !body || !isObject(body)) return body;
+  if (
+  provider?.startsWith?.("openai-compatible-") &&
+  /muse/i.test(model) &&
+  isOpenCodeZenBaseUrl(credentials?.providerSpecificData?.baseUrl))
+  {
+    for (const key of ["max_tokens", "max_completion_tokens", "max_output_tokens"]) delete body[key];
+  }
   for (const rule of rules) {
     if (rule.provider && !matchesProvider(rule.provider, provider)) continue;
     if (!matches(rule, model)) continue;

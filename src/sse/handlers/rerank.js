@@ -1,6 +1,7 @@
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
+  getNoAuthProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
   resolveClientApiKey,
@@ -50,12 +51,12 @@ async function handleRerankHandler(request) {
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelRerank(m, body, request, apiKey),
+    (m) => handleSingleModelRerank(m, body, request, apiKey, apiKeyAuth.apiKeyId),
     log
   );
 }
 
-async function handleSingleModelRerank(modelStr, body, request, apiKey) {
+async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     log.warn("RERANK", "Invalid model format", { model: modelStr });
@@ -75,8 +76,18 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey) {
   const { getExecutor } = await import("open-sse/executors/index.js");
   const executor = getExecutor(provider);
   if (executor?.noAuth) {
+    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId });
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+      }
+      return errorResponse(
+        credentials?.allRateLimited ? Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE : HTTP_STATUS.BAD_REQUEST,
+        credentials?.lastError || `No credentials for provider: ${provider}`,
+      );
+    }
     const result = toCoreResult(
-      await handleRerankCore({ body, modelInfo: { provider, model }, credentials: {}, log }),
+      await handleRerankCore({ body, modelInfo: { provider, model }, credentials, log }),
       "Rerank failed",
     );
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
@@ -88,7 +99,7 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

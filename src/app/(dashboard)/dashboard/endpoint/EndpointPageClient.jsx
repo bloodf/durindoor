@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
+import Select from "@/shared/ui/components/Select";
+import DataTable from "@/shared/ui/components/DataTable";
+import Field from "@/shared/ui/components/Field";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   TUNNEL_BENEFITS,
@@ -38,6 +41,7 @@ import { isBrowser } from "../../../../shared/utils/typeChecks.js";
 
 export default function APIPageClient({ machineId, localPort = 20128 }) {
   const [keys, setKeys] = useState([]);
+  const [providerConnections, setProviderConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
@@ -53,6 +57,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
   const [policyCatalog, setPolicyCatalog] = useState([]);
   const [policyCatalogLoading, setPolicyCatalogLoading] = useState(true);
   const [newKeyPolicy, setNewKeyPolicy] = useState(emptyApiKeyPolicyDraft);
+  const [newKeyProviderConnectionIds, setNewKeyProviderConnectionIds] = useState([]);
   const [editKey, setEditKey] = useState(null);
   const [editKeyAllowedCombos, setEditKeyAllowedCombos] = useState([]);
   const [editKeyExpiryPreset, setEditKeyExpiryPreset] = useState("never");
@@ -60,6 +65,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
   const [editKeyCustomExpiresAt, setEditKeyCustomExpiresAt] = useState("");
   const [editKeyStatus, setEditKeyStatus] = useState(null);
   const [editKeyPolicy, setEditKeyPolicy] = useState(emptyApiKeyPolicyDraft);
+  const [editKeyProviderConnectionIds, setEditKeyProviderConnectionIds] = useState([]);
   const [tunnelExternal, setTunnelExternal] = useState(null);
   const [tsExternal, setTsExternal] = useState(null);
   const [editKeyPolicyDirty, setEditKeyPolicyDirty] = useState(false);
@@ -305,6 +311,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
       );
       const keysData = await keysRes.json();
       if (keysRes.ok) {
+        setProviderConnections(keysData.providerConnections || []);
         setKeys(keysData.keys || []);
       }
       if (combosRes.ok) {
@@ -692,7 +699,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens, expiresAt, policy })
+        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens, expiresAt, policy, providerConnectionIds: newKeyProviderConnectionIds })
       });
       const data = await res.json();
 
@@ -705,6 +712,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
         setNewKeyExpiryPreset("never");
         setNewKeyCustomExpiresAt("");
         setNewKeyAllowedCombos([]);
+        setNewKeyProviderConnectionIds([]);
         setNewKeyPolicy(emptyApiKeyPolicyDraft());
         setKeyStatus(null);
         setShowAddModal(false);
@@ -766,9 +774,9 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
     }
   };
 
-  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt, policyPatch, dailyLimitTokens = null) => {
+  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt, policyPatch, dailyLimitTokens = null, providerConnectionIds) => {
     try {
-      const payload = { allowedCombos, expiresAt, dailyLimitTokens };
+      const payload = { allowedCombos, expiresAt, dailyLimitTokens, providerConnectionIds };
       // Edit sends field patches, not a replacement policy envelope. This
       // preserves forward-compatible fields that this UI does not understand.
       if (policyPatch) Object.assign(payload, policyPatch);
@@ -811,6 +819,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
     const expiry = expirySelectionFromValue(key.expiresAt);
     setEditKey(key);
     setEditKeyAllowedCombos(Array.isArray(key.allowedCombos) ? [...key.allowedCombos] : []);
+    setEditKeyProviderConnectionIds(Array.isArray(key.providerConnectionIds) ? [...key.providerConnectionIds] : []);
     setEditKeyExpiryPreset(expiry.selection);
     setEditKeyCustomExpiresAt(expiry.customLocalValue);
     setEditKeyDailyLimitTokens(key.dailyLimitTokens == null ? "" : String(key.dailyLimitTokens));
@@ -1282,6 +1291,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
           setNewKeyExpiryPreset("never");
           setNewKeyCustomExpiresAt("");
           setNewKeyPolicy(emptyApiKeyPolicyDraft());
+          setNewKeyProviderConnectionIds([]);
           setKeyStatus(null);
         }}>
         
@@ -1356,6 +1366,10 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
               </div>
             </div>
           }
+          <Field label="Provider accounts" hint="Leave empty for unrestricted access.">
+            <Select value="" placeholder="Add provider account" options={providerConnections.filter((connection) => !newKeyProviderConnectionIds.includes(connection.id)).map((connection) => ({ value: connection.id, label: `${connection.name || connection.id} (${connection.provider})` }))} onChange={(value) => value && setNewKeyProviderConnectionIds((prev) => prev.includes(value) ? prev : [...prev, value])} />
+          </Field>
+          <DataTable columns={[{ key: "name", label: "Name" }, { key: "provider", label: "Provider" }, { key: "remove", label: "Actions", align: "right", render: (row) => <Button size="sm" variant="secondary" onClick={() => setNewKeyProviderConnectionIds((prev) => prev.filter((id) => id !== row.id))}>Remove</Button> }]} rows={newKeyProviderConnectionIds.map((id) => { const connection = providerConnections.find((item) => item.id === id) || { id, name: id, provider: "unknown" };return { id, name: connection.name || id, provider: connection.provider }; })} keyFn={(row) => row.id} density="compact" emptyState={{ title: "No scoped accounts", description: "This key can route through every provider account." }} />
           <ApiKeyPolicyFields
             draft={newKeyPolicy}
             onChange={setNewKeyPolicy}
@@ -1375,6 +1389,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
                 setNewKeyExpiryPreset("never");
                 setNewKeyCustomExpiresAt("");
                 setNewKeyAllowedCombos([]);
+                setNewKeyProviderConnectionIds([]);
                 setNewKeyPolicy(emptyApiKeyPolicyDraft());
                 setKeyStatus(null);
               }}
@@ -1634,6 +1649,29 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
 
           <p className="text-sm text-text-muted">No combos available.</p>
           }
+          <div className="flex flex-col gap-2">
+            <Field label="Provider accounts" hint="Restrict this key to a subset of provider accounts. Leave empty for unrestricted access. The zero-relation rule (no rows = unrestricted) is preserved.">
+              <Select
+                value=""
+                placeholder="Add provider account"
+                options={providerConnections.filter((connection) => !editKeyProviderConnectionIds.includes(connection.id)).map((connection) => ({ value: connection.id, label: `${connection.name || connection.id} (${connection.provider})` }))}
+                onChange={(value) => value && setEditKeyProviderConnectionIds((prev) => prev.includes(value) ? prev : [...prev, value])} />
+            </Field>
+            <DataTable
+              columns={[
+                { key: "name", label: "Name" },
+                { key: "provider", label: "Provider" },
+                { key: "id", label: "ID", mono: true },
+                { key: "remove", label: "Actions", align: "right", render: (row) => <Button size="sm" variant="secondary" onClick={() => setEditKeyProviderConnectionIds((prev) => prev.filter((value) => value !== row.id))}>Remove</Button> }
+              ]}
+              rows={editKeyProviderConnectionIds.map((id) => {
+                const connection = providerConnections.find((item) => item.id === id) || { id, name: id, provider: "unknown" };
+                return { id, name: connection.name || id, provider: connection.provider };
+              })}
+              keyFn={(row) => row.id}
+              density="compact"
+              emptyState={{ title: "No scoped accounts", description: "This key can route through every provider account." }} />
+          </div>
           {isEditableApiKeyPolicy(editKey?.policy) ?
           <ApiKeyPolicyFields
             draft={editKeyPolicy}
@@ -1664,7 +1702,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
                   setEditKeyStatus({ type: "error", message: "Daily limit must be a non-negative whole number" });
                   return;
                 }
-                const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt, policy, parsedLimit);
+                const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt, policy, parsedLimit, editKeyProviderConnectionIds);
                 if (!updated) return;
                 setEditKey(null);
                 setEditKeyAllowedCombos([]);

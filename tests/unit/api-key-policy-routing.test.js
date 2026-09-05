@@ -22,6 +22,7 @@ vi.mock("../../src/sse/services/auth.js", () => ({
     auth: await mocks.evaluateApiKeyAuth("sk-test", { ...options, request }),
   }),
   getProviderCredentials: mocks.getProviderCredentials,
+  getNoAuthProviderCredentials: mocks.getProviderCredentials,
   getProviderCredentialsWithQuotaPreflight: vi.fn(),
   markAccountUnavailable: vi.fn(),
   clearAccountError: vi.fn(),
@@ -62,6 +63,7 @@ describe("resolved-target API-key policy routing", () => {
     mocks.getModelInfo.mockImplementation(async (name) => ({ provider: "openai", model: `${name}-resolved` }));
     mocks.enforce.mockResolvedValue(null);
     mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null, stored: true });
+    mocks.getProviderCredentials.mockResolvedValue({});
     mocks.moderationCore.mockResolvedValue(coreResult());
     mocks.rerankCore.mockResolvedValue(coreResult());
   });

@@ -331,6 +331,7 @@ export async function DELETE(request, { params }) {
     return NextResponse.json({ message: "Connection deleted successfully" });
   } catch (error) {
     console.log("Error deleting connection:", error);
-    return NextResponse.json({ error: "Failed to delete connection" }, { status: 500 });
+    const status = error?.code === "API_KEY_SCOPE_WOULD_BROADEN" ? 409 : 500;
+    return NextResponse.json({ error: status === 409 ? error.message : "Failed to delete connection" }, { status });
   }
 }

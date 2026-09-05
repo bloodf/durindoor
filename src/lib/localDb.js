@@ -12,6 +12,7 @@ export {
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
   getApiKeys, getApiKeyById, getApiKeyByKey, getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
+  getApiKeyProviderConnectionIds,
   upsertProviderQuotaSnapshot, replaceProviderQuotaSnapshotsForSource,
   recordQuotaFetchFailure, getProviderQuotaSnapshot,
   listProviderQuotaSnapshots, getQuotaFetchState, pruneProviderQuotaSnapshots,

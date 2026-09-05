@@ -88,6 +88,38 @@ function validateApiKeyImport(payload) {
   return { apiKeys: normalizedApiKeys, totals, totalIds };
 }
 
+function validateApiKeyProviderConnectionImport(payload, { apiKeyIds, providerConnectionIds }) {
+  const rows = payload.apiKeyProviderConnections ?? [];
+  if (!Array.isArray(rows)) throw new Error("apiKeyProviderConnections must be an array");
+  const seen = new Set();
+  const normalized = [];
+  for (const [index, row] of rows.entries()) {
+    if (!isObject(row) || Array.isArray(row)) {
+      throw new Error(`apiKeyProviderConnections[${index}] must be an object`);
+    }
+    const { apiKeyId, connectionId } = row;
+    if (!isString(apiKeyId) || !apiKeyId.trim()) {
+      throw new Error(`apiKeyProviderConnections[${index}] apiKeyId must be a non-empty string`);
+    }
+    if (!isString(connectionId) || !connectionId.trim()) {
+      throw new Error(`apiKeyProviderConnections[${index}] connectionId must be a non-empty string`);
+    }
+    const pair = `${apiKeyId}\u0000${connectionId}`;
+    if (seen.has(pair)) {
+      throw new Error(`Duplicate apiKeyProviderConnections pair: ${apiKeyId}/${connectionId}`);
+    }
+    seen.add(pair);
+    if (!apiKeyIds.has(apiKeyId)) {
+      throw new Error(`apiKeyProviderConnections[${index}] references missing API key: ${apiKeyId}`);
+    }
+    if (!providerConnectionIds.has(connectionId)) {
+      throw new Error(`apiKeyProviderConnections[${index}] references missing provider connection: ${connectionId}`);
+    }
+    normalized.push({ apiKeyId, connectionId });
+  }
+  return normalized;
+}
+
 function validateQuotaImport(payload, { now }) {
   if (!Object.hasOwn(payload, "quota")) {
     return { present: false, quota: { version: QUOTA_PORTABLE_VERSION, snapshots: [], fetchStates: [] } };
@@ -201,6 +233,8 @@ export {
 export {
   getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus } from
 "./repos/apiKeysRepo.js";
+export { getApiKeyProviderConnectionIds, setApiKeyProviderConnectionIds } from
+"./repos/apiKeyProviderConnectionsRepo.js";
 export {
   getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync } from
 "./repos/apiKeyUsageTotalsRepo.js";
@@ -319,6 +353,9 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         }
         return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt, createdAt: r.createdAt };
       }),
+      apiKeyProviderConnections: db.all(
+        `SELECT apiKeyId, connectionId FROM apiKeyProviderConnections ORDER BY apiKeyId ASC, connectionId ASC`
+      ),
       apiKeyUsageTotals: db.all(`SELECT * FROM apiKeyUsageTotals`).map((r) => ({
         apiKeyId: r.apiKeyId,
         totalTokens: Number(r.totalTokens) || 0,
@@ -353,6 +390,10 @@ export async function importDb(payload, { now = Date.now() } = {}) {
   const { apiKeys, totals } = validateApiKeyImport(payload);
   const quotaNow = canonicalizeQuotaNow(now).timestamp;
   const { quota } = validateQuotaImport(payload, { now: quotaNow });
+  const apiKeyProviderConnections = validateApiKeyProviderConnectionImport(payload, {
+    apiKeyIds: new Set(apiKeys.map((key) => key.id)),
+    providerConnectionIds: new Set((payload.providerConnections ?? []).map((connection) => connection.id)),
+  });
   const db = await getAdapter();
 
   db.transaction(() => {
@@ -382,6 +423,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     db.run(`DELETE FROM providerNodes`);
     db.run(`DELETE FROM proxyPools`);
     db.run(`DELETE FROM apiKeyUsageTotals`);
+    db.run(`DELETE FROM apiKeyProviderConnections`);
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
@@ -423,6 +465,12 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       db.run(
         `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.policy == null ? null : stringifyJson(normalizeApiKeyPolicy(k.policy)), k.expiresAt || null, k.createdAt || new Date().toISOString()]
+      );
+    }
+    for (const relation of apiKeyProviderConnections) {
+      db.run(
+        `INSERT INTO apiKeyProviderConnections(apiKeyId, connectionId) VALUES(?, ?)`,
+        [relation.apiKeyId, relation.connectionId]
       );
     }
     if (Object.hasOwn(payload, "apiKeyUsageTotals")) {

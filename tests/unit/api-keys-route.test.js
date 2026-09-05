@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   getModelAliases: vi.fn(),
   getComboForModel: vi.fn(),
   getProviderNodes: vi.fn(),
+  getProviderConnections: vi.fn(),
+  getApiKeyProviderConnectionIds: vi.fn(),
   getApiKeys: vi.fn(),
   getConsistentMachineId: vi.fn(),
   updateApiKey: vi.fn(),
@@ -37,6 +39,8 @@ vi.mock("@/lib/localDb", () => ({
   getModelAliases: mocks.getModelAliases,
   getComboForModel: mocks.getComboForModel,
   getProviderNodes: mocks.getProviderNodes,
+  getProviderConnections: mocks.getProviderConnections,
+  getApiKeyProviderConnectionIds: mocks.getApiKeyProviderConnectionIds,
   getApiKeys: mocks.getApiKeys,
   updateApiKey: mocks.updateApiKey,
 }));
@@ -96,6 +100,8 @@ describe("API keys routes", () => {
     mocks.getModelAliases.mockResolvedValue({});
     mocks.getComboForModel.mockResolvedValue(null);
     mocks.getProviderNodes.mockResolvedValue([]);
+    mocks.getProviderConnections.mockResolvedValue([]);
+    mocks.getApiKeyProviderConnectionIds.mockResolvedValue([]);
     mocks.getApiKeyUsageTotals.mockResolvedValue({ apiKeyId: storedKey.id, totalTokens: 25, totalCost: 1.5, totalRequests: 2, updatedAt: null });
     mocks.getAllApiKeyUsageTotals.mockResolvedValue([{ apiKeyId: storedKey.id, totalTokens: 25, totalCost: 1.5, totalRequests: 2, updatedAt: null }]);
     mocks.createApiKey.mockImplementation(async (name, machineId, allowedCombos, dailyLimitTokens, expiresAt, options = {}) => ({

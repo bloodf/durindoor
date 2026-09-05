@@ -1,6 +1,6 @@
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError, resolveClientApiKey } from "../services/auth.js";
-import { getSettings, getProviderConnectionById } from "@/lib/localDb";
+import { getSettings, getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } from "open-sse/handlers/videoCore.js";
@@ -47,7 +47,7 @@ async function handleVideoGenerationHandler(request) {
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model, apiKey);
   if (policyError) return policyError;
-  const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model);
+  const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model, { apiKeyId: apiKeyAuth.apiKeyId });
   if (credentials?.providerDisabled) {
     log.warn("VIDEO", `[${modelInfo.provider}/${modelInfo.model}] free no-auth provider disabled by settings`);
     return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${modelInfo.provider}' is disabled. Enable it in Settings > Providers.`);
@@ -173,7 +173,7 @@ async function handleVideoCreateHandler(request, action) {
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
   const idempotencyKey = request.headers.get("idempotency-key") || null;
 
-  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, model, { preferredConnectionId });
+  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, model, { preferredConnectionId, apiKeyId: apiKeyAuth.apiKeyId });
   if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
     if (credentials?.providerDisabled) {
       log.warn("VIDEO", `[${provider}/${model || "grok-imagine-video"}] free no-auth provider disabled by settings`);
@@ -249,6 +249,10 @@ async function handleVideoGetHandler(request, requestId) {
   const preferredConnectionId = request.headers.get("x-9router-connection-id") || request.headers.get("x-connection-id") || null;
   let provider = DEFAULT_VIDEO_PROVIDER;
   if (preferredConnectionId) {
+    const scopedConnectionIds = apiKeyAuth.apiKeyId ? await getApiKeyProviderConnectionIds(apiKeyAuth.apiKeyId) : [];
+    if (scopedConnectionIds.length > 0 && !scopedConnectionIds.includes(preferredConnectionId)) {
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, "Requested connection is not available for this API key");
+    }
     const pinnedConnection = await getProviderConnectionById(preferredConnectionId);
     if (pinnedConnection?.provider && getVideoConfig(pinnedConnection.provider)) provider = pinnedConnection.provider;
   }
@@ -256,7 +260,7 @@ async function handleVideoGetHandler(request, requestId) {
   const policyError = await enforceVideoPolicy(request, provider, policyModel, apiKey);
   if (policyError) return policyError;
 
-  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, null, { preferredConnectionId });
+  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, null, { preferredConnectionId, apiKeyId: apiKeyAuth.apiKeyId });
   if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
     if (credentials?.providerDisabled) {
       log.warn("VIDEO", `[${provider}/${policyModel}] free no-auth provider disabled by settings`);

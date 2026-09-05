@@ -2,7 +2,7 @@ import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -92,6 +92,15 @@ export const TABLES = {
       createdAt: "TEXT NOT NULL",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
+  },
+  // Opt-in API-key-to-provider-account restriction. No rows for a key means
+  // unrestricted; both parent deletions cascade to preserve referential integrity.
+  apiKeyProviderConnections: {
+    columns: {
+      apiKeyId: "TEXT NOT NULL REFERENCES apiKeys(id) ON DELETE CASCADE",
+      connectionId: "TEXT NOT NULL REFERENCES providerConnections(id) ON DELETE CASCADE",
+    },
+    primaryKey: "PRIMARY KEY (apiKeyId, connectionId)",
   },
   apiKeyUsageTotals: {
     columns: {

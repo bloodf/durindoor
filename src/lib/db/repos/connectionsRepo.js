@@ -529,6 +529,28 @@ export async function clearProviderConnectionFallbackState(id, {
   return result;
 }
 
+/**
+ * A scoped key with this as its last relation would become unrestricted after
+ * FK cascade. Operators must clear the key restriction intentionally first.
+ */
+function assertDeletionDoesNotBroadenScopedKeys(db, connectionIds) {
+  if (!connectionIds.length) return;
+  const placeholders = connectionIds.map(() => "?").join(", ");
+  const rows = db.all(
+    `SELECT apiKeyId, COUNT(*) AS relationCount,
+      SUM(CASE WHEN connectionId IN (${placeholders}) THEN 1 ELSE 0 END) AS deletingCount
+     FROM apiKeyProviderConnections
+     GROUP BY apiKeyId
+     HAVING relationCount = deletingCount`,
+    connectionIds
+  );
+  if (rows.length) {
+    const error = new Error("Cannot delete provider connection: it is the last scoped account for an API key. Clear that key's provider-account restriction first.");
+    error.code = "API_KEY_SCOPE_WOULD_BROADEN";
+    throw error;
+  }
+}
+
 export async function deleteProviderConnection(id) {
   const db = await getAdapter();
   let ok = false;
@@ -536,6 +558,7 @@ export async function deleteProviderConnection(id) {
     assertNoActiveQuotaReservationsForTargetSync(db, { connectionIds: [id] });
     const row = db.get(`SELECT provider FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
+    assertDeletionDoesNotBroadenScopedKeys(db, [id]);
     updateAutoPingEntryInTx(db, row.provider, id, false);
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
     reorderInTx(db, row.provider);
@@ -543,7 +566,6 @@ export async function deleteProviderConnection(id) {
   });
   return ok;
 }
-
 export async function setProviderConnectionAutoPing(id, enabled) {
   if (!isBoolean(enabled)) throw new TypeError("enabled must be a boolean");
   const db = await getAdapter();
@@ -578,6 +600,7 @@ export async function deleteProviderConnectionsByProvider(providerId) {
   db.transaction(() => {
     assertNoActiveQuotaReservationsForTargetSync(db, { provider: providerId });
     const rows = db.all(`SELECT id FROM providerConnections WHERE provider = ?`, [providerId]);
+    assertDeletionDoesNotBroadenScopedKeys(db, rows.map((row) => row.id));
     for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false);
     db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
     count = rows.length;

@@ -56,6 +56,21 @@ function getLocalDayStartIso(now = new Date()) {
   return d.toISOString();
 }
 
+function replaceProviderConnectionScopeInTx(db, apiKeyId, connectionIds) {
+  if (!Array.isArray(connectionIds)) throw new TypeError("providerConnectionIds must be an array");
+  const ids = connectionIds.map((id) => {
+    if (!isString(id) || !id.trim()) throw new TypeError("providerConnectionIds entries must be non-empty strings");
+    return id.trim();
+  });
+  if (new Set(ids).size !== ids.length) throw new TypeError("providerConnectionIds must not contain duplicates");
+  const existing = new Set(db.all("SELECT id FROM providerConnections").map((row) => row.id));
+  if (ids.some((id) => !existing.has(id))) throw new TypeError("Provider connection not found");
+  db.run("DELETE FROM apiKeyProviderConnections WHERE apiKeyId = ?", [apiKeyId]);
+  for (const connectionId of ids) {
+    db.run("INSERT INTO apiKeyProviderConnections(apiKeyId, connectionId) VALUES(?, ?)", [apiKeyId, connectionId]);
+  }
+}
+
 export async function getApiKeys() {
   const db = await getAdapter();
   const rows = db.all(`SELECT * FROM apiKeys ORDER BY createdAt ASC`);
@@ -96,10 +111,15 @@ export async function createApiKey(name, machineId, allowedCombos = [], dailyLim
     expiresAt: expiry,
     createdAt: new Date(Number(now)).toISOString()
   };
-  db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, policy == null ? null : JSON.stringify(policy), apiKey.expiresAt, apiKey.createdAt]
-  );
+  db.transaction(() => {
+    db.run(
+      `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, policy == null ? null : JSON.stringify(policy), apiKey.expiresAt, apiKey.createdAt]
+    );
+    if (Object.hasOwn(options, "providerConnectionIds")) {
+      replaceProviderConnectionScopeInTx(db, apiKey.id, options.providerConnectionIds);
+    }
+  });
   return apiKey;
 }
 
@@ -121,6 +141,9 @@ export async function updateApiKey(id, data, now = Date.now()) {
     const policyStorage = updatesPolicy ?
     merged.policy == null ? null : JSON.stringify(merged.policy) :
     row.policy;
+    if (Object.hasOwn(data, "providerConnectionIds")) {
+      replaceProviderConnectionScopeInTx(db, id, data.providerConnectionIds);
+    }
     db.run(
       `UPDATE apiKeys SET name = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, policy = ?, expiresAt = ? WHERE id = ?`,
       [merged.name, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, policyStorage, merged.expiresAt ?? null, id]

@@ -1,12 +1,12 @@
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
+  getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   clearAccountError,
   resolveClientApiKey,
-  projectProviderCredentials } from
-"../services/auth.js";
-import { getSettings, getCombos, getApiKeyByKey, getProviderConnections } from "@/lib/localDb";
+} from "../services/auth.js";
+import { getSettings, getCombos, getApiKeyByKey } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -126,14 +126,14 @@ async function handleFetchHandler(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, apiKeyAuth.apiKeyId, settings),
       log,
       comboName: providerInput,
       comboStrategy,
       comboStickyLimit
     });
   }
-  return handleSingleProviderFetch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderFetch(body, providerInput, request, apiKey, apiKeyAuth.apiKeyId, settings);
 }
 
 /**
@@ -156,7 +156,7 @@ export function normalizeFetchProviderInput(providerInput) {
   return providerInput;
 }
 
-async function handleSingleProviderFetch(body, providerInput, request, apiKey, settings) {
+async function handleSingleProviderFetch(body, providerInput, request, apiKey, apiKeyId, settings) {
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -184,19 +184,19 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     log.info("ROUTING", `Provider: ${providerId}`);
   }
 
-  // No-auth fetch path (kept for parity though no current fetch provider sets noAuth)
-  let credentials = null;
-
-  // firecrawl_custom is noAuth on the registry but supports optional saved
-  // credentials for authenticated self-hosted instances. Load the active saved
-  // connection when available; otherwise fall back to default local no-auth.
-  if (resolvedProvider.id === "firecrawl_custom") {
-    log.info("AUTH", `\x1b[32m${providerId} custom mode\x1b[0m`);
-    const active = (await getProviderConnections({ provider: "firecrawl_custom", isActive: true }))[0] || null;
-    credentials = active ? await projectProviderCredentials(active) : null;
-  }
-
+  // All registry no-auth fetch paths, including firecrawl_custom's optional
+  // saved account, pass through the shared provider-account selector.
   if (resolvedProvider.noAuth) {
+    const credentials = await getNoAuthProviderCredentials(providerId, null, { apiKeyId });
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${providerId}' is disabled. Enable it in Settings > Providers.`);
+      }
+      return errorResponse(
+        credentials?.allRateLimited ? Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE : HTTP_STATUS.BAD_REQUEST,
+        credentials?.lastError || `No credentials for provider: ${providerId}`,
+      );
+    }
     log.info("AUTH", `\x1b[32m${providerId} no-auth mode\x1b[0m`);
     const result = await handleFetchCore({
       url: targetUrl,
@@ -204,7 +204,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       maxCharacters,
       provider: resolvedProvider.id,
       providerConfig: fetchConfig,
-      credentials,
+      credentials: credentials.connectionId ? credentials : null,
       log
     });
     if (result.success) {
@@ -229,7 +229,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
       providerId,
       excludeConnectionIds,
       null,
-      { webFetch: true }
+      { webFetch: true, apiKeyId }
     );
 
     // All accounts unavailable or provider disabled

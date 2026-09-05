@@ -57,18 +57,16 @@ function staleSnapshot(connectionId, { state } = {}) {
   };
 }
 
-// Fresh exact-source snapshot returned by the live refresh. `staleAt` is in
-// the future relative to the wrapper's wall-clock evaluation, so the evaluator
-// treats it as authoritative.
+// Fresh exact-source snapshot returned by live refresh. All timestamps use the
+// injected selection clock so the decision stays deterministic.
 function freshSnapshot(connectionId, { state, resetAt = null } = {}) {
-  const now = Date.now();
   return {
     identity: { connectionId, provider: "codex", accountKey: "scope:connection", resourceKey: "model:gpt-5.4", dimensionKey: "requests:runtime" },
     state,
     amounts: { limitKind: "unknown", limit: null, used: null, remaining: null, remainingRatio: null, unit: null },
     timing: {
-      observedAt: new Date(now).toISOString(),
-      staleAt: new Date(now + 60_000).toISOString(),
+      observedAt: new Date(NOW).toISOString(),
+      staleAt: new Date(NOW + 60_000).toISOString(),
       resetAt: resetAt ? new Date(resetAt).toISOString() : null,
       cooldownUntil: null,
     },
@@ -93,7 +91,7 @@ describe("getProviderCredentialsWithQuotaPreflight (OmniRoute #6742)", () => {
 
   it("blocks a live-exhausted first account and selects the next eligible account", async () => {
     mocks.getProviderConnections.mockResolvedValue([connection("one", 1), connection("two", 2)]);
-    const reset = Date.now() + 30_000;
+    const reset = NOW + 30_000;
 
     // First pass: both accounts look stale (shouldRefresh). After the refresh
     // persists account "one" as exhausted, the reselect must see it blocked.
@@ -120,7 +118,7 @@ describe("getProviderCredentialsWithQuotaPreflight (OmniRoute #6742)", () => {
 
   it("returns allRateLimited with retry metadata when the sole account is live-exhausted", async () => {
     mocks.getProviderConnections.mockResolvedValue([connection("one", 1)]);
-    const reset = Date.now() + 45_000;
+    const reset = NOW + 45_000;
 
     const quotaSnapshotsLoader = vi
       .fn()
@@ -161,7 +159,7 @@ describe("getProviderCredentialsWithQuotaPreflight (OmniRoute #6742)", () => {
 
   it("does not refresh a connection more than once per call", async () => {
     mocks.getProviderConnections.mockResolvedValue([connection("one", 1)]);
-    const reset = Date.now() + 30_000;
+    const reset = NOW + 30_000;
     // Loader NEVER reflects tracker persistence: always returns the account as
     // stale/eligible. The refresher reports the account exhausted. Without the
     // once-per-connection bound the wrapper would reselect the same account and

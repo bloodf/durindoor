@@ -110,7 +110,6 @@ describe("provider live model discovery", () => {
       }),
     );
   });
-
   it("enriches an explicitly enabled Anthropic model without adding live siblings", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({
       data: [
@@ -123,8 +122,10 @@ describe("provider live model discovery", () => {
     })]);
 
     const models = await buildModelsList([LLM_KIND]);
+    const enriched = model(models, "cc/claude-opus-5");
 
-    expect(model(models, "cc/claude-opus-5").capabilities.contextWindow).toBe(333_333);
+    expect(enriched).toBeDefined();
+    expect(enriched.capabilities.contextWindow).toBe(333_333);
     expect(model(models, "cc/claude-live-sibling")).toBeUndefined();
   });
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getComboById, updateCombo, deleteCombo, getComboByName, ComboMemberError } from "@/lib/localDb";
 import { parseJsonBody } from "@/shared/utils/parseJsonBody";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
+import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -45,6 +46,14 @@ export async function PUT(request, { params }) {
       }
     }
     
+    if (Object.hasOwn(body, "capabilities")) {
+      const normalizedCapabilities = normalizeComboCapabilities(body.capabilities);
+      if (!normalizedCapabilities.ok) {
+        return NextResponse.json({ error: normalizedCapabilities.error }, { status: 400 });
+      }
+      body.capabilities = normalizedCapabilities.capabilities;
+    }
+
     // Capture previous name to invalidate rotation state on rename
     const prev = await getComboById(id);
     const combo = await updateCombo(id, body);

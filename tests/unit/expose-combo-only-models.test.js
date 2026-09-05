@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   getModelAliases: vi.fn(),
   getDisabledModels: vi.fn(),
   getSettings: vi.fn(),
+  guardedProbeFetch: vi.fn(),
+  proxyAwareFetch: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -24,6 +26,19 @@ vi.mock("@/lib/db/repos/settingsRepo", () => ({
   getSettings: mocks.getSettings,
 }));
 
+// Spy on the module's one live-discovery network seam (not an internal DB
+// helper) so the assertion below proves no outbound fetch, not merely that
+// a particular code path was taken.
+vi.mock("open-sse/utils/outboundUrlGuard.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, guardedProbeFetch: mocks.guardedProbeFetch };
+});
+
+vi.mock("open-sse/utils/proxyFetch.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, proxyAwareFetch: mocks.proxyAwareFetch };
+});
+
 async function buildModelsList(kinds) {
   const module = await import("../../src/app/api/v1/models/buildModelsList.js");
   return module.buildModelsList(kinds);
@@ -35,12 +50,12 @@ describe("buildModelsList exposeComboOnly", () => {
     vi.clearAllMocks();
     mocks.getProviderConnections.mockResolvedValue([]);
     mocks.getCustomModels.mockResolvedValue([
-      { id: "direct-model", providerAlias: "openai", type: "llm" },
+      { id: "direct-model", providerAlias: "openai", type: "llm", capabilities: { contextWindow: 8000, maxOutput: 4000 } },
     ]);
     mocks.getModelAliases.mockResolvedValue({});
     mocks.getDisabledModels.mockResolvedValue({});
     mocks.getCombos.mockResolvedValue([
-      { name: "chat-pool", kind: "llm", models: ["openai/direct-model"] },
+      { name: "chat-pool", kind: "llm", models: ["openai/direct-model"], capabilities: { contextWindow: 4000, maxOutput: 2000 } },
       { name: "search-pool", kind: "webSearch", models: ["exa/search"] },
       { name: "search-pool", kind: "webSearch", models: ["tavily/search"] },
       { name: "fetch-pool", kind: "webFetch", models: ["exa/fetch"] },
@@ -48,19 +63,26 @@ describe("buildModelsList exposeComboOnly", () => {
     ]);
   });
 
-  it("toggle on returns only deduplicated matching combos and preserves web kinds", async () => {
+  it("toggle on returns deduplicated matching combos with capped metadata and no live network", async () => {
     mocks.getSettings.mockResolvedValue({ exposeComboOnly: true });
 
     const models = await buildModelsList(["llm", "webSearch", "webFetch"]);
 
-    expect(models).toEqual([
-      { id: "chat-pool", object: "model", owned_by: "combo" },
-      { id: "search-pool", object: "model", owned_by: "combo", kind: "webSearch" },
-      { id: "fetch-pool", object: "model", owned_by: "combo", kind: "webFetch" },
-    ]);
-    expect(mocks.getCustomModels).not.toHaveBeenCalled();
-    expect(mocks.getModelAliases).not.toHaveBeenCalled();
-    expect(mocks.getDisabledModels).not.toHaveBeenCalled();
+    // Output contract: deduped, kind-preserving combo rows.
+    expect(models.map((model) => model.id)).toEqual(["chat-pool", "search-pool", "fetch-pool"]);
+    expect(models.map((model) => model.owned_by)).toEqual(["combo", "combo", "combo"]);
+    expect(models.map((model) => model.kind)).toEqual([undefined, "webSearch", "webFetch"]);
+    // Consumer contract: effective member-derived ∩ operator limits are
+    // exposed once in both the capability object and the flat OpenAI fields.
+    const chatPool = models.find((model) => model.id === "chat-pool");
+    expect(chatPool).toMatchObject({
+      capabilities: expect.objectContaining({ contextWindow: 4000, maxOutput: 2000 }),
+      context_length: 4000,
+      max_completion_tokens: 2000,
+    });
+    // Network: neither live-discovery seam was reached.
+    expect(mocks.guardedProbeFetch).not.toHaveBeenCalled();
+    expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
   });
 
   it.each([false, true])(

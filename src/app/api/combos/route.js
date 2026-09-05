@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName, ComboMemberError } from "@/lib/localDb";
 import { parseJsonBody } from "@/shared/utils/parseJsonBody";
+import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +23,8 @@ export async function GET() {
 export async function POST(request) {
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
-
   try {
-    const { name, models, members, kind } = parsed.body;
+    const { name, models, members, kind, capabilities } = parsed.body;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -35,13 +35,18 @@ export async function POST(request) {
       return NextResponse.json({ error: "Name can only contain letters, numbers, -, _ and ." }, { status: 400 });
     }
 
+    const normalizedCapabilities = normalizeComboCapabilities(capabilities);
+    if (!normalizedCapabilities.ok) {
+      return NextResponse.json({ error: normalizedCapabilities.error }, { status: 400 });
+    }
+
     // Check if name already exists
     const existing = await getComboByName(name);
     if (existing) {
       return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
     }
 
-    const combo = await createCombo({ name, models: models || [], members, kind: kind || null });
+    const combo = await createCombo({ name, models: models || [], members, kind: kind || null, capabilities: normalizedCapabilities.capabilities });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {

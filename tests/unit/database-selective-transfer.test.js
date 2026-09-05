@@ -368,6 +368,69 @@ describe("selective transfer: real DB round-trip", () => {
     expect(crypto.isEncryptedBlob(parsed.accessToken)).toBe(true);
   });
 
+  it("round-trips combo capability ceilings without corrupting invariant fields", async () => {
+    const { index, combos } = await freshDb();
+    await combos.createCombo({
+      name: "bounded-combo",
+      kind: "test",
+      models: ["openai/gpt-5"],
+      invariant: { allowedProviders: ["openai"] },
+      capabilities: { vision: false, tools: false, contextWindow: 32_768, maxOutput: 4_096 },
+    });
+    const original = (await combos.getCombos())[0];
+    const bundle = await index.exportSelectiveDb(selection([], [original.id]));
+    expect(bundle.combos[0]).toMatchObject({
+      id: original.id,
+      invariant: { allowedProviders: ["openai"], allowedModelFamilies: [] },
+      capabilities: { vision: false, tools: false, contextWindow: 32_768, maxOutput: 4_096 },
+    });
+
+    await combos.deleteCombo(original.id);
+    await index.importSelectiveDb(bundle, selection([], [original.id]));
+    expect(await combos.getComboById(original.id)).toMatchObject({
+      invariant: { allowedProviders: ["openai"], allowedModelFamilies: [] },
+      capabilities: { vision: false, tools: false, contextWindow: 32_768, maxOutput: 4_096 },
+    });
+  });
+
+  it("preserves an existing capability ceiling when omitted and clears it only on explicit null", async () => {
+    const { index, combos } = await freshDb();
+    await combos.createCombo({
+      name: "existing-cap",
+      kind: "test",
+      models: ["openai/gpt-5"],
+      capabilities: { contextWindow: 16_384, maxOutput: 2_048 },
+    });
+    const original = (await combos.getCombos())[0];
+    const baseRow = { id: original.id, name: original.name, kind: original.kind, models: original.models };
+
+    await index.importSelectiveDb(buildBundle({ combos: [baseRow] }), selection([], [original.id]));
+    expect((await combos.getComboById(original.id)).capabilities).toEqual({ contextWindow: 16_384, maxOutput: 2_048 });
+
+    await index.importSelectiveDb(buildBundle({ combos: [{ ...baseRow, capabilities: null }] }), selection([], [original.id]));
+    expect((await combos.getComboById(original.id)).capabilities).toBeNull();
+  });
+
+  it("rejects an invalid capability ceiling before any import write", async () => {
+    const { index, repos, combos } = await freshDb();
+    await combos.createCombo({
+      name: "safe-cap",
+      kind: "test",
+      models: ["openai/gpt-5"],
+      capabilities: { contextWindow: 8_192 },
+    });
+    const existing = (await combos.getCombos())[0];
+    const providerId = "must-not-write";
+
+    await expect(index.importSelectiveDb(buildBundle({
+      providers: [{ id: providerId, provider: "openai", authType: "apikey", name: "rolled-back" }],
+      combos: [{ id: existing.id, name: existing.name, kind: existing.kind, models: existing.models, capabilities: { contextWindow: 0 } }],
+    }), selection([providerId], [existing.id]))).rejects.toThrow(/contextWindow must be a positive integer/);
+
+    expect(await repos.getProviderConnectionById(providerId)).toBeNull();
+    expect((await combos.getComboById(existing.id)).capabilities).toEqual({ contextWindow: 8_192 });
+  });
+
   it("validateComboInvariant runs before the write: a violating combo bundle is rejected and never persisted", async () => {
     const { index, repos, combos } = await freshDb();
     await repos.createProviderConnection({ provider: "openai", authType: "apikey", name: "p", apiKey: "sk-x" });

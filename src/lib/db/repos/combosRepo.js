@@ -70,6 +70,7 @@ function rowToCombo(row) {
     models,
     members: normalizeComboMembers(models, parseJson(row.members, null)),
     invariant: row.invariant ? parseJson(row.invariant, null) : null,
+    capabilities: row.capabilities ? parseJson(row.capabilities, null) : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -122,14 +123,15 @@ export async function createCombo(data) {
     models: data.models || [],
     members: normalizeComboMembers(data.models || [], data.members),
     invariant,
+    capabilities: data.capabilities || null,
     createdAt: now,
     updatedAt: now
   };
   // Reject a violating combo before the write so nothing is persisted.
   validateComboInvariant({ ...combo, ...(invariant || {}) });
   db.run(
-    `INSERT INTO combos(id, name, kind, models, members, invariant, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), stringifyJson(combo.members), invariant ? stringifyJson(invariant) : null, combo.createdAt, combo.updatedAt]
+    `INSERT INTO combos(id, name, kind, models, members, invariant, capabilities, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), stringifyJson(combo.members), invariant ? stringifyJson(invariant) : null, combo.capabilities ? stringifyJson(combo.capabilities) : null, combo.createdAt, combo.updatedAt]
   );
   return combo;
 }
@@ -157,8 +159,8 @@ export async function updateCombo(id, data) {
     merged.invariant = invariant;
     validateComboInvariant({ ...merged, ...(invariant || {}) });
     db.run(
-      `UPDATE combos SET name = ?, kind = ?, models = ?, members = ?, invariant = ?, updatedAt = ? WHERE id = ?`,
-      [merged.name, merged.kind, stringifyJson(merged.models || []), stringifyJson(merged.members), invariant ? stringifyJson(invariant) : null, merged.updatedAt, id]
+      `UPDATE combos SET name = ?, kind = ?, models = ?, members = ?, invariant = ?, capabilities = ?, updatedAt = ? WHERE id = ?`,
+      [merged.name, merged.kind, stringifyJson(merged.models || []), stringifyJson(merged.members), invariant ? stringifyJson(invariant) : null, merged.capabilities ? stringifyJson(merged.capabilities) : null, merged.updatedAt, id]
     );
     result = merged;
   });

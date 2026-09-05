@@ -353,7 +353,7 @@ export class DefaultExecutor extends BaseExecutor {
       injectPromptCacheKey(this.provider, transformed, credentials);
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
       applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
-      stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
+      stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities, undefined, credentials);
       /**
        * Convert the translator's Chat-compatible reasoning field only at the
        * final Responses wire boundary. Keeping this out of translateRequest

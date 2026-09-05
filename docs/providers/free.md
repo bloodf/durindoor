@@ -46,6 +46,16 @@ Use cookie-backed providers for personal or experimental workflows unless your t
 
 A no-auth provider should only be used when the upstream is protected by the network boundary or runs locally. Do not expose a no-auth upstream to the public internet through DurinDoor without adding an outer access-control layer.
 
+AI Horde is the explicit public-anonymous exception in this campaign: its operator publishes an anonymous access key for shared volunteer inference. DurinDoor's own client access controls still apply; this does not make prompts private or authorize anonymous access to other providers.
+
+## AI Horde
+
+AI Horde is a crowdsourced volunteer-compute network exposed through its official OpenAI-compatible facade. Select models from DurinDoor's live `GET /v1/models` catalog as `horde/<model-id>`; model IDs can contain `/` and availability changes with connected workers. DurinDoor sends AI Horde's documented anonymous key when no account key is saved. A saved AI Horde API key replaces that anonymous credential and can receive better request priority.
+
+Treat AI Horde as a pilot or low-priority fallback, not guaranteed capacity. Anonymous jobs have low priority, queues and latency vary, and workers can join or leave at any time. Prompts and generated content are processed by community-operated workers, so do not send secrets, personal data, or other sensitive content. AI Horde does not publish fixed provider-wide context or output limits; each worker/model owns those limits. The OpenAI facade currently rejects `max_tokens` below 16, so clients should request at least 16 rather than relying on DurinDoor to rewrite the request.
+
+Sources: [AI Horde](https://aihorde.net/), [AI Horde API documentation](https://aihorde.net/api/), and the official [OpenAI-compatible facade](https://oai.aihorde.net/).
+
 ## OpenCode Free
 
 OpenCode Free exposes Ox Alpha Free as `oc/x-preview-f-free`. It accepts image input and low/high/max reasoning effort over Chat Completions. Muse model IDs on this provider use the Responses endpoint and omit unsupported `max_tokens` fields automatically.

@@ -13,7 +13,7 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { getSettings } from "@/lib/db/repos/settingsRepo";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
-import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
+import { PROVIDERS, resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
@@ -719,6 +719,58 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     }
   };
 
+  const addNoAuthProviderModels = async (providerId, alias) => {
+    const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
+    const transport = PROVIDERS[providerId];
+    if (!registryFetcher || !OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type)) {
+      addStaticProviderModels(providerId, alias);
+      return;
+    }
+
+    const authorization = transport?.headers?.Authorization;
+    const token = isString(authorization) && authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+    if (!token) {
+      addStaticProviderModels(providerId, alias);
+      return;
+    }
+
+    try {
+      const live = await resolveLiveOpenAIModels({
+        id: "noauth",
+        connectionId: "noauth",
+        provider: providerId,
+        accessToken: token,
+        providerSpecificData: {},
+      }, {
+        provider: providerId,
+        guard,
+        endpoint: registryFetcher.url,
+        headers: transport.headers,
+      });
+      if (!live?.models?.length) {
+        addStaticProviderModels(providerId, alias);
+        return;
+      }
+      for (const liveModel of live.models) {
+        const modelId = liveModel.id;
+        if (!isString(modelId) || !modelId.trim() || isDisabled(alias, modelId)) continue;
+        if (hidePaidModels && isPaidModel(`${alias}/${modelId}`)) continue;
+        const kind = liveModel.kind || liveModel.type || inferKindFromUnknownModelId(modelId);
+        if (!kindFilter.includes(kind)) continue;
+        const caps = isRecord(liveModel.capabilities) ? liveModel.capabilities : getCapabilitiesForModel(providerId, modelId);
+        models.push({
+          id: `${alias}/${modelId}`,
+          object: "model",
+          owned_by: alias,
+          capabilities: caps,
+          ...projectModelPresentation({ model: liveModel, modelId, providerId, outputAlias: alias }),
+        });
+      }
+    } catch {
+      addStaticProviderModels(providerId, alias);
+    }
+  };
+
   // Custom-model capability overrides — one map for all combo aggregations
   // (no per-member DB reads). Keys are canonical `providerId/modelId`;
   // aggregateComboCapabilities normalizes member prefixes (static alias OR a
@@ -1098,12 +1150,13 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
     // Keyless catalogs stay visible even when unrelated saved connections
     // exist. A real connection for the same provider already contributes its
-    // catalog above and suppresses this synthetic static fallback.
+    // catalog above and suppresses this synthetic fallback. Dynamic no-auth
+    // catalogs reuse the guarded, five-minute cached OpenAI resolver.
     for (const [providerId, provider] of Object.entries(AI_PROVIDERS)) {
       if (provider?.noAuth !== true || activeConnectionByProvider.has(providerId)) continue;
       if (isFreeNoAuthDisabled(providerId)) continue;
       const alias = PROVIDER_ID_TO_ALIAS[providerId] ?? getProviderAlias(providerId) ?? providerId;
-      addStaticProviderModels(providerId, alias);
+      await addNoAuthProviderModels(providerId, alias);
     }
   }
 

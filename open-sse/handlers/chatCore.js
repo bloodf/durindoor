@@ -889,7 +889,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const liveLimits = getCachedLiveLimits(provider, cleanModel, credentials) ||
   getCachedLiveLimits(provider, baseModel, credentials);
   const preflightLimits = resolveModelLimits(provider, cleanModel, requestContext?.modelCapabilities, credentials, liveLimits);
-  if (preflightLimits.known) {
+  if (preflightLimits.known && Number.isFinite(preflightLimits.contextWindow) && preflightLimits.contextWindow > 0) {
     // Always reserve the output ceiling chosen by resolveModelLimits. It has
     // already applied explicit-custom > live > static precedence; reusing the
     // caller's inherited static caps here would make the window and reservation

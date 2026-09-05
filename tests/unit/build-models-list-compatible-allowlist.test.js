@@ -68,7 +68,7 @@ describe("buildModelsList — compatible provider public allowlist", () => {
       customModels: ["one", "two", "three"].map((id) => ({ id, providerAlias: provider, type: "llm" })),
       modelAliases: { legacy: `${provider}/aliased` },
     });
-    global.fetch = vi.fn();
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [] }) });
 
     expect(await providerIds("allowed")).toEqual([
       "allowed/one",
@@ -76,7 +76,7 @@ describe("buildModelsList — compatible provider public allowlist", () => {
       "allowed/three",
       "allowed/aliased",
     ]);
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(global.fetch.mock.calls.some(([url]) => url === "https://compatible.example/v1/models")).toBe(false);
   });
 
   it("removes raw storage-alias duplicates when a compatible output prefix is configured", async () => {

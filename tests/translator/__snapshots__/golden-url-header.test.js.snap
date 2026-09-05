@@ -115,6 +115,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > ai21 → headers (ap
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > aihorde → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > aimlapi → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -3640,6 +3659,13 @@ exports[`GOLDEN buildUrl (default executor providers) > ai21 → url (stream + n
 {
   "nonStream": "https://api.ai21.com/studio/v1/chat/completions",
   "stream": "https://api.ai21.com/studio/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > aihorde → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://oai.aihorde.net/v1/chat/completions",
+  "stream": "https://oai.aihorde.net/v1/chat/completions",
 }
 `;
 

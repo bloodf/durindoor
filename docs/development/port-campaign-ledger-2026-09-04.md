@@ -29,7 +29,7 @@ Canonical disposition ledger for [#749](https://github.com/bloodf/durindoor/issu
 | D4 | [#744](https://github.com/bloodf/durindoor/issues/744) | #3654 | merged | Delivered by merged [PR #779](https://github.com/bloodf/durindoor/pull/779). Selective transfer includes the UI-token prerequisite and secure DB export/import: shared dual-auth, bounded JSON, secret-free preview, credentials omitted by default, explicit acknowledged secret export, atomic validated import, and preservation of unrelated rows and omitted credentials. |
 | A4 | [#745](https://github.com/bloodf/durindoor/issues/745) | #3765 | merged | Delivered by merged [PR #778](https://github.com/bloodf/durindoor/pull/778). |
 | B1 | [#746](https://github.com/bloodf/durindoor/issues/746) | #3733 | merged | Delivered by merged [PR #789](https://github.com/bloodf/durindoor/pull/789). |
-| D6 | [#747](https://github.com/bloodf/durindoor/issues/747) | #3748 | pending implementation delivery | Deferred D6 combo allow-list work remains unmerged. Raw API-key bulk export remains forbidden pending separate security review. |
+| D6 | [#747](https://github.com/bloodf/durindoor/issues/747) | #3748 | merged | Groups, allow-lists, future-only attribution, and migration 017 delivered by [PR #798](https://github.com/bloodf/durindoor/pull/798). Raw API-key bulk export remains excluded. |
 | D5 | [#748](https://github.com/bloodf/durindoor/issues/748) | #3768 | merged | Delivered by merged [PR #796](https://github.com/bloodf/durindoor/pull/796), including combo weights with migration 015; required Antigravity aliases remain preserved. |
 |  | [#749](https://github.com/bloodf/durindoor/issues/749) | Ledger | closed — merged | Canonical ledger delivered by merged [PR #795](https://github.com/bloodf/durindoor/pull/795). |
 | B2 | [#750](https://github.com/bloodf/durindoor/issues/750) | #3771 | merged | Delivered by merged [PR #790](https://github.com/bloodf/durindoor/pull/790). |
@@ -43,9 +43,9 @@ Canonical disposition ledger for [#749](https://github.com/bloodf/durindoor/issu
 | C2 | [#758](https://github.com/bloodf/durindoor/issues/758) | #3694-cc | open / blocked — live verification | CommandCode monthly-cap behavior needs authenticated live verification. |
 | A10 | [#759](https://github.com/bloodf/durindoor/issues/759) | #3713 | merged | Delivered by merged [PR #785](https://github.com/bloodf/durindoor/pull/785). |
 | D1 | [#760](https://github.com/bloodf/durindoor/issues/760) | #3661 | merged | Security-sensitive API-key provider-account scoping and migration 014 delivered by merged [PR #791](https://github.com/bloodf/durindoor/pull/791). |
-| D2 | [#761](https://github.com/bloodf/durindoor/issues/761) | #3754 | pending implementation delivery | Explicit combo capability caps remain unmerged. |
+| D2 | [#761](https://github.com/bloodf/durindoor/issues/761) | #3754 | merged | Explicit capability ceilings and migration 016 delivered by [PR #797](https://github.com/bloodf/durindoor/pull/797). |
 | D3 | [#762](https://github.com/bloodf/durindoor/issues/762) | #3663 | open / blocked — live verification | Alibaba Token Plan live catalog/media/thinking requires authenticated proof. |
-| B3 | [#763](https://github.com/bloodf/durindoor/issues/763) | #3780 | merged / still blocked — live verification | Candidate delivered by merged [PR #786](https://github.com/bloodf/durindoor/pull/786); authenticated acceptance evidence remains blocked. |
+| B3 | [#763](https://github.com/bloodf/durindoor/issues/763) | #3780 | merged | Delivered by [PR #786](https://github.com/bloodf/durindoor/pull/786), with model IDs and transport checked against official OpenCode Go documentation. No authenticated provider call was claimed. |
 | B6 | [#764](https://github.com/bloodf/durindoor/issues/764) | #3747 | merged | Delivered by merged [PR #793](https://github.com/bloodf/durindoor/pull/793). |
 | B4 | [#765](https://github.com/bloodf/durindoor/issues/765) | #3757 | open / blocked — live verification | Meta AI provider needs authenticated live verification. |
 | B5 | [#766](https://github.com/bloodf/durindoor/issues/766) | #3655 | merged | Delivered by merged [PR #794](https://github.com/bloodf/durindoor/pull/794). |
@@ -57,7 +57,7 @@ Selected mapping is deliberately issue-level; it does not invent an implementati
 
 ## Delivery outcomes
 
-Live GitHub state snapshot: **2026-09-05T03:23:00Z**. PR bodies supply issue mappings through `Closes`; unknown mappings remain explicitly unclaimed. These links do not change 734-row scan dispositions or turn audit verdicts into implementation claims.
+Live GitHub state snapshot: **2026-09-05**, after PR #798 merged. PR bodies supply issue mappings through `Closes`. These links do not change 734-row scan dispositions or turn audit verdicts into implementation claims.
 
 | PR | Campaign relationship | Snapshot state |
 | ---: | --- | --- |
@@ -88,8 +88,10 @@ Live GitHub state snapshot: **2026-09-05T03:23:00Z**. PR bodies supply issue map
 | [#794](https://github.com/bloodf/durindoor/pull/794) | Closes [#766](https://github.com/bloodf/durindoor/issues/766) | merged |
 | [#795](https://github.com/bloodf/durindoor/pull/795) | Closes [#749](https://github.com/bloodf/durindoor/issues/749) and [#769](https://github.com/bloodf/durindoor/issues/769); delivers #735/#767 reconciliation | merged |
 | [#796](https://github.com/bloodf/durindoor/pull/796) | Closes [#748](https://github.com/bloodf/durindoor/issues/748) | merged |
+| [#797](https://github.com/bloodf/durindoor/pull/797) | Closes [#761](https://github.com/bloodf/durindoor/issues/761) | merged |
+| [#798](https://github.com/bloodf/durindoor/pull/798) | Closes [#747](https://github.com/bloodf/durindoor/issues/747) | merged |
 
-All listed PRs through #796 are merged at this snapshot. Remaining ordered migration work is #761 migration 016, then #747 migration 017; AI Horde implementation remains pending in the current exception candidate.
+All listed PRs through #798 are merged. Original implementation issues are complete except the five authenticated-evidence blockers listed below. AI Horde is the additional verified anonymous-provider exception delivered by the current provider PR.
 
 ## Local candidate evidence
 
@@ -129,7 +131,7 @@ Candidate evidence below is historical worktree evidence, not current delivery s
 - **#768:** required redacted fixture: real Sarvam chat round-trip plus authenticated `/v1/models`; anonymous catalog is not contract. `sarvam-30b` must not be advertised without authenticated proof. Trademark policy approved and no longer the gate.
 - **#767 `PORT-*` rows:** campaign collected no authenticated provider evidence, so `PORT-*` dispositions remain blocked where original criteria require it. AI Horde is the sole verified anonymous exception: official sentinel `0000000000` supplied live catalog and chat evidence without an account credential. No fixture was fabricated and no static catalog is approved merely from OmniRoute.
 
-Final blocker semantics at snapshot time: #755, #758, #762, #765, and #768 remain open and live-blocked. #761 and #747 remain pending ordered migrations 016 and 017. AI Horde implementation is pending in the current anonymous-exception candidate; reconciled provider audit #767 can close after that candidate merges. Parent audit #735, ledger #749, and policy/triage #769 are closed. These audit/document/policy closures do not claim remaining implementations delivered.
+Final blocker semantics: #755, #758, #762, #765, and #768 remain open and live-blocked. Migrations 014–017 are merged. AI Horde is delivered by the current anonymous-exception provider PR; reconciled provider audit #767 closes with it. Parent audit #735, ledger #749, and policy/triage #769 are closed. Audit closures do not claim blocked provider integrations were implemented.
 
 ## Provider coverage matrix (120 rows)
 

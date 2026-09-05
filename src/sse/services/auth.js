@@ -171,6 +171,7 @@ const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
 const PUBLIC_NO_AUTH_FALLBACK_PROVIDERS = new Set([
 "auggie",
 "chipotle",
+"aihorde",
 "duckduckgo-web",
 "mimocode",
 "opencode",

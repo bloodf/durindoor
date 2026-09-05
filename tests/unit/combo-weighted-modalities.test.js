@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   enforceApiKeyModelPolicy: vi.fn(async () => null),
   getApiKeyByKey: vi.fn(async () => null),
   getCombos: vi.fn(async () => []),
+  getComboByName: vi.fn(async () => null),
   getComboForModel: vi.fn(async () => null),
   getCustomModels: vi.fn(async () => []),
   getDisabledModels: vi.fn(async () => ({})),
@@ -27,6 +28,9 @@ const mocks = vi.hoisted(() => ({
    getSettings: vi.fn(async () => ({ requireApiKey: false, comboStrategy: "weighted" })),
    getAutoComboCatalog: vi.fn(async () => ({})),
   recordApiKeyUsageForResponse: vi.fn(async (_apiKey, response) => response),
+  // Mirrors unrestricted no-auth selection after the canonical helper strips
+  // its synthetic `noauth` connection metadata.
+  getNoAuthProviderCredentials: vi.fn(async () => ({})),
   getProviderCredentialsWithQuotaPreflight: vi.fn(async () => ({
     apiKey: "test-key",
     connectionId: "test-connection",
@@ -38,6 +42,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/localDb", () => ({
   getApiKeyByKey: mocks.getApiKeyByKey,
   getCombos: mocks.getCombos,
+  getComboByName: mocks.getComboByName,
   getComboForModel: mocks.getComboForModel,
   getCustomModels: mocks.getCustomModels,
   getDisabledModels: mocks.getDisabledModels,
@@ -65,7 +70,7 @@ vi.mock("@/shared/services/providerRateLimitEvidence", async (importOriginal) =>
 }));
 vi.mock("../../src/sse/services/auth.js", () => ({
   clearAccountError: vi.fn(),
-  getNoAuthProviderCredentials: vi.fn(async () => ({})),
+  getNoAuthProviderCredentials: mocks.getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight: mocks.getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable: vi.fn(async () => ({ shouldFallback: false })),
   projectProviderCredentials: vi.fn((connection) => connection),
@@ -269,6 +274,7 @@ function makeFetch({ failureOnHeavy = false, failureOnLight = false } = {}) {
 }
 
 function setCombo(combo) {
+  mocks.getComboByName.mockImplementation(async (name) => (name === combo.name ? combo : null));
   mocks.getComboForModel.mockImplementation(async (name) => (name === combo.name ? combo : null));
   mocks.getCombos.mockResolvedValue([combo]);
 }

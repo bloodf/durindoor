@@ -2,7 +2,7 @@ import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -121,12 +121,45 @@ export const TABLES = {
       // Optional [{ id, weight }]. Legacy `models` strings remain routing source.
       members: "TEXT",
       capabilities: "TEXT",
+      // Optional JSON array of provider-connection ids. Empty / NULL means
+      // unrestricted (current behavior). When populated, dispatch at the shared
+      // selection seam only ever considers those connections for this combo.
+      // Set by the connection-groups / combo allow-list editor (issue #747).
+      allowedConnectionIds: "TEXT",
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
     },
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_combo_name ON combos(name)",
       "CREATE INDEX IF NOT EXISTS idx_combo_name_nocase ON combos(name COLLATE NOCASE)",
+    ],
+  },
+  // Connection groups: organizational bundling of provider-connections. The
+  // group itself is not a dispatch unit — combos reference connection ids
+  // directly via allowedConnectionIds. Groups simplify UI management: the
+  // dashboard expands a group into its member ids when assigning it to a
+  // combo (issue #747 / port of decolua/9router #3748).
+  connectionGroups: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      name: "TEXT UNIQUE NOT NULL",
+      description: "TEXT",
+      createdAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_cg_name ON connectionGroups(name COLLATE NOCASE)",
+    ],
+  },
+  connectionGroupMembers: {
+    columns: {
+      groupId: "TEXT NOT NULL REFERENCES connectionGroups(id) ON DELETE CASCADE",
+      connectionId: "TEXT NOT NULL REFERENCES providerConnections(id) ON DELETE CASCADE",
+      createdAt: "TEXT NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (groupId, connectionId)",
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_cgm_connection ON connectionGroupMembers(connectionId)",
     ],
   },
   mcpInstances: {
@@ -197,12 +230,17 @@ export const TABLES = {
       tokens: "TEXT",
       meta: "TEXT",
       usageEventId: "TEXT",
+      // Set only for requests dispatched through a combo after issue #747.
+      // Existing rows remain NULL; never backfilled/inferred.
+      comboId: "TEXT",
+      comboName: "TEXT",
     },
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_uh_ts ON usageHistory(timestamp DESC)",
       "CREATE INDEX IF NOT EXISTS idx_uh_provider ON usageHistory(provider)",
       "CREATE INDEX IF NOT EXISTS idx_uh_model ON usageHistory(model)",
       "CREATE INDEX IF NOT EXISTS idx_uh_conn ON usageHistory(connectionId)",
+      "CREATE INDEX IF NOT EXISTS idx_uh_combo ON usageHistory(comboId) WHERE comboId IS NOT NULL",
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON usageHistory(usageEventId) WHERE usageEventId IS NOT NULL",
     ],
   },

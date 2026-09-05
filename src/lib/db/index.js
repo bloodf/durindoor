@@ -23,6 +23,7 @@ import { mergeProviderSpecificData } from "./helpers/mergeProviderMetadata.js";
 import { validateComboInvariant } from "@/lib/combos/invariants.js";
 import { normalizeComboMembers } from "./repos/combosRepo.js";
 import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
+import { validateGroupName, validateGroupDescription } from "./repos/connectionGroupsRepo.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -39,6 +40,42 @@ function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {
     seen.add(value);
   }
   return seen;
+}
+
+function validateConnectionGroupImport(payload) {
+  const groups = payload.connectionGroups ?? [];
+  const members = payload.connectionGroupMembers ?? [];
+  const connections = payload.providerConnections ?? [];
+  const combos = payload.combos ?? [];
+  if (!Array.isArray(groups)) throw new Error("connectionGroups must be an array");
+  if (!Array.isArray(members)) throw new Error("connectionGroupMembers must be an array");
+  if (!Array.isArray(connections)) throw new Error("providerConnections must be an array");
+  if (!Array.isArray(combos)) throw new Error("combos must be an array");
+
+  const groupIds = assertUniqueNonEmpty(groups, "id", "Connection group");
+  assertUniqueNonEmpty(groups, "name", "Connection group");
+  const connectionIds = assertUniqueNonEmpty(connections, "id", "Provider connection");
+  const memberKeys = new Set();
+  for (const group of groups) {
+    validateGroupName(group.name);
+    validateGroupDescription(group.description);
+  }
+  for (const [index, member] of members.entries()) {
+    if (!isString(member?.groupId) || !member.groupId.trim()) throw new Error(`Connection group member at index ${index} must have a groupId`);
+    if (!isString(member?.connectionId) || !member.connectionId.trim()) throw new Error(`Connection group member at index ${index} must have a connectionId`);
+    if (!groupIds.has(member.groupId)) throw new Error(`Connection group member at index ${index} references a missing group`);
+    if (!connectionIds.has(member.connectionId)) throw new Error(`Connection group member at index ${index} references a missing provider connection`);
+    const key = JSON.stringify([member.groupId, member.connectionId]);
+    if (memberKeys.has(key)) throw new Error(`Duplicate connection group member at index ${index}`);
+    memberKeys.add(key);
+  }
+  for (const [index, combo] of combos.entries()) {
+    if (combo.allowedConnectionIds == null) continue;
+    if (!Array.isArray(combo.allowedConnectionIds) || combo.allowedConnectionIds.some((id) => !isString(id) || !connectionIds.has(id))) {
+      throw new Error(`Combo at index ${index} has invalid allowedConnectionIds`);
+    }
+  }
+  return { groups, members, combos };
 }
 
 function validateApiKeyImport(payload) {
@@ -265,6 +302,14 @@ export {
   getCombos, getComboById, getComboByName, getComboForModel,
   createCombo, updateCombo, deleteCombo, ComboMemberError, normalizeComboMembers } from
 "./repos/combosRepo.js";
+// Connection groups (issue #747 / port of decolua/9router #3748, groups-only).
+export {
+  getConnectionGroups, getConnectionGroupById, getConnectionGroupByName,
+  createConnectionGroup, updateConnectionGroup, deleteConnectionGroup,
+  addConnectionToGroup, removeConnectionFromGroup,
+  validateGroupName, validateGroupDescription, validateConnectionIds,
+  ConnectionGroupNotFoundError, ConnectionGroupValidationError } from
+"./repos/connectionGroupsRepo.js";
 
 // MCP gateway: upstream instances, gateway API keys, per-key grants
 export {
@@ -366,7 +411,9 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         updatedAt: r.updatedAt || null
       })),
       quota: readQuotaPortableStateSync(db, { now: quotaNow }),
-      combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), invariant: r.invariant ? parseJson(r.invariant, null) : null, capabilities: r.capabilities ? parseJson(r.capabilities, null) : null, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), invariant: r.invariant ? parseJson(r.invariant, null) : null, capabilities: r.capabilities ? parseJson(r.capabilities, null) : null, allowedConnectionIds: parseJson(r.allowedConnectionIds, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      connectionGroups: db.all(`SELECT * FROM connectionGroups`).map((r) => ({ id: r.id, name: r.name, description: r.description, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      connectionGroupMembers: db.all(`SELECT * FROM connectionGroupMembers`).map((r) => ({ groupId: r.groupId, connectionId: r.connectionId, createdAt: r.createdAt })),
       modelAliases: {},
       customModels: [],
       mitmAlias: {},
@@ -390,14 +437,13 @@ export async function importDb(payload, { now = Date.now() } = {}) {
   // This makes duplicate keys, dangling totals, and malformed policies a hard
   // import error instead of silently collapsing or weakening enforcement.
   const { apiKeys, totals } = validateApiKeyImport(payload);
+  const { groups, members, combos } = validateConnectionGroupImport(payload);
   const quotaNow = canonicalizeQuotaNow(now).timestamp;
   const { quota } = validateQuotaImport(payload, { now: quotaNow });
   const apiKeyProviderConnections = validateApiKeyProviderConnectionImport(payload, {
     apiKeyIds: new Set(apiKeys.map((key) => key.id)),
     providerConnectionIds: new Set((payload.providerConnections ?? []).map((connection) => connection.id)),
   });
-  const combos = payload.combos ?? [];
-  if (!Array.isArray(combos)) throw new Error("combos must be an array");
   const comboWrites = combos.map((combo) => {
     if (!combo || !isObject(combo) || Array.isArray(combo) || !Array.isArray(combo.models)) {
       throw new Error("Combo import row is invalid");
@@ -429,6 +475,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     db.run(`DELETE FROM quotaReservations`);
     db.run(`DELETE FROM quotaFetchStates`);
     db.run(`DELETE FROM providerQuotaSnapshots`);
+    db.run(`DELETE FROM connectionGroupMembers`);
+    db.run(`DELETE FROM connectionGroups`);
     db.run(`DELETE FROM providerConnections`);
     db.run(`DELETE FROM providerNodes`);
     db.run(`DELETE FROM proxyPools`);
@@ -503,10 +551,22 @@ export async function importDb(payload, { now = Date.now() } = {}) {
         );
       }
     }
+    for (const group of groups) {
+      db.run(
+        `INSERT INTO connectionGroups(id, name, description, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?)`,
+        [group.id, group.name, group.description ?? null, group.createdAt || new Date().toISOString(), group.updatedAt || new Date().toISOString()]
+      );
+    }
+    for (const member of members) {
+      db.run(
+        `INSERT INTO connectionGroupMembers(groupId, connectionId, createdAt) VALUES(?, ?, ?)`,
+        [member.groupId, member.connectionId, member.createdAt || new Date().toISOString()]
+      );
+    }
     for (const c of comboWrites) {
       db.run(
-        `INSERT OR REPLACE INTO combos(id, name, kind, models, members, invariant, capabilities, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [c.id, c.name, c.kind || null, stringifyJson(c.models), c.members == null ? null : stringifyJson(c.members), c.invariant ? stringifyJson(c.invariant) : null, c.capabilities ? stringifyJson(c.capabilities) : null, c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
+        `INSERT OR REPLACE INTO combos(id, name, kind, models, members, invariant, capabilities, allowedConnectionIds, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [c.id, c.name, c.kind || null, stringifyJson(c.models), c.members == null ? null : stringifyJson(c.members), c.invariant == null ? null : stringifyJson(c.invariant), c.capabilities == null ? null : stringifyJson(c.capabilities), stringifyJson(c.allowedConnectionIds || []), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
       );
     }
     for (const [a, m] of Object.entries(payload.modelAliases || {})) {
@@ -620,7 +680,11 @@ export async function exportSelectiveDb(selection, { includeSecrets = false } = 
       if (includeSecrets) for (const field of SENSITIVE_CONNECTION_FIELDS) if (isEncryptedBlob(c[field])) c[field] = decryptField(c[field], row.id);
       return transferPublic(c, { includeSecrets });
     }) : [],
-    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map((row) => ({ id: row.id, name: row.name, kind: row.kind, models: parseJson(row.models, []), members: parseJson(row.members, null), invariant: parseJson(row.invariant, null), capabilities: parseJson(row.capabilities, null), createdAt: row.createdAt, updatedAt: row.updatedAt })) : []
+    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map(transferCombo).map((combo) => {
+      const missing = (combo.allowedConnectionIds || []).filter((id) => !providers.includes(id));
+      if (missing.length > 0) throw new Error(`Combo transfer "${combo.name}" requires selected provider connections: ${missing.join(", ")}`);
+      return combo;
+    }) : []
   }));
 }
 
@@ -633,7 +697,24 @@ export async function getSelectiveTransferCatalog() {
 }
 
 const TRANSFER_COMBO_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/;
-const TRANSFER_COMBO_FIELDS = new Set(["id", "name", "kind", "models", "members", "invariant", "capabilities", "createdAt", "updatedAt"]);
+const TRANSFER_COMBO_FIELDS = new Set([
+  "id", "name", "kind", "models", "members", "invariant", "capabilities", "allowedConnectionIds", "createdAt", "updatedAt"
+]);
+
+function transferCombo(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    models: parseJson(row.models, []),
+    members: parseJson(row.members, null),
+    invariant: parseJson(row.invariant, null),
+    capabilities: parseJson(row.capabilities, null),
+    allowedConnectionIds: parseJson(row.allowedConnectionIds, []),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
 
 function validateTransferCombo(row) {
   if (!isTransferObject(row)) throw new Error("Combo transfer row is invalid");
@@ -643,6 +724,10 @@ function validateTransferCombo(row) {
   if (!isString(row.name) || !TRANSFER_COMBO_NAME_REGEX.test(row.name) || !Array.isArray(row.models)) throw new Error("Combo transfer row is incomplete or has an invalid name");
   if (row.members != null && !Array.isArray(row.members)) throw new Error("Combo transfer members must be an array or null");
   if (row.invariant != null && !isTransferObject(row.invariant)) throw new Error("Combo transfer invariant must be an object or null");
+  if (row.capabilities != null && !isTransferObject(row.capabilities)) throw new Error("Combo transfer capabilities must be an object or null");
+  if (row.allowedConnectionIds != null && (!Array.isArray(row.allowedConnectionIds) || row.allowedConnectionIds.some((id) => !isString(id) || !id))) {
+    throw new Error("Combo transfer allowedConnectionIds must contain non-empty connection IDs");
+  }
 }
 
 /** Validate complete bundle before one transaction; no-secret input preserves local credentials. */
@@ -734,6 +819,10 @@ export async function importSelectiveDb(bundle, selection) {
     };
   });
 
+  const availableConnectionIds = new Set([
+    ...providerRows.map((row) => row.id),
+    ...db.all(`SELECT id FROM providerConnections`).map((row) => row.id)
+  ]);
   const comboWrites = comboRows.map((source) => {
     const combo = remap(source);
     const id = comboIds.get(source.id);
@@ -747,6 +836,10 @@ export async function importSelectiveDb(bundle, selection) {
       id: isString(member?.id) && comboNames.has(member.id) ? comboNames.get(member.id) : member?.id
     }));
     const members = normalizeComboMembers(models, remappedMembers);
+    const allowedConnectionIds = combo.allowedConnectionIds || [];
+    if (allowedConnectionIds.some((connectionId) => !availableConnectionIds.has(connectionId))) {
+      throw new Error(`Combo transfer "${source.name}" references unavailable provider connections`);
+    }
     validateComboInvariant({ ...combo, name, models, members, invariant: combo.invariant });
     const normalizedCapabilities = normalizeComboCapabilities(combo.capabilities);
     if (!normalizedCapabilities.ok) throw new Error(normalizedCapabilities.error);
@@ -757,6 +850,7 @@ export async function importSelectiveDb(bundle, selection) {
       id, name, kind: combo.kind || null, models: stringifyJson(models), members: stringifyJson(members),
       invariant: combo.invariant ? stringifyJson(combo.invariant) : null,
       capabilities: capabilities === null ? null : stringifyJson(capabilities),
+      allowedConnectionIds: stringifyJson(allowedConnectionIds),
       createdAt: existingRow?.createdAt || combo.createdAt || new Date().toISOString(),
       updatedAt: combo.updatedAt || new Date().toISOString(),
     };
@@ -774,9 +868,9 @@ export async function importSelectiveDb(bundle, selection) {
     }
     for (const w of comboWrites) {
       db.run(
-        `INSERT INTO combos(id, name, kind, models, members, invariant, capabilities, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, models=excluded.models, members=excluded.members, invariant=excluded.invariant, capabilities=excluded.capabilities, updatedAt=excluded.updatedAt`,
-        [w.id, w.name, w.kind, w.models, w.members, w.invariant, w.capabilities, w.createdAt, w.updatedAt]
+        `INSERT INTO combos(id, name, kind, models, members, invariant, capabilities, allowedConnectionIds, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, models=excluded.models, members=excluded.members, invariant=excluded.invariant, capabilities=excluded.capabilities, allowedConnectionIds=excluded.allowedConnectionIds, updatedAt=excluded.updatedAt`,
+        [w.id, w.name, w.kind, w.models, w.members, w.invariant, w.capabilities, w.allowedConnectionIds, w.createdAt, w.updatedAt]
       );
       imported.combos.push(w.id);
     }
@@ -796,7 +890,7 @@ export async function previewSelectiveImport(bundle, selection) {
   if (providerRows.length !== selected.providers.length || comboRows.length !== selected.combos.length) throw new Error("Transfer bundle does not contain every selected row");
   for (const row of [...providerRows, ...comboRows]) if (!row || !isObject(row) || !isString(row.id) || !row.id) throw new Error("Transfer row has invalid ID");
   for (const row of providerRows) validateTransferProvider(row);
-  for (const row of comboRows) if (!isString(row.name) || !TRANSFER_COMBO_NAME_REGEX.test(row.name) || !Array.isArray(row.models)) throw new Error("Combo transfer row is incomplete or has an invalid name");
+  for (const row of comboRows) validateTransferCombo(row);
   const db = await getAdapter();
   const providerConnections = providerRows.map((row) => {
     const existing = db.get(`SELECT id, provider, name FROM providerConnections WHERE id = ?`, [row.id]);

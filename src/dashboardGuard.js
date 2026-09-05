@@ -70,6 +70,7 @@ const MANAGEMENT_API_PATHS = [
   "/api/provider-nodes",
   "/api/proxy-pools",
   "/api/combos",
+  "/api/connection-groups",
   "/api/models",
   "/api/usage",
   "/api/timeline",

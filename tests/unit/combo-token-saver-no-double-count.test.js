@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getComboModels: vi.fn(),
   getModelInfo: vi.fn(),
   getComboForModel: vi.fn(),
+  getComboByName: vi.fn(),
   getSettings: vi.fn(),
   handleChatCore: vi.fn(),
   recordTokenSaverEvent: vi.fn(),
@@ -59,6 +60,7 @@ vi.mock("../../open-sse/services/projectId.js", () => ({
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   getComboForModel: mocks.getComboForModel,
+  getComboByName: mocks.getComboByName,
   getProxyPools: vi.fn(() => []),
   updateProviderConnection: vi.fn(),
 }));
@@ -103,6 +105,10 @@ describe("combo token-saver telemetry", () => {
       const models = await mocks.getComboModels(model);
       return models ? { name: model, models } : null;
     });
+    mocks.getComboByName.mockImplementation(async (name) => {
+      const models = await mocks.getComboModels(name);
+      return models ? { id: `${name}-id`, name, allowedConnectionIds: [] } : null;
+    });
     mocks.getComboModels.mockImplementation(async (model) => {
       if (model === "combo-fallback") return ["first/bad", "second/ok"];
       if (model === "nested-combo") return ["nested/bad", "nested/ok"];
@@ -142,7 +148,7 @@ describe("combo token-saver telemetry", () => {
     });
 
     const response = await handleChat(makeRequest());
-    expect(response.status).toBe(200);
+    expect(response.status, await response.clone().text()).toBe(200);
     expect(mocks.recordTokenSaverEvent).toHaveBeenCalledTimes(1);
     expect(mocks.recordTokenSaverEvent).toHaveBeenCalledWith(
       expect.objectContaining({ rtk: expect.objectContaining({ bytesSaved: 20 }) })
@@ -161,7 +167,7 @@ describe("combo token-saver telemetry", () => {
     });
 
     const response = await handleChat(makeRequest());
-    expect(response.status).toBe(503);
+    expect(response.status, await response.clone().text()).toBe(503);
     expect(mocks.recordTokenSaverEvent).toHaveBeenCalledTimes(1);
     expect(mocks.recordTokenSaverEvent).toHaveBeenCalledWith(
       expect.objectContaining({ rtk: expect.objectContaining({ bytesSaved: 7 }) })
@@ -185,7 +191,7 @@ describe("combo token-saver telemetry", () => {
     });
 
     const response = await handleChat(makeRequest("outer-combo"));
-    expect(response.status).toBe(200);
+    expect(response.status, await response.clone().text()).toBe(200);
     expect(attemptedModels).toContain("nested/bad");
     expect(attemptedModels).toContain("nested/ok");
     expect(attemptedModels).toContain("standalone/ok");

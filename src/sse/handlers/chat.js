@@ -35,6 +35,7 @@ import {
   handleComboChat,
   handleFusionChat } from
 "open-sse/services/combo.js";
+import { getComboRoutingPolicy, mergeComboRouting } from "open-sse/services/comboRoutingPolicy.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
 import { resolveTokenSaverEnabled } from "open-sse/rtk/index.js";
@@ -197,7 +198,8 @@ settings,
 now = Date.now(),
 comboName = null,
 comboStrategy = "fallback",
-dependencies = {})
+dependencies = {},
+comboRouting = null)
 {
   try {
     const resolveModelInfo = dependencies.getModelInfo || resolveQuotaModelInfo;
@@ -218,7 +220,10 @@ dependencies = {})
       const providerAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
       const upstreamModel = getModelUpstreamId(providerAlias, model);
       const quotaFamily = getModelQuotaFamily(providerAlias, model);
-      const connections = await loadConnections({ provider, isActive: true });
+      const allConnections = await loadConnections({ provider, isActive: true });
+      const connections = comboRouting?.restrictionApplied === true ?
+      allConnections.filter((connection) => comboRouting.allowedConnectionIds?.includes(connection.id)) :
+      allConnections;
       const resourceKeys = buildQuotaResourceKeys({
         provider,
         modelCandidates: [...new Set([model, upstreamModel].filter(Boolean))],
@@ -237,7 +242,8 @@ dependencies = {})
       !decisions.get(connection.id)?.skip &&
       !lockedConnectionIds.has(connection.id)
       );
-      const publicFallbackWillApply = allowsPublicNoAuth(provider) &&
+      const publicFallbackWillApply = comboRouting?.restrictionApplied !== true &&
+      allowsPublicNoAuth(provider) &&
       connections.length > 0 &&
       selectableConnections.length === 0;
       const rankedConnections = rankQuotaConnections(selectableConnections, decisions, pressure, {
@@ -517,6 +523,9 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     // legacy behavior.
     const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
     const comboMembers = (await getComboForModel(comboName))?.members || [];
+    // #747: resolve the combo's allow-list once per top-level request. Every
+    // attempt / fallback inside the same logical request shares this policy.
+    const comboRouting = await getComboRoutingPolicy(comboName);
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[comboName] || {};
     const comboSpecificStrategy = isAutoComboId(modelStr) ?
@@ -547,7 +556,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId }
+            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, comboRouting }
           );
         },
         log,
@@ -583,7 +592,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId }
+          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, comboRouting }
         );
       },
       log,
@@ -599,7 +608,9 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         settings,
         Date.now(),
         comboName,
-        comboStrategy
+        comboStrategy,
+        {},
+        comboRouting
       ),
       signal: request?.signal || null
     });
@@ -665,7 +676,7 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
  * Handle single model chat request
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, comboRouting = null } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -681,6 +692,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // casing the client sent (#10177). Auto-combo ids pass through as-is.
       const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
       const comboMembers = (await getComboForModel(comboName))?.members || [];
+      // #747: nested combo resolves its OWN allow-list, then intersects with the
+      // parent so the inner combo can only narrow eligibility, never replace it.
+      // Attribution (combo id / name) stays with the OUTER combo (the one the
+      // client asked for) so usage reporting is honest.
+      const innerRouting = await getComboRoutingPolicy(comboName);
+      const mergedRouting = mergeComboRouting(comboRouting, innerRouting);
       // Check for combo-specific strategy first, fallback to global. Auto-combo
       // ids honor the F-2 `.strategy` shape; named combos keep `.fallbackStrategy`.
       const comboStrategies = chatSettings.comboStrategies || {};
@@ -709,7 +726,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId }
+              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, comboRouting: mergedRouting }
             );
           },
           log,
@@ -744,7 +761,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId }
+            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, comboRouting: mergedRouting }
           );
         },
         log,
@@ -760,7 +777,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           chatSettings,
           Date.now(),
           comboName,
-          comboStrategy
+          comboStrategy,
+          {},
+          mergedRouting
         ),
         signal: requestSignal
       });
@@ -933,7 +952,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           resourceKeys: quotaResourceKeys,
           sessionId: routingSessionId,
           preferredConnectionId: preferredConnectionId || requestReplayConnectionId,
-          apiKeyId
+          apiKeyId,
+          allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+          restrictionApplied: comboRouting?.restrictionApplied === true
         });
       } catch (error) {
         if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
@@ -1100,6 +1121,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         apiKey,
         apiKeyName,
         abortSignal: requestSignal,
+        // #747: outer-combo attribution; nested merge narrowed eligibility
+        // (comboRouting.allowedConnectionIds) without changing attribution.
+        comboId: comboRouting?.id || null,
+        comboName: comboRouting?.name || null,
         quotaReservation,
         onProviderAttempt: () => {
           latestAttemptStartedAt = allocateProviderAttemptTimestamp();

@@ -18,6 +18,7 @@ import { getAutoComboCatalog } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -105,11 +106,12 @@ async function handleSearchHandler(request) {
     perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+    const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("SEARCH", `Combo "${comboName}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, apiKeyAuth.apiKeyId, settings),
+      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, apiKeyAuth.apiKeyId, settings, comboRouting),
       log,
       comboName,
       comboStrategy,
@@ -120,7 +122,7 @@ async function handleSearchHandler(request) {
   return handleSingleProviderSearch(body, providerInput, request, apiKey, apiKeyAuth.apiKeyId, settings);
 }
 
-async function handleSingleProviderSearch(body, providerInput, request, apiKey, apiKeyId, settings) {
+async function handleSingleProviderSearch(body, providerInput, request, apiKey, apiKeyId, settings, comboRouting = null) {
   const query = body.query;
   const providerId = resolveProviderId(providerInput);
   const resolvedProvider = AI_PROVIDERS[providerId];
@@ -164,7 +166,11 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
 
   // No-auth execution still resolves provider-account scope first.
   if (resolvedProvider.noAuth) {
-    const credentials = await getNoAuthProviderCredentials(providerId, null, { apiKeyId });
+    const credentials = await getNoAuthProviderCredentials(providerId, null, {
+      apiKeyId,
+      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+      restrictionApplied: comboRouting?.restrictionApplied === true
+    });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${providerId}' is disabled. Enable it in Settings > Providers.`);
@@ -198,7 +204,11 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds, null, { apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds, null, {
+      apiKeyId,
+      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+      restrictionApplied: comboRouting?.restrictionApplied === true
+    });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

@@ -31,6 +31,10 @@ export function extractUsageFromResponse(responseBody) {
     return canonicalizeUsage(responseUsage);
   }
 
+  if (responseBody.prompt_eval_count !== undefined || responseBody.eval_count !== undefined) {
+    return toOpenAIUsage(responseBody, "ollama");
+  }
+
   // Gemini / Antigravity format. Antigravity wraps the native Gemini response
   // under `response`, so usage can be either top-level or nested.
   const usageMetadata = responseBody.usageMetadata || responseBody.response?.usageMetadata;
@@ -100,7 +104,7 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
  * Persist normalized usage. A non-success status keeps billable accounting
  * without allowing persistence to complete an errored live session.
  */
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, status, label = "USAGE", silent = false }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, status, label = "USAGE", silent = false, comboId = null, comboName = null }) {
   if (!tokens || !isObject(tokens)) return;
 
   const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined ?
@@ -132,6 +136,10 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     apiKey: apiKey || undefined,
     endpoint: endpoint || null,
     status: status || undefined,
-    usageEventId: usageEventId || undefined
+    usageEventId: usageEventId || undefined,
+    // #747: set only for requests dispatched through a combo. Historic rows
+    // (and requests with no combo) stay NULL; never inferred/backfilled.
+    comboId: comboId || undefined,
+    comboName: comboName || undefined
   }).catch(() => {});
 }

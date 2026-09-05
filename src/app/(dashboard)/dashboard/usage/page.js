@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl, ConfirmModal, Button, Select, DateRangePicker } from "@/shared/components";
 import { USAGE_PERIOD_OPTIONS, getUsageCalendarCutoff, toLocalDateKey, addLocalCalendarDays } from "@/lib/usagePeriods.js";
 import RequestDetailsTab from "./components/RequestDetailsTab";
+import ComboUsageReport from "./components/ComboUsageReport";
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
 // Appended to the preset list so a manually-edited calendar range has a label.
@@ -166,7 +167,10 @@ function UsageContent() {
 
       {activeTab === "overview" && (
         <Suspense fallback={<CardSkeleton />}>
-          <UsageStats period={period} setPeriod={setPeriod} customRange={customRange} isCustomRange={selectValue === "custom"} hidePeriodSelector resetNonce={resetNonce} />
+          <div className="flex flex-col gap-6">
+            <UsageStats period={period} setPeriod={setPeriod} customRange={customRange} isCustomRange={selectValue === "custom"} hidePeriodSelector resetNonce={resetNonce} />
+            <ComboUsageReport period={period} customRange={customRange} resetNonce={resetNonce} />
+          </div>
         </Suspense>
       )}
       {activeTab === "logs" && <RequestLogger resetNonce={resetNonce} />}

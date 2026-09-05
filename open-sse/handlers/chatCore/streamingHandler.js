@@ -74,7 +74,7 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, reqLogger, toolNameMap, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null }) {
+export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, reqLogger, toolNameMap, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null }) {
   const failTimeline = (status) => {
     if (traceId) { try { finishTrace(traceId, { status }); } catch {} }
   };
@@ -204,7 +204,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  *   completes without text, thinking, tool calls, or generated tokens.
  * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
-export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null }) {
+export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let coherentTerminalHandled = false;
   let completed = false;
@@ -259,7 +259,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
      * request body without altering client-facing response usage.
      */
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, label: "STREAM USAGE", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
 
     if (
@@ -309,7 +309,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     // Partial provider/estimated usage is billable even when client cancellation
     // prevents transform flush. Mark it cancelled so persistence cannot convert
     // chatCore's asynchronously finalized error session back to done.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model }).replace(/^DONE /, "CANCELLED "));
   };
 

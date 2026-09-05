@@ -82,6 +82,18 @@ Combo member 1: openai/gpt-4.1
 
 Only when the provider/model attempt cannot succeed does DurinDoor move to the next combo member.
 
+## Connection Groups and Allow-Lists
+
+**Dashboard → Combos** includes connection groups and a per-combo connection allow-list.
+
+- A connection group is an operator label for one or more saved provider connections. Creating, editing, or deleting a group never disables, deletes, or otherwise changes its member connections; deleting a group leaves those connections ungrouped.
+- A combo with no allow-list is **unrestricted** and retains existing routing behavior: any otherwise eligible active connection may serve a combo member.
+- Adding one or more connection IDs to a combo allow-list makes it restrictive. Shared combo dispatch considers only listed connections before fallback, so an excluded connection cannot be selected through another request modality or no-auth fallback.
+- Use **Add a group** in a combo's allow-list editor to copy current group member IDs into that combo. Groups are organizational only: dispatch stores and enforces connection IDs, not a live group reference. Later group deletion cannot leave an invalid combo reference.
+- Removing every entry or choosing **Clear (unrestrict)** restores unrestricted behavior.
+
+Choose stable connection names before building groups; labels show a safe name/email/provider plus a short connection ID. The dashboard never displays or exports provider key material from this feature.
+
 ## Designing Good Combos
 
 A good combo uses models that can satisfy the same client task. Avoid mixing incompatible capabilities unless the last model is only an emergency fallback.

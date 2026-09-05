@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getComboForModel: vi.fn(),
+  getComboByName: vi.fn(),
   getComboModels: vi.fn(),
   getModelInfo: vi.fn(),
   getProviderCredentials: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   getComboForModel: mocks.getComboForModel,
+  getComboByName: mocks.getComboByName,
 }));
 
 vi.mock("../../src/sse/services/model.js", async (importOriginal) => ({
@@ -97,6 +99,11 @@ describe("Antigravity combo capacity cycling", () => {
         ? { name: "combo-ag", models: ["ag/claude-opus-4-6-thinking", "kiro/claude-sonnet-4.5"] }
         : null
     ));
+    mocks.getComboByName.mockImplementation(async (name) => (
+      name === "combo-ag"
+        ? { id: "combo-ag-id", name: "combo-ag", allowedConnectionIds: [] }
+        : null
+    ));
     mocks.getComboModels.mockImplementation(async (model) => (
       model === "combo-ag"
         ? ["ag/claude-opus-4-6-thinking", "kiro/claude-sonnet-4.5"]
@@ -153,7 +160,7 @@ describe("Antigravity combo capacity cycling", () => {
 
     const response = await handleChat(makeRequest());
 
-    expect(response.status).toBe(200);
+    expect(response.status, await response.clone().text()).toBe(200);
     expect(await response.text()).toBe("ag-ok");
     expect(excludeSnapshots).toEqual([
       { provider: "antigravity", excluded: [] },

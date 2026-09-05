@@ -17,8 +17,10 @@ import m013 from "./013-combo-invariant.js";
 import m014 from "./014-api-key-provider-connections.js";
 import m015 from "./015-combo-members.js";
 import m016 from "./016-combo-capabilities.js";
+import m017 from "./017-connection-groups.js";
 
-export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014, m015, m016].sort(
+export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014, m015, m016, m017].sort(
+  (a, b) => a.version - b.version
 );
 
 export function latestVersion() {

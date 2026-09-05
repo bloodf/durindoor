@@ -13,6 +13,8 @@ import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { aggregateComboCapabilities, overlayComboCapabilities } from "open-sse/providers/capabilities.js";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
+import ConnectionGroupsPanel from "./ConnectionGroupsPanel.jsx";
+import ComboAllowListEditor from "./ComboAllowListEditor.jsx";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -23,8 +25,12 @@ export default function CombosPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCombo, setEditingCombo] = useState(null);
   const [activeProviders, setActiveProviders] = useState([]);
+  const [providerConnections, setProviderConnections] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
   const [confirmState, setConfirmState] = useState(null);
+  const [groups, setGroups] = useState([]);
+  // Connection groups (issue #747): allow-list options come from the same
+  // active-providers fetch; groups themselves load in ConnectionGroupsPanel.
   const { getCaps } = useModelCaps();
   const { copied, copy } = useCopyToClipboard();
 
@@ -34,21 +40,26 @@ export default function CombosPage() {
 
   const fetchData = async () => {
     try {
-      const [combosRes, providersRes, settingsRes] = await Promise.all([
+      const [combosRes, providersRes, settingsRes, groupsRes] = await Promise.all([
         fetch("/api/combos"),
         fetch("/api/providers"),
         fetch("/api/settings"),
+        fetch("/api/connection-groups"),
       ]);
       const combosData = await combosRes.json();
       const providersData = await providersRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const groupsData = groupsRes.ok ? await groupsRes.json() : {};
 
       // Show every non-media combo here (llm, embedding, tts, ...); media/web
       // combos belong to media-providers/web (#2686).
       if (combosRes.ok) setCombos((combosData.combos || []).filter(c => !MEDIA_PROVIDER_KINDS.some(({ id }) => id === c.kind)));
       if (providersRes.ok) {
-        setActiveProviders(filterActiveConnections(providersData.connections));
+        const connections = providersData.connections || [];
+        setProviderConnections(connections);
+        setActiveProviders(filterActiveConnections(connections));
       }
+      if (groupsRes.ok) setGroups(groupsData.groups || []);
       setComboStrategies(settingsData.comboStrategies || {});
     } catch (error) {
       console.log("Error fetching data:", error);
@@ -86,12 +97,15 @@ export default function CombosPage() {
       if (res.ok) {
         await fetchData();
         setEditingCombo(null);
-      } else {
-        const err = await res.json();
-        alert(err.error || "Failed to update combo");
+        return { ok: true };
       }
+      const err = await res.json().catch(() => ({}));
+      const message = err.error || "Failed to update combo";
+      console.log("Combo update rejected:", message);
+      return { ok: false, error: message };
     } catch (error) {
       console.log("Error updating combo:", error);
+      return { ok: false, error: "Network error" };
     }
   };
 
@@ -207,11 +221,23 @@ export default function CombosPage() {
                 onDelete={() => handleDelete(combo.id)}
                 strategy={comboStrategies[combo.name] || {}}
                 onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
+                allowListEditor={
+                  <ComboAllowListEditor
+                    allowedConnectionIds={combo.allowedConnectionIds || []}
+                    connections={providerConnections}
+                    groups={groups}
+                    onChange={async (allowedConnectionIds) => {
+                      await handleUpdate(combo.id, { allowedConnectionIds });
+                    }}
+                  />
+                }
               />
             ));
           })()}
         </div>
       )}
+
+      <ConnectionGroupsPanel connections={providerConnections} onGroupsChange={setGroups} />
 
       {/* Create Modal - Use key to force remount and reset state */}
       <ComboFormModal
@@ -264,7 +290,7 @@ function getStrategyOptions() {
   ];
 }
 
-function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
+function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, allowListEditor }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
@@ -330,6 +356,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                 )}
               </div>
             )}
+            {allowListEditor}
           </div>
         </div>
 

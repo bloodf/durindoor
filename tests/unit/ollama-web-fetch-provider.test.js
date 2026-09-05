@@ -212,10 +212,10 @@ describe("Ollama Cloud web fetch provider", () => {
 
     expect((await handleFetch(routeRequest())).status).toBe(200);
     expect(mocks.getProviderCredentials).toHaveBeenCalledWith(
-      "ollama", expect.any(Set), null, { webFetch: true },
+      "ollama", expect.any(Set), null, expect.objectContaining({ webFetch: true }),
     );
     expect(mocks.clearAccountError).toHaveBeenCalledWith(
-      "ollama-connection", expect.any(Object), null, { webFetch: true },
+      "ollama-connection", expect.any(Object), null, expect.objectContaining({ webFetch: true }),
     );
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
   });
@@ -234,7 +234,7 @@ describe("Ollama Cloud web fetch provider", () => {
       "ollama",
       null,
       null,
-      { webFetch: true },
+      expect.objectContaining({ webFetch: true }),
     );
     expect(mocks.clearAccountError).not.toHaveBeenCalled();
   });

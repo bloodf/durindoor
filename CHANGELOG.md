@@ -15,6 +15,7 @@
 - Custom OpenAI-compatible connections configured with the exact OpenCode Zen API base URL now route Muse models through `/responses` and omit Zen-rejected token caps. Same-named models on other custom nodes stay on Chat Completions; Luna stays unchanged pending endpoint proof. Ports the narrow safe theme from decolua/9router#3694. Refs #753.
 - port(upstream): #3781 - preserve literal OpenAI-shaped `max_tokens` and `tool_use` finish reasons when projecting responses to Claude stop reasons, instead of collapsing them to `end_turn`.
 - port(upstream): #3751 - future `claude-fable-*` model IDs now receive Claude Fable pricing ($10 input, $50 output/reasoning, $1 cached, and $12.50 cache creation per MTok) instead of generic Claude rates.
+- port(upstream): #3713 - Antigravity requests now omit blank text parts, preventing Gemini `400 INVALID_ARGUMENT` errors while preserving non-text parts and existing turn normalization.
 
 ## Added
 

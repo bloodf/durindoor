@@ -129,10 +129,15 @@ function normalizeFilteredContents(contents) {
   return normalized;
 }
 
+/**
+ * Remove Antigravity-invalid blank text after thought stripping. Deliberately
+ * leaves no fallback: normalizeFilteredContents preserves caller semantics.
+ */
 function filterThoughtParts(parts) {
   return parts?.filter((part) => {
     if (part.thought && !part.functionCall) return false;
     if (part.thoughtSignature && !part.functionCall && !part.text) return false;
+    if (isString(part.text) && part.text.trim() === "") return false;
     return true;
   });
 }

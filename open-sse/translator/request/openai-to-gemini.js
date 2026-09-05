@@ -175,7 +175,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
 
         if (content) {
           const text = isString(content) ? content : extractTextContent(content);
-          if (text) {
+          if (isString(text) && text.trim() !== "") {
             parts.push({ text });
           }
         }

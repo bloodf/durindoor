@@ -4,7 +4,10 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 // ─── Constants ───────────────────────────────────────────────────────────────
 import { isBrowser, isNumber, isObject, isString, isUndefined } from "../../../../../../shared/utils/typeChecks.js";
 export const QUOTA_CACHE_KEY = "quotaCacheData";
-export const REFRESH_INTERVAL_MS = 60000;
+// Source of truth for both the auto-refresh scheduler cadence (createAutoRefreshScheduler
+// below) and the dashboard's displayed countdown resets (ProviderLimits/index.js derives
+// REFRESH_INTERVAL_S from this instead of hardcoding seconds).
+export const REFRESH_INTERVAL_MS = 300000;
 // Claude usage/quota endpoint rate-limits; poll it less often than other providers
 export const CLAUDE_REFRESH_INTERVAL_MS = 600000;
 export const DEPLETED_QUOTA_THRESHOLD = 5;

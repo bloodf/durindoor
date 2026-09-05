@@ -29,6 +29,7 @@ vi.mock("@/lib/localDb", () => ({
   getComboById: mocks.getComboById,
   updateCombo: mocks.updateCombo,
   deleteCombo: mocks.deleteCombo,
+  ComboMemberError: class ComboMemberError extends Error {},
 }));
 
 vi.mock("open-sse/services/combo.js", () => ({
@@ -100,6 +101,24 @@ describe("POST /api/combos — malformed JSON boundary", () => {
     const res = await POST(jsonRequest(URL, { name: "alpha", models: [] }, "POST"));
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "Failed to create combo" });
+  });
+});
+describe("combo member validation — POST/PUT 400 mapping", () => {
+  it("POST returns 400 when the repo throws ComboMemberError", async () => {
+    const { ComboMemberError } = await import("@/lib/localDb");
+    mocks.getComboByName.mockResolvedValue(null);
+    mocks.createCombo.mockRejectedValue(new ComboMemberError("Each combo member weight must be a positive finite number"));
+    const res = await POST(jsonRequest(URL, { name: "alpha", models: ["p/a"], members: [{ id: "p/a", weight: 0 }] }, "POST"));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/positive finite number/);
+  });
+  it("PUT returns 400 when the repo throws ComboMemberError", async () => {
+    const { ComboMemberError } = await import("@/lib/localDb");
+    mocks.getComboById.mockResolvedValue({ id: "c1", name: "alpha" });
+    mocks.updateCombo.mockRejectedValue(new ComboMemberError("Combo members must match models"));
+    const res = await PUT(jsonRequest(`${URL}/c1`, { models: ["p/a", "p/b"], members: [{ id: "p/a", weight: 1 }] }, "PUT"), params("c1"));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/match models/);
   });
 });
 

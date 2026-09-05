@@ -287,6 +287,46 @@ describe("selective transfer: real DB round-trip", () => {
     expect(await combos.getComboById("later-failure")).toBeNull();
   });
 
+  it("round-trips selective weights, canonicalizes legacy members, and preserves omitted unchanged weights", async () => {
+    const { index, combos } = await freshDb();
+    const weighted = await combos.createCombo({
+      name: "selective-weighted",
+      models: ["openai/gpt-5", "anthropic/claude"],
+      members: [{ id: "openai/gpt-5", weight: 7 }, { id: "anthropic/claude", weight: 0.5 }],
+    });
+    const bundle = await index.exportSelectiveDb(selection([], [weighted.id]));
+    expect(bundle.combos[0].members).toEqual(weighted.members);
+
+    await combos.updateCombo(weighted.id, { members: [{ id: "openai/gpt-5", weight: 1 }, { id: "anthropic/claude", weight: 1 }] });
+    await index.importSelectiveDb(bundle, selection([], [weighted.id]));
+    expect((await combos.getComboById(weighted.id)).members).toEqual(weighted.members);
+
+    const legacy = { ...bundle.combos[0], members: null };
+    legacy.id = "legacy-selective";
+    legacy.name = "legacy-selective";
+    await index.importSelectiveDb(buildBundle({ combos: [legacy] }), selection([], [legacy.id]));
+    expect((await combos.getComboById(legacy.id)).members).toEqual([
+      { id: "openai/gpt-5", weight: 1 },
+      { id: "anthropic/claude", weight: 1 },
+    ]);
+
+    const omittedMembers = { ...bundle.combos[0] };
+    delete omittedMembers.members;
+    await index.importSelectiveDb(buildBundle({ combos: [omittedMembers] }), selection([], [weighted.id]));
+    expect((await combos.getComboById(weighted.id)).members).toEqual(weighted.members);
+  });
+
+  it("rejects malformed selective members before provider writes", async () => {
+    const { index, repos, combos } = await freshDb();
+    const providerId = "must-not-write";
+    await expect(index.importSelectiveDb(buildBundle({
+      providers: [{ id: providerId, provider: "openai", authType: "apikey", name: "must-not-write" }],
+      combos: [{ id: "bad-members", name: "bad-members", models: ["openai/gpt-5"], members: [{ id: "other/model", weight: Infinity }] }],
+    }), selection([providerId], ["bad-members"]))).rejects.toThrow(/positive finite|match models/);
+    expect(await repos.getProviderConnectionById(providerId)).toBeNull();
+    expect(await combos.getComboById("bad-members")).toBeNull();
+  });
+
   it("leaves unrelated providers and unrelated combos untouched across a real import", async () => {
     const { index, repos, combos } = await freshDb();
     await repos.createProviderConnection({ provider: "openai", authType: "apikey", name: "kept-1", apiKey: "sk-kept-1" });
@@ -294,7 +334,7 @@ describe("selective transfer: real DB round-trip", () => {
     const allConns = await repos.getProviderConnections();
     const kept = allConns.find((c) => c.name === "kept-1");
     const imported = allConns.find((c) => c.name === "imported-1");
-    await combos.createCombo({ name: "kept-combo", kind: "test", models: [{ provider: "openai", model: "gpt-5" }] });
+    await combos.createCombo({ name: "kept-combo", kind: "test", models: ["openai/gpt-5"] });
     const keptCombo = (await combos.getCombos())[0];
     const result = await index.importSelectiveDb(buildBundle({
       providers: [{ id: imported.id, provider: "anthropic", authType: "apikey", name: "imported-1-renamed", email: "new@example.com" }],

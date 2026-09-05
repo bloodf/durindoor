@@ -23,7 +23,7 @@ export {
   assertNoActiveQuotaReservationsSync,
   QuotaReservationError, QuotaCapacityUnavailableError,
   getCombos, getComboById, getComboByName, getComboForModel,
-  createCombo, updateCombo, deleteCombo,
+  createCombo, updateCombo, deleteCombo, ComboMemberError, normalizeComboMembers,
   // MCP gateway
   getInstances, getInstanceById, getInstanceBySlug, getEnabledInstancesByIds,
   createInstance, updateInstance, deleteInstance,

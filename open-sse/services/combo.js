@@ -1055,16 +1055,30 @@ export function getConversationCacheKey(body) {
   return hashConversationSeed(`${promptFingerprint}\n${toolFingerprint}`, 12000 + 1 + toolFingerprint.length);
 }
 
+// Efraimidis-Spirakis weighted random permutation. Every member remains in the
+// fallback list, so a terminal 400 still returns immediately through the normal
+// `checkFallbackError` branch; weight changes selection only, never eligibility.
+export function getWeightedModels(models, members = [], random = Math.random) {
+  if (!Array.isArray(models) || models.length < 2) return models;
+  const weights = new Map((Array.isArray(members) ? members : []).map((member) => [member?.id, member?.weight]));
+  return models.map((model, index) => {
+    const weight = weights.get(model);
+    return { model, index, key: Math.pow(random(), 1 / (Number.isFinite(weight) && weight > 0 ? weight : 1)) };
+  }).sort((a, b) => b.key - a.key || a.index - b.index).map(({ model }) => model);
+}
+
 /**
  * Get rotated model list based on strategy
  * @param {string[]} models - Array of model strings
  * @param {string} comboName - Name of the combo
- * @param {string} strategy - "fallback" or "round-robin"
+ * @param {string} strategy - "fallback", "round-robin", or "weighted"
  * @param {number|string} [stickyLimit=1] - Requests per combo model before switching
  * @param {string|null} [conversationCacheKey=null] - Stable key used to keep a conversation on one model
+ * @param {{id: string, weight: number}[]} [members=[]] - Persisted weights for weighted selection
  * @returns {string[]} Rotated models array
  */
-export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, conversationCacheKey = null) {
+export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, conversationCacheKey = null, members = []) {
+  if (strategy === "weighted") return getWeightedModels(models, members);
   if (!models || models.length <= 1 || strategy !== "round-robin") {
     return models;
   }
@@ -1237,7 +1251,8 @@ async function isBodyEmpty(response) {
 
   if (Object.prototype.hasOwnProperty.call(payload, "content")) {
     return !nonEmptyString(payload.content) &&
-    !(Array.isArray(payload.content) && payload.content.length > 0);
+    !(Array.isArray(payload.content) && payload.content.length > 0) &&
+    !(isObject(payload.content) && nonEmptyString(payload.content.text));
   }
   if (Object.prototype.hasOwnProperty.call(payload, "text")) return !nonEmptyString(payload.text);
   if (Array.isArray(payload.output)) return payload.output.length === 0;
@@ -1257,7 +1272,8 @@ export async function handleComboChat({
   quotaRanker = null,
   signal = null,
   contextRequirements = null,
-  capabilitiesMap = null
+  capabilitiesMap = null,
+  comboMembers = []
 }) {
   const abortedResponse = () => new Response(
     JSON.stringify({ error: { message: "Request aborted" } }),
@@ -1321,7 +1337,7 @@ export async function handleComboChat({
   if (comboStrategy === "smart-scoring") {
     rotatedModels = getSmartScoredModels(activeModels, comboName);
   } else {
-    rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey);
+    rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey, comboMembers);
   }
 
   // Context-requirements preferLargeContext SORT runs BEFORE capability-aware
@@ -1359,7 +1375,10 @@ export async function handleComboChat({
     rotatedModels = taskReordered;
   }
 
-  if (isFunction(quotaRanker)) {
+  // Weighted strategy: the ranker always re-orders by `index`, which would
+  // collapse the weight-driven permutation on every chat call. Skip reordering
+  // so the weighted first pick survives the full dispatch pipeline.
+  if (isFunction(quotaRanker) && comboStrategy !== "weighted") {
     try {
       const quotaOrdered = await quotaRanker(rotatedModels);
       if (Array.isArray(quotaOrdered) && quotaOrdered.length === rotatedModels.length) {

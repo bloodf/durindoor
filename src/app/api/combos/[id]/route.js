@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
-import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
+import { getComboById, updateCombo, deleteCombo, getComboByName, ComboMemberError } from "@/lib/localDb";
 import { parseJsonBody } from "@/shared/utils/parseJsonBody";
+import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -59,6 +59,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(combo);
   } catch (error) {
+    if (error instanceof ComboMemberError) return NextResponse.json({ error: error.message }, { status: 400 });
     console.log("Error updating combo:", error);
     return NextResponse.json({ error: "Failed to update combo" }, { status: 500 });
   }

@@ -5,8 +5,9 @@ import {
   markAccountUnavailable,
   clearAccountError,
   resolveClientApiKey,
-} from "../services/auth.js";
-import { getSettings, getCombos, getApiKeyByKey } from "@/lib/localDb";
+  projectProviderCredentials } from
+"../services/auth.js";
+import { getSettings, getCombos, getComboForModel, getApiKeyByKey, getProviderConnections } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -115,22 +116,25 @@ async function handleFetchHandler(request) {
     settings.hidePaidModels === true
   );
   if (comboModels) {
+    const combo = isAutoComboId(providerInput) ? null : await getComboForModel(providerInput);
+    const comboName = combo?.name || providerInput;
     const comboStrategies = settings.comboStrategies || {};
-    const perCombo = comboStrategies[providerInput] || {};
+    const perCombo = comboStrategies[comboName] || {};
     const comboSpecificStrategy = isAutoComboId(providerInput) ?
     perCombo.strategy ?? perCombo.fallbackStrategy :
     perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info("FETCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    log.info("FETCH", `Combo "${comboName}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, apiKeyAuth.apiKeyId, settings),
       log,
-      comboName: providerInput,
+      comboName,
       comboStrategy,
-      comboStickyLimit
+      comboStickyLimit,
+      comboMembers: combo?.members || []
     });
   }
   return handleSingleProviderFetch(body, providerInput, request, apiKey, apiKeyAuth.apiKeyId, settings);

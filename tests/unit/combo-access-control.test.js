@@ -25,6 +25,7 @@ vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   getApiKeyByKey: mocks.getApiKeyByKey,
   getApiKeyUsageLimitStatus: mocks.getApiKeyUsageLimitStatus,
+  getComboForModel: vi.fn(async () => null),
 }));
 
 vi.mock("../../src/sse/services/model.js", async (importOriginal) => ({

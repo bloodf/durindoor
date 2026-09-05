@@ -13,7 +13,7 @@ import {
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import {
   getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus,
-  getProviderConnections, getQuotaReservationPressure, getApiKeyProviderConnectionIds } from
+  getProviderConnections, getQuotaReservationPressure, getApiKeyProviderConnectionIds, getComboForModel } from
 "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
@@ -516,6 +516,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     // still works. A stray `.strategy` on a named-combo config never changes
     // legacy behavior.
     const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
+    const comboMembers = (await getComboForModel(comboName))?.members || [];
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[comboName] || {};
     const comboSpecificStrategy = isAutoComboId(modelStr) ?
@@ -589,6 +590,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
       comboName,
       comboStrategy,
       comboStickyLimit,
+      comboMembers,
       contextRequirements: perCombo.contextRequirements,
       comboTimeoutMs,
       capabilitiesMap,
@@ -678,6 +680,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // lookups, and rotation/scoring keys are stable regardless of the
       // casing the client sent (#10177). Auto-combo ids pass through as-is.
       const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
+      const comboMembers = (await getComboForModel(comboName))?.members || [];
       // Check for combo-specific strategy first, fallback to global. Auto-combo
       // ids honor the F-2 `.strategy` shape; named combos keep `.fallbackStrategy`.
       const comboStrategies = chatSettings.comboStrategies || {};
@@ -748,6 +751,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         comboName,
         comboStrategy,
         comboStickyLimit,
+        comboMembers,
         contextRequirements: perCombo.contextRequirements,
         comboTimeoutMs,
         capabilitiesMap: nestedCapabilitiesMap,

@@ -72,6 +72,8 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Port Campaign 2026-09-04](development/port-campaign-2026-09-04.md) — campaign execution plan.
 - [Architecture](ARCHITECTURE.md)
 - [Upstream Sync Watch](UPSTREAM_SYNC.md)
+- [Port Campaign Plan — 2026-09-04](development/port-campaign-2026-09-04.md): merged execution, review, gate, worktree, policy, and blocker contract.
+- [Port Campaign Disposition Ledger — 2026-09-04](development/port-campaign-ledger-2026-09-04.md): timestamped delivery outcomes, 34 original issues, 120 provider dispositions, 734 scan IDs, 59 renderer rows, and remaining blockers.
 - [tests/README.md](../tests/README.md)
 - [DurinDoor omp Extension](../omp-extension/README.md)
 - [UI Migration Campaign](development/ui-migration/README.md)

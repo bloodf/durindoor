@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { resolveSessionId } from "../utils/sessionManager.js";
 import {
   normalizeResponsesInput,
   clampResponsesCallId,
@@ -9,20 +11,60 @@ import {
 } from "../translator/formats/responsesApi.js";
 
 /**
- * OpenCode Go executor (upstream #3819 + #3820).
+ * OpenCode Go executor (upstream #3819 + #3820 + #3800).
  *
- * Muse Spark contributor models are served only by /zen/go/v1/responses, so
- * this executor pins their URL and normalizes Responses-shaped bodies (tool
- * declarations, call_id clamping, argument/output coercion, token caps,
- * reasoning) before they go upstream.
+ * Two concerns live here:
  *
- * Fork note: the `x-opencode-session` affinity header is NOT handled here —
- * `DefaultExecutor` already derives and sends it for opencode-go from
- * fork-resolved session identity only (caller-supplied x-opencode-session
- * headers are never honored). See `openCodeGoSessionHeader` in default.js.
+ * 1. Responses transport (upstream #3819/#3820). Muse Spark contributor models
+ *    are served only by /zen/go/v1/responses, so this executor pins their URL
+ *    and normalizes Responses-shaped bodies (tool declarations, call_id
+ *    clamping, argument/output coercion, token caps, reasoning) before they go
+ *    upstream.
+ *
+ * 2. Stable `x-opencode-session` affinity header (upstream #3800). OpenCode Go
+ *    rejects requests without a session header. `handleChatCore` forwards the
+ *    provider-scoped session seed and the detected client tool on every
+ *    `execute()` call (initial and credential-refresh retry alike); this
+ *    executor translates them into an opaque, stable, Agent-scoped identifier
+ *    (`ses_` + first 32 hex chars of SHA-256 over
+ *    `opencode-go\0<clientTool|generic>\0<sessionId>`) on a request-local
+ *    credentials copy, so no request state is stored on the executor singleton
+ *    and shared provider credentials are never mutated.
+ *
+ *    Fork policy deviation from upstream: caller-supplied `x-opencode-session`
+ *    headers are NEVER honored (upstream preserves a valid native header). The
+ *    upstream identity is always derived from fork-resolved session identity
+ *    only, keeping provider session affinity caller-proof. When chatCore
+ *    context is absent, `DefaultExecutor.openCodeGoSessionHeader` remains the
+ *    fallback that guarantees a header is still sent (see default.js). The
+ *    design notes from upstream's docs/superpowers spec are folded into this
+ *    JSDoc because the fork does not track that docs area.
  */
 const RESPONSES_BASE_URL = "https://opencode.ai/zen/go/v1/responses";
 const MAX_TOOL_NAME_LEN = 128;
+
+const SESSION_HEADER = "x-opencode-session";
+const SESSION_FIELD = "_openCodeGoAgentSession";
+const MAX_SESSION_LENGTH = 256;
+
+function normalizeSession(value) {
+  if (!isString(value)) return null;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > MAX_SESSION_LENGTH) return null;
+  return normalized;
+}
+
+// Translate a downstream Agent session id into an opaque, stable, Agent-scoped
+// upstream identity (upstream #3800). Namespacing by clientTool isolates
+// different downstream agents that reuse the same raw conversation id.
+function translatedSession(sessionId, clientTool) {
+  const digest = crypto
+    .createHash("sha256")
+    .update(`opencode-go\0${clientTool || "generic"}\0${sessionId}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `ses_${digest}`;
+}
 
 // Strip the thinking suffix "model(level)" so checks hit the base id.
 function baseModelId(model) {
@@ -93,6 +135,42 @@ function sanitizeResponsesItems(body) {
 export class OpenCodeGoExecutor extends DefaultExecutor {
   constructor() {
     super("opencode-go");
+  }
+
+  /**
+   * Build request-local credentials carrying the translated Agent-scoped
+   * session (upstream #3800). The inbound `x-opencode-session` header is
+   * deliberately ignored: upstream identity derives only from the
+   * chatCore-forwarded session seed, falling back to the fork session
+   * resolver (explicit client session → assistant-text hash → workspace →
+   * per-connection).
+   */
+  prepareRequestCredentials({ body, credentials, providerSessionId, clientTool } = {}) {
+    const sourceCredentials = credentials || {};
+    const resolved = normalizeSession(providerSessionId) || resolveSessionId({
+      headers: sourceCredentials.rawHeaders,
+      body,
+      connectionId: sourceCredentials.connectionId,
+      workspaceId: sourceCredentials.providerSpecificData?.workspaceId,
+      scope: "opencode-go",
+    });
+
+    return {
+      ...sourceCredentials,
+      [SESSION_FIELD]: translatedSession(resolved, clientTool),
+    };
+  }
+
+  async execute(args) {
+    const credentials = this.prepareRequestCredentials(args);
+    return super.execute({ ...args, credentials });
+  }
+
+  buildHeaders(credentials, stream = true, url, model) {
+    const headers = super.buildHeaders(credentials || {}, stream, url, model);
+    const prepared = credentials?.[SESSION_FIELD];
+    if (prepared) headers[SESSION_HEADER] = prepared;
+    return headers;
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {

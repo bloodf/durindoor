@@ -1106,6 +1106,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         body: translatedBody,
         stream,
         credentials,
+        providerSessionId: sessionSeed,
+        clientTool,
         signal: providerSignal,
         log,
         proxyOptions,

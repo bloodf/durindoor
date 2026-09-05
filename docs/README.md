@@ -67,6 +67,8 @@ For developers working on the DurinDoor codebase, provider registry, or document
 - [Contributing](development/contributing.md)
 - [Local Development](development/local-development.md)
 - [Anti-slop (oxlint) gate](development/anti-slop.md)
+- [Provider Brand Assets](development/provider-brand-assets.md) — provider-logo policy and provenance.
+- [Port Campaign 2026-09-04](development/port-campaign-2026-09-04.md) — campaign execution plan.
 - [Architecture](ARCHITECTURE.md)
 - [Upstream Sync Watch](UPSTREAM_SYNC.md)
 - [tests/README.md](../tests/README.md)

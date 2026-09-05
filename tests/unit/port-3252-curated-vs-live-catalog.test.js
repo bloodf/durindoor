@@ -4,9 +4,11 @@ import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildMode
 // Port of 9router PR #3252 (fix(models): curated custom-provider model list
 // suppresses live catalog). Port #3623 supersedes this contract for
 // `openai-compatible-*` and `anthropic-compatible-*` ids: compatible nodes no
-// longer perform public live discovery. These cases retain #3252 coverage for
-// the registry-backed hcnsec provider, where discovery remains supported and
-// must be gated by the post-kind-filter curated id list.
+// longer perform public live discovery. Port #766 supersedes the remaining
+// case for registry OpenAI-style `modelsFetcher` providers (hcnsec): a saved
+// curated custom model no longer suppresses credential-scoped live discovery
+// — the live catalog is unioned instead, same as any other modelsFetcher
+// provider without an explicit `enabledModels` allowlist.
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(),
@@ -89,7 +91,7 @@ describe("port #3252 — curated custom-provider models must not permanently sup
     expect(models.some((m) => m.id === "hn/keep-me")).toBe(true);
   });
 
-  it("still suppresses the live catalog when a matching-kind curated model list is configured", async () => {
+  it("unions the live catalog when a matching-kind curated model list is configured", async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: [{ id: "upstream-model" }] }),
@@ -102,9 +104,8 @@ describe("port #3252 — curated custom-provider models must not permanently sup
 
     const models = await buildModelsList([LLM_KIND]);
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalled();
     const hnIds = models.map((m) => m.id).filter((id) => id.startsWith("hn/"));
-    expect(hnIds).toEqual(["hn/curated-one"]);
-    expect(models.some((m) => m.id === "hn/upstream-model")).toBe(false);
+    expect(hnIds).toEqual(expect.arrayContaining(["hn/curated-one", "hn/upstream-model"]));
   });
 });

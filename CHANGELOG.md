@@ -29,6 +29,10 @@
 - Claude Code static fallback headers now match a local Claude Code 2.1.258 capture: `claude-cli/2.1.258 (external, sdk-cli)`, SDK package `0.112.1`, Node runtime `v26.3.0`, captured beta flags, and no helper-method header. Claude Fable 5.1 is selectable as `cc/claude-fable-5-1` and `anthropic/claude-fable-5-1`; `fable` selects it. Fable 5 remains available, forced Claude-native tool choices remain intact, and no Opus 5.1 row is added. Source: [Anthropic Claude Code release notes](https://docs.claude.com/en/release-notes/claude-code).
 - BigModel (`bigmodel`) is now a first-class registry provider with Bearer auth, the standard `https://open.bigmodel.cn/api/paas/v4/chat/completions` endpoint, and a static `glm-5.3` (text-only) and `glm-5.3-flash` (vision) catalog. Both models use always-on `low`/`high`/`max` OpenAI reasoning, preserve BigModel's vendor-labelled 1M context, and expose the published 131072-token `max_tokens` ceiling. Validation and dashboard connection tests target the registry's standard endpoint and never the `/api/coding/` Coding Plan route; `glm-cn` and `zai` remain unchanged.
 
+## Improvements
+
+- **Credential-scoped live `/v1/models` catalogs** — registry `modelsFetcher` providers exposing an OpenAI-style `/v1/models` endpoint now union their live IDs with the static catalog unless `enabledModels` is an explicit allowlist. Discovery reuses the existing credential-aware, proxy-routed, SSRF-guarded resolver; failures retain the static catalog.
+
 ## Fixed
 
 - Kiro streaming responses no longer duplicate tool-call or stop events when upstream sends repeated finish signals; cumulative tool-argument snapshots now remain single JSON payloads.

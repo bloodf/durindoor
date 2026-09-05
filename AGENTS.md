@@ -212,6 +212,14 @@ Port playbook: [`docs/development/porting-upstream-ui.md`](docs/development/port
   PRs keep merging.
 - **UI migration campaign.** Executed per `docs/development/ui-migration/` (phases, page map, per-page recipe, harness runbook).
 
+- **Provider brand assets.** Any provider logo/wordmark added or kept in
+  `public/providers/` follows
+  [`docs/development/provider-brand-assets.md`](docs/development/provider-brand-assets.md):
+  identification-only, unmodified vendor mark, no endorsement implied,
+  traceable provenance recorded in the PR, removal path honored.
+  Maintainer authorization governs retention or addition of an
+  identification-only mark; it is not a licence or legal determination.
+  Never bulk-copy a vendor's or another fork's asset catalog.
 ## 6. Pull request workflow
 
 ### 6.1 Target

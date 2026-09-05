@@ -794,7 +794,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         if (proxyOptions?.strictProxy === true) {
           throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
         }
-        console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${safeTransportError(proxyError)}`);
+        console.debug(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${safeTransportError(proxyError)}`);
       }
     }
     // No proxy — manually resolve real IP to bypass DNS spoof. A guarded probe
@@ -835,7 +835,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       if (proxyOptions?.strictProxy === true) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
       }
-      console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${safeTransportError(proxyError)}`);
+      console.debug(`[ProxyFetch] Proxy failed, falling back to direct: ${safeTransportError(proxyError)}`);
       return directFetch(url, options);
     }
   }

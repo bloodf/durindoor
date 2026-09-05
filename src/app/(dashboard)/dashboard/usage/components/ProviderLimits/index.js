@@ -64,6 +64,8 @@ const KIRO_METHOD_LABELS = {
   api_key: "API Key"
 };
 
+const REFRESH_INTERVAL_S = REFRESH_INTERVAL_MS / 1000;
+
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing"
@@ -426,7 +428,7 @@ export default function ProviderLimits() {
   const [hasHydratedSavedState, setHasHydratedSavedState] = useState(false);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
-  const [countdown, setCountdown] = useState(60);
+  const [countdown, setCountdown] = useState(REFRESH_INTERVAL_S);
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
@@ -1010,7 +1012,7 @@ export default function ProviderLimits() {
     if (refreshingAll) return;
 
     setRefreshingAll(true);
-    setCountdown(60);
+    setCountdown(REFRESH_INTERVAL_S);
 
     try {
       // Throttle Claude: poll its quota every Nth auto-tick (manual force bypasses)

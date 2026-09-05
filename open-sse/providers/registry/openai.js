@@ -33,6 +33,7 @@ export default {
     { format: "openai-responses", baseUrl: "https://api.openai.com/v1/responses" },
   ],
   models: [
+    { id: "gpt-6-astra", name: "GPT-6 Astra", targetFormat: "openai-responses" },
     { id: "gpt-5.6", name: "GPT-5.6", targetFormat: "openai-responses" },
     { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", targetFormat: "openai-responses" },
     { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", targetFormat: "openai-responses" },

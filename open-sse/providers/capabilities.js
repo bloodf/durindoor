@@ -204,12 +204,11 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   }])
 );
 
-// Direct OpenAI GPT-5.4/5.5/5.6 surfaces override the generic *gpt-5* 400K
-// pattern (1.05M context / 128K max output — developers.openai.com model docs
-// reprice >272K input prompts for "models with a 1.05M context window"). Codex
-// and its CX alias get the same base values, plus Codex-specific review and
-// ultra ids. Mini/nano tiers are NOT 1.05M and keep the generic pattern.
+// Direct OpenAI GPT-5.4/5.5/5.6 and Astra surfaces override the generic
+// *gpt-5* 400K pattern. Astra's 1.05M context, 922K input, and 128K output
+// are API-only; Codex has a separate exact catalog row below.
 const DIRECT_GPT_5_5_6_CAPS = {
+  "gpt-6-astra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxInput: 922000, maxOutput: 128000 },
   "gpt-5.4": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.5": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
@@ -219,12 +218,12 @@ const DIRECT_GPT_5_5_6_CAPS = {
 };
 
 /**
- * ChatGPT Codex catalog reports the currently served context_window but no
- * output ceiling. Exact IDs prevent the generic GPT-5 patterns from advertising
- * direct-API limits on the OAuth Codex surface.
+ * ChatGPT Codex catalog reports currently served context windows but no output
+ * ceilings. Exact IDs prevent generic direct-API limits leaking into OAuth.
  */
 const CODEX_GPT_CAPS = {
   ...DIRECT_GPT_5_5_6_CAPS,
+  "gpt-6-astra": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 272000, maxOutput: undefined },
   "gpt-5.5": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
   "gpt-5.5-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
   "gpt-5.5-medium": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },

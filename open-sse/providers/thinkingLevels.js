@@ -45,6 +45,10 @@ const PATTERN_THINKING = [
   { pattern: "*gpt-5.6-terra*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
   // Luna accepts max; ultra falls back to max in applyThinking.
   { pattern: "*gpt-5.6-luna*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+  // Astra supports only its published provider/model effort sets.
+  { provider: "openai", pattern: "gpt-6-astra", levels: ["low", "medium", "high", "xhigh", "max"] },
+  { provider: "codex", pattern: "gpt-6-astra", levels: ["low", "medium", "high", "xhigh", "max", "ultra"] },
+  { provider: "cx", pattern: "gpt-6-astra", levels: ["low", "medium", "high", "xhigh", "max", "ultra"] },
   // codebuddy-cn per-model effort sets — server-delivered supportedEfforts read
   // off the client picker (upstream e014cb537, 2026-08-30). The gateway speaks
   // thinkingFormat "openai" but rejects levels outside each model's set. Placed

@@ -585,17 +585,36 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     return null;
   }
 
-  // Function call started (standard function_call or custom_tool_call)
+  // Function call started (standard function_call or custom_tool_call).
+  // Batched parallel calls arrive as several `added` events before any
+  // delta or `done`, so each call's index must be allocated here — keyed
+  // by call/item ID in `toolCallIdToIndex` — rather than read from the shared
+  // `toolCallIndex` counter at delta/done time. That map is what lets
+  // later deltas resolve back to the right call regardless of arrival order.
   if (eventType === "response.output_item.added" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
     const item = data.item;
-    state.currentToolCallId = item.call_id || fallbackToolCallId();
+    const callId = item.call_id || fallbackToolCallId();
+    const itemId = isString(item.id) ? item.id : "";
+    state.currentToolCallId = callId;
+
+    // Key the per-call index by both `item.id` (what deltas carry as
+    // `item_id`, e.g. `fc_001`) and `item.call_id` (what later `output_item.done`
+    // references). Real Responses streams may use either, so record both.
+    state.toolCallIdToIndex ??= {};
+    let callIndex = state.toolCallIdToIndex[itemId] ?? state.toolCallIdToIndex[callId];
+    if (callIndex === undefined) {
+      callIndex = state.toolCallIndex;
+      state.toolCallIdToIndex[callId] = callIndex;
+      state.toolCallIndex++;
+    }
+    if (itemId) state.toolCallIdToIndex[itemId] = callIndex;
 
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
       {
         tool_calls: [{
-          index: state.toolCallIndex,
-          id: state.currentToolCallId,
+          index: callIndex,
+          id: callId,
           type: OPENAI_BLOCK.FUNCTION,
           function: { name: item.name || "", arguments: "" }
         }]
@@ -603,20 +622,37 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     );
   }
 
-  // Function call arguments delta (standard or custom_tool_call variant)
+  // Function call arguments delta (standard or custom_tool_call variant).
+  // Resolve the target index from the delta's `item_id` (matching the
+  // `item.id` recorded at `output_item.added`) so interleaved deltas from
+  // parallel calls land on their own tool_call entry instead of the shared
+  // counter. Some providers instead send `fc_<call_id>`/`ctc_<call_id>` —
+  // strip that prefix as a second lookup — and streams that omit `item_id`
+  // entirely (or send an id this translator doesn't recognize) fall back to
+  // the most recently added call's index, matching pre-fix behavior for
+  // sequential (non-parallel) streams.
   if (eventType === "response.function_call_arguments.delta" || eventType === "response.custom_tool_call_input.delta") {
     const argsDelta = data.delta || "";
     if (!argsDelta) return null;
 
+    const rawItemId = isString(data.item_id) ? data.item_id : "";
+    const strippedItemId = rawItemId.replace(/^(fc|ctc)_/, "");
+    const callIndex = state.toolCallIdToIndex?.[rawItemId] ??
+    state.toolCallIdToIndex?.[strippedItemId] ??
+    state.toolCallIdToIndex?.[state.currentToolCallId] ??
+    state.toolCallIndex;
+
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      { tool_calls: [{ index: state.toolCallIndex, function: { arguments: argsDelta } }] }
+      { tool_calls: [{ index: callIndex, function: { arguments: argsDelta } }] }
     );
   }
 
-  // Function call done (standard or custom_tool_call variant)
+  // Function call done (standard or custom_tool_call variant). The index was
+  // already allocated at `output_item.added`, so this is index-neutral —
+  // incrementing `toolCallIndex` here would shift indices for calls added
+  // after a batch of dones from earlier parallel calls.
   if (eventType === "response.output_item.done" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
-    state.toolCallIndex++;
     return null;
   }
 

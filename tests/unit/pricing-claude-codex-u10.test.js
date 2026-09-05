@@ -20,6 +20,7 @@ const claude = (input, output, cached, reasoning, cache_creation) => ({
 describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
   describe("new model entries resolve to canonical rates", () => {
     it("claude-fable-5", () => {
+      expect(getPricingForModel(null, "claude-fable-5")).toBe(MODEL_PRICING["claude-fable-5"]);
       expect(getPricingForModel(null, "claude-fable-5")).toEqual(
         claude(10.00, 50.00, 1.00, 50.00, 12.50),
       );
@@ -169,5 +170,19 @@ describe("U-10 Claude/Codex pricing (upstream d2599ebf1)", () => {
         claude(10.00, 50.00, 1.00, 50.00, 12.50),
       );
     });
+
+    it("claude-fable-5-1 keeps its exact 0.25 cached rate (proves exact row beats claude-fable-* pattern)", () => {
+      expect(getPricingForModel(null, "claude-fable-5-1")).toBe(MODEL_PRICING["claude-fable-5-1"]);
+      expect(getPricingForModel(null, "claude-fable-5-1")).toEqual(
+        claude(10.00, 50.00, 0.25, 50.00, 12.50),
+      );
+    });
+
+    it("claude-fable-future resolves the claude-fable-* pattern with Fable rates", () => {
+      expect(getPricingForModel(null, "claude-fable-future")).toEqual(
+        claude(10.00, 50.00, 1.00, 50.00, 12.50),
+      );
+    });
+
   });
 });

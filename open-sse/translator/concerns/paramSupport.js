@@ -1,4 +1,5 @@
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { isOpenCodeZenBaseUrl } from "../../providers/shared.js";
 
 // Strip request params a given provider/model rejects upstream (e.g. HTTP 400).
 // Config-driven: add a rule instead of scattering `delete body.x` across executors.
@@ -6,6 +7,7 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 // Each rule: optional provider string/regex, regex match on model, list of params to drop.
 // A param is removed only when it is present (!== undefined).
 import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+
 const STRIP_RULES = [
 /** All Claude models reject the deprecated temperature parameter upstream with HTTP 400. */
 { match: /claude/i, drop: ["temperature"] },
@@ -33,7 +35,6 @@ const STRIP_RULES = [
 { provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },
 { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true }];
 
-
 // Test a rule's match (regex or predicate) against the model id.
 // A rule with no match clause applies to every model for its provider.
 function matches(rule, model) {
@@ -56,15 +57,44 @@ function clampNumber(body, key, ceiling) {
   }
 }
 
+// Final OpenAI-compatible wire guard for extension fields rejected by strict
+// transports. The selected runtime transport wins; provider config supplies the
+// default when its selected transport omits quirks. Missing or malformed config
+// fails closed. Mutates and returns the same body.
+export function stripUnsupportedChatExtensions(body, transport, defaultTransport = null) {
+  if (!body || !isObject(body)) return body;
+  let quirks;
+  try {
+    quirks = transport?.quirks ?? defaultTransport?.quirks;
+  } catch {
+    quirks = null;
+  }
+  if (!quirks?.preservePromptCacheKey && body.prompt_cache_key !== undefined) {
+    delete body.prompt_cache_key;
+  }
+  return body;
+}
+
 /**
  * Remove unsupported request parameters in place.
  * `rules` is injectable without exposing mutable global state so
  * `decolua/9router#3186` RegExp selector integration stays load-bearing in tests.
  * DurinDoor adds no compatible-provider reasoning rule because fork #2800 forces
  * `reasoning_effort` for `openai-compatible-*`.
+ *
+ * A custom OpenAI-compatible Muse request strips token caps only when its
+ * configured base URL exactly identifies OpenCode Zen. Luna remains unchanged:
+ * its Responses endpoint has no independently verified fork contract.
  */
-export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES) {
+export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES, credentials = null) {
   if (!model || !body || !isObject(body)) return body;
+  if (
+  provider?.startsWith?.("openai-compatible-") &&
+  /muse/i.test(model) &&
+  isOpenCodeZenBaseUrl(credentials?.providerSpecificData?.baseUrl))
+  {
+    for (const key of ["max_tokens", "max_completion_tokens", "max_output_tokens"]) delete body[key];
+  }
   for (const rule of rules) {
     if (rule.provider && !matchesProvider(rule.provider, provider)) continue;
     if (!matches(rule, model)) continue;

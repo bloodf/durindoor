@@ -14,8 +14,9 @@ const RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
 
 const CHAT_ONLY = ["glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro"];
 const MODEL_WITHOUT_FORMATS = "glm-5.2";
-const CLAUDE_CAPABLE = ["minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"];
 const RESPONSES_CAPABLE = ["deepseek-v4-pro", "deepseek-v4-flash"];
+const CLAUDE_CAPABLE = ["minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"];
+const MUSE_SPARK_CONTRIBUTORS = ["muse-spark-1.2-contributor", "muse-spark-1.3-contributor"];
 const VISION_CAPABLE = "deepseek-v4-flash-vision-exp";
 const OX_ALPHA = "ox-alpha-free";
 
@@ -29,6 +30,7 @@ describe("OpenCode Go model catalog", () => {
       ...RESPONSES_CAPABLE,
       VISION_CAPABLE,
       ...CHAT_ONLY.slice(3),
+      ...MUSE_SPARK_CONTRIBUTORS,
       ...CLAUDE_CAPABLE,
       OX_ALPHA,
     ]);
@@ -70,6 +72,12 @@ describe("OpenCode Go per-model supportedFormats", () => {
   it("strips at most one recognized thinking suffix per lookup", () => {
     expect(getModelUpstreamId("opencode-go", "minimax-m3(max)(max)")).toBe("minimax-m3(max)");
   });
+
+  it("resolves Muse Spark contributor thinking suffixes to their Responses rows", () => {
+    for (const model of MUSE_SPARK_CONTRIBUTORS) {
+      expect(getModelTargetFormat("opencode-go", `${model}(high)`)).toBe("openai-responses");
+    }
+  });
 });
 
 describe("CommandCode DeepSeek V4 Flash Vision aliases", () => {
@@ -97,7 +105,21 @@ describe("OpenCode Go multi-endpoint transports", () => {
     const transport = resolveTransport("opencode-go", "claude");
     expect(transport?.auth).toMatchObject({ header: "x-api-key", anthropicVersion: true });
   });
+  it("resolves the Muse Spark contributor target endpoint", () => {
+    for (const model of MUSE_SPARK_CONTRIBUTORS) {
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "openai",
+        credentials: API_KEY,
+      });
+      expect(targetFormat).toBe("openai-responses");
+      expect(runtimeTransport?.baseUrl).toBe(RESPONSES_URL);
+    }
+  });
 });
+
 
 describe("OpenCode Go per-model transport selection", () => {
   it("uses Claude messages endpoint for Claude-source MiniMax and Qwen requests", () => {
@@ -271,6 +293,12 @@ describe("OpenCode Go target format preservation", () => {
   it("does not declare Responses for DeepSeek models in this port", () => {
     for (const model of RESPONSES_CAPABLE) {
       expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai"]);
+    }
+  });
+
+  it("declares Responses targets for Muse Spark contributor models", () => {
+    for (const model of MUSE_SPARK_CONTRIBUTORS) {
+      expect(getModelTargetFormat("opencode-go", model)).toBe("openai-responses");
     }
   });
 });

@@ -12,6 +12,7 @@ export {
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
   getApiKeys, getApiKeyById, getApiKeyByKey, getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
+  getApiKeyProviderConnectionIds,
   upsertProviderQuotaSnapshot, replaceProviderQuotaSnapshotsForSource,
   recordQuotaFetchFailure, getProviderQuotaSnapshot,
   listProviderQuotaSnapshots, getQuotaFetchState, pruneProviderQuotaSnapshots,
@@ -32,6 +33,6 @@ export {
   getCustomModels, addCustomModel, updateCustomModel, deleteCustomModel,
   getMitmAlias, setMitmAliasAll,
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
-  exportDb, importDb,
+  exportDb, importDb, exportSelectiveDb, importSelectiveDb, getSelectiveTransferCatalog, previewSelectiveImport,
   saveRequestUsage,
 } from "@/lib/db/index.js";

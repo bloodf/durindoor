@@ -211,7 +211,7 @@ export function fallbackToolCallId(index) {
 
 // Generate deterministic tool call ID from position + tool name (cache-friendly)
 export function generateToolCallId(msgIndex = 0, tcIndex = 0, toolName = "") {
-  const name = toolName ? `_${toolName.replace(/[^a-zA-Z0-9_-]/g, "")}` : "";
+  const name = isString(toolName) && toolName ? `_${toolName.replace(/[^a-zA-Z0-9_-]/g, "")}` : "";
   return `call_msg${msgIndex}_tc${tcIndex}${name}`;
 }
 
@@ -248,15 +248,19 @@ function resolveToolResultId(rawId, pendingIds, fallbackId) {
 
 // Ensure all tool_calls have valid id field and arguments is string (some providers require it)
 export function ensureToolCallIds(body) {
-  if (!body.messages || !Array.isArray(body.messages)) return body;
+  if (!body || !isObject(body) || !Array.isArray(body.messages)) return body;
 
   let pendingIds = [];
 
   for (let i = 0; i < body.messages.length; i++) {
     const msg = body.messages[i];
+    // Requests may contain a malformed non-object message entry; skip it.
+    if (!msg || !isObject(msg)) continue;
     if (msg.role === "assistant" && msg.tool_calls && Array.isArray(msg.tool_calls)) {
       for (let j = 0; j < msg.tool_calls.length; j++) {
         const tc = msg.tool_calls[j];
+        // Requests may contain a malformed non-object tool-call entry; skip it.
+        if (!tc || !isObject(tc)) continue;
         // Validate or regenerate ID for Anthropic compatibility
         if (!tc.id || !TOOL_ID_PATTERN.test(tc.id)) {
           const sanitized = sanitizeToolId(tc.id);
@@ -281,6 +285,8 @@ export function ensureToolCallIds(body) {
     if (Array.isArray(msg.content)) {
       for (let k = 0; k < msg.content.length; k++) {
         const block = msg.content[k];
+        // Requests may contain a malformed non-object content block; skip it.
+        if (!block || !isObject(block)) continue;
         if (block.type === "tool_use" && block.id && !TOOL_ID_PATTERN.test(block.id)) {
           const sanitized = sanitizeToolId(block.id);
           block.id = sanitized || generateToolCallId(i, k, block.name);
@@ -294,11 +300,16 @@ export function ensureToolCallIds(body) {
        * Reserve valid explicit claims in this result run before assigning
        * missing IDs, stopping at the next assistant turn.
        */
-      for (let j = i + 1; j < body.messages.length && body.messages[j].role !== "assistant"; j++) {
+      for (let j = i + 1; j < body.messages.length; j++) {
         const result = body.messages[j];
+        // Keep looking past malformed entries; they must not consume pending IDs.
+        if (!result || !isObject(result)) continue;
+        if (result.role === "assistant") break;
         if (result.role === "tool") reservePendingToolId(result.tool_call_id, pendingIds);
         if (Array.isArray(result.content)) {
           for (const block of result.content) {
+            // Tool result runs may contain malformed non-object content blocks.
+            if (!block || !isObject(block)) continue;
             if (block.type === "tool_result") reservePendingToolId(block.tool_use_id, pendingIds);
           }
         }
@@ -317,6 +328,8 @@ export function ensureToolCallIds(body) {
     if (Array.isArray(msg.content)) {
       for (let k = 0; k < msg.content.length; k++) {
         const block = msg.content[k];
+        // Requests may contain a malformed non-object content block; skip it.
+        if (!block || !isObject(block)) continue;
         if (block.type === "tool_result") {
           block.tool_use_id = resolveToolResultId(
             block.tool_use_id,
@@ -333,13 +346,15 @@ export function ensureToolCallIds(body) {
 
 // Get tool_call ids from assistant message (OpenAI format: tool_calls, Claude format: tool_use in content)
 export function getToolCallIds(msg) {
-  if (msg.role !== "assistant") return [];
+  if (!msg || !isObject(msg) || msg.role !== "assistant") return [];
 
   const ids = [];
 
   // OpenAI format: tool_calls array
   if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
     for (const tc of msg.tool_calls) {
+      // Assistant histories may contain a malformed non-object tool-call entry.
+      if (!tc || !isObject(tc)) continue;
       if (tc.id) ids.push(tc.id);
     }
   }
@@ -347,6 +362,8 @@ export function getToolCallIds(msg) {
   // Claude format: tool_use blocks in content
   if (Array.isArray(msg.content)) {
     for (const block of msg.content) {
+      // Assistant histories may contain a malformed non-object content block.
+      if (!block || !isObject(block)) continue;
       if (block.type === "tool_use" && block.id) {
         ids.push(block.id);
       }

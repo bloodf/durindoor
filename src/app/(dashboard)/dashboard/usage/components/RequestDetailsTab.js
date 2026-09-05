@@ -8,6 +8,7 @@ import Pagination from "@/shared/components/Pagination";
 import { cn } from "@/shared/utils/cn";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
 import { isString } from "../../../../../shared/utils/typeChecks.js";
+import Link from "next/link";
 
 const PAYLOAD_STAGES = [
   { field: "request", label: "Client request" },
@@ -157,6 +158,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [providers, setProviders] = useState([]);
   const [providerNameCache, setProviderNameCache] = useState(null);
+  const [observabilityEnabled, setObservabilityEnabled] = useState(null);
   const [filters, setFilters] = useState({
     provider: "",
     startDate: "",
@@ -202,6 +204,15 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
   useEffect(() => {
     fetchProviders();
   }, [fetchProviders]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/settings", { signal: controller.signal })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data && !controller.signal.aborted) setObservabilityEnabled(data.enableObservability === true); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     fetchDetails();
@@ -323,7 +334,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
             <tbody>
               {loading ?
               <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
+                  <td colSpan="9" className="p-8 text-center text-text-muted">
                     <div className="flex items-center justify-center gap-2">
                       <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
                       Loading...
@@ -332,8 +343,24 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 </tr> :
               details.length === 0 ?
               <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
-                    No request details found
+                  <td colSpan="9" className="p-8 text-center text-text-muted">
+                    {observabilityEnabled === false ? (
+                      <div className="flex flex-col items-center gap-3 rounded-dd-lg border border-dd-border bg-dd-surface p-5" data-observability-callout="off">
+                        <span aria-hidden="true" className="material-symbols-outlined text-[24px] leading-none text-dd-muted">visibility_off</span>
+                        <div className="flex flex-col gap-1">
+                          <p className="text-sm font-semibold text-dd-text">Request details logging is turned off</p>
+                          <p className="text-[13px] text-dd-muted">Enable Observability in Settings to start recording every request here.</p>
+                        </div>
+                        <Link
+                          href="/dashboard/profile"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-dd px-3.5 text-[13px] font-medium text-dd-accent outline-none transition-colors hover:text-dd-accent-hover focus-visible:shadow-dd-focus"
+                        >
+                          Open Settings
+                        </Link>
+                      </div>
+                    ) : (
+                      "No request details found"
+                    )}
                   </td>
                 </tr> :
 

@@ -3,6 +3,7 @@ import {
   DEFAULT_ERROR_MESSAGES,
   MAX_RATE_LIMIT_COOLDOWN_MS } from
 "../config/errorConfig.js";
+import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
 
 /**
@@ -525,16 +526,53 @@ function sanitizeStructuredErrorBody(value, secrets = []) {
 }
 
 /**
- * Create error result for chatCore handler
- * @param {number} statusCode - HTTP status code
+ * Only some upstreams mislabel an explicit missing-model ModelError as 401.
+ * Keep its narrow client-facing 404 normalization separate from terminal
+ * fallback classification; every other valid upstream status is preserved.
+ */
+function isMissingModelError(errorText) {
+  let error = errorText;
+  if (isString(errorText)) {
+    try {
+      error = JSON.parse(errorText);
+    } catch {
+      return false;
+    }
+  }
+
+  return isObject(error) && error.type === "ModelError" &&
+    isString(error.message) && /model\s+(?:not\s+found|does\s+not\s+exist)/i.test(error.message);
+}
+
+/**
+ * Return status clients should act on. An upstream 401 with an explicit
+ * missing-model ModelError is actionable as 404; all other real 4xx/5xx
+ * statuses remain unchanged. Non-integer or out-of-range statuses fall back
+ * to 503.
+ *
+ * @param {number|string|null|undefined} status - upstream status
+ * @param {string|object|null|undefined} errorText - upstream error text or body
+ * @returns {number} client-facing status
+ */
+export function getClientStatusFromError(status, errorText = null) {
+  const numericStatus = Number(status);
+  if (numericStatus === 401 && isMissingModelError(errorText)) return 404;
+  return Number.isInteger(numericStatus) && numericStatus >= 400 && numericStatus <= 599 ?
+    numericStatus : HTTP_STATUS.SERVICE_UNAVAILABLE;
+}
+
+/**
+ * Create error result for chatCore handler.
+ * @param {number} statusCode - HTTP status retained for internal fallback state
  * @param {string} message - Error message
  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
  * @param {object} [errorBody] - Structured upstream error response
  * @param {object} [rateLimitEvidence] - Normalized quota evidence
  * @param {object} [credentialSource] - Selected credentials whose values must never be echoed
+ * @param {number} [clientStatus] - Optional client-facing status; does not discard structured body
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null, credentialSource = null) {
+export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null, credentialSource = null, clientStatus = statusCode) {
   // Preserve provider error type/code/details while rebuilding every nested
   // value. Both sensitive field names and the selected connection's opaque
   // credential values are redacted without mutating the caller-owned object.
@@ -550,13 +588,13 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
     ...(safeBody ? { errorBody: safeBody } : null),
     response: safeBody ?
     new Response(JSON.stringify(safeBody), {
-      status: statusCode,
+      status: clientStatus,
       headers: {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*"
       }
     }) :
-    errorResponse(statusCode, safeMessage)
+    errorResponse(clientStatus, safeMessage)
   };
 }
 

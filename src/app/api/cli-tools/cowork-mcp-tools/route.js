@@ -1,6 +1,8 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { isLocalRequest } from "@/dashboardGuard";
+import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const TIMEOUT_MS = 8000;
@@ -87,6 +89,16 @@ export async function POST(request) {
     const { url } = await request.json();
     if (!url || !isString(url)) {
       return NextResponse.json({ error: "url required" }, { status: 400 });
+    }
+    // SSRF guard: remote callers must not pivot this endpoint at internal services
+    // (loopback, RFC1918, metadata, localhost). Local peers are exempt so a self-hosted
+    // MCP server bound to 127.0.0.1 keeps working.
+    if (!isLocalRequest(request)) {
+      try {
+        assertPublicUrl(url);
+      } catch {
+        return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
+      }
     }
     const result = await probeMcp(url);
     return NextResponse.json(result);

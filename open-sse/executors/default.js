@@ -13,19 +13,37 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
-import { stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
+import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 // Opt-in prompt-cache key injection for openai-compatible providers.
 // OpenAI-style upstreams (Chat Completions + Responses) accept an optional
 // `prompt_cache_key` routing hint that pins a conversation to a cache shard,
 // the same mechanism the Codex executor uses. We do NOT enable it by default:
 // some strict openai-compatible gateways reject unknown fields. A custom
 // provider opts in via providerSpecificData.enablePromptCacheKey === true.
-import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+// Client-supplied keys pass only when selected transport advertises
+// `transport.quirks.preservePromptCacheKey`; final wire guard below shares this
+// configured seam and never replaces opaque client values (decolua/9router#3733).
 export function normalizePromptCacheKey(provider, sessionId) {
   if (!sessionId) return "";
   const scoped = `${provider || "openai-compatible"}:${sessionId}`;
   return `cc_${crypto.createHash("sha256").update(scoped).digest("hex").slice(0, 32)}`;
+}
+
+/**
+ * Derive OpenCode Go affinity solely from fork-resolved session identity.
+ * Caller-supplied x-opencode-session headers never reach this input.
+ */
+export function openCodeGoSessionHeader(credentials, body = null) {
+  const sessionId = resolveSessionId({
+    headers: credentials?.rawHeaders,
+    body,
+    connectionId: credentials?.connectionId,
+    workspaceId: credentials?.providerSpecificData?.workspaceId,
+    scope: "opencode-go",
+  });
+  return `ses_${crypto.createHash("sha256").update(sessionId).digest("hex").slice(0, 32)}`;
 }
 
 export function injectPromptCacheKey(provider, body, credentials) {
@@ -350,10 +368,14 @@ export class DefaultExecutor extends BaseExecutor {
         transformed.stream = false;
         delete transformed.stream_options;
       }
+      if (this.provider === "opencode-go" && credentials) {
+        credentials._openCodeGoSession = openCodeGoSessionHeader(credentials, transformed);
+      }
       injectPromptCacheKey(this.provider, transformed, credentials);
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
+      stripUnsupportedChatExtensions(transformed, credentials?.runtimeTransport, this.config);
       applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
-      stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities);
+      stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities, undefined, credentials);
       /**
        * Convert the translator's Chat-compatible reasoning field only at the
        * final Responses wire boundary. Keeping this out of translateRequest
@@ -521,6 +543,10 @@ export class DefaultExecutor extends BaseExecutor {
     if (this.provider === "claude" && credentials?._clientSessionId && !credentials._clientSessionIsGenerated) {
       delete headers["x-claude-code-session-id"];
       headers["X-Claude-Code-Session-Id"] = credentials._clientSessionId;
+    }
+
+    if (this.provider === "opencode-go") {
+      headers["x-opencode-session"] = credentials._openCodeGoSession || openCodeGoSessionHeader(credentials);
     }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams

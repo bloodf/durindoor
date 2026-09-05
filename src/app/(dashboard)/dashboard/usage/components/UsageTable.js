@@ -6,6 +6,7 @@ import Card from "@/shared/components/Card";
 import Badge from "@/shared/components/Badge";
 import Pagination from "@/shared/components/Pagination";
 import { usePagination } from "@/shared/hooks/usePagination";
+import { formatCompactToken } from "@/shared/utils/formatCompact";
 
 const fmt = (n) => new Intl.NumberFormat().format(n || 0);
 const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
@@ -38,22 +39,22 @@ function ValueCells({ item, viewMode, isSummary = false }) {
     return (
       <>
         <td className="px-6 py-3 text-right text-text-muted">
-          {isSummary && item.promptTokens === undefined ? "—" : fmt(item.promptTokens)}
+          {isSummary && item.promptTokens === undefined ? "—" : <span className="dd-tnum" title={formatCompactToken(item.promptTokens).title} aria-label={formatCompactToken(item.promptTokens).title}>{formatCompactToken(item.promptTokens).display}</span>}
         </td>
         <td className="px-6 py-3 text-right text-text-muted">
-          {item.cachedTokens ? fmt(item.cachedTokens) : "—"}
+          {item.cachedTokens ? <span className="dd-tnum" title={formatCompactToken(item.cachedTokens).title} aria-label={formatCompactToken(item.cachedTokens).title}>{formatCompactToken(item.cachedTokens).display}</span> : "—"}
         </td>
         <td className="px-6 py-3 text-right text-text-muted">
-          {item.cacheCreationTokens ? fmt(item.cacheCreationTokens) : "—"}
+          {item.cacheCreationTokens ? <span className="dd-tnum" title={formatCompactToken(item.cacheCreationTokens).title} aria-label={formatCompactToken(item.cacheCreationTokens).title}>{formatCompactToken(item.cacheCreationTokens).display}</span> : "—"}
         </td>
         <td className="px-6 py-3 text-right text-text-muted">
-          {isSummary && item.completionTokens === undefined ? "—" : fmt(item.completionTokens)}
+          {isSummary && item.completionTokens === undefined ? "—" : <span className="dd-tnum" title={formatCompactToken(item.completionTokens).title} aria-label={formatCompactToken(item.completionTokens).title}>{formatCompactToken(item.completionTokens).display}</span>}
         </td>
         <td className="px-6 py-3 text-right text-text-muted">
-          {item.reasoningTokens ? fmt(item.reasoningTokens) : "—"}
+          {item.reasoningTokens ? <span className="dd-tnum" title={formatCompactToken(item.reasoningTokens).title} aria-label={formatCompactToken(item.reasoningTokens).title}>{formatCompactToken(item.reasoningTokens).display}</span> : "—"}
         </td>
         <td className="px-6 py-3 text-right font-medium">
-          {fmt(item.totalTokens)}
+          {<span className="dd-tnum" title={formatCompactToken(item.totalTokens).title} aria-label={formatCompactToken(item.totalTokens).title}>{formatCompactToken(item.totalTokens).display}</span>}
         </td>
       </>
     );
@@ -285,4 +286,4 @@ UsageTable.propTypes = {
 };
 
 // Re-export utilities for use in UsageStats orchestrator
-export { fmt, fmtCost, fmtTime };
+export { fmt, fmtCost, fmtTime, formatCompactToken };

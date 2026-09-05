@@ -3,6 +3,8 @@ import { CLAUDE_BLOCK } from "../schema/blocks.js";
 import { CLAUDE_STOP, OPENAI_FINISH } from "../schema/finishReasons.js";
 import { MODEL_FALLBACK } from "../schema/defaults.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
+import { fromOpenAIFinish } from "../concerns/finishReason.js";
+import { FORMATS } from "../formats.js";
 
 /**
  * Convert non-streaming OpenAI Chat Completions response to Anthropic Messages format.
@@ -54,12 +56,6 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
     content.push({ type: CLAUDE_BLOCK.TEXT, text: "" });
   }
 
-  const stopReasonMap = {
-    [OPENAI_FINISH.STOP]: CLAUDE_STOP.END_TURN,
-    [OPENAI_FINISH.LENGTH]: CLAUDE_STOP.MAX_TOKENS,
-    [OPENAI_FINISH.TOOL_CALLS]: CLAUDE_STOP.TOOL_USE,
-    [OPENAI_FINISH.CONTENT_FILTER]: CLAUDE_STOP.END_TURN
-  };
 
   const usage = responseBody.usage || {};
   const rawId = String(responseBody.id || "").replace(/^chatcmpl-/, "");
@@ -79,7 +75,7 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
     role: ROLE.ASSISTANT,
     content,
     model: options.model || responseBody.model || MODEL_FALLBACK,
-    stop_reason: stopReasonMap[finishReason] || CLAUDE_STOP.END_TURN,
+    stop_reason: fromOpenAIFinish(finishReason, FORMATS.CLAUDE) || CLAUDE_STOP.END_TURN,
     stop_sequence: null,
     usage: claudeUsage
   };

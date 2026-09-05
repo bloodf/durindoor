@@ -1,7 +1,7 @@
 # Durin DS — design system
 
-> Preview-only design system for the next DurinDoor dashboard. Lives entirely
-> in Storybook; no app code is wired to it yet.
+> Component and page previews for the next DurinDoor dashboard live in Storybook.
+> The app already imports `tokens.css`; production component/page migration remains pending.
 
 ## Overview
 
@@ -24,13 +24,13 @@ mechanically portable:
 | `src/shared/ui/components/` | 27 React primitives (incl. `ProviderLogo`, `RangeSelector`), each with a CSF3 story. |
 | `src/shared/ui/shell/` | `DashboardShell`, `Header`, `Sidebar`, `withDashboardShell` decorator. |
 | `src/shared/ui/foundation/Palette.stories.jsx` | Token proof stories: swatches, shape/elevation, typography. |
-| `src/shared/ui/pages/` | 22 mocked dashboard pages (one per route), each rendered inside the shell. |
+| `src/shared/ui/pages/` | 21 mocked dashboard pages (one per route), each rendered inside the shell. |
 | `.storybook/` | `@storybook/react-vite` config; Theme toolbar toggles `.dark` on `<html>`. |
 
 ### Run the preview
 
 ```bash
-cd .omc/wt-durin-ds
+# From the repository root of your isolated worktree:
 npm install --no-audit --no-fund
 npm run storybook           # http://localhost:6006
 ```
@@ -159,6 +159,13 @@ follow the active theme.
 > `text-dd-subtle` (the `text-` prefix is dropped in the mapping). The
 > border utility for the subtle border is `border-dd-border-subtle` —
 > not `border-dd-subtle` (which resolves to the text-subtle color).
+> **Campaign blocker — measured contrast.** Token source pairs currently fail
+> applicable text contrast requirements. Remediate foundation contrast before
+> page ports. Source-only token pairs diagnose risk; they do not prove served
+> foreground/background contrast. WCAG 2.2 AAA requires measured rendered
+> pairs for each applicable text treatment. Storybook build, screenshots, and
+> axe alone cannot certify AAA.
+
 
 ### Shape, radius, shadow
 
@@ -203,7 +210,7 @@ prefix.
 
 | Component | File | One-line description | Story |
 | --- | --- | --- | --- |
-| `DataTable` | `components/DataTable.jsx` | Token-backed `<table>` with `filterBar`, `emptyState`, `pagination` slots, density (`comfortable`/`compact`), `mono`/`align` column options, and skeleton `loading` state. Forwards a full `pagination` props object to `Pagination` — the parent owns slicing and resets `page` to 1 on `onRowsPerPageChange`. | `Durin DS/Data/DataTable` |
+| `DataTable` | `components/DataTable.jsx` | Token-backed `<table>` with `filterBar`, `emptyState`, `pagination` slots, density (`comfortable`/`compact`), `mono`/`align` column options, and skeleton `loading` state. Forwards a full `pagination` props object to `Pagination`; it does not own slicing, totals, or page state. Pages keep existing `usePagination` or server-pagination behavior (totals, cursors, callbacks, current-page bounds). Block page migration if existing contract cannot be expressed through DS `pagination`. | `Durin DS/Data/DataTable` |
 | `EmptyState` | `components/EmptyState.jsx` | Centered placeholder with neutral icon tile, title, message, optional primary action. | `Durin DS/Data/EmptyState` |
 | `KeyValue` | `components/KeyValue.jsx` | Dense `<dl>` meta row for detail panels; entries separated by hairline dividers; `mono` values use mono stack with `.dd-tnum`. | `Durin DS/Data/KeyValue` |
 | `PageHeader` | `components/PageHeader.jsx` | Top-of-page identity row: emerald icon tile, title, optional subtitle, right-aligned `actions`. Wraps on narrow viewports. | `Durin DS/Data/PageHeader` |
@@ -227,9 +234,9 @@ prefix.
 | --- | --- | --- | --- |
 | `ConfirmDialog` | `components/ConfirmDialog.jsx` | `Modal`-based `window.confirm` replacement. `tone="danger"` (default) is the only case red is an action color; `tone="primary"` uses emerald. | `Durin DS/Overlays/ConfirmDialog` |
 | `Drawer` | `components/Drawer.jsx` | Right-edge panel sliding in over the same backdrop as `Modal`. `width` in px (default 420), `max-w-full` clamp. | `Durin DS/Overlays/Drawer` |
-| `Modal` | `components/Modal.jsx` | Centered dialog, dimmed + blurred backdrop, `sm`/`md`/`lg` sizes. Esc and backdrop click close; body scroll locks. | `Durin DS/Overlays/Modal` |
-| `PromptDialog` | `components/PromptDialog.jsx` | `Modal`-based `window.prompt` replacement; remounts the form on every open so `defaultValue` always starts fresh. Enter submits. | `Durin DS/Overlays/PromptDialog` |
-| `Tooltip` | `components/Tooltip.jsx` | Pure-CSS bubble on `group-hover` / `group-focus-within` (no portals, no JS state). Four `side`s with a matching arrow. | `Durin DS/Overlays/Tooltip` |
+| `Modal` | `components/Modal.jsx` | Centered dialog, dimmed + blurred backdrop, `sm`/`md`/`lg` sizes. Esc and backdrop click close; body scroll locks. It currently lacks focus trapping, focus return, inert background, nesting support, `closeOnOverlay` parity, and `className` forwarding. Foundation primitive work must add required parity/accessibility before dependent page migrations. | `Durin DS/Overlays/Modal` |
+| `PromptDialog` | `components/PromptDialog.jsx` | `Modal`-based `window.prompt` replacement; remounts form on every open so `defaultValue` starts fresh. Enter submits. Adoption waits for Modal prerequisite behavior/accessibility work where applicable. | `Durin DS/Overlays/PromptDialog` |
+| `Tooltip` | `components/Tooltip.jsx` | Pure-CSS bubble on `group-hover` / `group-focus-within` (no portals, no JS state). Four `side`s with matching arrow. | `Durin DS/Overlays/Tooltip` |
 
 ### Surfaces
 
@@ -257,11 +264,13 @@ the `flattenNav` helper exposes every leaf for the command palette.
 
 ## Page mock inventory
 
-Every page mock under `src/shared/ui/pages/<slug>/<Slug>Page.jsx` has a
-matching `<Slug>Page.stories.jsx` that wraps it in `DashboardShell` via
-`withDashboardShell({ activePath, title, subtitle, icon })` so it renders
-in fullscreen. The story title mirrors the page name; routes below come
-straight from each story's `activePath` (read with `grep` — no inference).
+Every page mock under `src/shared/ui/pages/<slug>/<Slug>Page.jsx` has matching
+`<Slug>Page.stories.jsx` wrapped in `DashboardShell` via
+`withDashboardShell({ activePath, actions })`. Decorator accepts only those
+two values; page mock itself renders `PageHeader` for icon/title/subtitle.
+Stories render fullscreen. Story title comes from each story’s `meta.title`;
+route comes from each story’s `activePath` argument to `withDashboardShell`
+(read with `grep` — no inference).
 
 | Page story title | `activePath` | Mock path |
 | --- | --- | --- |
@@ -367,20 +376,23 @@ actions, `Pagination`, table rows).
   for buttons; `disabled:cursor-not-allowed disabled:opacity-60` for
   inputs.
 
-### Accessibility
+### Accessibility prerequisites
 
-- Every IconButton has a required `label` (used as `aria-label`); the
-  glyph itself is `aria-hidden`.
-- `Tabs`, `SegmentedControl` implement roving tabindex with arrow / Home
-  / End navigation.
-- `Select` uses `aria-haspopup="listbox"` + `aria-expanded` on the
-  trigger and `role="listbox"` / `role="option" aria-selected` in the
-  overlay.
-- `Field` injects `aria-invalid` / `aria-describedby` into a single
-  child control. Error lines carry `role="alert"`.
-- `RangeSelector` opens the custom-date popover as a `role="dialog"`
-  with `aria-haspopup="dialog"` on the trigger; `Escape` and outside
-  pointer close it.
+- Every IconButton has required `label` (used as `aria-label`); glyph itself
+  is `aria-hidden`.
+- `Tabs`, `SegmentedControl` implement roving tabindex with arrow / Home /
+  End navigation.
+- `Select` has listbox semantics but currently lacks Arrow/Home/End keyboard
+  navigation. Fix primitive before page adoption requiring it.
+- `Field` injects `aria-invalid` / `aria-describedby` into single child.
+  Error lines carry `role="alert"`.
+- `RangeSelector` custom-date popover uses `role="dialog"`; Escape and
+  outside pointer close it.
+- `Modal` and `Drawer` currently lack focus trap, focus return, inert
+  background, and nesting support. Fix foundation primitives before use.
+- `DataTable` and chart presentation require page-appropriate captions or
+  equivalent accessible summaries before adoption; do not treat visuals as
+  sufficient.
 
 ## Upstream-portability notes
 
@@ -424,12 +436,12 @@ upstream-portability rule applies here.
 3. **Promote repeat patterns into `src/shared/ui/components/`.** If the
    same JSX+classes appear in three or more page mocks, extract a
    primitive (see the existing 27).
-4. **Never edit `src/app/globals.css` from a Durin DS PR.** Tailwind v4
-   only generates utilities for `@theme` tokens visible in the same
-   compilation, which is why `tokens.css` is its own Tailwind root.
-   `globals.css` stays neutral so upstream PRs can keep merging.
-5. **Re-run the Storybook preview.** Toggle the Theme toolbar to confirm
-   the change flips cleanly in both palettes.
+4. **Never edit `src/app/globals.css` during campaign.** `globals.css` stays
+   neutral and read-only so upstream PRs can keep merging; no cleanup or
+   token-retirement exception exists.
+5. **Foundation proof is orchestrator-owned.** Workers do not run Storybook
+   or visual checks. Orchestrator measures applicable WCAG 2.2 AAA criteria
+   on served UI; Storybook build/screenshots/axe alone are insufficient.
 
 ### Porting a PR that introduces a new component (summary)
 
@@ -439,5 +451,6 @@ upstream-portability rule applies here.
    meaningful prop axis (variants, sizes, states).
 3. If the component should appear on multiple page mocks, use it from
    those mocks; do not duplicate the JSX.
-4. Run `cd .omc/wt-durin-ds && npm run storybook` and visually verify in
-   both themes.
+4. Return complete diff. Do not run Storybook, tests, builds, lint, or
+   formatters; do not commit, push, or open PR. Orchestrator handles approved
+   integration and proof.

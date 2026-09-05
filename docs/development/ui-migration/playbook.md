@@ -12,11 +12,14 @@
 - Create a worktree at `.omc/wt-ds-<slug>/` from `origin/main` (or from
   the in-flight `feat/ds-migrate-<slug>` branch's parent — see
   [`harness-runbook.md`](./harness-runbook.md)).
-- Read the matching `*.stories.jsx` for the page's mock to get the
-  `activePath`, title, subtitle, and icon. These become the
-  `PageHeader` props.
+- Read matching `*.stories.jsx` for mock’s `activePath` and visual details.
+  `withDashboardShell` accepts only `activePath` and optional `actions`; it
+  does not receive or render title, subtitle, or icon. Page identity remains
+  in mock body’s `PageHeader`.
 - Read [`durin-ds.md` §"Component inventory"](../durin-ds.md#component-inventory)
-  for any DS primitives the mock uses that you do not already know.
+  for DS primitives mock uses.
+- Workers skip tests, builds, lint, formatters, visual runs, commits, pushes,
+  and PR creation. Return complete diff and preserved-contract notes.
 
 ## 1. Read the mock — it is the visual spec
 
@@ -27,8 +30,8 @@ open src/shared/ui/pages/<slug>/<Slug>Page.stories.jsx
 
 Note:
 
-- The `PageHeader` icon/title/subtitle (from the story's
-  `withDashboardShell({ activePath, title, subtitle, icon })`).
+- The `PageHeader` icon/title/subtitle (from the mock body's `PageHeader`;
+  the story decorator supplies only `activePath` and optional `actions`).
 - Every DS component the mock uses (e.g. `DataTable`, `RangeSelector`,
   `StatCard`, `Drawer`, `KeyValue`, `Tabs`, `ProviderLogo`,
   `Pagination`).
@@ -37,12 +40,18 @@ Note:
 
 ## 2. Keep the page's data and behavior byte-identical
 
-The page's hooks, fetch calls, state, effects, and error handling
-**stay as-is**. Only the rendering layer changes. Before editing,
-re-read the real page file and mark the call sites you will keep
-(imports from `@/shared/services/**`, `@/lib/**`, `@/store/**`,
-`useState` / `useEffect` / `useMemo` blocks) and the call sites you
-will rewrite (the JSX that produces the chrome, table, and modals).
+Page hooks, fetch calls, state, effects, error handling, request/query/header
+shapes, server inputs, storage behavior, and backend pagination behavior stay
+as-is. Presentation exposes `[10, 25, 50, 100, "all"]`; retain backend
+totals, cursors, page semantics, callbacks, and data hooks. Never pass string
+`"all"` to a numeric backend limit. Adapt `"all"` only through existing,
+verified backend capability; if capability is absent, block page migration.
+Never silently slice loaded rows. Only rendering changes. Preserve existing
+`aria-*`, focus, and keyboard behavior; scoped accessibility repair requires
+identified defect and must not change application behavior. Before editing,
+re-read real page and mark call sites kept (`@/shared/services/**`,
+`@/lib/**`, `@/store/**`, `useState` / `useEffect` / `useMemo`) versus JSX
+chrome/table/modal changes.
 
 ## 3. Swap imports to DS primitives
 
@@ -51,12 +60,12 @@ any prop differences before you swap.
 
 | Legacy import | DS import | Prop differences |
 | --- | --- | --- |
-| `import { Button } from "@/shared/components"` | `import Button from "@/shared/ui/components/Button.jsx"` | DS is default-export. `variant` values: `primary` / `secondary` / `ghost` / `danger` (legacy had `outline` and `success` — those are **not** in DS; switch to `secondary` or `ghost` and `danger`). `size` values: `sm` / `md` (legacy had `lg` — switch to `md` or stack). Trailing icon prop is `iconTrailing` (legacy was `iconRight`). `fullWidth` is gone; pass `className="w-full"` instead. |
+| `import { Button } from "@/shared/components"` | `import Button from "@/shared/ui/components/Button.jsx"` | DS is default-export. Variants are `primary` / `secondary` / `ghost` / `danger`; sizes are `sm` / `md`; trailing icon is `iconTrailing`; `fullWidth` is absent. Do **not** silently map legacy `success` to `danger`, `outline` to `secondary`/`ghost`, `lg` to `md`, or `fullWidth` to classes: each changes visual/size/layout contract. Block migration until primitive parity exists or explicit approved behavior decision preserves contract. |
 | `import Card from "@/shared/components/Card"` | `import { Card, CardHeader, CardContent, CardFooter } from "@/shared/ui/components/Card.jsx"` | DS uses **named** exports only — no default. `Card` props: `padding` (boolean), `hover` (boolean), `className`. `CardHeader` props: `icon`, `title`, `subtitle`, `actions`, `className`. |
-| `import { Modal, ConfirmModal } from "@/shared/components"` | `import Modal from "@/shared/ui/components/Modal.jsx"` (and `import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx"`) | DS `Modal` is default-export. Prop renames: `open` (not `isOpen`); `onClose` preserved; `subtitle` is supported but `showTrafficLights` is gone (the macOS dots are intentionally not reproduced). `closeOnOverlay` is gone — backdrop click always closes. `className` is not forwarded; pass a `className` to a child if needed. DS `ConfirmDialog` is default-export; props `open` / `onCancel` (not `isOpen` / `onClose`); `tone="danger"` (default) is the only case red is the action color, `tone="primary"` uses emerald. |
+| `import { Modal, ConfirmModal } from "@/shared/components"` | `import Modal from "@/shared/ui/components/Modal.jsx"` (and `import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx"`) | DS `Modal` is default-export. `open` replaces `isOpen`; `onClose` and `subtitle` preserve. DS currently lacks `closeOnOverlay` parity and does not forward `className`: do **not** migrate modal needing either until prerequisite primitive change adds parity. Preserve backdrop/Esc dismissal and submitting semantics; never silently drop behavior. `showTrafficLights` removal needs approved behavior decision. DS `ConfirmDialog` is default-export; `open` / `onCancel` replace `isOpen` / `onClose`, but it lacks legacy `loading` parity. Do not migrate a loading/submitting `ConfirmModal` until primitive parity disables duplicate actions and preserves pending UI. `tone="danger"` (default) is only red action; `tone="primary"` uses emerald. |
 | `import { Input } from "@/shared/components"` | `import Input from "@/shared/ui/components/Input.jsx"` | DS is default-export. Same `value` / `onChange`; `size` values `sm` / `md` (no `lg`); optional `label` / `hint` / `error` auto-wrap in `Field`. |
 | `import Select from "@/shared/components/Select"` | `import Select from "@/shared/ui/components/Select.jsx"` | DS is default-export. Custom listbox (not native `<select>`); `value` / `onChange` preserved; `placement="top"` for footer toolbars. |
-| `import Pagination from "@/shared/components/Pagination"` | `import Pagination from "@/shared/ui/components/Pagination.jsx"` | DS is default-export. Page/slicing logic moves to the parent; the new `DataTable` consumes `pagination` as a prop. See §5. |
+| `import Pagination from "@/shared/components/Pagination"` | `import Pagination from "@/shared/ui/components/Pagination.jsx"` | DS is default-export. Keep existing backend paging, totals, cursors, and callbacks through presentation adapter. Expose `[10, 25, 50, 100, "all"]`; map `"all"` only through verified backend capability, never to numeric limit. Do not add client slicing, derive totals from loaded rows, reset page, or rewrite data hooks merely to match mock. `DataTable` consumes `pagination` prop. See §5. |
 | `import { Toggle } from "@/shared/components"` | `import Toggle from "@/shared/ui/components/Toggle.jsx"` | DS is default-export. `checked` / `onChange` preserved. With `label` / `description` it renders a settings-style row. |
 | `import { Badge } from "@/shared/components"` | `import { Badge } from "@/shared/ui/components/Badge.jsx"` | DS `Badge` is **named**-export only. `tone` values: `accent` / `success` / `warning` / `danger` / `info` / `neutral` (legacy was `success` / `warning` / `error` / `default` — map `error` → `danger`, `default` → `neutral`); `size` `sm` / `md`; optional leading `icon`. |
 | `import ProviderIcon from "@/shared/components/ProviderIcon"` | `import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx"` (or `import { ProviderLogo } …` — DS exports both forms) | `provider` / `size` (px box, default 28) / `className`; alias map (`cc` → `claude`, `cx` → `codex`, `ollama` → `ollama-local`, …) handled internally; falls back to a token-styled letter tile. |
@@ -81,8 +90,11 @@ From [`AGENTS.md` §5A](../../../AGENTS.md#5a-ui--durin-ds-design-system) and
    `ConfirmDialog`.
 3. **No native `<select>`.** Use `Select`. The one allowed exception is
    the `Pagination` rows-per-page control — never write your own.
-4. **Tables → `DataTable` + `pagination` prop.** Rows-per-page
-   `[10, 25, 50, 100, "all"]`.
+4. **Tables → `DataTable` + `pagination` prop.** Presentation must expose
+   `[10, 25, 50, 100, "all"]`. Preserve backend totals, cursors, page
+   semantics, and callbacks. `"all"` must use verified backend capability,
+   never client-side slicing or a numeric backend limit; absent capability
+   blocks migration.
 5. **Range filters → `RangeSelector`.**
 6. **Provider branding → `ProviderLogo`.**
 7. **Charts: single graph, multiple series.** Primary `var(--dd-accent)`,
@@ -94,70 +106,49 @@ From [`AGENTS.md` §5A](../../../AGENTS.md#5a-ui--durin-ds-design-system) and
 10. **Density:** body `text-[13px]`, meta `text-xs`, metrics `dd-tnum`.
     `PageHeader` title `text-xl font-semibold tracking-tight`.
 
-## 5. Tables — `DataTable` + `pagination`
+## 5. Tables — `DataTable` presentation adapter
 
-Replace every raw `<table>` + prev/next pager with `DataTable` and its
-`pagination` prop. The parent owns slicing and resets `page` to 1 on
-`onRowsPerPageChange`.
+Replace raw table markup only after verifying `DataTable` and `Pagination`
+represent page's backend contract. Presentation always exposes
+`[10, 25, 50, 100, "all"]`; retain server totals, cursor/page semantics,
+current-page bounds, callbacks, and existing data hooks. Do not derive `total`
+from currently loaded rows, add client slicing, reset page, or change fetch
+inputs merely to resemble mock.
+
+`"all"` is presentation-only. It must never reach a numeric backend limit.
+Use it only when existing backend capability provides a safe all-results
+request or equivalent cursor-aware contract. If that capability does not
+exist, block page migration until prerequisite work adds it; do not silently
+slice already-loaded rows.
 
 ```jsx
-import DataTable from "@/shared/ui/components/DataTable.jsx";
-
-const [page, setPage] = useState(1);
-const [rowsPerPage, setRowsPerPage] = useState(25);
-const pageCount = rowsPerPage === "all"
-  ? 1
-  : Math.max(1, Math.ceil(rows.length / rowsPerPage));
-const currentPage = Math.min(page, pageCount);
-const visibleRows = useMemo(
-  () => rowsPerPage === "all"
-    ? rows
-    : rows.slice(
-        (currentPage - 1) * rowsPerPage,
-        (currentPage - 1) * rowsPerPage + rowsPerPage,
-      ),
-  [currentPage, rows, rowsPerPage],
-);
-const firstVisibleRow = rows.length === 0
-  ? 0
-  : rowsPerPage === "all"
-    ? 1
-    : (currentPage - 1) * rowsPerPage + 1;
-const lastVisibleRow = rowsPerPage === "all"
-  ? rows.length
-  : Math.min(currentPage * rowsPerPage, rows.length);
-
-const columns = [
-  { key: "name", label: "Name" },
-  { key: "tokens", label: "Tokens", align: "right", mono: true },
-  { key: "actions", label: "", align: "right", render: (row) => (
-    <IconButton label="Edit" icon="edit" variant="ghost" size="sm" onClick={() => edit(row)} />
-  ) },
-];
+// Schematic: keep existing pagination/data hooks and backend adapter intact.
+const PRESENTATION_PAGE_SIZES = [10, 25, 50, 100, "all"];
 
 <DataTable
   columns={columns}
-  rows={visibleRows}
+  rows={pageItems}
   keyFn={(row) => row.id}
   density="compact"
-  filterBar={/* Select / Input / RangeSelector, size="sm" */}
-  emptyState={{ icon: "inbox", title: "No rows", message: "Nothing here yet." }}
   loading={isLoading}
+  emptyState={existingEmptyState}
   pagination={{
-    page: currentPage,
-    pageCount,
-    total: rows.length,
-    rowsLabel: `Showing ${firstVisibleRow} to ${lastVisibleRow} of ${rows.length} results`,
+    page,
+    pageCount: totalPages,
+    total: totalItems,
+    rowsLabel: existingRowsLabel,
     onPage: setPage,
-    rowsPerPage,
-    onRowsPerPageChange: (value) => { setRowsPerPage(value); setPage(1); },
+    rowsPerPage: presentationPageSize,
+    rowsPerPageOptions: PRESENTATION_PAGE_SIZES,
+    onRowsPerPageChange: setPresentationPageSize,
   }}
 />
 ```
 
-Edge case: when the table is rendered inside a modal, use
-`density="compact"`; the full-screen page table can use
-`density="comfortable"`.
+`setPresentationPageSize` may pass numeric values to existing backend paging.
+For `"all"`, it must invoke only verified all-results capability; it must not
+pass `"all"` to a numeric limit or slice loaded rows. For modal tables retain
+existing density and dismissal behavior; presentation change cannot alter it.
 
 ## 6. Range filters — `RangeSelector`
 
@@ -176,10 +167,9 @@ const [range, setRange] = useState({ preset: "7d" });
 // rangeLabel(range) → "Last 7 days" / "Jun 1 – Jun 7" / "All time"
 ```
 
-Custom ranges only emit after the user confirms the From/To popover.
-Validate that `from <= to` and surface an error with `Field error` if
-not (this is a defensive check; the popover does it too, but the page
-should not crash on bad state).
+Custom ranges only emit after user confirms From/To popover. Preserve page’s
+existing range validation, input shape, fetch behavior, and errors. Do not
+add defensive validation or alter bad-state handling during visual migration.
 
 ## 7. Provider branding — `ProviderLogo`
 
@@ -195,50 +185,65 @@ import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
 
 ## 8. Delete replaced one-off styled components
 
-When the page consumed local one-off styled components (e.g. an inline
-`<div className="rounded-xl border border-border bg-surface p-4">` that
-duplicated `Card`), delete them only after the migration renders
-without them. Keep the legacy file's exported helpers if other pages
-still import them — flag in the PR body and clean up in Phase 3.
+When page consumed local one-off styled components, delete them only if they
+become unused through rendering-only replacement. Preserve exported helpers
+still imported elsewhere; flag for Phase 3. Do not use a preview
+`DashboardShell` in production; runtime shell adapters remain integration
+boundary.
 
-## 9. Run the gates
+## 9. Worker handoff and orchestrator proof
+Workers return complete diff plus preserved-contract notes. They must not run
+tests, builds, lint, formatters, Storybook, dev server, commitlint, commits,
+pushes, or PR creation. Orchestrator rebases, formats, runs documented gates,
+commits locally, and obtains current-SHA runtime proof. Independent review,
+then human full-diff review follow. Explicit human approval is required only
+before push/PR, not local validation, rebase, or commit.
 
-```bash
-npm run lint                    # full repo gate (eslint + anti-slop)
-npm run storybook:build
-cd tests && npm run test:ci
-git diff tests/__baseline__/known-fails.txt   # empty
-npx commitlint --from=origin/main --to=HEAD
-```
 
-All five must exit 0. If any fails, fix before pushing.
+Storybook build, screenshots, and axe alone never certify AAA. Orchestrator
+records applicable measured WCAG 2.2 AAA evidence.
 
-## 10. Screenshots checklist
+Working stories are mandatory for every page and widget in the migration:
+follow [`Storybook coverage`](../../../plans/002-storybook-coverage.md), render
+actual production components with safe fixture dependencies, cover meaningful
+states and interactions, and return stories with the page's unique e2e spec.
+Private widgets may use explicit parent-story scenarios; no copied mock UI.
+Orchestrator gates Storybook runtime/play results AND the actual app on same SHA.
+After G0 wires them, package scripts `check:storybook-coverage` and
+`test:storybook` are mandatory per-PR gates, not alternatives to app tests.
 
-Manual visual verification (capture in PR body or attach to the
-Storybook story if a new one was added):
+Foundation blockers precede page adoption: token text-contrast remediation,
+Select Arrow/Home/End behavior, overlay focus trap/return/inert/nesting
+(`Modal`/`Drawer`), and chart/table caption gaps. Token contrast source pairs
+are diagnostic only, not served-surface proof; measure rendered foreground /
+background pairs before AAA claims.
 
-- [ ] Dark + light, both palettes render.
-- [ ] Empty state (no data, no error, no loading).
-- [ ] Loading state (skeleton rows for tables; spinner / `DataTable
-      loading`).
-- [ ] Error state (force a known 4xx/5xx and screenshot the
-      `EmptyState` or error banner).
-- [ ] Modal / `Drawer` / `PromptDialog` / `ConfirmDialog` open and
-      close cleanly.
-- [ ] All `Select` triggers flip with the theme toolbar.
-- [ ] Keyboard: `Tab` walks the controls, `Esc` closes overlays,
-      arrow keys move inside `Tabs` and `SegmentedControl`.
+## 10. Runtime proof checklist
+
+Orchestrator verifies current working SHA after formatting and gates, before
+independent and human full-diff review:
+
+- [ ] Dark + light palettes.
+- [ ] Empty, loading, and error states with same data behavior.
+- [ ] Overlay dismissal and submitting semantics.
+- [ ] Keyboard paths, including foundation prerequisite fixes.
+- [ ] Applicable WCAG 2.2 AAA criteria measured on served UI.
 
 ## Worked example — `/dashboard/health`
 
+Schematic only: preserve health's real backend paging, totals, cursors, and
+hooks. Its presentation uses `[10, 25, 50, 100, "all"]`; `"all"` requires
+verified backend all-results capability and blocks this migration if absent.
+
 The real page is at
 `src/app/(dashboard)/dashboard/health/page.js`. Its mock is at
-`src/shared/ui/pages/health/HealthPage.jsx` (story title
-`Durin DS/Pages/Health`, `activePath: /dashboard/health`,
-`title: Provider Health`, `icon: health_and_safety`).
+`src/shared/ui/pages/health/HealthPage.jsx`; story `meta.title` is
+`Durin DS/Pages/Health`, while decorator `activePath` is
+`/dashboard/health`. Mock body’s `PageHeader` owns `Provider Health` and
+`health_and_safety`; decorator does not receive page identity props.
 
 ### Before (real page, abbreviated)
+
 
 ```jsx
 // src/app/(dashboard)/dashboard/health/page.js
@@ -283,7 +288,7 @@ import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
 import StatCard from "@/shared/ui/components/StatCard.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
-// ... all data/load logic preserved ...
+// ... all data/load/usePagination logic preserved ...
 
 const STATE_BADGE_TONE = { healthy: "success", degraded: "warning", down: "danger", blocked: "danger", unconfigured: "neutral", unknown: "neutral" };
 
@@ -318,18 +323,9 @@ export default function HealthPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   // ... fetch / poll logic preserved ...
-  const rows = data?.providers ?? [];
-  const summary = data?.summary ?? [];
-  const [page, setPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
-  const pageCount = rowsPerPage === "all" ? 1 : Math.max(1, Math.ceil(rows.length / rowsPerPage));
-  const currentPage = Math.min(page, pageCount);
-  const visibleRows = useMemo(
-    () => rowsPerPage === "all"
-      ? rows
-      : rows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage),
-    [currentPage, rows, rowsPerPage],
-  );
+  // Existing usePagination state and server/client behavior remain unchanged.
+  const { pageItems, page, pageSize, setPage, setPageSize, totalItems, totalPages } =
+    usePagination(existingOptions);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
@@ -355,19 +351,20 @@ export default function HealthPage() {
       </Card>
       <DataTable
         columns={columns}
-        rows={visibleRows}
+        rows={pageItems}
         keyFn={(row) => row.id}
         density="compact"
         loading={loading}
         emptyState={{ icon: "inbox", title: "No providers", message: "Configure a provider to see health." }}
         pagination={{
-          page: currentPage,
-          pageCount,
-          total: rows.length,
-          rowsLabel: `Showing ${rows.length === 0 ? 0 : (currentPage - 1) * (rowsPerPage === "all" ? rows.length : rowsPerPage) + 1} to ${Math.min(currentPage * (rowsPerPage === "all" ? rows.length : rowsPerPage), rows.length)} of ${rows.length} results`,
+          page,
+          pageCount: totalPages,
+          total: totalItems,
+          rowsLabel: existingRowsLabel,
           onPage: setPage,
-          rowsPerPage,
-          onRowsPerPageChange: (v) => { setRowsPerPage(v); setPage(1); },
+          rowsPerPage: presentationPageSize,
+          rowsPerPageOptions: [10, 25, 50, 100, "all"],
+          onRowsPerPageChange: setPresentationPageSize,
         }}
       />
     </div>
@@ -415,30 +412,33 @@ export default function HealthPage() {
 -        <table className="min-w-full text-sm">…</table>
 -        <Pagination page={page} pageSize={pageSize} total={totalItems} onPage={setPage} onPageSize={setPageSize} />
 -      </Card>
-+      <DataTable
-+        columns={columns}
-+        rows={visibleRows}
-+        keyFn={(row) => row.id}
-+        density="compact"
-+        loading={loading}
-+        emptyState={{ icon: "inbox", title: "No providers", message: "Configure a provider to see health." }}
-+        pagination={{
-+          page: currentPage,
-+          pageCount,
-+          total: rows.length,
-+          rowsLabel: `Showing … of ${rows.length} results`,
-+          onPage: setPage,
-+          rowsPerPage,
-+          onRowsPerPageChange: (v) => { setRowsPerPage(v); setPage(1); },
-+        }}
-+      />
+      <DataTable
+        columns={columns}
+        rows={pageItems}
+        keyFn={(row) => row.id}
+        density="compact"
+        loading={loading}
+        emptyState={{ icon: "inbox", title: "No providers", message: "Configure a provider to see health." }}
+        pagination={{
+          page,
+          pageCount: totalPages,
+          total: totalItems,
+          rowsLabel: existingRowsLabel,
+          onPage: setPage,
+          rowsPerPage: presentationPageSize,
+          rowsPerPageOptions: [10, 25, 50, 100, "all"],
+          onRowsPerPageChange: setPresentationPageSize,
+        }}
+      />
 ```
 
 ### Behavior invariants to verify in this PR
 
-- Same API call: `GET /api/health` (or whatever the page polls).
+- Same API call: `GET /api/health` (or page’s real poll contract).
 - Same route path: `/dashboard/health`.
-- Same localStorage keys (none on this page).
-- Same refresh cadence.
-- Same `usePagination` slicing logic — only the rendering around it
-  changed.
+- Same localStorage keys and semantics (none on this page).
+- Same refresh cadence, query/header/request shape, and server inputs.
+- Same backend pagination state, totals, cursors, callbacks, and hooks.
+- Presentation page sizes are `[10, 25, 50, 100, "all"]`. `"all"` uses only
+  verified backend all-results capability; it never reaches numeric limits or
+  silently slices loaded rows. Missing capability blocks migration.

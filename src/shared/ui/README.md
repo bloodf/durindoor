@@ -1,13 +1,13 @@
 # `src/shared/ui` — Durin DS
 
-Preview-only design system for the next DurinDoor dashboard. Every file
-in this tree is DurinDoor-owned; nothing in here is wired to production
-yet.
+Component and page previews for the next DurinDoor dashboard. Every file in this
+tree is DurinDoor-owned. The app already imports `tokens.css`; production
+component/page migration remains pending.
 
 ## Run the preview
 
 ```bash
-cd .omc/wt-durin-ds
+# From the repository root of your isolated worktree:
 npm install --no-audit --no-fund
 npm run storybook            # http://localhost:6006
 ```
@@ -20,7 +20,7 @@ The Theme toolbar (sun/moon, top of the canvas) flips between
 | Path | Contents |
 | --- | --- |
 | `tokens.css` | Raw `--dd-*` custom properties + Tailwind v4 `@theme inline` mapping. Self-contained Tailwind root. |
-| `components/` | 25 React primitives, each with a matching `*.stories.jsx`. |
+| `components/` | 27 React primitives, each with matching `*.stories.jsx`. |
 | `shell/` | `DashboardShell`, `Header`, `Sidebar`, `withDashboardShell` decorator, `index.js` re-exports. |
 | `foundation/Palette.stories.jsx` | Token proof: swatches, shape/elevation, typography. |
 | `pages/<slug>/` | One folder per mocked dashboard page; each has `<Slug>Page.jsx` and `<Slug>Page.stories.jsx`. |
@@ -34,11 +34,19 @@ The Theme toolbar (sun/moon, top of the canvas) flips between
 - **Literal class strings.** Tailwind v4 scans source text; do not
   interpolate class names. Branch on tone / size / density with lookup
   maps of full literals, then join at render time.
-- **CSF3 stories.** `meta` declares `title`, `component`,
-  `tags: ["autodocs"]`, and per-arg `argTypes` controls.
-- **Page identity.** Every page renders `PageHeader` with `icon`, `title`, and
-  `subtitle`; `withDashboardShell` supplies navigation chrome and optional
-  actions without duplicating page identity in the persistent shell bar.
+- **CSF3 stories.** `meta` declares `title` and `component`; `tags:
+  ["autodocs"]` is opt-in, not required. Check neighboring story before
+  adding it. `argTypes` controls are per-story where useful.
+- **Page identity.** Every page mock renders `PageHeader` with `icon`,
+  `title`, and `subtitle`; `withDashboardShell` supplies navigation chrome
+  with `activePath` and optional actions. Decorator does not accept or render
+  page identity values.
+
+> **Campaign gate:** token text contrast needs foundation remediation before
+> page ports. Source token pairs are not served-surface contrast proof, and
+> Storybook build, screenshots, or axe alone cannot certify WCAG 2.2 AAA.
+> Workers return diffs only; orchestrator owns approved integration and
+> measured current-SHA runtime evidence.
 
 ## Full documentation
 

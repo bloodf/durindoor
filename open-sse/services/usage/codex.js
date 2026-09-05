@@ -50,6 +50,22 @@ function toIsoDate(value) {
 }
 
 /**
+ * Normalizes a Codex API error payload into a readable string.
+ * Order of preference: an already-string value, a nested `.message`
+ * string, else a JSON-serialized fallback so structured payloads never
+ * surface as the useless `[object Object]`.
+ * @param {unknown} value
+ * @param {string} fallback used when value is falsy
+ * @returns {string}
+ */
+function errorMessage(value, fallback) {
+  if (!value) return fallback;
+  if (isString(value)) return value;
+  if (isString(value.message)) return value.message;
+  return JSON.stringify(value);
+}
+
+/**
  * Upstream provenance: reset-credit expiry parsing and multi-field account-id
  * resolution were ported from decolua/9router PR #2345
  * ("fix(codex): parse reset credit expiry details", upstream head
@@ -301,7 +317,7 @@ export async function getCodexRateLimitResetCredits(accessToken, proxyOptions = 
   }
 
   if (!response.ok) {
-    const message = data?.message || data?.error || data?.detail || `Codex reset credits API unavailable (${response.status}).`;
+    const message = errorMessage(data?.message || data?.error || data?.detail, `Codex reset credits API unavailable (${response.status}).`);
     throw new Error(message);
   }
 

@@ -20,6 +20,7 @@ import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -125,11 +126,12 @@ async function handleFetchHandler(request) {
     perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+    const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("FETCH", `Combo "${comboName}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, apiKeyAuth.apiKeyId, settings),
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, apiKeyAuth.apiKeyId, settings, comboRouting),
       log,
       comboName,
       comboStrategy,
@@ -160,7 +162,7 @@ export function normalizeFetchProviderInput(providerInput) {
   return providerInput;
 }
 
-async function handleSingleProviderFetch(body, providerInput, request, apiKey, apiKeyId, settings) {
+async function handleSingleProviderFetch(body, providerInput, request, apiKey, apiKeyId, settings, comboRouting = null) {
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -191,7 +193,11 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
   // All registry no-auth fetch paths, including firecrawl_custom's optional
   // saved account, pass through the shared provider-account selector.
   if (resolvedProvider.noAuth) {
-    const credentials = await getNoAuthProviderCredentials(providerId, null, { apiKeyId });
+    const credentials = await getNoAuthProviderCredentials(providerId, null, {
+      apiKeyId,
+      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+      restrictionApplied: comboRouting?.restrictionApplied === true
+    });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${providerId}' is disabled. Enable it in Settings > Providers.`);
@@ -233,7 +239,12 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
       providerId,
       excludeConnectionIds,
       null,
-      { webFetch: true, apiKeyId }
+      {
+        webFetch: true,
+        apiKeyId,
+        allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+        restrictionApplied: comboRouting?.restrictionApplied === true
+      }
     );
 
     // All accounts unavailable or provider disabled

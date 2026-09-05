@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   resetComboScoring: vi.fn(),
 }));
 
+
 vi.mock("next/server", () => ({
   NextResponse: {
     json(body, init = {}) {
@@ -30,6 +31,8 @@ vi.mock("@/lib/localDb", () => ({
   updateCombo: mocks.updateCombo,
   deleteCombo: mocks.deleteCombo,
   ComboMemberError: class ComboMemberError extends Error {},
+  validateConnectionIds: vi.fn((ids) => ids),
+  ConnectionGroupValidationError: class ConnectionGroupValidationError extends Error {},
 }));
 
 vi.mock("open-sse/services/combo.js", () => ({

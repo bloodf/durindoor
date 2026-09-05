@@ -454,12 +454,13 @@ export async function saveRequestUsage(entry) {
       }
 
       const insert = db.run(
-        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId, comboId, comboName) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
         entry.timestamp, entry.provider || null, entry.model || null,
         entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
         promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-        stringifyJson(tokens), stringifyJson({}), entry.usageEventId || null]
+        stringifyJson(tokens), stringifyJson({}), entry.usageEventId || null,
+        entry.comboId || null, entry.comboName || null]
 
       );
       if ((insert?.changes ?? 0) === 0) return;
@@ -520,7 +521,7 @@ export async function getUsageHistory(filter = {}) {
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const rows = db.all(
     `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens,
-            promptTokens, completionTokens
+            promptTokens, completionTokens, comboId, comboName
        FROM usageHistory ${where} ORDER BY id ASC`,
     params
   );
@@ -535,7 +536,9 @@ export async function getUsageHistory(filter = {}) {
       prompt_tokens: Number(r.promptTokens ?? parseJson(r.tokens, {}).prompt_tokens ?? 0),
       completion_tokens: Number(r.completionTokens ?? parseJson(r.tokens, {}).completion_tokens ?? 0),
       ...parseJson(r.tokens, {})
-    }
+    },
+    comboId: r.comboId,
+    comboName: r.comboName
   }));
 }
 

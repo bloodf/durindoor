@@ -16,6 +16,7 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
@@ -77,11 +78,12 @@ async function handleImageGenerationHandler(request) {
       : perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+    const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("IMAGE", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId }),
+      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId, comboRouting }),
       log,
       comboName,
       comboStrategy,
@@ -92,7 +94,7 @@ async function handleImageGenerationHandler(request) {
   return handleSingleModelImage(body, modelStr, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId });
 }
 
-async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { wantsStream, binaryOutput, preferredConnectionId } = {}) {
+async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { wantsStream, binaryOutput, preferredConnectionId, comboRouting = null } = {}) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -104,7 +106,12 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   // Explicit no-auth providers still pass through the shared account selector:
   // scoped keys cannot escape to an anonymous/local endpoint.
   if (NO_AUTH_PROVIDERS.has(provider)) {
-    const credentials = await getNoAuthProviderCredentials(provider, model, { preferredConnectionId, apiKeyId });
+    const credentials = await getNoAuthProviderCredentials(provider, model, {
+      preferredConnectionId,
+      apiKeyId,
+      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+      restrictionApplied: comboRouting?.restrictionApplied === true
+    });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -130,7 +137,12 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { preferredConnectionId, apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
+      preferredConnectionId,
+      apiKeyId,
+      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+      restrictionApplied: comboRouting?.restrictionApplied === true
+    });
 
     // All accounts unavailable or provider disabled
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {

@@ -433,9 +433,17 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   }
   /** decolua/9router#3203: blank settings default NVIDIA to 40 RPM; other providers stay unlimited. */
   const rpmLimit = resolveProviderRpm(settings, providerId);
-  // Normalize to Set for consistent handling
+  // Persisted empty/unset combo allow-lists mean unrestricted. A derived
+  // nested intersection may be `[]`, however, and is deny-all. Callers mark
+  // that case with `restrictionApplied:true` so an empty intersection never
+  // silently widens back to unrestricted.
+  const restrictionApplied = options?.restrictionApplied === true ||
+  Array.isArray(options?.allowedConnectionIds) && options.allowedConnectionIds.length > 0;
+  const allowedConnectionIds = restrictionApplied ?
+  new Set(Array.isArray(options?.allowedConnectionIds) ? options.allowedConnectionIds : []) :
+  null;
   const excludeSet = excludeConnectionIds instanceof Set ?
-  excludeConnectionIds :
+  new Set(excludeConnectionIds) :
   excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set();
   const preferredConnectionId = options?.preferredConnectionId || null;
   // Acquire the provider-scoped selection turn. SQLite reservations, not this
@@ -463,24 +471,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
     const boundedModel = resolveFallbackModelScope(providerId, model, { webFetch: options?.webFetch === true });
 
-    // decolua/9router#747+#3661: the request may pass an explicit
-    // allowedConnectionIds cap, and the authenticated API key may declare a
-    // provider-account relation. Both are denylist-of-one, allowlist-of-many;
-    // the selector must INTERSECT them. A non-empty relation plus a
-    // non-empty allowlist with no overlap is a deny (no eligible account).
-    // Empty/null on either side leaves the other side authoritative.
+    // API-key provider-account relations and combo allow-lists both narrow the
+    // eligible pool. Their intersection is authoritative; a derived empty
+    // intersection denies instead of widening back to unrestricted.
     const relationIds = options?.apiKeyId ?
     new Set(await getApiKeyProviderConnectionIds(options.apiKeyId)) :
     null;
-    const allowlistIds = Array.isArray(options?.allowedConnectionIds) ?
-    new Set(options.allowedConnectionIds) :
-    null;
-    let scopedConnectionIds = null;
-    if (relationIds && relationIds.size > 0) scopedConnectionIds = relationIds;
-    if (allowlistIds && allowlistIds.size > 0) {
-    scopedConnectionIds = scopedConnectionIds ?
-    new Set([...scopedConnectionIds].filter((id) => allowlistIds.has(id))) :
-    allowlistIds;
+    const allowlistIds = restrictionApplied ? allowedConnectionIds : null;
+    let scopedConnectionIds = relationIds && relationIds.size > 0 ? relationIds : null;
+    if (allowlistIds) {
+      scopedConnectionIds = scopedConnectionIds ?
+      new Set([...scopedConnectionIds].filter((id) => allowlistIds.has(id))) :
+      allowlistIds;
     }
     const scopeRestricted = scopedConnectionIds !== null;
     const scopedHasOverlap = !scopeRestricted || scopedConnectionIds.size > 0;
@@ -490,6 +492,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     ) :
     [];
     throwIfAborted(signal);
+    if (preferredConnectionId && scopeRestricted && !scopedConnectionIds.has(preferredConnectionId)) {
+      log.warn("AUTH", `${provider} | preferred connection ${preferredConnectionId.slice(0, 8)} rejected by scoped allow-list`);
+      return null;
+    }
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}, scope: ${scopeRestricted ? `restricted[${scopedConnectionIds.size}]` : "unrestricted"}`);
 
     const resourceKeys = options?.resourceKeys || buildQuotaResourceKeys({
@@ -509,8 +515,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true || options?.noAuthPath === true;
     const publicFallbackAllowed = !scopeRestricted && scopedHasOverlap && (options?.noAuthPath === true || providerAllowsPublicNoAuthFallback(providerId)) && !excludeSet.has("noauth");
     // Explicit handler no-auth paths historically ignored saved connections.
-    // Preserve that zero-relation behavior; only a populated relation opts the
-    // caller into selecting and projecting a stored no-auth connection.
+    // Preserve that zero-relation behavior; any API-key/combo restriction opts
+    // the caller into selecting a stored eligible connection or denying.
     if (options?.noAuthPath === true && !scopeRestricted) {
       return buildOptionalNoAuthCredential();
     }

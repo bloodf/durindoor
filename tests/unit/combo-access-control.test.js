@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getApiKeyByKey: vi.fn(),
   getApiKeyUsageLimitStatus: vi.fn(),
+  getComboByName: vi.fn(),
   getComboModels: vi.fn(),
   getComboCanonicalName: vi.fn(),
   extractApiKey: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   getApiKeyByKey: mocks.getApiKeyByKey,
   getApiKeyUsageLimitStatus: mocks.getApiKeyUsageLimitStatus,
+  getComboByName: mocks.getComboByName,
   getComboForModel: vi.fn(async () => null),
 }));
 
@@ -99,6 +101,11 @@ describe("per-key combo access control (#2203)", () => {
     mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true });
     mocks.getApiKeyUsageLimitStatus.mockResolvedValue({ exceeded: false, usedTokens: 0, limitTokens: 0 });
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
+    mocks.getComboByName.mockImplementation(async (name) => (
+      name === "Combo-Privileged"
+        ? { id: "combo-privileged-id", name: "Combo-Privileged", allowedConnectionIds: [] }
+        : null
+    ));
     mocks.getComboModels.mockImplementation(async (model) =>
       model.toLowerCase() === "combo-privileged" ? ["prov/model-a", "prov/model-b"] : null
     );
@@ -133,7 +140,7 @@ describe("per-key combo access control (#2203)", () => {
     const { handleChat } = await import("../../src/sse/handlers/chat.js");
     const res = await handleChat(makeRequest("COMBO-PRIVILEGED"));
 
-    expect(res.status).toBe(200);
+    expect(res.status, await res.clone().text()).toBe(200);
     expect(mocks.handleComboChat).toHaveBeenCalledWith(expect.objectContaining({
       comboName: "Combo-Privileged",
       comboStrategy: "round-robin",
@@ -165,7 +172,7 @@ describe("per-key combo access control (#2203)", () => {
     const { handleChat } = await import("../../src/sse/handlers/chat.js");
     const res = await handleChat(makeRequest("combo-privileged"));
 
-    expect(res.status).toBe(200);
+    expect(res.status, await res.clone().text()).toBe(200);
     expect(mocks.handleComboChat).toHaveBeenCalled();
   });
 
@@ -178,7 +185,7 @@ describe("per-key combo access control (#2203)", () => {
     const { handleChat } = await import("../../src/sse/handlers/chat.js");
     const res = await handleChat(makeRequest("combo-privileged"));
 
-    expect(res.status).toBe(200);
+    expect(res.status, await res.clone().text()).toBe(200);
     expect(mocks.handleComboChat).toHaveBeenCalled();
   });
 

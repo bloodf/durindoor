@@ -24,6 +24,12 @@ export {
   QuotaReservationError, QuotaCapacityUnavailableError,
   getCombos, getComboById, getComboByName, getComboForModel,
   createCombo, updateCombo, deleteCombo, ComboMemberError, normalizeComboMembers,
+  // Connection groups (issue #747)
+  getConnectionGroups, getConnectionGroupById, getConnectionGroupByName,
+  createConnectionGroup, updateConnectionGroup, deleteConnectionGroup,
+  addConnectionToGroup, removeConnectionFromGroup,
+  validateGroupName, validateGroupDescription, validateConnectionIds,
+  ConnectionGroupNotFoundError, ConnectionGroupValidationError,
   // MCP gateway
   getInstances, getInstanceById, getInstanceBySlug, getEnabledInstancesByIds,
   createInstance, updateInstance, deleteInstance,

@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
-import { getComboById, updateCombo, deleteCombo, getComboByName, ComboMemberError } from "@/lib/localDb";
+import { getComboById, updateCombo, deleteCombo, getComboByName, ComboMemberError, validateConnectionIds, ConnectionGroupValidationError } from "@/lib/localDb";
 import { parseJsonBody } from "@/shared/utils/parseJsonBody";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
 import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
+
+const MAX_ALLOWLIST_IDS = 500;
+async function parseAllowedConnectionIds(body) {
+  if (!Object.prototype.hasOwnProperty.call(body, "allowedConnectionIds")) return undefined;
+  if (!Array.isArray(body.allowedConnectionIds) || body.allowedConnectionIds.length > MAX_ALLOWLIST_IDS) {
+    throw new ConnectionGroupValidationError(`allowedConnectionIds must be an array with at most ${MAX_ALLOWLIST_IDS} ids`);
+  }
+  return validateConnectionIds(body.allowedConnectionIds);
+}
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -31,8 +40,11 @@ export async function PUT(request, { params }) {
 
   try {
     const { id } = await params;
-    const body = parsed.body;
-    
+    // Omitted field preserves the stored policy; explicit [] clears it.
+    const body = { ...parsed.body };
+    if (Object.prototype.hasOwnProperty.call(body, "allowedConnectionIds")) {
+      body.allowedConnectionIds = await parseAllowedConnectionIds(body);
+    }
     // Validate name format if provided
     if (body.name) {
       if (!VALID_NAME_REGEX.test(body.name)) {
@@ -68,7 +80,9 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(combo);
   } catch (error) {
-    if (error instanceof ComboMemberError) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof ComboMemberError || error instanceof ConnectionGroupValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.log("Error updating combo:", error);
     return NextResponse.json({ error: "Failed to update combo" }, { status: 500 });
   }

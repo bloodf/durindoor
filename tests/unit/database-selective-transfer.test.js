@@ -280,7 +280,7 @@ describe("selective transfer: real DB round-trip", () => {
     await expect(
       index.importSelectiveDb(buildBundle({
         providers: [{ id: importedProviderId, provider: "openai", authType: "apikey", name: "must-rollback", apiKey: "sk-never-persist" }],
-        combos: [{ id: "later-failure", name: "later-combo", kind: "test", models: [{ provider: "openai", model: "gpt-5" }] }],
+        combos: [{ id: "later-failure", name: "later-combo", kind: "test", models: ["openai/gpt-5"] }],
       }), selection([importedProviderId], ["later-failure"]))
     ).rejects.toThrow(/forced later failure/);
     expect(await repos.getProviderConnectionById(importedProviderId)).toBeNull();
@@ -368,6 +368,31 @@ describe("selective transfer: real DB round-trip", () => {
     expect(crypto.isEncryptedBlob(parsed.accessToken)).toBe(true);
   });
 
+  it("normalizes legacy combo members without losing capability or connection restrictions", async () => {
+    const { index, repos, combos } = await freshDb();
+    await repos.createProviderConnection({ provider: "openai", authType: "apikey", name: "restricted", apiKey: "sk-restricted" });
+    const connectionId = (await repos.getProviderConnections())[0].id;
+    const capabilities = { vision: false, maxOutput: 1024 };
+    const result = await index.importSelectiveDb(buildBundle({
+      combos: [{
+        id: "legacy-no-members",
+        name: "legacy-no-members",
+        kind: "test",
+        models: ["openai/gpt-5"],
+        capabilities,
+        allowedConnectionIds: [connectionId],
+      }],
+    }), selection([], ["legacy-no-members"]));
+
+    expect(result.imported.combos).toEqual(["legacy-no-members"]);
+    expect(await combos.getComboById("legacy-no-members")).toMatchObject({
+      models: ["openai/gpt-5"],
+      members: [{ id: "openai/gpt-5", weight: 1 }],
+      capabilities,
+      allowedConnectionIds: [connectionId],
+    });
+  });
+
   it("round-trips combo capability ceilings without corrupting invariant fields", async () => {
     const { index, combos } = await freshDb();
     await combos.createCombo({
@@ -436,7 +461,7 @@ describe("selective transfer: real DB round-trip", () => {
     await repos.createProviderConnection({ provider: "openai", authType: "apikey", name: "p", apiKey: "sk-x" });
     await expect(
       index.importSelectiveDb(buildBundle({
-        combos: [{ id: "violating", name: "violator", kind: "test", models: [{ provider: "openai", model: "gpt-5" }], invariant: { allowedProviders: ["anthropic"] } }],
+        combos: [{ id: "violating", name: "violator", kind: "test", models: ["openai/gpt-5"], invariant: { allowedProviders: ["anthropic"] } }],
       }), selection([], ["violating"]))
     ).rejects.toThrow(/violates its invariant|ComboInvariantError/);
     const all = await combos.getCombos();

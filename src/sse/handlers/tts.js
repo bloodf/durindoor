@@ -14,6 +14,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 
 // Derived from providers.js: any TTS provider not noAuth requires stored credentials
 const CREDENTIALED_PROVIDERS = new Set(
@@ -75,11 +76,12 @@ async function handleTtsHandler(request) {
       : perCombo.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+    const comboRouting = await getComboRoutingPolicy(comboName);
     log.info("TTS", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId),
+      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, comboRouting),
       log,
       comboName,
       comboStrategy,
@@ -90,7 +92,7 @@ async function handleTtsHandler(request) {
   return handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId);
 }
 
-async function handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyId) {
+async function handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyId, comboRouting = null) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -103,7 +105,11 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   // Local/no-auth execution remains unrestricted only for keys with zero
   // provider-account relations.
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
-    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId });
+    const credentials = await getNoAuthProviderCredentials(provider, model, {
+      apiKeyId,
+      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+      restrictionApplied: comboRouting?.restrictionApplied === true
+    });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -126,7 +132,11 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
+      apiKeyId,
+      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+      restrictionApplied: comboRouting?.restrictionApplied === true
+    });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

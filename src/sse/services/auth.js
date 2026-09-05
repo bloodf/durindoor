@@ -2,7 +2,7 @@ import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js
 import {
   getProviderConnections, getProviderConnectionById, getApiKeyByKey, validateApiKey,
   updateProviderConnection, getSettings, getProxyPools,
-  getQuotaReservationPressure } from
+  getQuotaReservationPressure, getApiKeyProviderConnectionIds } from
 "@/lib/localDb";
 import { MEMORY_CONFIG } from "open-sse/config/runtimeConfig.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
@@ -407,8 +407,10 @@ async function buildPublicNoAuthCredential(providerId) {
 }
 
 /**
- * Get provider credentials from localDb
- * Filters out unavailable accounts and returns the selected account based on strategy
+ * Get provider credentials from localDb. When `options.apiKeyId` has relation
+ * rows, only those provider-account ids participate in every eligibility,
+ * quota, RPM, and fallback decision; zero rows preserve legacy unrestricted
+ * API keys. This scope is independent of `policy.allowedModels`.
  * @param {string} provider - Provider name
  * @param {Set<string>|string|null} excludeConnectionIds - Connection ID(s) to exclude (for retry with next account)
  * @param {string|null} model - Model name for per-model rate limit filtering
@@ -461,9 +463,34 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
     const boundedModel = resolveFallbackModelScope(providerId, model, { webFetch: options?.webFetch === true });
 
-    const connections = await getProviderConnections({ provider: providerId, isActive: true });
+    // decolua/9router#747+#3661: the request may pass an explicit
+    // allowedConnectionIds cap, and the authenticated API key may declare a
+    // provider-account relation. Both are denylist-of-one, allowlist-of-many;
+    // the selector must INTERSECT them. A non-empty relation plus a
+    // non-empty allowlist with no overlap is a deny (no eligible account).
+    // Empty/null on either side leaves the other side authoritative.
+    const relationIds = options?.apiKeyId ?
+    new Set(await getApiKeyProviderConnectionIds(options.apiKeyId)) :
+    null;
+    const allowlistIds = Array.isArray(options?.allowedConnectionIds) ?
+    new Set(options.allowedConnectionIds) :
+    null;
+    let scopedConnectionIds = null;
+    if (relationIds && relationIds.size > 0) scopedConnectionIds = relationIds;
+    if (allowlistIds && allowlistIds.size > 0) {
+    scopedConnectionIds = scopedConnectionIds ?
+    new Set([...scopedConnectionIds].filter((id) => allowlistIds.has(id))) :
+    allowlistIds;
+    }
+    const scopeRestricted = scopedConnectionIds !== null;
+    const scopedHasOverlap = !scopeRestricted || scopedConnectionIds.size > 0;
+    const connections = scopedHasOverlap ?
+    (await getProviderConnections({ provider: providerId, isActive: true })).filter(
+      (connection) => !scopeRestricted || scopedConnectionIds.has(connection.id)
+    ) :
+    [];
     throwIfAborted(signal);
-    log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
+    log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}, scope: ${scopeRestricted ? `restricted[${scopedConnectionIds.size}]` : "unrestricted"}`);
 
     const resourceKeys = options?.resourceKeys || buildQuotaResourceKeys({
       provider: providerId,
@@ -479,8 +506,14 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     });
     throwIfAborted(signal);
 
-    const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true;
-    const publicFallbackAllowed = providerAllowsPublicNoAuthFallback(providerId) && !excludeSet.has("noauth");
+    const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true || options?.noAuthPath === true;
+    const publicFallbackAllowed = !scopeRestricted && scopedHasOverlap && (options?.noAuthPath === true || providerAllowsPublicNoAuthFallback(providerId)) && !excludeSet.has("noauth");
+    // Explicit handler no-auth paths historically ignored saved connections.
+    // Preserve that zero-relation behavior; only a populated relation opts the
+    // caller into selecting and projecting a stored no-auth connection.
+    if (options?.noAuthPath === true && !scopeRestricted) {
+      return buildOptionalNoAuthCredential();
+    }
 
     if (isNoAuthProvider) {
       // Stored-data no-auth providers (e.g., mimocode) use saved connections first.
@@ -532,12 +565,16 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
 
       // Inject a public no-auth credential only when no real connection exists.
-      if (connections.length === 0) {
+      if (scopedHasOverlap && connections.length === 0) {
         return publicFallbackAllowed ? buildPublicNoAuthCredential(providerId) : null;
+      }
+      if (!scopedHasOverlap) {
+        log.warn("AUTH", `${provider} | scope produced empty intersection; denying`);
+        return null;
       }
     }
 
-    if (connections.length === 0 && providerHasOptionalAuth(providerId) && !excludeSet.has("noauth")) {
+    if (connections.length === 0 && scopedHasOverlap && !scopeRestricted && providerHasOptionalAuth(providerId) && !excludeSet.has("noauth")) {
       return buildOptionalNoAuthCredential();
     }
     if (connections.length === 0) {
@@ -746,6 +783,24 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 }
 
 /**
+ * Resolve a handler's explicit no-auth branch through the same provider-account
+ * selector used by credentialed requests. A scoped key may use a stored
+ * connection for this provider, but cannot fall back to anonymous/local
+ * execution. Zero relation rows preserve the legacy direct path.
+ *
+ * Synthetic selector credentials are normalized back to an empty object so
+ * no public token or proxy metadata leaks into cores that historically ran
+ * without credentials; stored connection projections are preserved.
+ */
+export async function getNoAuthProviderCredentials(provider, model = null, options = {}) {
+  const credentials = await getProviderCredentials(provider, null, model, {
+    ...options,
+    noAuthPath: true,
+  });
+  return credentials?.connectionId === "noauth" ? {} : credentials;
+}
+
+/**
  * Get provider credentials with live upstream quota preflight (OmniRoute #6742).
  *
  * getProviderCredentials() only consults *persisted* quota snapshots when
@@ -755,21 +810,24 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  * once: when the chosen connection's cache decision asks for a refresh
  * (`shouldRefresh`), it awaits refreshProviderQuota(), evaluates the freshly
  * returned exact-source snapshots, and — when upstream reports the account
- * exhausted — re-calls the plain selector with the caller's original
- * exclusions. The refresh persists authoritative snapshots, so the selector's
- * own quota inspection natively skips the exhausted account and produces the
- * standard next-account or allRateLimited fallback (with correct retry
- * metadata). No exclusion-set accumulation and no synthetic unavailability
- * marks: persisted rows remain the single authority for both skip and
- * fallback shape.
+ * exhausted — re-calls the plain selector with a cloned exclusions set for a
+ * scoped request. That set starts with caller exclusions and adds every
+ * connection id that received a definitive denial during this call. The
+ * refresh also persists authoritative snapshots, so a future request's own
+ * quota inspection natively skips the exhausted account too; scoped reselect
+ * never re-picks a denied id even if its persisted write is not yet visible to
+ * the read the selector performs. Unscoped requests retain their established
+ * fail-open reselect behavior when repository visibility lags the tracker.
+ * Fallback shape (allRateLimited / retry metadata) mirrors the plain
+ * selector's own contract.
  *
  * Fail-open semantics preserve every existing fallback: a refresh that
  * throws, is unsupported, or resolves with no usable result leaves the
  * original credentials untouched; `null` / `allRateLimited` results pass
  * through unchanged; AbortError always propagates. A connection is refreshed
- * at most once per call, so a stale/repository-mismatched loader that never
- * reflects tracker persistence cannot loop the same account forever — the
- * second stale decision for an already-refreshed id is returned fail-open.
+ * at most once per call, so a stale/repository-mismatched loader cannot loop
+ * the same account forever; scoped denials are also excluded from every later
+ * reselect in that request.
  *
  * Mirrors upstream `getProviderCredentialsWithQuotaPreflight` (OmniRoute PR
  * #6742 swapped its credentialed route call sites to it). Durindoor maps 12:
@@ -784,18 +842,21 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 export async function getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds = null, model = null, options = {}) {
   const signal = options?.signal || null;
   const providerId = resolveProviderId(provider);
+  const selectionNow = options?.now ?? Date.now();
   const quotaRefresher = options?.quotaRefresher || refreshProviderQuota;
   const resourceKeys = options?.resourceKeys || buildQuotaResourceKeys({
     provider: providerId,
     modelCandidates: options?.modelCandidates || (model ? [model] : []),
     quotaFamily: options?.quotaFamily || null
   });
-  // Bound live refreshes to one per connection id per call: if a loader never
-  // reflects tracker persistence, the same account cannot loop forever.
+  const relationScoped = Boolean(options?.apiKeyId) && (await getApiKeyProviderConnectionIds(options.apiKeyId)).length > 0;
+  const enforceDeniedExclusions = relationScoped || (
+    Array.isArray(options?.allowedConnectionIds) && options.allowedConnectionIds.length > 0
+  );
   const refreshedConnectionIds = new Set();
+  const reselectExclusions = new Set(excludeConnectionIds instanceof Set ? excludeConnectionIds : excludeConnectionIds ? [excludeConnectionIds] : []);
 
   let credentials = await getProviderCredentials(provider, excludeConnectionIds, model, options);
-
   while (true) {
     // Unavailable/error fallbacks pass through untouched.
     if (!credentials || credentials.allRateLimited || !credentials.connectionId || credentials.connectionId === "noauth") {
@@ -849,14 +910,14 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
       return reloadFreshProjection();
     }
 
-    // Immediate decision for logging only — persisted rows are the authority
-    // for the reselect. Wall-clock now: snapshots were just fetched, and an
-    // injected `options.now` (tests) must not make them look future-stale.
+    // Evaluate live snapshots on the same clock as selection. Callers that
+    // inject `options.now` also construct/persist quota observations against
+    // that clock; mixing in wall time can make a fresh denial look stale.
     const decision = evaluateProviderQuotaPreflight(refreshResult.snapshots, {
       connectionId,
       provider: providerId,
       resourceKeys,
-      now: Date.now(),
+      now: selectionNow,
       refreshSupported: true
     });
     if (!decision?.skip) {
@@ -864,16 +925,28 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
       return reloadFreshProjection();
     }
 
-    // Upstream reports this account exhausted/blocked. The refresh persisted
-    // authoritative snapshots, so re-call the plain selector with the
-    // caller's ORIGINAL exclusions: its quota inspection now marks the
-    // account `skip` natively, yielding the next eligible account or the
-    // standard allRateLimited fallback with correct retry metadata.
+    // A scoped request has an explicit capability boundary. Exclude a
+    // definitive denial for its current reselect so delayed persistence cannot
+    // re-pick it. Unscoped callers retain established fail-open behavior when
+    // repository visibility lags the quota tracker.
     log.info("AUTH", `${provider} | quota preflight blocked ${String(connectionId).slice(0, 8)} (reason=${decision.reason || "unknown"}); reselecting`);
-    credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
-      ...options,
-      now: Date.now()
-    });
+    if (enforceDeniedExclusions) reselectExclusions.add(connectionId);
+    credentials = await getProviderCredentials(
+      provider,
+      enforceDeniedExclusions ? reselectExclusions : excludeConnectionIds,
+      model,
+      options
+    );
+    if (!credentials && enforceDeniedExclusions) {
+      const retryAfter = decision.retryAt || null;
+      return {
+        allRateLimited: true,
+        retryAfter,
+        retryAfterHuman: retryAfter ? formatRetryAfter(retryAfter, selectionNow) : "",
+        lastError: "Rate limited",
+        lastErrorCode: 429
+      };
+    }
   }
 }
 
@@ -1227,7 +1300,7 @@ export function extractApiKeyCandidates(request) {
  *
  * @param {Request} request
  * @param {{ required?: boolean, now?: number }} options
- * @returns {Promise<{apiKey: string | null, auth: object}>}
+ * @returns {Promise<{apiKey: string | null, auth: { apiKeyId?: string, ok: boolean }}>}
  */
 export async function resolveClientApiKey(request, { required = false, now = Date.now() } = {}) {
   const candidates = extractApiKeyCandidates(request);
@@ -1262,14 +1335,13 @@ async function evaluateApiKeyCredential(apiKey, { required, now }) {
   if (!apiKey) {
     return { ok: !required, reason: required ? "missing" : null, stored: false };
   }
-
   const record = await getApiKeyByKey(apiKey);
   if (!record) {
     return { ok: !required, reason: required ? "invalid" : null, stored: false };
   }
 
   const valid = record.isActive === true && !isApiKeyExpired(record.expiresAt, now);
-  return { ok: valid, reason: valid ? null : "invalid", stored: true };
+  return { ok: valid, reason: valid ? null : "invalid", stored: true, apiKeyId: valid ? record.id : undefined };
 }
 
 export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now(), request = null } = {}) {

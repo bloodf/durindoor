@@ -13,7 +13,7 @@ import {
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import {
   getSettings, getApiKeyByKey, getApiKeyUsageLimitStatus,
-  getProviderConnections, getQuotaReservationPressure } from
+  getProviderConnections, getQuotaReservationPressure, getApiKeyProviderConnectionIds } from
 "@/lib/localDb";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
@@ -546,7 +546,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)") }
+            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId }
           );
         },
         log,
@@ -582,7 +582,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)") }
+          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId }
         );
       },
       log,
@@ -614,6 +614,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     settings,
     allowVisionBridge: true,
     apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"),
+    apiKeyId: apiKeyAuth.apiKeyId,
   });
 }
 
@@ -662,7 +663,7 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
  * Handle single model chat request
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)" } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -705,7 +706,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false, apiKeyName }
+              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId }
             );
           },
           log,
@@ -740,7 +741,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false, apiKeyName }
+            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId }
           );
         },
         log,
@@ -817,7 +818,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             attemptSignal,
             tokenSaverCollector,
-            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps, apiKeyName }
+            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps, apiKeyName, apiKeyId }
           );
         }
         // Invalid reroute target: fall through to original model.
@@ -837,6 +838,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   if (rawConnectionPin) {
     const requestedId = String(rawConnectionPin);
     const canonicalProvider = resolveProviderId(provider);
+    const scopedConnectionIds = apiKeyId ? await getApiKeyProviderConnectionIds(apiKeyId) : [];
+    if (scopedConnectionIds.length > 0 && !scopedConnectionIds.includes(requestedId)) {
+      log.warn("CHAT", `[${provider}/${model}] pinned connection ${requestedId.slice(0, 8)} not in scope for API key`);
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, "Requested connection is not available for this API key");
+    }
     const activeConnections = await getProviderConnections({ provider: canonicalProvider, isActive: true });
     const pinnedConnection = activeConnections.find((c) => c.id === requestedId);
     if (!pinnedConnection) {
@@ -922,7 +928,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           quotaFamily,
           resourceKeys: quotaResourceKeys,
           sessionId: routingSessionId,
-          preferredConnectionId: preferredConnectionId || requestReplayConnectionId
+          preferredConnectionId: preferredConnectionId || requestReplayConnectionId,
+          apiKeyId
         });
       } catch (error) {
         if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");

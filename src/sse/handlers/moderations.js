@@ -1,6 +1,7 @@
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
+  getNoAuthProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
   resolveClientApiKey,
@@ -56,12 +57,12 @@ async function handleModerationsHandler(request) {
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelModeration(m, body, request, apiKey),
+    (m) => handleSingleModelModeration(m, body, request, apiKey, apiKeyAuth.apiKeyId),
     log
   );
 }
 
-async function handleSingleModelModeration(modelStr, body, request, apiKey) {
+async function handleSingleModelModeration(modelStr, body, request, apiKey, apiKeyId) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     log.warn("MODERATION", "Invalid model format", { model: modelStr });
@@ -79,12 +80,22 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey) {
     log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
   }
 
-  // noAuth providers skip the credential loop.
+  // noAuth executors still resolve provider-account scope before dispatch.
   const { getExecutor } = await import("open-sse/executors/index.js");
   const executor = getExecutor(provider);
   if (executor?.noAuth) {
+    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId });
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+      }
+      return errorResponse(
+        credentials?.allRateLimited ? Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE : HTTP_STATUS.BAD_REQUEST,
+        credentials?.lastError || `No credentials for provider: ${provider}`,
+      );
+    }
     const result = toCoreResult(
-      await handleModerationsCore({ body, modelInfo: { provider, model }, credentials: {}, log }),
+      await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log }),
       "Moderation failed",
     );
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
@@ -96,7 +107,7 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

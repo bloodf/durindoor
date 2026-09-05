@@ -1,6 +1,7 @@
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
+  getNoAuthProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
   resolveClientApiKey,
@@ -79,17 +80,17 @@ async function handleImageGenerationHandler(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, { wantsStream, binaryOutput, preferredConnectionId }),
+      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId }),
       log,
       comboName,
       comboStrategy,
       comboStickyLimit,
     });
   }
-  return handleSingleModelImage(body, modelStr, request, apiKey, { wantsStream, binaryOutput, preferredConnectionId });
+  return handleSingleModelImage(body, modelStr, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId });
 }
 
-async function handleSingleModelImage(body, modelStr, request, apiKey, { wantsStream, binaryOutput, preferredConnectionId } = {}) {
+async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { wantsStream, binaryOutput, preferredConnectionId } = {}) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -98,12 +99,23 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, { wantsSt
   if (resolvedPolicyError) return resolvedPolicyError;
   const estimatedTokens = String(body.prompt || "").length / 4;
 
-  // noAuth providers — no credential needed
+  // Explicit no-auth providers still pass through the shared account selector:
+  // scoped keys cannot escape to an anonymous/local endpoint.
   if (NO_AUTH_PROVIDERS.has(provider)) {
+    const credentials = await getNoAuthProviderCredentials(provider, model, { preferredConnectionId, apiKeyId });
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+      }
+      return errorResponse(
+        credentials?.allRateLimited ? Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE : HTTP_STATUS.BAD_REQUEST,
+        credentials?.lastError || `No credentials for provider: ${provider}`,
+      );
+    }
     const result = await handleImageGenerationCore({
       body,
       modelInfo: { provider, model },
-      credentials: null,
+      credentials: credentials.connectionId ? credentials : null,
       binaryOutput,
     });
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
@@ -116,7 +128,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, { wantsSt
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { preferredConnectionId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { preferredConnectionId, apiKeyId });
 
     // All accounts unavailable or provider disabled
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {

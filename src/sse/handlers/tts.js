@@ -1,6 +1,7 @@
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   resolveClientApiKey,
+  getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
 } from "../services/auth.js";
 import { getSettings, getApiKeyByKey } from "@/lib/localDb";
@@ -77,17 +78,17 @@ async function handleTtsHandler(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey),
+      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId),
       log,
       comboName,
       comboStrategy,
       comboStickyLimit,
     });
   }
-  return handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey);
+  return handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId);
 }
 
-async function handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey) {
+async function handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyId) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -97,9 +98,22 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   const estimatedTokens = String(body.input).length / 4;
   log.info("ROUTING", `Provider: ${provider}, Voice: ${model}`);
 
-  // noAuth providers — no credential needed
+  // Local/no-auth execution remains unrestricted only for keys with zero
+  // provider-account relations.
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
-    const result = await handleTtsCore({ provider, model, input: body.input, responseFormat, language });
+    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId });
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
+      }
+      return errorResponse(
+        credentials?.allRateLimited ? Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE : HTTP_STATUS.BAD_REQUEST,
+        credentials?.lastError || `No credentials for provider: ${provider}`,
+      );
+    }
+    const coreOptions = { provider, model, input: body.input, responseFormat, language };
+    if (credentials.connectionId) coreOptions.credentials = credentials;
+    const result = await handleTtsCore(coreOptions);
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "TTS failed");
   }
@@ -110,7 +124,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

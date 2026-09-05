@@ -102,6 +102,7 @@ export async function DELETE(request, { params }) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.log("Error deleting provider node:", error);
-    return NextResponse.json({ error: "Failed to delete provider node" }, { status: 500 });
+    const status = error?.code === "API_KEY_SCOPE_WOULD_BROADEN" ? 409 : 500;
+    return NextResponse.json({ error: status === 409 ? error.message : "Failed to delete provider node" }, { status });
   }
 }

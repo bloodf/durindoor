@@ -106,16 +106,44 @@ const COOLDOWN = {
  * Terminal status rules are resolved before text rules so a client error can
  * never rotate accounts merely because its message resembles a transient error.
  *
- * Each rule: { text?, status?, cooldownMs?, backoff?, fallback? }
+ * Each rule: { text?, pattern?, status?, cooldownMs?, backoff?, fallback? }
  *   - text: substring match (case-insensitive) on error message
- *   - status: HTTP status code match
- *   - cooldownMs: fixed cooldown duration
- *   - backoff: true = use exponential backoff (rate limit)
+ *   - pattern: regular expression match on error message
  *   - fallback: false = return without account/model fallback or cooldown
  *
- * Upstream provenance: decolua/9router#3386.
+ * Wrong-model errors can be reported as 400, 401 with a ModelError body, or
+ * 404. They are terminal before the 401/404 cooldown rules. The fork retains
+ * atomic model state in recordProviderConnectionFallbackState; no lastErrorModel
+ * field is needed.
  */
+/** Narrow permanent wrong-model matchers (#750), checked before 401/404 cooldowns. */
+export const WRONG_MODEL_TEXT = [
+  "model is not supported",
+  "model not supported",
+  "model not found",
+  "model does not exist",
+  "unknown model"];
+
+export const WRONG_MODEL_PATTERNS = [
+  /\bmodel\s+\S+\s+is\s+not\s+supported\b/,
+  /\bmodel\s+\S+\s+(?:does\s+not\s+exist|not\s+found)\b/,
+  /\bmodel\b.{0,128}\bnot\s+allowed\s+(?:on|for)\b.{0,128}\b(?:credential|key)\b/];
+
+/**
+ * @param {string|object|null|undefined} errorText - upstream error text or body
+ * @returns {boolean} true when the text names a permanently wrong model
+ */
+export function isWrongModelError(errorText) {
+  if (!errorText) return false;
+  const text = (isString(errorText) ? errorText : JSON.stringify(errorText)).toLowerCase();
+  if (WRONG_MODEL_TEXT.some((p) => text.includes(p))) return true;
+  return WRONG_MODEL_PATTERNS.some((re) => re.test(text));
+}
+
 export const ERROR_RULES = [
+// --- Permanent wrong-model rules must precede 401/404 cooldowns (#750) ---
+...WRONG_MODEL_TEXT.map((text) => ({ text, fallback: false })),
+...WRONG_MODEL_PATTERNS.map((pattern) => ({ pattern, fallback: false })),
 // --- Text-based rules (checked first, order = priority) ---
 { text: "no credentials", cooldownMs: COOLDOWN.long },
 { text: "request not allowed", cooldownMs: COOLDOWN.short },

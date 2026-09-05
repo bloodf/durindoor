@@ -53,12 +53,12 @@ async function handleImageEditHandler(request) {
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelImageEdit(m, formData, request, apiKey),
+    (m) => handleSingleModelImageEdit(m, formData, request, apiKey, apiKeyAuth.apiKeyId),
     log
   );
 }
 
-async function handleSingleModelImageEdit(modelStr, formData, request, apiKey) {
+async function handleSingleModelImageEdit(modelStr, formData, request, apiKey, apiKeyId) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -74,7 +74,7 @@ async function handleSingleModelImageEdit(modelStr, formData, request, apiKey) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId });
 
     // All accounts unavailable or provider disabled
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {

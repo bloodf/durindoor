@@ -11,7 +11,7 @@ import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelSupportedFormats, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
-import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage } from "../utils/error.js";
+import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage, getClientStatusFromError } from "../utils/error.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { applyStatusRestatement, parseRestatedRateLimitEvidence } from "../config/upstreamStatusRestatement.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
@@ -1413,7 +1413,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
     finishTimeline("error", "error", errMsg);
     return {
-      ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence, credentials),
+      ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence, credentials, getClientStatusFromError(statusCode, errorBody ?? message)),
       attemptStartedAt: latestProviderAttemptStartedAt,
       headers: providerResponse.headers,
     };

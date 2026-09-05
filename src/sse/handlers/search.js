@@ -1,6 +1,7 @@
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
+  getNoAuthProviderCredentials,
   markAccountUnavailable,
   clearAccountError,
   resolveClientApiKey } from
@@ -106,17 +107,17 @@ async function handleSearchHandler(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings),
+      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, apiKeyAuth.apiKeyId, settings),
       log,
       comboName: providerInput,
       comboStrategy,
       comboStickyLimit
     });
   }
-  return handleSingleProviderSearch(body, providerInput, request, apiKey, settings);
+  return handleSingleProviderSearch(body, providerInput, request, apiKey, apiKeyAuth.apiKeyId, settings);
 }
 
-async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings) {
+async function handleSingleProviderSearch(body, providerInput, request, apiKey, apiKeyId, settings) {
   const query = body.query;
   const providerId = resolveProviderId(providerInput);
   const resolvedProvider = AI_PROVIDERS[providerId];
@@ -158,14 +159,24 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     provider_options: body.provider_options
   };
 
-  // No-auth providers (e.g. searxng) bypass credential lookup
+  // No-auth execution still resolves provider-account scope first.
   if (resolvedProvider.noAuth) {
+    const credentials = await getNoAuthProviderCredentials(providerId, null, { apiKeyId });
+    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+      if (credentials?.providerDisabled) {
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${providerId}' is disabled. Enable it in Settings > Providers.`);
+      }
+      return errorResponse(
+        credentials?.allRateLimited ? Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE : HTTP_STATUS.BAD_REQUEST,
+        credentials?.lastError || `No credentials for provider: ${providerId}`,
+      );
+    }
     log.info("AUTH", `\x1b[32m${providerId} no-auth mode\x1b[0m`);
     const result = await handleSearchCore({
       body: coreBody,
       provider: resolvedProvider,
       providerConfig,
-      credentials: null,
+      credentials: credentials.connectionId ? credentials : null,
       log
     });
     if (result.success) {
@@ -184,7 +195,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds, null, { apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

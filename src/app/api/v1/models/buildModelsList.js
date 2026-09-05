@@ -122,7 +122,9 @@ function isOllamaEmbeddingModel(model) {
 }
 // Kimi Code live IDs are canonical; no static remapping is required.
 const KIMI_LIVE_MODEL_PROVIDERS = new Set(["kimi", "kimi-coding", "kimi-coding-apikey"]);
-/** Providers whose discovered models extend, rather than only enrich, their static catalog. */
+
+// ponytail: Keep dedicated-resolver union coverage until every provider declares a registry
+// modelsFetcher; then delete this transitional allow-list.
 const LIVE_MODEL_UNION_PROVIDERS = new Set([
 "anthropic",
 "claude",
@@ -134,7 +136,6 @@ const LIVE_MODEL_UNION_PROVIDERS = new Set([
 "glm",
 "glm-cn"]
 );
-
 async function liveResolverOptions(conn) {
   const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
   return {
@@ -831,7 +832,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         registryFetcher :
         null;
         const isKimiLiveProvider = KIMI_LIVE_MODEL_PROVIDERS.has(providerId);
-        const openAIStyleLiveResolver = !isCompatibleProvider && (genericFetcher || isKimiLiveProvider) && customModelIds.length === 0 ?
+        const openAIStyleLiveResolver = !isCompatibleProvider && (genericFetcher || isKimiLiveProvider && customModelIds.length === 0) ?
         async (connection, liveGuard) => {
           const psd = isRecord(connection.providerSpecificData) ? connection.providerSpecificData : {};
           const proxyOptions = await resolveConnectionProxyConfig(psd);
@@ -850,18 +851,27 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           try {
             const live = await liveResolver(conn, guard);
             if (live?.models?.length) {
-              const enrichExistingOnly = !LIVE_MODEL_UNION_PROVIDERS.has(providerId) && (
-              hasExplicitEnabledModels || Boolean(openAIStyleLiveResolver) || providerId === "cloudflare-ai") &&
-              rawModelIds.length > 0;
+              /**
+               * Registry `/models` catalogs are credential-scoped. Never add a
+               * durable cache keyed only by provider: different credentials can
+               * expose different private or preview model IDs.
+               */
+              const unionRegistryLiveModels = Boolean(genericFetcher) && !hasExplicitEnabledModels;
+              const enrichExistingOnly = hasExplicitEnabledModels || (!unionRegistryLiveModels && !LIVE_MODEL_UNION_PROVIDERS.has(providerId) && (
+              Boolean(openAIStyleLiveResolver) || providerId === "cloudflare-ai") &&
+              rawModelIds.length > 0);
               const servedIds = new Set(rawModelIds);
               const liveModels = enrichExistingOnly ?
               live.models.filter((m) => servedIds.has(m.id)) :
               live.models;
-              // Generic and Cloudflare discovery generally enrich routed IDs only.
-              // Union providers, including Groq's generic fetcher, preserve static
-              // order and append unknown live IDs; other resolvers expose live IDs.
+              // Registry discovery unions credential-scoped live IDs with static
+              // catalog IDs. Dedicated resolvers retain their existing semantics.
+              // Generic `modelsFetcher` providers with an explicit `enabledModels`
+              // allowlist keep the user's selection authoritative: never add live
+              // sibling IDs. Existing provider-specific enrichment still runs to
+              // backfill caps (e.g. contextWindow) for the selected models.
               if (!hasExplicitEnabledModels) {
-                if (LIVE_MODEL_UNION_PROVIDERS.has(providerId)) {
+                if (unionRegistryLiveModels || LIVE_MODEL_UNION_PROVIDERS.has(providerId)) {
                   rawModelIds = Array.from(new Set([...rawModelIds, ...liveModels.map((m) => m.id)]));
                 } else if (!enrichExistingOnly) {
                   rawModelIds = liveModels.map((m) => m.id);

@@ -51,6 +51,7 @@ For operators running DurinDoor in production or on a team server.
 - [Upgrading DurinDoor](operations/upgrading.md)
 - [Data Management and Backup](operations/data-management.md)
 - [Security and Production Hardening](operations/security.md)
+- [API-key Provider-account Scoping](security/api-key-provider-account-scoping.md)
 - [Usage and Quota Tracking](features/quota-tracking.md)
 - [Proxy Timeline](features/proxy-timeline.md)
 - [MCP Gateway](features/mcp-gateway.md)

@@ -206,7 +206,13 @@ export function openaiToClaudeResponse(chunk, state) {
       chunk.extend_fields?.traceId ||
       `msg_${Date.now()}`;
     }
-    state.model = chunk.model || MODEL_FALLBACK;
+    // Preserve a client-requested model already seeded into state (see
+    // createSSEStream in open-sse/utils/stream.js) so Claude-format clients
+    // keep seeing the model they asked for, not the upstream provider's
+    // chunk.model (e.g. a claude-* alias routed to glm-5.3). Only an unseeded
+    // state (translator/index.js initState defaults model:null) falls back to
+    // the provider chunk's model, then MODEL_FALLBACK.
+    state.model = state.model || chunk.model || MODEL_FALLBACK;
     state.nextBlockIndex = 0;
     results.push({
       type: "message_start",

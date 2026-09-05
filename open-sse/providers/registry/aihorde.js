@@ -1,0 +1,33 @@
+export default {
+  id: "aihorde",
+  priority: 90,
+  alias: "horde",
+  uiAlias: "horde",
+  display: {
+    name: "AI Horde",
+    icon: "aihorde.png",
+    color: "#5C6BC0",
+    textIcon: "AH",
+    website: "https://aihorde.net",
+    notice: {
+      text: "Crowdsourced volunteer inference has variable availability, queues, and model limits. Anonymous requests run at lower priority; add an AI Horde API key for account-backed priority.",
+      apiKeyUrl: "https://aihorde.net/register",
+    },
+  },
+  category: "free",
+  noAuth: true,
+  authType: "apikey",
+  authModes: ["apikey"],
+  authHint: "Optional AI Horde API key. Without one, DurinDoor uses AI Horde's official anonymous sentinel key.",
+  transport: {
+    baseUrl: "https://oai.aihorde.net/v1/chat/completions",
+    baseUrls: ["https://oai.aihorde.net/v1/chat/completions"],
+    format: "openai",
+    noAuth: true,
+    headers: { Authorization: "Bearer 0000000000" },
+    auth: { combined: true, header: "Authorization", scheme: "bearer" },
+  },
+  models: [],
+  modelsFetcher: { url: "https://oai.aihorde.net/v1/models", type: "openai" },
+  passthroughModels: true,
+};

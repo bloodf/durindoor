@@ -530,6 +530,14 @@ export class DefaultExecutor extends BaseExecutor {
     credentials ||= {};
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
+    const isSyntheticPublicCredential =
+    (credentials.id === "noauth" || credentials.connectionId === "noauth") &&
+    !credentials.apiKey &&
+    (!credentials.accessToken || credentials.accessToken === "public");
+    if (credentials.authType === "none" && isSyntheticPublicCredential) {
+      if (stream) headers["Accept"] = "text/event-stream";
+      return headers;
+    }
     if (!credentials.apiKey && !credentials.accessToken) {
       if (stream) headers["Accept"] = "text/event-stream";
       return headers;

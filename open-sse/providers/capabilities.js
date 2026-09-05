@@ -60,6 +60,15 @@ export const DEFAULT_CAPABILITIES = {
   maxOutput: 64000
 };
 
+/** AI Horde's OpenAI text-template facade exposes text generation only and publishes no fixed limits. */
+const AI_HORDE_CAPABILITIES = {
+  vision: false,
+  tools: false,
+  reasoning: false,
+  contextWindow: undefined,
+  maxOutput: undefined
+};
+
 // User-added model metadata can carry dashboard service kinds instead of the
 // runtime capability names used here. Map those typed model kinds into input /
 // output capabilities so custom vision models are not treated as text-only.
@@ -1032,6 +1041,9 @@ export function getCapabilitiesForModel(provider, model) {
     return sanitizeModelLimits(result);
   };
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
+  if (provider === "aihorde" || provider === "horde") {
+    return finalize({ ...DEFAULT_CAPABILITIES, ...AI_HORDE_CAPABILITIES });
+  }
 
   const normalizedModel = stripThinkingSuffix(model);
   const baseModel = normalizedModel.includes("/") ? normalizedModel.split("/").pop() : normalizedModel;
@@ -1087,6 +1099,18 @@ export function getCapabilitiesForModel(provider, model) {
  */
 export function resolveModelLimits(provider, model, customCaps = null, connection = null, liveLimits = null, requireExplicitOutput = false) {
   const baseModel = isString(model) && model.includes("/") ? model.split("/").pop() : model;
+  if (provider === "aihorde" || provider === "horde") {
+    const customContext = Number.isFinite(customCaps?.contextWindow) && customCaps.contextWindow > 0 ? customCaps.contextWindow : undefined;
+    const liveContext = Number.isFinite(liveLimits?.contextWindow) && liveLimits.contextWindow > 0 ? liveLimits.contextWindow : undefined;
+    const customOutput = Number.isFinite(customCaps?.maxOutput) && customCaps.maxOutput > 0 ? customCaps.maxOutput : undefined;
+    const liveOutput = Number.isFinite(liveLimits?.maxOutput) && liveLimits.maxOutput > 0 ? liveLimits.maxOutput : undefined;
+    return {
+      contextWindow: customContext ?? liveContext,
+      maxOutput: customOutput ?? liveOutput,
+      known: customContext !== undefined || liveContext !== undefined || customOutput !== undefined || liveOutput !== undefined,
+      source: customContext !== undefined || customOutput !== undefined ? "custom" : liveContext !== undefined || liveOutput !== undefined ? "live" : "default"
+    };
+  }
 
   // Keep documented bracket suffixes on wire; resolve limits through canonical IDs.
   const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :

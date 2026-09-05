@@ -87,7 +87,9 @@ describe("/v1/models registry live catalog union", () => {
   });
 
   it("keeps same-provider private live catalogs scoped to each credential", async () => {
-    const fetchSpy = vi.fn(async (_url, init) => {
+    const alibabaModelsUrl = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models";
+    const fetchSpy = vi.fn(async (url, init) => {
+      if (url !== alibabaModelsUrl) return liveModelsResponse([]);
       const token = init.headers.Authorization;
       return liveModelsResponse([token === "Bearer credential-a" ? "private-a" : "private-b"]);
     });
@@ -102,11 +104,12 @@ describe("/v1/models registry live catalog union", () => {
     expect(firstIds).not.toContain("ali/private-b");
     expect(secondIds).toContain("ali/private-b");
     expect(secondIds).not.toContain("ali/private-a");
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls.filter(([url]) => url === alibabaModelsUrl)).toHaveLength(2);
   });
 
   it.each(["http://127.0.0.1:3000/v1/models", "http://192.168.1.20/v1/models"])("rejects private models endpoints before fetch: %s", async (endpoint) => {
-    const fetchSpy = vi.fn();
+    const fetchSpy = vi.fn(async (url) =>
+      liveModelsResponse(url === endpoint ? ["private-ssrf"] : []));
     vi.stubGlobal("fetch", fetchSpy);
     const originalFetcher = AI_PROVIDERS.alibaba?.modelsFetcher;
     if (!AI_PROVIDERS.alibaba) throw new Error("alibaba registry entry missing in test env");
@@ -116,7 +119,7 @@ describe("/v1/models registry live catalog union", () => {
       const ids = (await buildModelsList([LLM_KIND], "public-only")).map(({ id }) => id);
       expect(ids).toContain("ali/qwen-max");
       expect(ids).not.toContain("ali/private-ssrf");
-      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(fetchSpy.mock.calls.some(([url]) => url === endpoint)).toBe(false);
     } finally {
       AI_PROVIDERS.alibaba.modelsFetcher = originalFetcher;
     }

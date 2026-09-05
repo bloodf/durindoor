@@ -30,6 +30,7 @@ vi.mock("@/lib/network/connectionProxy", () => ({
   pickProxyPoolId: mocks.pickProxyPoolId,
 }));
 const PUBLIC_NO_AUTH_FALLBACK_ROSTER = new Set([
+  "aihorde",
   "auggie",
   "chipotle",
   "duckduckgo-web",

@@ -17,6 +17,7 @@ import {
   stripSettingKeys,
 } from "@/lib/settings/settingsPatchAuth";
 import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { resolveObservabilityEnabled } from "@/lib/db/repos/requestDetailsRepo";
 
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
@@ -30,12 +31,12 @@ export async function GET() {
     const { password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
 
-    const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
+    const enableObservability = resolveObservabilityEnabled(settings);
     const enableTranslator = process.env.ENABLE_TRANSLATOR === "true";
 
     return NextResponse.json({
       ...safeSettings,
-      enableRequestLogs,
+      enableObservability,
       enableTranslator,
       hasPassword: !!password
     }, { headers: SETTINGS_RESPONSE_HEADERS });

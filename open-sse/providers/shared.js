@@ -1,4 +1,5 @@
 import { platform, arch } from "os";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 // === OS/Arch helpers (Stainless fingerprint) ===
 /** Map a Node platform name to the value emitted by the Stainless SDK. */
@@ -75,6 +76,18 @@ export const KIMI_PLANS = Object.freeze({
 // Default base for dynamic compat providers (openai-compatible-* / anthropic-compatible-*) when user gives no baseUrl
 export const OPENAI_COMPAT_BASE = "https://api.openai.com/v1";
 export const ANTHROPIC_COMPAT_BASE = "https://api.anthropic.com/v1";
+
+export const OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/v1";
+
+/**
+ * True only for the canonical OpenCode Zen API root. This exact base-URL check
+ * enables Muse Responses routing for custom OpenAI-compatible nodes; it does
+ * not infer support from model text and deliberately does not apply to Luna.
+ */
+export function isOpenCodeZenBaseUrl(baseUrl) {
+  return isString(baseUrl) &&
+  baseUrl.trim().replace(/\/+$/, "") === OPENCODE_ZEN_BASE_URL;
+}
 
 // Official Antigravity IDE Desktop 2.5.5 fingerprint captured from macOS arm64.
 // Keep this static even when DurinDoor runs on Linux: the provider profile is

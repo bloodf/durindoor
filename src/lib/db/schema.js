@@ -2,7 +2,7 @@ import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -118,6 +118,8 @@ export const TABLES = {
       kind: "TEXT",
       models: "TEXT NOT NULL",
       invariant: "TEXT",
+      // Optional [{ id, weight }]. Legacy `models` strings remain routing source.
+      members: "TEXT",
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
     },

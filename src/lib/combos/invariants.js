@@ -52,9 +52,16 @@ export function validateComboInvariant(combo) {
 
   const targets = Array.isArray(combo.models) ? combo.models : [];
   targets.forEach((value, index) => {
-    if (!value || !isObject(value) || Array.isArray(value)) return;
-    const target = value;
-    if (target.kind === "combo-ref") return;
+    let target;
+    if (isString(value)) {
+      const separator = value.indexOf("/");
+      if (separator < 0) return;
+      target = { provider: value.slice(0, separator), model: value.slice(separator + 1) };
+    } else {
+      if (!value || !isObject(value) || Array.isArray(value)) return;
+      target = value;
+      if (target.kind === "combo-ref") return;
+    }
     const model = isString(target.model) ? target.model : "";
     const provider =
     isString(target.providerId) ?

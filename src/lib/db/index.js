@@ -21,6 +21,7 @@ import { isEncryptedBlob, decryptField, encryptField } from "../crypto/columnCry
 import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { mergeProviderSpecificData } from "./helpers/mergeProviderMetadata.js";
 import { validateComboInvariant } from "@/lib/combos/invariants.js";
+import { normalizeComboMembers } from "./repos/combosRepo.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -261,7 +262,7 @@ export {
 // Combos
 export {
   getCombos, getComboById, getComboByName, getComboForModel,
-  createCombo, updateCombo, deleteCombo } from
+  createCombo, updateCombo, deleteCombo, ComboMemberError, normalizeComboMembers } from
 "./repos/combosRepo.js";
 
 // MCP gateway: upstream instances, gateway API keys, per-key grants
@@ -364,7 +365,7 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         updatedAt: r.updatedAt || null
       })),
       quota: readQuotaPortableStateSync(db, { now: quotaNow }),
-      combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), createdAt: r.createdAt, updatedAt: r.updatedAt })),
       modelAliases: {},
       customModels: [],
       mitmAlias: {},
@@ -393,6 +394,14 @@ export async function importDb(payload, { now = Date.now() } = {}) {
   const apiKeyProviderConnections = validateApiKeyProviderConnectionImport(payload, {
     apiKeyIds: new Set(apiKeys.map((key) => key.id)),
     providerConnectionIds: new Set((payload.providerConnections ?? []).map((connection) => connection.id)),
+  });
+  const combos = payload.combos ?? [];
+  if (!Array.isArray(combos)) throw new Error("combos must be an array");
+  const comboWrites = combos.map((combo) => {
+    if (!combo || !isObject(combo) || Array.isArray(combo) || !Array.isArray(combo.models)) {
+      throw new Error("Combo import row is invalid");
+    }
+    return { ...combo, members: normalizeComboMembers(combo.models, combo.members) };
   });
   const db = await getAdapter();
 
@@ -493,10 +502,10 @@ export async function importDb(payload, { now = Date.now() } = {}) {
         );
       }
     }
-    for (const c of payload.combos || []) {
+    for (const c of comboWrites) {
       db.run(
-        `INSERT OR REPLACE INTO combos(id, name, kind, models, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
-        [c.id, c.name, c.kind || null, stringifyJson(c.models || []), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
+        `INSERT OR REPLACE INTO combos(id, name, kind, models, members, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+        [c.id, c.name, c.kind || null, stringifyJson(c.models), stringifyJson(c.members), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
       );
     }
     for (const [a, m] of Object.entries(payload.modelAliases || {})) {
@@ -610,7 +619,7 @@ export async function exportSelectiveDb(selection, { includeSecrets = false } = 
       if (includeSecrets) for (const field of SENSITIVE_CONNECTION_FIELDS) if (isEncryptedBlob(c[field])) c[field] = decryptField(c[field], row.id);
       return transferPublic(c, { includeSecrets });
     }) : [],
-    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map((row) => ({ id: row.id, name: row.name, kind: row.kind, models: parseJson(row.models, []), invariant: parseJson(row.invariant, null), createdAt: row.createdAt, updatedAt: row.updatedAt })) : []
+    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map((row) => ({ id: row.id, name: row.name, kind: row.kind, models: parseJson(row.models, []), members: parseJson(row.members, null), invariant: parseJson(row.invariant, null), createdAt: row.createdAt, updatedAt: row.updatedAt })) : []
   }));
 }
 
@@ -623,6 +632,17 @@ export async function getSelectiveTransferCatalog() {
 }
 
 const TRANSFER_COMBO_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/;
+const TRANSFER_COMBO_FIELDS = new Set(["id", "name", "kind", "models", "members", "invariant", "createdAt", "updatedAt"]);
+
+function validateTransferCombo(row) {
+  if (!isTransferObject(row)) throw new Error("Combo transfer row is invalid");
+  for (const key of Object.keys(row)) {
+    if (TRANSFER_BLOCKED_KEYS.has(key) || !TRANSFER_COMBO_FIELDS.has(key)) throw new Error(`Combo transfer row has unsupported field: ${key}`);
+  }
+  if (!isString(row.name) || !TRANSFER_COMBO_NAME_REGEX.test(row.name) || !Array.isArray(row.models)) throw new Error("Combo transfer row is incomplete or has an invalid name");
+  if (row.members != null && !Array.isArray(row.members)) throw new Error("Combo transfer members must be an array or null");
+  if (row.invariant != null && !isTransferObject(row.invariant)) throw new Error("Combo transfer invariant must be an object or null");
+}
 
 /** Validate complete bundle before one transaction; no-secret input preserves local credentials. */
 export async function importSelectiveDb(bundle, selection) {
@@ -638,7 +658,7 @@ export async function importSelectiveDb(bundle, selection) {
   for (const row of [...providerRows, ...comboRows]) if (!row || !isObject(row) || !isString(row.id) || !row.id) throw new Error("Transfer row has invalid ID");
   if (new Set(providerRows.map((row) => row.id)).size !== providerRows.length || new Set(comboRows.map((row) => row.id)).size !== comboRows.length) throw new Error("Transfer bundle has duplicate IDs");
   for (const row of providerRows) validateTransferProvider(row);
-  for (const row of comboRows) if (!isString(row.name) || !TRANSFER_COMBO_NAME_REGEX.test(row.name) || !Array.isArray(row.models)) throw new Error("Combo transfer row is incomplete or has an invalid name");
+  for (const row of comboRows) validateTransferCombo(row);
   if (new Set(comboRows.map((row) => row.name.toLowerCase())).size !== comboRows.length) throw new Error("Transfer bundle has duplicate combo names");
   const db = await getAdapter();
 
@@ -717,10 +737,18 @@ export async function importSelectiveDb(bundle, selection) {
     const combo = remap(source);
     const id = comboIds.get(source.id);
     const name = comboNames.get(source.name);
-    validateComboInvariant({ ...combo, name, invariant: combo.invariant });
-    const existingRow = db.get(`SELECT createdAt FROM combos WHERE id = ?`, [id]);
+    const models = combo.models.map((model) => isString(model) && comboNames.has(model) ? comboNames.get(model) : model);
+    const existingRow = db.get(`SELECT models, members, createdAt FROM combos WHERE id = ?`, [id]);
+    const existingModels = existingRow ? parseJson(existingRow.models, []) : null;
+    const preserveExistingMembers = !Object.hasOwn(source, "members") && existingRow && JSON.stringify(existingModels) === JSON.stringify(models);
+    const remappedMembers = preserveExistingMembers ? parseJson(existingRow.members, null) : combo.members == null ? undefined : combo.members.map((member) => ({
+      ...member,
+      id: isString(member?.id) && comboNames.has(member.id) ? comboNames.get(member.id) : member?.id
+    }));
+    const members = normalizeComboMembers(models, remappedMembers);
+    validateComboInvariant({ ...combo, name, models, members, invariant: combo.invariant });
     return {
-      id, name, kind: combo.kind || null, models: stringifyJson(combo.models),
+      id, name, kind: combo.kind || null, models: stringifyJson(models), members: stringifyJson(members),
       invariant: combo.invariant ? stringifyJson(combo.invariant) : null,
       createdAt: existingRow?.createdAt || combo.createdAt || new Date().toISOString(),
       updatedAt: combo.updatedAt || new Date().toISOString(),
@@ -739,9 +767,9 @@ export async function importSelectiveDb(bundle, selection) {
     }
     for (const w of comboWrites) {
       db.run(
-        `INSERT INTO combos(id, name, kind, models, invariant, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, models=excluded.models, invariant=excluded.invariant, updatedAt=excluded.updatedAt`,
-        [w.id, w.name, w.kind, w.models, w.invariant, w.createdAt, w.updatedAt]
+        `INSERT INTO combos(id, name, kind, models, members, invariant, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, models=excluded.models, members=excluded.members, invariant=excluded.invariant, updatedAt=excluded.updatedAt`,
+        [w.id, w.name, w.kind, w.models, w.members, w.invariant, w.createdAt, w.updatedAt]
       );
       imported.combos.push(w.id);
     }

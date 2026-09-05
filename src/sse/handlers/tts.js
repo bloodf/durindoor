@@ -4,7 +4,7 @@ import {
   getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
 } from "../services/auth.js";
-import { getSettings, getApiKeyByKey } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, getComboForModel } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getComboCanonicalName } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
@@ -67,6 +67,7 @@ async function handleTtsHandler(request) {
   const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
   if (comboModels) {
     const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
+    const combo = isAutoComboId(modelStr) ? null : await getComboForModel(comboName);
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[comboName] || {};
     const comboSpecificStrategy = isAutoComboId(modelStr)
@@ -83,6 +84,7 @@ async function handleTtsHandler(request) {
       comboName,
       comboStrategy,
       comboStickyLimit,
+      comboMembers: combo?.members || []
     });
   }
   return handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId);

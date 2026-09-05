@@ -15,8 +15,9 @@ import m011 from "./011-model-capability-overrides.js";
 import m012 from "./012-mcp-provider-connection.js";
 import m013 from "./013-combo-invariant.js";
 import m014 from "./014-api-key-provider-connections.js";
+import m015 from "./015-combo-members.js";
 
-export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014].sort(
+export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014, m015].sort(
 );
 
 export function latestVersion() {

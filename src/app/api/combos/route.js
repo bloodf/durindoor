@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
+import { getCombos, createCombo, getComboByName, ComboMemberError } from "@/lib/localDb";
 import { parseJsonBody } from "@/shared/utils/parseJsonBody";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export async function POST(request) {
   if (!parsed.ok) return parsed.response;
 
   try {
-    const { name, models, kind } = parsed.body;
+    const { name, models, members, kind } = parsed.body;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -41,10 +41,11 @@ export async function POST(request) {
       return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
     }
 
-    const combo = await createCombo({ name, models: models || [], kind: kind || null });
+    const combo = await createCombo({ name, models: models || [], members, kind: kind || null });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {
+    if (error instanceof ComboMemberError) return NextResponse.json({ error: error.message }, { status: 400 });
     console.log("Error creating combo:", error);
     return NextResponse.json({ error: "Failed to create combo" }, { status: 500 });
   }

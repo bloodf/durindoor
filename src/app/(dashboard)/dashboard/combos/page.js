@@ -254,6 +254,7 @@ function getStrategyOptions() {
   return [
     { value: "fallback", label: translate("Fallback — try in order") },
     { value: "round-robin", label: translate("Round Robin — rotate") },
+    { value: "weighted", label: translate("Weighted — random by member weight") },
     { value: "smart-scoring", label: "Smart Scoring — best quota first" },
     { value: "fusion", label: translate("Fusion — panel + judge") },
   ];
@@ -405,7 +406,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
   );
 }
 
-function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWeightChange, onMoveUp, onMoveDown, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -415,6 +416,9 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
   };
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(model);
+  useEffect(() => {
+    if (!editing) setDraft(model);
+  }, [model, editing]);
   const commit = () => {
     const trimmed = draft.trim();
     if (trimmed && trimmed !== model) onEdit(trimmed);
@@ -471,6 +475,19 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
         </div>
       )}
 
+      <div className="w-20 shrink-0">
+        <Input
+          label="Weight"
+          type="number"
+          min="0.01"
+          step="0.01"
+          value={weight}
+          onChange={(event) => onWeightChange(event.target.value)}
+          inputClassName="px-2 py-1 text-xs text-center"
+          title="Positive finite selection weight for Weighted strategy"
+        />
+      </div>
+
       {/* Priority arrows */}
       <div className="flex shrink-0 items-center gap-0.5">
         <button
@@ -507,6 +524,8 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
+  const [weights, setWeights] = useState(() => Object.fromEntries((combo?.members || []).map((member) => [member.id, member.weight])));
+  const [modelError, setModelError] = useState("");
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -593,11 +612,31 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     [newModels[index], newModels[index + 1]] = [newModels[index + 1], newModels[index]];
     setModels(newModels);
   };
+  const handleWeightChange = (model, value) => {
+    const weight = Number(value);
+    setWeights((current) => ({ ...current, [model]: Number.isFinite(weight) && weight > 0 ? weight : value }));
+  };
+  const handleEditModel = (index, newModel) => {
+    if (models.some((model, modelIndex) => modelIndex !== index && model === newModel)) {
+      setModelError("A combo cannot contain the same model twice");
+      return;
+    }
+    const oldModel = models[index];
+    setModelError("");
+    setModels((current) => current.map((model, modelIndex) => modelIndex === index ? newModel : model));
+    setWeights((current) => {
+      const next = { ...current, [newModel]: current[oldModel] ?? 1 };
+      delete next[oldModel];
+      return next;
+    });
+  };
 
   const handleSave = async () => {
     if (!validateName(name)) return;
+    const members = models.map((id) => ({ id, weight: Number(weights[id] ?? 1) }));
+    if (members.some((member) => !Number.isFinite(member.weight) || member.weight <= 0)) return;
     setSaving(true);
-    await onSave({ name: name.trim(), models });
+    await onSave({ name: name.trim(), models, members });
     setSaving(false);
   };
 
@@ -644,13 +683,11 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
                       id={uid}
                       index={index}
                       model={model}
+                      weight={weights[model] ?? 1}
                       isFirst={index === 0}
                       isLast={index === modelItems.length - 1}
-                      onEdit={(newVal) => {
-                        const updated = [...models];
-                        updated[index] = newVal;
-                        setModels(updated);
-                      }}
+                      onEdit={(newVal) => handleEditModel(index, newVal)}
+                      onWeightChange={(value) => handleWeightChange(model, value)}
                       onMoveUp={() => handleMoveUp(index)}
                       onMoveDown={() => handleMoveDown(index)}
                       onRemove={() => handleRemoveModel(index)}
@@ -660,6 +697,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
               </SortableContext>
             </DndContext>
             )}
+            {modelError && <p className="mt-1 text-xs text-red-500">{modelError}</p>}
 
             {/* Add Model button */}
             <button

@@ -6,7 +6,7 @@ import {
   clearAccountError,
   resolveClientApiKey,
 } from "../services/auth.js";
-import { getSettings, getApiKeyByKey } from "@/lib/localDb";
+import { getSettings, getApiKeyByKey, getComboForModel } from "@/lib/localDb";
 import { getModelInfo, getComboModels, getComboCanonicalName } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore.js";
@@ -69,6 +69,7 @@ async function handleImageGenerationHandler(request) {
   const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
   if (comboModels) {
     const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
+    const combo = isAutoComboId(modelStr) ? null : await getComboForModel(comboName);
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[comboName] || {};
     const comboSpecificStrategy = isAutoComboId(modelStr)
@@ -85,6 +86,7 @@ async function handleImageGenerationHandler(request) {
       comboName,
       comboStrategy,
       comboStickyLimit,
+      comboMembers: combo?.members || []
     });
   }
   return handleSingleModelImage(body, modelStr, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId });

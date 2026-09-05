@@ -291,6 +291,16 @@ function stripAll(body) {
   }
 }
 
+// Astra cannot disable reasoning: its published floor is `low`, so an
+// unsupported `minimal` (client-sent, or "none" folded to "minimal" by the
+// thinkingCanDisable:false clamp above) must not leak upstream as-is.
+// Scoped to the exact Astra provider/model rows so no other OpenAI-format
+// model's effort resolution changes.
+const ASTRA_MINIMAL_FLOOR_PROVIDERS = new Set(["openai", "codex", "cx"]);
+function isAstraMinimalFloorModel(provider, model) {
+  return ASTRA_MINIMAL_FLOOR_PROVIDERS.has(provider) && model === "gpt-6-astra";
+}
+
 // Map requested OpenAI effort to a level the model accepts.
 // Preserve when listed in getThinkingLevels; else nearest high-end sibling.
 // Unknown/empty metadata keeps legacy safe max/ultra → xhigh clamp.
@@ -303,6 +313,7 @@ export function resolveOpenAiEffort(level, provider, model) {
     return "xhigh";
   }
   if (level === "max") return "xhigh";
+  if ((level === "minimal" || level === "none") && isAstraMinimalFloorModel(provider, model)) return "low";
   return level;
 }
 

@@ -11,12 +11,11 @@ export { PROVIDER_MODELS };
 
 // Helper functions
 export function getProviderModels(aliasOrId) {
-  return PROVIDER_MODELS[aliasOrId] || [];
+  return PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]] || [];
 }
 
 export function getDefaultModel(aliasOrId) {
-  const models = PROVIDER_MODELS[aliasOrId];
-  return models?.[0]?.id || null;
+  return getProviderModels(aliasOrId)[0]?.id || null;
 }
 
 // Providers whose registry uses dots in version numbers (e.g. "claude-sonnet-4.5").

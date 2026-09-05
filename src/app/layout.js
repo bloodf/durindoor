@@ -1,5 +1,6 @@
 import localFont from "next/font/local";
 import "material-symbols/outlined.css";
+import "@/shared/ui/tokens.css";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
 import "@/lib/network/initOutboundProxy"; // Auto-initialize outbound proxy env

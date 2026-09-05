@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CLAUDE_REFRESH_INTERVAL_MS,
   createAutoRefreshScheduler,
   getConnectionLabel,
   getRefreshConnections,
   getRefreshCountdown,
+  REFRESH_INTERVAL_MS,
   refreshProviderQuotas,
 } from "@/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 
@@ -22,6 +24,25 @@ describe("quota auto-refresh scheduler", () => {
     expect(getRefreshCountdown(now + 60_000, now)).toBe(60);
     expect(getRefreshCountdown(now + 1, now)).toBe(1);
     expect(getRefreshCountdown(now - 1, now)).toBe(0);
+  });
+
+  it("starts the default scheduler at five minutes while Claude remains ten minutes", () => {
+    const onCountdown = vi.fn();
+    const scheduler = createAutoRefreshScheduler({
+      onRefresh: vi.fn(),
+      onCountdown,
+      isHidden: () => false,
+    });
+
+    scheduler.start();
+
+    const claudeEvery = Math.round(CLAUDE_REFRESH_INTERVAL_MS / REFRESH_INTERVAL_MS);
+
+    expect(REFRESH_INTERVAL_MS).toBe(300_000);
+    expect(onCountdown).toHaveBeenLastCalledWith(300);
+    expect(claudeEvery).toBe(2);
+    expect(claudeEvery * REFRESH_INTERVAL_MS).toBe(600_000);
+    scheduler.stop();
   });
 
   it("marks only connections selected for a throttled refresh as loading", () => {

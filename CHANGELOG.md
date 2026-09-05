@@ -10,6 +10,7 @@
 - port(upstream): #3770 - requests for registered but unconfigured providers now return sanitized 404 `provider_not_configured`, directing operators to connect an account in the dashboard; unknown providers remain 404 `model_not_found`.
 - port(upstream): #3745 - quiet successful proxy direct-fallback logs and suppress only undici's non-actionable SOCKS5 `ExperimentalWarning`, leaving strict proxy failures and unrelated warnings visible.
 - port(upstream): #3703 - provider-limit dashboard quota polling now runs every five minutes; scheduler and displayed countdown both derive from one interval constant, while Claude keeps its deliberate ten-minute tick ratio.
+- port(upstream): #3772 - fix Responses parallel function-call streaming; each `output_item.added` event now allocates a distinct, stable tool-call index keyed by its call ID (`open-sse/translator/response/openai-responses.js`), so batched parallel calls no longer collide onto shared index 0. Argument deltas resolve their index from the `fc_`/`ctc_` item ID with a same-turn fallback for variants that omit it; `output_item.done` is now index-neutral. Only the parallel-index half of decolua/9router#3772 is ported; the `tool_result` image-blob placeholder half is tracked separately (#752).
 
 ## Added
 

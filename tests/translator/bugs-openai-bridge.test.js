@@ -35,9 +35,9 @@ describe("bug: Claude → OpenAI bridge data loss", () => {
     expect(json, "thinking content lost via OpenAI bridge").toContain("secret reasoning");
   });
 
-  // claude-to-openai.js:155-173 — tool_result image block dropped (text only)
-  // KNOWN BUG
-  it.fails("tool_result with image block is not turned into raw JSON / dropped", () => {
+  // Nested tool-result images must not become raw JSON / a data URI leak.
+  it("tool_result with image block is not turned into raw JSON / dropped", () => {
+    const payload = "ZZZ".repeat(1000);
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
         { role: "assistant", content: [
@@ -45,14 +45,18 @@ describe("bug: Claude → OpenAI bridge data loss", () => {
         ] },
         { role: "user", content: [
           { type: "tool_result", tool_use_id: "call_1", content: [
-            { type: "image", source: { type: "base64", media_type: "image/png", data: "ZZZ" } },
+            { type: "text", text: "captured screenshot" },
+            { type: "image", source: { type: "base64", media_type: "image/png", data: payload } },
           ] },
         ] },
       ],
     });
     const toolMsg = out.messages.find((m) => m.role === "tool");
-    // Should keep the image; currently stringifies the whole array into raw JSON
-    expect(toolMsg?.content, "image in tool_result lost").not.toMatch(/^\[/);
+    const json = JSON.stringify(out);
+    expect(toolMsg?.content, "keeps surrounding text").toContain("captured screenshot");
+    expect(toolMsg?.content, "image turned into raw JSON").not.toMatch(/^\[/);
+    expect(toolMsg?.content, "placeholder names the media").toContain("image/png");
+    expect(json, "base64 payload leaked into request").not.toContain(payload);
   });
 
   // claude-to-openai.js:155-173 — is_error lost

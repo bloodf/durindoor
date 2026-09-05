@@ -104,4 +104,23 @@ describe("profile settings behavior", () => {
     expect(document.querySelector("dialog[open]")).toBeNull();
     expect(globalThis.fetch).not.toHaveBeenCalledWith("/api/version/shutdown", expect.anything());
   });
+
+  it("shows the local-mode footer label on localhost", async () => {
+    render(h(ProfilePage));
+    await flush();
+    expect(document.body.textContent).toContain("Local Mode - All data stored on your machine");
+    expect(document.body.textContent).not.toContain("Remote Mode");
+  });
+
+  it("shows Remote Mode in the footer when served from a remote host", async () => {
+    window.happyDOM.setURL("https://router.example.com/");
+    try {
+      render(h(ProfilePage));
+      await flush();
+      expect(document.body.textContent).toContain("Remote Mode");
+      expect(document.body.textContent).not.toContain("Local Mode - All data stored on your machine");
+    } finally {
+      window.happyDOM.setURL("http://localhost/");
+    }
+  });
 });

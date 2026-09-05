@@ -10,6 +10,49 @@ import {
   writeStreamError,
 } from "../../open-sse/utils/error.js";
 
+import { getClientStatusFromError } from "../../open-sse/utils/error.js";
+
+describe("getClientStatusFromError", () => {
+  it("normalizes a ModelError reported as 401 to actionable 404", () => {
+    expect(getClientStatusFromError(401, "{\"type\":\"ModelError\",\"message\":\"model not found\"}")).toBe(404);
+  });
+
+  it("normalizes a does-not-exist ModelError reported as 401 to 404", () => {
+    expect(getClientStatusFromError(401, "{\"type\":\"ModelError\",\"message\":\"model does not exist\"}")).toBe(404);
+  });
+
+  it("keeps a real lock 401 unchanged when the body is not a ModelError", () => {
+    expect(getClientStatusFromError(401, "{\"error\":{\"code\":\"invalid_api_key\"}}")).toBe(401);
+  });
+
+  it("keeps an unsupported-model 401 unchanged when the body is not a ModelError", () => {
+    expect(getClientStatusFromError(401, "model is not supported on this endpoint")).toBe(401);
+  });
+
+  it("keeps a not-allowed 401 unchanged when the body is not a ModelError", () => {
+    expect(getClientStatusFromError(401, "model not allowed on this credential")).toBe(401);
+  });
+
+  it("keeps a bare ModelError-typed 401 without missing-model evidence unchanged", () => {
+    expect(getClientStatusFromError(401, "{\"type\":\"ModelError\",\"message\":\"unsupported on this plan\"}")).toBe(401);
+  });
+
+  it.each([400, 401, 402, 403, 404, 422, 429, 500, 502, 503, 504])(
+    "preserves ordinary upstream status %i",
+    (status) => {
+      expect(getClientStatusFromError(status, "ordinary upstream failure")).toBe(status);
+    }
+  );
+
+  it("keeps a wrong-model 400 reported as a real 400 unchanged", () => {
+    expect(getClientStatusFromError(400, "{\"error\":{\"message\":\"model not found\"}}")).toBe(400);
+  });
+
+  it("falls back to 503 for an unknown status without a payload", () => {
+    expect(getClientStatusFromError(null, null)).toBe(503);
+  });
+});
+
 // OmniRoute #6886 (Rule 12): every API error response is routed through
 // sanitizeErrorMessage at the shared root builders so stack traces, absolute
 // source paths, and credentials never reach an HTTP client — while status

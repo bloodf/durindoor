@@ -45,6 +45,8 @@ export default {
       userAgent: "GitHubCopilotChat/0.38.0",
       apiVersion: "2025-04-01",
     },
+    // Chat accepts the Responses `prompt_cache_key` extension after lowering.
+    quirks: { preservePromptCacheKey: true },
     usage: {
       url: "https://api.github.com/copilot_internal/user",
     },

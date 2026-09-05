@@ -27,6 +27,8 @@ export default {
   transport: {
     baseUrl: "https://api.openai.com/v1/chat/completions",
     forceStream: true,
+    // Chat accepts the Responses `prompt_cache_key` extension after lowering.
+    quirks: { preservePromptCacheKey: true },
   },
   transports: [
     { format: "openai", baseUrl: "https://api.openai.com/v1/chat/completions" },

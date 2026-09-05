@@ -44,6 +44,8 @@ export default {
     // ("ULTRA" must not map to "max").
     quirks: {
       reasoningEffortAliases: { ultra: "max" },
+      // Chat accepts the Responses `prompt_cache_key` extension after lowering.
+      preservePromptCacheKey: true,
     },
     usage: {
       url: "https://chatgpt.com/backend-api/wham/usage",

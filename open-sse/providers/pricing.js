@@ -313,6 +313,10 @@ export const MODEL_PRICING = {
  * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
  */
 export const PROVIDER_PRICING = {
+  // OpenAI API list price. Over 272K input, whole request uses long-context rates.
+  openai: {
+    "gpt-6-astra": { input: 10.00, output: 50.00, cached: 1.00, reasoning: 50.00, cache_creation: 12.50, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+  },
   // GitHub Copilot (gh) — explicit override, matches canonical gpt-5.3-codex rate
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 }
@@ -527,10 +531,12 @@ export function calculateCostFromTokens(tokens, pricing) {
   // are subsets, so subtract both to avoid charging them at the full input rate.
   const nonCachedInput = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
 
-  cost += nonCachedInput * (pricing.input / 1000000);
+  const inputMultiplier = inputTokens > pricing.longContextThreshold ? pricing.longContextInputMultiplier || 1 : 1;
+  const outputMultiplier = inputTokens > pricing.longContextThreshold ? pricing.longContextOutputMultiplier || 1 : 1;
+  cost += nonCachedInput * (pricing.input * inputMultiplier / 1000000);
 
   if (cachedTokens > 0) {
-    cost += cachedTokens * ((pricing.cached || pricing.input) / 1000000);
+    cost += cachedTokens * ((pricing.cached || pricing.input) * inputMultiplier / 1000000);
   }
 
   const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
@@ -542,13 +548,13 @@ export function calculateCostFromTokens(tokens, pricing) {
   Math.min(outputTokens, reasoningTokens) :
   reasoningTokens;
   const visibleOutputTokens = Math.max(0, outputTokens - billedReasoningTokens);
-  cost += visibleOutputTokens * (pricing.output / 1000000);
+  cost += visibleOutputTokens * (pricing.output * outputMultiplier / 1000000);
   if (billedReasoningTokens > 0) {
-    cost += billedReasoningTokens * ((pricing.reasoning || pricing.output) / 1000000);
+    cost += billedReasoningTokens * ((pricing.reasoning || pricing.output) * outputMultiplier / 1000000);
   }
 
   if (cacheCreationTokens > 0) {
-    cost += cacheCreationTokens * ((pricing.cache_creation || pricing.input) / 1000000);
+    cost += cacheCreationTokens * ((pricing.cache_creation || pricing.input) * inputMultiplier / 1000000);
   }
 
   return cost;

@@ -4,7 +4,7 @@
 #
 #   upstream-scan-report.sh <upstream-prs.json> <ported.json> <outdir>
 #
-# <upstream-prs.json>  `gh pr list` output (number,title,author,additions,deletions)
+# <upstream-prs.json>  `gh pr list` output (number,title,additions,deletions)
 # <ported.json>        JSON array of upstream PR numbers already ported here
 # <outdir>             receives body.md plus comment-NNN.md continuation pages
 #
@@ -43,7 +43,7 @@ if [ "$NEW" -eq 0 ]; then
 fi
 
 # Newest first so the freshest candidates lead the report.
-jq -r 'sort_by(-.number)[] | "- #\(.number) +\(.additions)/-\(.deletions) @\(.author.login): \(.title)"' \
+jq -r 'sort_by(-.number)[] | "- #\(.number) +\(.additions)/-\(.deletions): \(.title)"' \
   "$OUTDIR/new-prs.json" > "$OUTDIR/lines.txt"
 
 # LC_ALL=C makes awk's length() count bytes, matching GitHub's byte limit.

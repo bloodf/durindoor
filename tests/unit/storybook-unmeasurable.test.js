@@ -33,6 +33,13 @@ describe("unmeasurable node policy", () => {
     expect(exemptionFor(tick, UNCHARTED, chartStories, styleOf())).toBeNull();
   });
 
+  it("recognises the tick-label shape axe actually reports", () => {
+    // Recharts nests the text in `-tick-label`; a policy matching only the
+    // outer `-tick` group silently exempted nothing on the real charts.
+    document.body.innerHTML = `<g><text class="recharts-cartesian-axis-tick-label"><tspan id="label">12:00</tspan></text></g>`;
+    expect(exemptionFor(document.getElementById("label"), CHARTED, chartStories, styleOf())).toBe("chart-axis-aaa-v1");
+  });
+
   it("clears Monaco's proxy only while it is genuinely invisible", () => {
     expect(exemptionFor(monacoProxy(), CHARTED, chartStories, styleOf())).toBe("monaco-input-proxy");
     // Visible during composition: a real contrast failure would reach the

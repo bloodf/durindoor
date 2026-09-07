@@ -25,7 +25,10 @@ const CONTRAST_RULES = new Set(["color-contrast", "color-contrast-enhanced"]);
  * @param {(element: Element) => CSSStyleDeclaration} computeStyle style reader
  */
 export function exemptionFor(element, storyId, chartStories, computeStyle) {
-  if (element.closest(".recharts-cartesian-axis-tick")) {
+  // Recharts labels the tick group `-tick` and the text inside it
+  // `-tick-label`; axe reports the `tspan`, whose nearest labelled ancestor
+  // can be either. Match both so nesting cannot silently defeat the policy.
+  if (element.closest(".recharts-cartesian-axis-tick, .recharts-cartesian-axis-tick-label")) {
     // A DOM walk cannot see the area fill drawn between the surface and the
     // glyph, so the ratio is proved out of band, per chart source, by
     // tests/unit/durin-ds-contrast.test.js. Honour that proof only for the

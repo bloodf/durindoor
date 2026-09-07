@@ -129,3 +129,56 @@ describe("CLI tool-card contrast", () => {
     expect(violations, `Important translucent Durin DS background under Durin DS text:\n${violations.join("\n")}`).toEqual([]);
   });
 });
+
+/** Composite a translucent fill over an opaque surface, both #RRGGBB. */
+function composite(fill, surface, alpha) {
+  const channels = [1, 3, 5].map((offset) => {
+    const top = Number.parseInt(fill.slice(offset, offset + 2), 16);
+    const bottom = Number.parseInt(surface.slice(offset, offset + 2), 16);
+    return Math.round(top * alpha + bottom * (1 - alpha));
+  });
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** Every chart that paints a translucent area fill under its axis labels. */
+const chartSources = [
+  "src/app/(dashboard)/dashboard/usage/components/UsageChart.js",
+  "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js",
+  "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js",
+  "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
+  "src/shared/ui/pages/timeline/TimelinePage.jsx",
+  "src/shared/ui/pages/token-saver/TokenSaverStatsPage.jsx",
+  "src/shared/ui/pages/headroom/HeadroomPage.jsx",
+];
+
+describe("chart axis label contrast", () => {
+  // Axis ticks can sit over the area gradient rather than the plain surface.
+  // axe cannot measure SVG text at all (dequelabs/axe-core#1819), so no browser
+  // gate catches this; at a 0.28 fill the ticks measured 5.08:1 in dark, under
+  // the 7:1 AAA floor for 11px text.
+  it("keeps every tick color above 7:1 over its own area fill in both themes", () => {
+    const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
+    const tickTokens = ["--dd-text-subtle", "--dd-text-muted"];
+    const failures = [];
+    let checked = 0;
+    for (const relativePath of chartSources) {
+      const source = readFileSync(join(repoRoot, relativePath), "utf8");
+      const alphas = [...source.matchAll(/stopOpacity=\{([\d.]+)\}/g)].map((match) => Number(match[1]));
+      const fills = [...new Set([...source.matchAll(/stopColor="var\((--dd-[\w-]+)\)"/g)].map((match) => match[1]))];
+      expect(alphas.length, `${relativePath}: no area fill opacities found`).toBeGreaterThan(0);
+      expect(fills.length, `${relativePath}: no area fill colors found`).toBeGreaterThan(0);
+      const alpha = Math.max(...alphas);
+      for (const theme of ["light", "dark"]) {
+        for (const fill of fills) {
+          for (const tick of tickTokens) {
+            const ratio = contrast(themeColor(theme, tick), composite(themeColor(theme, fill), themeColor(theme, "--dd-surface"), alpha));
+            checked += 1;
+            if (ratio < 7) failures.push(`${relativePath} ${theme} ${tick} over ${fill} @${alpha}: ${ratio.toFixed(2)}:1`);
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(failures, `Chart tick text below AAA over its own area fill:\n${failures.join("\n")}`).toEqual([]);
+  });
+});

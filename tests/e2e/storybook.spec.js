@@ -117,8 +117,8 @@ async function runAxe(page, storyId) {
     // Document-level navigation rules belong to the real-app gate, not an
     // isolated iframe. Include portal surfaces alongside the actual canvas.
     const context = { include: [["#storybook-root"], ["dialog"], ["[role='listbox']"], ["[role='tooltip']"]] };
-    const standards = await window.axe.run(context, { runOnly: { type: "tag", values: tags } });
-    const enhanced = await window.axe.run(context, { runOnly: { type: "rule", values: ["color-contrast-enhanced"] } });
+    const standards = await window.axe.run(context, { elementRef: true, runOnly: { type: "tag", values: tags } });
+    const enhanced = await window.axe.run(context, { elementRef: true, runOnly: { type: "rule", values: ["color-contrast-enhanced"] } });
     // axe resolves alpha/background stacks; retain its computed pairs instead
     // of misreading CSS color()/oklch() values with an RGB regex.
     const measured = new Map();
@@ -136,7 +136,11 @@ async function runAxe(page, storyId) {
     }
     // Policy lives in ./unmeasurable.mjs so it can be unit-tested directly;
     // it is inlined here because page.evaluate cannot import a module.
-    const resolve = (node) => resolveNode(node, document);
+    // Prefer the live element axe attached (elementRef); fall back to its
+    // selector. Recharts writes float coordinates into tick attributes, so a
+    // verbatim `tspan[x="100.54545454545455"]` selector does not always match
+    // on re-query even though the node is right there in the result.
+    const resolve = (node) => node.element ?? resolveNode(node, document);
     const standardsAudit = auditIncomplete(standards.incomplete, { storyId, chartStories, resolve, computeStyle: getComputedStyle });
     const enhancedAudit = auditIncomplete(enhanced.incomplete, { storyId, chartStories, resolve, computeStyle: getComputedStyle });
     const standardsIncomplete = standardsAudit.entries;
@@ -263,6 +267,7 @@ for (const { storyId, rows, sourceHashes, scenario, hasPlay } of planned) test(s
         expectedVisibleTexts: scenario.expectedVisibleTexts,
         expectedConsoleErrors: scenario.expectedConsoleErrors,
         a11y: typeof a11y !== "undefined" ? a11y : null,
+        unmeasurable: typeof a11y !== "undefined" ? a11y?.unmeasurable ?? [] : null,
         controls: typeof controls !== "undefined" ? controls : null,
         storybookFinished: typeof finalStorybookFinished !== "undefined" ? finalStorybookFinished.finished : null,
         consoleErrors: [...consoleErrors],

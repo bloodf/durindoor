@@ -211,7 +211,7 @@ function ConnectionId({ value }) {
         aria-label={`Copy connection ID ${value}`}
         title="Copy connection ID"
         onClick={() => navigator.clipboard?.writeText(value)}
-        className="flex size-6 items-center justify-center rounded-dd text-dd-subtle opacity-0 outline-none transition-opacity hover:bg-dd-surface-3 hover:text-dd-text focus-visible:opacity-100 focus-visible:shadow-dd-focus group-hover:opacity-100"
+        className="-m-2.5 flex size-11 items-center justify-center rounded-dd p-2.5 text-dd-subtle opacity-0 outline-none transition-opacity hover:bg-dd-surface-3 hover:text-dd-text focus-visible:opacity-100 focus-visible:shadow-dd-focus group-hover:opacity-100"
       >
         <span aria-hidden="true" className="material-symbols-outlined text-[15px] leading-none">
           content_copy

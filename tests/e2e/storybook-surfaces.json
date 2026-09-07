@@ -24592,7 +24592,7 @@
       "id": "src/shared/ui/pages/timeline/TimelinePage.jsx#ConnectionId",
       "sourcePath": "src/shared/ui/pages/timeline/TimelinePage.jsx",
       "symbol": "ConnectionId",
-      "sourceSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+      "sourceSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-timeline--default imports and renders page; reference-only DS mock scenario reaches ConnectionId. Missing branch proof: ['No production story renders ConnectionId; mapped story is DS mock/reference only.']",
@@ -24610,7 +24610,7 @@
           "storyId": "durin-ds-pages-timeline--default",
           "runtimeArtifactId": "durin-ds-pages-timeline--default",
           "expectedVisibleText": "Showing 1 to 10 of 37 results",
-          "expectedSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+          "expectedSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
           "axes": [
             "controls",
             "text"
@@ -24632,7 +24632,7 @@
       "id": "src/shared/ui/pages/timeline/TimelinePage.jsx#RequestsChart",
       "sourcePath": "src/shared/ui/pages/timeline/TimelinePage.jsx",
       "symbol": "RequestsChart",
-      "sourceSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+      "sourceSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-timeline--default imports and renders page; reference-only DS mock scenario reaches RequestsChart. Missing branch proof: ['No production story renders RequestsChart; mapped story is DS mock/reference only.']",
@@ -24650,7 +24650,7 @@
           "storyId": "durin-ds-pages-timeline--default",
           "runtimeArtifactId": "durin-ds-pages-timeline--default",
           "expectedVisibleText": "Requests over time",
-          "expectedSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+          "expectedSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
           "axes": [
             "text"
           ],
@@ -24671,7 +24671,7 @@
       "id": "src/shared/ui/pages/timeline/TimelinePage.jsx#StatusMix",
       "sourcePath": "src/shared/ui/pages/timeline/TimelinePage.jsx",
       "symbol": "StatusMix",
-      "sourceSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+      "sourceSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-timeline--default imports and renders page; reference-only DS mock scenario reaches StatusMix. Missing branch proof: ['No production story renders StatusMix; mapped story is DS mock/reference only.']",
@@ -24689,7 +24689,7 @@
           "storyId": "durin-ds-pages-timeline--default",
           "runtimeArtifactId": "durin-ds-pages-timeline--default",
           "expectedVisibleText": null,
-          "expectedSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+          "expectedSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
           "axes": [
             "controls",
             "text"
@@ -24710,7 +24710,7 @@
       "id": "src/shared/ui/pages/timeline/TimelinePage.jsx#TimelinePage",
       "sourcePath": "src/shared/ui/pages/timeline/TimelinePage.jsx",
       "symbol": "TimelinePage",
-      "sourceSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+      "sourceSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-timeline--default, durin-ds-pages-timeline--filtered-to-aborted, durin-ds-pages-timeline--loading, durin-ds-pages-timeline--empty, durin-ds-pages-timeline--with-detail-drawer. Pending runtime review.",
@@ -24736,7 +24736,7 @@
           "storyId": "durin-ds-pages-timeline--default",
           "runtimeArtifactId": "durin-ds-pages-timeline--default",
           "expectedVisibleText": null,
-          "expectedSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+          "expectedSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
           "axes": [
             "controls",
             "text"
@@ -24750,7 +24750,7 @@
           "storyId": "durin-ds-pages-timeline--filtered-to-aborted",
           "runtimeArtifactId": "durin-ds-pages-timeline--filtered-to-aborted",
           "expectedVisibleText": null,
-          "expectedSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+          "expectedSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
           "axes": [
             "filtered",
             "text"
@@ -24764,7 +24764,7 @@
           "storyId": "durin-ds-pages-timeline--loading",
           "runtimeArtifactId": "durin-ds-pages-timeline--loading",
           "expectedVisibleText": "Timeline",
-          "expectedSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+          "expectedSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
           "axes": [
             "loading",
             "text"
@@ -24779,7 +24779,7 @@
           "storyId": "durin-ds-pages-timeline--empty",
           "runtimeArtifactId": "durin-ds-pages-timeline--empty",
           "expectedVisibleText": null,
-          "expectedSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+          "expectedSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
           "axes": [
             "empty",
             "text"
@@ -24793,7 +24793,7 @@
           "storyId": "durin-ds-pages-timeline--with-detail-drawer",
           "runtimeArtifactId": "durin-ds-pages-timeline--with-detail-drawer",
           "expectedVisibleText": null,
-          "expectedSha256": "ea037a74a28a271e94996112edd3957f650b36c7230c02a8d4f916c82748cbf5",
+          "expectedSha256": "3370fa4a636c26203bb4c17c11d2e086e2b0d4560b9a1672ce69033c1d27c62c",
           "axes": [
             "expanded",
             "text"

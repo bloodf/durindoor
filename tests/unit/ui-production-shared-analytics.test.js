@@ -56,9 +56,12 @@ describe("shared/components/RequestLogger", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => sampleLogs }));
     const container = await render(React.createElement(RequestLogger));
     expect(container.textContent).toContain("gpt-4");
-    expect(container.querySelector('[aria-label="Status: OK"]')).toBeTruthy();
-    expect(container.querySelector('[aria-label="Status: PENDING"]')).toBeTruthy();
-    expect(container.querySelector('[aria-label="Status: FAILED"]')).toBeTruthy();
+    // The pill announces itself with a visually-hidden prefix rather than an
+    // aria-label, which axe forbids on a generic span. Assert what is read
+    // out, not the attribute that used to carry it.
+    expect(container.textContent).toContain("Status: OK");
+    expect(container.textContent).toContain("Status: PENDING");
+    expect(container.textContent).toContain("Status: FAILED");
     expect(container.textContent).not.toContain("junk line with too few parts");
   });
 

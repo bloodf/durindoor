@@ -714,7 +714,7 @@ export default function ProvidersPage() {
               <h3 className="font-semibold">Test Results</h3>
               <button
               onClick={() => setTestResults(null)}
-              className="p-1 rounded-lg hover:bg-dd-bg-alt text-dd-muted hover:text-dd-text transition-colors"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-lg p-1 text-dd-muted transition-colors hover:bg-dd-bg-alt hover:text-dd-text"
               aria-label="Close test results">
               
                 <span className="material-symbols-outlined text-lg">close</span>

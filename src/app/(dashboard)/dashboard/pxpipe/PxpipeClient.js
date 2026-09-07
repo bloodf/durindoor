@@ -211,7 +211,7 @@ export default function PxpipeClient({ embedded = false }) {
                     <rect width="100%" height="100%" fill="var(--dd-surface)" />
                     <defs>
                       <linearGradient id="pxpipeTokensFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--dd-accent)" stopOpacity={0.28} />
+                        <stop offset="0%" stopColor="var(--dd-accent)" stopOpacity={0.14} />
                         <stop offset="100%" stopColor="var(--dd-accent)" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>

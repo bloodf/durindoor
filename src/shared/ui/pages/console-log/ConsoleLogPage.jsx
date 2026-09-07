@@ -183,7 +183,7 @@ function LogVolumeChart() {
           <AreaChart data={LOG_VOLUME} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
             <defs>
               <linearGradient id="consoleVolumeFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--dd-info)" stopOpacity={0.3} />
+                <stop offset="0%" stopColor="var(--dd-info)" stopOpacity={0.14} />
                 <stop offset="100%" stopColor="var(--dd-info)" stopOpacity={0.02} />
               </linearGradient>
             </defs>

@@ -12,6 +12,7 @@ import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
+import { registerEditorThemes } from "@/shared/ui/editorTheme.js";
 
 const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -47,7 +48,7 @@ function TranslatorNotice({ error, onDismiss }) {
 
 export function TranslatorStepCard({ step, content, expanded, loading, onToggle, onLoad, onFormat, onCopy, action }) {
   const { isDark } = useTheme();
-  const editorTheme = isDark ? "vs-dark" : "vs";
+  const editorTheme = isDark ? "durin-dark" : "durin-light";
   return (
     <Card padding={false} className="overflow-hidden">
       <CardHeader
@@ -65,6 +66,7 @@ export function TranslatorStepCard({ step, content, expanded, loading, onToggle,
                 defaultLanguage={step.lang === "text" ? "plaintext" : "json"}
                 value={content}
                 onChange={(value) => onFormat === undefined ? undefined : onFormat(value, true)}
+                beforeMount={registerEditorThemes}
                 theme={editorTheme}
                 options={EDITOR_OPTIONS}
               />

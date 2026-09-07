@@ -182,3 +182,33 @@ describe("chart axis label contrast", () => {
     expect(failures, `Chart tick text below AAA over its own area fill:\n${failures.join("\n")}`).toEqual([]);
   });
 });
+
+describe("editor token contrast", () => {
+  // Monaco's stock palettes were never held to this dashboard's AAA bar: on the
+  // editor surface, dark strings measure 6.15:1, keywords 5.52:1 and comments
+  // 4.88:1, and axe reports those as real color-contrast-enhanced violations on
+  // the rendered `.mtk*` spans.
+  it("keeps every syntax token above 7:1 on the editor surface in both themes", async () => {
+    const { EDITOR_SURFACE, EDITOR_TOKENS } = await import("../../src/shared/ui/editorTheme.js");
+    const failures = [];
+    let checked = 0;
+    for (const theme of ["dark", "light"]) {
+      for (const [name, colour] of Object.entries(EDITOR_TOKENS[theme])) {
+        const ratio = contrast(colour, EDITOR_SURFACE[theme]);
+        checked += 1;
+        if (ratio < 7) failures.push(`${theme} ${name} ${colour} on ${EDITOR_SURFACE[theme]}: ${ratio.toFixed(2)}:1`);
+      }
+    }
+    expect(checked).toBe(12);
+    expect(failures, `Editor syntax token below AAA:\n${failures.join("\n")}`).toEqual([]);
+  });
+
+  it("paints the editor on the surface the tokens were measured against", async () => {
+    const { EDITOR_SURFACE, EDITOR_THEMES } = await import("../../src/shared/ui/editorTheme.js");
+    expect(EDITOR_THEMES["durin-dark"].colors["editor.background"]).toBe(EDITOR_SURFACE.dark);
+    expect(EDITOR_THEMES["durin-light"].colors["editor.background"]).toBe(EDITOR_SURFACE.light);
+    // The surface must stay in step with the DS token the editor sits on.
+    expect(EDITOR_SURFACE.dark).toBe(themeColor("dark", "--dd-surface-2"));
+    expect(EDITOR_SURFACE.light).toBe(themeColor("light", "--dd-surface-2"));
+  });
+});

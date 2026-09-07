@@ -9119,7 +9119,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#Editor",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "Editor",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "TranslatorWorkspace renders dynamic Editor for loaded expanded step.",
@@ -9141,7 +9141,7 @@
           "storyId": "production-translator-translatorworkspace--loaded-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--loaded-request",
           "expectedVisibleText": "gpt-5.2-codex",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "expanded",
             "text"
@@ -9156,7 +9156,7 @@
           "storyId": "production-translator-translatorworkspace--converts-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-request",
           "expectedVisibleText": "gpt-5.2-codex",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "expanded",
             "text"
@@ -9171,7 +9171,7 @@
           "storyId": "production-translator-translatorworkspace--sends-target-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--sends-target-request",
           "expectedVisibleText": "codex",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "expanded",
             "text"
@@ -9191,7 +9191,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#getAction",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "getAction",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-backed actual parent interaction; build/runtime review pending.",
@@ -9213,7 +9213,7 @@
           "storyId": "production-translator-translatorworkspace--converts-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-request",
           "expectedVisibleText": "To OpenAI",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "controls"
           ],
@@ -9227,7 +9227,7 @@
           "storyId": "production-translator-translatorworkspace--converts-to-target",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-to-target",
           "expectedVisibleText": "To Target",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "controls"
           ],
@@ -9241,7 +9241,7 @@
           "storyId": "production-translator-translatorworkspace--sends-target-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--sends-target-request",
           "expectedVisibleText": "Send",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "controls"
           ],
@@ -9260,7 +9260,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#MetaBadge",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "MetaBadge",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-translator-metabadge--neutral, production-translator-metabadge--info, production-translator-metabadge--warning, production-translator-metabadge--success, production-translator-metabadge--accent. Pending runtime review.",
@@ -9286,7 +9286,7 @@
           "storyId": "production-translator-metabadge--neutral",
           "runtimeArtifactId": "production-translator-metabadge--neutral",
           "expectedVisibleText": "Label",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "text"
           ],
@@ -9300,7 +9300,7 @@
           "storyId": "production-translator-metabadge--info",
           "runtimeArtifactId": "production-translator-metabadge--info",
           "expectedVisibleText": "Info",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "text"
           ],
@@ -9314,7 +9314,7 @@
           "storyId": "production-translator-metabadge--warning",
           "runtimeArtifactId": "production-translator-metabadge--warning",
           "expectedVisibleText": "Warning",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "text"
           ],
@@ -9328,7 +9328,7 @@
           "storyId": "production-translator-metabadge--success",
           "runtimeArtifactId": "production-translator-metabadge--success",
           "expectedVisibleText": "codex",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "text"
           ],
@@ -9342,7 +9342,7 @@
           "storyId": "production-translator-metabadge--accent",
           "runtimeArtifactId": "production-translator-metabadge--accent",
           "expectedVisibleText": "Accent",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "text"
           ],
@@ -9361,7 +9361,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#TranslatorNotice",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "TranslatorNotice",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Error state conditionally renders TranslatorNotice.",
@@ -9381,7 +9381,7 @@
           "storyId": "production-translator-translatorworkspace--load-failure",
           "runtimeArtifactId": "production-translator-translatorworkspace--load-failure",
           "expectedVisibleText": "Fixture capture missing",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "error"
           ],
@@ -9395,7 +9395,7 @@
           "storyId": "production-translator-translatorworkspace--dismiss-error",
           "runtimeArtifactId": "production-translator-translatorworkspace--dismiss-error",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "error"
           ],
@@ -9416,7 +9416,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#TranslatorStepCard",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "TranslatorStepCard",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-translator-translatorstepcard--collapsed-empty, production-translator-translatorstepcard--collapsed-loaded, production-translator-translatorstepcard--expanded, production-translator-translatorstepcard--text-expanded, production-translator-translatorstepcard--loading, production-translator-translatorstepcard--keyboard-enter-toggle. Pending runtime review.",
@@ -9444,7 +9444,7 @@
           "storyId": "production-translator-translatorstepcard--collapsed-empty",
           "runtimeArtifactId": "production-translator-translatorstepcard--collapsed-empty",
           "expectedVisibleText": "Not loaded",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "collapsed",
             "empty"
@@ -9459,7 +9459,7 @@
           "storyId": "production-translator-translatorstepcard--collapsed-loaded",
           "runtimeArtifactId": "production-translator-translatorstepcard--collapsed-loaded",
           "expectedVisibleText": "chars",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "collapsed",
             "text"
@@ -9474,7 +9474,7 @@
           "storyId": "production-translator-translatorstepcard--expanded",
           "runtimeArtifactId": "production-translator-translatorstepcard--expanded",
           "expectedVisibleText": "Load",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "expanded"
           ],
@@ -9488,7 +9488,7 @@
           "storyId": "production-translator-translatorstepcard--text-expanded",
           "runtimeArtifactId": "production-translator-translatorstepcard--text-expanded",
           "expectedVisibleText": "Plain text",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "expanded",
             "text"
@@ -9503,7 +9503,7 @@
           "storyId": "production-translator-translatorstepcard--loading",
           "runtimeArtifactId": "production-translator-translatorstepcard--loading",
           "expectedVisibleText": "Client Request",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "loading"
           ],
@@ -9517,7 +9517,7 @@
           "storyId": "production-translator-translatorstepcard--keyboard-enter-toggle",
           "runtimeArtifactId": "production-translator-translatorstepcard--keyboard-enter-toggle",
           "expectedVisibleText": "Collapse",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "keyboard",
             "expanded"
@@ -9537,7 +9537,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#TranslatorWorkspace",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "TranslatorWorkspace",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-translator-translatorworkspace--empty, production-translator-translatorworkspace--loaded-request, production-translator-translatorworkspace--converts-request, production-translator-translatorworkspace--sends-target-request, production-translator-translatorworkspace--load-failure, production-translator-translatorworkspace--dismiss-error, production-translator-translatorworkspace--mobile-keyboard, production-translator-translatorworkspace--rtl. Pending runtime review.",
@@ -9569,7 +9569,7 @@
           "storyId": "production-translator-translatorworkspace--empty",
           "runtimeArtifactId": "production-translator-translatorworkspace--empty",
           "expectedVisibleText": "Load a captured request",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "empty"
           ],
@@ -9583,7 +9583,7 @@
           "storyId": "production-translator-translatorworkspace--loaded-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--loaded-request",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "text"
           ],
@@ -9597,7 +9597,7 @@
           "storyId": "production-translator-translatorworkspace--converts-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-request",
           "expectedVisibleText": "Collapse OpenAI Intermediate",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "expanded",
             "controls"
@@ -9612,7 +9612,7 @@
           "storyId": "production-translator-translatorworkspace--sends-target-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--sends-target-request",
           "expectedVisibleText": "Collapse Provider Response",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "expanded",
             "controls"
@@ -9627,7 +9627,7 @@
           "storyId": "production-translator-translatorworkspace--load-failure",
           "runtimeArtifactId": "production-translator-translatorworkspace--load-failure",
           "expectedVisibleText": "Fixture capture missing",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "error"
           ],
@@ -9641,7 +9641,7 @@
           "storyId": "production-translator-translatorworkspace--dismiss-error",
           "runtimeArtifactId": "production-translator-translatorworkspace--dismiss-error",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "error"
           ],
@@ -9655,7 +9655,7 @@
           "storyId": "production-translator-translatorworkspace--mobile-keyboard",
           "runtimeArtifactId": "production-translator-translatorworkspace--mobile-keyboard",
           "expectedVisibleText": "Source Body",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "mobile",
             "keyboard",
@@ -9671,7 +9671,7 @@
           "storyId": "production-translator-translatorworkspace--rtl",
           "runtimeArtifactId": "production-translator-translatorworkspace--rtl",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "0bb24ebda1e99846a45700993cdae46d5fd685f50334d7931b879b196c35ee5e",
           "axes": [
             "rtl"
           ],

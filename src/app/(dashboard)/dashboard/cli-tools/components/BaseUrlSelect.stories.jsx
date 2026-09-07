@@ -19,8 +19,8 @@ export const Local = {
     expect(within(canvasElement).getByRole("combobox", { name: /endpoint/i })).toBeInTheDocument();
   },
 };
-export const Tunnel = { render: (args) => <Controlled {...args} />, args: { tunnelEnabled: true, tunnelPublicUrl: "https://tunnel.example.com" } };
-export const Cloud = { render: (args) => <Controlled {...args} />, args: { cloudEnabled: true, cloudUrl: "https://cloud.example.com" } };
+export const Tunnel = { render: (args) => <Controlled {...args} />, args: { requiresExternalUrl: true, tunnelEnabled: true, tunnelPublicUrl: "https://tunnel.example.com" } };
+export const Cloud = { render: (args) => <Controlled {...args} />, args: { requiresExternalUrl: true, cloudEnabled: true, cloudUrl: "https://cloud.example.com" } };
 export const SwitchToCustom = {
   render: (args) => <Controlled {...args} />,
   play: async ({ canvasElement }) => {

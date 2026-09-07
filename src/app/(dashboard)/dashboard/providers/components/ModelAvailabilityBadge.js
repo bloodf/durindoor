@@ -125,7 +125,7 @@ export default function ModelAvailabilityBadge() {
               type="button"
               aria-label="Refresh model availability"
               onClick={fetchStatus}
-              className="p-1 rounded-lg hover:bg-dd-surface text-dd-muted hover:text-dd-text transition-colors"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-dd-surface text-dd-muted hover:text-dd-text transition-colors"
             >
               <span aria-hidden="true" className="material-symbols-outlined text-[14px]">refresh</span>
             </button>

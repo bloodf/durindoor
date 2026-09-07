@@ -31,7 +31,7 @@ export const Loaded = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("POST /v1/chat/completions")).toBeVisible();
-    await expect(canvas.getByText('"model": "gpt-5"')).toBeVisible();
+    await expect(canvas.getByRole("region", { name: /Timeline event #1 details/ })).toHaveTextContent('"model": "gpt-5"');
   },
 };
 // Loaded covers singleton EventRow payloads; ExpandSseChunks covers the private EventGroup collapse lifecycle.
@@ -45,7 +45,13 @@ export const ExpandSseChunks = {
   },
 };
 
-export const CopyAsJson = {};
+export const CopyAsJson = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Copy as JSON" }));
+    await expect(canvas.getByRole("button", { name: "Copied" })).toBeVisible();
+  },
+};
 
 export const MissingTrace = {
   parameters: {

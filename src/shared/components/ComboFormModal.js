@@ -33,7 +33,7 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown
 
   return (
     <li className="group flex min-w-0 items-center gap-2 rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 text-[13px] transition-colors hover:border-dd-border">
-      <span className="w-5 shrink-0 text-center text-xs text-dd-subtle dd-tnum" aria-label={`Priority ${index + 1}`}>{index + 1}</span>
+      <span className="w-5 shrink-0 text-center text-xs text-dd-subtle dd-tnum">{index + 1}</span>
       {editing ? (
         <Input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={handleKeyDown} aria-label={`Edit model ${index + 1}`} size="sm" className="min-w-0 flex-1 font-mono" />
       ) : (

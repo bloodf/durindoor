@@ -185,7 +185,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   }, [nodes.length]);
 
   return (
-    <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-dd-lg border border-dd-border bg-dd-surface sm:h-[480px]">
+    <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-dd-lg border border-dd-border bg-dd-surface [&_.react-flow__edges]:pointer-events-none sm:h-[480px]">
       {providers.length === 0 ? (
         <div className="flex h-full items-center justify-center text-[13px] text-dd-muted">No providers connected</div>
       ) : (
@@ -208,8 +208,10 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}
+          edgesFocusable={false}
+          nodesFocusable={false}
         >
-          <Controls showInteractive={false} className="react-flow-controls-custom" />
+          <Controls showInteractive={false} className="react-flow-controls-custom [&_.react-flow__controls-button]:!size-11" />
         </ReactFlow>
       )}
     </div>

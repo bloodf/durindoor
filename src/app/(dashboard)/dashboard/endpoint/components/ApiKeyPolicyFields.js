@@ -53,7 +53,7 @@ export default function ApiKeyPolicyFields({ draft, onChange, catalog = [], usag
           />
           <div
             tabIndex={0}
-            className="max-h-48 overflow-y-auto rounded-dd border border-dd-border p-2"
+            className="flex min-h-11 max-h-48 flex-col gap-1 overflow-y-auto rounded-dd border border-dd-border p-2 outline-none focus-visible:shadow-dd-focus"
             role="group"
             aria-label="Available policy models"
           >

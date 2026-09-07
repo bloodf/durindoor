@@ -346,7 +346,7 @@ export default function AntigravityToolCard({
                       value={modelMappings[model.alias] || ""}
                       onChange={(e) => handleModelMappingChange(model.alias, e.target.value)}
                       placeholder="provider/model-id"
-                      className="w-full min-w-0 pl-2 pr-12 py-2 bg-dd-surface rounded-dd border border-dd-border text-xs focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus sm:py-1.5"
+                      className="min-h-11 w-full min-w-0 rounded-dd border border-dd-border bg-dd-surface pb-1.5 pl-2 pr-12 pt-1.5 text-xs focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus"
                     />
                     {modelMappings[model.alias] && (
                       <IconButton
@@ -361,7 +361,7 @@ export default function AntigravityToolCard({
                   <Button
                     onClick={() => openModelSelector(model.alias)}
                     disabled={!hasActiveProviders}
-                    className={`w-full sm:w-auto rounded-dd border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "bg-dd-surface border-dd-border text-dd-text hover:border-dd-accent cursor-pointer" : "opacity-50 cursor-not-allowed border-dd-border"}`}
+                    className={`min-h-11 w-full rounded-dd border px-2 text-xs transition-colors whitespace-nowrap sm:w-auto sm:shrink-0 ${hasActiveProviders ? "bg-dd-surface border-dd-border text-dd-text hover:border-dd-accent cursor-pointer" : "opacity-50 cursor-not-allowed border-dd-border"}`}
                   >
                     Select
                   </Button>

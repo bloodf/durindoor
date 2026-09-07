@@ -144,7 +144,7 @@ export default function MitmToolCard({
           onClick={onToggle}
           aria-expanded={isExpanded}
           aria-controls={`mitm-tool-body-${tool.id}`}
-          className="flex w-full items-start justify-between gap-3 rounded-dd text-left outline-none hover:bg-dd-surface-2 focus-visible:shadow-dd-focus sm:items-center"
+          className="flex min-h-11 w-full items-start justify-between gap-3 rounded-dd text-left outline-none hover:bg-dd-surface-2 focus-visible:shadow-dd-focus sm:items-center"
         >
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex size-8 shrink-0 items-center justify-center">

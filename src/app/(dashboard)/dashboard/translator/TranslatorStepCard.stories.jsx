@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { TranslatorStepCard } from "./TranslatorWorkspace.jsx";
 
@@ -30,11 +30,16 @@ export const Loading = {
 };
 export const KeyboardEnterToggle = {
   args: { content: clientRequest },
+  render: (args) => {
+    const [expanded, setExpanded] = useState(false);
+    return <TranslatorStepCard {...args} expanded={expanded} onToggle={() => { args.onToggle(); setExpanded((current) => !current); }} />;
+  },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     const trigger = await canvas.findByRole("button", { name: "Expand Client Request" });
     trigger.focus();
     await userEvent.keyboard("{Enter}");
     await expect(args.onToggle).toHaveBeenCalledTimes(1);
+    await expect(canvas.getByRole("button", { name: "Collapse Client Request" })).toBeVisible();
   },
 };

@@ -64,7 +64,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
           value={modelValue}
           onChange={(e) => setModelValue(e.target.value)}
           placeholder="provider/model-id"
-          className="w-full sm:w-auto flex-1 px-3 py-2 bg-dd-surface-2 rounded-dd-lg text-sm border border-dd-border focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus"
+          className="min-h-11 w-full flex-1 rounded-dd-lg border border-dd-border bg-dd-surface-2 px-3 text-sm focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus sm:w-auto"
         />
         <Button
           onClick={() => setShowModelModal(true)}
@@ -234,7 +234,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
 
   return (
     <Card padding={false} className="overflow-hidden overflow-x-hidden p-4">
-      <button type="button" aria-expanded={isExpanded} className="w-full text-left outline-none focus-visible:shadow-dd-focus flex items-center justify-between hover:cursor-pointer" onClick={onToggle}>
+      <button type="button" aria-expanded={isExpanded} className="flex min-h-11 w-full items-center justify-between rounded-dd text-left outline-none hover:cursor-pointer focus-visible:shadow-dd-focus" onClick={onToggle}>
 
         <div className="flex items-center gap-3">
           <div className="size-8 rounded-dd-lg flex items-center justify-center shrink-0">

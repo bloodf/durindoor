@@ -86,25 +86,29 @@ export const SubComponents = {
       </Card.Section>
       <ul className="px-3">
         {["Sauron", "Saruman", "Witch-king"].map((name, idx) => (
-          <Card.Row key={name}>
-            <div className="flex items-center justify-between">
-              <span className="text-dd-text">{name}</span>
-              {idx === 0 && <Badge variant="error" size="sm" icon="error">Hot</Badge>}
-            </div>
-          </Card.Row>
+          <li key={name}>
+            <Card.Row>
+              <div className="flex items-center justify-between">
+                <span className="text-dd-text">{name}</span>
+                {idx === 0 && <Badge variant="error" size="sm" icon="error">Hot</Badge>}
+              </div>
+            </Card.Row>
+          </li>
         ))}
-        <Card.ListItem
-          actions={
-            <button
-              onClick={onRemove}
-              className="flex min-h-[44px] items-center rounded-dd border border-dd-border bg-dd-surface-2 px-2 py-1 text-[11px] text-dd-muted outline-none hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
-            >
-              Remove
-            </button>
-          }
-        >
-          <span className="text-dd-text">Mouth of Sauron (hover/focus reveals action on sm+; always visible on touch)</span>
-        </Card.ListItem>
+        <li>
+          <Card.ListItem
+            actions={
+              <button
+                onClick={onRemove}
+                className="flex min-h-[44px] items-center rounded-dd border border-dd-border bg-dd-surface-2 px-2 py-1 text-[11px] text-dd-muted outline-none hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
+              >
+                Remove
+              </button>
+            }
+          >
+            <span className="text-dd-text">Mouth of Sauron (hover/focus reveals action on sm+; always visible on touch)</span>
+          </Card.ListItem>
+        </li>
       </ul>
     </Card>
   ),

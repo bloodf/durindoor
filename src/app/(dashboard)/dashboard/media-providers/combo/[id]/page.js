@@ -271,7 +271,7 @@ export default function ComboDetailPage() {
       {saveError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{saveError}</p>}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <Link href={backHref} aria-label={`Back to ${kindLabel} providers`} className="rounded-dd text-dd-muted outline-none hover:text-dd-accent focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined">arrow_back</span></Link>
+          <Link href={backHref} aria-label={`Back to ${kindLabel} providers`} className="flex min-h-11 min-w-11 items-center justify-center rounded-dd text-dd-muted outline-none hover:text-dd-accent focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined">arrow_back</span></Link>
           <span aria-hidden="true" className="flex size-11 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent"><span aria-hidden="true" className="material-symbols-outlined">layers</span></span>
           <div className="min-w-0"><p className="text-xs text-dd-muted">{kindLabel} Combo</p><code className="block truncate text-lg font-semibold text-dd-text">{combo.name}</code></div>
         </div>

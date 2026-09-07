@@ -2,11 +2,11 @@
 
 import Input from "@/shared/ui/components/Input.jsx";
 
-export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabled = false, className = "" }) {
+export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabled = false, className = "", label = "API key" }) {
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
       <Input
-        aria-label="API key"
+        label={label}
         type="password"
         value={value || ""}
         onChange={(event) => onChange(event.target.value)}

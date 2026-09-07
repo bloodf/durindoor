@@ -109,6 +109,7 @@ export const CompatibleBranch = {
       expect(node).toBeVisible();
       return node;
     });
+    await Promise.all(dialog.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
     const dialogScope = within(dialog);
     await expect(dialogScope.getByText("One-to-one (rotate)")).toBeVisible();
     await expect(dialogScope.getByText("EU Pool")).toBeVisible();

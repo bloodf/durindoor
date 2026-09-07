@@ -42,7 +42,7 @@ export function MediaProviderCard({ provider, kind, connections, isCustom, onTog
       <div className="flex min-w-0 items-center justify-between gap-3">
         <Link
           href={`/dashboard/media-providers/${kind}/${provider.id}`}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-dd outline-none focus-visible:shadow-dd-focus"
+          className="flex min-h-11 min-w-11 flex-1 items-center gap-3 rounded-dd outline-none focus-visible:shadow-dd-focus"
           aria-label={`Open ${provider.name}`}
         >
           <ProviderLogo provider={provider.id} fallbackText={provider.textIcon} size={32} className="shrink-0" />

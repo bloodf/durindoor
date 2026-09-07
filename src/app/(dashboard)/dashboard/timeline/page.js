@@ -112,7 +112,7 @@ function TimelineList() {
     router.replace(`/dashboard/timeline?${next.toString()}`);
   };
   const columns = useMemo(() => [
-    { key: "started_at", label: "Started", rowHeader: true, render: (trace) => <Link href={`/dashboard/timeline/${trace.id}`} className="whitespace-nowrap text-dd-accent outline-none hover:underline focus-visible:shadow-dd-focus">{trace.started_at}</Link> },
+    { key: "started_at", label: "Started", rowHeader: true, render: (trace) => <Link href={`/dashboard/timeline/${trace.id}`} className="inline-flex min-h-11 min-w-11 items-center whitespace-nowrap text-dd-accent outline-none hover:underline focus-visible:shadow-dd-focus">{trace.started_at}</Link> },
     { key: "status", label: "Status", render: (trace) => <Badge tone={statusTone(trace.status || "running")} size="sm">{trace.status || "running"}</Badge> },
     { key: "provider", label: "Provider", render: (trace) => trace.provider ? <span className="inline-flex items-center gap-2"><ProviderLogo provider={trace.provider} size={16} /><span>{trace.provider}</span></span> : "—" },
     { key: "model", label: "Model", mono: true, render: (trace) => trace.model || "—" },

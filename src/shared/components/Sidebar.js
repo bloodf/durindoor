@@ -81,8 +81,8 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
     <>
       <aside className={cn("flex min-h-full flex-col overflow-hidden border-e border-dd-border-subtle bg-dd-surface transition-[width,colors] duration-300 motion-reduce:transition-none", collapsed ? "w-20" : "w-72", collapsed && "[&_.sidebar-label]:hidden [&_.sidebar-brand-copy]:hidden [&_.sidebar-section]:hidden [&_.sidebar-update]:hidden")} aria-label="Dashboard navigation">
         <div className={cn("flex flex-col gap-2 py-4", collapsed ? "items-center px-2" : "px-6")}>
-          <Link href="/dashboard" aria-label={collapsed ? APP_CONFIG.name : undefined} className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-dd bg-dd-surface-3 shadow-dd-elevated">
+          <Link href="/dashboard" aria-label={collapsed ? APP_CONFIG.name : undefined} className="flex min-h-11 min-w-11 items-center gap-3 rounded-dd outline-none focus-visible:shadow-dd-focus">
+            <div className="flex size-9 items-center justify-center rounded-dd bg-dd-surface-3 shadow-dd-elevated">
               <img
                 src={BRAND_LOGO_SRC}
                 alt={BRAND_LOGO_ALT}

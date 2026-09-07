@@ -28,12 +28,13 @@ export const InfoToast = { ...toast("info"), tags: ["play-fn"] };
 export const MobileDrawer = {
   parameters: { viewport: { defaultViewport: "mobile1" } },
   globals: { viewport: { value: "mobile1", isRotated: false } },
-  render: () => <DashboardLayout><p>Mobile body</p></DashboardLayout>,
+  render: () => <div className="[&_.lg\\:hidden]:!flex"><DashboardLayout><p>Mobile body</p></DashboardLayout></div>,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const toggle = await canvas.findByRole("button", { name: "Open navigation" });
     await userEvent.click(toggle);
     const dialog = await within(document.body).findByRole("dialog", { name: "Navigation" });
+    await Promise.all(dialog.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
     await userEvent.click(within(dialog).getByRole("link", { name: /Usage/ }));
     await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
     await userEvent.click(toggle);
@@ -52,7 +53,7 @@ function PersistedExample() {
     setReady(true);
     return () => old === null ? localStorage.removeItem("durindoor.sidebar.collapsed") : localStorage.setItem("durindoor.sidebar.collapsed", old);
   }, []);
-  return ready ? <><button type="button" onClick={() => setKey((k) => k + 1)}>Remount</button><DashboardLayout key={key}><p>Desktop body</p></DashboardLayout></> : null;
+  return ready ? <><button type="button" onClick={() => setKey((k) => k + 1)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus">Remount</button><DashboardLayout key={key}><p>Desktop body</p></DashboardLayout></> : null;
 }
 export const PersistedDesktopCollapse = {
   render: () => <PersistedExample />,

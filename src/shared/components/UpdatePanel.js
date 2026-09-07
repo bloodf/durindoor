@@ -34,7 +34,7 @@ const PROGRESS_FILL = "h-full rounded-full bg-dd-accent transition-all duration-
 const META_LINE = "text-xs text-dd-muted";
 const ERROR_BANNER = "mb-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-xs text-dd-danger";
 const MUTED_TOGGLE =
-  "mt-3 w-full rounded-dd text-center text-xs text-dd-muted outline-none transition-colors hover:text-dd-text focus-visible:shadow-dd-focus";
+  "mt-3 flex min-h-11 w-full items-center justify-center rounded-dd text-center text-xs text-dd-muted outline-none transition-colors hover:text-dd-text focus-visible:shadow-dd-focus";
 
 const reloadPage = () => globalThis.location.reload();
 function PanelHeader({ icon, iconTone = "accent", title, subtitle, children }) {

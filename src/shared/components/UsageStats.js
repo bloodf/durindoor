@@ -375,9 +375,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   if (!stats && !loading) return <div className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 p-4 text-[13px] text-dd-danger" role="alert">Failed to load usage statistics.</div>;
 
   const spinner =
-  <div className="flex items-center justify-center py-12 text-dd-muted" role="status">
+  <div className="flex items-center justify-center gap-2 py-12 text-dd-muted" role="status">
       <span aria-hidden="true" className="material-symbols-outlined text-[32px] animate-spin">progress_activity</span>
-      <span className="sr-only">Loading usage statistics</span>
+      <span className="text-[13px]">Loading usage statistics</span>
     </div>;
 
 

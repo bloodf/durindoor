@@ -160,7 +160,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
             aria-label={`Move ${displayName} up`}
             onClick={onMoveUp}
             disabled={isFirst}
-            className={`p-0.5 rounded ${isFirst ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}
+            className={`flex min-h-11 min-w-11 items-center justify-center rounded ${isFirst ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}
           >
             <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
           </button>
@@ -168,7 +168,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
             aria-label={`Move ${displayName} down`}
             onClick={onMoveDown}
             disabled={isLast}
-            className={`p-0.5 rounded ${isLast ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}
+            className={`flex min-h-11 min-w-11 items-center justify-center rounded ${isLast ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}
           >
             <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
           </button>
@@ -249,7 +249,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
             <div className="relative" ref={proxyDropdownRef}>
               <button
                 onClick={() => setShowProxyDropdown((v) => !v)}
-                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${hasAnyProxy ? "text-dd-accent" : "text-dd-muted hover:text-dd-accent"}`}
+                className={`flex min-h-11 min-w-11 w-full flex-col items-center justify-center rounded px-2 py-1 transition-colors hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${hasAnyProxy ? "text-dd-accent" : "text-dd-muted hover:text-dd-accent"}`}
                 disabled={updatingProxy}
               >
                 <span className="material-symbols-outlined text-[18px]">
@@ -261,7 +261,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
                 <div className="absolute right-0 top-full z-50 mt-1 max-w-[78vw] min-w-[160px] rounded-lg border border-dd-border bg-dd-bg-alt py-1 shadow-lg">
                   <button
                     onClick={() => handleSelectProxy("__none__")}
-                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${!boundProxyPoolId ? "text-dd-accent font-medium" : "text-dd-text"}`}
+                    className={`w-full px-3 py-2.5 text-left text-sm hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${!boundProxyPoolId ? "text-dd-accent font-medium" : "text-dd-text"}`}
                   >
                     None
                   </button>
@@ -269,7 +269,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
                     <button
                       key={pool.id}
                       onClick={() => handleSelectProxy(pool.id)}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${boundProxyPoolId === pool.id ? "text-dd-accent font-medium" : "text-dd-text"}`}
+                      className={`w-full px-3 py-2.5 text-left text-sm hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${boundProxyPoolId === pool.id ? "text-dd-accent font-medium" : "text-dd-text"}`}
                     >
                       {pool.name}
                     </button>

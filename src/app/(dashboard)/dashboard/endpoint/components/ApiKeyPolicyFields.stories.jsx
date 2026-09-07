@@ -38,7 +38,7 @@ export const SelectedModelsScope = {
     const scoped = await canvas.findByRole("radio", { name: "Selected models" });
     await userEvent.click(scoped);
     const gpt5 = await canvas.findByRole("checkbox", { name: /^GPT-5\s+gpt-5$/ });
-    await expect(gpt5).toBeVisible();
+    await expect(gpt5.closest("label")).toBeVisible();
     await userEvent.click(gpt5);
     await expect(gpt5).toBeChecked();
   },

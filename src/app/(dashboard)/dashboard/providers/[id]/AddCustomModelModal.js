@@ -209,18 +209,18 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
         {showAdvanced ? (
           <div className="grid grid-cols-2 gap-3 rounded-dd-lg border border-dd-border bg-dd-surface-2 p-3">
             <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Context window
-              <input type="number" min={1} value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} placeholder="tokens" className="h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+              <input type="number" min={1} value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} placeholder="tokens" className="min-h-11 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Max output
-              <input type="number" min={1} value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder="tokens" className="h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+              <input type="number" min={1} value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder="tokens" className="min-h-11 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
             </label>
             <div className="col-span-2 flex flex-col gap-1"><span className="text-xs font-medium text-dd-muted">Thinking format</span><Select options={THINKING_FORMATS} value={thinkingFormat} onChange={(value) => setThinkingFormat(value)} aria-label="Thinking format" size="sm" /></div>
             <label className="col-span-2 flex min-h-11 items-center gap-2 text-xs text-dd-text"><input id="thinkingCanDisable" type="checkbox" checked={thinkingCanDisable} onChange={(e) => { setThinkingCanDisable(e.target.checked); setThinkingCanDisableTouched(true); }} className="size-4 rounded border-dd-border accent-[var(--dd-accent)]" />Thinking can be disabled</label>
             <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Thinking budget min
-              <input type="number" min={0} value={thinkingRangeMin} onChange={(e) => setThinkingRangeMin(e.target.value)} placeholder="tokens" className="h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+              <input type="number" min={0} value={thinkingRangeMin} onChange={(e) => setThinkingRangeMin(e.target.value)} placeholder="tokens" className="min-h-11 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Thinking budget max
-              <input type="number" min={0} value={thinkingRangeMax} onChange={(e) => setThinkingRangeMax(e.target.value)} placeholder="tokens" className="h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+              <input type="number" min={0} value={thinkingRangeMax} onChange={(e) => setThinkingRangeMax(e.target.value)} placeholder="tokens" className="min-h-11 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
             </label>
           </div>
         ) : null}

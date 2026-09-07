@@ -1,6 +1,8 @@
 import React from "react";
 import { within, userEvent, expect, waitFor } from "storybook/test";
 import ToolDetailClient from "./ToolDetailClient";
+import MitmLinkCard from "../components/MitmLinkCard";
+import { MITM_TOOLS } from "@/shared/constants/cliTools";
 
 const routes = {
   "GET /api/providers": { body: { connections: [{ id: "openai-main", provider: "openai", authType: "apikey", name: "OpenAI", isActive: true, testStatus: "active", priority: 1, defaultModel: "gpt-4.1", providerSpecificData: {} }] } },
@@ -32,7 +34,7 @@ export const Cowork = scenario("cowork");
 export const Droid = scenario("droid");
 export const OpenClaw = scenario("openclaw");
 export const Hermes = scenario("hermes");
-export const Copilot = scenario("copilot");
+export const Copilot = { render: () => <MitmLinkCard tool={MITM_TOOLS.copilot} /> };
 export const Cline = scenario("cline");
 export const Kilo = scenario("kilo");
 export const DeepSeekTui = scenario("deepseek-tui");

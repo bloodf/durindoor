@@ -27,7 +27,7 @@ function PricingCell({ provider, model, field, value, onChange }) {
       value={value ?? 0}
       onChange={(event) => onChange(provider, model, field, event.target.value)}
       aria-label={`${model} ${field} rate`}
-      className="text-end font-mono dd-tnum"
+      className="min-w-11 text-end font-mono dd-tnum"
     />
   );
 }

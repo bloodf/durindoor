@@ -197,6 +197,7 @@ export const EditFlow = {
     const comboCard = (await canvas.findByText("production-fallback")).closest(".group");
     await userEvent.click(within(comboCard).getByRole("button", { name: "Edit" }));
     const dialog = await canvas.findByRole("dialog");
+    await Promise.all(dialog.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
     await expect(within(dialog).getByText("Edit Combo")).toBeInTheDocument();
     await expect(within(dialog).getByDisplayValue("production-fallback")).toBeInTheDocument();
     const firstModel = within(dialog).getByText("openai/gpt-4o").closest(".group");
@@ -216,19 +217,20 @@ export const SaveFailure = {
       routes: {
         ...fixtureRoutes("default"),
         "GET /api/models/alias": { body: { aliases: {} } },
-        "POST /api/combos": { status: 400, body: { error: "Failed to create combo" } },
+        "POST /api/combos": { status: 400, body: { error: "Failed to save combo" } },
       },
     },
   },
   play: async () => {
     const canvas = within(document.body);
     await userEvent.click(await canvas.findByRole("button", { name: "Create Combo" }));
-    const dialog = await canvas.findByRole("dialog");
-    await userEvent.type(within(dialog).getByLabelText("Combo Name"), "demo");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
-    const alert = await within(dialog).findByRole("alert");
-    await expect(alert).toHaveTextContent("Failed to create combo");
-    await expect(dialog).toBeInTheDocument();
+    const dialogElement = await canvas.findByRole("dialog");
+    const dialog = within(dialogElement);
+    await userEvent.type(dialog.getByLabelText("Combo Name"), "demo");
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
+    const alert = await dialog.findByRole("alert");
+    await expect(alert).toHaveTextContent("Failed to save combo");
+    await expect(dialogElement).toBeInTheDocument();
   },
 };
 
@@ -253,6 +255,7 @@ export const LoadFailureError = {
     await expect(canvas.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Create Combo" }));
     const dialog = await canvas.findByRole("dialog");
+    await Promise.all(dialog.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
     await expect(within(dialog).getByRole("heading", { name: "Create Combo" })).toBeVisible();
     await expect(within(dialog).getByLabelText("Combo Name")).toBeVisible();
     await expect(within(dialog).getByText("No models added yet")).toBeVisible();

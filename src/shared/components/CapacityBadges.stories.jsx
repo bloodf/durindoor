@@ -81,12 +81,20 @@ export const KeyboardFocusRevealsTooltip = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const visionBadge = canvas.getByRole("img", { name: /Vision/ });
+    // Reach the badge the way a keyboard user does; this story exists to
+    // prove tab order reaches it, so a direct focus() call would assert
+    // nothing about the behaviour it is named for.
     await userEvent.tab();
     await expect(visionBadge).toHaveFocus();
     // The Tooltip popover is always mounted (hidden until focus). Select the
     // visible Vision one by matching its label text — there are two persistent
     // tooltips in the DOM (Vision + Tools).
     const visionTooltip = within(document.body).getByText("Vision — Supports image input");
+    // Let the reveal finish before asserting, so the keyboard path stays under
+    // test without racing its own transition.
+    await Promise.all(visionTooltip.getAnimations({ subtree: true })
+      .filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations))
+      .map(({ finished }) => finished.catch(() => {})));
     await expect(visionTooltip).toBeVisible();
 
     await userEvent.tab();

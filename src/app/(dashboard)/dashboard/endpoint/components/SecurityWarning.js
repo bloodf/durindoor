@@ -9,7 +9,7 @@ export default function SecurityWarning({ message, action }) {
       {action ? (
         <a
           href={action.href}
-          className="min-h-11 shrink-0 content-center text-xs font-medium underline outline-none focus-visible:shadow-dd-focus"
+          className="min-h-11 min-w-11 shrink-0 content-center text-xs font-medium underline outline-none focus-visible:shadow-dd-focus"
           onClick={action.href.startsWith("#") ? (e) => {
             e.preventDefault();
             document.getElementById(action.href.slice(1))?.scrollIntoView({ behavior: "smooth" });

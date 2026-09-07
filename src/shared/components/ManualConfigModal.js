@@ -36,7 +36,7 @@ export default function ManualConfigModal({ isOpen, onClose, title = "Manual Con
                 {copiedIndex === index ? "Copied!" : "Copy"}
               </Button>
             </div>
-            <pre className="max-h-60 overflow-auto rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-3 font-mono text-xs text-dd-text whitespace-pre-wrap break-all">{config.content}</pre>
+            <pre tabIndex={0} aria-label={`${config.filename} contents`} className="max-h-60 overflow-auto rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-3 font-mono text-xs text-dd-text whitespace-pre-wrap break-all">{config.content}</pre>
           </section>
         ))}
       </div>

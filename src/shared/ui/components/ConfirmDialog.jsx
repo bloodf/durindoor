@@ -23,6 +23,7 @@ export default function ConfirmDialog({
   title,
   message,
   confirmLabel = "Confirm",
+  pendingLabel = confirmLabel,
   cancelLabel = "Cancel",
   tone = "danger",
   pending = false,
@@ -52,7 +53,7 @@ export default function ConfirmDialog({
             disabled={pending}
             className={`min-h-11 rounded-dd px-3.5 text-[13px] font-medium outline-none transition-colors focus-visible:shadow-dd-focus disabled:cursor-not-allowed disabled:opacity-50 ${CONFIRM_TONES[tone] ?? CONFIRM_TONES.danger}`}
           >
-            {confirmLabel}
+            {pending ? pendingLabel : confirmLabel}
           </button>
         </>
       }

@@ -68,6 +68,7 @@ export const Connected = {
       expect(node).toBeVisible();
       return node;
     });
+    await Promise.all(dialog.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
     const dialogScope = within(dialog);
     await expect(dialogScope.getByText("Name")).toBeVisible();
     await expect(dialogScope.getByText("API Key")).toBeVisible();

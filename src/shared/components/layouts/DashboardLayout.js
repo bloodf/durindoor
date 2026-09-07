@@ -70,12 +70,18 @@ export default function DashboardLayout({ children }) {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-dd-bg">
+      {/* Toasts are how the dashboard reports the outcome of an action, so
+          they have to reach someone who cannot see them. Errors interrupt;
+          everything else waits for a pause in speech. */}
       <div className="fixed end-4 top-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2">
         {notifications.map((n) => {
           const style = getToastStyle(n.type);
+          const urgent = n.type === "error";
           return (
             <div
               key={n.id}
+              role={urgent ? "alert" : "status"}
+              aria-live={urgent ? "assertive" : "polite"}
               className={`rounded-dd border px-3 py-2 shadow-dd-elevated backdrop-blur-sm ${style.wrapper}`}
             >
               <div className="flex items-start gap-2">

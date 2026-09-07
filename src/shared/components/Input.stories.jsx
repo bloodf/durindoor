@@ -54,7 +54,7 @@ export const EditConnectionModalFields = {
 export const ReadOnlyAuthUrl = {
   name: "GitLabAuthModal / OAuthModal read-only URL",
   render: () => (
-    <Input value="https://gitlab.example.com/oauth/authorize?client_id=…" readOnly className="w-96" inputClassName="font-mono text-xs" aria-label="Authorization URL" />
+    <Input label="Authorization URL" value="https://gitlab.example.com/oauth/authorize?client_id=…" readOnly className="w-96" inputClassName="font-mono text-xs" />
   ),
 };
 

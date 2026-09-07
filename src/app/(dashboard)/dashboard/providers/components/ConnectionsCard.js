@@ -106,10 +106,10 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
     <div className={`group flex flex-col gap-3 p-2 rounded-lg sm:flex-row sm:items-center sm:justify-between hover:bg-dd-surface-2/[0.02] dark:hover:bg-dd-surface-2/[0.02] transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}>
       <div className="flex w-full min-w-0 flex-1 items-start gap-3 sm:items-center">
         <div className="flex flex-col">
-          <button aria-label={`Move ${connection.name || "connection"} up`} onClick={onMoveUp} disabled={isFirst} className={`p-0.5 rounded ${isFirst ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}>
+          <button aria-label={`Move ${connection.name || "connection"} up`} onClick={onMoveUp} disabled={isFirst} className={`flex min-h-11 min-w-11 items-center justify-center rounded ${isFirst ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}>
             <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
           </button>
-          <button aria-label={`Move ${connection.name || "connection"} down`} onClick={onMoveDown} disabled={isLast} className={`p-0.5 rounded ${isLast ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}>
+          <button aria-label={`Move ${connection.name || "connection"} down`} onClick={onMoveDown} disabled={isLast} className={`flex min-h-11 min-w-11 items-center justify-center rounded ${isLast ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}>
             <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
           </button>
         </div>
@@ -144,7 +144,7 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
           <div className="relative" ref={proxyDropdownRef}>
               <button
               onClick={() => setShowProxyDropdown((v) => !v)}
-              className={`flex flex-col items-center px-2 py-1 rounded hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 transition-colors ${hasAnyProxy ? "text-dd-accent" : "text-dd-muted hover:text-dd-accent"}`}
+              className={`flex min-h-11 min-w-11 flex-col items-center justify-center rounded px-2 py-1 transition-colors hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${hasAnyProxy ? "text-dd-accent" : "text-dd-muted hover:text-dd-accent"}`}
               disabled={updatingProxy}>
               
                 <span className="material-symbols-outlined text-[18px]">{updatingProxy ? "progress_activity" : "lan"}</span>

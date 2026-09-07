@@ -37,7 +37,7 @@ export const CreateComboError = {
     await expect(within(section).getByText("Tavily")).toBeVisible();
     const tavilyLink = within(section).getByRole("link", { name: /Tavily/i });
     await expect(within(tavilyLink).getByText("No connections")).toBeVisible();
-    const combo = within(section).getByRole("link", { name: /research-pool/i });
+    const combo = await within(section).findByRole("link", { name: /research-pool/i });
     await expect(combo).toHaveAttribute("href", "/dashboard/media-providers/combo/search-combo-1");
     await expect(within(combo).getByText("2")).toBeVisible();
     const button = within(section).getByRole("button", { name: "Create Combo" });

@@ -80,7 +80,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
         type="button"
         aria-label={`Remove ${modelId}`}
         onClick={onDeleteAlias}
-        className="p-1 hover:bg-dd-danger/10 rounded text-dd-danger"
+        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded hover:bg-dd-danger/10 text-dd-danger"
       >
         <span aria-hidden="true" className="material-symbols-outlined text-sm">delete</span>
       </button>
@@ -357,9 +357,10 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
       {allModels.length > 0 && (
         <div className="flex flex-col gap-3">
           {/* Select all */}
-          <label className="flex items-center gap-1.5 text-xs text-dd-muted cursor-pointer">
+          <label className="flex min-h-11 items-center gap-1.5 text-xs text-dd-muted cursor-pointer">
             <input
               type="checkbox"
+              aria-label="Select all passthrough models"
               checked={allSelected}
               onChange={toggleAll}
               className="size-4 rounded border-dd-border"
@@ -405,12 +406,15 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
               deleteStatus={deleteStatus[id]}
               isTesting={testingModelId === id}
               checkbox={
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(id)}
-                  onChange={() => toggleItem(id)}
-                  className="size-4 shrink-0 rounded border-dd-border"
-                />
+                <label className="inline-flex min-h-11 min-w-11 items-center justify-center rounded">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${id}`}
+                    checked={selectedIds.includes(id)}
+                    onChange={() => toggleItem(id)}
+                    className="size-4 shrink-0 rounded border-dd-border"
+                  />
+                </label>
               }
             />
           ))}

@@ -120,7 +120,7 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
       if (column.key === "datetime") return <span className="text-dd-muted">{row.datetime}</span>;
       if (column.key === "model") return <span className="font-medium text-dd-text">{row.model}</span>;
       if (column.key === "account") return <span className="block max-w-[150px] truncate" title={row.account}>{row.account}</span>;
-      if (column.key === "status") return <span className={["inline-flex items-center gap-1 rounded-dd border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", STATUS_TONE_CLASS[row.tone] || "border-dd-border bg-dd-surface-2 text-dd-muted", row.tone === "info" ? "animate-pulse" : ""].join(" ")} aria-label={`Status: ${row.status}`}><span aria-hidden="true" className="material-symbols-outlined text-[12px] leading-none">{STATUS_ICON[row.tone] || "circle"}</span>{row.status}</span>;
+      if (column.key === "status") return <span className={["inline-flex items-center gap-1 rounded-dd border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", STATUS_TONE_CLASS[row.tone] || "border-dd-border bg-dd-surface-2 text-dd-muted", row.tone === "info" ? "animate-pulse" : ""].join(" ")}><span aria-hidden="true" className="material-symbols-outlined text-[12px] leading-none">{STATUS_ICON[row.tone] || "circle"}</span><span className="sr-only">Status: </span>{row.status}</span>;
       return row[column.key];
     },
   }));

@@ -352,10 +352,10 @@ export default function ClaudeToolCard({
                     <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">{model.name}</span>
                     <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
                     <div className="relative w-full min-w-0">
-                      <input type="text" aria-label={`${model.name} model`} value={modelMappings[model.alias] || ""} onChange={(e) => onModelMappingChange(model.alias, e.target.value)} placeholder="provider/model-id" className="w-full min-w-0 pl-2 pr-12 py-2 bg-dd-surface rounded-dd border border-dd-border text-xs focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus sm:py-1.5" />
+                      <input type="text" aria-label={`${model.name} model`} value={modelMappings[model.alias] || ""} onChange={(e) => onModelMappingChange(model.alias, e.target.value)} placeholder="provider/model-id" className="min-h-11 w-full min-w-0 pl-2 pr-12 rounded-dd border border-dd-border bg-dd-surface text-xs focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus" />
                       {modelMappings[model.alias] && <IconButton icon="close" label={`Clear ${model.name} model`} size="sm" onClick={() => onModelMappingChange(model.alias, "")} className="absolute right-1 top-1/2 -translate-y-1/2 text-dd-muted hover:text-dd-danger" />}
                     </div>
-                    <Button onClick={() => openModelSelector(model.alias)} disabled={!hasActiveProviders} className={`w-full sm:w-auto rounded-dd border px-2 py-2 text-xs transition-colors sm:py-1.5 whitespace-nowrap sm:shrink-0 ${hasActiveProviders ? "bg-dd-surface border-dd-border text-dd-text hover:border-dd-accent cursor-pointer" : "opacity-50 cursor-not-allowed border-dd-border"}`}>Select Model</Button>
+                    <Button onClick={() => openModelSelector(model.alias)} disabled={!hasActiveProviders} className={`min-h-11 w-full rounded-dd border px-2 text-xs transition-colors whitespace-nowrap sm:w-auto sm:shrink-0 ${hasActiveProviders ? "bg-dd-surface border-dd-border text-dd-text hover:border-dd-accent cursor-pointer" : "opacity-50 cursor-not-allowed border-dd-border"}`}>Select Model</Button>
                   </div>
                 ))}
 
@@ -364,6 +364,7 @@ export default function ClaudeToolCard({
                   <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
                   <Select
                     size="sm"
+                    aria-label="Context window"
                     value={maxContextTokens}
                     onChange={setMaxContextTokens}
                     options={CONTEXT_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
@@ -374,13 +375,15 @@ export default function ClaudeToolCard({
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">Filter naming</span>
                   <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
-                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                    <input type="checkbox" checked={ccFilterNaming} onChange={handleCcFilterNamingToggle} className="w-3.5 h-3.5 accent-dd-accent cursor-pointer" />
-                    <span className="text-xs text-dd-muted">Filter naming requests</span>
+                  <div className="flex items-center gap-1.5">
+                    <label className="flex min-h-11 flex-1 items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" checked={ccFilterNaming} onChange={handleCcFilterNamingToggle} className="w-3.5 h-3.5 accent-dd-accent cursor-pointer" />
+                      <span className="text-xs text-dd-muted">Filter naming requests</span>
+                    </label>
                     <Tooltip text="Intercepts Claude Code's topic-naming requests and returns a fake response locally, saving API tokens.">
-                      <span aria-hidden="true" className="material-symbols-outlined text-dd-muted text-[14px] cursor-help">info</span>
+                      <button type="button" aria-label="About filter naming requests" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-dd outline-none focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-dd-muted text-[14px] cursor-help">info</span></button>
                     </Tooltip>
-                  </label>
+                  </div>
                 </div>
               </div>
 

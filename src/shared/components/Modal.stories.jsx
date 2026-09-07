@@ -9,7 +9,7 @@ function ModalScenario({ confirm = false }) {
   const [open, setOpen] = useState(true);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}>
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus">
         Open dialog
       </button>
       {confirm ? (

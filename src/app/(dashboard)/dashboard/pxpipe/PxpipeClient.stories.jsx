@@ -88,7 +88,7 @@ export const KeyboardPagingAndRange = {
     await userEvent.keyboard("{ArrowRight}");
     await expect(canvas.getByRole("radio", { name: "30 days" })).toHaveAttribute("aria-checked", "true");
     await userEvent.click(canvas.getAllByRole("button", { name: "Next page" })[0]);
-    await expect(canvas.getAllByRole("button", { name: "Page 2" })[0]).toBeInTheDocument();
+    await expect(canvas.getAllByRole("button", { name: "Page 2" })[0]).toHaveAttribute("aria-current", "page");
     // The page paginates two tables, so each renders its own rows-per-page
     // control (Pagination.jsx native select). Drive the first one.
     await userEvent.selectOptions(canvas.getAllByRole("combobox", { name: "Rows per page" })[0], "50");

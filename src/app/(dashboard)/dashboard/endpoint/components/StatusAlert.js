@@ -13,7 +13,7 @@ export default function StatusAlert({ status, className = "" }) {
     const parts = msg.split(/(https?:\/\/[^\s]+)/g);
     return parts.map((part, i) =>
       /^https?:\/\//.test(part)
-        ? <a key={i} href={part} target="_blank" rel="noreferrer" className="underline font-medium">{part}</a>
+        ? <a key={i} href={part} target="_blank" rel="noreferrer" className="inline-flex min-h-11 min-w-11 items-center underline font-medium">{part}</a>
         : part
     );
   };

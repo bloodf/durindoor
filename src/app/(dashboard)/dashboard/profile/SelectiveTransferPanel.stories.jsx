@@ -45,7 +45,7 @@ export const LoadCatalog = {
     const passwordInput = await body.findByLabelText("Current password");
     await userEvent.type(passwordInput, "password123");
     await userEvent.click(await body.findByRole("button", { name: "Continue" }));
-    await expect(await canvas.findByLabelText("OpenAI")).toBeVisible();
+    await expect((await canvas.findByLabelText("OpenAI")).closest("label")).toBeVisible();
   },
 };
 

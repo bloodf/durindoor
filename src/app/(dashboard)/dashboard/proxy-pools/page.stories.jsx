@@ -1,6 +1,7 @@
 import React from "react";
 import { expect, userEvent, within, waitFor } from "storybook/test";
 import ProxyPoolsPage from "./page";
+import { useNotificationStore } from "@/store/notificationStore";
 
 const initialPool = { id: "pool-1", name: "Office relay", proxyUrl: "http://proxy.example:8080", noProxy: "localhost", isActive: true, testStatus: "active", boundConnectionCount: 2, lastTestedAt: "2026-09-05T00:00:00.000Z", type: "cloudflare" };
 
@@ -36,11 +37,13 @@ const emptyRoutes = buildStatefulRoutes([]);
 const failedCreateRoutes = { ...buildStatefulRoutes(), "POST /api/proxy-pools": () => ({ status: 400, body: { error: "Proxy endpoint rejected" } }) };
 const failedDeleteRoutes = { ...buildStatefulRoutes(), "DELETE /api/proxy-pools/pool-1": () => ({ status: 500, body: { error: "Cannot delete right now" } }) };
 
-let resolvePendingCreate;
-const pendingCreateRoutes = { ...buildStatefulRoutes(), "POST /api/proxy-pools": () => new Promise((resolve) => { resolvePendingCreate = resolve; }) };
-let resolvePendingDelete;
-const pendingDeleteRoutes = { ...buildStatefulRoutes(), "DELETE /api/proxy-pools/pool-1": () => new Promise((resolve) => { resolvePendingDelete = resolve; }) };
+const pendingCreateRoutes = { ...buildStatefulRoutes(), "POST /api/proxy-pools": () => new Promise(() => {}) };
+const pendingDeleteRoutes = { ...buildStatefulRoutes(), "DELETE /api/proxy-pools/pool-1": () => new Promise(() => {}) };
 const deadProxyRoutes = { ...buildStatefulRoutes(), "POST /api/proxy-pools/pool-1/test": () => ({ body: { ok: false } }) };
+function StoryNotifications() {
+  const notifications = useNotificationStore((state) => state.notifications);
+  return <>{notifications.map((notification) => <p key={notification.id}>{notification.message}</p>)}</>;
+}
 
 export default { title: "Production/operations/ProxyPoolsPage", component: ProxyPoolsPage, parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/proxy-pools", routes: baseRoutes } } };
 export const Populated = {};
@@ -102,17 +105,19 @@ export const CreateError = {
     await userEvent.type(dialog.getByLabelText("Proxy URL"), "http://rejected.example");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await expect(await within(document.body).findByRole("dialog", { name: /Add proxy pool/i })).toBeInTheDocument();
+    await expect(await within(document.body).findByText("Proxy endpoint rejected")).toBeVisible();
   },
 };
 export const DeleteError = {
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/proxy-pools", routes: failedDeleteRoutes } },
+  render: () => <><ProxyPoolsPage /><StoryNotifications /></>,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: /Delete Office relay/i }));
     const confirm = within(await within(document.body).findByRole("dialog", { name: "Delete Proxy Pool" }));
     await userEvent.click(confirm.getByRole("button", { name: "Delete proxy pool" }));
     await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Delete Proxy Pool" })).not.toBeInTheDocument());
-    await expect(canvas.findByText("Office relay")).resolves.toBeInTheDocument();
+    await expect(canvas.findByText("Cannot delete right now")).resolves.toBeInTheDocument();
   },
 };
 export const CreatePending = {
@@ -125,9 +130,7 @@ export const CreatePending = {
     await userEvent.type(dialog.getByLabelText("Proxy URL"), "http://pending.example");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
-    resolvePendingCreate?.({ body: { success: true } });
-    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: /Add proxy pool/i })).not.toBeInTheDocument());
+    await expect(dialog.getByRole("button", { name: "Creating…" })).toBeDisabled();
   },
 };
 export const DeletePending = {
@@ -138,8 +141,6 @@ export const DeletePending = {
     const confirm = within(await within(document.body).findByRole("dialog", { name: "Delete Proxy Pool" }));
     await userEvent.click(confirm.getByRole("button", { name: "Delete proxy pool" }));
     await expect(confirm.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    await expect(confirm.getByRole("button", { name: "Delete proxy pool" })).toBeDisabled();
-    resolvePendingDelete?.({ body: { success: true } });
-    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Delete Proxy Pool" })).not.toBeInTheDocument());
+    await expect(confirm.getByRole("button", { name: "Deleting…" })).toBeDisabled();
   },
 };

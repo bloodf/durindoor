@@ -348,7 +348,7 @@ export function GenericExampleCard({ providerId, kind }) {
           {kind === "image" && (binaryImageUrl || result?.data?.data?.[0]) && (
             <div className="mt-2">
               <div className="mb-1.5 flex items-center justify-end">
-                <a href={binaryImageUrl || (result?.data?.data?.[0]?.b64_json ? `data:image/png;base64,${result.data.data[0].b64_json}` : result?.data?.data?.[0]?.url || "")} download="image.png" className="inline-flex items-center gap-1 text-xs text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
+                <a href={binaryImageUrl || (result?.data?.data?.[0]?.b64_json ? `data:image/png;base64,${result.data.data[0].b64_json}` : result?.data?.data?.[0]?.url || "")} download="image.png" className="inline-flex min-h-11 min-w-11 items-center gap-1 text-xs text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
                   <span aria-hidden="true" className="material-symbols-outlined text-[14px]">download</span>Download
                 </a>
               </div>

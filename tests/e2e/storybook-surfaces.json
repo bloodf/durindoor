@@ -4045,10 +4045,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c"
           },
-          "proposedSourceEvidence": "ErrorBoundary renders McpGatewayErrorHarness; default export logs \"MCP Gateway page error:\" via useEffect and delegates view; play asserts visible text and Try again/Reset chain.",
-          "expectedConsoleErrors": [
-            "MCP Gateway page error:"
-          ]
+          "proposedSourceEvidence": "ErrorBoundary renders McpGatewayErrorHarness; default export logs \"MCP Gateway page error:\" via useEffect and delegates view; story beforeEach suppresses that exact browser console call with spyOn(...).mockImplementation, then play asserts visible text and Try again/Reset chain."
         }
       ],
       "approvedException": null,
@@ -5231,7 +5228,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/SttExampleCard.js#SttExampleCard",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/SttExampleCard.js",
       "symbol": "SttExampleCard",
-      "sourceSha256": "58ccd4e2f82e130a5470667a7a273d3bd1c063adf888486eb21f947497d055c0",
+      "sourceSha256": "3807409c74c82c0ee596d3cb7e891f315b79aadb0282afb5a03b31e1665fc976",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-media-sttexamplecard--default, production-media-sttexamplecard--curl-copies. Pending runtime review.",
@@ -5250,7 +5247,7 @@
           "storyId": "production-media-sttexamplecard--curl-copies",
           "runtimeArtifactId": "production-media-sttexamplecard--curl-copies",
           "expectedVisibleText": null,
-          "expectedSha256": "58ccd4e2f82e130a5470667a7a273d3bd1c063adf888486eb21f947497d055c0",
+          "expectedSha256": "3807409c74c82c0ee596d3cb7e891f315b79aadb0282afb5a03b31e1665fc976",
           "axes": [
             "text",
             "controls"
@@ -5268,7 +5265,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "58ccd4e2f82e130a5470667a7a273d3bd1c063adf888486eb21f947497d055c0",
+          "expectedSha256": "3807409c74c82c0ee596d3cb7e891f315b79aadb0282afb5a03b31e1665fc976",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/SttExampleCard.js": "5afc3878526694ee94cdb720e2d33ee50b9cbcc316c892270559a25f181eb7f7"
           }
@@ -5339,7 +5336,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.js#MediaProviderDetailPage",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.js",
       "symbol": "MediaProviderDetailPage",
-      "sourceSha256": "e863fdfacaa9ba1db241c6f0209231510544defe1744d4c509af40d061a2c347",
+      "sourceSha256": "ec3adf74d5312a568344f100000c3b035ca23e72d27d941517b0711ac1eefbd9",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-media-providerdetail--embedding-example, production-media-providerdetail--run-example, production-media-providerdetail--tts-example. Pending runtime review.",
@@ -5359,7 +5356,7 @@
           "storyId": "production-media-providerdetail--run-example",
           "runtimeArtifactId": "production-media-providerdetail--run-example",
           "expectedVisibleText": null,
-          "expectedSha256": "e863fdfacaa9ba1db241c6f0209231510544defe1744d4c509af40d061a2c347",
+          "expectedSha256": "ec3adf74d5312a568344f100000c3b035ca23e72d27d941517b0711ac1eefbd9",
           "axes": [
             "text",
             "controls"
@@ -5378,7 +5375,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "e863fdfacaa9ba1db241c6f0209231510544defe1744d4c509af40d061a2c347",
+          "expectedSha256": "ec3adf74d5312a568344f100000c3b035ca23e72d27d941517b0711ac1eefbd9",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.js": "5e90039c622190b05825b64da442956eedcba2d0f8aefb8097e8b5f34e810faf"
           }
@@ -5393,7 +5390,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "e863fdfacaa9ba1db241c6f0209231510544defe1744d4c509af40d061a2c347",
+          "expectedSha256": "ec3adf74d5312a568344f100000c3b035ca23e72d27d941517b0711ac1eefbd9",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.js": "5e90039c622190b05825b64da442956eedcba2d0f8aefb8097e8b5f34e810faf"
           }
@@ -6239,7 +6236,7 @@
           "id": "production-profile-profilepage--shutdown-confirm",
           "storyId": "production-profile-profilepage--shutdown-confirm",
           "runtimeArtifactId": "production-profile-profilepage--shutdown-confirm",
-          "expectedVisibleText": "Shut down",
+          "expectedVisibleText": "Shutdown",
           "expectedSha256": "a954ad3f21a1aa19a8f411325100e3299ad18b79018c866abb8f39fcb0ee75b0",
           "axes": [
             "controls"
@@ -8089,7 +8086,7 @@
       "id": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js#PxpipeClient",
       "sourcePath": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js",
       "symbol": "PxpipeClient",
-      "sourceSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+      "sourceSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-pxpipe-pxpipeclient--populated, production-pxpipe-pxpipeclient--empty, production-pxpipe-pxpipeclient--unavailable, production-pxpipe-pxpipeclient--loading, production-pxpipe-pxpipeclient--keyboard-paging-and-range, production-pxpipe-pxpipeclient--rtl, production-pxpipe-pxpipeclient--mobile-viewport. Pending runtime review.",
@@ -8120,7 +8117,7 @@
           "storyId": "production-pxpipe-pxpipeclient--populated",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--populated",
           "expectedVisibleText": "PxPipe",
-          "expectedSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+          "expectedSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
           "axes": [
             "text"
           ],
@@ -8134,7 +8131,7 @@
           "storyId": "production-pxpipe-pxpipeclient--empty",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--empty",
           "expectedVisibleText": "No PxPipe activity yet",
-          "expectedSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+          "expectedSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
           "axes": [
             "empty"
           ],
@@ -8148,7 +8145,7 @@
           "storyId": "production-pxpipe-pxpipeclient--unavailable",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--unavailable",
           "expectedVisibleText": "PxPipe is unavailable",
-          "expectedSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+          "expectedSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
           "axes": [
             "error"
           ],
@@ -8161,8 +8158,8 @@
           "id": "production-pxpipe-pxpipeclient--loading",
           "storyId": "production-pxpipe-pxpipeclient--loading",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--loading",
-          "expectedVisibleText": "Loading PxPipe",
-          "expectedSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+          "expectedVisibleText": "Checking…",
+          "expectedSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
           "axes": [
             "loading"
           ],
@@ -8176,7 +8173,7 @@
           "storyId": "production-pxpipe-pxpipeclient--keyboard-paging-and-range",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--keyboard-paging-and-range",
           "expectedVisibleText": "Page 2",
-          "expectedSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+          "expectedSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
           "axes": [
             "keyboard",
             "controls"
@@ -8191,7 +8188,7 @@
           "storyId": "production-pxpipe-pxpipeclient--rtl",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--rtl",
           "expectedVisibleText": "PxPipe",
-          "expectedSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+          "expectedSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
           "axes": [
             "rtl"
           ],
@@ -8205,7 +8202,7 @@
           "storyId": "production-pxpipe-pxpipeclient--mobile-viewport",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--mobile-viewport",
           "expectedVisibleText": "PxPipe",
-          "expectedSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+          "expectedSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
           "axes": [
             "mobile"
           ],
@@ -8223,7 +8220,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+          "expectedSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca"
           }
@@ -8238,7 +8235,7 @@
       "id": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js#SummaryCard",
       "sourcePath": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js",
       "symbol": "SummaryCard",
-      "sourceSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+      "sourceSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "PxpipeClient renders SummaryCard across direct status fixture scenarios.",
@@ -8256,7 +8253,7 @@
           "storyId": "production-pxpipe-pxpipeclient--populated",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--populated",
           "expectedVisibleText": "Requests",
-          "expectedSha256": "d4096f1a0525dc83c62a58763b97296c8948012766bc738bcdf32ecc7e0a13cc",
+          "expectedSha256": "7ca5fade7bfbebd2346ef94ba4e84ca1518e71e78e63cca6e3f802ae2026ee0c",
           "axes": [
             "text"
           ],
@@ -9122,7 +9119,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#Editor",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "Editor",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "TranslatorWorkspace renders dynamic Editor for loaded expanded step.",
@@ -9144,7 +9141,7 @@
           "storyId": "production-translator-translatorworkspace--loaded-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--loaded-request",
           "expectedVisibleText": "gpt-5.2-codex",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "expanded",
             "text"
@@ -9159,7 +9156,7 @@
           "storyId": "production-translator-translatorworkspace--converts-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-request",
           "expectedVisibleText": "gpt-5.2-codex",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "expanded",
             "text"
@@ -9174,7 +9171,7 @@
           "storyId": "production-translator-translatorworkspace--sends-target-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--sends-target-request",
           "expectedVisibleText": "codex",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "expanded",
             "text"
@@ -9194,7 +9191,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#getAction",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "getAction",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-backed actual parent interaction; build/runtime review pending.",
@@ -9216,7 +9213,7 @@
           "storyId": "production-translator-translatorworkspace--converts-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-request",
           "expectedVisibleText": "To OpenAI",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "controls"
           ],
@@ -9230,7 +9227,7 @@
           "storyId": "production-translator-translatorworkspace--converts-to-target",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-to-target",
           "expectedVisibleText": "To Target",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "controls"
           ],
@@ -9244,7 +9241,7 @@
           "storyId": "production-translator-translatorworkspace--sends-target-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--sends-target-request",
           "expectedVisibleText": "Send",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "controls"
           ],
@@ -9263,7 +9260,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#MetaBadge",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "MetaBadge",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-translator-metabadge--neutral, production-translator-metabadge--info, production-translator-metabadge--warning, production-translator-metabadge--success, production-translator-metabadge--accent. Pending runtime review.",
@@ -9289,7 +9286,7 @@
           "storyId": "production-translator-metabadge--neutral",
           "runtimeArtifactId": "production-translator-metabadge--neutral",
           "expectedVisibleText": "Label",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "text"
           ],
@@ -9303,7 +9300,7 @@
           "storyId": "production-translator-metabadge--info",
           "runtimeArtifactId": "production-translator-metabadge--info",
           "expectedVisibleText": "Info",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "text"
           ],
@@ -9317,7 +9314,7 @@
           "storyId": "production-translator-metabadge--warning",
           "runtimeArtifactId": "production-translator-metabadge--warning",
           "expectedVisibleText": "Warning",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "text"
           ],
@@ -9331,7 +9328,7 @@
           "storyId": "production-translator-metabadge--success",
           "runtimeArtifactId": "production-translator-metabadge--success",
           "expectedVisibleText": "codex",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "text"
           ],
@@ -9345,7 +9342,7 @@
           "storyId": "production-translator-metabadge--accent",
           "runtimeArtifactId": "production-translator-metabadge--accent",
           "expectedVisibleText": "Accent",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "text"
           ],
@@ -9364,7 +9361,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#TranslatorNotice",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "TranslatorNotice",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Error state conditionally renders TranslatorNotice.",
@@ -9384,7 +9381,7 @@
           "storyId": "production-translator-translatorworkspace--load-failure",
           "runtimeArtifactId": "production-translator-translatorworkspace--load-failure",
           "expectedVisibleText": "Fixture capture missing",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "error"
           ],
@@ -9398,7 +9395,7 @@
           "storyId": "production-translator-translatorworkspace--dismiss-error",
           "runtimeArtifactId": "production-translator-translatorworkspace--dismiss-error",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "error"
           ],
@@ -9419,7 +9416,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#TranslatorStepCard",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "TranslatorStepCard",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-translator-translatorstepcard--collapsed-empty, production-translator-translatorstepcard--collapsed-loaded, production-translator-translatorstepcard--expanded, production-translator-translatorstepcard--text-expanded, production-translator-translatorstepcard--loading, production-translator-translatorstepcard--keyboard-enter-toggle. Pending runtime review.",
@@ -9447,7 +9444,7 @@
           "storyId": "production-translator-translatorstepcard--collapsed-empty",
           "runtimeArtifactId": "production-translator-translatorstepcard--collapsed-empty",
           "expectedVisibleText": "Not loaded",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "collapsed",
             "empty"
@@ -9462,7 +9459,7 @@
           "storyId": "production-translator-translatorstepcard--collapsed-loaded",
           "runtimeArtifactId": "production-translator-translatorstepcard--collapsed-loaded",
           "expectedVisibleText": "chars",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "collapsed",
             "text"
@@ -9477,7 +9474,7 @@
           "storyId": "production-translator-translatorstepcard--expanded",
           "runtimeArtifactId": "production-translator-translatorstepcard--expanded",
           "expectedVisibleText": "Load",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "expanded"
           ],
@@ -9491,7 +9488,7 @@
           "storyId": "production-translator-translatorstepcard--text-expanded",
           "runtimeArtifactId": "production-translator-translatorstepcard--text-expanded",
           "expectedVisibleText": "Plain text",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "expanded",
             "text"
@@ -9506,7 +9503,7 @@
           "storyId": "production-translator-translatorstepcard--loading",
           "runtimeArtifactId": "production-translator-translatorstepcard--loading",
           "expectedVisibleText": "Loading",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "loading"
           ],
@@ -9520,7 +9517,7 @@
           "storyId": "production-translator-translatorstepcard--keyboard-enter-toggle",
           "runtimeArtifactId": "production-translator-translatorstepcard--keyboard-enter-toggle",
           "expectedVisibleText": "Collapse",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "keyboard",
             "expanded"
@@ -9540,7 +9537,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#TranslatorWorkspace",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "TranslatorWorkspace",
-      "sourceSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+      "sourceSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-translator-translatorworkspace--empty, production-translator-translatorworkspace--loaded-request, production-translator-translatorworkspace--converts-request, production-translator-translatorworkspace--sends-target-request, production-translator-translatorworkspace--load-failure, production-translator-translatorworkspace--dismiss-error, production-translator-translatorworkspace--mobile-keyboard, production-translator-translatorworkspace--rtl. Pending runtime review.",
@@ -9572,7 +9569,7 @@
           "storyId": "production-translator-translatorworkspace--empty",
           "runtimeArtifactId": "production-translator-translatorworkspace--empty",
           "expectedVisibleText": "Load a captured request",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "empty"
           ],
@@ -9586,7 +9583,7 @@
           "storyId": "production-translator-translatorworkspace--loaded-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--loaded-request",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "text"
           ],
@@ -9600,7 +9597,7 @@
           "storyId": "production-translator-translatorworkspace--converts-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-request",
           "expectedVisibleText": "Collapse OpenAI Intermediate",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "expanded",
             "controls"
@@ -9615,7 +9612,7 @@
           "storyId": "production-translator-translatorworkspace--sends-target-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--sends-target-request",
           "expectedVisibleText": "Collapse Provider Response",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "expanded",
             "controls"
@@ -9630,7 +9627,7 @@
           "storyId": "production-translator-translatorworkspace--load-failure",
           "runtimeArtifactId": "production-translator-translatorworkspace--load-failure",
           "expectedVisibleText": "Fixture capture missing",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "error"
           ],
@@ -9644,7 +9641,7 @@
           "storyId": "production-translator-translatorworkspace--dismiss-error",
           "runtimeArtifactId": "production-translator-translatorworkspace--dismiss-error",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "error"
           ],
@@ -9658,7 +9655,7 @@
           "storyId": "production-translator-translatorworkspace--mobile-keyboard",
           "runtimeArtifactId": "production-translator-translatorworkspace--mobile-keyboard",
           "expectedVisibleText": "Collapse Source Body",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "mobile",
             "keyboard",
@@ -9674,7 +9671,7 @@
           "storyId": "production-translator-translatorworkspace--rtl",
           "runtimeArtifactId": "production-translator-translatorworkspace--rtl",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
+          "expectedSha256": "398631c119eb80eca91527d9b93001a8163e70bd7f5fed88e096712b53fa7e50",
           "axes": [
             "rtl"
           ],
@@ -13267,7 +13264,7 @@
       "id": "src/shared/components/Footer.js#Footer",
       "sourcePath": "src/shared/components/Footer.js",
       "symbol": "Footer",
-      "sourceSha256": "5898e57e1597172b5cb6f9af3b84b7ca44edf6b03d6d55efad2a281e146b205c",
+      "sourceSha256": "801d6f05334847d0065af0c36419f997b8fc81896dd6185ef67ec4aa1672f591",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-shared-support-footer--default, production-shared-support-footer--narrow-viewport. Pending runtime review.",
@@ -13287,7 +13284,7 @@
           "storyId": "production-shared-support-footer--default",
           "runtimeArtifactId": "production-shared-support-footer--default",
           "expectedVisibleText": "DurinDoor",
-          "expectedSha256": "5898e57e1597172b5cb6f9af3b84b7ca44edf6b03d6d55efad2a281e146b205c",
+          "expectedSha256": "801d6f05334847d0065af0c36419f997b8fc81896dd6185ef67ec4aa1672f591",
           "axes": [
             "default"
           ],
@@ -13301,7 +13298,7 @@
           "storyId": "production-shared-support-footer--narrow-viewport",
           "runtimeArtifactId": "production-shared-support-footer--narrow-viewport",
           "expectedVisibleText": "DurinDoor",
-          "expectedSha256": "5898e57e1597172b5cb6f9af3b84b7ca44edf6b03d6d55efad2a281e146b205c",
+          "expectedSha256": "801d6f05334847d0065af0c36419f997b8fc81896dd6185ef67ec4aa1672f591",
           "axes": [
             "mobile"
           ],
@@ -13320,7 +13317,7 @@
       "id": "src/shared/components/Footer.js#LinkGroup",
       "sourcePath": "src/shared/components/Footer.js",
       "symbol": "LinkGroup",
-      "sourceSha256": "5898e57e1597172b5cb6f9af3b84b7ca44edf6b03d6d55efad2a281e146b205c",
+      "sourceSha256": "801d6f05334847d0065af0c36419f997b8fc81896dd6185ef67ec4aa1672f591",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Footer default renders link groups.",
@@ -13338,7 +13335,7 @@
           "storyId": "production-shared-support-footer--default",
           "runtimeArtifactId": "production-shared-support-footer--default",
           "expectedVisibleText": "Resources",
-          "expectedSha256": "5898e57e1597172b5cb6f9af3b84b7ca44edf6b03d6d55efad2a281e146b205c",
+          "expectedSha256": "801d6f05334847d0065af0c36419f997b8fc81896dd6185ef67ec4aa1672f591",
           "axes": [
             "link-group"
           ],
@@ -15924,7 +15921,7 @@
       "id": "src/shared/components/ProviderInfoCard.js#ProviderInfoCard",
       "sourcePath": "src/shared/components/ProviderInfoCard.js",
       "symbol": "ProviderInfoCard",
-      "sourceSha256": "676c51b4e346dbc3903739c0bf8e2ce3c5457b906f91bebb4cc77bc3c23ae22c",
+      "sourceSha256": "3a8ef9c5966b0405b72d437a25441d5c3e828c8d768dee8061ce336cb2e2c196",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-shared-provider-providerinfocard--full-card, production-shared-provider-providerinfocard--no-config-returns-null. Pending runtime review.",
@@ -15942,7 +15939,7 @@
           "storyId": "production-shared-provider-providerinfocard--full-card",
           "runtimeArtifactId": "production-shared-provider-providerinfocard--full-card",
           "expectedVisibleText": null,
-          "expectedSha256": "676c51b4e346dbc3903739c0bf8e2ce3c5457b906f91bebb4cc77bc3c23ae22c",
+          "expectedSha256": "3a8ef9c5966b0405b72d437a25441d5c3e828c8d768dee8061ce336cb2e2c196",
           "axes": [
             "text"
           ],
@@ -16181,7 +16178,7 @@
       "id": "src/shared/components/Select.js#listboxContent",
       "sourcePath": "src/shared/components/Select.js",
       "symbol": "listboxContent",
-      "sourceSha256": "28a368e7e557c682ff01bf26c6e0dacb38a1eb597d8698a09b7924f16760e1f9",
+      "sourceSha256": "f92f3ddacd48f96eb4ef99fbe3bbba0786be1d4bfae798f7899ff1fca794d217",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Empty Options opens private listbox-content branch.",
@@ -16199,7 +16196,7 @@
           "storyId": "production-shared-actions-select--empty-options",
           "runtimeArtifactId": "production-shared-actions-select--empty-options",
           "expectedVisibleText": null,
-          "expectedSha256": "28a368e7e557c682ff01bf26c6e0dacb38a1eb597d8698a09b7924f16760e1f9",
+          "expectedSha256": "f92f3ddacd48f96eb4ef99fbe3bbba0786be1d4bfae798f7899ff1fca794d217",
           "axes": [
             "text",
             "controls",
@@ -16221,7 +16218,7 @@
       "id": "src/shared/components/Select.js#Select",
       "sourcePath": "src/shared/components/Select.js",
       "symbol": "Select",
-      "sourceSha256": "28a368e7e557c682ff01bf26c6e0dacb38a1eb597d8698a09b7924f16760e1f9",
+      "sourceSha256": "f92f3ddacd48f96eb4ef99fbe3bbba0786be1d4bfae798f7899ff1fca794d217",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-shared-actions-select--standalone, production-shared-actions-select--modal-form-fields, production-shared-actions-select--toolbar-placement, production-shared-actions-select--empty-options, production-shared-actions-select--working-selection, production-shared-actions-select--escape-closes. Pending runtime review.",
@@ -16249,7 +16246,7 @@
           "storyId": "production-shared-actions-select--standalone",
           "runtimeArtifactId": "production-shared-actions-select--standalone",
           "expectedVisibleText": "Select provider",
-          "expectedSha256": "28a368e7e557c682ff01bf26c6e0dacb38a1eb597d8698a09b7924f16760e1f9",
+          "expectedSha256": "f92f3ddacd48f96eb4ef99fbe3bbba0786be1d4bfae798f7899ff1fca794d217",
           "axes": [
             "placeholder"
           ],
@@ -16263,7 +16260,7 @@
           "storyId": "production-shared-actions-select--modal-form-fields",
           "runtimeArtifactId": "production-shared-actions-select--modal-form-fields",
           "expectedVisibleText": "Provider connection failed.",
-          "expectedSha256": "28a368e7e557c682ff01bf26c6e0dacb38a1eb597d8698a09b7924f16760e1f9",
+          "expectedSha256": "f92f3ddacd48f96eb4ef99fbe3bbba0786be1d4bfae798f7899ff1fca794d217",
           "axes": [
             "label",
             "hint",
@@ -16279,7 +16276,7 @@
           "storyId": "production-shared-actions-select--toolbar-placement",
           "runtimeArtifactId": "production-shared-actions-select--toolbar-placement",
           "expectedVisibleText": null,
-          "expectedSha256": "28a368e7e557c682ff01bf26c6e0dacb38a1eb597d8698a09b7924f16760e1f9",
+          "expectedSha256": "f92f3ddacd48f96eb4ef99fbe3bbba0786be1d4bfae798f7899ff1fca794d217",
           "axes": [
             "text"
           ],
@@ -16292,7 +16289,7 @@
           "storyId": "production-shared-actions-select--empty-options",
           "runtimeArtifactId": "production-shared-actions-select--empty-options",
           "expectedVisibleText": null,
-          "expectedSha256": "28a368e7e557c682ff01bf26c6e0dacb38a1eb597d8698a09b7924f16760e1f9",
+          "expectedSha256": "f92f3ddacd48f96eb4ef99fbe3bbba0786be1d4bfae798f7899ff1fca794d217",
           "axes": [
             "text",
             "controls",
@@ -16307,7 +16304,7 @@
           "storyId": "production-shared-actions-select--working-selection",
           "runtimeArtifactId": "production-shared-actions-select--working-selection",
           "expectedVisibleText": "Current: openai",
-          "expectedSha256": "28a368e7e557c682ff01bf26c6e0dacb38a1eb597d8698a09b7924f16760e1f9",
+          "expectedSha256": "f92f3ddacd48f96eb4ef99fbe3bbba0786be1d4bfae798f7899ff1fca794d217",
           "axes": [
             "keyboard",
             "selection"
@@ -16322,7 +16319,7 @@
           "storyId": "production-shared-actions-select--escape-closes",
           "runtimeArtifactId": "production-shared-actions-select--escape-closes",
           "expectedVisibleText": "Select an option",
-          "expectedSha256": "28a368e7e557c682ff01bf26c6e0dacb38a1eb597d8698a09b7924f16760e1f9",
+          "expectedSha256": "f92f3ddacd48f96eb4ef99fbe3bbba0786be1d4bfae798f7899ff1fca794d217",
           "axes": [
             "keyboard",
             "closed-final"
@@ -20201,7 +20198,7 @@
       "id": "src/shared/ui/components/Select.jsx#listbox",
       "sourcePath": "src/shared/ui/components/Select.jsx",
       "symbol": "listbox",
-      "sourceSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+      "sourceSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Many Options opens rendered listbox.",
@@ -20219,7 +20216,7 @@
           "storyId": "durin-ds-forms-select--many-options",
           "runtimeArtifactId": "durin-ds-forms-select--many-options",
           "expectedVisibleText": null,
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "axes": [
             "many-options",
             "keyboard",
@@ -20277,7 +20274,7 @@
       "id": "src/shared/ui/components/Select.jsx#Select",
       "sourcePath": "src/shared/ui/components/Select.jsx",
       "symbol": "Select",
-      "sourceSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+      "sourceSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-forms-select--default, durin-ds-forms-select--with-label-and-hint, durin-ds-forms-select--error, durin-ds-forms-select--disabled, durin-ds-forms-select--many-options, durin-ds-forms-select--with-icons-and-hints, durin-ds-forms-select--placement-top, durin-ds-forms-select--empty, durin-ds-forms-select--inside-modal, durin-ds-forms-select--example-form. Pending runtime review.",
@@ -20311,7 +20308,7 @@
           "storyId": "durin-ds-forms-select--default",
           "runtimeArtifactId": "durin-ds-forms-select--default",
           "expectedVisibleText": "OpenAI",
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "axes": [
             "selection",
             "keyboard",
@@ -20327,7 +20324,7 @@
           "storyId": "durin-ds-forms-select--error",
           "runtimeArtifactId": "durin-ds-forms-select--error",
           "expectedVisibleText": "Choose a provider before continuing.",
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "axes": [
             "error",
             "required",
@@ -20344,7 +20341,7 @@
           "storyId": "durin-ds-forms-select--disabled",
           "runtimeArtifactId": "durin-ds-forms-select--disabled",
           "expectedVisibleText": "Anthropic",
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "axes": [
             "disabled",
             "selection",
@@ -20360,7 +20357,7 @@
           "storyId": "durin-ds-forms-select--many-options",
           "runtimeArtifactId": "durin-ds-forms-select--many-options",
           "expectedVisibleText": "Model 18",
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "axes": [
             "many-options",
             "keyboard",
@@ -20377,7 +20374,7 @@
           "storyId": "durin-ds-forms-select--with-icons-and-hints",
           "runtimeArtifactId": "durin-ds-forms-select--with-icons-and-hints",
           "expectedVisibleText": "Claude Sonnet",
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "axes": [
             "icon",
             "hint",
@@ -20394,7 +20391,7 @@
           "storyId": "durin-ds-forms-select--placement-top",
           "runtimeArtifactId": "durin-ds-forms-select--placement-top",
           "expectedVisibleText": null,
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "axes": [
             "text",
             "controls"
@@ -20408,7 +20405,7 @@
           "storyId": "durin-ds-forms-select--empty",
           "runtimeArtifactId": "durin-ds-forms-select--empty",
           "expectedVisibleText": "No options",
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "axes": [
             "expanded",
             "empty",
@@ -20424,7 +20421,7 @@
           "storyId": "durin-ds-forms-select--inside-modal",
           "runtimeArtifactId": "durin-ds-forms-select--inside-modal",
           "expectedVisibleText": "Provider settings",
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "axes": [
             "expanded",
             "controls",
@@ -20445,7 +20442,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "sourceHashes": {
             "src/shared/ui/components/Select.jsx": "5415e6d72dda683a1d19db7f8a397d4ae0527dfcd9c75df92557efc99b5bd9d0"
           }
@@ -20460,7 +20457,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "b600ca4b571669acdea7e25560468a9454320c8edc3d93ad897a0b6e9f099bc3",
+          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
           "sourceHashes": {
             "src/shared/ui/components/Select.jsx": "5415e6d72dda683a1d19db7f8a397d4ae0527dfcd9c75df92557efc99b5bd9d0"
           }
@@ -24595,7 +24592,7 @@
       "id": "src/shared/ui/pages/timeline/TimelinePage.jsx#ConnectionId",
       "sourcePath": "src/shared/ui/pages/timeline/TimelinePage.jsx",
       "symbol": "ConnectionId",
-      "sourceSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+      "sourceSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-timeline--default imports and renders page; reference-only DS mock scenario reaches ConnectionId. Missing branch proof: ['No production story renders ConnectionId; mapped story is DS mock/reference only.']",
@@ -24613,7 +24610,7 @@
           "storyId": "durin-ds-pages-timeline--default",
           "runtimeArtifactId": "durin-ds-pages-timeline--default",
           "expectedVisibleText": "Showing 1 to 10 of 37 results",
-          "expectedSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+          "expectedSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
           "axes": [
             "controls",
             "text"
@@ -24635,7 +24632,7 @@
       "id": "src/shared/ui/pages/timeline/TimelinePage.jsx#RequestsChart",
       "sourcePath": "src/shared/ui/pages/timeline/TimelinePage.jsx",
       "symbol": "RequestsChart",
-      "sourceSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+      "sourceSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-timeline--default imports and renders page; reference-only DS mock scenario reaches RequestsChart. Missing branch proof: ['No production story renders RequestsChart; mapped story is DS mock/reference only.']",
@@ -24653,7 +24650,7 @@
           "storyId": "durin-ds-pages-timeline--default",
           "runtimeArtifactId": "durin-ds-pages-timeline--default",
           "expectedVisibleText": "Requests over time",
-          "expectedSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+          "expectedSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
           "axes": [
             "text"
           ],
@@ -24674,7 +24671,7 @@
       "id": "src/shared/ui/pages/timeline/TimelinePage.jsx#StatusMix",
       "sourcePath": "src/shared/ui/pages/timeline/TimelinePage.jsx",
       "symbol": "StatusMix",
-      "sourceSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+      "sourceSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-timeline--default imports and renders page; reference-only DS mock scenario reaches StatusMix. Missing branch proof: ['No production story renders StatusMix; mapped story is DS mock/reference only.']",
@@ -24692,7 +24689,7 @@
           "storyId": "durin-ds-pages-timeline--default",
           "runtimeArtifactId": "durin-ds-pages-timeline--default",
           "expectedVisibleText": null,
-          "expectedSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+          "expectedSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
           "axes": [
             "controls",
             "text"
@@ -24713,7 +24710,7 @@
       "id": "src/shared/ui/pages/timeline/TimelinePage.jsx#TimelinePage",
       "sourcePath": "src/shared/ui/pages/timeline/TimelinePage.jsx",
       "symbol": "TimelinePage",
-      "sourceSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+      "sourceSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-timeline--default, durin-ds-pages-timeline--filtered-to-aborted, durin-ds-pages-timeline--loading, durin-ds-pages-timeline--empty, durin-ds-pages-timeline--with-detail-drawer. Pending runtime review.",
@@ -24739,7 +24736,7 @@
           "storyId": "durin-ds-pages-timeline--default",
           "runtimeArtifactId": "durin-ds-pages-timeline--default",
           "expectedVisibleText": null,
-          "expectedSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+          "expectedSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
           "axes": [
             "controls",
             "text"
@@ -24753,7 +24750,7 @@
           "storyId": "durin-ds-pages-timeline--filtered-to-aborted",
           "runtimeArtifactId": "durin-ds-pages-timeline--filtered-to-aborted",
           "expectedVisibleText": null,
-          "expectedSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+          "expectedSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
           "axes": [
             "filtered",
             "text"
@@ -24767,7 +24764,7 @@
           "storyId": "durin-ds-pages-timeline--loading",
           "runtimeArtifactId": "durin-ds-pages-timeline--loading",
           "expectedVisibleText": "Timeline",
-          "expectedSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+          "expectedSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
           "axes": [
             "loading",
             "text"
@@ -24782,7 +24779,7 @@
           "storyId": "durin-ds-pages-timeline--empty",
           "runtimeArtifactId": "durin-ds-pages-timeline--empty",
           "expectedVisibleText": null,
-          "expectedSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+          "expectedSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
           "axes": [
             "empty",
             "text"
@@ -24796,7 +24793,7 @@
           "storyId": "durin-ds-pages-timeline--with-detail-drawer",
           "runtimeArtifactId": "durin-ds-pages-timeline--with-detail-drawer",
           "expectedVisibleText": null,
-          "expectedSha256": "4241d17cb4010e258889dd277b2cd79cad532a7e411ad045bf544b5cab3f6c5e",
+          "expectedSha256": "50eada92195fbe4da5158a3734f1817f94afe9e177c91c224d909778b5f8dc88",
           "axes": [
             "expanded",
             "text"

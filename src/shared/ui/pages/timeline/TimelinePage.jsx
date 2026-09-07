@@ -116,6 +116,14 @@ function RequestsChart({ rows }) {
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="var(--dd-border-subtle)" strokeDasharray="3 3" vertical={false} />
+              <Area
+                type="monotone"
+                dataKey="events"
+                stroke="var(--dd-accent)"
+                strokeWidth={2}
+                fill="url(#timelineRequestsFill)"
+                activeDot={{ fill: "var(--dd-accent)", stroke: "var(--dd-surface)", strokeWidth: 2 }}
+              />
               <XAxis
                 dataKey="time"
                 axisLine={false}
@@ -140,14 +148,6 @@ function RequestsChart({ rows }) {
                   fontSize: 12,
                 }}
                 formatter={(value) => [Number(value).toLocaleString(), "Events"]}
-              />
-              <Area
-                type="monotone"
-                dataKey="events"
-                stroke="var(--dd-accent)"
-                strokeWidth={2}
-                fill="url(#timelineRequestsFill)"
-                activeDot={{ fill: "var(--dd-accent)", stroke: "var(--dd-surface)", strokeWidth: 2 }}
               />
               {runningPeak ? (
                 <ReferenceDot

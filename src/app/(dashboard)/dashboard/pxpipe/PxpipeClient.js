@@ -216,6 +216,7 @@ export default function PxpipeClient({ embedded = false }) {
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="var(--dd-border-subtle)" strokeDasharray="3 3" vertical={false} />
+                    <Area type="monotone" dataKey="tokensSavedEst" stroke="var(--dd-accent)" strokeWidth={2} fill="url(#pxpipeTokensFill)" activeDot={{ fill: "var(--dd-accent)", stroke: "var(--dd-surface)", strokeWidth: 2 }} />
                     <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "var(--dd-text-subtle)", fontSize: 11 }} tickMargin={10} tickFormatter={(date) => date.slice(5)} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--dd-text-subtle)", fontSize: 11 }} tickFormatter={fmtTokens} width={52} />
                     <Tooltip
@@ -224,7 +225,6 @@ export default function PxpipeClient({ embedded = false }) {
                       formatter={(value) => [value == null ? "No PXPIPE activity" : `${fmtTokens(value)} tokens`, "Tokens saved"]}
                       labelFormatter={(date) => date}
                     />
-                    <Area type="monotone" dataKey="tokensSavedEst" stroke="var(--dd-accent)" strokeWidth={2} fill="url(#pxpipeTokensFill)" activeDot={{ fill: "var(--dd-accent)", stroke: "var(--dd-surface)", strokeWidth: 2 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

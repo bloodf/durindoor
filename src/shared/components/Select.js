@@ -216,7 +216,6 @@ export default function Select({
         type="button"
         role="combobox"
         disabled={disabled}
-        aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxMounted ? listboxId : undefined}
         aria-activedescendant={listboxMounted && activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}

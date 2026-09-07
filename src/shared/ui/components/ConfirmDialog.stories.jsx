@@ -83,4 +83,13 @@ export const Primary = {
       confirmLabel="Regenerate"
     />
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Regenerate gateway key" }));
+    const dialog = within(document.body);
+    await expect(await dialog.findByRole("dialog", { name: "Regenerate gateway key?" })).toBeVisible();
+    await expect(dialog.getByText("The old key stops working immediately. Any CLI tool still configured with it will need the new key.")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Regenerate" })).toBeVisible();
+  },
 };

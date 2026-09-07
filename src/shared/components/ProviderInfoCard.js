@@ -60,7 +60,7 @@ export default function ProviderInfoCard({ config, provider, title = "Provider I
               <dt className="w-28 shrink-0 text-xs text-dd-muted">{row.label}</dt>
               <dd className="min-w-0 flex-1">
                 {row.isLink ? (
-                  <a href={row.raw} target="_blank" rel="noopener noreferrer" className={`block truncate text-[13px] text-dd-accent outline-none hover:underline focus-visible:rounded-dd focus-visible:shadow-dd-focus ${row.mono ? "font-mono dd-tnum" : ""}`}>
+                  <a href={row.raw} target="_blank" rel="noopener noreferrer" className={`flex min-h-11 items-center truncate text-[13px] text-dd-accent outline-none hover:underline focus-visible:rounded-dd focus-visible:shadow-dd-focus ${row.mono ? "font-mono dd-tnum" : ""}`}>
                     {row.value}
                   </a>
                 ) : (

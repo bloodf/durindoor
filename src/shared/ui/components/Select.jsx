@@ -228,7 +228,6 @@ export default function Select({
         role="combobox"
         aria-autocomplete="none"
         disabled={disabled}
-        aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxMounted ? listboxId : undefined}
         aria-activedescendant={listboxMounted && activeIndex >= 0 ? optionId(activeIndex) : undefined}

@@ -32,6 +32,7 @@ const EDITOR_OPTIONS = {
   scrollBeyondLastLine: false,
   wordWrap: "on",
   automaticLayout: true,
+  editContext: false,
 };
 
 function TranslatorNotice({ error, onDismiss }) {

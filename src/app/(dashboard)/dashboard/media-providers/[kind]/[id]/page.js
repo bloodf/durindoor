@@ -93,7 +93,7 @@ export default function MediaProviderDetailPage() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-xl font-semibold tracking-tight text-dd-text">{provider.name}</h1>
-              {!isCustom && provider.notice?.apiKeyUrl && <a href={provider.notice.apiKeyUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-dd-accent outline-none hover:underline focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">open_in_new</span>Get API Key</a>}
+              {!isCustom && provider.notice?.apiKeyUrl && <a href={provider.notice.apiKeyUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 min-w-11 items-center gap-1 rounded-dd px-2 text-xs font-medium text-dd-accent outline-none hover:underline focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">open_in_new</span>Get API Key</a>}
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {isCustom && <Badge tone="neutral" size="sm">Custom · {customNode?.prefix}</Badge>}
@@ -105,7 +105,7 @@ export default function MediaProviderDetailPage() {
       </header>
       {deleteError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{deleteError}</p>}
       {!isCustom && provider.kindNotice?.[kind] && <div role="note" className="flex items-start gap-3 rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-4 py-3 text-[13px] text-dd-warning"><span aria-hidden="true" className="material-symbols-outlined text-[18px]">warning</span><p>{provider.kindNotice[kind]}</p></div>}
-      {!isCustom && provider.notice?.text && !provider.deprecated && <div role="note" className="flex flex-col gap-2 rounded-dd border border-dd-info/30 bg-dd-info/10 px-4 py-3 text-[13px] text-dd-info sm:flex-row sm:items-center"><span aria-hidden="true" className="material-symbols-outlined text-[18px]">info</span><p className="min-w-0 flex-1">{provider.notice.text}</p>{provider.notice.apiKeyUrl && <a href={provider.notice.apiKeyUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium underline outline-none focus-visible:shadow-dd-focus">Get API Key</a>}</div>}
+      {!isCustom && provider.notice?.text && !provider.deprecated && <div role="note" className="flex flex-col gap-2 rounded-dd border border-dd-info/30 bg-dd-info/10 px-4 py-3 text-[13px] text-dd-info sm:flex-row sm:items-center"><span aria-hidden="true" className="material-symbols-outlined text-[18px]">info</span><p className="min-w-0 flex-1">{provider.notice.text}</p>{provider.notice.apiKeyUrl && <a href={provider.notice.apiKeyUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 min-w-11 items-center rounded-dd px-2 text-xs font-medium underline outline-none focus-visible:shadow-dd-focus">Get API Key</a>}</div>}
 
       {/* Connections */}
       {!isCustom && provider.noAuth ? (

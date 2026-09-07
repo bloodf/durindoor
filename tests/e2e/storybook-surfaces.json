@@ -8,7 +8,7 @@
       "id": "src/app/(dashboard)/dashboard/api-docs/page.js#ApiDocsPage",
       "sourcePath": "src/app/(dashboard)/dashboard/api-docs/page.js",
       "symbol": "ApiDocsPage",
-      "sourceSha256": "5fc4a6301001be455710ff55ec49d27138fd1768074c197289d90cd728879320",
+      "sourceSha256": "3eceecff2def84b9b781f16bfafc658d02cfbb656caed8fa5080d3d389921015",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-production-pages-api-docs--default. Pending runtime review.",
@@ -26,7 +26,7 @@
           "storyId": "durin-ds-production-pages-api-docs--default",
           "runtimeArtifactId": "durin-ds-production-pages-api-docs--default",
           "expectedVisibleText": "API Documentation",
-          "expectedSha256": "5fc4a6301001be455710ff55ec49d27138fd1768074c197289d90cd728879320",
+          "expectedSha256": "3eceecff2def84b9b781f16bfafc658d02cfbb656caed8fa5080d3d389921015",
           "axes": [
             "text",
             "controls"
@@ -46,7 +46,7 @@
       "id": "src/app/(dashboard)/dashboard/api-docs/page.js#CategoryHeader",
       "sourcePath": "src/app/(dashboard)/dashboard/api-docs/page.js",
       "symbol": "CategoryHeader",
-      "sourceSha256": "5fc4a6301001be455710ff55ec49d27138fd1768074c197289d90cd728879320",
+      "sourceSha256": "3eceecff2def84b9b781f16bfafc658d02cfbb656caed8fa5080d3d389921015",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story durin-ds-production-pages-api-docs--default; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -64,7 +64,7 @@
           "storyId": "durin-ds-production-pages-api-docs--default",
           "runtimeArtifactId": "durin-ds-production-pages-api-docs--default",
           "expectedVisibleText": "Chat & Completions",
-          "expectedSha256": "5fc4a6301001be455710ff55ec49d27138fd1768074c197289d90cd728879320",
+          "expectedSha256": "3eceecff2def84b9b781f16bfafc658d02cfbb656caed8fa5080d3d389921015",
           "axes": [
             "text"
           ],
@@ -83,7 +83,7 @@
       "id": "src/app/(dashboard)/dashboard/api-docs/page.js#EndpointRow",
       "sourcePath": "src/app/(dashboard)/dashboard/api-docs/page.js",
       "symbol": "EndpointRow",
-      "sourceSha256": "5fc4a6301001be455710ff55ec49d27138fd1768074c197289d90cd728879320",
+      "sourceSha256": "3eceecff2def84b9b781f16bfafc658d02cfbb656caed8fa5080d3d389921015",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story durin-ds-production-pages-api-docs--default; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -101,7 +101,7 @@
           "storyId": "durin-ds-production-pages-api-docs--default",
           "runtimeArtifactId": "durin-ds-production-pages-api-docs--default",
           "expectedVisibleText": "/api/v1/chat/completions",
-          "expectedSha256": "5fc4a6301001be455710ff55ec49d27138fd1768074c197289d90cd728879320",
+          "expectedSha256": "3eceecff2def84b9b781f16bfafc658d02cfbb656caed8fa5080d3d389921015",
           "axes": [
             "text"
           ],
@@ -120,7 +120,7 @@
       "id": "src/app/(dashboard)/dashboard/api-docs/page.js#InlineCode",
       "sourcePath": "src/app/(dashboard)/dashboard/api-docs/page.js",
       "symbol": "InlineCode",
-      "sourceSha256": "5fc4a6301001be455710ff55ec49d27138fd1768074c197289d90cd728879320",
+      "sourceSha256": "3eceecff2def84b9b781f16bfafc658d02cfbb656caed8fa5080d3d389921015",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story durin-ds-production-pages-api-docs--default; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -138,7 +138,7 @@
           "storyId": "durin-ds-production-pages-api-docs--default",
           "runtimeArtifactId": "durin-ds-production-pages-api-docs--default",
           "expectedVisibleText": "Authorization: Bearer <key>",
-          "expectedSha256": "5fc4a6301001be455710ff55ec49d27138fd1768074c197289d90cd728879320",
+          "expectedSha256": "3eceecff2def84b9b781f16bfafc658d02cfbb656caed8fa5080d3d389921015",
           "axes": [
             "text"
           ],
@@ -157,7 +157,7 @@
       "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#ActionEntry",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
       "symbol": "ActionEntry",
-      "sourceSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+      "sourceSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "AutoConfigureClient renders this private child; StatusPreview loads service/actions, RunSuccess replaces status with report, RunFailure renders request error.",
@@ -175,7 +175,7 @@
           "storyId": "durin-ds-production-pages-auto-configure--status-preview",
           "runtimeArtifactId": "durin-ds-production-pages-auto-configure--status-preview",
           "expectedVisibleText": "$ npm install firecrawl",
-          "expectedSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+          "expectedSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
           "axes": [
             "expanded",
             "text"
@@ -198,7 +198,7 @@
       "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#AutoConfigureClient",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
       "symbol": "AutoConfigureClient",
-      "sourceSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+      "sourceSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-production-pages-auto-configure--status-preview, durin-ds-production-pages-auto-configure--run-success, durin-ds-production-pages-auto-configure--run-failure. Pending runtime review.",
@@ -220,7 +220,7 @@
           "storyId": "durin-ds-production-pages-auto-configure--status-preview",
           "runtimeArtifactId": "durin-ds-production-pages-auto-configure--status-preview",
           "expectedVisibleText": "Auto-configure",
-          "expectedSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+          "expectedSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
           "axes": [
             "text",
             "expanded"
@@ -235,7 +235,7 @@
           "storyId": "durin-ds-production-pages-auto-configure--run-success",
           "runtimeArtifactId": "durin-ds-production-pages-auto-configure--run-success",
           "expectedVisibleText": "Dry run result",
-          "expectedSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+          "expectedSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
           "axes": [
             "text",
             "controls"
@@ -250,7 +250,7 @@
           "storyId": "durin-ds-production-pages-auto-configure--run-failure",
           "runtimeArtifactId": "durin-ds-production-pages-auto-configure--run-failure",
           "expectedVisibleText": "Configuration service unavailable",
-          "expectedSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+          "expectedSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
           "axes": [
             "error",
             "controls"
@@ -270,7 +270,7 @@
       "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#ResultSummary",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
       "symbol": "ResultSummary",
-      "sourceSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+      "sourceSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "AutoConfigureClient renders this private child; StatusPreview loads service/actions, RunSuccess replaces status with report, RunFailure renders request error.",
@@ -288,7 +288,7 @@
           "storyId": "durin-ds-production-pages-auto-configure--run-success",
           "runtimeArtifactId": "durin-ds-production-pages-auto-configure--run-success",
           "expectedVisibleText": "Dry run result",
-          "expectedSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+          "expectedSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
           "axes": [
             "text"
           ],
@@ -310,7 +310,7 @@
       "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#ServiceRow",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
       "symbol": "ServiceRow",
-      "sourceSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+      "sourceSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "AutoConfigureClient renders this private child; StatusPreview loads service/actions, RunSuccess replaces status with report, RunFailure renders request error.",
@@ -330,7 +330,7 @@
           "storyId": "durin-ds-production-pages-auto-configure--status-preview",
           "runtimeArtifactId": "durin-ds-production-pages-auto-configure--status-preview",
           "expectedVisibleText": "Headroom",
-          "expectedSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+          "expectedSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
           "axes": [
             "text"
           ],
@@ -344,7 +344,7 @@
           "storyId": "durin-ds-production-pages-auto-configure--run-success",
           "runtimeArtifactId": "durin-ds-production-pages-auto-configure--run-success",
           "expectedVisibleText": "Firecrawl",
-          "expectedSha256": "1a73b7cf2c0e30dd74d11ac8b9609ee260f276aec89d9f627fa74f73e8005669",
+          "expectedSha256": "8d4f1dfce55b79c4be59b3b3e0f35c4490a2038eb3821f49d98772bbc632b156",
           "axes": [
             "text"
           ],
@@ -821,7 +821,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/AntigravityToolCard.js#AntigravityToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/AntigravityToolCard.js",
       "symbol": "AntigravityToolCard",
-      "sourceSha256": "802918bf42503bbe185d4d617f1c5081b79a98857863753dc115dcfce45e58ad",
+      "sourceSha256": "8ebdcbbeac50db846de963d5e07fe93f41ee75dc8ce71f16ae99be97ccafed8d",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "ToolCards stories directly render AntigravityToolCard inactive and active states.",
@@ -841,7 +841,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-toolcards--antigravity-inactive",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--antigravity-inactive",
           "expectedVisibleText": "Start MITM",
-          "expectedSha256": "802918bf42503bbe185d4d617f1c5081b79a98857863753dc115dcfce45e58ad",
+          "expectedSha256": "8ebdcbbeac50db846de963d5e07fe93f41ee75dc8ce71f16ae99be97ccafed8d",
           "axes": [
             "expanded",
             "server=stopped"
@@ -856,7 +856,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-toolcards--antigravity-active",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--antigravity-active",
           "expectedVisibleText": "Antigravity",
-          "expectedSha256": "802918bf42503bbe185d4d617f1c5081b79a98857863753dc115dcfce45e58ad",
+          "expectedSha256": "8ebdcbbeac50db846de963d5e07fe93f41ee75dc8ce71f16ae99be97ccafed8d",
           "axes": [
             "expanded",
             "server=running"
@@ -876,7 +876,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js#ApiKeySelect",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js",
       "symbol": "ApiKeySelect",
-      "sourceSha256": "1f1cc016ed27314d73d005104a27d07d3af699503c35b7aecc7342fb4b5203ab",
+      "sourceSha256": "ea4b5080351e1303e16307982258416b770cae0aff26a7183d1d5be7a7009cf8",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-production-pages-cli-tools-apikeyselect--empty, durin-ds-production-pages-cli-tools-apikeyselect--with-managed-keys, durin-ds-production-pages-cli-tools-apikeyselect--cloud-enabled, durin-ds-production-pages-cli-tools-apikeyselect--type-input. Pending runtime review.",
@@ -899,7 +899,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-apikeyselect--with-managed-keys",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-apikeyselect--with-managed-keys",
           "expectedVisibleText": null,
-          "expectedSha256": "1f1cc016ed27314d73d005104a27d07d3af699503c35b7aecc7342fb4b5203ab",
+          "expectedSha256": "ea4b5080351e1303e16307982258416b770cae0aff26a7183d1d5be7a7009cf8",
           "axes": [
             "text"
           ],
@@ -912,7 +912,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-apikeyselect--cloud-enabled",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-apikeyselect--cloud-enabled",
           "expectedVisibleText": null,
-          "expectedSha256": "1f1cc016ed27314d73d005104a27d07d3af699503c35b7aecc7342fb4b5203ab",
+          "expectedSha256": "ea4b5080351e1303e16307982258416b770cae0aff26a7183d1d5be7a7009cf8",
           "axes": [
             "text"
           ],
@@ -925,7 +925,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-apikeyselect--type-input",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-apikeyselect--type-input",
           "expectedVisibleText": null,
-          "expectedSha256": "1f1cc016ed27314d73d005104a27d07d3af699503c35b7aecc7342fb4b5203ab",
+          "expectedSha256": "ea4b5080351e1303e16307982258416b770cae0aff26a7183d1d5be7a7009cf8",
           "axes": [
             "text",
             "controls",
@@ -945,7 +945,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "1f1cc016ed27314d73d005104a27d07d3af699503c35b7aecc7342fb4b5203ab",
+          "expectedSha256": "ea4b5080351e1303e16307982258416b770cae0aff26a7183d1d5be7a7009cf8",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/cli-tools/components/ApiKeySelect.js": "1f1cc016ed27314d73d005104a27d07d3af699503c35b7aecc7342fb4b5203ab"
           }
@@ -1048,7 +1048,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js#ClaudeToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/ClaudeToolCard.js",
       "symbol": "ClaudeToolCard",
-      "sourceSha256": "d85507f455bb55e5ff9a78f14d0964269b04e69150c7449e59f5192964f66d93",
+      "sourceSha256": "8fb7cd0b5a8f2d6531aba7b12135510c6ecbebcbef483854782d947be18001da",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -1068,7 +1068,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-toolcards--claude-collapsed",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--claude-collapsed",
           "expectedVisibleText": null,
-          "expectedSha256": "d85507f455bb55e5ff9a78f14d0964269b04e69150c7449e59f5192964f66d93",
+          "expectedSha256": "8fb7cd0b5a8f2d6531aba7b12135510c6ecbebcbef483854782d947be18001da",
           "axes": [
             "text"
           ],
@@ -1082,7 +1082,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-toolcards--claude-expanded",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--claude-expanded",
           "expectedVisibleText": null,
-          "expectedSha256": "d85507f455bb55e5ff9a78f14d0964269b04e69150c7449e59f5192964f66d93",
+          "expectedSha256": "8fb7cd0b5a8f2d6531aba7b12135510c6ecbebcbef483854782d947be18001da",
           "axes": [
             "text"
           ],
@@ -1137,7 +1137,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/ClineToolCard.js#ClineToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/ClineToolCard.js",
       "symbol": "ClineToolCard",
-      "sourceSha256": "c0b30ce0fa042339a61d01127549574870dfab353743381c56681bc046d18a8b",
+      "sourceSha256": "b2a49167f9c8704bc2ab077b5daddaf4f18d6d345a963a847ee255aa78603235",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -1155,7 +1155,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--cline",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--cline",
           "expectedVisibleText": "Cline",
-          "expectedSha256": "c0b30ce0fa042339a61d01127549574870dfab353743381c56681bc046d18a8b",
+          "expectedSha256": "b2a49167f9c8704bc2ab077b5daddaf4f18d6d345a963a847ee255aa78603235",
           "axes": [
             "loaded",
             "toolId=cline"
@@ -1175,7 +1175,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/CodexToolCard.js#CodexToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/CodexToolCard.js",
       "symbol": "CodexToolCard",
-      "sourceSha256": "701ca6cafd79f77e80ba3edb4a94dea95f4b68de76eda8df27a7f9960c0421a4",
+      "sourceSha256": "ebaecffb3317cd419be431845933cf5dc042da77f3cc22d52b840c526c719650",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -1193,7 +1193,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--codex",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--codex",
           "expectedVisibleText": "Codex",
-          "expectedSha256": "701ca6cafd79f77e80ba3edb4a94dea95f4b68de76eda8df27a7f9960c0421a4",
+          "expectedSha256": "ebaecffb3317cd419be431845933cf5dc042da77f3cc22d52b840c526c719650",
           "axes": [
             "loaded",
             "toolId=codex"
@@ -1289,7 +1289,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DeepSeekTuiToolCard.js#DeepSeekTuiToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DeepSeekTuiToolCard.js",
       "symbol": "DeepSeekTuiToolCard",
-      "sourceSha256": "32b9bf1a98c18aa3feea45f3a8894d9411524ab1e2e590a14de6c963703d12db",
+      "sourceSha256": "2755a1646d7cc8fe44c2d821a7c360b008d26e461e42ab377ef810b4bb87007b",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -1307,7 +1307,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--deep-seek-tui",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--deep-seek-tui",
           "expectedVisibleText": "DeepSeek TUI",
-          "expectedSha256": "32b9bf1a98c18aa3feea45f3a8894d9411524ab1e2e590a14de6c963703d12db",
+          "expectedSha256": "2755a1646d7cc8fe44c2d821a7c360b008d26e461e42ab377ef810b4bb87007b",
           "axes": [
             "loaded",
             "toolId=deepseek-tui"
@@ -1327,7 +1327,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js#DefaultToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js",
       "symbol": "DefaultToolCard",
-      "sourceSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+      "sourceSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Actual production parent scenario added; runtime and branch review pending.",
@@ -1347,7 +1347,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "expectedVisibleText": null,
-          "expectedSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+          "expectedSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
           "axes": [
             "text",
             "controls",
@@ -1362,7 +1362,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-defaulttoolcard--cursor-external-url-unavailable",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-defaulttoolcard--cursor-external-url-unavailable",
           "expectedVisibleText": null,
-          "expectedSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+          "expectedSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
           "axes": [
             "text"
           ],
@@ -1382,7 +1382,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js#renderApiKeySelector",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js",
       "symbol": "renderApiKeySelector",
-      "sourceSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+      "sourceSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Actual production parent scenario added; runtime and branch review pending.",
@@ -1400,7 +1400,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "expectedVisibleText": null,
-          "expectedSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+          "expectedSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
           "axes": [
             "text",
             "controls",
@@ -1422,7 +1422,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js#renderGuideSteps",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js",
       "symbol": "renderGuideSteps",
-      "sourceSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+      "sourceSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Actual production parent scenario added; runtime and branch review pending.",
@@ -1442,7 +1442,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "expectedVisibleText": null,
-          "expectedSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+          "expectedSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
           "axes": [
             "text",
             "controls",
@@ -1457,7 +1457,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-defaulttoolcard--cursor-external-url-unavailable",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-defaulttoolcard--cursor-external-url-unavailable",
           "expectedVisibleText": null,
-          "expectedSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+          "expectedSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
           "axes": [
             "text"
           ],
@@ -1477,7 +1477,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js#renderIcon",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js",
       "symbol": "renderIcon",
-      "sourceSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+      "sourceSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Actual production parent scenario added; runtime and branch review pending.",
@@ -1495,7 +1495,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "expectedVisibleText": null,
-          "expectedSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+          "expectedSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
           "axes": [
             "text",
             "controls",
@@ -1515,7 +1515,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js#renderModelSelector",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js",
       "symbol": "renderModelSelector",
-      "sourceSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+      "sourceSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Actual production parent scenario added; runtime and branch review pending.",
@@ -1533,7 +1533,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "expectedVisibleText": null,
-          "expectedSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+          "expectedSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
           "axes": [
             "text",
             "controls",
@@ -1555,7 +1555,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js#renderNotes",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DefaultToolCard.js",
       "symbol": "renderNotes",
-      "sourceSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+      "sourceSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Actual production parent scenario added; runtime and branch review pending.",
@@ -1575,7 +1575,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-defaulttoolcard--qwen-guide-configured",
           "expectedVisibleText": null,
-          "expectedSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+          "expectedSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
           "axes": [
             "text",
             "controls",
@@ -1590,7 +1590,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-defaulttoolcard--cursor-external-url-unavailable",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-defaulttoolcard--cursor-external-url-unavailable",
           "expectedVisibleText": null,
-          "expectedSha256": "b011f94a1beb915efd64665f4cf5de405404fa21ebd44e7f29b27dc33be3823e",
+          "expectedSha256": "62119d061927293b2942fb1e50536efc8b37bf4844564f3043f7bbcf20f117dd",
           "axes": [
             "text"
           ],
@@ -1610,7 +1610,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js#DroidToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/DroidToolCard.js",
       "symbol": "DroidToolCard",
-      "sourceSha256": "97aafc35ca9ff7e66e78f86410fe4bdeed78469277d77303ef444d91ae81e053",
+      "sourceSha256": "b9dee2466d8dacf08b1a12660a2350d3efd3ecf899ded2fc49e513a4a2283977",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -1628,7 +1628,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--droid",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--droid",
           "expectedVisibleText": "Droid",
-          "expectedSha256": "97aafc35ca9ff7e66e78f86410fe4bdeed78469277d77303ef444d91ae81e053",
+          "expectedSha256": "b9dee2466d8dacf08b1a12660a2350d3efd3ecf899ded2fc49e513a4a2283977",
           "axes": [
             "loaded",
             "toolId=droid"
@@ -1648,7 +1648,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js#EndpointPresetControl",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js",
       "symbol": "EndpointPresetControl",
-      "sourceSha256": "92a8e39347d8768ced3a4508362b5605cfc0c5d369491d75523e35e6e906008b",
+      "sourceSha256": "04e2fde4b3ea7400ccd7696eff0eaad7b74c8f056e841395a4a174eb68999f40",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-production-pages-cli-tools-endpointpresetcontrol--no-presets, durin-ds-production-pages-cli-tools-endpointpresetcontrol--with-presets, durin-ds-production-pages-cli-tools-endpointpresetcontrol--open-save-dialog. Pending runtime review.",
@@ -1669,7 +1669,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-endpointpresetcontrol--with-presets",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-endpointpresetcontrol--with-presets",
           "expectedVisibleText": null,
-          "expectedSha256": "92a8e39347d8768ced3a4508362b5605cfc0c5d369491d75523e35e6e906008b",
+          "expectedSha256": "04e2fde4b3ea7400ccd7696eff0eaad7b74c8f056e841395a4a174eb68999f40",
           "axes": [
             "text",
             "controls"
@@ -1683,7 +1683,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-endpointpresetcontrol--open-save-dialog",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-endpointpresetcontrol--open-save-dialog",
           "expectedVisibleText": null,
-          "expectedSha256": "92a8e39347d8768ced3a4508362b5605cfc0c5d369491d75523e35e6e906008b",
+          "expectedSha256": "04e2fde4b3ea7400ccd7696eff0eaad7b74c8f056e841395a4a174eb68999f40",
           "axes": [
             "text",
             "controls"
@@ -1702,7 +1702,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "92a8e39347d8768ced3a4508362b5605cfc0c5d369491d75523e35e6e906008b",
+          "expectedSha256": "04e2fde4b3ea7400ccd7696eff0eaad7b74c8f056e841395a4a174eb68999f40",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/cli-tools/components/EndpointPresetControl.js": "92a8e39347d8768ced3a4508362b5605cfc0c5d369491d75523e35e6e906008b"
           }
@@ -1719,7 +1719,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/GrokBuildToolCard.js#GrokBuildToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/GrokBuildToolCard.js",
       "symbol": "GrokBuildToolCard",
-      "sourceSha256": "922105b7889f754774b7565d950ec9c1ce0a8226e4621680c1a19a91d2505164",
+      "sourceSha256": "9605d62e5d3f0e5de58daff7b7c057e03aff7085d1fe1718937e1b706d3a8041",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -1737,7 +1737,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--grok-build",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--grok-build",
           "expectedVisibleText": "Grok Build",
-          "expectedSha256": "922105b7889f754774b7565d950ec9c1ce0a8226e4621680c1a19a91d2505164",
+          "expectedSha256": "9605d62e5d3f0e5de58daff7b7c057e03aff7085d1fe1718937e1b706d3a8041",
           "axes": [
             "loaded",
             "toolId=grok-build"
@@ -1757,7 +1757,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/HermesToolCard.js#HermesToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/HermesToolCard.js",
       "symbol": "HermesToolCard",
-      "sourceSha256": "2adf53c58ca819a51a65cc842f45014d32a72695ba211e88b8d96f13a599f055",
+      "sourceSha256": "d0abada2b0fcc80481f0298f98fdb8cb5b94c7c2885be75f519022416bbf9cc5",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -1775,7 +1775,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--hermes",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--hermes",
           "expectedVisibleText": "Hermes",
-          "expectedSha256": "2adf53c58ca819a51a65cc842f45014d32a72695ba211e88b8d96f13a599f055",
+          "expectedSha256": "d0abada2b0fcc80481f0298f98fdb8cb5b94c7c2885be75f519022416bbf9cc5",
           "axes": [
             "loaded",
             "toolId=hermes"
@@ -1813,7 +1813,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/JcodeToolCard.js#JcodeToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/JcodeToolCard.js",
       "symbol": "JcodeToolCard",
-      "sourceSha256": "f857456f1117adc39984799f53696b66216d5cc55d2dc803db72db62221f30af",
+      "sourceSha256": "b4973602bfee8e1b55e6b19702437f682d74a099010279054969127049266171",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -1831,7 +1831,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--jcode",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--jcode",
           "expectedVisibleText": "Jcode",
-          "expectedSha256": "f857456f1117adc39984799f53696b66216d5cc55d2dc803db72db62221f30af",
+          "expectedSha256": "b4973602bfee8e1b55e6b19702437f682d74a099010279054969127049266171",
           "axes": [
             "loaded",
             "toolId=jcode"
@@ -1851,7 +1851,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/KiloToolCard.js#KiloToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/KiloToolCard.js",
       "symbol": "KiloToolCard",
-      "sourceSha256": "402d291e79397e3fba4687184b674a3c312f3a86f4eca6eb82cb5ae04c73cbb7",
+      "sourceSha256": "02f2994cb5ae99a74b72ddafb4e820b7bd8565995eccb0c0a14ef27fce3efdb3",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -1869,7 +1869,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--kilo",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--kilo",
           "expectedVisibleText": "Kilo Code",
-          "expectedSha256": "402d291e79397e3fba4687184b674a3c312f3a86f4eca6eb82cb5ae04c73cbb7",
+          "expectedSha256": "02f2994cb5ae99a74b72ddafb4e820b7bd8565995eccb0c0a14ef27fce3efdb3",
           "axes": [
             "loaded",
             "toolId=kilo"
@@ -2026,7 +2026,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js#MitmServerCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js",
       "symbol": "MitmServerCard",
-      "sourceSha256": "2ae299e59b2430665dc6033dc2863274fe72bcca584873b163a9b95bc1689233",
+      "sourceSha256": "8169508751b3fde820366095740595f746b23a089db8465126196118a5778204",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -2046,7 +2046,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-stopped",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-stopped",
           "expectedVisibleText": "MITM",
-          "expectedSha256": "2ae299e59b2430665dc6033dc2863274fe72bcca584873b163a9b95bc1689233",
+          "expectedSha256": "8169508751b3fde820366095740595f746b23a089db8465126196118a5778204",
           "axes": [
             "server=stopped"
           ],
@@ -2060,7 +2060,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-running",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-toolcards--mitm-server-running",
           "expectedVisibleText": "Running",
-          "expectedSha256": "2ae299e59b2430665dc6033dc2863274fe72bcca584873b163a9b95bc1689233",
+          "expectedSha256": "8169508751b3fde820366095740595f746b23a089db8465126196118a5778204",
           "axes": [
             "server=running",
             "api-key-present",
@@ -2081,7 +2081,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/MitmToolCard.js#MitmToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/MitmToolCard.js",
       "symbol": "MitmToolCard",
-      "sourceSha256": "31973d8d096e4e0175cfcf0235d1c3e2c8b5cca6d4c3db9d778f7a42aa36128a",
+      "sourceSha256": "074e76f2a976c4e785f8370936c82b28f66556ba972d6bcca41f436ca95b1b61",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-production-pages-cli-tools-mitmtoolcard--collapsed, durin-ds-production-pages-cli-tools-mitmtoolcard--dns-off, durin-ds-production-pages-cli-tools-mitmtoolcard--dns-active, durin-ds-production-pages-cli-tools-mitmtoolcard--sudo-prompted. Pending runtime review.",
@@ -2105,7 +2105,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-mitmtoolcard--collapsed",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-mitmtoolcard--collapsed",
           "expectedVisibleText": null,
-          "expectedSha256": "31973d8d096e4e0175cfcf0235d1c3e2c8b5cca6d4c3db9d778f7a42aa36128a",
+          "expectedSha256": "074e76f2a976c4e785f8370936c82b28f66556ba972d6bcca41f436ca95b1b61",
           "axes": [
             "text"
           ],
@@ -2118,7 +2118,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-mitmtoolcard--dns-off",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-mitmtoolcard--dns-off",
           "expectedVisibleText": null,
-          "expectedSha256": "31973d8d096e4e0175cfcf0235d1c3e2c8b5cca6d4c3db9d778f7a42aa36128a",
+          "expectedSha256": "074e76f2a976c4e785f8370936c82b28f66556ba972d6bcca41f436ca95b1b61",
           "axes": [
             "text"
           ],
@@ -2131,7 +2131,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-mitmtoolcard--dns-active",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-mitmtoolcard--dns-active",
           "expectedVisibleText": null,
-          "expectedSha256": "31973d8d096e4e0175cfcf0235d1c3e2c8b5cca6d4c3db9d778f7a42aa36128a",
+          "expectedSha256": "074e76f2a976c4e785f8370936c82b28f66556ba972d6bcca41f436ca95b1b61",
           "axes": [
             "text"
           ],
@@ -2144,7 +2144,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-mitmtoolcard--sudo-prompted",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-mitmtoolcard--sudo-prompted",
           "expectedVisibleText": null,
-          "expectedSha256": "31973d8d096e4e0175cfcf0235d1c3e2c8b5cca6d4c3db9d778f7a42aa36128a",
+          "expectedSha256": "074e76f2a976c4e785f8370936c82b28f66556ba972d6bcca41f436ca95b1b61",
           "axes": [
             "text",
             "controls"
@@ -2165,7 +2165,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/OpenClawToolCard.js#OpenClawToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/OpenClawToolCard.js",
       "symbol": "OpenClawToolCard",
-      "sourceSha256": "7f5b0fd4dd4570b96e041f522187833c48b52743e7e85dccbcba5810b13b3f87",
+      "sourceSha256": "8bcaf18fd0c318abf038718baba3ebd4acc46b42888188d95d04ece6a13f9e98",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -2183,7 +2183,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--open-claw",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--open-claw",
           "expectedVisibleText": "OpenClaw",
-          "expectedSha256": "7f5b0fd4dd4570b96e041f522187833c48b52743e7e85dccbcba5810b13b3f87",
+          "expectedSha256": "8bcaf18fd0c318abf038718baba3ebd4acc46b42888188d95d04ece6a13f9e98",
           "axes": [
             "loaded",
             "toolId=openclaw"
@@ -2203,7 +2203,7 @@
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/OpenCodeToolCard.js#OpenCodeToolCard",
       "sourcePath": "src/app/(dashboard)/dashboard/cli-tools/components/OpenCodeToolCard.js",
       "symbol": "OpenCodeToolCard",
-      "sourceSha256": "2e5ae1d4fed5e2c9931d7f8b5dcd9489a1e41e28d193982fd5229cc6ce058ea4",
+      "sourceSha256": "02d9b6109ba54a9982d7bfc27b1f0ff6694bdab43af335adf5783b17ac385378",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current ToolDetailClient dispatch or direct ToolCards story renders this card branch.",
@@ -2221,7 +2221,7 @@
           "storyId": "durin-ds-production-pages-cli-tools-tooldetailclient--open-code",
           "runtimeArtifactId": "durin-ds-production-pages-cli-tools-tooldetailclient--open-code",
           "expectedVisibleText": "OpenCode",
-          "expectedSha256": "2e5ae1d4fed5e2c9931d7f8b5dcd9489a1e41e28d193982fd5229cc6ce058ea4",
+          "expectedSha256": "02d9b6109ba54a9982d7bfc27b1f0ff6694bdab43af335adf5783b17ac385378",
           "axes": [
             "loaded",
             "toolId=opencode"
@@ -2555,7 +2555,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboCard",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboCard",
-      "sourceSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+      "sourceSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-combos-combospage--load-failure-error; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -2573,7 +2573,7 @@
           "storyId": "production-combos-combospage--default",
           "runtimeArtifactId": "production-combos-combospage--default",
           "expectedVisibleText": null,
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "text"
           ],
@@ -2593,7 +2593,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboFormModal",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboFormModal",
-      "sourceSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+      "sourceSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-combos-combospage--load-failure-error; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -2611,7 +2611,7 @@
           "storyId": "production-combos-combospage--load-failure-error",
           "runtimeArtifactId": "production-combos-combospage--load-failure-error",
           "expectedVisibleText": null,
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "text",
             "controls",
@@ -2634,7 +2634,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#CombosPage",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "CombosPage",
-      "sourceSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+      "sourceSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-combos-combospage--default, production-combos-combospage--empty, production-combos-combospage--load-failure, production-combos-combospage--delete-flow, production-combos-combospage--create-flow, production-combos-combospage--edit-flow, production-combos-combospage--save-failure, production-combos-combospage--load-failure-error. Pending runtime review.",
@@ -2664,7 +2664,7 @@
           "storyId": "production-combos-combospage--default",
           "runtimeArtifactId": "production-combos-combospage--default",
           "expectedVisibleText": "Combos",
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "text"
           ],
@@ -2678,7 +2678,7 @@
           "storyId": "production-combos-combospage--empty",
           "runtimeArtifactId": "production-combos-combospage--empty",
           "expectedVisibleText": "No combos yet",
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "empty"
           ],
@@ -2692,7 +2692,7 @@
           "storyId": "production-combos-combospage--load-failure",
           "runtimeArtifactId": "production-combos-combospage--load-failure",
           "expectedVisibleText": "Combos restored",
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "error"
           ],
@@ -2706,7 +2706,7 @@
           "storyId": "production-combos-combospage--delete-flow",
           "runtimeArtifactId": "production-combos-combospage--delete-flow",
           "expectedVisibleText": "Combos",
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "controls"
           ],
@@ -2720,7 +2720,7 @@
           "storyId": "production-combos-combospage--create-flow",
           "runtimeArtifactId": "production-combos-combospage--create-flow",
           "expectedVisibleText": "Create combo",
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "controls"
           ],
@@ -2734,7 +2734,7 @@
           "storyId": "production-combos-combospage--edit-flow",
           "runtimeArtifactId": "production-combos-combospage--edit-flow",
           "expectedVisibleText": "Edit combo",
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "controls"
           ],
@@ -2748,7 +2748,7 @@
           "storyId": "production-combos-combospage--save-failure",
           "runtimeArtifactId": "production-combos-combospage--save-failure",
           "expectedVisibleText": "Failed to save combo",
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "error"
           ],
@@ -2767,7 +2767,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ModelItem",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ModelItem",
-      "sourceSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+      "sourceSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-combos-combospage--load-failure-error; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -2785,7 +2785,7 @@
           "storyId": "production-combos-combospage--edit-flow",
           "runtimeArtifactId": "production-combos-combospage--edit-flow",
           "expectedVisibleText": null,
-          "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
+          "expectedSha256": "32afb2cfdba640b63852863214ae0178f546be794352137e588885133d8569cb",
           "axes": [
             "controls"
           ],
@@ -2805,7 +2805,7 @@
       "id": "src/app/(dashboard)/dashboard/compression-studio/page.js#CompressionStudioPage",
       "sourcePath": "src/app/(dashboard)/dashboard/compression-studio/page.js",
       "symbol": "CompressionStudioPage",
-      "sourceSha256": "d99e8cae69d2e8fff579df34b09deae5b7f5f3f5cbb65347cf4db79eae0b8452",
+      "sourceSha256": "dc28768b21de99ee602c903d9568258607e2004c64076168d8634e169d455abb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-production-pages-compression-studio--empty, durin-ds-production-pages-compression-studio--preview-result, durin-ds-production-pages-compression-studio--unavailable-engine, durin-ds-production-pages-compression-studio--preview-failure. Pending runtime review.",
@@ -2829,7 +2829,7 @@
           "storyId": "durin-ds-production-pages-compression-studio--empty",
           "runtimeArtifactId": "durin-ds-production-pages-compression-studio--empty",
           "expectedVisibleText": "Compression Studio",
-          "expectedSha256": "d99e8cae69d2e8fff579df34b09deae5b7f5f3f5cbb65347cf4db79eae0b8452",
+          "expectedSha256": "dc28768b21de99ee602c903d9568258607e2004c64076168d8634e169d455abb",
           "axes": [
             "empty",
             "controls"
@@ -2844,7 +2844,7 @@
           "storyId": "durin-ds-production-pages-compression-studio--preview-result",
           "runtimeArtifactId": "durin-ds-production-pages-compression-studio--preview-result",
           "expectedVisibleText": "Compression preview",
-          "expectedSha256": "d99e8cae69d2e8fff579df34b09deae5b7f5f3f5cbb65347cf4db79eae0b8452",
+          "expectedSha256": "dc28768b21de99ee602c903d9568258607e2004c64076168d8634e169d455abb",
           "axes": [
             "text"
           ],
@@ -2858,7 +2858,7 @@
           "storyId": "durin-ds-production-pages-compression-studio--unavailable-engine",
           "runtimeArtifactId": "durin-ds-production-pages-compression-studio--unavailable-engine",
           "expectedVisibleText": "unavailable",
-          "expectedSha256": "d99e8cae69d2e8fff579df34b09deae5b7f5f3f5cbb65347cf4db79eae0b8452",
+          "expectedSha256": "dc28768b21de99ee602c903d9568258607e2004c64076168d8634e169d455abb",
           "axes": [
             "error"
           ],
@@ -2872,7 +2872,7 @@
           "storyId": "durin-ds-production-pages-compression-studio--preview-failure",
           "runtimeArtifactId": "durin-ds-production-pages-compression-studio--preview-failure",
           "expectedVisibleText": "Unsupported request",
-          "expectedSha256": "d99e8cae69d2e8fff579df34b09deae5b7f5f3f5cbb65347cf4db79eae0b8452",
+          "expectedSha256": "dc28768b21de99ee602c903d9568258607e2004c64076168d8634e169d455abb",
           "axes": [
             "error"
           ],
@@ -2891,7 +2891,7 @@
       "id": "src/app/(dashboard)/dashboard/compression-studio/page.js#RawOutput",
       "sourcePath": "src/app/(dashboard)/dashboard/compression-studio/page.js",
       "symbol": "RawOutput",
-      "sourceSha256": "d99e8cae69d2e8fff579df34b09deae5b7f5f3f5cbb65347cf4db79eae0b8452",
+      "sourceSha256": "dc28768b21de99ee602c903d9568258607e2004c64076168d8634e169d455abb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story durin-ds-production-pages-compression-studio--preview-failure; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -2909,7 +2909,7 @@
           "storyId": "durin-ds-production-pages-compression-studio--preview-result",
           "runtimeArtifactId": "durin-ds-production-pages-compression-studio--preview-result",
           "expectedVisibleText": null,
-          "expectedSha256": "d99e8cae69d2e8fff579df34b09deae5b7f5f3f5cbb65347cf4db79eae0b8452",
+          "expectedSha256": "dc28768b21de99ee602c903d9568258607e2004c64076168d8634e169d455abb",
           "axes": [
             "text"
           ],
@@ -2929,7 +2929,7 @@
       "id": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js#colorLine",
       "sourcePath": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js",
       "symbol": "colorLine",
-      "sourceSha256": "d8b0bd477288673b1841aa8e229c6a846484d30206680c2fc96ef00b60aeb646",
+      "sourceSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
       "proposedClassification": "nonvisual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Pure log-level class helper; no visual markup.",
@@ -2947,7 +2947,7 @@
           "storyId": "production-operations-consolelogclient--filter-pause-and-clear",
           "runtimeArtifactId": "production-operations-consolelogclient--filter-pause-and-clear",
           "expectedVisibleText": "No console logs yet.",
-          "expectedSha256": "d8b0bd477288673b1841aa8e229c6a846484d30206680c2fc96ef00b60aeb646",
+          "expectedSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
           "axes": [
             "text"
           ],
@@ -2963,7 +2963,7 @@
       "id": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js#ConsoleLogClient",
       "sourcePath": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js",
       "symbol": "ConsoleLogClient",
-      "sourceSha256": "d8b0bd477288673b1841aa8e229c6a846484d30206680c2fc96ef00b60aeb646",
+      "sourceSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-operations-consolelogclient--streaming, production-operations-consolelogclient--empty, production-operations-consolelogclient--filter-pause-and-clear. Pending runtime review.",
@@ -2985,7 +2985,7 @@
           "storyId": "production-operations-consolelogclient--streaming",
           "runtimeArtifactId": "production-operations-consolelogclient--streaming",
           "expectedVisibleText": "Console log",
-          "expectedSha256": "d8b0bd477288673b1841aa8e229c6a846484d30206680c2fc96ef00b60aeb646",
+          "expectedSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
           "axes": [
             "text"
           ],
@@ -2999,7 +2999,7 @@
           "storyId": "production-operations-consolelogclient--empty",
           "runtimeArtifactId": "production-operations-consolelogclient--empty",
           "expectedVisibleText": "No log entries",
-          "expectedSha256": "d8b0bd477288673b1841aa8e229c6a846484d30206680c2fc96ef00b60aeb646",
+          "expectedSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
           "axes": [
             "empty"
           ],
@@ -3013,7 +3013,7 @@
           "storyId": "production-operations-consolelogclient--filter-pause-and-clear",
           "runtimeArtifactId": "production-operations-consolelogclient--filter-pause-and-clear",
           "expectedVisibleText": "Clear",
-          "expectedSha256": "d8b0bd477288673b1841aa8e229c6a846484d30206680c2fc96ef00b60aeb646",
+          "expectedSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
           "axes": [
             "controls"
           ],
@@ -3104,7 +3104,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyPolicyFields.js#ApiKeyPolicyFields",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyPolicyFields.js",
       "symbol": "ApiKeyPolicyFields",
-      "sourceSha256": "ad958569828feb7c2309f78e5e06d674a4d685c2054055426b3a051b2758c83b",
+      "sourceSha256": "827bc0c155591e5d59ecf2023adb83b06ce82f98574e8948db45d326720cde26",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-endpoint-apikeypolicyfields--all-models, production-endpoint-apikeypolicyfields--selected-models-scope, production-endpoint-apikeypolicyfields--catalog-loading, production-endpoint-apikeypolicyfields--usage-limit-reached. Pending runtime review.",
@@ -3128,7 +3128,7 @@
           "storyId": "production-endpoint-apikeypolicyfields--all-models",
           "runtimeArtifactId": "production-endpoint-apikeypolicyfields--all-models",
           "expectedVisibleText": null,
-          "expectedSha256": "ad958569828feb7c2309f78e5e06d674a4d685c2054055426b3a051b2758c83b",
+          "expectedSha256": "827bc0c155591e5d59ecf2023adb83b06ce82f98574e8948db45d326720cde26",
           "axes": [
             "text"
           ],
@@ -3141,7 +3141,7 @@
           "storyId": "production-endpoint-apikeypolicyfields--selected-models-scope",
           "runtimeArtifactId": "production-endpoint-apikeypolicyfields--selected-models-scope",
           "expectedVisibleText": null,
-          "expectedSha256": "ad958569828feb7c2309f78e5e06d674a4d685c2054055426b3a051b2758c83b",
+          "expectedSha256": "827bc0c155591e5d59ecf2023adb83b06ce82f98574e8948db45d326720cde26",
           "axes": [
             "text",
             "controls"
@@ -3155,7 +3155,7 @@
           "storyId": "production-endpoint-apikeypolicyfields--catalog-loading",
           "runtimeArtifactId": "production-endpoint-apikeypolicyfields--catalog-loading",
           "expectedVisibleText": null,
-          "expectedSha256": "ad958569828feb7c2309f78e5e06d674a4d685c2054055426b3a051b2758c83b",
+          "expectedSha256": "827bc0c155591e5d59ecf2023adb83b06ce82f98574e8948db45d326720cde26",
           "axes": [
             "loading"
           ],
@@ -3168,7 +3168,7 @@
           "storyId": "production-endpoint-apikeypolicyfields--usage-limit-reached",
           "runtimeArtifactId": "production-endpoint-apikeypolicyfields--usage-limit-reached",
           "expectedVisibleText": null,
-          "expectedSha256": "ad958569828feb7c2309f78e5e06d674a4d685c2054055426b3a051b2758c83b",
+          "expectedSha256": "827bc0c155591e5d59ecf2023adb83b06ce82f98574e8948db45d326720cde26",
           "axes": [
             "text"
           ],
@@ -3479,7 +3479,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#ApiKeyRow",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "ApiKeyRow",
-      "sourceSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+      "sourceSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "EndpointPageClient maps fetched API keys into ApiKeyRow; listed built scenarios cover keys empty/populated/pause/mixed.",
@@ -3498,7 +3498,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--pause-confirmation",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--pause-confirmation",
           "expectedVisibleText": "Pause API Key",
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "loaded",
             "key=active",
@@ -3521,7 +3521,7 @@
             "controls",
             "resume"
           ],
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10"
           }
@@ -3538,7 +3538,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#APIPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "APIPageClient",
-      "sourceSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+      "sourceSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-production-pages-endpoint-key--default, durin-ds-production-pages-endpoint-key--empty-keys, durin-ds-production-pages-endpoint-key--pause-confirmation, durin-ds-production-pages-endpoint-key--login-unsafe, durin-ds-production-pages-endpoint-key--remote-host-no-key, durin-ds-production-pages-endpoint-key--tunnel-error, durin-ds-production-pages-endpoint-key--tunnel-enabled-external, durin-ds-production-pages-endpoint-key--tunnel-healthy, durin-ds-production-pages-endpoint-key--tunnel-unreachable, durin-ds-production-pages-endpoint-key--tunnel-disabled, durin-ds-production-pages-endpoint-key--key-mix-with-resume. Pending runtime review.",
@@ -3574,7 +3574,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--default",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--default",
           "expectedVisibleText": "Production key",
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "loaded",
             "safe-settings",
@@ -3590,7 +3590,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--empty-keys",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--empty-keys",
           "expectedVisibleText": "Create API Key",
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "loaded",
             "keys=empty",
@@ -3606,7 +3606,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--pause-confirmation",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--pause-confirmation",
           "expectedVisibleText": null,
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "loaded",
             "key=active",
@@ -3622,7 +3622,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--login-unsafe",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--login-unsafe",
           "expectedVisibleText": null,
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "text"
           ],
@@ -3635,7 +3635,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--remote-host-no-key",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--remote-host-no-key",
           "expectedVisibleText": null,
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "text"
           ],
@@ -3648,7 +3648,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--tunnel-error",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--tunnel-error",
           "expectedVisibleText": null,
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "error",
             "text"
@@ -3662,7 +3662,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--tunnel-enabled-external",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--tunnel-enabled-external",
           "expectedVisibleText": null,
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "text"
           ],
@@ -3675,7 +3675,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--tunnel-healthy",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--tunnel-healthy",
           "expectedVisibleText": null,
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "loaded",
             "tunnel=enabled"
@@ -3689,7 +3689,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--tunnel-unreachable",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--tunnel-unreachable",
           "expectedVisibleText": null,
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "loaded",
             "tunnel=unreachable",
@@ -3704,7 +3704,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--tunnel-disabled",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--tunnel-disabled",
           "expectedVisibleText": null,
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "text"
           ],
@@ -3724,7 +3724,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#CardSkeleton",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "CardSkeleton",
-      "sourceSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+      "sourceSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Actual production parent scenario added; runtime and branch review pending.",
@@ -3742,7 +3742,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--loading",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--loading",
           "expectedVisibleText": null,
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "loading"
           ],
@@ -3761,7 +3761,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#RowLabel",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "RowLabel",
-      "sourceSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+      "sourceSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "EndpointPageClient renders RowLabel inside endpoint/tunnel rows.",
@@ -3779,7 +3779,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--tunnel-healthy",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--tunnel-healthy",
           "expectedVisibleText": "Cloudflare",
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "loaded",
             "tunnel=enabled"
@@ -3801,7 +3801,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#StatePill",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "StatePill",
-      "sourceSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+      "sourceSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Tunnel fixtures select StatePill status branches.",
@@ -3819,7 +3819,7 @@
           "storyId": "durin-ds-production-pages-endpoint-key--tunnel-unreachable",
           "runtimeArtifactId": "durin-ds-production-pages-endpoint-key--tunnel-unreachable",
           "expectedVisibleText": "Tunnel reconnecting",
-          "expectedSha256": "96b848d94467983c314d97163c8bfd2d3f67ef921d8b58e5f9097ce163dceb10",
+          "expectedSha256": "938182178fbcb96f5d407c9e0a43692d6b3c81d596ac8f2ecdfc54cdcc6d97bc",
           "axes": [
             "loaded",
             "tunnel=unreachable",
@@ -4096,7 +4096,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#CreatedKeyDialog",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "CreatedKeyDialog",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches CreatedKeyDialog through listed fixture/action scenarios. Missing branch proof: ['No fixture proves successful create response reveals write-once key dialog.']",
@@ -4114,7 +4114,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--new-key-keyboard",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--new-key-keyboard",
           "expectedVisibleText": "Gateway key created",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "keyboard",
             "controls"
@@ -4136,7 +4136,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#FormSelect",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "FormSelect",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches FormSelect through listed fixture/action scenarios.",
@@ -4156,7 +4156,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--create-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--create-instance",
           "expectedVisibleText": "story-search",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4170,7 +4170,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "expectedVisibleText": "jira-story",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4189,7 +4189,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#GrantsModal",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "GrantsModal",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches GrantsModal through listed fixture/action scenarios.",
@@ -4207,7 +4207,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--save-grants",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--save-grants",
           "expectedVisibleText": "Save grants",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4226,7 +4226,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#InstanceEditModal",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "InstanceEditModal",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches InstanceEditModal through listed fixture/action scenarios.",
@@ -4246,7 +4246,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--create-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--create-instance",
           "expectedVisibleText": "New instance",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4260,7 +4260,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "expectedVisibleText": "jira-story",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls",
             "text"
@@ -4280,7 +4280,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#InstanceRow",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "InstanceRow",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches InstanceRow through listed fixture/action scenarios.",
@@ -4302,7 +4302,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
           "expectedVisibleText": "granola",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "text"
           ],
@@ -4316,7 +4316,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
           "expectedVisibleText": "Enable instance",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4330,7 +4330,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "expectedVisibleText": "granola",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4349,7 +4349,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#InstancesPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "InstancesPanel",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches InstancesPanel through listed fixture/action scenarios.",
@@ -4371,7 +4371,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
           "expectedVisibleText": "Instances",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "text"
           ],
@@ -4385,7 +4385,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--create-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--create-instance",
           "expectedVisibleText": "story-search",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls",
             "text"
@@ -4400,7 +4400,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "expectedVisibleText": "Instances",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4419,7 +4419,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#KeyRow",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "KeyRow",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches KeyRow through listed fixture/action scenarios.",
@@ -4441,7 +4441,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
           "expectedVisibleText": "Cursor laptop",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "text"
           ],
@@ -4455,7 +4455,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-key",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-key",
           "expectedVisibleText": "CI gateway",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4469,7 +4469,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--save-grants",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--save-grants",
           "expectedVisibleText": "Manage grants",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4488,7 +4488,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#KeysPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "KeysPanel",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches KeysPanel through listed fixture/action scenarios.",
@@ -4510,7 +4510,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
           "expectedVisibleText": "Gateway keys",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "text"
           ],
@@ -4524,7 +4524,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--new-key-keyboard",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--new-key-keyboard",
           "expectedVisibleText": "Gateway key created",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "keyboard",
             "controls"
@@ -4539,7 +4539,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-key",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-key",
           "expectedVisibleText": "Gateway keys",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4558,7 +4558,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "McpGatewayPage",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct story subject; plays drive normal page branches.",
@@ -4592,7 +4592,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
           "expectedVisibleText": "MCP Gateway",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "text"
           ],
@@ -4606,7 +4606,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "expectedVisibleText": "MCP Gateway",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4620,7 +4620,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-key",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-key",
           "expectedVisibleText": "MCP Gateway",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4634,7 +4634,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--save-grants",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--save-grants",
           "expectedVisibleText": "Save grants",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4648,7 +4648,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary",
           "expectedVisibleText": "Login",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4662,7 +4662,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--new-key-keyboard",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--new-key-keyboard",
           "expectedVisibleText": "Gateway key created",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "keyboard"
           ],
@@ -4676,7 +4676,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--create-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--create-instance",
           "expectedVisibleText": "story-search",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4690,7 +4690,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "expectedVisibleText": "jira-story",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4704,7 +4704,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
           "expectedVisibleText": "Enable instance",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4723,7 +4723,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#NewKeyDialog",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "NewKeyDialog",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches NewKeyDialog through listed fixture/action scenarios.",
@@ -4745,7 +4745,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--new-key-keyboard",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--new-key-keyboard",
           "expectedVisibleText": "Key name",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "keyboard",
             "controls"
@@ -4760,7 +4760,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--new-key-fresh-mount",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--new-key-fresh-mount",
           "expectedVisibleText": "Key name",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4774,7 +4774,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--mobile-new-key-keyboard",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--mobile-new-key-keyboard",
           "expectedVisibleText": "Gateway key created",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "mobile",
             "keyboard"
@@ -4794,7 +4794,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#StatusBadge",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "StatusBadge",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches StatusBadge through listed fixture/action scenarios.",
@@ -4814,7 +4814,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
           "expectedVisibleText": "connected",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "text"
           ],
@@ -4828,7 +4828,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
           "expectedVisibleText": "disabled",
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "controls"
           ],
@@ -4847,7 +4847,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#TestResult",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx",
       "symbol": "TestResult",
-      "sourceSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+      "sourceSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "McpGatewayPage conditionally reaches TestResult through listed fixture/action scenarios. Missing branch proof: ['No built story invokes instance test and proves result branch.']",
@@ -4865,7 +4865,7 @@
           "storyId": "durin-ds-production-pages-mcp-gateway--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
           "expectedVisibleText": null,
-          "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
+          "expectedSha256": "5dd0e7f58c3f4ebdb683e456422e1774fc651dd709cac85ce4e1a4bc436ca5c0",
           "axes": [
             "text"
           ],
@@ -4885,7 +4885,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-help/page.js#CodeBlock",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-help/page.js",
       "symbol": "CodeBlock",
-      "sourceSha256": "1f31ab99581f5f62fad4dda324ee74704adee385fc3a04af0512af617cb84eb4",
+      "sourceSha256": "56aeb36011e4b740ba779f0bef56432a441291da85978d587c130655800d2100",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story durin-ds-production-pages-mcp-help--default; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -4903,7 +4903,7 @@
           "storyId": "durin-ds-production-pages-mcp-help--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-help--default",
           "expectedVisibleText": "npx",
-          "expectedSha256": "1f31ab99581f5f62fad4dda324ee74704adee385fc3a04af0512af617cb84eb4",
+          "expectedSha256": "56aeb36011e4b740ba779f0bef56432a441291da85978d587c130655800d2100",
           "axes": [
             "text"
           ],
@@ -4922,7 +4922,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-help/page.js#DocCard",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-help/page.js",
       "symbol": "DocCard",
-      "sourceSha256": "1f31ab99581f5f62fad4dda324ee74704adee385fc3a04af0512af617cb84eb4",
+      "sourceSha256": "56aeb36011e4b740ba779f0bef56432a441291da85978d587c130655800d2100",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story durin-ds-production-pages-mcp-help--default; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -4940,7 +4940,7 @@
           "storyId": "durin-ds-production-pages-mcp-help--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-help--default",
           "expectedVisibleText": "MCP Gateway",
-          "expectedSha256": "1f31ab99581f5f62fad4dda324ee74704adee385fc3a04af0512af617cb84eb4",
+          "expectedSha256": "56aeb36011e4b740ba779f0bef56432a441291da85978d587c130655800d2100",
           "axes": [
             "text"
           ],
@@ -4959,7 +4959,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-help/page.js#InlineCode",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-help/page.js",
       "symbol": "InlineCode",
-      "sourceSha256": "1f31ab99581f5f62fad4dda324ee74704adee385fc3a04af0512af617cb84eb4",
+      "sourceSha256": "56aeb36011e4b740ba779f0bef56432a441291da85978d587c130655800d2100",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story durin-ds-production-pages-mcp-help--default; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -4977,7 +4977,7 @@
           "storyId": "durin-ds-production-pages-mcp-help--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-help--default",
           "expectedVisibleText": "mcp",
-          "expectedSha256": "1f31ab99581f5f62fad4dda324ee74704adee385fc3a04af0512af617cb84eb4",
+          "expectedSha256": "56aeb36011e4b740ba779f0bef56432a441291da85978d587c130655800d2100",
           "axes": [
             "text"
           ],
@@ -4996,7 +4996,7 @@
       "id": "src/app/(dashboard)/dashboard/mcp-help/page.js#McpHelpPage",
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-help/page.js",
       "symbol": "McpHelpPage",
-      "sourceSha256": "1f31ab99581f5f62fad4dda324ee74704adee385fc3a04af0512af617cb84eb4",
+      "sourceSha256": "56aeb36011e4b740ba779f0bef56432a441291da85978d587c130655800d2100",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-production-pages-mcp-help--default. Pending runtime review.",
@@ -5014,7 +5014,7 @@
           "storyId": "durin-ds-production-pages-mcp-help--default",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-help--default",
           "expectedVisibleText": "MCP Help",
-          "expectedSha256": "1f31ab99581f5f62fad4dda324ee74704adee385fc3a04af0512af617cb84eb4",
+          "expectedSha256": "56aeb36011e4b740ba779f0bef56432a441291da85978d587c130655800d2100",
           "axes": [
             "text"
           ],
@@ -5033,7 +5033,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.js#EmbeddingExampleCard",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.js",
       "symbol": "EmbeddingExampleCard",
-      "sourceSha256": "eea2194440b4cbb01af529a5f1b26c5758796e973b7d1418a718d72d0a400797",
+      "sourceSha256": "6d02e2f5f27aa0c48fdccfc908c965bc3cd892a2995b90319d74489d089cf35d",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-media-embeddingexamplecard--default, production-media-embeddingexamplecard--run-shows-latency, production-media-embeddingexamplecard--with-error. Pending runtime review.",
@@ -5054,7 +5054,7 @@
           "storyId": "production-media-embeddingexamplecard--run-shows-latency",
           "runtimeArtifactId": "production-media-embeddingexamplecard--run-shows-latency",
           "expectedVisibleText": null,
-          "expectedSha256": "eea2194440b4cbb01af529a5f1b26c5758796e973b7d1418a718d72d0a400797",
+          "expectedSha256": "6d02e2f5f27aa0c48fdccfc908c965bc3cd892a2995b90319d74489d089cf35d",
           "axes": [
             "text",
             "controls"
@@ -5068,7 +5068,7 @@
           "storyId": "production-media-embeddingexamplecard--with-error",
           "runtimeArtifactId": "production-media-embeddingexamplecard--with-error",
           "expectedVisibleText": null,
-          "expectedSha256": "eea2194440b4cbb01af529a5f1b26c5758796e973b7d1418a718d72d0a400797",
+          "expectedSha256": "6d02e2f5f27aa0c48fdccfc908c965bc3cd892a2995b90319d74489d089cf35d",
           "axes": [
             "text",
             "controls",
@@ -5087,7 +5087,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "eea2194440b4cbb01af529a5f1b26c5758796e973b7d1418a718d72d0a400797",
+          "expectedSha256": "6d02e2f5f27aa0c48fdccfc908c965bc3cd892a2995b90319d74489d089cf35d",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/EmbeddingExampleCard.js": "eea2194440b4cbb01af529a5f1b26c5758796e973b7d1418a718d72d0a400797"
           }
@@ -5143,7 +5143,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js#GenericExampleCard",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js",
       "symbol": "GenericExampleCard",
-      "sourceSha256": "09d86656f6fe0d02c7847c44e42ee2bc1d2a9767875e0029bf5c616630c5b7b0",
+      "sourceSha256": "da55aba940e6479ebfba3598df46edea0052b9c133ef72fcae196eda02fd8a83",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-media-genericexamplecard--web-search, production-media-genericexamplecard--web-search-run, production-media-genericexamplecard--image-gen, production-media-genericexamplecard--codex-streaming-run. Pending runtime review.",
@@ -5165,7 +5165,7 @@
           "storyId": "production-media-genericexamplecard--web-search-run",
           "runtimeArtifactId": "production-media-genericexamplecard--web-search-run",
           "expectedVisibleText": null,
-          "expectedSha256": "09d86656f6fe0d02c7847c44e42ee2bc1d2a9767875e0029bf5c616630c5b7b0",
+          "expectedSha256": "da55aba940e6479ebfba3598df46edea0052b9c133ef72fcae196eda02fd8a83",
           "axes": [
             "text",
             "controls"
@@ -5179,7 +5179,7 @@
           "storyId": "production-media-genericexamplecard--codex-streaming-run",
           "runtimeArtifactId": "production-media-genericexamplecard--codex-streaming-run",
           "expectedVisibleText": null,
-          "expectedSha256": "09d86656f6fe0d02c7847c44e42ee2bc1d2a9767875e0029bf5c616630c5b7b0",
+          "expectedSha256": "da55aba940e6479ebfba3598df46edea0052b9c133ef72fcae196eda02fd8a83",
           "axes": [
             "text",
             "controls",
@@ -5199,7 +5199,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "09d86656f6fe0d02c7847c44e42ee2bc1d2a9767875e0029bf5c616630c5b7b0",
+          "expectedSha256": "da55aba940e6479ebfba3598df46edea0052b9c133ef72fcae196eda02fd8a83",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "09d86656f6fe0d02c7847c44e42ee2bc1d2a9767875e0029bf5c616630c5b7b0"
           }
@@ -5214,7 +5214,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "09d86656f6fe0d02c7847c44e42ee2bc1d2a9767875e0029bf5c616630c5b7b0",
+          "expectedSha256": "da55aba940e6479ebfba3598df46edea0052b9c133ef72fcae196eda02fd8a83",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.js": "09d86656f6fe0d02c7847c44e42ee2bc1d2a9767875e0029bf5c616630c5b7b0"
           }
@@ -5231,7 +5231,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/SttExampleCard.js#SttExampleCard",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/SttExampleCard.js",
       "symbol": "SttExampleCard",
-      "sourceSha256": "5afc3878526694ee94cdb720e2d33ee50b9cbcc316c892270559a25f181eb7f7",
+      "sourceSha256": "dac78d4536c98fc6536819bde57901f45325f37f74aa6c4c32a5cdb0ee99049e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-media-sttexamplecard--default, production-media-sttexamplecard--curl-copies. Pending runtime review.",
@@ -5250,7 +5250,7 @@
           "storyId": "production-media-sttexamplecard--curl-copies",
           "runtimeArtifactId": "production-media-sttexamplecard--curl-copies",
           "expectedVisibleText": null,
-          "expectedSha256": "5afc3878526694ee94cdb720e2d33ee50b9cbcc316c892270559a25f181eb7f7",
+          "expectedSha256": "dac78d4536c98fc6536819bde57901f45325f37f74aa6c4c32a5cdb0ee99049e",
           "axes": [
             "text",
             "controls"
@@ -5268,7 +5268,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "5afc3878526694ee94cdb720e2d33ee50b9cbcc316c892270559a25f181eb7f7",
+          "expectedSha256": "dac78d4536c98fc6536819bde57901f45325f37f74aa6c4c32a5cdb0ee99049e",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/SttExampleCard.js": "5afc3878526694ee94cdb720e2d33ee50b9cbcc316c892270559a25f181eb7f7"
           }
@@ -5285,7 +5285,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.js#TtsExampleCard",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.js",
       "symbol": "TtsExampleCard",
-      "sourceSha256": "f7b2309d8dc166b6824aaa7592d6293d03a323337682e8ac117a6526b5cdb00b",
+      "sourceSha256": "ca62da73c2c6940b2fe778a28717a06711c94aacf33eb462cc5387ebdcf45f49",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-media-ttsexamplecard--default, production-media-ttsexamplecard--open-language-modal. Pending runtime review.",
@@ -5304,7 +5304,7 @@
           "storyId": "production-media-ttsexamplecard--open-language-modal",
           "runtimeArtifactId": "production-media-ttsexamplecard--open-language-modal",
           "expectedVisibleText": null,
-          "expectedSha256": "f7b2309d8dc166b6824aaa7592d6293d03a323337682e8ac117a6526b5cdb00b",
+          "expectedSha256": "ca62da73c2c6940b2fe778a28717a06711c94aacf33eb462cc5387ebdcf45f49",
           "axes": [
             "text",
             "controls"
@@ -5322,7 +5322,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "f7b2309d8dc166b6824aaa7592d6293d03a323337682e8ac117a6526b5cdb00b",
+          "expectedSha256": "ca62da73c2c6940b2fe778a28717a06711c94aacf33eb462cc5387ebdcf45f49",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.js": "f7b2309d8dc166b6824aaa7592d6293d03a323337682e8ac117a6526b5cdb00b"
           }
@@ -5428,7 +5428,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/page.js#ComboList",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/page.js",
       "symbol": "ComboList",
-      "sourceSha256": "7cdf986d77f90d98fffdfab63d0ccba071cea70222eefab3276a18e2591c9944",
+      "sourceSha256": "c66eff833911645a994e3ed2361556f5d04643d6ff0759ea5a1b1ddc8773e713",
       "proposedClassification": "visual",
       "approvedClassification": "retired",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-media-kindlisting--open-add-custom-embedding-modal; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -5450,7 +5450,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/page.js#MediaProviderKindPage",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/[kind]/page.js",
       "symbol": "MediaProviderKindPage",
-      "sourceSha256": "7cdf986d77f90d98fffdfab63d0ccba071cea70222eefab3276a18e2591c9944",
+      "sourceSha256": "c66eff833911645a994e3ed2361556f5d04643d6ff0759ea5a1b1ddc8773e713",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-media-kindlisting--default, production-media-kindlisting--open-add-custom-embedding-modal. Pending runtime review.",
@@ -5469,7 +5469,7 @@
           "storyId": "production-media-kindlisting--open-add-custom-embedding-modal",
           "runtimeArtifactId": "production-media-kindlisting--open-add-custom-embedding-modal",
           "expectedVisibleText": null,
-          "expectedSha256": "7cdf986d77f90d98fffdfab63d0ccba071cea70222eefab3276a18e2591c9944",
+          "expectedSha256": "c66eff833911645a994e3ed2361556f5d04643d6ff0759ea5a1b1ddc8773e713",
           "axes": [
             "text",
             "controls"
@@ -5488,7 +5488,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "7cdf986d77f90d98fffdfab63d0ccba071cea70222eefab3276a18e2591c9944",
+          "expectedSha256": "c66eff833911645a994e3ed2361556f5d04643d6ff0759ea5a1b1ddc8773e713",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/[kind]/page.js": "7cdf986d77f90d98fffdfab63d0ccba071cea70222eefab3276a18e2591c9944"
           }
@@ -5505,7 +5505,7 @@
       "id": "src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.js#ComboDetailPage",
       "sourcePath": "src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.js",
       "symbol": "ComboDetailPage",
-      "sourceSha256": "4b680e8c2eed6268388dcd75d9a476ff8202f3276cf998a1a842e59b39ffe5cd",
+      "sourceSha256": "f164c7f7fe203ce15b1d2851a7eefa927f36e256561b91e4f244fcfde86bd372",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-media-combodetail--default, production-media-combodetail--delete-opens-confirm, production-media-combodetail--delete-error. Pending runtime review.",
@@ -5526,7 +5526,7 @@
           "storyId": "production-media-combodetail--delete-opens-confirm",
           "runtimeArtifactId": "production-media-combodetail--delete-opens-confirm",
           "expectedVisibleText": null,
-          "expectedSha256": "4b680e8c2eed6268388dcd75d9a476ff8202f3276cf998a1a842e59b39ffe5cd",
+          "expectedSha256": "f164c7f7fe203ce15b1d2851a7eefa927f36e256561b91e4f244fcfde86bd372",
           "axes": [
             "text",
             "controls"
@@ -5540,7 +5540,7 @@
           "storyId": "production-media-combodetail--delete-error",
           "runtimeArtifactId": "production-media-combodetail--delete-error",
           "expectedVisibleText": null,
-          "expectedSha256": "4b680e8c2eed6268388dcd75d9a476ff8202f3276cf998a1a842e59b39ffe5cd",
+          "expectedSha256": "f164c7f7fe203ce15b1d2851a7eefa927f36e256561b91e4f244fcfde86bd372",
           "axes": [
             "text",
             "controls",
@@ -5559,7 +5559,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "4b680e8c2eed6268388dcd75d9a476ff8202f3276cf998a1a842e59b39ffe5cd",
+          "expectedSha256": "f164c7f7fe203ce15b1d2851a7eefa927f36e256561b91e4f244fcfde86bd372",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.js": "4b680e8c2eed6268388dcd75d9a476ff8202f3276cf998a1a842e59b39ffe5cd"
           }
@@ -6083,7 +6083,7 @@
       "id": "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js#PlaygroundPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js",
       "symbol": "PlaygroundPageClient",
-      "sourceSha256": "56028e656502c142e10de2cea6f04898c7a0c1527d4054571368ba7c18f5e784",
+      "sourceSha256": "cf84435cde4c13101738c482e176969d8f5acbc49b845fec2c1ee6967cd4f9b1",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-playground-playgroundpageclient--empty-conversation, production-playground-playgroundpageclient--sends-completion, production-playground-playgroundpageclient--model-menu-provider-switch, production-playground-playgroundpageclient--chat-history-popover, production-playground-playgroundpageclient--completion-error. Pending runtime review.",
@@ -6109,7 +6109,7 @@
           "storyId": "production-playground-playgroundpageclient--empty-conversation",
           "runtimeArtifactId": "production-playground-playgroundpageclient--empty-conversation",
           "expectedVisibleText": "Start a conversation",
-          "expectedSha256": "56028e656502c142e10de2cea6f04898c7a0c1527d4054571368ba7c18f5e784",
+          "expectedSha256": "cf84435cde4c13101738c482e176969d8f5acbc49b845fec2c1ee6967cd4f9b1",
           "axes": [
             "empty",
             "controls"
@@ -6124,7 +6124,7 @@
           "storyId": "production-playground-playgroundpageclient--sends-completion",
           "runtimeArtifactId": "production-playground-playgroundpageclient--sends-completion",
           "expectedVisibleText": "fixture",
-          "expectedSha256": "56028e656502c142e10de2cea6f04898c7a0c1527d4054571368ba7c18f5e784",
+          "expectedSha256": "cf84435cde4c13101738c482e176969d8f5acbc49b845fec2c1ee6967cd4f9b1",
           "axes": [
             "text",
             "controls"
@@ -6139,7 +6139,7 @@
           "storyId": "production-playground-playgroundpageclient--model-menu-provider-switch",
           "runtimeArtifactId": "production-playground-playgroundpageclient--model-menu-provider-switch",
           "expectedVisibleText": "OpenAI",
-          "expectedSha256": "56028e656502c142e10de2cea6f04898c7a0c1527d4054571368ba7c18f5e784",
+          "expectedSha256": "cf84435cde4c13101738c482e176969d8f5acbc49b845fec2c1ee6967cd4f9b1",
           "axes": [
             "controls"
           ],
@@ -6153,7 +6153,7 @@
           "storyId": "production-playground-playgroundpageclient--chat-history-popover",
           "runtimeArtifactId": "production-playground-playgroundpageclient--chat-history-popover",
           "expectedVisibleText": "Chat history",
-          "expectedSha256": "56028e656502c142e10de2cea6f04898c7a0c1527d4054571368ba7c18f5e784",
+          "expectedSha256": "cf84435cde4c13101738c482e176969d8f5acbc49b845fec2c1ee6967cd4f9b1",
           "axes": [
             "controls"
           ],
@@ -6167,7 +6167,7 @@
           "storyId": "production-playground-playgroundpageclient--completion-error",
           "runtimeArtifactId": "production-playground-playgroundpageclient--completion-error",
           "expectedVisibleText": "Error",
-          "expectedSha256": "56028e656502c142e10de2cea6f04898c7a0c1527d4054571368ba7c18f5e784",
+          "expectedSha256": "cf84435cde4c13101738c482e176969d8f5acbc49b845fec2c1ee6967cd4f9b1",
           "axes": [
             "error"
           ],
@@ -6186,7 +6186,7 @@
       "id": "src/app/(dashboard)/dashboard/profile/page.js#ProfilePage",
       "sourcePath": "src/app/(dashboard)/dashboard/profile/page.js",
       "symbol": "ProfilePage",
-      "sourceSha256": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827",
+      "sourceSha256": "4230594777ec41801ff31e772c5e2d510767a9d6cc76f88898c5c8617ffdbe86",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-profile-profilepage--default, production-profile-profilepage--oidc-and-proxy, production-profile-profilepage--shutdown-confirm, production-profile-profilepage--database-export-prompt, production-profile-profilepage--selective-transfer-preview. Pending runtime review.",
@@ -6212,7 +6212,7 @@
           "storyId": "production-profile-profilepage--default",
           "runtimeArtifactId": "production-profile-profilepage--default",
           "expectedVisibleText": "Profile",
-          "expectedSha256": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827",
+          "expectedSha256": "4230594777ec41801ff31e772c5e2d510767a9d6cc76f88898c5c8617ffdbe86",
           "axes": [
             "text"
           ],
@@ -6226,7 +6226,7 @@
           "storyId": "production-profile-profilepage--oidc-and-proxy",
           "runtimeArtifactId": "production-profile-profilepage--oidc-and-proxy",
           "expectedVisibleText": "OIDC",
-          "expectedSha256": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827",
+          "expectedSha256": "4230594777ec41801ff31e772c5e2d510767a9d6cc76f88898c5c8617ffdbe86",
           "axes": [
             "text"
           ],
@@ -6240,7 +6240,7 @@
           "storyId": "production-profile-profilepage--shutdown-confirm",
           "runtimeArtifactId": "production-profile-profilepage--shutdown-confirm",
           "expectedVisibleText": "Shut down",
-          "expectedSha256": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827",
+          "expectedSha256": "4230594777ec41801ff31e772c5e2d510767a9d6cc76f88898c5c8617ffdbe86",
           "axes": [
             "controls"
           ],
@@ -6254,7 +6254,7 @@
           "storyId": "production-profile-profilepage--database-export-prompt",
           "runtimeArtifactId": "production-profile-profilepage--database-export-prompt",
           "expectedVisibleText": "Export database",
-          "expectedSha256": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827",
+          "expectedSha256": "4230594777ec41801ff31e772c5e2d510767a9d6cc76f88898c5c8617ffdbe86",
           "axes": [
             "controls"
           ],
@@ -6268,7 +6268,7 @@
           "storyId": "production-profile-profilepage--selective-transfer-preview",
           "runtimeArtifactId": "production-profile-profilepage--selective-transfer-preview",
           "expectedVisibleText": "Selective transfer",
-          "expectedSha256": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827",
+          "expectedSha256": "4230594777ec41801ff31e772c5e2d510767a9d6cc76f88898c5c8617ffdbe86",
           "axes": [
             "controls"
           ],
@@ -6471,7 +6471,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/BulkImportCodexModal.js#BulkImportCodexModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/BulkImportCodexModal.js",
       "symbol": "BulkImportCodexModal",
-      "sourceSha256": "13f2c48ef753f19254cd9e9314d21a99df2bec8097559a2fe7adcbbe5e20e49b",
+      "sourceSha256": "6650f0a985db63ea79a0fc69b0128e82cd88262c314199493303ee6b7c211150",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
@@ -6489,7 +6489,7 @@
           "storyId": "production-providers-detail-widgets--bulk-imports",
           "runtimeArtifactId": "production-providers-detail-widgets--bulk-imports",
           "expectedVisibleText": "Bulk Add Codex Accounts",
-          "expectedSha256": "13f2c48ef753f19254cd9e9314d21a99df2bec8097559a2fe7adcbbe5e20e49b",
+          "expectedSha256": "6650f0a985db63ea79a0fc69b0128e82cd88262c314199493303ee6b7c211150",
           "axes": [
             "modal=open",
             "bulk=codex"
@@ -6509,7 +6509,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/BulkImportGrokCliModal.js#BulkImportGrokCliModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/BulkImportGrokCliModal.js",
       "symbol": "BulkImportGrokCliModal",
-      "sourceSha256": "6b9d2c328aa8bbbdcfdc5427f608da0404dbad1e73eeac137fa6bf2081e4e0c6",
+      "sourceSha256": "e8ade29618d8e26a6b4fa9dfff95356669b463be57e00bef699c401e5d59e039",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
@@ -6527,7 +6527,7 @@
           "storyId": "production-providers-detail-widgets--bulk-imports",
           "runtimeArtifactId": "production-providers-detail-widgets--bulk-imports",
           "expectedVisibleText": "Bulk Add Grok CLI Accounts",
-          "expectedSha256": "6b9d2c328aa8bbbdcfdc5427f608da0404dbad1e73eeac137fa6bf2081e4e0c6",
+          "expectedSha256": "e8ade29618d8e26a6b4fa9dfff95356669b463be57e00bef699c401e5d59e039",
           "axes": [
             "modal=open",
             "bulk=grok-cli"
@@ -6547,7 +6547,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js#CompatibleModelRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js",
       "symbol": "CompatibleModelRow",
-      "sourceSha256": "11b7bb05938dd351e28e294610283224af52fb92c746cb2076e1b31397b17171",
+      "sourceSha256": "fb9d2a8f71d57f725d4582b553112eb8f0e9e5e2d78cf414424c6f1422d1eff5",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
@@ -6565,7 +6565,7 @@
           "storyId": "production-providers-detail-widgets--compatible-models",
           "runtimeArtifactId": "production-providers-detail-widgets--compatible-models",
           "expectedVisibleText": "gpt-custom",
-          "expectedSha256": "11b7bb05938dd351e28e294610283224af52fb92c746cb2076e1b31397b17171",
+          "expectedSha256": "fb9d2a8f71d57f725d4582b553112eb8f0e9e5e2d78cf414424c6f1422d1eff5",
           "axes": [
             "models=custom",
             "compatible"
@@ -6585,7 +6585,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js#CompatibleModelsSection",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js",
       "symbol": "CompatibleModelsSection",
-      "sourceSha256": "11b7bb05938dd351e28e294610283224af52fb92c746cb2076e1b31397b17171",
+      "sourceSha256": "fb9d2a8f71d57f725d4582b553112eb8f0e9e5e2d78cf414424c6f1422d1eff5",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
@@ -6603,7 +6603,7 @@
           "storyId": "production-providers-detail-widgets--compatible-models",
           "runtimeArtifactId": "production-providers-detail-widgets--compatible-models",
           "expectedVisibleText": "gpt-custom",
-          "expectedSha256": "11b7bb05938dd351e28e294610283224af52fb92c746cb2076e1b31397b17171",
+          "expectedSha256": "fb9d2a8f71d57f725d4582b553112eb8f0e9e5e2d78cf414424c6f1422d1eff5",
           "axes": [
             "models=custom",
             "compatible"
@@ -6623,7 +6623,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js#ConnectionRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js",
       "symbol": "ConnectionRow",
-      "sourceSha256": "ea66bb58e5da9650780c0e267a72540af31d49926dbd50f622daac9a4743205f",
+      "sourceSha256": "563209a04dc921b1147f63b741eaf921e962f56f87f0605049026e7931612827",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
@@ -6641,7 +6641,7 @@
           "storyId": "production-providers-detail-widgets--connection-row-scenario",
           "runtimeArtifactId": "production-providers-detail-widgets--connection-row-scenario",
           "expectedVisibleText": "Production",
-          "expectedSha256": "ea66bb58e5da9650780c0e267a72540af31d49926dbd50f622daac9a4743205f",
+          "expectedSha256": "563209a04dc921b1147f63b741eaf921e962f56f87f0605049026e7931612827",
           "axes": [
             "connection=active",
             "proxy-pool"
@@ -7019,7 +7019,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/PassthroughModelsSection.js#PassthroughModelRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/PassthroughModelsSection.js",
       "symbol": "PassthroughModelRow",
-      "sourceSha256": "4f6f3690aa3cae072b04efb45d3ea54ad85a5e6209a50c674dd4a719032cb426",
+      "sourceSha256": "ee579a2db8a38977342d020acd0153f6b2e90e7c79a5455e61ede6d67e3af61a",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
@@ -7037,7 +7037,7 @@
           "storyId": "production-providers-detail-widgets--passthrough-models",
           "runtimeArtifactId": "production-providers-detail-widgets--passthrough-models",
           "expectedVisibleText": "openai/gpt-4o",
-          "expectedSha256": "4f6f3690aa3cae072b04efb45d3ea54ad85a5e6209a50c674dd4a719032cb426",
+          "expectedSha256": "ee579a2db8a38977342d020acd0153f6b2e90e7c79a5455e61ede6d67e3af61a",
           "axes": [
             "models=custom",
             "passthrough"
@@ -7057,7 +7057,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/PassthroughModelsSection.js#PassthroughModelsSection",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/PassthroughModelsSection.js",
       "symbol": "PassthroughModelsSection",
-      "sourceSha256": "4f6f3690aa3cae072b04efb45d3ea54ad85a5e6209a50c674dd4a719032cb426",
+      "sourceSha256": "ee579a2db8a38977342d020acd0153f6b2e90e7c79a5455e61ede6d67e3af61a",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
@@ -7075,7 +7075,7 @@
           "storyId": "production-providers-detail-widgets--passthrough-models",
           "runtimeArtifactId": "production-providers-detail-widgets--passthrough-models",
           "expectedVisibleText": "openai/gpt-4o",
-          "expectedSha256": "4f6f3690aa3cae072b04efb45d3ea54ad85a5e6209a50c674dd4a719032cb426",
+          "expectedSha256": "ee579a2db8a38977342d020acd0153f6b2e90e7c79a5455e61ede6d67e3af61a",
           "axes": [
             "models=custom",
             "passthrough"
@@ -7229,7 +7229,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#AddApiKeyModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "AddApiKeyModal",
-      "sourceSha256": "ae471f5edf4e7fd7693d3066b35c3115dc67e76695af180437a435b16fb12d6d",
+      "sourceSha256": "060a313c1d508c55a083834fa2aefa57caa837cd37a599f1b51b6a45e8886000",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "ConnectionsCard Connected story renders private row/modal parent path.",
@@ -7245,7 +7245,7 @@
           "storyId": "production-providers-components-connectionscard--connected",
           "runtimeArtifactId": "production-providers-components-connectionscard--connected",
           "expectedVisibleText": null,
-          "expectedSha256": "ae471f5edf4e7fd7693d3066b35c3115dc67e76695af180437a435b16fb12d6d",
+          "expectedSha256": "060a313c1d508c55a083834fa2aefa57caa837cd37a599f1b51b6a45e8886000",
           "axes": [
             "connection=connected"
           ],
@@ -7265,7 +7265,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#ConnectionRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "ConnectionRow",
-      "sourceSha256": "ae471f5edf4e7fd7693d3066b35c3115dc67e76695af180437a435b16fb12d6d",
+      "sourceSha256": "060a313c1d508c55a083834fa2aefa57caa837cd37a599f1b51b6a45e8886000",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "ConnectionsCard Connected story renders private row/modal parent path.",
@@ -7283,7 +7283,7 @@
           "storyId": "production-providers-components-connectionscard--connected",
           "runtimeArtifactId": "production-providers-components-connectionscard--connected",
           "expectedVisibleText": "Production",
-          "expectedSha256": "ae471f5edf4e7fd7693d3066b35c3115dc67e76695af180437a435b16fb12d6d",
+          "expectedSha256": "060a313c1d508c55a083834fa2aefa57caa837cd37a599f1b51b6a45e8886000",
           "axes": [
             "connection=connected"
           ],
@@ -7302,7 +7302,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#ConnectionsCard",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "ConnectionsCard",
-      "sourceSha256": "ae471f5edf4e7fd7693d3066b35c3115dc67e76695af180437a435b16fb12d6d",
+      "sourceSha256": "060a313c1d508c55a083834fa2aefa57caa837cd37a599f1b51b6a45e8886000",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-providers-components-connectionscard--connected. Pending runtime review.",
@@ -7320,7 +7320,7 @@
           "storyId": "production-providers-components-connectionscard--connected",
           "runtimeArtifactId": "production-providers-components-connectionscard--connected",
           "expectedVisibleText": "Connections",
-          "expectedSha256": "ae471f5edf4e7fd7693d3066b35c3115dc67e76695af180437a435b16fb12d6d",
+          "expectedSha256": "060a313c1d508c55a083834fa2aefa57caa837cd37a599f1b51b6a45e8886000",
           "axes": [
             "connection=connected"
           ],
@@ -7339,7 +7339,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#CooldownTimer",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "CooldownTimer",
-      "sourceSha256": "ae471f5edf4e7fd7693d3066b35c3115dc67e76695af180437a435b16fb12d6d",
+      "sourceSha256": "060a313c1d508c55a083834fa2aefa57caa837cd37a599f1b51b6a45e8886000",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Actual production parent scenario added; runtime and branch review pending.",
@@ -7357,7 +7357,7 @@
           "storyId": "production-providers-components-connectionscard--cooldown",
           "runtimeArtifactId": "production-providers-components-connectionscard--cooldown",
           "expectedVisibleText": "Cooling down",
-          "expectedSha256": "ae471f5edf4e7fd7693d3066b35c3115dc67e76695af180437a435b16fb12d6d",
+          "expectedSha256": "060a313c1d508c55a083834fa2aefa57caa837cd37a599f1b51b6a45e8886000",
           "axes": [
             "connection=cooldown"
           ],
@@ -7376,7 +7376,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ModelAvailabilityBadge.js#ModelAvailabilityBadge",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ModelAvailabilityBadge.js",
       "symbol": "ModelAvailabilityBadge",
-      "sourceSha256": "b40a77303ffbe0b834d7d2b9607c7fe16d69f0c629d2440dec8cfa8cfc307bf3",
+      "sourceSha256": "cfbf00f3d6b5954b8cedea5fb09e04304ca677b90dd0a3350f4f624453b5c8c8",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-providers-components-modelavailabilitybadge--healthy, production-providers-components-modelavailabilitybadge--with-issues-open. Pending runtime review.",
@@ -7396,7 +7396,7 @@
           "storyId": "production-providers-components-modelavailabilitybadge--healthy",
           "runtimeArtifactId": "production-providers-components-modelavailabilitybadge--healthy",
           "expectedVisibleText": null,
-          "expectedSha256": "b40a77303ffbe0b834d7d2b9607c7fe16d69f0c629d2440dec8cfa8cfc307bf3",
+          "expectedSha256": "cfbf00f3d6b5954b8cedea5fb09e04304ca677b90dd0a3350f4f624453b5c8c8",
           "axes": [
             "text"
           ],
@@ -7409,7 +7409,7 @@
           "storyId": "production-providers-components-modelavailabilitybadge--with-issues-open",
           "runtimeArtifactId": "production-providers-components-modelavailabilitybadge--with-issues-open",
           "expectedVisibleText": null,
-          "expectedSha256": "b40a77303ffbe0b834d7d2b9607c7fe16d69f0c629d2440dec8cfa8cfc307bf3",
+          "expectedSha256": "cfbf00f3d6b5954b8cedea5fb09e04304ca677b90dd0a3350f4f624453b5c8c8",
           "axes": [
             "text",
             "controls"
@@ -7430,7 +7430,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js#AddCustomModelModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js",
       "symbol": "AddCustomModelModal",
-      "sourceSha256": "733b5fba9b24af4f21b4bfa18c55e1b68b34d25d5816db8db0b372e8864d6914",
+      "sourceSha256": "9de62280fbe8b3cbc90eff349e66f1c662c00c9fc4a54d9698c2f4244d2702a7",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "ModelsCard ModelsList story renders private model row and opens real AddCustomModelModal.",
@@ -7448,7 +7448,7 @@
           "storyId": "production-providers-components-modelscard--models-list",
           "runtimeArtifactId": "production-providers-components-modelscard--models-list",
           "expectedVisibleText": null,
-          "expectedSha256": "733b5fba9b24af4f21b4bfa18c55e1b68b34d25d5816db8db0b372e8864d6914",
+          "expectedSha256": "9de62280fbe8b3cbc90eff349e66f1c662c00c9fc4a54d9698c2f4244d2702a7",
           "axes": [
             "text",
             "controls",
@@ -7470,7 +7470,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js#ModelRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js",
       "symbol": "ModelRow",
-      "sourceSha256": "733b5fba9b24af4f21b4bfa18c55e1b68b34d25d5816db8db0b372e8864d6914",
+      "sourceSha256": "9de62280fbe8b3cbc90eff349e66f1c662c00c9fc4a54d9698c2f4244d2702a7",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "ModelsCard ModelsList story renders private model row and opens real AddCustomModelModal.",
@@ -7486,7 +7486,7 @@
           "storyId": "production-providers-components-modelscard--models-list",
           "runtimeArtifactId": "production-providers-components-modelscard--models-list",
           "expectedVisibleText": null,
-          "expectedSha256": "733b5fba9b24af4f21b4bfa18c55e1b68b34d25d5816db8db0b372e8864d6914",
+          "expectedSha256": "9de62280fbe8b3cbc90eff349e66f1c662c00c9fc4a54d9698c2f4244d2702a7",
           "axes": [
             "text",
             "controls",
@@ -7508,7 +7508,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js#ModelsCard",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js",
       "symbol": "ModelsCard",
-      "sourceSha256": "733b5fba9b24af4f21b4bfa18c55e1b68b34d25d5816db8db0b372e8864d6914",
+      "sourceSha256": "9de62280fbe8b3cbc90eff349e66f1c662c00c9fc4a54d9698c2f4244d2702a7",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-providers-components-modelscard--models-list. Pending runtime review.",
@@ -7526,7 +7526,7 @@
           "storyId": "production-providers-components-modelscard--models-list",
           "runtimeArtifactId": "production-providers-components-modelscard--models-list",
           "expectedVisibleText": null,
-          "expectedSha256": "733b5fba9b24af4f21b4bfa18c55e1b68b34d25d5816db8db0b372e8864d6914",
+          "expectedSha256": "9de62280fbe8b3cbc90eff349e66f1c662c00c9fc4a54d9698c2f4244d2702a7",
           "axes": [
             "text",
             "controls",
@@ -7548,7 +7548,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/page.js#ApiKeyProviderCard",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/page.js",
       "symbol": "ApiKeyProviderCard",
-      "sourceSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+      "sourceSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerspage--all-status-scenarios; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -7566,7 +7566,7 @@
           "storyId": "production-providers-providerspage--all-status-scenarios",
           "runtimeArtifactId": "production-providers-providerspage--all-status-scenarios",
           "expectedVisibleText": null,
-          "expectedSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+          "expectedSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
           "axes": [
             "text",
             "controls",
@@ -7588,7 +7588,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/page.js#getStatusDisplay",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/page.js",
       "symbol": "getStatusDisplay",
-      "sourceSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+      "sourceSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
       "proposedClassification": "visual",
       "approvedClassification": "nonvisual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerspage--all-status-scenarios; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -7610,7 +7610,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/page.js#ProviderCard",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/page.js",
       "symbol": "ProviderCard",
-      "sourceSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+      "sourceSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerspage--all-status-scenarios; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -7628,7 +7628,7 @@
           "storyId": "production-providers-providerspage--all-status-scenarios",
           "runtimeArtifactId": "production-providers-providerspage--all-status-scenarios",
           "expectedVisibleText": null,
-          "expectedSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+          "expectedSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
           "axes": [
             "text",
             "controls",
@@ -7650,7 +7650,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/page.js#ProvidersPage",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/page.js",
       "symbol": "ProvidersPage",
-      "sourceSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+      "sourceSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-providers-providerspage--inventory, production-providers-providerspage--status-filtering, production-providers-providerspage--all-status-scenarios. Pending runtime review.",
@@ -7672,7 +7672,7 @@
           "storyId": "production-providers-providerspage--inventory",
           "runtimeArtifactId": "production-providers-providerspage--inventory",
           "expectedVisibleText": null,
-          "expectedSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+          "expectedSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
           "axes": [
             "text"
           ],
@@ -7685,7 +7685,7 @@
           "storyId": "production-providers-providerspage--status-filtering",
           "runtimeArtifactId": "production-providers-providerspage--status-filtering",
           "expectedVisibleText": null,
-          "expectedSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+          "expectedSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
           "axes": [
             "text",
             "controls"
@@ -7699,7 +7699,7 @@
           "storyId": "production-providers-providerspage--all-status-scenarios",
           "runtimeArtifactId": "production-providers-providerspage--all-status-scenarios",
           "expectedVisibleText": null,
-          "expectedSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+          "expectedSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
           "axes": [
             "text",
             "controls",
@@ -7721,7 +7721,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/page.js#ProviderTestResultsView",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/page.js",
       "symbol": "ProviderTestResultsView",
-      "sourceSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+      "sourceSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerspage--all-status-scenarios; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -7737,7 +7737,7 @@
           "storyId": "production-providers-providerspage--all-status-scenarios",
           "runtimeArtifactId": "production-providers-providerspage--all-status-scenarios",
           "expectedVisibleText": null,
-          "expectedSha256": "7aaf0e111b216f5f841f59c1fb6340e70a19d717f4842669c13611a67a7d2eff",
+          "expectedSha256": "2397711dfc0f8c5bc1522eef0e2df11d6a7dd622d3ab589ed3754d3ba0d11f99",
           "axes": [
             "text",
             "controls",
@@ -8089,7 +8089,7 @@
       "id": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js#PxpipeClient",
       "sourcePath": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js",
       "symbol": "PxpipeClient",
-      "sourceSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+      "sourceSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-pxpipe-pxpipeclient--populated, production-pxpipe-pxpipeclient--empty, production-pxpipe-pxpipeclient--unavailable, production-pxpipe-pxpipeclient--loading, production-pxpipe-pxpipeclient--keyboard-paging-and-range, production-pxpipe-pxpipeclient--rtl, production-pxpipe-pxpipeclient--mobile-viewport. Pending runtime review.",
@@ -8120,7 +8120,7 @@
           "storyId": "production-pxpipe-pxpipeclient--populated",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--populated",
           "expectedVisibleText": "PxPipe",
-          "expectedSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+          "expectedSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
           "axes": [
             "text"
           ],
@@ -8134,7 +8134,7 @@
           "storyId": "production-pxpipe-pxpipeclient--empty",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--empty",
           "expectedVisibleText": "No PxPipe activity yet",
-          "expectedSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+          "expectedSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
           "axes": [
             "empty"
           ],
@@ -8148,7 +8148,7 @@
           "storyId": "production-pxpipe-pxpipeclient--unavailable",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--unavailable",
           "expectedVisibleText": "PxPipe is unavailable",
-          "expectedSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+          "expectedSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
           "axes": [
             "error"
           ],
@@ -8162,7 +8162,7 @@
           "storyId": "production-pxpipe-pxpipeclient--loading",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--loading",
           "expectedVisibleText": "Loading PxPipe",
-          "expectedSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+          "expectedSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
           "axes": [
             "loading"
           ],
@@ -8176,7 +8176,7 @@
           "storyId": "production-pxpipe-pxpipeclient--keyboard-paging-and-range",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--keyboard-paging-and-range",
           "expectedVisibleText": "Page 2",
-          "expectedSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+          "expectedSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
           "axes": [
             "keyboard",
             "controls"
@@ -8191,7 +8191,7 @@
           "storyId": "production-pxpipe-pxpipeclient--rtl",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--rtl",
           "expectedVisibleText": "PxPipe",
-          "expectedSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+          "expectedSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
           "axes": [
             "rtl"
           ],
@@ -8205,7 +8205,7 @@
           "storyId": "production-pxpipe-pxpipeclient--mobile-viewport",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--mobile-viewport",
           "expectedVisibleText": "PxPipe",
-          "expectedSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+          "expectedSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
           "axes": [
             "mobile"
           ],
@@ -8223,7 +8223,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+          "expectedSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca"
           }
@@ -8238,7 +8238,7 @@
       "id": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js#SummaryCard",
       "sourcePath": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js",
       "symbol": "SummaryCard",
-      "sourceSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+      "sourceSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "PxpipeClient renders SummaryCard across direct status fixture scenarios.",
@@ -8256,7 +8256,7 @@
           "storyId": "production-pxpipe-pxpipeclient--populated",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--populated",
           "expectedVisibleText": "Requests",
-          "expectedSha256": "e3d46a073426d093de77a1bcdca01eb7f144f01e829f03b64df47c42a9d5b6ca",
+          "expectedSha256": "bc118eb3fe11ae191dcfc9e3d35e1bc7e1f92f9bbdf5b4723c9695d6d333dabe",
           "axes": [
             "text"
           ],
@@ -8500,7 +8500,7 @@
       "id": "src/app/(dashboard)/dashboard/timeline/[id]/page.js#EventGroup",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/[id]/page.js",
       "symbol": "EventGroup",
-      "sourceSha256": "5c28aaac6bfffc9447bb3b3b866e4363ace860d6490d35b7b7957566a8726bfc",
+      "sourceSha256": "cae6f19d5a3f1bbbfb26482582bdb79da1ffbd476853ebde32917f09c98add95",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-timeline-timelinedetailpage--missing-trace; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -8518,7 +8518,7 @@
           "storyId": "production-timeline-timelinedetailpage--expand-sse-chunks",
           "runtimeArtifactId": "production-timeline-timelinedetailpage--expand-sse-chunks",
           "expectedVisibleText": "Collapse 3 chunks",
-          "expectedSha256": "5c28aaac6bfffc9447bb3b3b866e4363ace860d6490d35b7b7957566a8726bfc",
+          "expectedSha256": "cae6f19d5a3f1bbbfb26482582bdb79da1ffbd476853ebde32917f09c98add95",
           "axes": [
             "expanded",
             "controls",
@@ -8541,7 +8541,7 @@
       "id": "src/app/(dashboard)/dashboard/timeline/[id]/page.js#EventRow",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/[id]/page.js",
       "symbol": "EventRow",
-      "sourceSha256": "5c28aaac6bfffc9447bb3b3b866e4363ace860d6490d35b7b7957566a8726bfc",
+      "sourceSha256": "cae6f19d5a3f1bbbfb26482582bdb79da1ffbd476853ebde32917f09c98add95",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-timeline-timelinedetailpage--missing-trace; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -8559,7 +8559,7 @@
           "storyId": "production-timeline-timelinedetailpage--loaded",
           "runtimeArtifactId": "production-timeline-timelinedetailpage--loaded",
           "expectedVisibleText": "POST /v1/chat/completions",
-          "expectedSha256": "5c28aaac6bfffc9447bb3b3b866e4363ace860d6490d35b7b7957566a8726bfc",
+          "expectedSha256": "cae6f19d5a3f1bbbfb26482582bdb79da1ffbd476853ebde32917f09c98add95",
           "axes": [
             "text"
           ],
@@ -8580,7 +8580,7 @@
       "id": "src/app/(dashboard)/dashboard/timeline/[id]/page.js#TimelineDetailPage",
       "sourcePath": "src/app/(dashboard)/dashboard/timeline/[id]/page.js",
       "symbol": "TimelineDetailPage",
-      "sourceSha256": "5c28aaac6bfffc9447bb3b3b866e4363ace860d6490d35b7b7957566a8726bfc",
+      "sourceSha256": "cae6f19d5a3f1bbbfb26482582bdb79da1ffbd476853ebde32917f09c98add95",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-timeline-timelinedetailpage--loaded, production-timeline-timelinedetailpage--expand-sse-chunks, production-timeline-timelinedetailpage--copy-as-json, production-timeline-timelinedetailpage--missing-trace. Pending runtime review.",
@@ -8604,7 +8604,7 @@
           "storyId": "production-timeline-timelinedetailpage--loaded",
           "runtimeArtifactId": "production-timeline-timelinedetailpage--loaded",
           "expectedVisibleText": "Trace detail",
-          "expectedSha256": "5c28aaac6bfffc9447bb3b3b866e4363ace860d6490d35b7b7957566a8726bfc",
+          "expectedSha256": "cae6f19d5a3f1bbbfb26482582bdb79da1ffbd476853ebde32917f09c98add95",
           "axes": [
             "text"
           ],
@@ -8618,7 +8618,7 @@
           "storyId": "production-timeline-timelinedetailpage--expand-sse-chunks",
           "runtimeArtifactId": "production-timeline-timelinedetailpage--expand-sse-chunks",
           "expectedVisibleText": "Collapse 2 chunks",
-          "expectedSha256": "5c28aaac6bfffc9447bb3b3b866e4363ace860d6490d35b7b7957566a8726bfc",
+          "expectedSha256": "cae6f19d5a3f1bbbfb26482582bdb79da1ffbd476853ebde32917f09c98add95",
           "axes": [
             "expanded",
             "controls"
@@ -8633,7 +8633,7 @@
           "storyId": "production-timeline-timelinedetailpage--copy-as-json",
           "runtimeArtifactId": "production-timeline-timelinedetailpage--copy-as-json",
           "expectedVisibleText": "Copied",
-          "expectedSha256": "5c28aaac6bfffc9447bb3b3b866e4363ace860d6490d35b7b7957566a8726bfc",
+          "expectedSha256": "cae6f19d5a3f1bbbfb26482582bdb79da1ffbd476853ebde32917f09c98add95",
           "axes": [
             "controls"
           ],
@@ -8647,7 +8647,7 @@
           "storyId": "production-timeline-timelinedetailpage--missing-trace",
           "runtimeArtifactId": "production-timeline-timelinedetailpage--missing-trace",
           "expectedVisibleText": "Trace not found",
-          "expectedSha256": "5c28aaac6bfffc9447bb3b3b866e4363ace860d6490d35b7b7957566a8726bfc",
+          "expectedSha256": "cae6f19d5a3f1bbbfb26482582bdb79da1ffbd476853ebde32917f09c98add95",
           "axes": [
             "error"
           ],
@@ -9122,7 +9122,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#Editor",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "Editor",
-      "sourceSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+      "sourceSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "TranslatorWorkspace renders dynamic Editor for loaded expanded step.",
@@ -9144,7 +9144,7 @@
           "storyId": "production-translator-translatorworkspace--loaded-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--loaded-request",
           "expectedVisibleText": "gpt-5.2-codex",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "expanded",
             "text"
@@ -9159,7 +9159,7 @@
           "storyId": "production-translator-translatorworkspace--converts-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-request",
           "expectedVisibleText": "gpt-5.2-codex",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "expanded",
             "text"
@@ -9174,7 +9174,7 @@
           "storyId": "production-translator-translatorworkspace--sends-target-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--sends-target-request",
           "expectedVisibleText": "codex",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "expanded",
             "text"
@@ -9194,7 +9194,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#getAction",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "getAction",
-      "sourceSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+      "sourceSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-backed actual parent interaction; build/runtime review pending.",
@@ -9216,7 +9216,7 @@
           "storyId": "production-translator-translatorworkspace--converts-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-request",
           "expectedVisibleText": "To OpenAI",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "controls"
           ],
@@ -9230,7 +9230,7 @@
           "storyId": "production-translator-translatorworkspace--converts-to-target",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-to-target",
           "expectedVisibleText": "To Target",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "controls"
           ],
@@ -9244,7 +9244,7 @@
           "storyId": "production-translator-translatorworkspace--sends-target-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--sends-target-request",
           "expectedVisibleText": "Send",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "controls"
           ],
@@ -9263,7 +9263,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#MetaBadge",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "MetaBadge",
-      "sourceSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+      "sourceSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-translator-metabadge--neutral, production-translator-metabadge--info, production-translator-metabadge--warning, production-translator-metabadge--success, production-translator-metabadge--accent. Pending runtime review.",
@@ -9289,7 +9289,7 @@
           "storyId": "production-translator-metabadge--neutral",
           "runtimeArtifactId": "production-translator-metabadge--neutral",
           "expectedVisibleText": "Label",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "text"
           ],
@@ -9303,7 +9303,7 @@
           "storyId": "production-translator-metabadge--info",
           "runtimeArtifactId": "production-translator-metabadge--info",
           "expectedVisibleText": "Info",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "text"
           ],
@@ -9317,7 +9317,7 @@
           "storyId": "production-translator-metabadge--warning",
           "runtimeArtifactId": "production-translator-metabadge--warning",
           "expectedVisibleText": "Warning",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "text"
           ],
@@ -9331,7 +9331,7 @@
           "storyId": "production-translator-metabadge--success",
           "runtimeArtifactId": "production-translator-metabadge--success",
           "expectedVisibleText": "Success",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "text"
           ],
@@ -9345,7 +9345,7 @@
           "storyId": "production-translator-metabadge--accent",
           "runtimeArtifactId": "production-translator-metabadge--accent",
           "expectedVisibleText": "Accent",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "text"
           ],
@@ -9364,7 +9364,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#TranslatorNotice",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "TranslatorNotice",
-      "sourceSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+      "sourceSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Error state conditionally renders TranslatorNotice.",
@@ -9384,7 +9384,7 @@
           "storyId": "production-translator-translatorworkspace--load-failure",
           "runtimeArtifactId": "production-translator-translatorworkspace--load-failure",
           "expectedVisibleText": "Fixture capture missing",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "error"
           ],
@@ -9398,7 +9398,7 @@
           "storyId": "production-translator-translatorworkspace--dismiss-error",
           "runtimeArtifactId": "production-translator-translatorworkspace--dismiss-error",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "error"
           ],
@@ -9419,7 +9419,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#TranslatorStepCard",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "TranslatorStepCard",
-      "sourceSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+      "sourceSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-translator-translatorstepcard--collapsed-empty, production-translator-translatorstepcard--collapsed-loaded, production-translator-translatorstepcard--expanded, production-translator-translatorstepcard--text-expanded, production-translator-translatorstepcard--loading, production-translator-translatorstepcard--keyboard-enter-toggle. Pending runtime review.",
@@ -9447,7 +9447,7 @@
           "storyId": "production-translator-translatorstepcard--collapsed-empty",
           "runtimeArtifactId": "production-translator-translatorstepcard--collapsed-empty",
           "expectedVisibleText": "Not loaded",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "collapsed",
             "empty"
@@ -9462,7 +9462,7 @@
           "storyId": "production-translator-translatorstepcard--collapsed-loaded",
           "runtimeArtifactId": "production-translator-translatorstepcard--collapsed-loaded",
           "expectedVisibleText": "chars",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "collapsed",
             "text"
@@ -9477,7 +9477,7 @@
           "storyId": "production-translator-translatorstepcard--expanded",
           "runtimeArtifactId": "production-translator-translatorstepcard--expanded",
           "expectedVisibleText": "Load",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "expanded"
           ],
@@ -9491,7 +9491,7 @@
           "storyId": "production-translator-translatorstepcard--text-expanded",
           "runtimeArtifactId": "production-translator-translatorstepcard--text-expanded",
           "expectedVisibleText": "Plain text",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "expanded",
             "text"
@@ -9506,7 +9506,7 @@
           "storyId": "production-translator-translatorstepcard--loading",
           "runtimeArtifactId": "production-translator-translatorstepcard--loading",
           "expectedVisibleText": "Loading",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "loading"
           ],
@@ -9520,7 +9520,7 @@
           "storyId": "production-translator-translatorstepcard--keyboard-enter-toggle",
           "runtimeArtifactId": "production-translator-translatorstepcard--keyboard-enter-toggle",
           "expectedVisibleText": "Collapse",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "keyboard",
             "expanded"
@@ -9540,7 +9540,7 @@
       "id": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx#TranslatorWorkspace",
       "sourcePath": "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx",
       "symbol": "TranslatorWorkspace",
-      "sourceSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+      "sourceSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-translator-translatorworkspace--empty, production-translator-translatorworkspace--loaded-request, production-translator-translatorworkspace--converts-request, production-translator-translatorworkspace--sends-target-request, production-translator-translatorworkspace--load-failure, production-translator-translatorworkspace--dismiss-error, production-translator-translatorworkspace--mobile-keyboard, production-translator-translatorworkspace--rtl. Pending runtime review.",
@@ -9572,7 +9572,7 @@
           "storyId": "production-translator-translatorworkspace--empty",
           "runtimeArtifactId": "production-translator-translatorworkspace--empty",
           "expectedVisibleText": "Load a captured request",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "empty"
           ],
@@ -9586,7 +9586,7 @@
           "storyId": "production-translator-translatorworkspace--loaded-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--loaded-request",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "text"
           ],
@@ -9600,7 +9600,7 @@
           "storyId": "production-translator-translatorworkspace--converts-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--converts-request",
           "expectedVisibleText": "Collapse OpenAI Intermediate",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "expanded",
             "controls"
@@ -9615,7 +9615,7 @@
           "storyId": "production-translator-translatorworkspace--sends-target-request",
           "runtimeArtifactId": "production-translator-translatorworkspace--sends-target-request",
           "expectedVisibleText": "Collapse Provider Response",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "expanded",
             "controls"
@@ -9630,7 +9630,7 @@
           "storyId": "production-translator-translatorworkspace--load-failure",
           "runtimeArtifactId": "production-translator-translatorworkspace--load-failure",
           "expectedVisibleText": "Fixture capture missing",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "error"
           ],
@@ -9644,7 +9644,7 @@
           "storyId": "production-translator-translatorworkspace--dismiss-error",
           "runtimeArtifactId": "production-translator-translatorworkspace--dismiss-error",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "error"
           ],
@@ -9658,7 +9658,7 @@
           "storyId": "production-translator-translatorworkspace--mobile-keyboard",
           "runtimeArtifactId": "production-translator-translatorworkspace--mobile-keyboard",
           "expectedVisibleText": "Collapse Source Body",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "mobile",
             "keyboard",
@@ -9674,7 +9674,7 @@
           "storyId": "production-translator-translatorworkspace--rtl",
           "runtimeArtifactId": "production-translator-translatorworkspace--rtl",
           "expectedVisibleText": "Translator Debug",
-          "expectedSha256": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5",
+          "expectedSha256": "1b489a8264f1e42500a0e069017c3fe33f34b4b1b1f94e201d8a28107ed02f0f",
           "axes": [
             "rtl"
           ],
@@ -9786,7 +9786,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#ProviderLimits",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "ProviderLimits",
-      "sourceSha256": "adffd4753dca7b9c7adb1a604ccdc5e457e6b7682fc708bc5cc183dd34d2c597",
+      "sourceSha256": "669f2fd1454fe4b19b1e9df39403f85ad6960ce927837d7753db2f7b006b4ce8",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Dedicated ProviderLimits stories directly render fetched and interactive branches.",
@@ -9816,7 +9816,7 @@
           "storyId": "production-usage-provider-limits--default",
           "runtimeArtifactId": "production-usage-provider-limits--default",
           "expectedVisibleText": "Provider limits",
-          "expectedSha256": "adffd4753dca7b9c7adb1a604ccdc5e457e6b7682fc708bc5cc183dd34d2c597",
+          "expectedSha256": "669f2fd1454fe4b19b1e9df39403f85ad6960ce927837d7753db2f7b006b4ce8",
           "axes": [
             "text"
           ],
@@ -9830,7 +9830,7 @@
           "storyId": "production-usage-provider-limits--loading",
           "runtimeArtifactId": "production-usage-provider-limits--loading",
           "expectedVisibleText": "Loading",
-          "expectedSha256": "adffd4753dca7b9c7adb1a604ccdc5e457e6b7682fc708bc5cc183dd34d2c597",
+          "expectedSha256": "669f2fd1454fe4b19b1e9df39403f85ad6960ce927837d7753db2f7b006b4ce8",
           "axes": [
             "loading"
           ],
@@ -9844,7 +9844,7 @@
           "storyId": "production-usage-provider-limits--error",
           "runtimeArtifactId": "production-usage-provider-limits--error",
           "expectedVisibleText": "Failed to load provider limits",
-          "expectedSha256": "adffd4753dca7b9c7adb1a604ccdc5e457e6b7682fc708bc5cc183dd34d2c597",
+          "expectedSha256": "669f2fd1454fe4b19b1e9df39403f85ad6960ce927837d7753db2f7b006b4ce8",
           "axes": [
             "error"
           ],
@@ -9861,7 +9861,7 @@
           "storyId": "production-usage-provider-limits--reset-dialog",
           "runtimeArtifactId": "production-usage-provider-limits--reset-dialog",
           "expectedVisibleText": "Reset provider limits",
-          "expectedSha256": "adffd4753dca7b9c7adb1a604ccdc5e457e6b7682fc708bc5cc183dd34d2c597",
+          "expectedSha256": "669f2fd1454fe4b19b1e9df39403f85ad6960ce927837d7753db2f7b006b4ce8",
           "axes": [
             "controls"
           ],
@@ -9875,7 +9875,7 @@
           "storyId": "production-usage-provider-limits--group-filters",
           "runtimeArtifactId": "production-usage-provider-limits--group-filters",
           "expectedVisibleText": "All providers",
-          "expectedSha256": "adffd4753dca7b9c7adb1a604ccdc5e457e6b7682fc708bc5cc183dd34d2c597",
+          "expectedSha256": "669f2fd1454fe4b19b1e9df39403f85ad6960ce927837d7753db2f7b006b4ce8",
           "axes": [
             "controls"
           ],
@@ -9889,7 +9889,7 @@
           "storyId": "production-usage-provider-limits--credit-branches",
           "runtimeArtifactId": "production-usage-provider-limits--credit-branches",
           "expectedVisibleText": "Credits",
-          "expectedSha256": "adffd4753dca7b9c7adb1a604ccdc5e457e6b7682fc708bc5cc183dd34d2c597",
+          "expectedSha256": "669f2fd1454fe4b19b1e9df39403f85ad6960ce927837d7753db2f7b006b4ce8",
           "axes": [
             "text"
           ],
@@ -9903,7 +9903,7 @@
           "storyId": "production-usage-provider-limits--delete-confirm",
           "runtimeArtifactId": "production-usage-provider-limits--delete-confirm",
           "expectedVisibleText": "Delete provider limit",
-          "expectedSha256": "adffd4753dca7b9c7adb1a604ccdc5e457e6b7682fc708bc5cc183dd34d2c597",
+          "expectedSha256": "669f2fd1454fe4b19b1e9df39403f85ad6960ce927837d7753db2f7b006b4ce8",
           "axes": [
             "controls"
           ],
@@ -9922,7 +9922,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimitCard.js#ProviderLimitCard",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimitCard.js",
       "symbol": "ProviderLimitCard",
-      "sourceSha256": "8e176111f1f61aed6829a8a2e97f1bd046984125c3b418eca99f753123befe57",
+      "sourceSha256": "925bb19c584183984b7f6b06a68cf940dd94d7bfc7f2d6d31c76e4ae678eb5bd",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "UsageSurface direct fixture renders ProviderLimitCard in listed scenario states.",
@@ -9944,7 +9944,7 @@
           "storyId": "production-usage-usage-surfaces--provider-limit-card-healthy",
           "runtimeArtifactId": "production-usage-usage-surfaces--provider-limit-card-healthy",
           "expectedVisibleText": "OpenAI",
-          "expectedSha256": "8e176111f1f61aed6829a8a2e97f1bd046984125c3b418eca99f753123befe57",
+          "expectedSha256": "925bb19c584183984b7f6b06a68cf940dd94d7bfc7f2d6d31c76e4ae678eb5bd",
           "axes": [
             "text"
           ],
@@ -9958,7 +9958,7 @@
           "storyId": "production-usage-usage-surfaces--provider-limit-card-message",
           "runtimeArtifactId": "production-usage-usage-surfaces--provider-limit-card-message",
           "expectedVisibleText": "No API quota endpoint for this provider",
-          "expectedSha256": "8e176111f1f61aed6829a8a2e97f1bd046984125c3b418eca99f753123befe57",
+          "expectedSha256": "925bb19c584183984b7f6b06a68cf940dd94d7bfc7f2d6d31c76e4ae678eb5bd",
           "axes": [
             "empty"
           ],
@@ -9972,7 +9972,7 @@
           "storyId": "production-usage-usage-surfaces--provider-limit-card-error",
           "runtimeArtifactId": "production-usage-usage-surfaces--provider-limit-card-error",
           "expectedVisibleText": "429 rate limited",
-          "expectedSha256": "8e176111f1f61aed6829a8a2e97f1bd046984125c3b418eca99f753123befe57",
+          "expectedSha256": "925bb19c584183984b7f6b06a68cf940dd94d7bfc7f2d6d31c76e4ae678eb5bd",
           "axes": [
             "error"
           ],
@@ -10118,7 +10118,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js#ProviderNode",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js",
       "symbol": "ProviderNode",
-      "sourceSha256": "4f5ef7d74f608277783ad2dbac3f4d24aa9c5e937d30d4dfcd77f9eed6d92119",
+      "sourceSha256": "a0cf7ee862a9f75dc3b31d810429d13502fa086ea787a838b71e0a4fd9f36883",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "UsageSurface direct fixture renders ProviderNode in listed scenario states.",
@@ -10136,7 +10136,7 @@
           "storyId": "production-usage-usage-surfaces--provider-topology-connected",
           "runtimeArtifactId": "production-usage-usage-surfaces--provider-topology-connected",
           "expectedVisibleText": "openai",
-          "expectedSha256": "4f5ef7d74f608277783ad2dbac3f4d24aa9c5e937d30d4dfcd77f9eed6d92119",
+          "expectedSha256": "a0cf7ee862a9f75dc3b31d810429d13502fa086ea787a838b71e0a4fd9f36883",
           "axes": [
             "text"
           ],
@@ -10155,7 +10155,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js#ProviderTopology",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js",
       "symbol": "ProviderTopology",
-      "sourceSha256": "4f5ef7d74f608277783ad2dbac3f4d24aa9c5e937d30d4dfcd77f9eed6d92119",
+      "sourceSha256": "a0cf7ee862a9f75dc3b31d810429d13502fa086ea787a838b71e0a4fd9f36883",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "UsageSurface direct fixture renders ProviderTopology in listed scenario states.",
@@ -10175,7 +10175,7 @@
           "storyId": "production-usage-usage-surfaces--provider-topology-connected",
           "runtimeArtifactId": "production-usage-usage-surfaces--provider-topology-connected",
           "expectedVisibleText": "Provider topology",
-          "expectedSha256": "4f5ef7d74f608277783ad2dbac3f4d24aa9c5e937d30d4dfcd77f9eed6d92119",
+          "expectedSha256": "a0cf7ee862a9f75dc3b31d810429d13502fa086ea787a838b71e0a4fd9f36883",
           "axes": [
             "text"
           ],
@@ -10189,7 +10189,7 @@
           "storyId": "production-usage-usage-surfaces--provider-topology-empty",
           "runtimeArtifactId": "production-usage-usage-surfaces--provider-topology-empty",
           "expectedVisibleText": "No provider nodes",
-          "expectedSha256": "4f5ef7d74f608277783ad2dbac3f4d24aa9c5e937d30d4dfcd77f9eed6d92119",
+          "expectedSha256": "a0cf7ee862a9f75dc3b31d810429d13502fa086ea787a838b71e0a4fd9f36883",
           "axes": [
             "empty"
           ],
@@ -10208,7 +10208,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js#RouterNode",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js",
       "symbol": "RouterNode",
-      "sourceSha256": "4f5ef7d74f608277783ad2dbac3f4d24aa9c5e937d30d4dfcd77f9eed6d92119",
+      "sourceSha256": "a0cf7ee862a9f75dc3b31d810429d13502fa086ea787a838b71e0a4fd9f36883",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "UsageSurface direct fixture renders RouterNode in listed scenario states. Missing branch proof: ['Connected topology parent shown; no router-specific assertion.']",
@@ -10226,7 +10226,7 @@
           "storyId": "production-usage-usage-surfaces--provider-topology-connected",
           "runtimeArtifactId": "production-usage-usage-surfaces--provider-topology-connected",
           "expectedVisibleText": null,
-          "expectedSha256": "4f5ef7d74f608277783ad2dbac3f4d24aa9c5e937d30d4dfcd77f9eed6d92119",
+          "expectedSha256": "a0cf7ee862a9f75dc3b31d810429d13502fa086ea787a838b71e0a4fd9f36883",
           "axes": [
             "text"
           ],

@@ -295,7 +295,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
               <span className="text-[10px] leading-tight">Reconnect</span>
             </button>
           )}
-          <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-dd-muted hover:bg-dd-surface-2/5 hover:text-dd-accent dark:hover:bg-dd-surface-2/5">
+          <button onClick={onEdit} className="flex min-h-11 min-w-11 flex-col items-center justify-center rounded px-2 py-1 text-dd-muted hover:bg-dd-surface-2/5 hover:text-dd-accent dark:hover:bg-dd-surface-2/5">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             <span className="text-[10px] leading-tight">Edit</span>
           </button>

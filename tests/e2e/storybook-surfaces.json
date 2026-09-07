@@ -6620,7 +6620,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js#ConnectionRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js",
       "symbol": "ConnectionRow",
-      "sourceSha256": "563209a04dc921b1147f63b741eaf921e962f56f87f0605049026e7931612827",
+      "sourceSha256": "7509eb63478f4460b3f327555c47f4b902bd25c11dc7a39f2639642ffcf4c70e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
@@ -6638,7 +6638,7 @@
           "storyId": "production-providers-detail-widgets--connection-row-scenario",
           "runtimeArtifactId": "production-providers-detail-widgets--connection-row-scenario",
           "expectedVisibleText": "Production",
-          "expectedSha256": "563209a04dc921b1147f63b741eaf921e962f56f87f0605049026e7931612827",
+          "expectedSha256": "7509eb63478f4460b3f327555c47f4b902bd25c11dc7a39f2639642ffcf4c70e",
           "axes": [
             "connection=active",
             "proxy-pool"
@@ -6829,7 +6829,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#bulkActionModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "bulkActionModal",
-      "sourceSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+      "sourceSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerdetailpage--compatible-branch; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -6845,7 +6845,7 @@
           "storyId": "production-providers-providerdetailpage--compatible-branch",
           "runtimeArtifactId": "production-providers-providerdetailpage--compatible-branch",
           "expectedVisibleText": null,
-          "expectedSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+          "expectedSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
           "axes": [
             "provider=compatible",
             "connection=present"
@@ -6866,7 +6866,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#connectionsList",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "connectionsList",
-      "sourceSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+      "sourceSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerdetailpage--compatible-branch; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -6884,7 +6884,7 @@
           "storyId": "production-providers-providerdetailpage--compatible-branch",
           "runtimeArtifactId": "production-providers-providerdetailpage--compatible-branch",
           "expectedVisibleText": "OpenAI Compatible (Prod)",
-          "expectedSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+          "expectedSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
           "axes": [
             "provider=compatible",
             "connection=present"
@@ -6904,7 +6904,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#ProviderDetailPage",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "ProviderDetailPage",
-      "sourceSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+      "sourceSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-providers-providerdetailpage--open-ai-detail, production-providers-providerdetailpage--settings-controls, production-providers-providerdetailpage--compatible-branch. Pending runtime review.",
@@ -6926,7 +6926,7 @@
           "storyId": "production-providers-providerdetailpage--open-ai-detail",
           "runtimeArtifactId": "production-providers-providerdetailpage--open-ai-detail",
           "expectedVisibleText": "OpenAI",
-          "expectedSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+          "expectedSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
           "axes": [
             "provider=openai",
             "loaded"
@@ -6941,7 +6941,7 @@
           "storyId": "production-providers-providerdetailpage--settings-controls",
           "runtimeArtifactId": "production-providers-providerdetailpage--settings-controls",
           "expectedVisibleText": "Retry: 15s",
-          "expectedSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+          "expectedSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
           "axes": [
             "provider=openai",
             "controls",
@@ -6957,7 +6957,7 @@
           "storyId": "production-providers-providerdetailpage--compatible-branch",
           "runtimeArtifactId": "production-providers-providerdetailpage--compatible-branch",
           "expectedVisibleText": "OpenAI Compatible (Prod)",
-          "expectedSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+          "expectedSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
           "axes": [
             "provider=compatible",
             "loaded"
@@ -6977,7 +6977,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#renderModelsSection",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "renderModelsSection",
-      "sourceSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+      "sourceSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerdetailpage--compatible-branch; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -6995,7 +6995,7 @@
           "storyId": "production-providers-providerdetailpage--compatible-branch",
           "runtimeArtifactId": "production-providers-providerdetailpage--compatible-branch",
           "expectedVisibleText": "OpenAI Compatible (Prod)",
-          "expectedSha256": "4a4fef6055dda2ab861dc59fcb02e87dba6b38e692638d97db86133c8fe58b8d",
+          "expectedSha256": "94ab563eb70e22ab76304fd672f1fdc6bf711c666a08eede679eb95f880768ff",
           "axes": [
             "provider=compatible"
           ],

@@ -1234,15 +1234,14 @@ export default function ProviderDetailPage() {
       {connections.
     map((conn, index) =>
     <div key={conn.id} className="flex min-w-0 items-stretch">
-            <div className="flex shrink-0 items-center pl-1 sm:pl-2">
+            <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center pl-1 sm:pl-2">
               <input
           type="checkbox"
           aria-label={`Select ${conn.name}`}
           checked={isSelected(conn.id)}
           onChange={() => toggleSelectConnection(conn.id)}
           className="h-4 w-4 rounded border-dd-border text-dd-accent focus:shadow-dd-focus" />
-        
-            </div>
+            </label>
             <div className="flex-1 min-w-0">
               <ConnectionRow
                 connection={conn}
@@ -1637,7 +1636,7 @@ export default function ProviderDetailPage() {
               onChange={(event) => setRpmLimit(event.target.value)}
               onBlur={(event) => saveRpmLimit(event.target.value)}
               title="Maximum requests per minute per account. Blank uses provider default; 0 is unlimited."
-              className="h-9 w-16 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+              className="min-h-11 w-16 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
             <span className="hidden text-xs text-dd-muted sm:inline">Retry delay</span>
             <div className="w-44"><Select options={RETRY_DELAY_OPTIONS.map(([value, label]) => ({ value, label }))} value={retryDelay} onChange={(value) => handleRetryDelayChange(value)} title="Static cooldown when the provider reports no reset deadline" size="sm" aria-label="Retry delay" /></div>
           </div>
@@ -1844,7 +1843,7 @@ export default function ProviderDetailPage() {
                 value={concurrencyLimit}
                 onChange={(e) => handleConcurrencyLimitChange(e.target.value)}
                 placeholder="∞"
-                className="h-9 w-16 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none focus:border-dd-accent focus-visible:shadow-dd-focus" />
+                className="min-h-11 w-16 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none focus:border-dd-accent focus-visible:shadow-dd-focus" />
               
               </div>
             </div>
@@ -1923,13 +1922,12 @@ export default function ProviderDetailPage() {
           }
               {connections.length > 0 &&
           <div className="mb-3 flex items-center gap-2 border-b border-black/[0.03] pb-2 dark:border-white/[0.03]">
-                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-dd-muted hover:text-dd-accent">
+                  <label className="flex min-h-11 min-w-11 cursor-pointer items-center gap-1.5 text-xs text-dd-muted hover:text-dd-accent">
                     <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleSelectAllConnections}
-                className="h-3.5 w-3.5 rounded border-dd-border text-dd-accent focus:shadow-dd-focus" />
-              
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAllConnections}
+                      className="h-3.5 w-3.5 rounded border-dd-border text-dd-accent focus:shadow-dd-focus" />
                     Select All
                   </label>
                 </div>

@@ -5,25 +5,29 @@ import { createRoot } from "react-dom/client";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("@/shared/components", () => ({
-  Button: ({ children, onClick, disabled }) => React.createElement("button", { onClick, disabled }, children),
-  Input: (props) => React.createElement("input", props),
-  Modal: ({ isOpen, title, children }) => isOpen ? React.createElement(
+vi.mock("@/shared/ui/components/Modal", () => ({
+  default: ({ open, title, children }) => open ? React.createElement(
     "section",
     null,
     React.createElement("h2", null, title),
     children,
   ) : null,
-  Select: ({ label, value, onChange, options }) => React.createElement(
-    "label",
-    null,
-    label,
-    React.createElement(
-      "select",
-      { value, onChange },
-      options.map((option) => React.createElement("option", { key: option.value, value: option.value }, option.label)),
-    ),
+}));
+vi.mock("@/shared/ui/components/Button", () => ({
+  default: ({ children, ...props }) => React.createElement("button", props, children),
+}));
+vi.mock("@/shared/ui/components/Input", () => ({
+  default: (props) => React.createElement("input", props),
+}));
+vi.mock("@/shared/ui/components/Select", () => ({
+  default: ({ value, onChange, options, ...props }) => React.createElement(
+    "select",
+    { ...props, value, onChange: (event) => onChange(event.target.value) },
+    options.map((option) => React.createElement("option", { key: option.value, value: option.value }, option.label)),
   ),
+}));
+vi.mock("@/shared/ui/components/IconButton", () => ({
+  default: ({ label, ...props }) => React.createElement("button", { ...props, "aria-label": label }),
 }));
 vi.mock("@/shared/hooks/useCopyToClipboard", () => ({
   useCopyToClipboard: () => ({ copied: null, copy: vi.fn() }),

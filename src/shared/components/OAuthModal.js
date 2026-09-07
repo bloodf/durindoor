@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Modal, Button, Input, Select } from "@/shared/components";
+import Modal from "@/shared/ui/components/Modal";
+import Button from "@/shared/ui/components/Button";
+import Input from "@/shared/ui/components/Input";
+import Select from "@/shared/ui/components/Select";
+import IconButton from "@/shared/ui/components/IconButton";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   createOAuthFlowLifecycle,
-  oauthProxySelection } from
-"@/shared/utils/oauthFlowLifecycle";
+  oauthProxySelection
+} from "@/shared/utils/oauthFlowLifecycle";
 
 const DEVICE_CODE_PROVIDERS = new Set([
 "github",
@@ -468,13 +472,11 @@ export default function OAuthModal({
     };
   }, [isOpen, processCallback]);
 
-  const handleProxyPoolChange = (event) => {
-    const proxyPoolId = event.target.value;
+  const handleProxyPoolChange = (proxyPoolId) => {
     void restartFlow(proxyPoolId);
   };
 
-  const handleCodexFingerprintModeChange = (event) => {
-    const mode = event.target.value;
+  const handleCodexFingerprintModeChange = (mode) => {
     setCodexFingerprintMode(mode);
     if (latestRef.current) latestRef.current.codexFingerprintMode = mode;
     void restartFlow(selectedProxyPoolIdRef.current);
@@ -561,194 +563,200 @@ export default function OAuthModal({
   const activeProxyPools = proxyPools.filter((pool) => pool.isActive === true);
 
   return (
-    <Modal isOpen={isOpen} title={modalTitle} onClose={() => {void handleClose();}} size="lg">
-      <div className="flex flex-col gap-4">
-        {!proxyPoolsReady &&
-        <div className="flex items-center gap-2 text-sm text-text-muted">
-            <span className="material-symbols-outlined animate-spin">progress_activity</span>
-            Loading routing options…
+    <Modal open={isOpen} title={modalTitle} onClose={() => {void handleClose();}} size="lg">
+      <div className="flex flex-col gap-5">
+        {!proxyPoolsReady && (
+          <div className="flex items-center gap-2 rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-3 py-2.5 text-[13px] text-dd-muted">
+            <span className="material-symbols-outlined animate-spin text-[18px] leading-none" aria-hidden="true">progress_activity</span>
+            <span>Loading routing options…</span>
           </div>
-        }
+        )}
 
-        {proxyPoolsReady && activeProxyPools.length > 0 && (step === "waiting" || step === "input") &&
-        <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-sidebar/30 p-3">
-            <label className="text-xs font-medium uppercase tracking-wider text-text-muted">
-              Routing Proxy Pool
+        {proxyPoolsReady && activeProxyPools.length > 0 && (step === "waiting" || step === "input") && (
+          <div className="flex flex-col gap-1.5 rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3">
+            <label className="text-xs font-medium uppercase tracking-wider text-dd-muted">
+              Routing proxy pool
             </label>
-            <select
-            value={selectedProxyPoolId}
-            onChange={handleProxyPoolChange}
-            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm outline-none focus:border-primary">
-            
-              <option value="">Direct Connection</option>
-              {activeProxyPools.map((pool) =>
-            <option key={pool.id} value={pool.id}>{pool.name}</option>
-            )}
-            </select>
+            <Select
+              value={selectedProxyPoolId || ""}
+              onChange={handleProxyPoolChange}
+              aria-label="Routing proxy pool"
+              options={[
+                { value: "", label: "Direct connection" },
+                ...activeProxyPools.map((pool) => ({ value: pool.id, label: pool.name }))
+              ]}
+            />
           </div>
-        }
+        )}
 
-        {provider === "codex" && proxyPoolsReady && (step === "waiting" || step === "input") &&
-        <Select
-          label="OAuth fingerprint mode"
-          value={codexFingerprintMode}
-          onChange={handleCodexFingerprintModeChange}
-          options={[
-          { value: "off", label: "Off — preserve client identity" },
-          { value: "device", label: "Device — stable installation" },
-          { value: "session", label: "Session — stable account session (recommended)" },
-          { value: "full", label: "Full — stable account thread" }]
-          } />
+        {provider === "codex" && proxyPoolsReady && (step === "waiting" || step === "input") && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-dd-muted">OAuth fingerprint mode</span>
+            <Select
+              value={codexFingerprintMode}
+              onChange={handleCodexFingerprintModeChange}
+              aria-label="OAuth fingerprint mode"
+              options={[
+                { value: "off", label: "Off — preserve client identity" },
+                { value: "device", label: "Device — stable installation" },
+                { value: "session", label: "Session — stable account session (recommended)" },
+                { value: "full", label: "Full — stable account thread" }
+              ]}
+            />
+          </div>
+        )}
 
-        }
-
-        {proxyPoolsReady && (step === "waiting" || step === "input") && !isDeviceCode &&
-        <>
-            <div className="flex flex-col gap-2 rounded-lg border border-border bg-sidebar/50 px-3 py-2">
-              {step === "waiting" &&
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined animate-spin text-base text-primary">progress_activity</span>
-                <span className="text-sm">
-                  {isXaiProvider ? "Waiting for Grok Build OAuth…" : "Waiting for popup authorization…"}
-                </span>
-              </div>
-              }
-              {authData?.authUrl &&
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input value={authData.authUrl} readOnly className="min-w-0 flex-1 font-mono text-xs" />
-                <Button
-                  variant="secondary"
-                  icon={copied === "auth_url" ? "check" : "content_copy"}
-                  onClick={() => copy(authData.authUrl, "auth_url")}>
-
-                  Copy
-                </Button>
-                <Button
-                  variant="ghost"
-                  icon="open_in_new"
-                  onClick={() => window.open(authData.authUrl, "_blank", "noopener,noreferrer")}>
-
-                  Open
-                </Button>
-              </div>
-              }
-            </div>
-
-            <div className="flex items-center gap-3 my-1">
-              <div className="h-px flex-1 bg-border" />
-              <span className="text-xs uppercase tracking-wider text-text-muted">Paste callback URL manually</span>
-              <div className="h-px flex-1 bg-border" />
-            </div>
-
-            <div>
-              <p className="mb-2 text-sm font-medium">
-                Paste the {provider === "xai" ? "callback URL or copied code" : isKimchiProvider ? "callback URL or copied token" : "callback URL"} here
-              </p>
-              <p className="mb-2 text-xs text-text-muted">
-                {provider === "xai" ?
-              "If xAI shows a code instead of redirecting, paste that code here." :
-              isKimchiProvider ?
-              "After authorization, copy the full callback URL or token from your browser." :
-              "After authorization, copy the full URL from your browser."}
-              </p>
-              <Input
-              value={callbackUrl}
-              onChange={(event) => setCallbackUrl(event.target.value)}
-              placeholder={manualPlaceholder}
-              className="font-mono text-xs" />
-            
-            </div>
-
-            <div className="flex gap-2">
-              <Button onClick={() => {void handleManualSubmit();}} fullWidth disabled={!callbackUrl || !authData}>
-                Connect
-              </Button>
-              <Button onClick={() => {void handleClose();}} variant="ghost" fullWidth>
-                Cancel
-              </Button>
-            </div>
-          </>
-        }
-
-        {proxyPoolsReady && step === "waiting" && isDeviceCode && deviceData &&
-        <>
-            <div className="py-4 text-center">
-              <p className="mb-4 text-sm text-text-muted">Visit the login URL below and authorize:</p>
-              <div className="mb-4 rounded-lg bg-sidebar p-4">
-                <p className="mb-1 text-xs text-text-muted">Login URL</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 break-all text-sm">{deviceLoginUrl}</code>
+        {proxyPoolsReady && (step === "waiting" || step === "input") && !isDeviceCode && (
+          <>
+            <div className="flex flex-col gap-3 rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-3 py-2.5">
+              {step === "waiting" && (
+                <div className="flex items-center gap-2 text-[13px] text-dd-text">
+                  <span className="material-symbols-outlined animate-spin text-[18px] leading-none text-dd-accent" aria-hidden="true">progress_activity</span>
+                  <span>{isXaiProvider ? "Waiting for Grok Build OAuth…" : "Waiting for popup authorization…"}</span>
+                </div>
+              )}
+              {authData?.authUrl && (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="min-w-0 flex-1">
+                    <Input
+                      value={authData.authUrl}
+                      readOnly
+                      className="font-mono text-[12px]"
+                      aria-label="Authorization URL"
+                    />
+                  </div>
                   <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={copied === "login_url" ? "check" : "content_copy"}
-                  onClick={() => copy(deviceLoginUrl, "login_url")}
-                  disabled={!deviceLoginUrl} />
-                
+                    variant="secondary"
+                    icon={copied === "auth_url" ? "check" : "content_copy"}
+                    onClick={() => copy(authData.authUrl, "auth_url")}
+                  >
+                    Copy
+                  </Button>
                   <Button
-                  size="sm"
-                  variant="ghost"
-                  icon="open_in_new"
-                  onClick={() => window.open(deviceLoginUrl, "_blank", "noopener,noreferrer")}
-                  disabled={!deviceLoginUrl}>
-                  
+                    variant="ghost"
+                    icon="open_in_new"
+                    onClick={() => window.open(authData.authUrl, "_blank", "noopener,noreferrer")}
+                  >
                     Open
                   </Button>
                 </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-dd-border" />
+              <span className="text-xs uppercase tracking-wider text-dd-muted">Paste callback URL manually</span>
+              <div className="h-px flex-1 bg-dd-border" />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[13px] font-medium text-dd-text">
+                Paste the {provider === "xai" ? "callback URL or copied code" : isKimchiProvider ? "callback URL or copied token" : "callback URL"} here
+              </p>
+              <p className="text-xs text-dd-muted">
+                {provider === "xai"
+                  ? "If xAI shows a code instead of redirecting, paste that code here."
+                  : isKimchiProvider
+                  ? "After authorization, copy the full callback URL or token from your browser."
+                  : "After authorization, copy the full URL from your browser."}
+              </p>
+              <Input
+                value={callbackUrl}
+                onChange={(event) => setCallbackUrl(event.target.value)}
+                placeholder={manualPlaceholder}
+                className="font-mono text-[12px]"
+                aria-label="Callback URL"
+              />
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button onClick={() => {void handleClose();}} variant="ghost">Cancel</Button>
+              <Button
+                onClick={() => {void handleManualSubmit();}}
+                variant="primary"
+                disabled={!callbackUrl || !authData}
+                icon="link"
+              >
+                Connect
+              </Button>
+            </div>
+          </>
+        )}
+
+        {proxyPoolsReady && step === "waiting" && isDeviceCode && deviceData && (
+          <>
+            <div className="flex flex-col gap-4 py-2 text-center">
+              <p className="text-[13px] text-dd-muted">Visit the login URL below and authorize:</p>
+              <div className="rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-4 text-left">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wider text-dd-muted">Login URL</p>
+                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                  <code className="min-w-0 flex-1 break-all font-mono text-[12px] text-dd-text">{deviceLoginUrl}</code>
+                  <IconButton
+                    icon={copied === "login_url" ? "check" : "content_copy"}
+                    label="Copy login URL"
+                    onClick={() => copy(deviceLoginUrl, "login_url")}
+                    disabled={!deviceLoginUrl}
+                  />
+                  <IconButton
+                    icon="open_in_new"
+                    label="Open login URL"
+                    onClick={() => window.open(deviceLoginUrl, "_blank", "noopener,noreferrer")}
+                    disabled={!deviceLoginUrl}
+                  />
+                </div>
               </div>
-              <div className="rounded-lg bg-primary/10 p-4">
-                <p className="mb-1 text-xs text-text-muted">Your Code</p>
-                <div className="flex items-center justify-center gap-2">
-                  <p className="font-mono text-2xl font-bold text-primary">{deviceData.user_code}</p>
-                  <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={copied === "user_code" ? "check" : "content_copy"}
-                  onClick={() => copy(deviceData.user_code, "user_code")} />
-                
+              <div className="rounded-dd border border-dd-accent/40 bg-dd-accent-soft p-4 text-left">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wider text-dd-muted">Your code</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex-1 text-center font-mono text-2xl font-bold tracking-widest text-dd-accent">{deviceData.user_code}</p>
+                  <IconButton
+                    icon={copied === "user_code" ? "check" : "content_copy"}
+                    label="Copy device code"
+                    onClick={() => copy(deviceData.user_code, "user_code")}
+                  />
                 </div>
               </div>
             </div>
-            {polling &&
-          <div className="flex items-center justify-center gap-2 text-sm text-text-muted">
-                <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                Waiting for authorization…
+            {polling && (
+              <div className="flex items-center justify-center gap-2 text-[13px] text-dd-muted">
+                <span className="material-symbols-outlined animate-spin text-[18px] leading-none" aria-hidden="true">progress_activity</span>
+                <span>Waiting for authorization…</span>
               </div>
-          }
-            <Button onClick={() => {void handleClose();}} variant="ghost" fullWidth>Cancel</Button>
+            )}
+            <Button onClick={() => {void handleClose();}} variant="ghost">Cancel</Button>
           </>
-        }
+        )}
 
-        {step === "success" &&
-        <div className="py-6 text-center">
-            <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-              <span className="material-symbols-outlined text-3xl text-green-600">check_circle</span>
-            </div>
-            <h3 className="mb-2 text-lg font-semibold">Connected Successfully!</h3>
-            <p className="mb-4 text-sm text-text-muted">Your {providerInfo.name} account has been connected.</p>
-            <Button onClick={() => {void handleClose();}} fullWidth>Done</Button>
+        {step === "success" && (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <span className="flex size-14 items-center justify-center rounded-full bg-dd-success/10 text-dd-success">
+              <span className="material-symbols-outlined text-[32px] leading-none" aria-hidden="true">check_circle</span>
+            </span>
+            <h3 className="text-base font-semibold text-dd-text">Connected successfully!</h3>
+            <p className="text-[13px] text-dd-muted">Your {providerInfo.name} account has been connected.</p>
+            <Button onClick={() => {void handleClose();}} variant="primary" className="w-full sm:w-auto">Done</Button>
           </div>
-        }
+        )}
 
-        {step === "error" &&
-        <div className="py-6 text-center">
-            <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-              <span className="material-symbols-outlined text-3xl text-red-600">error</span>
-            </div>
-            <h3 className="mb-2 text-lg font-semibold">Connection Failed</h3>
-            <p className="mb-4 text-sm text-red-600">{error}</p>
-            <div className="flex gap-2">
+        {step === "error" && (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <span className="flex size-14 items-center justify-center rounded-full bg-dd-danger/10 text-dd-danger">
+              <span className="material-symbols-outlined text-[32px] leading-none" aria-hidden="true">error</span>
+            </span>
+            <h3 className="text-base font-semibold text-dd-text">Connection failed</h3>
+            <p className="text-[13px] text-dd-danger" role="alert">{error}</p>
+            <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-center">
+              <Button onClick={() => {void handleClose();}} variant="ghost">Cancel</Button>
               <Button
-              onClick={() => {void restartFlow(selectedProxyPoolIdRef.current);}}
-              variant="secondary"
-              fullWidth>
-              
-                Try Again
+                onClick={() => {void restartFlow(selectedProxyPoolIdRef.current);}}
+                variant="secondary"
+                icon="refresh"
+              >
+                Try again
               </Button>
-              <Button onClick={() => {void handleClose();}} variant="ghost" fullWidth>Cancel</Button>
             </div>
           </div>
-        }
+        )}
       </div>
     </Modal>);
 

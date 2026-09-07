@@ -2,16 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import MitmModelMappingRow from "./MitmModelMappingRow";
-import { Card, Button, Badge, Input, ModelSelectModal } from "@/shared/components";
+import { ModelSelectModal } from "@/shared/components";
+import { Card } from "@/shared/ui/components/Card.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
 import { TOOL_HOSTS } from "@/shared/constants/mitmToolHosts";
 import Image from "next/image";
 
-/**
- * Per-tool MITM card — shows DNS status + model mappings.
- * - Auto-saves model mapping on blur or modal select
- * - Skips sudo modal if password is already cached
- * - Model mappings can only be edited when DNS is active
- */
 export default function MitmToolCard({
   tool,
   isExpanded,
@@ -133,77 +132,78 @@ export default function MitmToolCard({
     doDnsAction(pendingDnsAction, sudoPassword);
   };
 
+
+
+  const statusTone = !serverRunning ? "neutral" : dnsActive ? "success" : "warning";
+  const statusLabel = !serverRunning ? "Server off" : dnsActive ? "Active" : "DNS off";
   return (
     <>
-      <Card padding="xs" className="overflow-hidden">
-        <div className="flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
+      <Card padding={false} className="overflow-hidden p-4">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isExpanded}
+          aria-controls={`mitm-tool-body-${tool.id}`}
+          className="flex w-full items-start justify-between gap-3 rounded-dd text-left outline-none hover:bg-dd-surface-2 focus-visible:shadow-dd-focus sm:items-center"
+        >
           <div className="flex min-w-0 items-center gap-3">
-            <div className="size-8 flex items-center justify-center shrink-0">
+            <div className="flex size-8 shrink-0 items-center justify-center">
               <Image
                 src={tool.image}
                 alt={tool.name}
                 width={32}
                 height={32}
-                className="size-8 object-contain rounded-lg"
+                className="size-8 rounded-dd object-contain"
                 sizes="32px"
-                onError={(e) => { e.target.style.display = "none"; }}
+                onError={(event) => { event.currentTarget.style.display = "none"; }}
               />
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-medium text-sm">{tool.name}</h3>
-                {!serverRunning ? (
-                  <Badge variant="default" size="sm">Server off</Badge>
-                ) : dnsActive ? (
-                  <Badge variant="success" size="sm">Active</Badge>
-                ) : (
-                  <Badge variant="warning" size="sm">DNS off</Badge>
-                )}
+                <h3 className="text-[13px] font-semibold text-dd-text">{tool.name}</h3>
+                <Badge tone={statusTone} size="sm">{statusLabel}</Badge>
               </div>
-              <p className="text-xs text-text-muted sm:truncate">Intercept {tool.name} requests via MITM proxy</p>
+              <p className="truncate text-xs text-dd-muted sm:max-w-[40ch]">Intercept {tool.name} requests via MITM proxy</p>
             </div>
           </div>
-          <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+          <span className={`material-symbols-outlined text-dd-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`} aria-hidden="true">
             expand_more
           </span>
-        </div>
+        </button>
 
-        {isExpanded && (
-          <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
-            {/* Hosts */}
-            {mitmHosts.length > 0 && (
-              <div className="mt-2 rounded-md border border-border bg-surface/50 px-2 py-1.5">
-                <p className="text-[10px] font-medium tracking-wide text-text-main/80 mb-1">
+        {isExpanded ? (
+          <div id={`mitm-tool-body-${tool.id}`} className="mt-4 flex flex-col gap-4 border-t border-dd-border-subtle pt-4">
+            {mitmHosts.length > 0 ? (
+              <div className="mt-2 rounded-dd border border-dd-border bg-dd-surface-2 px-2 py-1.5">
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-dd-text/80">
                   Edit hosts file manually to add the following entries:
                 </p>
-                <ul className="list-none space-y-0.5 font-mono text-[10px] text-text-muted break-all">
-                  {mitmHosts.map((h) => (
-                    <li key={h}>127.0.0.1 {h}</li>
+                <ul className="space-y-0.5 font-mono text-[10px] text-dd-muted break-all">
+                  {mitmHosts.map((host) => (
+                    <li key={host}>127.0.0.1 {host}</li>
                   ))}
                 </ul>
               </div>
-            )}
-            {/* Info */}
-            <div className="flex flex-col gap-0.5 text-[11px] text-text-muted px-1">
+            ) : null}
+            <div className="flex flex-col gap-0.5 px-1 text-[11px] text-dd-muted">
               <p>Toggle DNS to redirect {tool.name} traffic through DurinDoor via MITM.</p>
-              {!dnsActive && (
-                <p className="text-amber-600 text-[10px] mt-1">
-                  ⚠️ Enable DNS to edit model mappings
+              {!dnsActive ? (
+                <p className="mt-1 text-[10px] text-dd-warning">
+                  Enable DNS to edit model mappings
                 </p>
-              )}
+              ) : null}
             </div>
 
-            {/* Model Mappings */}
-            {tool.defaultModels?.length > 0 && (
+            {tool.defaultModels?.length > 0 ? (
               <div className="flex flex-col gap-2">
-                {tool.id === "antigravity" && (
-                  <div className="hidden grid-cols-[9rem_minmax(12rem,1fr)_8rem_auto] gap-2 px-2.5 text-[10px] font-medium uppercase tracking-wide text-text-muted sm:grid">
+                {tool.id === "antigravity" ? (
+                  <div className="hidden grid-cols-[9rem_minmax(12rem,1fr)_8rem_auto] gap-2 px-2.5 text-[10px] font-medium uppercase tracking-wide text-dd-muted sm:grid">
                     <span />
                     <span>Destination model</span>
                     <span>Reasoning</span>
                     <span />
                   </div>
-                )}
+                ) : null}
                 {tool.defaultModels.map((model) => (
                   <MitmModelMappingRow
                     key={model.alias}
@@ -220,81 +220,78 @@ export default function MitmToolCard({
                   />
                 ))}
               </div>
-            )}
+            ) : null}
 
-            {tool.defaultModels?.length === 0 && (
-              <p className="text-xs text-text-muted px-1">Model mappings will be available soon.</p>
-            )}
+            {tool.defaultModels?.length === 0 ? (
+              <p className="px-1 text-xs text-dd-muted">Model mappings will be available soon.</p>
+            ) : null}
 
-            {/* Start / Stop DNS button */}
             <div className="flex flex-col gap-2 sm:items-start">
               {dnsActive ? (
-                <button
+                <Button
+                  variant="danger"
+                  size="sm"
                   onClick={handleDnsToggle}
                   disabled={!serverRunning || loading}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-500 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
+                  icon="stop_circle"
+                  className="w-full sm:w-auto"
                 >
-                  <span className="material-symbols-outlined text-[16px]">stop_circle</span>
                   Stop DNS
-                </button>
+                </Button>
               ) : (
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleDnsToggle}
                   disabled={!serverRunning || loading}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-1.5"
+                  icon="play_circle"
+                  className="w-full sm:w-auto"
                 >
-                  <span className="material-symbols-outlined text-[16px]">play_circle</span>
                   Start DNS
-                </button>
+                </Button>
               )}
 
-              {/* Warning below button */}
-              {warning && (
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-amber-500">
-                  <span className="material-symbols-outlined text-[14px]">warning</span>
+              {warning ? (
+                <div className="flex items-center gap-2 rounded-dd px-2 py-1.5 text-xs text-dd-warning">
+                  <span className="material-symbols-outlined text-[14px]" aria-hidden="true">warning</span>
                   <span>{warning}</span>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
-        )}
+        ) : null}
       </Card>
 
-      {/* Password Modal */}
-      {showPasswordModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
-            <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <span className="material-symbols-outlined text-yellow-500 text-[20px]">warning</span>
-              <p className="text-xs text-text-muted">Required to modify /etc/hosts and flush DNS cache</p>
-            </div>
-            <Input
-              type="password"
-              placeholder="Enter sudo password"
-              value={sudoPassword}
-              onChange={(e) => setSudoPassword(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !loading) handleConfirmPassword(); }}
-            />
-            {modalError && (
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-red-500/10 text-red-600">
-                <span className="material-symbols-outlined text-[14px]">error</span>
-                <span>{modalError}</span>
-              </div>
-            )}
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => { setShowPasswordModal(false); setSudoPassword(""); setModalError(null); }} disabled={loading}>
-                Cancel
-              </Button>
-              <Button variant="primary" size="sm" onClick={handleConfirmPassword} loading={loading}>
-                Confirm
-              </Button>
-            </div>
+      <Modal
+        open={showPasswordModal}
+        onClose={() => { setShowPasswordModal(false); setSudoPassword(""); setModalError(null); }}
+        title="Sudo Password Required"
+        size="sm"
+        pending={loading}
+        footer={<><Button variant="ghost" size="sm" onClick={() => { setShowPasswordModal(false); setSudoPassword(""); setModalError(null); }} disabled={loading}>Cancel</Button><Button variant="primary" size="sm" onClick={handleConfirmPassword} loading={loading}>Confirm</Button></>}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start gap-3 rounded-dd border border-dd-warning/30 bg-dd-warning/10 p-3">
+            <span className="material-symbols-outlined text-[20px] text-dd-warning" aria-hidden="true">warning</span>
+            <p className="text-xs text-dd-muted">Required to modify /etc/hosts and flush DNS cache</p>
           </div>
+          <Input
+            type="password"
+            placeholder="Enter sudo password"
+            value={sudoPassword}
+            onChange={(event) => setSudoPassword(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter" && !loading) handleConfirmPassword(); }}
+            autoFocus
+          />
+          {modalError ? (
+            <div className="flex items-center gap-2 rounded-dd bg-dd-danger/10 px-2 py-1.5 text-xs text-dd-danger">
+              <span className="material-symbols-outlined text-[14px]" aria-hidden="true">error</span>
+              <span>{modalError}</span>
+            </div>
+          ) : null}
         </div>
-      )}
+      </Modal>
 
-      {/* Model Select Modal */}
       <ModelSelectModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}

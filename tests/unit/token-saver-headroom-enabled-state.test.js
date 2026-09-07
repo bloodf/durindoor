@@ -22,9 +22,7 @@ vi.mock("react", async () => {
     useCallback(callback) { return callback; },
   };
 });
-vi.mock("@/shared/components", () => ({
-  Card: function Card() {}, Button: function Button() {}, Input: function Input() {}, Modal: function Modal() {}, Toggle: function Toggle() {},
-}));
+vi.mock("@/shared/ui/components/Toggle.jsx", () => ({ default: function Toggle() {} }));
 vi.mock("@/shared/hooks/useCopyToClipboard", () => ({ useCopyToClipboard: () => ({ copied: false, copy: vi.fn() }) }));
 vi.mock("@/i18n/runtime", () => ({ getCurrentLocale: () => "en", onLocaleChange: () => () => {} }));
 vi.mock("../../src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js", () => ({ default: function TokenSaverOverview() {} }));
@@ -34,7 +32,8 @@ vi.mock("../../src/app/(dashboard)/dashboard/pxpipe/pxpipeStatus.js", () => ({
 }));
 
 const { default: TokenSaverClient } = await import("@/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx");
-const { Toggle } = await import("@/shared/components");
+const { default: Toggle } = await import("@/shared/ui/components/Toggle.jsx");
+const { Badge } = await import("@/shared/ui/components/Badge.jsx");
 
 function response(body) { return { ok: true, json: async () => body }; }
 function walk(element, predicate, result = []) {
@@ -62,7 +61,7 @@ async function renderWithProxyDown(enabled) {
   return TokenSaverClient({ view: "settings" });
 }
 function headroomToggle(tree) {
-  return walk(tree, (node) => node.type === Toggle && node.props.ariaLabel === "Enable Headroom")[0];
+  return walk(tree, (node) => node.type === Toggle && node.props["aria-label"] === "Enable Headroom")[0];
 }
 
 describe("Token Saver Headroom enabled setting", () => {
@@ -83,8 +82,9 @@ describe("Token Saver Headroom enabled setting", () => {
     const toggle = headroomToggle(tree);
     expect(toggle.props.checked).toBe(enabled);
     expect(toggle.props.disabled).not.toBe(true);
-    expect(walk(tree, (node) => typeof node.type === "string" && node.type === "span" && node.props.children === "Stopped").length).toBeGreaterThanOrEqual(1);
-    toggle.props.onChange();
+    const stoppedBadge = walk(tree, (node) => node.type === Badge && node.props.children === "Stopped")[0];
+    expect(stoppedBadge).toBeDefined();
+    toggle.props.onChange(next);
     expect(state.calls.at(-1)).toMatchObject({
       url: "/api/settings",
       options: { method: "PATCH", body: JSON.stringify({ headroomEnabled: next, headroomUrl: "http://localhost:8787" }) },

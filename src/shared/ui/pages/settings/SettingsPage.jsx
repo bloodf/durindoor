@@ -262,7 +262,7 @@ export default function SettingsPage() {
           }
         >
           <div className="space-y-5">
-            <Field label="Auth mode" hint={activeAuthDescription}>
+            <Field group label="Auth mode" hint={activeAuthDescription}>
               <SegmentedControl
                 options={AUTH_MODE_OPTIONS}
                 value={authMode}

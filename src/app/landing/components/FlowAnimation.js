@@ -1,175 +1,40 @@
 "use client";
+
 import { useEffect, useState } from "react";
-import ProviderIcon from "@/shared/components/ProviderIcon";
+import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 
-const CLI_TOOLS = [
-  { id: "claude", name: "Claude Code", image: "/providers/claude.png" },
-  { id: "codex", name: "OpenAI Codex", image: "/providers/codex.png" },
-  { id: "cline", name: "Cline", image: "/providers/cline.png" },
-  { id: "cursor", name: "Cursor", image: "/providers/cursor.png" },
-];
-
-const PROVIDERS = [
-  {
-    id: "openai",
-    name: "OpenAI",
-    color: "bg-emerald-500",
-    textColor: "text-white",
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic",
-    color: "bg-orange-400",
-    textColor: "text-white",
-  },
-  {
-    id: "gemini",
-    name: "Gemini",
-    color: "bg-blue-500",
-    textColor: "text-white",
-  },
-  {
-    id: "github",
-    name: "GitHub Copilot",
-    color: "bg-gray-700",
-    textColor: "text-white",
-  },
-];
+const CLI_TOOLS = [{ id: "claude", name: "Claude Code" }, { id: "codex", name: "OpenAI Codex" }, { id: "cline", name: "Cline" }, { id: "cursor", name: "Cursor" }];
+const PROVIDERS = [{ id: "openai", name: "OpenAI" }, { id: "anthropic", name: "Anthropic" }, { id: "gemini", name: "Gemini" }, { id: "copilot", name: "GitHub Copilot" }];
 
 export default function FlowAnimation() {
   const [activeFlow, setActiveFlow] = useState(0);
-
   useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveFlow((prev) => (prev + 1) % PROVIDERS.length);
-    }, 2000);
+    const interval = setInterval(() => setActiveFlow((prev) => (prev + 1) % PROVIDERS.length), 2000);
     return () => clearInterval(interval);
   }, []);
 
-  return (
-    <div className="mt-16 w-full max-w-4xl relative h-[360px] hidden md:flex items-center justify-center animate-[float_6s_ease-in-out_infinite]">
-      {/* DurinDoor Hub - Center */}
-      <div className="relative z-20 w-32 h-32 rounded-full bg-[#23180f] border-2 border-[#f97815] shadow-[0_0_40px_rgba(249,120,21,0.3)] flex flex-col items-center justify-center gap-1 group cursor-pointer hover:scale-105 transition-transform duration-500">
-        <span className="material-symbols-outlined text-4xl text-[#f97815]">
-          hub
-        </span>
-        <span className="text-xs font-bold text-white tracking-widest uppercase">
-          DurinDoor
-        </span>
-        <div className="absolute inset-0 rounded-full border border-[#f97815]/30 animate-ping opacity-20"></div>
-      </div>
-
-      {/* CLI Tools - Left side */}
-      <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col gap-7">
-        {CLI_TOOLS.map((tool) => (
-          <div
-            key={tool.id}
-            className="flex items-center gap-3 opacity-70 hover:opacity-100 transition-opacity group"
-          >
-            <div className="w-16 h-16 rounded-2xl bg-[#23180f] border border-[#3a2f27] flex items-center justify-center overflow-hidden p-2 hover:border-[#f97815]/50 transition-all hover:scale-105">
-              <ProviderIcon
-                src={tool.image}
-                alt={tool.name}
-                size={48}
-                className="object-contain rounded-xl max-w-[48px] max-h-[48px]"
-                fallbackText={tool.name.slice(0, 2).toUpperCase()}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* SVG Lines from CLI to DurinDoor */}
-      <svg
-        className="absolute inset-0 w-full h-full z-10 pointer-events-none stroke-yellow-700"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          className="animate-[dash_2s_linear_infinite]"
-          d="M 60 50 C 250 70, 250 180, 360 180"
-          fill="none"
-          strokeDasharray="5,5"
-          strokeWidth="2"
-        ></path>
-        <path
-          className="animate-[dash_2s_linear_infinite]"
-          d="M 60 140 C 250 140, 250 180, 360 180"
-          fill="none"
-          strokeDasharray="5,5"
-          strokeWidth="2"
-        ></path>
-        <path
-          className="animate-[dash_2s_linear_infinite]"
-          d="M 60 210 C 250 210, 250 180, 360 180"
-          fill="none"
-          strokeDasharray="5,5"
-          strokeWidth="2"
-        ></path>
-        <path
-          className="animate-[dash_2s_linear_infinite]"
-          d="M 60 300 C 250 280, 250 180, 360 180"
-          fill="none"
-          strokeDasharray="5,5"
-          strokeWidth="2"
-        ></path>
+  return <>
+    {/* Directional desktop diagram is LTR-specific; mirror by hiding it under RTL and showing the card grid fallback instead. */}
+    <div className="relative mt-16 hidden h-[360px] w-full max-w-4xl animate-[dd-float_6s_ease-in-out_infinite] items-center justify-center md:ltr:flex md:rtl:hidden motion-reduce:animate-none">
+      <div className="group relative z-20 flex h-32 w-32 cursor-pointer flex-col items-center justify-center gap-1 rounded-full border-2 border-dd-accent bg-dd-surface shadow-dd-elevated transition-transform duration-500 hover:scale-105"><span aria-hidden="true" className="material-symbols-outlined text-4xl text-dd-accent">hub</span><span className="text-[10px] font-bold uppercase tracking-widest text-dd-text">DurinDoor</span><span aria-hidden="true" className="absolute inset-0 rounded-full border border-dd-accent/30 opacity-20 animate-ping" /></div>
+      <div className="absolute start-0 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-7">{CLI_TOOLS.map((tool) => <div key={tool.id} className="group flex items-center gap-3 opacity-70 transition-opacity hover:opacity-100"><div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-dd border border-dd-border bg-dd-surface p-2 transition-all group-hover:scale-105 hover:border-dd-accent"><ProviderLogo provider={tool.id} size={48} className="rounded-dd object-contain" /><span className="sr-only">{tool.name}</span></div></div>)}</div>
+      <svg className="pointer-events-none absolute inset-0 z-0 h-full w-full" viewBox="0 0 800 360" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        {[50, 140, 210, 300].map((y) => <path key={`in-${y}`} d={`M 60 ${y} C 250 ${y}, 250 180, 360 180`} fill="none" stroke="var(--dd-accent-2)" strokeWidth="2" strokeDasharray="5,5" className="animate-[dd-dash_2s_linear_infinite]" opacity="0.5" />)}
+        {[50, 130, 230, 310].map((y, idx) => <path key={`out-${idx}`} d={`M 440 180 C 550 180, 550 ${y}, 740 ${y}`} fill="none" stroke={activeFlow === idx ? "var(--dd-accent)" : "var(--dd-border)"} strokeWidth={activeFlow === idx ? "3" : "2"} className={activeFlow === idx ? "animate-pulse" : ""} />)}
       </svg>
-
-      {/* SVG Lines from DurinDoor to Providers */}
-      <svg
-        className="absolute inset-0 w-full h-full z-10 pointer-events-none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M 440 180 C 550 180, 550 50, 740 50"
-          fill="none"
-          stroke={activeFlow === 0 ? "#f97815" : "rgb(75, 85, 99)"}
-          strokeWidth={activeFlow === 0 ? "3" : "2"}
-          className={activeFlow === 0 ? "animate-pulse" : ""}
-        ></path>
-        <path
-          d="M 440 180 C 550 180, 550 130, 740 130"
-          fill="none"
-          stroke={activeFlow === 1 ? "#f97815" : "rgb(75, 85, 99)"}
-          strokeWidth={activeFlow === 1 ? "3" : "2"}
-          className={activeFlow === 1 ? "animate-pulse" : ""}
-        ></path>
-        <path
-          d="M 440 180 C 550 180, 550 230, 740 230"
-          fill="none"
-          stroke={activeFlow === 2 ? "#f97815" : "rgb(75, 85, 99)"}
-          strokeWidth={activeFlow === 2 ? "3" : "2"}
-          className={activeFlow === 2 ? "animate-pulse" : ""}
-        ></path>
-        <path
-          d="M 440 180 C 550 180, 550 310, 740 310"
-          fill="none"
-          stroke={activeFlow === 3 ? "#f97815" : "rgb(75, 85, 99)"}
-          strokeWidth={activeFlow === 3 ? "3" : "2"}
-          className={activeFlow === 3 ? "animate-pulse" : ""}
-        ></path>
-      </svg>
-
-      {/* AI Providers - Right side */}
-      <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-between py-6">
-        {PROVIDERS.map((provider, idx) => (
-          <div
-            key={provider.id}
-            className={`px-4 py-2 rounded-lg ${provider.color} ${provider.textColor} flex items-center justify-center font-bold text-xs shadow-lg hover:scale-110 transition-all cursor-help min-w-[140px] ${
-              activeFlow === idx ? "ring-4 ring-[#f97815]/50 scale-110" : ""
-            }`}
-            title={provider.name}
-          >
-            {provider.name}
-          </div>
-        ))}
-      </div>
-
-      {/* Mobile fallback */}
-      <div className="md:hidden mt-8 w-full p-4 rounded-lg bg-[#23180f] border border-[#3a2f27]">
-        <p className="text-sm text-center text-gray-400">
-          Interactive diagram visible on desktop
-        </p>
+      <div className="absolute end-0 top-0 bottom-0 z-10 flex flex-col justify-between py-6">{PROVIDERS.map((provider, idx) => <div key={provider.id} title={provider.name} className={`flex min-w-[140px] items-center justify-center gap-2 rounded-dd border px-4 py-2 text-xs font-bold shadow-dd-elevated transition-all cursor-help ${activeFlow === idx ? "border-dd-accent bg-dd-surface text-dd-accent scale-110" : "border-dd-border bg-dd-surface text-dd-text hover:scale-110"}`}><ProviderLogo provider={provider.id} size={20} className="rounded-dd" /><span>{provider.name}</span></div>)}</div>
+    </div>
+    <div className="mt-8 w-full rounded-dd-lg border border-dd-border bg-dd-surface p-5 md:hidden">
+      <div className="mb-4 flex items-center gap-2"><span aria-hidden="true" className="material-symbols-outlined text-dd-accent">hub</span><p className="font-semibold text-dd-text">DurinDoor routes every request</p></div>
+      <div className="grid grid-cols-2 gap-3">{[...CLI_TOOLS, ...PROVIDERS].map((item) => <div key={item.id} className="flex items-center gap-2 rounded-dd bg-dd-surface-2 p-3 text-[13px] text-dd-text"><ProviderLogo provider={item.id} size={24} /><span>{item.name}</span></div>)}</div>
+    </div>
+    {/* RTL fallback keeps the same logical card grid as mobile but always visible at md+ where the directional graph is hidden. */}
+    <div className="mt-8 hidden w-full max-w-4xl rounded-dd-lg border border-dd-border bg-dd-surface p-5 md:rtl:flex md:ltr:hidden">
+      <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="col-span-full flex items-center gap-2"><span aria-hidden="true" className="material-symbols-outlined text-dd-accent">hub</span><p className="font-semibold text-dd-text">DurinDoor routes every request</p></div>
+        {CLI_TOOLS.map((tool) => <div key={`cli-${tool.id}`} className="flex items-center gap-2 rounded-dd bg-dd-surface-2 p-3 text-[13px] text-dd-text"><ProviderLogo provider={tool.id} size={24} /><span>{tool.name}</span></div>)}
+        {PROVIDERS.map((provider) => <div key={`p-${provider.id}`} className="flex items-center gap-2 rounded-dd bg-dd-surface-2 p-3 text-[13px] text-dd-text"><ProviderLogo provider={provider.id} size={24} /><span>{provider.name}</span></div>)}
       </div>
     </div>
-  );
+  </>;
 }

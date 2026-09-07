@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
 import ConfirmDialog from "./ConfirmDialog";
 
 /**
@@ -59,6 +60,15 @@ export const Danger = {
       confirmLabel="Delete"
     />
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Delete combo engineer" }));
+    const dialog = within(document.body);
+    await expect(await dialog.findByRole("dialog", { name: "Delete combo engineer?" })).toBeVisible();
+    await expect(dialog.getByText("This removes the engineer from every combo that references it and cannot be undone. Existing routes will fall back to the next engineer in the chain.")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Delete" })).toBeVisible();
+  },
 };
 
 export const Primary = {

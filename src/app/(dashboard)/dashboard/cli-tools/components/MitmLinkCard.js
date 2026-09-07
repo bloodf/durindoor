@@ -1,38 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { Card } from "@/shared/components";
 import Image from "next/image";
+import { Card } from "@/shared/ui/components/Card.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
 
-/**
- * Clickable card for MITM tools — navigates to /dashboard/mitm on click.
- */
 export default function MitmLinkCard({ tool }) {
   return (
-    <Link href="/dashboard/mitm" className="block">
-      <Card padding="sm" className="overflow-hidden hover:border-primary/50 transition-colors cursor-pointer">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-8 flex items-center justify-center shrink-0">
+    <Link href="/dashboard/mitm" className="block rounded-dd-lg focus-visible:shadow-dd-focus outline-none">
+      <Card padding={false} className="cursor-pointer p-4 transition-colors hover:border-dd-accent/50">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-8 shrink-0 items-center justify-center">
               <Image
                 src={tool.image}
                 alt={tool.name}
                 width={32}
                 height={32}
-                className="size-8 object-contain rounded-lg"
+                className="size-8 rounded-dd object-contain"
                 sizes="32px"
-                onError={(e) => { e.target.style.display = "none"; }}
+                onError={(event) => { event.currentTarget.style.display = "none"; }}
               />
             </div>
-            <div className="min-w-0">
+            <div className="flex min-w-0 flex-col gap-1">
               <div className="flex items-center gap-2">
-                <h3 className="font-medium text-sm">{tool.name}</h3>
-                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-full">MITM</span>
+                <h3 className="truncate text-[13px] font-semibold text-dd-text">{tool.name}</h3>
+                <Badge tone="info" size="sm">MITM</Badge>
               </div>
-              <p className="text-xs text-text-muted truncate">{tool.description}</p>
+              <p className="truncate text-xs text-dd-muted">{tool.description}</p>
             </div>
           </div>
-          <span className="material-symbols-outlined text-text-muted text-[20px]">chevron_right</span>
+          <span className="material-symbols-outlined shrink-0 text-[20px] text-dd-muted" aria-hidden="true">chevron_right</span>
         </div>
       </Card>
     </Link>

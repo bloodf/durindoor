@@ -190,13 +190,15 @@ describe("OmniRoute provider icon assets", () => {
     expect(new Set(unregistered)).toEqual(new Set(EXCLUDED_UNWIRED));
   });
 
-  it("routes the provider detail header through ProviderIcon", () => {
+  it("uses ProviderIcon for custom provider URLs and ProviderLogo for registered providers", () => {
     const detailPage = readFileSync(
       resolve(repoRoot, "src/app/(dashboard)/dashboard/providers/[id]/page.js"),
       "utf8",
     );
     expect(detailPage).toContain("ProviderIcon");
     expect(detailPage).not.toMatch(/import\s+Image\s+from\s+["']next\/image["']/);
-    expect(detailPage).toContain("src={providerInfo.iconUrl || getHeaderIconPath()}");
+    expect(detailPage).toContain("<ProviderIcon");
+    expect(detailPage).toContain("src={providerInfo.iconUrl}");
+    expect(detailPage).toContain("<ProviderLogo provider={providerId} size={48} />");
   });
 });

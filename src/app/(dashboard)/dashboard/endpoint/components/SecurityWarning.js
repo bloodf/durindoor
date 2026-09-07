@@ -3,13 +3,13 @@
 /** Security warning banner with optional action link */
 export default function SecurityWarning({ message, action }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
-      <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">warning</span>
-      <p className="text-xs flex-1">{message}</p>
-      {action && (
+    <div className="flex items-start gap-2 rounded-dd border border-dd-warning bg-dd-warning/10 px-3 py-2 text-dd-warning" role="alert">
+      <span className="material-symbols-outlined mt-0.5 shrink-0 text-[16px]" aria-hidden="true">warning</span>
+      <p className="flex-1 text-xs">{message}</p>
+      {action ? (
         <a
           href={action.href}
-          className="text-xs font-medium underline shrink-0 hover:opacity-80"
+          className="min-h-11 shrink-0 content-center text-xs font-medium underline outline-none focus-visible:shadow-dd-focus"
           onClick={action.href.startsWith("#") ? (e) => {
             e.preventDefault();
             document.getElementById(action.href.slice(1))?.scrollIntoView({ behavior: "smooth" });
@@ -17,7 +17,7 @@ export default function SecurityWarning({ message, action }) {
         >
           {action.label}
         </a>
-      )}
+      ) : null}
     </div>
   );
 }

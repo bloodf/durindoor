@@ -2,60 +2,48 @@
 
 import { cn } from "@/shared/utils/cn";
 
-// Spinner loading
-export function Spinner({ size = "md", className }) {
-  const sizes = {
-    sm: "size-4",
-    md: "size-6",
-    lg: "size-8",
-    xl: "size-12",
-  };
+const SIZE_CLASSES = {
+  sm: "size-4",
+  md: "size-6",
+  lg: "size-8",
+  xl: "size-12",
+};
 
+export function Spinner({ size = "md", className, label = "Loading", role, ...props }) {
+  const hidden = props["aria-hidden"] === true || props["aria-hidden"] === "true";
   return (
     <span
-      className={cn(
-        "material-symbols-outlined animate-spin text-brand-500",
-        sizes[size],
-        className
-      )}
+      role={hidden ? undefined : role || "status"}
+      aria-label={hidden ? undefined : label}
+      className={cn("material-symbols-outlined animate-spin text-dd-accent motion-reduce:animate-none", SIZE_CLASSES[size] || SIZE_CLASSES.md, className)}
+      {...props}
     >
       progress_activity
     </span>
   );
 }
 
-// Full page loading
 export function PageLoading({ message = "Loading..." }) {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-bg">
-      <Spinner size="xl" />
-      <p className="mt-4 text-text-muted">{message}</p>
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-dd-bg px-4 text-center" role="status" aria-live="polite">
+      <Spinner aria-hidden="true" size="xl" label={message} />
+      <p className="mt-4 text-[13px] text-dd-muted">{message}</p>
     </div>
   );
 }
 
-// Skeleton loading
 export function Skeleton({ className, ...props }) {
-  return (
-    <div
-      className={cn(
-        "animate-pulse rounded-[10px] bg-surface-2",
-        className
-      )}
-      {...props}
-    />
-  );
+  return <div aria-hidden="true" className={cn("animate-pulse rounded-dd bg-dd-surface-2 motion-reduce:animate-none", className)} {...props} />;
 }
 
-// Card skeleton
 export function CardSkeleton() {
   return (
-    <div className="p-6 rounded-[14px] border border-border-subtle bg-surface shadow-[var(--shadow-soft)]">
-      <div className="flex items-center justify-between mb-4">
+    <div className="rounded-dd-lg border border-dd-border bg-dd-surface p-6" role="status" aria-label="Loading card">
+      <div className="mb-4 flex items-center justify-between">
         <Skeleton className="h-4 w-24" />
-        <Skeleton className="size-10 rounded-[10px]" />
+        <Skeleton className="size-10" />
       </div>
-      <Skeleton className="h-8 w-16 mb-2" />
+      <Skeleton className="mb-2 h-8 w-16" />
       <Skeleton className="h-3 w-20" />
     </div>
   );

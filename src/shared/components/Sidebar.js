@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useId, useState } from "react";
 import PropTypes from "prop-types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -8,6 +8,8 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import UpdatePanel from "./UpdatePanel";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Tooltip from "@/shared/ui/components/Tooltip.jsx";
 import {
   BRAND_LOGO_ALT,
   BRAND_LOGO_SRC,
@@ -23,9 +25,24 @@ import {
   VISIBLE_MEDIA_KINDS,
 } from "./SidebarNavIcons";
 
-export default function Sidebar({ onClose }) {
+function SidebarTooltip({ collapsed, label, children }) {
+  return collapsed ? <Tooltip content={label} side="right">{children}</Tooltip> : children;
+}
+
+SidebarTooltip.propTypes = {
+  collapsed: PropTypes.bool,
+  label: PropTypes.string.isRequired,
+  children: PropTypes.element.isRequired,
+};
+
+export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCollapse }) {
   const pathname = usePathname();
+  const providersGroupId = useId();
+  const tokenSaverGroupId = useId();
+  const mediaGroupId = useId();
   const [mediaOpen, setMediaOpen] = useState(false);
+  const collapsed = collapsedProp ?? false;
+  const handleToggleCollapse = onToggleCollapse ?? (() => undefined);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [enableTranslator, setEnableTranslator] = useState(false);
@@ -62,11 +79,10 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
-        {/* Logo */}
-        <div className="px-6 py-4 flex flex-col gap-2">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
+      <aside className={cn("flex min-h-full flex-col overflow-hidden border-e border-dd-border-subtle bg-dd-surface transition-[width,colors] duration-300 motion-reduce:transition-none", collapsed ? "w-20" : "w-72", collapsed && "[&_.sidebar-label]:hidden [&_.sidebar-brand-copy]:hidden [&_.sidebar-section]:hidden [&_.sidebar-update]:hidden")} aria-label="Dashboard navigation">
+        <div className={cn("flex flex-col gap-2 py-4", collapsed ? "items-center px-2" : "px-6")}>
+          <Link href="/dashboard" aria-label={collapsed ? APP_CONFIG.name : undefined} className="flex items-center gap-3">
+            <div className="flex items-center justify-center size-9 rounded-dd bg-dd-surface-3 shadow-dd-elevated">
               <img
                 src={BRAND_LOGO_SRC}
                 alt={BRAND_LOGO_ALT}
@@ -75,26 +91,26 @@ export default function Sidebar({ onClose }) {
                 className="object-contain"
               />
             </div>
-            <div className="flex flex-col">
-              <h1 className="text-lg font-semibold tracking-tight text-text-main">
+            <div className="sidebar-brand-copy flex flex-col">
+              <span className="text-lg font-semibold tracking-tight text-dd-text">
                 {APP_CONFIG.name}
-              </h1>
-              <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
+              </span>
+              <span className="text-xs text-dd-muted">v{APP_CONFIG.version}</span>
             </div>
           </Link>
           {updateInfo && (
-            <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
-              <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
+            <div className="sidebar-update flex flex-col gap-1.5 rounded p-1 -m-1">
+              <span className="text-xs font-semibold text-dd-success">
                 ↑ New version available: v{updateInfo.latestVersion}
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsUpdating(true)}
-                  className="px-2 py-1 rounded bg-green-600 hover:bg-green-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                  className="min-h-11 min-w-11 px-2 py-1 rounded-dd bg-dd-accent hover:bg-dd-accent-hover text-dd-on-accent text-[11px] font-semibold outline-none focus-visible:shadow-dd-focus transition-colors cursor-pointer"
                 >
                   Update now
                 </button>
-                <code className="flex-1 text-[10px] text-green-600/80 dark:text-amber-400/70 font-mono truncate" title={INSTALL_CMD}>
+                <code className="flex-1 text-[10px] text-dd-muted font-mono truncate" title={INSTALL_CMD}>
                   {INSTALL_CMD}
                 </code>
               </div>
@@ -103,52 +119,65 @@ export default function Sidebar({ onClose }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+        <nav className={cn("flex flex-1 flex-col gap-0.5 py-2 overflow-y-auto custom-scrollbar", collapsed ? "px-2" : "px-4")}>
           {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(item.href, item.exact !== false)
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
-              <span className="text-[13px] font-medium">{item.label}</span>
-            </Link>
+            <SidebarTooltip key={item.href} collapsed={collapsed} label={item.label}>
+              <Link
+                href={item.href}
+                onClick={onClose}
+                aria-label={collapsed ? item.label : undefined}
+                aria-current={isActive(item.href, item.exact !== false) ? "page" : undefined}
+                className={cn(
+                  collapsed ? "flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
+                  isActive(item.href, item.exact !== false)
+                    ? "bg-dd-accent-soft text-dd-accent"
+                    : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
+                )}
+              >
+                <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
+                <span className="sidebar-label text-[13px] font-medium">{item.label}</span>
+              </Link>
+            </SidebarTooltip>
           ))}
 
           {/* Providers collapsible menu */}
-          <button
-            onClick={() => setProvidersToggled((open) => !(open ?? isProvidersSectionActive))}
-            className={cn(
-              "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-              isProvidersSectionActive
-                ? "bg-primary/10 text-primary"
-                : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+          <SidebarTooltip collapsed={collapsed} label={providersMenu.label}>
+            {collapsed ? (
+              <Link
+                href={providersMenu.children[0].href}
+                onClick={onClose}
+                aria-label={providersMenu.label}
+                className={cn("flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group", isProvidersSectionActive ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}
+              >
+                <NavIcon icon={providersMenu.icon} isActive={isProvidersSectionActive} />
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setProvidersToggled((open) => !(open ?? isProvidersSectionActive))}
+                aria-expanded={providersMenuOpen}
+                aria-controls={providersGroupId}
+                className={cn("w-full flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group", isProvidersSectionActive ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}
+              >
+                <NavIcon icon={providersMenu.icon} isActive={isProvidersSectionActive} />
+                <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{providersMenu.label}</span>
+                <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: providersMenuOpen ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
+              </button>
             )}
-          >
-            <NavIcon icon={providersMenu.icon} isActive={isProvidersSectionActive} />
-            <span className="text-[13px] font-medium flex-1 text-left">{providersMenu.label}</span>
-            <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: providersMenuOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
-              expand_more
-            </span>
-          </button>
-          {providersMenuOpen && (
-            <div className="pl-4">
+          </SidebarTooltip>
+          {!collapsed && providersMenuOpen && (
+            <div id={providersGroupId} className="pl-4">
               {providersMenu.children.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={onClose}
+                  aria-current={isActive(item.href, item.exact !== false) ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    collapsed ? "flex min-h-11 items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
                     isActive(item.href, item.exact !== false)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                      ? "bg-dd-accent-soft text-dd-accent"
+                      : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
                   )}
                 >
                   <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} size="16" />
@@ -158,34 +187,32 @@ export default function Sidebar({ onClose }) {
             </div>
           )}
 
-          {/* Token Saver collapsible menu */}
-          <button
-            onClick={() => setUserToggled((open) => !(open ?? isTokenSaverSectionActive))}
-            className={cn(
-              "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-              isTokenSaverSectionActive
-                ? "bg-primary/10 text-primary"
-                : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+          <SidebarTooltip collapsed={collapsed} label={tokenSaverMenu.label}>
+            {collapsed ? (
+              <Link href={tokenSaverMenu.children[0].href} onClick={onClose} aria-label={tokenSaverMenu.label} className={cn("flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group", isTokenSaverSectionActive ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}>
+                <NavIcon icon={tokenSaverMenu.icon} isActive={isTokenSaverSectionActive} />
+              </Link>
+            ) : (
+              <button type="button" onClick={() => setUserToggled((open) => !(open ?? isTokenSaverSectionActive))} aria-expanded={tokenSaverOpen} aria-controls={tokenSaverGroupId} className={cn("w-full flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group", isTokenSaverSectionActive ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}>
+                <NavIcon icon={tokenSaverMenu.icon} isActive={isTokenSaverSectionActive} />
+                <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{tokenSaverMenu.label}</span>
+                <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: tokenSaverOpen ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
+              </button>
             )}
-          >
-            <NavIcon icon={tokenSaverMenu.icon} isActive={isTokenSaverSectionActive} />
-            <span className="text-[13px] font-medium flex-1 text-left">{tokenSaverMenu.label}</span>
-            <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: tokenSaverOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
-              expand_more
-            </span>
-          </button>
-          {tokenSaverOpen && (
-            <div className="pl-4">
+          </SidebarTooltip>
+          {!collapsed && tokenSaverOpen && (
+            <div id={tokenSaverGroupId} className="pl-4">
               {tokenSaverMenu.children.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={onClose}
+                  aria-current={isActive(item.href, item.exact !== false) ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    collapsed ? "flex min-h-11 items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
                     isActive(item.href, item.exact !== false)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                      ? "bg-dd-accent-soft text-dd-accent"
+                      : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
                   )}
                 >
                   <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} size="16" />
@@ -196,39 +223,38 @@ export default function Sidebar({ onClose }) {
           )}
 
           {/* System section */}
-          <div className="pt-3 mt-2 space-y-0.5">
-            <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
+          <div className="flex flex-col gap-0.5 pt-3 mt-2">
+            <p className="sidebar-label px-4 text-xs font-semibold text-dd-muted uppercase tracking-wider mb-2">
               System
             </p>
 
             {/* Media Providers accordion */}
-            <button
-              onClick={() => setMediaOpen((v) => !v)}
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                pathname?.startsWith("/dashboard/media-providers")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <NavIcon icon="perm_media" isActive={pathname?.startsWith("/dashboard/media-providers") || false} />
-              <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
-              <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
-                expand_more
-              </span>
-            </button>
-            {mediaOpen && (
-              <div className="pl-4">
+          <SidebarTooltip collapsed={collapsed} label="Media Providers">
+            {collapsed ? (
+              <Link href={`/dashboard/media-providers/${VISIBLE_MEDIA_KINDS[0]}`} onClick={onClose} aria-label="Media Providers" className={cn("flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group", pathname?.startsWith("/dashboard/media-providers") ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}>
+                <NavIcon icon="perm_media" isActive={pathname?.startsWith("/dashboard/media-providers") || false} />
+              </Link>
+            ) : (
+              <button type="button" onClick={() => setMediaOpen((v) => !v)} aria-expanded={mediaOpen} aria-controls={mediaGroupId} className={cn("w-full flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group", pathname?.startsWith("/dashboard/media-providers") ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}>
+                <NavIcon icon="perm_media" isActive={pathname?.startsWith("/dashboard/media-providers") || false} />
+                <span className="sidebar-label text-[13px] font-medium flex-1 text-left">Media Providers</span>
+                <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
+              </button>
+            )}
+          </SidebarTooltip>
+            {!collapsed && mediaOpen && (
+              <div id={mediaGroupId} className="pl-4">
                 {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
                   <Link
                     key={kind.id}
                     href={`/dashboard/media-providers/${kind.id}`}
                     onClick={onClose}
+                    aria-current={pathname?.startsWith(`/dashboard/media-providers/${kind.id}`) ? "page" : undefined}
                     className={cn(
-                      "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                      collapsed ? "flex min-h-11 items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
                       pathname?.startsWith(`/dashboard/media-providers/${kind.id}`)
-                        ? "bg-primary/10 text-primary"
-                        : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                        ? "bg-dd-accent-soft text-dd-accent"
+                        : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
                     )}
                   >
                     <NavIcon icon={kind.icon} isActive={pathname?.startsWith(`/dashboard/media-providers/${kind.id}`) || false} size="16" />
@@ -239,11 +265,12 @@ export default function Sidebar({ onClose }) {
                   key={COMBINED_WEB_ITEM.id}
                   href={COMBINED_WEB_ITEM.href}
                   onClick={onClose}
+                  aria-current={pathname?.startsWith(COMBINED_WEB_ITEM.href) ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    collapsed ? "flex min-h-11 items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
                     pathname?.startsWith(COMBINED_WEB_ITEM.href)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                      ? "bg-dd-accent-soft text-dd-accent"
+                      : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
                   )}
                 >
                   <NavIcon icon={COMBINED_WEB_ITEM.icon} isActive={pathname?.startsWith(COMBINED_WEB_ITEM.href) || false} size="16" />
@@ -253,73 +280,99 @@ export default function Sidebar({ onClose }) {
             )}
 
             {systemItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                  isActive(item.href, item.exact !== false)
-                    ? "bg-primary/10 text-primary"
-                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                )}
-              >
-                <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
-                <span className="text-[13px] font-medium">{item.label}</span>
-              </Link>
+              <SidebarTooltip key={item.href} collapsed={collapsed} label={item.label}>
+                <Link
+                  href={item.href}
+                  onClick={onClose}
+                  aria-label={collapsed ? item.label : undefined}
+                  aria-current={isActive(item.href, item.exact !== false) ? "page" : undefined}
+                  className={cn(
+                    collapsed ? "flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
+                    isActive(item.href, item.exact !== false) ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
+                  )}
+                >
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
+                  <span className="sidebar-label text-[13px] font-medium">{item.label}</span>
+                </Link>
+              </SidebarTooltip>
             ))}
 
             {/* Debug items (inside System section, before Settings) */}
             {debugItems.map((item) => {
               const show = item.href !== "/dashboard/translator" || enableTranslator;
               return show ? (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onClose}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                    isActive(item.href, true)
-                      ? "bg-primary/10 text-primary"
-                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                  )}
-                >
-                  <NavIcon icon={item.icon} isActive={isActive(item.href, true)} />
-                  <span className="text-[13px] font-medium">{item.label}</span>
-                </Link>
+                <SidebarTooltip key={item.href} collapsed={collapsed} label={item.label}>
+                  <Link
+                    href={item.href}
+                    onClick={onClose}
+                    aria-label={collapsed ? item.label : undefined}
+                    aria-current={isActive(item.href, true) ? "page" : undefined}
+                    className={cn(
+                      collapsed ? "flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
+                      isActive(item.href, true) ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
+                    )}
+                  >
+                    <NavIcon icon={item.icon} isActive={isActive(item.href, true)} />
+                    <span className="sidebar-label text-[13px] font-medium">{item.label}</span>
+                  </Link>
+                </SidebarTooltip>
               ) : null;
             })}
 
             {/* Settings (profile) stays its own unrelated item */}
-            <Link
-              href={PROFILE_NAV_ITEM.href}
-              onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                isActive(PROFILE_NAV_ITEM.href, true)
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <NavIcon icon={PROFILE_NAV_ITEM.icon} isActive={isActive(PROFILE_NAV_ITEM.href, true)} />
-              <span className="text-[13px] font-medium">{PROFILE_NAV_ITEM.label}</span>
-            </Link>
+            <SidebarTooltip collapsed={collapsed} label={PROFILE_NAV_ITEM.label}>
+              <Link
+                href={PROFILE_NAV_ITEM.href}
+                onClick={onClose}
+                aria-label={collapsed ? PROFILE_NAV_ITEM.label : undefined}
+                aria-current={isActive(PROFILE_NAV_ITEM.href, true) ? "page" : undefined}
+                className={cn(
+                  collapsed ? "flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
+                  isActive(PROFILE_NAV_ITEM.href, true) ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
+                )}
+              >
+                <NavIcon icon={PROFILE_NAV_ITEM.icon} isActive={isActive(PROFILE_NAV_ITEM.href, true)} />
+                <span className="sidebar-label text-[13px] font-medium">{PROFILE_NAV_ITEM.label}</span>
+              </Link>
+            </SidebarTooltip>
           </div>
         </nav>
 
+        {onToggleCollapse ? (
+          <div className="shrink-0 border-t border-dd-border-subtle p-2">
+            <SidebarTooltip collapsed={collapsed} label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+              <button
+                type="button"
+                onClick={handleToggleCollapse}
+                aria-pressed={collapsed}
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                className={cn("flex min-h-11 w-full items-center gap-2 rounded-dd px-3 text-[13px] text-dd-muted outline-none transition-colors hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus", collapsed && "justify-center px-0")}
+              >
+                <span aria-hidden="true" className="material-symbols-outlined text-[18px]">{collapsed ? "chevron_right" : "chevron_left"}</span>
+                <span className="sidebar-label">{collapsed ? "" : "Collapse"}</span>
+              </button>
+            </SidebarTooltip>
+          </div>
+        ) : null}
       </aside>
 
-      {/* Updating Overlay: one-click auto update with manual fallback (decolua/9router #2575) */}
-      {isUpdating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
-          <UpdatePanel
-            currentVersion={updateInfo?.currentVersion || APP_CONFIG.version}
-            latestVersion={updateInfo?.latestVersion}
-            installCmd={INSTALL_CMD}
-            onClose={() => setIsUpdating(false)}
-          />
-        </div>
-      )}
+      <Modal
+        open={isUpdating}
+        onClose={() => setIsUpdating(false)}
+        title="Update available"
+        size="lg"
+        className="z-[90]"
+        showClose={false}
+        closeOnEscape={false}
+        closeOnOverlay={false}
+      >
+        <UpdatePanel
+          currentVersion={updateInfo?.currentVersion || APP_CONFIG.version}
+          latestVersion={updateInfo?.latestVersion}
+          installCmd={INSTALL_CMD}
+          onClose={() => setIsUpdating(false)}
+        />
+      </Modal>
 
     </>
   );
@@ -327,4 +380,6 @@ export default function Sidebar({ onClose }) {
 
 Sidebar.propTypes = {
   onClose: PropTypes.func,
+  collapsed: PropTypes.bool,
+  onToggleCollapse: PropTypes.func,
 };

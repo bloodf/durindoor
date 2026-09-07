@@ -98,17 +98,22 @@ const STATUS = [
   { token: "--dd-success", cls: "bg-dd-success" },
   { token: "--dd-warning", cls: "bg-dd-warning" },
   { token: "--dd-danger", cls: "bg-dd-danger" },
+  { token: "--dd-danger-hover", cls: "bg-dd-danger-hover" },
+  { token: "--dd-danger-action", cls: "bg-dd-danger-action" },
+  { token: "--dd-danger-action-hover", cls: "bg-dd-danger-action-hover" },
   { token: "--dd-info", cls: "bg-dd-info" },
 ];
 
-function RadiusAndElevation() {
+function RadiusAndElevation({ theme }) {
+  const radius = useResolvedVar("--dd-radius", theme);
+  const radiusLg = useResolvedVar("--dd-radius-lg", theme);
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <div className="flex h-20 items-center justify-center rounded-dd border border-dd-border bg-dd-surface">
-        <span className="font-mono text-xs text-dd-muted">rounded-dd</span>
+        <span className="dd-tnum font-mono text-xs text-dd-muted">rounded-dd {radius}</span>
       </div>
       <div className="flex h-20 items-center justify-center rounded-dd-lg border border-dd-border bg-dd-surface">
-        <span className="font-mono text-xs text-dd-muted">rounded-dd-lg</span>
+        <span className="dd-tnum font-mono text-xs text-dd-muted">rounded-dd-lg {radiusLg}</span>
       </div>
       <div className="flex h-20 items-center justify-center rounded-dd-lg bg-dd-surface shadow-dd-elevated">
         <span className="font-mono text-xs text-dd-muted">shadow-dd-elevated</span>
@@ -120,20 +125,24 @@ function RadiusAndElevation() {
   );
 }
 
-function AccentOnAccent({ theme }) {
-  const accent = useResolvedVar("--dd-accent", theme);
+/** Actual filled action states, including destructive hover, with contract labels. */
+function ActionContrastStates() {
   return (
-    <div className="flex items-center gap-4 rounded-dd-lg border border-dd-border bg-dd-surface p-4">
-      <button
-        type="button"
-        className="rounded-dd bg-dd-accent px-4 py-2 text-sm font-semibold text-dd-on-accent"
-      >
+    <div className="flex flex-wrap items-center gap-3 rounded-dd-lg border border-dd-border bg-dd-surface p-4">
+      <button type="button" className="rounded-dd bg-dd-accent px-4 py-2 text-sm font-semibold text-dd-on-accent">
         Primary action
       </button>
-      <span className="rounded-dd bg-dd-accent-soft px-3 py-1 text-sm font-medium text-dd-accent">
-        Soft badge
-      </span>
-      <span className="dd-tnum font-mono text-xs text-dd-subtle">{accent}</span>
+      <button type="button" className="rounded-dd bg-dd-accent-hover px-4 py-2 text-sm font-semibold text-dd-on-accent">
+        Primary hover
+      </button>
+      <button type="button" className="rounded-dd bg-dd-danger-action px-4 py-2 text-sm font-semibold text-dd-on-danger">
+        Destructive action
+      </button>
+      <button type="button" className="rounded-dd bg-dd-danger-action-hover px-4 py-2 text-sm font-semibold text-dd-on-danger">
+        Destructive hover
+      </button>
+      <span className="text-xs text-dd-muted">Filled labels ≥7:1</span>
+      <span className="rounded-dd bg-dd-accent-soft px-3 py-1 text-sm font-medium text-dd-accent">Soft badge</span>
     </div>
   );
 }
@@ -162,13 +171,14 @@ export const Palette = {
         <Section title="Accent">
           <p className="dd-tnum text-xs text-dd-muted">Brand emerald (logo) = primary interactive; gold = secondary/highlights</p>
           <SwatchGrid items={ACCENT} theme={theme} />
-          <AccentOnAccent theme={theme} />
+          <ActionContrastStates />
         </Section>
         <Section title="Status">
+          <p className="text-xs text-dd-muted">Status text and filled destructive actions use separate semantic reds.</p>
           <SwatchGrid items={STATUS} theme={theme} />
         </Section>
         <Section title="Radius & elevation">
-          <RadiusAndElevation />
+          <RadiusAndElevation theme={theme} />
         </Section>
       </div>
     );

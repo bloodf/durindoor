@@ -1,25 +1,19 @@
 "use client";
 
-export default function Tooltip({ text, children, position = "top", color }) {
-  const posClass = {
-    top: "bottom-full left-1/2 -translate-x-1/2 mb-1.5",
-    bottom: "top-full left-1/2 -translate-x-1/2 mt-1.5",
-    left: "right-full top-1/2 -translate-y-1/2 mr-1.5",
-    right: "left-full top-1/2 -translate-y-1/2 ml-1.5",
-  }[position];
+import { cloneElement, isValidElement } from "react";
+import DSTooltip from "@/shared/ui/components/Tooltip.jsx";
+import { isString } from "@/shared/utils/typeChecks";
 
-  const bgStyle = color ? { backgroundColor: color } : {};
-  const bgClass = color ? "" : "bg-gray-900";
+const FOCUSABLE_TAGS = new Set(["a", "button", "input", "select", "textarea"]);
 
-  return (
-    <div className="relative inline-flex group/tt">
-      {children}
-      <div
-        className={`pointer-events-none absolute ${posClass} z-50 w-max max-w-56 rounded px-2 py-1 text-[11px] leading-snug ${bgClass} text-white opacity-0 group-hover/tt:opacity-100 transition-opacity duration-150 whitespace-normal`}
-        style={bgStyle}
-      >
-        {text}
-      </div>
-    </div>
-  );
+/**
+ * Legacy tooltip API. Non-focusable icon spans become keyboard-reachable
+ * triggers, preserving visual child output while making their description
+ * available to keyboard users. Arbitrary `color` is retired for DS tokens.
+ */
+export default function Tooltip({ text, children, position = "top", color: _color }) {
+  const child = isValidElement(children) && isString(children.type) && !FOCUSABLE_TAGS.has(children.type) && children.props.tabIndex === undefined
+    ? cloneElement(children, { tabIndex: 0, role: children.props.role ?? "img", "aria-label": children.props["aria-label"] ?? text })
+    : children;
+  return <DSTooltip content={text} side={position}>{child}</DSTooltip>;
 }

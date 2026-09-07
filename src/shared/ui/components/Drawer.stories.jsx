@@ -1,111 +1,78 @@
 import { useState } from "react";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import Drawer from "./Drawer";
 
-/**
- * Durin DS/Overlays — Drawer stories.
- *
- * `EditConnection` shows the canonical use: a form scrolling in the body
- * with actions pinned in the footer. `Wide` demonstrates the `width` prop
- * (inline style, clamped by max-w-full). Esc and backdrop click close both.
- */
+const TRIGGER_CLASS = "min-h-11 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none focus-visible:shadow-dd-focus";
+const SECONDARY_CLASS = "min-h-11 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none focus-visible:shadow-dd-focus";
 
-const TRIGGER_CLASS =
-  "h-9 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus";
-
-const SECONDARY_CLASS =
-  "h-9 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus";
-
-const INPUT_CLASS =
-  "h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-3 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus:shadow-dd-focus";
-
-function Field({ label, placeholder, defaultValue, type = "text" }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-dd-muted">{label}</span>
-      <input type={type} placeholder={placeholder} defaultValue={defaultValue} className={INPUT_CLASS} />
-    </label>
-  );
-}
-
-function EditConnectionDemo() {
+function DrawerDemo({ title = "Edit connection", pending = false, width = 420, long = false }) {
   const [open, setOpen] = useState(false);
-  const close = () => setOpen(false);
-  return (
-    <>
-      <button type="button" className={TRIGGER_CLASS} onClick={() => setOpen(true)}>
-        Edit connection
-      </button>
-      <Drawer
-        open={open}
-        onClose={close}
-        title="Edit connection"
-        footer={
-          <>
-            <button type="button" className={SECONDARY_CLASS} onClick={close}>
-              Cancel
-            </button>
-            <button type="button" className={TRIGGER_CLASS} onClick={close}>
-              Save changes
-            </button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-4">
-          <Field label="Connection name" defaultValue="Moria west gate" />
-          <Field label="Base URL" placeholder="https://provider.example.com/v1" />
-          <Field label="API key" placeholder="sk-…" type="password" />
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-dd-muted">Notes</span>
-            <textarea
-              rows={4}
-              placeholder="Fallback order, quota caveats, owner…"
-              className="w-full rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus:shadow-dd-focus"
-            />
-          </label>
-          <p className="text-xs text-dd-subtle">
-            Changes apply to new requests only; in-flight streams keep the old
-            credentials until they complete.
-          </p>
-        </div>
-      </Drawer>
-    </>
-  );
+  return <>
+    <button type="button" className={TRIGGER_CLASS} onClick={() => setOpen(true)}>Open {title}</button>
+    <Drawer open={open} onClose={() => setOpen(false)} title={title} width={width} pending={pending} initialFocus="input"
+      footer={<><button type="button" className={SECONDARY_CLASS} onClick={() => setOpen(false)}>Cancel</button><button type="button" className={TRIGGER_CLASS}>Save changes</button></>}
+    >
+      <label className="flex flex-col gap-2"><span className="text-dd-muted">Connection name</span><input autoFocus className="h-11 rounded-dd border border-dd-border px-3" defaultValue="Moria west gate" /></label>
+      {long ? Array.from({ length: 20 }, (_, index) => <p key={index} className="mt-3 text-dd-muted">Scrollable drawer item {index + 1}</p>) : null}
+    </Drawer>
+  </>;
 }
 
-function WideDemo() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button type="button" className={TRIGGER_CLASS} onClick={() => setOpen(true)}>
-        Open wide drawer
-      </button>
-      <Drawer open={open} onClose={() => setOpen(false)} title="Request inspector" width={560}>
-        <div className="flex flex-col gap-3">
-          <p className="text-dd-muted">
-            A 560px drawer for denser readouts — request payloads, stream
-            traces, or side-by-side translations.
-          </p>
-          <pre className="rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3 font-mono text-xs text-dd-muted">
-            {"POST /v1/chat/completions\nprovider: anthropic\nmodel: claude-sonnet-4\ntranslate: openai → claude"}
-          </pre>
-        </div>
-      </Drawer>
-    </>
-  );
-}
-
-const meta = {
-  title: "Durin DS/Overlays/Drawer",
-  component: Drawer,
-  parameters: { layout: "centered" },
-};
-
+const meta = { title: "Durin DS/Overlays/Drawer", component: Drawer, parameters: { layout: "centered" } };
 export default meta;
 
-export const EditConnection = {
-  render: () => <EditConnectionDemo />,
+export const Keyboard = {
+  render: () => <DrawerDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", { name: "Open Edit connection" });
+    await userEvent.click(trigger);
+    const body = within(document.body);
+    const dialog = body.getByRole("dialog", { name: "Edit connection" });
+    await expect(dialog).toHaveAttribute("open");
+    await waitFor(() => expect(within(dialog).getByRole("textbox", { name: "Connection name" })).toHaveFocus());
+    // Native Escape is verified by Playwright's real keyboard, not synthetic events.
+    const close = within(dialog).getByRole("button", { name: "Close" });
+    close.focus();
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => {
+      expect(body.queryByRole("dialog", { name: "Edit connection" })).toBeNull();
+      expect(trigger).toHaveFocus();
+    });
+  },
 };
-
-export const Wide = {
-  render: () => <WideDemo />,
+export const Busy = { render: () => <DrawerDemo title="Saving connection" pending />, play: async ({ canvasElement }) => { await userEvent.click(within(canvasElement).getByRole("button", { name: "Open Saving connection" })); await expect(document.querySelector("dialog button[aria-label='Close']")).toBeDisabled(); } };
+export const Cancel = {
+  render: () => <DrawerDemo title="Cancel drawer" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Open Cancel drawer" }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Cancel drawer" });
+    await Promise.all(dialog.getAnimations().map(({ finished }) => finished.catch(() => {})));
+    await expect(dialog).toHaveAttribute("open");
+    await expect(within(dialog).getByRole("button", { name: "Close" })).toBeEnabled();
+  },
+};
+export const LongContent = {
+  render: () => <DrawerDemo title="Request inspector" width={560} long />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Open Request inspector" }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Request inspector" });
+    await Promise.all(dialog.getAnimations({ subtree: true }).map(({ finished }) => finished.catch(() => {})));
+    await expect(dialog).toHaveAttribute("open");
+    await waitFor(() => expect(within(dialog).getByText("Scrollable drawer item 20")).toBeVisible());
+  },
+};
+export const Mobile = {
+  render: () => <DrawerDemo title="Mobile drawer" />,
+  parameters: { viewport: { defaultViewport: "mobile1" } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Open Mobile drawer" }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Mobile drawer" });
+    await Promise.all(dialog.getAnimations({ subtree: true }).map(({ finished }) => finished.catch(() => {})));
+    await expect(dialog).toHaveAttribute("open");
+    await waitFor(() => expect(within(dialog).getByRole("textbox", { name: "Connection name" })).toBeVisible());
+  },
 };

@@ -13,14 +13,17 @@ describe("profile password change contract", () => {
 
   it("keeps a visible current-password field in the protected password form", async () => {
     const page = await readFile(pagePath, "utf8");
-    expect(page).toMatch(/<label[^>]*htmlFor="profile-current-password"[^>]*>Current Password<\/label>\s*<Input\s+id="profile-current-password"\s+type="password"/);
+    expect(page).toContain('<Input id="profile-current-password" label="Current password" type="password"');
   });
 
-  it("associates each password label with a unique stable input id", async () => {
+  it("passes unique stable input ids and labels to each password field", async () => {
     const page = await readFile(pagePath, "utf8");
-    for (const id of ["profile-current-password", "profile-new-password", "profile-confirm-password"]) {
-      expect(page).toContain(`htmlFor="${id}"`);
-      expect(page).toContain(`id="${id}"`);
+    for (const [id, label] of [
+      ["profile-current-password", "Current password"],
+      ["profile-new-password", "New password"],
+      ["profile-confirm-password", "Confirm password"],
+    ]) {
+      expect(page).toContain(`<Input id="${id}" label="${label}" type="password"`);
     }
   });
 });

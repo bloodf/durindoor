@@ -42,8 +42,8 @@ export default function KiroOAuthWrapper({
       // Use social login with manual callback
       setAuthMethod("social");
       setSocialProvider(config.provider);
-    } else if (method === "import" || method === "api-key") {
-      // Import / API-key handled in KiroAuthModal, just close
+    } else if (method === "import" || method === "api-key" || method === "import-cli-proxy") {
+      // Import/API-key paths are handled in KiroAuthModal, then notify caller.
       onSuccess?.();
     }
   }, [onSuccess]);

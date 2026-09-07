@@ -2,14 +2,17 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl, ConfirmModal, Button, Select, DateRangePicker } from "@/shared/components";
+import { UsageStats, RequestLogger, CardSkeleton } from "@/shared/components";
+import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+import RangeSelector from "@/shared/ui/components/RangeSelector.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
 import { USAGE_PERIOD_OPTIONS, getUsageCalendarCutoff, toLocalDateKey, addLocalCalendarDays } from "@/lib/usagePeriods.js";
 import RequestDetailsTab from "./components/RequestDetailsTab";
 import ComboUsageReport from "./components/ComboUsageReport";
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
-// Appended to the preset list so a manually-edited calendar range has a label.
-const CUSTOM_PERIOD = { value: "custom", label: "Custom", disabled: true };
 
 /**
  * Map a preset period id to a `{ startDate, endDate }` pair (YYYY-MM-DD) for the
@@ -116,94 +119,67 @@ function UsageContent() {
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
-      {/* Keep tabs left and periods right on one line without overlap */}
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <div className="relative z-20 shrink-0">
-          <SegmentedControl
-            options={[
-              { value: "overview", label: "Overview" },
-              { value: "details", label: "Details" },
-            ]}
-            value={activeTab}
-            onChange={handleTabChange}
-            className="w-auto shrink-0"
-          />
-        </div>
-        {activeTab === "overview" && (
-          <div className="flex min-w-0 flex-1 flex-col items-stretch justify-end gap-2 sm:flex-row sm:items-center sm:overflow-visible">
-            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
-              <Select
-                aria-label="Usage period preset"
-                options={[...PERIODS, CUSTOM_PERIOD]}
-                value={selectValue}
-                onChange={(e) => handlePresetChange(e.target.value)}
-                placeholder="Period"
-                className="min-w-[8rem]"
-              />
-              <DateRangePicker
-                startDate={customRange.startDate}
-                endDate={customRange.endDate}
-                onChange={handleRangeChange}
-              />
-              {selectValue === "custom" && (
-                <p className="w-full text-xs text-text-muted sm:w-auto">
-                  Custom range is a visual selection — pick a preset to refetch stats.
-                </p>
-              )}
-            </div>
-            <Button
-              variant="outline"
+    <div className="flex min-w-0 flex-col gap-6 px-1 text-[13px] sm:px-0">
+      <div className="flex min-w-0 flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <SegmentedControl
+          options={[
+            { value: "overview", label: "Overview" },
+            { value: "details", label: "Details" },
+          ]}
+          value={activeTab}
+          onChange={handleTabChange}
+        />
+        {activeTab === "overview" ? (
+          <div className="flex min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+            <RangeSelector
+              aria-label="Usage period"
+              presets={PERIODS}
+              value={selectValue === "custom"
+                ? { preset: "custom", from: customRange.startDate, to: customRange.endDate }
+                : { preset: period }}
+              onChange={({ preset, from, to }) => {
+                if (preset === "custom") handleRangeChange({ startDate: from, endDate: to });
+                else handlePresetChange(preset);
+              }}
               size="sm"
-              icon="restart_alt"
-              onClick={openResetModal}
-              className="shrink-0"
-            >
+            />
+            <Button variant="secondary" size="sm" icon="restart_alt" onClick={openResetModal} className="shrink-0">
               Reset
             </Button>
           </div>
-        )}
+        ) : null}
       </div>
 
-      {activeTab === "overview" && (
+      {activeTab === "overview" ? (
         <Suspense fallback={<CardSkeleton />}>
           <div className="flex flex-col gap-6">
             <UsageStats period={period} setPeriod={setPeriod} customRange={customRange} isCustomRange={selectValue === "custom"} hidePeriodSelector resetNonce={resetNonce} />
             <ComboUsageReport period={period} customRange={customRange} resetNonce={resetNonce} />
           </div>
         </Suspense>
-      )}
-      {activeTab === "logs" && <RequestLogger resetNonce={resetNonce} />}
-      {activeTab === "details" && <RequestDetailsTab resetNonce={resetNonce} />}
+      ) : null}
+      {activeTab === "logs" ? <RequestLogger resetNonce={resetNonce} /> : null}
+      {activeTab === "details" ? <RequestDetailsTab resetNonce={resetNonce} /> : null}
 
-      {/* Reset Confirmation Modal */}
-      <ConfirmModal
-        isOpen={resetModalOpen}
-        onClose={() => !resetting && setResetModalOpen(false)}
-        onConfirm={handleReset}
-        title="Reset Usage Data"
-        message={
-          <div className="space-y-3">
-            <p className="text-text-muted">
-              Select how far back you want to delete usage data. This action cannot be undone.
-            </p>
-            <select
-              value={resetPeriod}
-              onChange={(e) => setResetPeriod(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-red-500/40"
-            >
-              {RESET_PERIODS.map((rp) => (
-                <option key={rp.value} value={rp.value}>
-                  {rp.label}
-                </option>
-              ))}
-            </select>
-          </div>
+      <Modal
+        open={resetModalOpen}
+        onClose={() => { if (!resetting) setResetModalOpen(false); }}
+        closeOnOverlay={!resetting}
+        closeOnEscape={!resetting}
+        pending={resetting}
+        title="Reset usage data"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setResetModalOpen(false)} disabled={resetting}>Cancel</Button>
+            <Button variant="danger" onClick={handleReset} loading={resetting} disabled={resetting}>Reset</Button>
+          </>
         }
-        confirmText={resetting ? "Resetting..." : "Reset"}
-        variant="danger"
-        loading={resetting}
-      />
+      >
+        <div className="flex flex-col gap-3 text-[13px] text-dd-muted">
+          <p>Select how far back to delete usage data. This action cannot be undone.</p>
+          <Select aria-label="Usage reset period" value={resetPeriod} options={RESET_PERIODS} onChange={setResetPeriod} disabled={resetting} />
+        </div>
+      </Modal>
     </div>
   );
 }

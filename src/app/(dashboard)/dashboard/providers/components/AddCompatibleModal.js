@@ -2,7 +2,11 @@
 
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Badge, Button, Input, Modal, Select } from "@/shared/components";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
 
 const VARIANT_CONFIG = {
   openai: {
@@ -14,7 +18,7 @@ const VARIANT_CONFIG = {
     baseUrlHint: "Use the base URL (ending in /v1) for your OpenAI-compatible API.",
     modelIdPlaceholder: "e.g. gpt-4, claude-3-opus",
     errorLabel: "OpenAI Compatible",
-    hasApiType: true
+    hasApiType: true,
   },
   anthropic: {
     title: "Add Anthropic Compatible",
@@ -25,14 +29,14 @@ const VARIANT_CONFIG = {
     baseUrlHint: "Use the base URL (ending in /v1) for your Anthropic-compatible API. The system will append /messages.",
     modelIdPlaceholder: "e.g. claude-3-opus",
     errorLabel: "Anthropic Compatible",
-    hasApiType: false
-  }
+    hasApiType: false,
+  },
 };
 
 const API_TYPE_OPTIONS = [
-{ value: "chat", label: "Chat Completions" },
-{ value: "responses", label: "Responses API" }];
-
+  { value: "chat", label: "Chat Completions" },
+  { value: "responses", label: "Responses API" },
+];
 
 function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   const config = VARIANT_CONFIG[variant];
@@ -41,7 +45,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
     prefix: "",
     ...(config.hasApiType ? { apiType: "chat" } : null),
     baseUrl: config.defaultBaseUrl,
-    iconUrl: ""
+    iconUrl: "",
   });
 
   const [formData, setFormData] = useState(initialFormData);
@@ -81,8 +85,8 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           ...(config.hasApiType ? { apiType: formData.apiType } : null),
           baseUrl: formData.baseUrl,
           type: config.type,
-          iconUrl: formData.iconUrl
-        })
+          iconUrl: formData.iconUrl,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -110,8 +114,8 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           baseUrl: formData.baseUrl,
           apiKey: checkKey,
           type: config.type,
-          modelId: checkModelId.trim() || undefined
-        })
+          modelId: checkModelId.trim() || undefined,
+        }),
       });
       const data = await res.json();
       setValidationResult(data);
@@ -128,117 +132,121 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
     if (valid) {
       return (
         <>
-          <Badge variant="success">Valid</Badge>
-          {method === "chat" &&
-          <span className="text-sm text-text-muted">(via inference test)</span>
-          }
-        </>);
-
+          <Badge tone="success">Valid</Badge>
+          {method === "chat" ? <span className="text-sm text-dd-muted">(via inference test)</span> : null}
+        </>
+      );
     }
     return (
       <div className="flex flex-col gap-1">
-        <Badge variant="error">Invalid</Badge>
-        {error && <span className="text-sm text-red-500">{error}</span>}
-      </div>);
-
+        <Badge tone="danger">Invalid</Badge>
+        {error ? <span className="text-sm text-dd-danger">{error}</span> : null}
+      </div>
+    );
   };
 
   return (
-    <Modal isOpen={isOpen} title={config.title} onClose={onClose}>
+    <Modal open={isOpen} title={config.title} onClose={onClose}>
       <div className="flex flex-col gap-4">
         <Input
           label="Name"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           placeholder={config.namePlaceholder}
-          hint="Required. A friendly label for this node." />
-        
+          hint="Required. A friendly label for this node."
+        />
+
         <Input
           label="Prefix"
           value={formData.prefix}
           onChange={(e) => setFormData({ ...formData, prefix: e.target.value })}
           placeholder={config.prefixPlaceholder}
-          hint="Required. Used as the provider prefix for model IDs." />
-        
-        {config.hasApiType &&
-        <Select
-          label="API Type"
-          options={API_TYPE_OPTIONS}
-          value={formData.apiType}
-          onChange={(e) => setFormData({ ...formData, apiType: e.target.value })} />
+          hint="Required. Used as the provider prefix for model IDs."
+        />
 
-        }
+        {config.hasApiType ? (
+          <Select
+            options={API_TYPE_OPTIONS}
+            value={formData.apiType}
+            onChange={(value) => setFormData({ ...formData, apiType: value })}
+            aria-label="API Type"
+          />
+        ) : null}
+
         <Input
           label="Base URL"
           value={formData.baseUrl}
           onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
           placeholder={config.defaultBaseUrl}
-          hint={config.baseUrlHint} />
-        
+          hint={config.baseUrlHint}
+        />
+
         <Input
           label="Icon URL (optional)"
           value={formData.iconUrl}
           onChange={(e) => setFormData({ ...formData, iconUrl: e.target.value })}
           placeholder="https://example.com/logo.png"
-          hint="Optional. A square image URL shown as this provider's icon. Falls back to a text badge if unset or it fails to load." />
-        
+          hint="Optional. A square image URL shown as this provider's icon. Falls back to a text badge if unset or it fails to load."
+        />
+
         <Input
           label="API Key (for Check)"
           type="password"
           value={checkKey}
-          onChange={(e) => setCheckKey(e.target.value)} />
-        
+          onChange={(e) => setCheckKey(e.target.value)}
+        />
+
         <Input
           label="Model ID (optional)"
           value={checkModelId}
           onChange={(e) => setCheckModelId(e.target.value)}
           placeholder={config.modelIdPlaceholder}
-          hint="If provider lacks /models endpoint, enter a model ID to validate via chat/completions instead." />
-        
+          hint="If provider lacks /models endpoint, enter a model ID to validate via chat/completions instead."
+        />
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button
             onClick={handleValidate}
             disabled={!checkKey || validating || !formData.baseUrl.trim()}
             variant="secondary"
-            className="w-full sm:w-auto">
-            
+            className="w-full sm:w-auto"
+          >
             {validating ? "Checking..." : "Check"}
           </Button>
           {renderValidationResult()}
         </div>
-        {saveError &&
-        <div className="flex items-center gap-1.5 text-sm text-red-500" role="alert">
-            <span className="material-symbols-outlined text-base shrink-0">cancel</span>
+
+        {saveError ? (
+          <div className="flex items-center gap-1.5 text-sm text-dd-danger" role="alert">
+            <span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">cancel</span>
             <span>{saveError}</span>
           </div>
-        }
+        ) : null}
+
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button
+            variant="primary"
             onClick={handleSubmit}
-            fullWidth
-            disabled={
-            !formData.name.trim() ||
-            !formData.prefix.trim() ||
-            !formData.baseUrl.trim() ||
-            submitting
-            }>
-            
+            className="w-full"
+            loading={submitting}
+            disabled={!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim() || submitting}
+          >
             {submitting ? "Creating..." : "Create"}
           </Button>
-          <Button onClick={onClose} variant="ghost" fullWidth>
+          <Button onClick={onClose} variant="ghost" className="w-full">
             Cancel
           </Button>
         </div>
       </div>
-    </Modal>);
-
+    </Modal>
+  );
 }
 
 AddCompatibleModal.propTypes = {
   variant: PropTypes.oneOf(["openai", "anthropic"]).isRequired,
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
-  onCreated: PropTypes.func.isRequired
+  onCreated: PropTypes.func.isRequired,
 };
 
 export default AddCompatibleModal;

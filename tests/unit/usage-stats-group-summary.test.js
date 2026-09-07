@@ -10,24 +10,30 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn() }),
 }));
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
-vi.mock("@/shared/components/Badge", () => ({
-  default: ({ children }) => React.createElement("span", { "data-badge": true }, children),
+vi.mock("@/shared/ui/components/Badge.jsx", () => ({
+  Badge: ({ children }) => React.createElement("span", { "data-badge": true }, children),
 }));
-vi.mock("@/shared/components/Card", () => ({ default: ({ children }) => React.createElement("div", null, children) }));
+vi.mock("@/shared/ui/components/Select.jsx", () => ({
+  default: ({ value, onChange, options, ...props }) => React.createElement(
+    "select",
+    { ...props, value, onChange: (event) => onChange(event.target.value) },
+    options.map((option) => React.createElement("option", { key: option.value, value: option.value }, option.label)),
+  ),
+}));
 vi.mock("@/app/(dashboard)/dashboard/usage/components/OverviewCards", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/dashboard/usage/components/UsageChart", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/dashboard/usage/components/RequestsPanel", () => ({ default: () => null }));
 vi.mock("@/app/(dashboard)/dashboard/usage/components/UsageTable", () => ({
   fmt: String,
   fmtTime: String,
-  default: ({ tableType, groupedData, renderSummaryCells }) => React.createElement(
+  default: ({ tableType, groupedData, groupColumns }) => React.createElement(
     "table",
     { "data-table": tableType },
     React.createElement("tbody", null, groupedData.map((group) => React.createElement(
       "tr",
       { key: group.groupKey, "data-group": group.groupKey },
       React.createElement("td", null, group.groupKey),
-      renderSummaryCells(group),
+      ...groupColumns.map((column) => React.createElement("td", { key: column.key }, column.render(group))),
     ))),
   ),
 }));

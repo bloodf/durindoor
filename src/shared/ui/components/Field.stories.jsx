@@ -58,6 +58,7 @@ export const CheckboxGroup = {
     return (
       <div className="w-72">
         <Field
+          group
           label="Notifications"
           hint="Choose which events reach this channel."
           className="gap-2"

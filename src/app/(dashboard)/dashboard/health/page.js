@@ -1,40 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, Card } from "@/shared/components";
-import Pagination from "@/shared/components/Pagination";
+import Button from "@/shared/ui/components/Button.jsx";
+import DataTable from "@/shared/ui/components/DataTable.jsx";
+import PageHeader from "@/shared/ui/components/PageHeader.jsx";
+import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
+import StatCard from "@/shared/ui/components/StatCard.jsx";
+import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { createVisiblePoller } from "@/shared/utils/visiblePoller";
 
-const STATE_VARIANT = {
-  healthy: "success",
-  degraded: "warning",
-  down: "error",
-  blocked: "error",
-  unconfigured: "default",
-  unknown: "default",
-};
+const STATE_TONE = { healthy: "success", degraded: "warning", down: "danger", blocked: "danger", unconfigured: "neutral", unknown: "neutral" };
+const STATE_LABEL = { healthy: "Healthy", degraded: "Degraded", down: "Down", blocked: "Blocked (SSRF)", unconfigured: "Unconfigured", unknown: "Unknown" };
 
-const STATE_LABEL = {
-  healthy: "Healthy",
-  degraded: "Degraded",
-  down: "Down",
-  blocked: "Blocked (SSRF)",
-  unconfigured: "Unconfigured",
-  unknown: "Unknown",
-};
-
-function SummaryCard({ label, value, variant }) {
-  return (
-    <Card padding="sm">
-      <div className="text-xs text-text-muted uppercase tracking-wide">{label}</div>
-      <div className="mt-1 flex items-end gap-2">
-        <span className="text-2xl font-semibold">{value ?? 0}</span>
-        {variant && <Badge variant={variant} size="sm">{label}</Badge>}
-      </div>
-    </Card>
-  );
-}
+const SUMMARY_TILES = [
+  { key: "total", label: "Total", tone: "default" },
+  { key: "healthy", label: "Healthy", tone: "success" },
+  { key: "degraded", label: "Degraded", tone: "warning" },
+  { key: "down", label: "Down", tone: "danger" },
+  { key: "blocked", label: "Blocked", tone: "danger" },
+  { key: "unconfigured", label: "Unconfigured", tone: "neutral" },
+];
 
 export default function HealthPage() {
   const [data, setData] = useState(null);
@@ -48,6 +34,10 @@ export default function HealthPage() {
     try {
       const url = force ? "/api/health/providers?force=1" : "/api/health/providers";
       const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Health request failed (${res.status})`);
+      }
       const [healthData, headroomRes] = await Promise.all([
         res.json(),
         fetch("/api/headroom/status", { cache: "no-store" }).catch(() => null),
@@ -87,115 +77,51 @@ export default function HealthPage() {
     pageSize: 20,
   });
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Provider Health</h1>
-          <p className="text-sm text-text-muted">
-            Reachability of your configured provider connections. Probes are SSRF-guarded and proxy-aware.
-          </p>
-        </div>
-        <Button onClick={onRefresh} disabled={refreshing}>
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </Button>
-      </div>
+  const headroomTone = headroom?.running ? (headroom?.circuit?.degraded ? "warning" : "success") : "warning";
+  const headroomLabel = headroom?.running
+    ? headroom?.circuit?.degraded
+      ? `Degraded (${headroom.circuit.consecutiveFailures})`
+      : "Healthy"
+    : "Unavailable (fail-open)";
 
-      {error && (
-        <Card padding="sm">
-          <span className="text-sm text-red-500">{error}</span>
-        </Card>
-      )}
+  const columns = [
+    { key: "name", label: "Connection", render: (row) => <span className="text-[13px] font-medium text-dd-text">{row.name}</span> },
+    { key: "provider", label: "Provider", render: (row) => <span className="inline-flex items-center gap-2"><ProviderLogo provider={row.provider} size={20} /><span className="text-[13px] text-dd-muted">{row.provider}</span></span> },
+    { key: "state", label: "State", render: (row) => <StatusDot tone={STATE_TONE[row.state] || "neutral"} label={STATE_LABEL[row.state] || row.state} /> },
+    { key: "status", label: "Status", mono: true, align: "right", render: (row) => <span className="dd-tnum text-[13px] text-dd-muted">{row.statusCode ?? "—"}</span> },
+    { key: "latency", label: "Latency", mono: true, align: "right", render: (row) => <span className="dd-tnum text-[13px] text-dd-muted">{row.latencyMs != null ? `${row.latencyMs}ms` : "—"}</span> },
+    { key: "error", label: "Error", render: (row) => <span className="block max-w-xs truncate text-[13px] text-dd-muted" title={row.error || ""}>{row.error || "—"}</span> },
+  ];
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <SummaryCard label="Total" value={summary.total} />
-        <SummaryCard label="Healthy" value={summary.healthy} variant="success" />
-        <SummaryCard label="Degraded" value={summary.degraded} variant="warning" />
-        <SummaryCard label="Down" value={summary.down} variant="error" />
-        <SummaryCard label="Blocked" value={summary.blocked} variant="error" />
-        <SummaryCard label="Unconfigured" value={summary.unconfigured} />
-      </div>
-      <Card padding="sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="font-medium">Headroom compression proxy</div>
-            <div className="text-xs text-text-muted">{headroom?.url || "Not configured"}</div>
-            {headroom?.circuit?.degraded && (
-              <div className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
-                Circuit degraded: {headroom.circuit.consecutiveFailures} consecutive failures
-              </div>
-            )}
-          </div>
-          <Badge
-            variant={headroom?.running ? (headroom?.circuit?.degraded ? "warning" : "success") : "warning"}
-            size="sm"
-          >
-            {headroom?.running
-              ? headroom?.circuit?.degraded
-                ? `Degraded (${headroom.circuit.consecutiveFailures})`
-                : "Healthy"
-              : "Unavailable (fail-open)"}
-          </Badge>
-        </div>
-      </Card>
-
-
-      <Card>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-text-muted border-b border-border-subtle">
-                <th className="py-2 pr-4">Connection</th>
-                <th className="py-2 pr-4">Provider</th>
-                <th className="py-2 pr-4">State</th>
-                <th className="py-2 pr-4">Status</th>
-                <th className="py-2 pr-4">Latency</th>
-                <th className="py-2">Error</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && providers.length === 0 && (
-                <tr><td colSpan={6} className="py-6 text-center text-text-muted">Loading…</td></tr>
-              )}
-              {!loading && providers.length === 0 && (
-                <tr><td colSpan={6} className="py-6 text-center text-text-muted">No active connections configured.</td></tr>
-              )}
-              {pageItems.map((p) => (
-                <tr key={p.id} className="border-b border-border-subtle/50">
-                  <td className="py-2 pr-4 font-medium">{p.name}</td>
-                  <td className="py-2 pr-4 text-text-muted">{p.provider}</td>
-                  <td className="py-2 pr-4">
-                    <Badge variant={STATE_VARIANT[p.state] || "default"} size="sm">
-                      {STATE_LABEL[p.state] || p.state}
-                    </Badge>
-                  </td>
-                  <td className="py-2 pr-4 text-text-muted">{p.statusCode ?? "—"}</td>
-                  <td className="py-2 pr-4 text-text-muted">
-                    {p.latencyMs != null ? `${p.latencyMs}ms` : "—"}
-                  </td>
-                  <td className="py-2 text-text-muted truncate max-w-xs" title={p.error || ""}>
-                    {p.error || "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {totalPages > 1 && (
-        <Pagination
-          currentPage={page}
-          pageSize={pageSize}
-          totalItems={totalItems}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
-      )}
-
-      {data?.timestamp && (
-        <p className="text-xs text-text-muted">Last computed: {new Date(data.timestamp).toLocaleString()}</p>
-      )}
+  return <div className="space-y-6">
+    <PageHeader icon="health_and_safety" title="Provider Health" subtitle="Reachability of your configured provider connections. Probes are SSRF-guarded and proxy-aware." actions={<Button variant="primary" onClick={onRefresh} disabled={refreshing} loading={refreshing} icon="refresh">{refreshing ? "Refreshing…" : "Refresh"}</Button>} />
+    {error ? <div className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger" role="alert">{error}</div> : null}
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+      {SUMMARY_TILES.map((tile) => <StatCard key={tile.key} label={tile.label} value={summary[tile.key] ?? 0} tone={tile.tone} />)}
     </div>
-  );
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-dd-lg border border-dd-border bg-dd-surface p-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent"><span aria-hidden="true" className="material-symbols-outlined text-[20px] leading-none">compress</span></span>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-dd-text">Headroom compression proxy</div>
+          <div className="truncate text-xs text-dd-muted">{headroom?.url || "Not configured"}</div>
+          {headroom?.circuit?.degraded ? <div className="mt-1 text-xs text-dd-warning">Circuit degraded: {headroom.circuit.consecutiveFailures} consecutive failures</div> : null}
+        </div>
+      </div>
+      <StatusDot tone={headroomTone} label={headroomLabel} pulse={headroomTone === "success"} />
+    </div>
+    <DataTable
+      caption="Configured provider connections and their reachability probes"
+      ariaLabel="Provider health connections"
+      columns={columns}
+      rows={pageItems}
+      keyFn={(row) => row.id}
+      getRowLabel={(row) => row.name}
+      density="compact"
+      loading={loading && providers.length === 0}
+      emptyState={{ icon: "monitor_heart", title: "No active connections", message: "No active connections configured.", action: { label: "Refresh", icon: "refresh", onClick: onRefresh } }}
+      pagination={{ page, pageCount: totalPages, total: totalItems, rowsLabel: `Showing ${totalItems === 0 ? 0 : (page - 1) * pageSize + 1}–${(page - 1) * pageSize + pageItems.length} of ${totalItems}`, onPage: setPage, rowsPerPage: pageSize, onRowsPerPageChange: setPageSize }}
+    />
+    {data?.timestamp ? <p className="text-xs text-dd-subtle">Last computed: {new Date(data.timestamp).toLocaleString()}</p> : null}
+  </div>;
 }

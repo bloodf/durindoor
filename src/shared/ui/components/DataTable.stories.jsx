@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
 
 import { Badge } from "./Badge.jsx";
 import DataTable from "./DataTable.jsx";
@@ -159,6 +160,7 @@ function ProxyTimelineTable() {
   return (
     <div className="w-full max-w-7xl">
       <DataTable
+        caption="Proxy request timeline"
         columns={columns}
         rows={visibleRows}
         keyFn={(row) => row.id}
@@ -180,6 +182,75 @@ function ProxyTimelineTable() {
   );
 }
 
+/** Rows sorted client-side; `render`ed header buttons drive `column.onSort`. */
+function SortableEventsTable() {
+  const [sortDirection, setSortDirection] = useState("descending");
+  const sortedRows = [...timeline].sort((a, b) =>
+    sortDirection === "descending" ? b.events - a.events : a.events - b.events,
+  );
+  const sortableColumns = columns.map((column) =>
+    column.key === "events"
+      ? {
+          ...column,
+          sortDirection,
+          onSort: () => setSortDirection((prev) => (prev === "descending" ? "ascending" : "descending")),
+        }
+      : column,
+  );
+
+  return (
+    <div className="w-full max-w-7xl">
+      <DataTable caption="Requests sortable by event count" columns={sortableColumns} rows={sortedRows} keyFn={(row) => row.id} density="compact" />
+    </div>
+  );
+}
+
+/** Each row can expand to show its full event log inline. */
+function ExpandableRequestsTable() {
+  const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+
+  return (
+    <div className="w-full max-w-7xl">
+      <DataTable
+        caption="Requests with expandable detail"
+        columns={columns.slice(0, 4)}
+        rows={timeline.slice(0, 4)}
+        keyFn={(row) => row.id}
+        density="compact"
+        getRowLabel={(row) => `request ${row.id}`}
+        expandedRowKeys={expandedRowKeys}
+        onExpandedRowKeysChange={setExpandedRowKeys}
+        renderExpandedRow={(row) => (
+          <p className="text-xs text-dd-muted">
+            {row.events} events, {row.fallbacks} fallback(s), {row.duration}ms total.
+          </p>
+        )}
+      />
+    </div>
+  );
+}
+
+/** Server owns `total`; the client only knows the current page slice. */
+function ServerTotalTable() {
+  const [page, setPage] = useState(1);
+  const rowsPerPage = 8;
+  const serverTotal = 2402;
+  const pageCount = Math.ceil(serverTotal / rowsPerPage);
+
+  return (
+    <div className="w-full max-w-7xl">
+      <DataTable
+        caption="Server-paginated requests"
+        columns={columns.slice(0, 5)}
+        rows={timeline}
+        keyFn={(row) => row.id}
+        density="compact"
+        pagination={{ page, pageCount, total: serverTotal, onPage: setPage }}
+      />
+    </div>
+  );
+}
+
 const meta = {
   title: "Durin DS/Data/DataTable",
   component: DataTable,
@@ -190,6 +261,11 @@ export default meta;
 
 export const ProxyTimeline = {
   render: () => <ProxyTimelineTable />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("table", { name: "Proxy request timeline" })).toBeInTheDocument();
+    await expect(canvas.getAllByRole("row")).toHaveLength(11);
+  },
 };
 
 export const Empty = {
@@ -209,6 +285,10 @@ export const Empty = {
       />
     </div>
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("No proxy requests")).toBeInTheDocument();
+  },
 };
 
 export const Loading = {
@@ -224,4 +304,53 @@ export const Loading = {
       />
     </div>
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("table")).toHaveAttribute("aria-busy", "true");
+  },
+};
+
+export const Sortable = {
+  render: () => <SortableEventsTable />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const sortButton = canvas.getByRole("button", { name: /Events/ });
+    await expect(canvas.getByRole("columnheader", { name: /Events/ })).toHaveAttribute("aria-sort", "descending");
+    await userEvent.click(sortButton);
+    await expect(canvas.getByRole("columnheader", { name: /Events/ })).toHaveAttribute("aria-sort", "ascending");
+  },
+};
+
+export const Expandable = {
+  render: () => <ExpandableRequestsTable />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = canvas.getByRole("button", { name: /Expand request req_01J8X4P8K2/ });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(canvas.getByText(/14 events, 0 fallback/)).toBeInTheDocument();
+  },
+};
+
+export const ServerOwnedTotal = {
+  render: () => <ServerTotalTable />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("2,402 results")).toBeInTheDocument();
+    await expect(canvas.getAllByRole("row")).toHaveLength(9);
+  },
+};
+
+export const Narrow = {
+  render: () => (
+    <div className="w-60">
+      <DataTable caption="Narrow viewport requests" columns={columns} rows={timeline.slice(0, 3)} keyFn={(row) => row.id} density="compact" />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const scrollRegion = canvas.getByRole("region", { name: "Narrow viewport requests rows" });
+    await expect(scrollRegion.tabIndex).toBe(0);
+  },
 };

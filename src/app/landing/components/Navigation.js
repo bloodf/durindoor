@@ -1,72 +1,44 @@
 "use client";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Button from "@/shared/ui/components/Button.jsx";
+import IconButton from "@/shared/ui/components/IconButton.jsx";
 
 export default function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
+  const closeMenu = () => setMobileMenuOpen(false);
 
   return (
-    <nav className="fixed top-0 z-50 w-full bg-[#181411]/80 backdrop-blur-md border-b border-[#3a2f27]">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        {/* Logo */}
-        <button
-          type="button"
-          className="flex items-center gap-3 cursor-pointer bg-transparent border-none p-0"
-          onClick={() => router.push("/")}
-          aria-label="Navigate to home"
-        >
-          <div className="size-8 rounded bg-linear-to-br from-[#f97815] to-orange-700 flex items-center justify-center text-white">
-            <span className="material-symbols-outlined text-[20px]">hub</span>
-          </div>
-          <h2 className="text-white text-xl font-bold tracking-tight">DurinDoor</h2>
+    <nav className="fixed top-0 z-50 w-full border-b border-dd-border bg-dd-bg" aria-label="Main navigation">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+        <button type="button" className="flex items-center gap-3 rounded-dd outline-none focus-visible:shadow-dd-focus" onClick={() => router.push("/")} aria-label="Navigate to home">
+          <span className="flex size-9 items-center justify-center rounded-dd bg-dd-accent text-dd-on-accent"><span className="material-symbols-outlined text-[20px]" aria-hidden="true">hub</span></span>
+          <span className="text-xl font-semibold tracking-tight text-dd-text">DurinDoor</span>
         </button>
-
-        {/* Desktop menu */}
-        <div className="hidden md:flex items-center gap-8">
-          <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#features">Features</a>
-          <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#how-it-works">How it Works</a>
-          <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="https://github.com/bloodf/durindoor#readme" target="_blank" rel="noopener noreferrer">Docs</a>
-          <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors flex items-center gap-1" href="https://github.com/bloodf/durindoor" target="_blank" rel="noopener noreferrer">
-            GitHub <span className="material-symbols-outlined text-[14px]">open_in_new</span>
-          </a>
+        <div className="hidden items-center gap-7 md:flex">
+          <a className="rounded-dd text-[13px] font-medium text-dd-muted outline-none transition-colors hover:text-dd-text focus-visible:shadow-dd-focus" href="#features">Features</a>
+          <a className="rounded-dd text-[13px] font-medium text-dd-muted outline-none transition-colors hover:text-dd-text focus-visible:shadow-dd-focus" href="#how-it-works">How it works</a>
+          <a className="rounded-dd text-[13px] font-medium text-dd-muted outline-none transition-colors hover:text-dd-text focus-visible:shadow-dd-focus" href="https://github.com/bloodf/durindoor#readme" target="_blank" rel="noopener noreferrer">Docs</a>
+          <a className="inline-flex items-center gap-1 rounded-dd text-[13px] font-medium text-dd-muted outline-none transition-colors hover:text-dd-text focus-visible:shadow-dd-focus" href="https://github.com/bloodf/durindoor" target="_blank" rel="noopener noreferrer">GitHub <span className="material-symbols-outlined text-[16px]" aria-hidden="true">open_in_new</span></a>
         </div>
-
-        {/* CTA + Mobile menu */}
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => router.push("/dashboard")}
-            className="hidden sm:flex h-9 items-center justify-center rounded-lg px-4 bg-[#f97815] hover:bg-[#e0650a] transition-all text-[#181411] text-sm font-bold shadow-[0_0_15px_rgba(249,120,21,0.4)] hover:shadow-[0_0_20px_rgba(249,120,21,0.6)]"
-          >
-            Get Started
-          </button>
-          <button 
-            className="md:hidden text-white"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            <span className="material-symbols-outlined">{mobileMenuOpen ? "close" : "menu"}</span>
-          </button>
+        <div className="flex items-center gap-1">
+          <Button variant="primary" className="hidden sm:inline-flex" onClick={() => router.push("/dashboard")}>Get started</Button>
+          <IconButton icon={mobileMenuOpen ? "close" : "menu"} label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"} className="md:hidden" onClick={() => setMobileMenuOpen((open) => !open)} />
         </div>
       </div>
-
-      {/* Mobile menu dropdown */}
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t border-[#3a2f27] bg-[#181411]/95 backdrop-blur-md">
-          <div className="flex flex-col gap-4 p-6">
-            <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
-            <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it Works</a>
-            <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="https://github.com/bloodf/durindoor#readme" target="_blank" rel="noopener noreferrer">Docs</a>
-            <a className="text-gray-300 hover:text-white text-sm font-medium transition-colors" href="https://github.com/bloodf/durindoor" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <button 
-              onClick={() => router.push("/dashboard")}
-              className="h-9 rounded-lg bg-[#f97815] hover:bg-[#e0650a] text-[#181411] text-sm font-bold"
-            >
-              Get Started
-            </button>
+      {mobileMenuOpen ? (
+        <div className="border-t border-dd-border bg-dd-surface px-4 py-4 md:hidden">
+          <div className="mx-auto flex max-w-7xl flex-col gap-2">
+            <a className="rounded-dd px-3 py-3 text-[13px] font-medium text-dd-text outline-none hover:bg-dd-surface-2 focus-visible:shadow-dd-focus" href="#features" onClick={closeMenu}>Features</a>
+            <a className="rounded-dd px-3 py-3 text-[13px] font-medium text-dd-text outline-none hover:bg-dd-surface-2 focus-visible:shadow-dd-focus" href="#how-it-works" onClick={closeMenu}>How it works</a>
+            <a className="rounded-dd px-3 py-3 text-[13px] font-medium text-dd-text outline-none hover:bg-dd-surface-2 focus-visible:shadow-dd-focus" href="https://github.com/bloodf/durindoor#readme" target="_blank" rel="noopener noreferrer">Docs</a>
+            <a className="rounded-dd px-3 py-3 text-[13px] font-medium text-dd-text outline-none hover:bg-dd-surface-2 focus-visible:shadow-dd-focus" href="https://github.com/bloodf/durindoor" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <Button variant="primary" className="mt-2 w-full" onClick={() => router.push("/dashboard")}>Get started</Button>
           </div>
         </div>
-      )}
+      ) : null}
     </nav>
   );
 }
-

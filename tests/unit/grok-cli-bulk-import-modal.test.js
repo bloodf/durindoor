@@ -10,10 +10,15 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("@/shared/components", () => ({
-  Button: ({ children, ...props }) => React.createElement("button", props, children),
-  Modal: ({ isOpen, title, children }) => isOpen ? React.createElement("section", null,
+vi.mock("@/shared/ui/components/Modal.jsx", () => ({
+  default: ({ open, title, children }) => open ? React.createElement("section", null,
     React.createElement("h2", null, title), children) : null,
+}));
+vi.mock("@/shared/ui/components/Button.jsx", () => ({
+  default: ({ children, loading, ...props }) => React.createElement("button", { ...props, "aria-busy": loading || undefined }, children),
+}));
+vi.mock("@/shared/ui/components/Textarea.jsx", () => ({
+  default: (props) => React.createElement("textarea", props),
 }));
 vi.mock("@/i18n/runtime", () => ({ translate: (text) => text }));
 

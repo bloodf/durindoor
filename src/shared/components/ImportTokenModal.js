@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Modal, Button, Input } from "@/shared/components";
+import Modal from "@/shared/ui/components/Modal";
+import Button from "@/shared/ui/components/Button";
+import Input from "@/shared/ui/components/Input";
 
 export default function ImportTokenModal({ isOpen, provider, providerInfo, onSuccess, onClose }) {
   const [token, setToken] = useState("");
@@ -44,29 +46,25 @@ export default function ImportTokenModal({ isOpen, provider, providerInfo, onSuc
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <Modal isOpen={isOpen} title={`Connect ${providerInfo?.name || provider}`} onClose={handleClose}>
-      <div className="flex flex-col gap-4">
-        <p className="text-xs text-text-muted">
-          Paste your {providerInfo?.name || provider} access token to create a connection.
-        </p>
+    <Modal open={isOpen} title={`Connect ${providerInfo?.name || provider}`} onClose={handleClose} size="sm">
+      <div className="flex flex-col gap-5">
+        <div className="flex items-start gap-3 rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3 text-dd-muted">
+          <span className="material-symbols-outlined text-[20px]" aria-hidden="true">vpn_key</span>
+          <p className="text-[13px] leading-relaxed">Paste your {providerInfo?.name || provider} access token to create a connection.</p>
+        </div>
         <Input
-          label="Access Token"
+          label="Access token"
           value={token}
           onChange={(e) => setToken(e.target.value)}
           placeholder="Paste token here"
           type="password"
+          autoComplete="off"
+          error={error || undefined}
         />
-        {error && <p className="text-sm text-red-500">{error}</p>}
-        <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={!token.trim() || loading} loading={loading}>
-            Connect
-          </Button>
-          <Button onClick={handleClose} variant="ghost" fullWidth>
-            Cancel
-          </Button>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button onClick={handleClose} variant="ghost">Cancel</Button>
+          <Button onClick={handleSubmit} variant="primary" disabled={!token.trim() || loading} loading={loading} icon="link">Connect</Button>
         </div>
       </div>
     </Modal>

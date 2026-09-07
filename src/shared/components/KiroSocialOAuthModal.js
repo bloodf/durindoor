@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Modal, Button, Input } from "@/shared/components";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   createOAuthFlowLifecycle,
@@ -26,6 +29,7 @@ export default function KiroSocialOAuthModal({
   const [callbackUrl, setCallbackUrl] = useState("");
   const [error, setError] = useState(null);
   const [selectedProxyPoolId, setSelectedProxyPoolId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const { copied, copy } = useCopyToClipboard();
   const lifecycleRef = useRef(null);
   const selectedProxyPoolIdRef = useRef("");
@@ -156,6 +160,7 @@ export default function KiroSocialOAuthModal({
     const lifecycle = lifecycleRef.current;
     const flow = lifecycle.current();
     if (!flow) return;
+    setSubmitting(true);
     try {
       setError(null);
       const url = new URL(callbackUrl);
@@ -188,6 +193,8 @@ export default function KiroSocialOAuthModal({
       if (lifecycle.isActive(flow)) {
         finishError(flow, submitError instanceof Error ? submitError.message : "Authentication failed");
       }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -201,101 +208,69 @@ export default function KiroSocialOAuthModal({
   const activeProxyPools = proxyPools.filter((pool) => pool.isActive === true);
 
   return (
-    <Modal isOpen={isOpen} title={`Connect Kiro via ${providerName}`} onClose={() => { void handleClose(); }} size="lg">
-      <div className="flex flex-col gap-4">
-        {!proxyPoolsReady && (
-          <div className="flex items-center justify-center gap-2 py-6 text-sm text-text-muted">
-            <span className="material-symbols-outlined animate-spin">progress_activity</span>
-            Loading routing options…
-          </div>
-        )}
+    <Modal open={isOpen} title={`Connect Kiro via ${providerName}`} subtitle="Complete authentication in your browser, then paste callback URL." onClose={() => { void handleClose(); }} size="lg" pending={submitting} closeOnEscape={!submitting} closeOnOverlay={!submitting}>
+      <div className="flex flex-col gap-5">
+        {!proxyPoolsReady && <LoadingState title="Loading routing options…" />}
 
         {proxyPoolsReady && activeProxyPools.length > 0 && (step === "loading" || step === "input") && (
-          <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-sidebar/30 p-3">
-            <label className="text-xs font-medium uppercase tracking-wider text-text-muted">Routing Proxy Pool</label>
-            <select
-              value={selectedProxyPoolId}
-              onChange={(event) => { void restartFlow(event.target.value); }}
-              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm outline-none focus:border-primary"
-            >
-              <option value="">Direct Connection</option>
-              {activeProxyPools.map((pool) => (
-                <option key={pool.id} value={pool.id}>{pool.name}</option>
-              ))}
-            </select>
+          <div className="flex flex-col gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 p-3">
+            <label htmlFor="kiro-proxy-pool" className="text-xs font-medium text-dd-muted">Routing proxy pool</label>
+            <Select id="kiro-proxy-pool" value={selectedProxyPoolId} disabled={submitting} onChange={(value) => { void restartFlow(value); }} options={[{ value: "", label: "Direct connection" }, ...activeProxyPools.map((pool) => ({ value: pool.id, label: pool.name }))]} />
           </div>
         )}
 
-        {proxyPoolsReady && step === "loading" && (
-          <div className="py-6 text-center">
-            <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
-            <h3 className="mb-2 mt-3 text-lg font-semibold">Initializing…</h3>
-            <p className="text-sm text-text-muted">Setting up {providerName} authentication</p>
-          </div>
-        )}
+        {proxyPoolsReady && step === "loading" && <LoadingState title="Initializing…" message={`Setting up ${providerName} authentication`} />}
 
         {step === "input" && (
           <>
-            <div className="space-y-4">
-              <div>
-                <p className="mb-2 text-sm font-medium">Step 1: Open this URL in your browser</p>
-                <div className="flex gap-2">
-                  <Input value={authUrl} readOnly className="flex-1 font-mono text-xs" />
-                  <Button
-                    variant="secondary"
-                    icon={copied === "auth_url" ? "check" : "content_copy"}
-                    onClick={() => copy(authUrl, "auth_url")}
-                  >
-                    Copy
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    icon="open_in_new"
-                    onClick={() => openTrackedPopup(lifecycleRef.current.current(), authUrl)}
-                  >
-                    Open
-                  </Button>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <p className="font-medium text-dd-text">1. Open this URL in your browser</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="flex-1"><Input value={authUrl} readOnly aria-label="Authorization URL" className="font-mono text-xs" /></div>
+                  <Button variant="secondary" icon={copied === "auth_url" ? "check" : "content_copy"} disabled={submitting} onClick={() => copy(authUrl, "auth_url")}>Copy</Button>
+                  <Button variant="ghost" icon="open_in_new" disabled={submitting} onClick={() => openTrackedPopup(lifecycleRef.current.current(), authUrl)}>Open</Button>
                 </div>
               </div>
-              <div>
-                <p className="mb-2 text-sm font-medium">Step 2: Paste the callback URL here</p>
-                <Input
-                  value={callbackUrl}
-                  onChange={(event) => setCallbackUrl(event.target.value)}
-                  placeholder="kiro://kiro.kiroAgent/authenticate-success?code=...&state=..."
-                  className="font-mono text-xs"
-                />
-              </div>
+              <Input label="2. Paste callback URL" value={callbackUrl} disabled={submitting} onChange={(event) => setCallbackUrl(event.target.value)} placeholder="kiro://kiro.kiroAgent/authenticate-success?code=...&state=..." className="font-mono text-xs" />
             </div>
-            <div className="flex gap-2">
-              <Button onClick={() => { void handleManualSubmit(); }} fullWidth disabled={!callbackUrl}>Connect</Button>
-              <Button onClick={() => { void handleClose(); }} variant="ghost" fullWidth>Cancel</Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="ghost" onClick={() => { void handleClose(); }} disabled={submitting}>Cancel</Button>
+              <Button variant="primary" loading={submitting} disabled={!callbackUrl} onClick={() => { void handleManualSubmit(); }}>Connect</Button>
             </div>
           </>
         )}
 
         {step === "success" && (
-          <div className="py-6 text-center">
-            <span className="material-symbols-outlined text-5xl text-green-600">check_circle</span>
-            <h3 className="mb-2 mt-3 text-lg font-semibold">Connected Successfully!</h3>
-            <p className="mb-4 text-sm text-text-muted">Your Kiro account via {providerName} has been connected.</p>
-            <Button onClick={() => { void handleClose(); }} fullWidth>Done</Button>
-          </div>
+          <ResultState tone="success" icon="check_circle" title="Connected successfully" message={`Kiro account via ${providerName} connected.`} actions={<Button variant="primary" onClick={() => { void handleClose(); }}>Done</Button>} />
         )}
-
         {step === "error" && (
-          <div className="py-6 text-center">
-            <span className="material-symbols-outlined text-5xl text-red-600">error</span>
-            <h3 className="mb-2 mt-3 text-lg font-semibold">Connection Failed</h3>
-            <p className="mb-4 text-sm text-red-600">{error}</p>
-            <div className="flex gap-2">
-              <Button onClick={() => { void restartFlow(selectedProxyPoolIdRef.current); }} variant="secondary" fullWidth>Try Again</Button>
-              <Button onClick={() => { void handleClose(); }} variant="ghost" fullWidth>Cancel</Button>
-            </div>
-          </div>
+          <ResultState tone="danger" icon="error" title="Connection failed" message={error} actions={<><Button variant="ghost" onClick={() => { void handleClose(); }}>Cancel</Button><Button variant="secondary" onClick={() => { void restartFlow(selectedProxyPoolIdRef.current); }}>Try again</Button></>} />
         )}
       </div>
     </Modal>
+  );
+}
+
+function LoadingState({ title, message }) {
+  return (
+    <div role="status" aria-live="polite" className="py-8 text-center">
+      <span aria-hidden="true" className="material-symbols-outlined animate-spin text-[32px] leading-none text-dd-accent">progress_activity</span>
+      <h3 className="mt-3 font-semibold text-dd-text">{title}</h3>
+      {message ? <p className="mt-1 text-xs text-dd-muted">{message}</p> : null}
+    </div>
+  );
+}
+
+function ResultState({ tone, icon, title, message, actions }) {
+  const color = tone === "success" ? "text-dd-success" : "text-dd-danger";
+  return (
+    <div className="py-8 text-center">
+      <span aria-hidden="true" className={`material-symbols-outlined text-[40px] leading-none ${color}`}>{icon}</span>
+      <h3 className="mt-3 font-semibold text-dd-text">{title}</h3>
+      <p role={tone === "danger" ? "alert" : undefined} aria-live={tone === "danger" ? "assertive" : undefined} className={`mt-1 text-[13px] ${color}`}>{message}</p>
+      <div className="mt-5 flex flex-col-reverse justify-center gap-2 sm:flex-row">{actions}</div>
+    </div>
   );
 }
 

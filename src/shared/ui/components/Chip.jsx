@@ -18,8 +18,8 @@
  */
 
 const SIZE_CLASSES = {
-  sm: "h-6 px-2 text-xs",
-  md: "h-7 px-2.5 text-[13px]",
+  sm: "min-h-11 px-2 text-xs",
+  md: "min-h-11 px-2.5 text-[13px]",
 };
 
 const ICON_CLASSES = {
@@ -93,7 +93,7 @@ export function Chip({
         event.stopPropagation();
         onRemove(event);
       }}
-      className="-mr-0.5 inline-flex shrink-0 items-center justify-center rounded-full text-dd-muted outline-none transition-colors hover:text-dd-text focus-visible:shadow-dd-focus"
+      className="-mr-0.5 inline-flex size-11 shrink-0 items-center justify-center rounded-full text-dd-muted outline-none transition-colors hover:text-dd-text focus-visible:shadow-dd-focus"
     >
       <span
         aria-hidden="true"
@@ -113,7 +113,7 @@ export function Chip({
             type="button"
             aria-pressed={selected}
             onClick={onClick}
-            className="inline-flex min-w-0 items-center gap-1.5 rounded outline-none focus-visible:shadow-dd-focus"
+            className="inline-flex min-h-11 min-w-11 items-center gap-1.5 overflow-hidden rounded outline-none focus-visible:shadow-dd-focus"
           >
             {body}
           </button>

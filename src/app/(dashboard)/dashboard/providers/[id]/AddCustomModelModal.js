@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Button, Modal } from "@/shared/components";
+import Button from "@/shared/ui/components/Button.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
 import CapacityBadges from "@/shared/components/CapacityBadges";
 import { buildCustomCapabilities } from "./customModelCapabilities";
 
@@ -155,170 +157,81 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? "Edit Custom Model" : "Add Custom Model"}>
+    <Modal open={isOpen} onClose={onClose} title={isEdit ? "Edit Custom Model" : "Add Custom Model"}>
       <div className="flex flex-col gap-4">
-        <div>
-          <label className="text-sm font-medium mb-1.5 block">Model ID</label>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-dd-muted" htmlFor="custom-model-id">Model ID</label>
           <div className="flex gap-2">
             <input
+              id="custom-model-id"
               type="text"
               value={modelId}
               onChange={(e) => { setModelId(e.target.value); setTestStatus(null); setTestError(""); }}
               onKeyDown={handleKeyDown}
               placeholder="e.g. claude-opus-4-5"
-              className="flex-1 px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+              className="h-11 min-w-0 flex-1 rounded-dd border border-dd-border bg-dd-surface px-3 text-[13px] text-dd-text outline-none transition-colors placeholder:text-dd-subtle hover:border-dd-border-subtle focus:border-dd-accent focus-visible:shadow-dd-focus disabled:cursor-not-allowed disabled:opacity-60"
               autoFocus
               disabled={isEdit}
             />
             {!isEdit ? (
-              <Button
-                variant="secondary"
-                icon="science"
-                loading={testStatus === "testing"}
-                onClick={handleTest}
-                disabled={!modelId.trim() || testStatus === "testing"}
-              >
+              <Button variant="secondary" icon="science" loading={testStatus === "testing"} onClick={handleTest} disabled={!modelId.trim() || testStatus === "testing"}>
                 {testStatus === "testing" ? "Testing..." : "Test"}
               </Button>
             ) : null}
           </div>
-          <p className="text-xs text-text-muted mt-1">
-            Sent to provider as: <code className="font-mono bg-sidebar px-1 rounded">{stripAlias(modelId.trim()) || "model-id"}</code>
-          </p>
+          <p className="text-xs text-dd-muted">Sent to provider as: <code className="rounded-dd bg-dd-surface-2 px-1 font-mono text-dd-text">{stripAlias(modelId.trim()) || "model-id"}</code></p>
         </div>
 
         <div>
-          <label className="text-sm font-medium mb-1.5 block">Capabilities</label>
+          <p className="mb-1.5 text-xs font-medium text-dd-muted">Capabilities</p>
           <div className="flex flex-wrap gap-2">
             {BOOLEAN_CAP_KEYS.map(({ key, label }) => (
               <button
                 key={key}
                 type="button"
+                aria-pressed={Boolean(caps[key])}
                 onClick={() => toggleCap(key)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs border transition-colors ${caps[key] ? "bg-primary/10 border-primary text-primary" : "bg-sidebar border-border text-text-muted"}`}
-                title={label}
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-2.5 text-xs outline-none transition-colors focus-visible:shadow-dd-focus ${caps[key] ? "border-dd-accent bg-dd-accent-soft text-dd-accent" : "border-dd-border bg-dd-surface-2 text-dd-muted hover:bg-dd-surface-3"}`}
               >
-                <span className="material-symbols-outlined text-sm">{caps[key] ? "check_box" : "check_box_outline_blank"}</span>
+                <span aria-hidden="true" className="material-symbols-outlined text-sm">{caps[key] ? "check_box" : "check_box_outline_blank"}</span>
                 {label}
               </button>
             ))}
           </div>
-          <div className="mt-2 flex items-center gap-2 text-xs text-text-muted">
-            Preview: <CapacityBadges caps={caps} size={14} />
-          </div>
+          <div className="mt-2 flex items-center gap-2 text-xs text-dd-muted">Preview: <CapacityBadges caps={caps} size={14} /></div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="flex items-center gap-1 text-sm text-text-muted hover:text-primary"
-        >
-          <span className="material-symbols-outlined text-sm">{showAdvanced ? "expand_less" : "expand_more"}</span>
+        <button type="button" onClick={() => setShowAdvanced((v) => !v)} className="inline-flex min-h-11 items-center gap-1 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
+          <span aria-hidden="true" className="material-symbols-outlined text-sm">{showAdvanced ? "expand_less" : "expand_more"}</span>
           Advanced
         </button>
 
         {showAdvanced ? (
-          <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3">
-            <div>
-              <label className="text-xs font-medium mb-1 block">Context window</label>
-              <input
-                type="number"
-                min={1}
-                value={contextWindow}
-                onChange={(e) => setContextWindow(e.target.value)}
-                placeholder="tokens"
-                className="w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium mb-1 block">Max output</label>
-              <input
-                type="number"
-                min={1}
-                value={maxOutput}
-                onChange={(e) => setMaxOutput(e.target.value)}
-                placeholder="tokens"
-                className="w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs font-medium mb-1 block">Thinking format</label>
-              <select
-                value={thinkingFormat}
-                onChange={(e) => setThinkingFormat(e.target.value)}
-                className="w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              >
-                {THINKING_FORMATS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="col-span-2 flex items-center gap-2">
-              <input
-                id="thinkingCanDisable"
-                type="checkbox"
-                checked={thinkingCanDisable}
-                onChange={(e) => { setThinkingCanDisable(e.target.checked); setThinkingCanDisableTouched(true); }}
-                className="rounded border-border"
-              />
-              <label htmlFor="thinkingCanDisable" className="text-xs">Thinking can be disabled</label>
-            </div>
-            <div>
-              <label className="text-xs font-medium mb-1 block">Thinking budget min</label>
-              <input
-                type="number"
-                min={0}
-                value={thinkingRangeMin}
-                onChange={(e) => setThinkingRangeMin(e.target.value)}
-                placeholder="tokens"
-                className="w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium mb-1 block">Thinking budget max</label>
-              <input
-                type="number"
-                min={0}
-                value={thinkingRangeMax}
-                onChange={(e) => setThinkingRangeMax(e.target.value)}
-                placeholder="tokens"
-                className="w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              />
-            </div>
+          <div className="grid grid-cols-2 gap-3 rounded-dd-lg border border-dd-border bg-dd-surface-2 p-3">
+            <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Context window
+              <input type="number" min={1} value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} placeholder="tokens" className="h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Max output
+              <input type="number" min={1} value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder="tokens" className="h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+            </label>
+            <div className="col-span-2 flex flex-col gap-1"><span className="text-xs font-medium text-dd-muted">Thinking format</span><Select options={THINKING_FORMATS} value={thinkingFormat} onChange={(value) => setThinkingFormat(value)} aria-label="Thinking format" size="sm" /></div>
+            <label className="col-span-2 flex min-h-11 items-center gap-2 text-xs text-dd-text"><input id="thinkingCanDisable" type="checkbox" checked={thinkingCanDisable} onChange={(e) => { setThinkingCanDisable(e.target.checked); setThinkingCanDisableTouched(true); }} className="size-4 rounded border-dd-border accent-[var(--dd-accent)]" />Thinking can be disabled</label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Thinking budget min
+              <input type="number" min={0} value={thinkingRangeMin} onChange={(e) => setThinkingRangeMin(e.target.value)} placeholder="tokens" className="h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Thinking budget max
+              <input type="number" min={0} value={thinkingRangeMax} onChange={(e) => setThinkingRangeMax(e.target.value)} placeholder="tokens" className="h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+            </label>
           </div>
         ) : null}
 
-        {/* Test result */}
-        {testStatus === "ok" && (
-          <div className="flex items-center gap-2 text-sm text-green-600">
-            <span className="material-symbols-outlined text-base">check_circle</span>
-            Model is reachable
-          </div>
-        )}
-        {testStatus === "error" && (
-          <div className="flex items-start gap-2 text-sm text-red-500">
-            <span className="material-symbols-outlined text-base shrink-0">cancel</span>
-            <span>{testError || "Model not reachable"}</span>
-          </div>
-        )}
-
-        {saveError && (
-          <div className="flex items-center gap-1.5 text-sm text-red-500" role="alert">
-            <span className="material-symbols-outlined text-base shrink-0">cancel</span>
-            <span>{saveError}</span>
-          </div>
-        )}
+        {testStatus === "ok" ? <div className="flex items-center gap-2 text-sm text-dd-success"><span aria-hidden="true" className="material-symbols-outlined text-base">check_circle</span>Model is reachable</div> : null}
+        {testStatus === "error" ? <div className="flex items-start gap-2 text-sm text-dd-danger" role="alert"><span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">cancel</span><span>{testError || "Model not reachable"}</span></div> : null}
+        {saveError ? <div className="flex items-center gap-1.5 text-sm text-dd-danger" role="alert"><span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">cancel</span><span>{saveError}</span></div> : null}
 
         <div className="flex gap-2 pt-1">
-          <Button onClick={onClose} variant="ghost" fullWidth size="sm">Cancel</Button>
-          <Button
-            onClick={handleSave}
-            fullWidth
-            size="sm"
-            disabled={!modelId.trim() || saving}
-          >
-            {saving ? (isEdit ? "Saving..." : "Adding...") : (isEdit ? "Save" : "Add Model")}
-          </Button>
+          <Button onClick={onClose} variant="ghost" className="w-full">Cancel</Button>
+          <Button variant="primary" onClick={handleSave} className="w-full" loading={saving} disabled={!modelId.trim() || saving}>{saving ? (isEdit ? "Saving..." : "Adding...") : (isEdit ? "Save" : "Add Model")}</Button>
         </div>
       </div>
     </Modal>

@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   getComboModels: vi.fn(),
   getModelInfo: vi.fn(),
   getProviderCredentials: vi.fn(),
+  getProviderConnections: vi.fn(),
+  getQuotaReservationPressure: vi.fn(),
   markAccountUnavailable: vi.fn(),
   clearAccountError: vi.fn(),
   extractApiKey: vi.fn(),
@@ -19,13 +21,27 @@ vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   getComboForModel: mocks.getComboForModel,
   getComboByName: mocks.getComboByName,
+  getProviderConnections: mocks.getProviderConnections,
+  getQuotaReservationPressure: mocks.getQuotaReservationPressure,
 }));
 
-vi.mock("../../src/sse/services/model.js", async (importOriginal) => ({
-  ...(await importOriginal()),
+
+vi.mock("../../open-sse/index.js", () => ({}));
+
+vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
+  getKimchiUserAgent: () => "kimchi/0.1.01",
+  updateKimchiUserAgent: async () => "kimchi/0.1.01",
+}));
+vi.mock("../../src/sse/services/model.js", () => ({
   getComboModels: mocks.getComboModels,
   getModelInfo: mocks.getModelInfo,
+  getComboCanonicalName: async (model) => model === "combo-ag" ? "combo-ag" : null,
+  createRoutableModelIdChecker: () => () => true,
   loadCustomCapabilities: async () => null,
+  parseModel: (model) => {
+    const [providerAlias, ...parts] = model.split("/");
+    return { providerAlias: parts.length ? providerAlias : null, model: parts.length ? parts.join("/") : providerAlias };
+  },
 }));
 
 vi.mock("../../src/sse/services/auth.js", () => ({
@@ -51,9 +67,12 @@ vi.mock("../../open-sse/handlers/chatCore.js", () => ({
   handleChatCore: mocks.handleChatCore,
 }));
 
+
 vi.mock("../../open-sse/services/projectId.js", () => ({
   getProjectIdForConnection: vi.fn(),
 }));
+
+const { handleChat } = await import("../../src/sse/handlers/chat.js");
 
 function makeRequest(model = "combo-ag") {
   return new Request("http://localhost/v1/chat/completions", {
@@ -118,15 +137,16 @@ describe("Antigravity combo capacity cycling", () => {
       }
       return { provider: null, model: modelStr };
     });
+    mocks.getProviderConnections.mockResolvedValue([]);
+    mocks.getQuotaReservationPressure.mockResolvedValue(new Map());
     mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: true, cooldownMs: 0 });
     mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null, stored: false });
     mocks.hasValidCliToken.mockResolvedValue(false);
   });
 
   it("restarts the Antigravity account sweep after all accounts report model capacity before trying the next combo model", async () => {
-    const { handleChat } = await import("../../src/sse/handlers/chat.js");
-
     const excludeSnapshots = [];
+
     let antigravityEmptySweepCount = 0;
     mocks.getProviderCredentials.mockImplementation(async (provider, excludeConnectionIds) => {
       const excluded = [...(excludeConnectionIds || [])];

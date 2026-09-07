@@ -1,10 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Modal from "./Modal";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+import Checkbox from "@/shared/ui/components/Checkbox.jsx";
+import { Chip } from "@/shared/ui/components/Chip.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 
 const REGISTRY_ENDPOINT = "/api/cli-tools/cowork-mcp-registry";
 const TOOLS_ENDPOINT = "/api/cli-tools/cowork-mcp-tools";
+const FILTER_OPTIONS = [
+  { value: "all", label: "All" },
+  { value: "authless", label: "Authless" },
+  { value: "oauth", label: "OAuth" },
+];
 
 export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames = [] }) {
   const [servers, setServers] = useState([]);
@@ -21,52 +33,52 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
     if (!isOpen) return;
     if (servers.length > 0) return;
     setLoading(true);
+    setError(null);
     fetch(REGISTRY_ENDPOINT)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) setError(d.error);
-        else setServers(d.servers || []);
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.error) setError(data.error);
+        else setServers(data.servers || []);
       })
-      .catch((e) => setError(e.message))
+      .catch((loadError) => setError(loadError.message))
       .finally(() => setLoading(false));
-  }, [isOpen]);
+  }, [isOpen, servers.length]);
 
   const addedSet = useMemo(() => new Set(addedNames), [addedNames]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return servers.filter((s) => {
-      if (filter === "authless" && s.oauth) return false;
-      if (filter === "oauth" && !s.oauth) return false;
-      if (!q) return true;
+    const query = search.trim().toLowerCase();
+    return servers.filter((server) => {
+      if (filter === "authless" && server.oauth) return false;
+      if (filter === "oauth" && !server.oauth) return false;
+      if (!query) return true;
       return (
-        (s.title || "").toLowerCase().includes(q) ||
-        (s.description || "").toLowerCase().includes(q) ||
-        (s.name || "").toLowerCase().includes(q)
+        (server.title || "").toLowerCase().includes(query) ||
+        (server.description || "").toLowerCase().includes(query) ||
+        (server.name || "").toLowerCase().includes(query)
       );
     });
   }, [servers, search, filter]);
 
   const fetchTools = async (server) => {
     if (toolsCache[server.url]) return;
-    setToolsLoading((p) => ({ ...p, [server.url]: true }));
+    setToolsLoading((prev) => ({ ...prev, [server.url]: true }));
     try {
-      const r = await fetch(TOOLS_ENDPOINT, {
+      const response = await fetch(TOOLS_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: server.url }),
       });
-      const d = await r.json();
-      const tools = d.tools || [];
+      const data = await response.json();
+      const tools = data.tools || [];
       const fallback = Array.isArray(server.toolNames) ? server.toolNames : [];
-      const toolNames = tools.length > 0 ? tools.map((t) => t.name) : fallback;
-      setToolsCache((p) => ({ ...p, [server.url]: { tools, requiresAuth: !!d.requiresAuth, error: d.error } }));
-      // Default: all checked
-      setToolSelection((p) => ({ ...p, [server.url]: Object.fromEntries(toolNames.map((t) => [t, true])) }));
-    } catch (e) {
-      setToolsCache((p) => ({ ...p, [server.url]: { tools: [], error: e.message } }));
+      const toolNames = tools.length > 0 ? tools.map((tool) => tool.name) : fallback;
+      setToolsCache((prev) => ({ ...prev, [server.url]: { tools, requiresAuth: !!data.requiresAuth, error: data.error } }));
+      setToolSelection((prev) => ({ ...prev, [server.url]: Object.fromEntries(toolNames.map((name) => [name, true])) }));
+    } catch (toolError) {
+      setToolsCache((prev) => ({ ...prev, [server.url]: { tools: [], error: toolError.message } }));
     } finally {
-      setToolsLoading((p) => ({ ...p, [server.url]: false }));
+      setToolsLoading((prev) => ({ ...prev, [server.url]: false }));
     }
   };
 
@@ -85,12 +97,12 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
 
   const setAllTools = (url, value) => {
     const sel = toolSelection[url] || {};
-    setToolSelection((prev) => ({ ...prev, [url]: Object.fromEntries(Object.keys(sel).map((t) => [t, value])) }));
+    setToolSelection((prev) => ({ ...prev, [url]: Object.fromEntries(Object.keys(sel).map((name) => [name, value])) }));
   };
 
   const confirmAdd = (server) => {
     const sel = toolSelection[server.url] || {};
-    const enabled = Object.keys(sel).filter((t) => sel[t]);
+    const enabled = Object.keys(sel).filter((name) => sel[name]);
     onAdd?.({
       name: server.slug || server.name,
       title: server.title,
@@ -104,150 +116,88 @@ export default function McpMarketplaceModal({ isOpen, onClose, onAdd, addedNames
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Browse MCP Marketplace" size="lg">
+    <Modal open={isOpen} onClose={onClose} title="Browse MCP Marketplace" size="lg" footer={<>
+      <span className="text-xs text-dd-muted dd-tnum">{filtered.length} of {servers.length} servers</span>
+      <Button variant="ghost" onClick={onClose} className="ml-auto">Close</Button>
+    </>}>
       <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or description..."
-            className="flex-1 px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
-          />
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-2 py-1.5 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
-          >
-            <option value="all">All</option>
-            <option value="authless">Authless</option>
-            <option value="oauth">OAuth</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name or description" size="sm" icon="search" className="min-w-0 flex-1" aria-label="Search marketplace" />
+          <Select value={filter} onChange={(value) => setFilter(value)} options={FILTER_OPTIONS} size="sm" className="w-40" aria-label="Filter by auth" />
         </div>
-
-        {error && (
-          <div className="px-2 py-1.5 rounded text-xs bg-red-500/10 text-red-600">{error}</div>
-        )}
-
-        {loading && (
-          <div className="flex items-center gap-2 text-text-muted text-xs py-4 justify-center">
-            <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
-            <span>Loading registry...</span>
-          </div>
-        )}
-
-        {!loading && (
-          <div className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto">
-            {filtered.length === 0 && (
-              <div className="text-center text-xs text-text-muted py-6">No servers match filter</div>
-            )}
-            {filtered.map((s) => {
-              const added = addedSet.has(s.slug || s.name);
-              const expanded = expandedUrl === s.url;
-              const cache = toolsCache[s.url];
-              const isLoadingTools = toolsLoading[s.url];
-              const sel = toolSelection[s.url] || {};
+        {error ? <div role="alert" className="flex items-start gap-2 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-xs text-dd-danger"><span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">error</span><span>{error}</span></div> : null}
+        {loading ? (
+          <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-6 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin text-[18px] leading-none">progress_activity</span><span>Loading registry…</span></div>
+        ) : filtered.length === 0 ? (
+          <EmptyState icon="extension_off" title="No servers match filter" message="Try a different search or clear the auth filter to see all entries." />
+        ) : (
+          <ul className="flex max-h-[60vh] min-w-0 flex-col gap-1 overflow-y-auto" aria-label="MCP servers">
+            {filtered.map((server) => {
+              const added = addedSet.has(server.slug || server.name);
+              const expanded = expandedUrl === server.url;
+              const cache = toolsCache[server.url];
+              const isLoadingTools = toolsLoading[server.url];
+              const sel = toolSelection[server.url] || {};
               const toolKeys = Object.keys(sel);
               const selectedCount = Object.values(sel).filter(Boolean).length;
               return (
-                <div key={s.url} className="rounded border border-transparent hover:border-border">
-                  <div className="flex items-start gap-2 px-2 py-2 hover:bg-black/5 dark:hover:bg-white/5">
-                    {s.iconUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={s.iconUrl} alt="" className="size-7 rounded shrink-0 object-contain" onError={(e) => { e.target.style.display = "none"; }} />
-                    ) : (
-                      <div className="size-7 rounded bg-surface shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-medium text-xs">{s.title}</span>
-                        {s.oauth ? (
-                          <span className="px-1 py-0.5 text-[9px] rounded bg-amber-500/10 text-amber-600">OAuth</span>
-                        ) : (
-                          <span className="px-1 py-0.5 text-[9px] rounded bg-green-500/10 text-green-600">Authless</span>
-                        )}
-                        {s.toolCount > 0 && (
-                          <span className="text-[10px] text-text-muted">{s.toolCount} tools</span>
-                        )}
+                <li key={server.url} className={["rounded-dd-lg border bg-dd-surface transition-colors", expanded ? "border-dd-border" : "border-dd-border-subtle hover:border-dd-border"].join(" ")}>
+                  <div className="flex items-start gap-3 px-3 py-2">
+                    {server.iconUrl ? <img src={server.iconUrl} alt="" className="size-7 shrink-0 rounded-dd object-contain" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span aria-hidden="true" className="size-7 shrink-0 rounded-dd bg-dd-surface-2" />}
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="truncate text-[13px] font-medium text-dd-text">{server.title}</span>
+                        <Badge tone={server.oauth ? "warning" : "success"} size="sm">{server.oauth ? "OAuth" : "Authless"}</Badge>
+                        {Number(server.toolCount) > 0 ? <span className="text-xs text-dd-muted dd-tnum">{server.toolCount} tools</span> : null}
                       </div>
-                      {s.description && (
-                        <p className="text-[10px] text-text-muted line-clamp-2 mt-0.5">{s.description}</p>
-                      )}
+                      {server.description ? <p className="line-clamp-2 text-xs text-dd-muted">{server.description}</p> : null}
                     </div>
-                    <button
-                      onClick={() => added ? null : expandServer(s)}
+                    <Button
+                      variant={added ? "secondary" : expanded ? "ghost" : "primary"}
+                      size="sm"
+                      onClick={() => (added ? null : expandServer(server))}
                       disabled={added}
-                      className={`shrink-0 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                        added
-                          ? "bg-green-500/10 text-green-600 cursor-default"
-                          : expanded
-                          ? "bg-surface border border-border text-text-muted hover:bg-black/5"
-                          : "bg-primary/10 border border-primary/40 text-primary hover:bg-primary/20"
-                      }`}
-                    >
-                      {added ? "Added" : expanded ? "Cancel" : "+ Add"}
-                    </button>
+                      icon={added ? "check" : "add"}
+                    >{added ? "Added" : expanded ? "Cancel" : "Add"}</Button>
                   </div>
-                  {expanded && (
-                    <div className="px-3 py-2 bg-surface/40 border-t border-border flex flex-col gap-2">
-                      {isLoadingTools && (
-                        <div className="flex items-center gap-2 text-text-muted text-[10px] py-1">
-                          <span className="material-symbols-outlined animate-spin text-[14px]">progress_activity</span>
-                          <span>Probing server for tools...</span>
-                        </div>
-                      )}
-                      {!isLoadingTools && cache?.requiresAuth && (
-                        <p className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-1 rounded">
-                          🔐 OAuth required. Add now and authenticate after Apply; tool list will be discovered after first connect.
-                        </p>
-                      )}
-                      {!isLoadingTools && cache?.error && !cache?.requiresAuth && (
-                        <p className="text-[10px] text-red-600 bg-red-500/10 px-2 py-1 rounded">Probe failed: {cache.error}</p>
-                      )}
-                      {!isLoadingTools && toolKeys.length === 0 && !cache?.requiresAuth && !cache?.error && (
-                        <p className="text-[10px] text-text-muted">No tools advertised by server.</p>
-                      )}
-                      {!isLoadingTools && toolKeys.length > 0 && (
+                  {expanded ? (
+                    <div className="flex flex-col gap-2 border-t border-dd-border-subtle bg-dd-surface-2 px-3 py-2">
+                      {isLoadingTools ? (
+                        <div className="flex items-center gap-2 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin text-[14px] leading-none">progress_activity</span><span>Probing server for tools…</span></div>
+                      ) : null}
+                      {!isLoadingTools && cache?.requiresAuth ? (
+                        <p role="status" className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-2 py-1 text-xs text-dd-warning"><span aria-hidden="true" className="material-symbols-outlined mr-1 align-middle text-[14px] leading-none">lock</span>OAuth required. Add now and authenticate after Apply; tool list will be discovered after first connect.</p>
+                      ) : null}
+                      {!isLoadingTools && cache?.error && !cache?.requiresAuth ? (
+                        <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-2 py-1 text-xs text-dd-danger">Probe failed: {cache.error}</p>
+                      ) : null}
+                      {!isLoadingTools && toolKeys.length === 0 && !cache?.requiresAuth && !cache?.error ? <p className="text-xs text-dd-muted">No tools advertised by server.</p> : null}
+                      {!isLoadingTools && toolKeys.length > 0 ? (
                         <>
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-text-muted">{selectedCount}/{toolKeys.length} tools enabled</span>
-                            <div className="flex gap-1">
-                              <button onClick={() => setAllTools(s.url, true)} className="text-[10px] text-primary hover:underline">All</button>
-                              <span className="text-[10px] text-text-muted">·</span>
-                              <button onClick={() => setAllTools(s.url, false)} className="text-[10px] text-primary hover:underline">None</button>
+                            <span className="text-xs text-dd-muted dd-tnum">{selectedCount}/{toolKeys.length} tools enabled</span>
+                            <div className="flex items-center gap-2">
+                              <Button variant="ghost" size="sm" onClick={() => setAllTools(server.url, true)}>All</Button>
+                              <Button variant="ghost" size="sm" onClick={() => setAllTools(server.url, false)}>None</Button>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto">
-                            {toolKeys.map((t) => (
-                              <label key={t} className="flex items-center gap-1.5 text-[10px] cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 px-1 rounded">
-                                <input
-                                  type="checkbox"
-                                  checked={!!sel[t]}
-                                  onChange={() => toggleTool(s.url, t)}
-                                  className="size-3"
-                                />
-                                <span className="truncate">{t}</span>
-                              </label>
-                            ))}
-                          </div>
+                          <ul className="grid max-h-40 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
+                            {toolKeys.map((tool) => <li key={tool}><Checkbox checked={!!sel[tool]} onChange={() => toggleTool(server.url, tool)} label={tool} /></li>)}
+                          </ul>
                         </>
-                      )}
-                      <button
-                        onClick={() => confirmAdd(s)}
-                        className="self-end px-2 py-1 rounded text-[10px] font-medium bg-primary text-white hover:bg-primary/90"
-                      >
-                        ✓ Confirm Add
-                      </button>
+                      ) : null}
+                      <div className="flex justify-end">
+                        <Button variant="primary" size="sm" icon="check" onClick={() => confirmAdd(server)}>Confirm add</Button>
+                      </div>
                     </div>
-                  )}
-                </div>
+                  ) : null}
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
-
-        <div className="text-[10px] text-text-muted text-right">
-          {filtered.length} of {servers.length} servers
+        <div className="flex flex-wrap items-center gap-2">
+          {expandedUrl ? <Chip label={`Tools from ${filtered.find((item) => item.url === expandedUrl)?.title || "server"}`} onRemove={() => setExpandedUrl(null)} size="sm" /> : null}
         </div>
       </div>
     </Modal>

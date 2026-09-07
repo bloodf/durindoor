@@ -80,7 +80,7 @@ export default function Tabs({ tabs = [], value, onChange, ...rest }) {
           (active || (selectedIndex === -1 && index === firstEnabledIndex));
 
         const tabClassName = [
-          "relative inline-flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium outline-none transition-colors focus-visible:shadow-dd-focus",
+          "relative inline-flex min-h-11 items-center gap-1.5 px-3 py-2 text-[13px] font-medium outline-none transition-colors focus-visible:shadow-dd-focus",
           active ? "text-dd-accent" : "text-dd-muted enabled:hover:text-dd-text",
           tab.disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
         ].join(" ");

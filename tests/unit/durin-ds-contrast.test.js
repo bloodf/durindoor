@@ -1,0 +1,131 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+const tokenPath = fileURLToPath(
+  new URL("../../src/shared/ui/tokens.css", import.meta.url),
+);
+const tokenCss = readFileSync(tokenPath, "utf8");
+
+/** Read a theme's published solid color custom property. */
+function themeColor(theme, token) {
+  const selector = theme === "light" ? ":root" : ".dark";
+  const block = tokenCss.match(new RegExp(`${selector.replace(".", "\\.")}\\s*\\{([\\s\\S]*?)\\n\\}`))?.[1];
+  const value = block?.match(new RegExp(`${token}:\\s*(#[0-9A-Fa-f]{6})`))?.[1];
+  if (!value) throw new Error(`Missing solid ${token} in ${selector}`);
+  return value;
+}
+
+/** Convert one published #RRGGBB color into WCAG relative luminance. */
+function luminance(hex) {
+  if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) throw new TypeError(`Expected #RRGGBB, got ${hex}`);
+  const channels = [1, 3, 5].map((offset) => {
+    const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+/** Calculate WCAG contrast ratio for two published solid colors. */
+function contrast(foreground, background) {
+  const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+const surfaces = ["--dd-bg", "--dd-bg-alt", "--dd-surface", "--dd-surface-2", "--dd-surface-3"];
+const readingRoles = [
+  "--dd-text",
+  "--dd-text-muted",
+  "--dd-text-subtle",
+  "--dd-success",
+  "--dd-warning",
+  "--dd-danger",
+  "--dd-danger-hover",
+  "--dd-info",
+  "--dd-accent",
+  "--dd-accent-hover",
+];
+
+describe("Durin DS contrast tokens", () => {
+  it.each(["light", "dark"])("keeps published %s reading roles above 7:1 on every surface", (theme) => {
+    for (const role of readingRoles) {
+      for (const surface of surfaces) {
+        expect(
+          contrast(themeColor(theme, role), themeColor(theme, surface)),
+          `${theme} ${role} on ${surface}`,
+        ).toBeGreaterThanOrEqual(7);
+      }
+    }
+  });
+
+  it.each(["light", "dark"])("keeps the %s focus ring at least 3:1 against every surface it can land on", (theme) => {
+    for (const surface of surfaces) {
+      expect(
+        contrast(themeColor(theme, "--dd-focus-ring"), themeColor(theme, surface)),
+        `${theme} focus ring on ${surface}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it.each(["light", "dark"])("keeps actual primary and danger action states above 7:1", (theme) => {
+    for (const background of ["--dd-accent", "--dd-accent-hover"]) {
+      expect(contrast(themeColor(theme, "--dd-on-accent"), themeColor(theme, background))).toBeGreaterThanOrEqual(7);
+    }
+    for (const background of ["--dd-danger-action", "--dd-danger-action-hover"]) {
+      expect(contrast(themeColor(theme, "--dd-on-danger"), themeColor(theme, background))).toBeGreaterThanOrEqual(7);
+    }
+  });
+
+  it("rejects malformed published colors rather than accepting an invalid boundary", () => {
+    expect(() => contrast("#fff", "#000000")).toThrow("Expected #RRGGBB");
+  });
+});
+
+describe("Durin DS published token mappings", () => {
+  it("maps every theme dd token to a raw root definition", () => {
+    const theme = tokenCss.match(/@theme inline\s*\{([\s\S]*?)\n\}/)?.[1];
+    const root = tokenCss.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1];
+    const dark = tokenCss.match(/\.dark\s*\{([\s\S]*?)\n\}/)?.[1];
+    const definitions = `${root}\n${dark}`;
+    const references = [...(theme?.matchAll(/var\((--dd-[\w-]+)\)/g) ?? [])].map((match) => match[1]);
+
+    expect(references).not.toHaveLength(0);
+    for (const token of references) {
+      expect(definitions, `${token} mapped by @theme inline`).toMatch(new RegExp(`${token}:\\s*[^;]+;`));
+    }
+  });
+});
+
+const cliToolCardsDirectory = fileURLToPath(
+  new URL("../../src/app/(dashboard)/dashboard/cli-tools/components", import.meta.url),
+);
+
+/** Every className string literal in one source file. */
+function classLists(source) {
+  return [...source.matchAll(/className\s*=\s*(?:\{\s*)?(["'`])([\s\S]*?)\1/g)].map((match) => match[2]);
+}
+
+/**
+ * The AAA defect axe caught: an `!important` translucent Durin DS fill stacked
+ * on an already-tinted panel composited to #5a5031, dropping #FFE07A text to
+ * 6.16:1. A plain (non-important) `/10` tint is fine — it measures 7.62:1 or
+ * better — so only the important-override form is forbidden here.
+ */
+function hasImportantTranslucentComposite(classes) {
+  return /(?:^|\s)!bg-dd-[\w-]+\/\d+(?=\s|$)/.test(classes)
+    && /(?:^|\s)!?text-dd-[\w-]+(?=\s|$)/.test(classes);
+}
+
+describe("CLI tool-card contrast", () => {
+  it("does not reintroduce a translucent Durin DS background under a Durin DS text color", () => {
+    const violations = [];
+    for (const file of readdirSync(cliToolCardsDirectory).filter((name) => name.endsWith(".js"))) {
+      for (const classes of classLists(readFileSync(join(cliToolCardsDirectory, file), "utf8"))) {
+        if (hasImportantTranslucentComposite(classes)) violations.push(`${file}: ${classes}`);
+      }
+    }
+    expect(violations, `Important translucent Durin DS background under Durin DS text:\n${violations.join("\n")}`).toEqual([]);
+  });
+});

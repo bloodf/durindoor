@@ -1,10 +1,14 @@
+import React, { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
+
 import Button from "./Button";
 import IconButton from "./IconButton";
 
 /**
- * IconButton covers ghost/secondary variants at both square densities, the
- * disabled state, and a realistic toolbar row composed with Button.
- * Backgrounds come from the "Theme" toolbar — stories never set their own.
+ * IconButton covers ghost/secondary variants at the shared 44px square
+ * pointer target, the disabled state, and a realistic toolbar row composed
+ * with Button. Backgrounds come from the "Theme" toolbar — stories never set
+ * their own.
  */
 const meta = {
   title: "Durin DS/Actions/IconButton",
@@ -32,7 +36,7 @@ export const Secondary = {
   args: { variant: "secondary" },
 };
 
-/** md = 32px square, sm = 26px square, in both variants. */
+/** Both glyph densities retain the same 44px square pointer target. */
 export const Sizes = {
   render: () => (
     <div className="flex items-center gap-3">
@@ -48,19 +52,46 @@ export const Sizes = {
     </div>
   ),
 };
-
 export const Disabled = {
   render: () => (
     <div className="flex items-center gap-3">
-      <IconButton icon="refresh" label="Refresh (disabled)" disabled />
+      <IconButton icon="refresh" label="Refresh (disabled ghost)" disabled />
       <IconButton
         icon="refresh"
-        label="Refresh (disabled)"
+        label="Refresh (disabled secondary)"
         variant="secondary"
         disabled
       />
     </div>
   ),
+};
+
+function KeyboardIconDemo() {
+  const [refreshed, setRefreshed] = useState(false);
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <IconButton
+        icon="refresh"
+        label="Refresh connection status"
+        onClick={() => setRefreshed(true)}
+      />
+      <output aria-live="polite">{refreshed ? "Refreshed" : "Waiting"}</output>
+    </div>
+  );
+}
+
+export const KeyboardActivation = {
+  render: () => <KeyboardIconDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole("button", { name: "Refresh connection status" });
+
+    button.focus();
+    await expect(button).toHaveFocus();
+    await userEvent.keyboard(" ");
+    await expect(await canvas.findByText("Refreshed")).toBeVisible();
+  },
 };
 
 /** Both variants across both densities plus disabled. */

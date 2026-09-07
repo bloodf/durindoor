@@ -2,37 +2,44 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { Card } from "@/shared/components";
+import { Card } from "@/shared/ui/components/Card.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
 
-/** Return an explicit unsupported state before installation-derived states. */
-function getStatus(tool, status) {
-  if (tool.unsupported) return { label: "Unsupported", cls: "bg-red-500/10 text-red-600 dark:text-red-400" };
-  if (!status) return { label: "Unknown", cls: "bg-gray-500/10 text-gray-500" };
-  if (!status.installed) return { label: "Not installed", cls: "bg-gray-500/10 text-gray-500" };
-  if (status.has9Router) return { label: "Connected", cls: "bg-green-500/10 text-green-600 dark:text-green-400" };
-  return { label: "Not configured", cls: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" };
+function getStatusTone(tool, status) {
+  if (tool.unsupported) return "danger";
+  if (!status) return "neutral";
+  if (!status.installed) return "neutral";
+  if (status.has9Router) return "success";
+  return "warning";
+}
+
+function getStatusLabel(tool, status) {
+  if (tool.unsupported) return "Unsupported";
+  if (!status) return "Unknown";
+  if (!status.installed) return "Not installed";
+  if (status.has9Router) return "Connected";
+  return "Not configured";
 }
 
 export default function ToolSummaryCard({ toolId, tool, status }) {
-  const s = getStatus(tool, status);
+  const tone = getStatusTone(tool, status);
+  const label = getStatusLabel(tool, status);
   return (
-    <Link href={`/dashboard/cli-tools/${toolId}`} className="block">
-      <Card padding="sm" className="h-full overflow-hidden hover:border-primary/50 transition-colors cursor-pointer">
-        <div className="flex h-full flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <div className="size-8 flex items-center justify-center shrink-0">
-              {tool.image ? (
-                <Image src={tool.image} alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
-              ) : tool.icon ? (
-                <span className="material-symbols-outlined text-[28px]" style={{ color: tool.color }}>{tool.icon}</span>
-              ) : null}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="font-medium text-sm truncate">{tool.name}</h3>
-              <span className={`inline-block mt-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full ${s.cls}`}>{s.label}</span>
-            </div>
-            <span className="material-symbols-outlined text-text-muted text-[18px] shrink-0">chevron_right</span>
+    <Link href={`/dashboard/cli-tools/${toolId}`} className="block rounded-dd-lg focus-visible:shadow-dd-focus outline-none">
+      <Card padding={false} className="h-full cursor-pointer p-4 transition-colors hover:border-dd-accent/50">
+        <div className="flex h-full items-center gap-3">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2 text-dd-muted">
+            {tool.image ? (
+              <Image src={tool.image} alt={tool.name} width={32} height={32} className="size-8 rounded-dd object-contain" sizes="32px" onError={(event) => { event.currentTarget.style.display = "none"; }} />
+            ) : tool.icon ? (
+              <span className="material-symbols-outlined text-[24px] leading-none" aria-hidden="true">{tool.icon}</span>
+            ) : null}
           </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <h3 className="truncate text-[13px] font-semibold text-dd-text">{tool.name}</h3>
+            <Badge tone={tone} size="sm">{label}</Badge>
+          </div>
+          <span className="material-symbols-outlined shrink-0 text-[20px] text-dd-muted" aria-hidden="true">chevron_right</span>
         </div>
       </Card>
     </Link>

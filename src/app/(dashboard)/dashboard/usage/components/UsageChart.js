@@ -10,9 +10,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from "recharts";
-import Card from "@/shared/components/Card";
+import { Card } from "@/shared/ui/components/Card.jsx";
 import { chartTooltipContentStyle, chartTooltipLabelStyle, chartTooltipItemStyle } from "@/shared/components/chartTooltip";
 import { createLatestRequestGuard } from "@/shared/utils/requestFreshness";
 
@@ -24,11 +23,15 @@ const fmtTokens = (n) => {
 
 const fmtCost = (n) => `$${(n || 0).toFixed(4)}`;
 
-/** Upstream #3388: refetch persisted chart data when the stable request count changes. */
+/**
+ * Upstream #3388: refetch persisted chart data when the stable request count changes.
+ * Durin DS: one dual-axis area chart (tokens = `--dd-accent`, cost = `--dd-accent-2`)
+ * instead of a tabbed tokens/cost sub-graph switch (golden rule #7). A visually-hidden
+ * table mirrors the same series for assistive tech and non-visual consumption.
+ */
 export default function UsageChart({ period = "7d", refreshKey = 0 }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState("tokens");
   const [requestGuard] = useState(createLatestRequestGuard);
 
   const fetchData = useCallback(async (signal, requestToken) => {
@@ -60,85 +63,99 @@ export default function UsageChart({ period = "7d", refreshKey = 0 }) {
   const hasData = data.some((d) => d.tokens > 0 || d.cost > 0);
 
   return (
-    <Card className="flex min-w-0 flex-col gap-3 p-3 sm:p-4">
-      <div className="grid w-full grid-cols-2 items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:w-auto sm:self-start">
-        <button
-          onClick={() => setViewMode("tokens")}
-          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "tokens" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
-        >
+    <Card padding={false} className="flex min-w-0 flex-col gap-3 p-3 sm:p-4">
+      <div className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-wide text-dd-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden="true" className="size-2 rounded-full bg-dd-accent" />
           Tokens
-        </button>
-        <button
-          onClick={() => setViewMode("cost")}
-          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "cost" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
-        >
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden="true" className="size-2 rounded-full bg-dd-accent-2" />
           Cost
-        </button>
+        </span>
       </div>
-
       {loading ? (
-        <div className="h-48 flex items-center justify-center text-text-muted text-sm">Loading...</div>
+        <div className="flex h-48 items-center justify-center text-[13px] text-dd-muted">Loading…</div>
       ) : !hasData ? (
-        <div className="h-48 flex items-center justify-center text-text-muted text-sm">No data for this period</div>
+        <div className="flex h-48 items-center justify-center text-[13px] text-dd-muted">No data for this period</div>
       ) : (
-        <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="gradTokens" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="gradCost" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} />
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 10, fill: "currentColor", fillOpacity: 0.5 }}
-              tickLine={false}
-              axisLine={false}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              tick={{ fontSize: 10, fill: "currentColor", fillOpacity: 0.5 }}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={viewMode === "tokens" ? fmtTokens : fmtCost}
-              width={50}
-            />
-            <Tooltip
-              contentStyle={chartTooltipContentStyle}
-              labelStyle={chartTooltipLabelStyle}
-              itemStyle={chartTooltipItemStyle}
-              formatter={(value, name) =>
-                name === "tokens" ? [fmtTokens(value), "Tokens"] : [fmtCost(value), "Cost"]
-              }
-            />
-            {viewMode === "tokens" ? (
+        <>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gradTokens" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--dd-accent)" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="var(--dd-accent)" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gradCost" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--dd-accent-2)" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="var(--dd-accent-2)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="var(--dd-border)" strokeDasharray="3 3" strokeOpacity={0.6} />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 10, fill: "var(--dd-text-muted)" }}
+                tickLine={false}
+                axisLine={false}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                yAxisId="tokens"
+                tick={{ fontSize: 10, fill: "var(--dd-text-muted)" }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={fmtTokens}
+                width={56}
+              />
+              <YAxis
+                yAxisId="cost"
+                orientation="right"
+                tick={{ fontSize: 10, fill: "var(--dd-text-muted)" }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={fmtCost}
+                width={64}
+              />
+              <Tooltip
+                contentStyle={chartTooltipContentStyle}
+                labelStyle={chartTooltipLabelStyle}
+                itemStyle={chartTooltipItemStyle}
+                formatter={(value, name) =>
+                  name === "tokens" ? [fmtTokens(value), "Tokens"] : [fmtCost(value), "Cost"]
+                }
+              />
               <Area
+                yAxisId="tokens"
                 type="monotone"
                 dataKey="tokens"
-                stroke="#6366f1"
+                stroke="var(--dd-accent)"
                 strokeWidth={2}
                 fill="url(#gradTokens)"
                 dot={false}
                 activeDot={{ r: 4 }}
               />
-            ) : (
               <Area
+                yAxisId="cost"
                 type="monotone"
                 dataKey="cost"
-                stroke="#f59e0b"
+                stroke="var(--dd-accent-2)"
                 strokeWidth={2}
                 fill="url(#gradCost)"
                 dot={false}
                 activeDot={{ r: 4 }}
               />
-            )}
-          </AreaChart>
-        </ResponsiveContainer>
+            </AreaChart>
+          </ResponsiveContainer>
+          <dl className="sr-only" aria-label="Usage totals per interval">
+            {data.map((point) => (
+              <div key={point.label}>
+                <dt>{point.label}</dt>
+                <dd>{fmtTokens(point.tokens)} tokens, {fmtCost(point.cost)}</dd>
+              </div>
+            ))}
+          </dl>
+        </>
       )}
     </Card>
   );

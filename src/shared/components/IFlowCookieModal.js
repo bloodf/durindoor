@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Modal, Button, Input } from "@/shared/components";
+import Modal from "@/shared/ui/components/Modal";
+import Button from "@/shared/ui/components/Button";
+import Textarea from "@/shared/ui/components/Textarea";
 
 /**
  * iFlow Cookie Authentication Modal
@@ -13,6 +15,15 @@ export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const successTimerRef = useRef(null);
+
+  useEffect(() => () => clearTimeout(successTimerRef.current), []);
+  useEffect(() => {
+    if (!isOpen) {
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+  }, [isOpen]);
 
   const handleSubmit = async () => {
     if (!cookie.trim()) {
@@ -37,7 +48,7 @@ export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
       }
 
       setSuccess(true);
-      setTimeout(() => {
+      successTimerRef.current = setTimeout(() => {
         onSuccess?.();
         handleClose();
       }, 1500);
@@ -49,6 +60,8 @@ export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
   };
 
   const handleClose = () => {
+    clearTimeout(successTimerRef.current);
+    successTimerRef.current = null;
     setCookie("");
     setError(null);
     setSuccess(false);
@@ -56,31 +69,33 @@ export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="iFlow Cookie Authentication">
-      <div className="space-y-4">
+    <Modal open={isOpen} onClose={handleClose} title="iFlow Cookie Authentication" size="sm">
+      <div className="flex flex-col gap-4">
         {success ? (
-          <div className="text-center py-8">
-            <div className="text-6xl mb-4">✅</div>
-            <p className="text-lg font-medium text-text-primary">Authentication Successful!</p>
-            <p className="text-sm text-text-muted mt-2">Fresh API key obtained</p>
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <span className="flex size-12 items-center justify-center rounded-dd-lg bg-dd-success/10 text-dd-success">
+              <span className="material-symbols-outlined text-[24px] leading-none" aria-hidden="true">check_circle</span>
+            </span>
+            <p className="text-sm font-semibold text-dd-text">Authentication successful!</p>
+            <p className="text-[13px] text-dd-muted">Fresh API key obtained</p>
           </div>
         ) : (
           <>
-            <div className="space-y-2">
-              <p className="text-sm text-text-muted">
+            <div className="flex flex-col gap-2">
+              <p className="text-[13px] text-dd-muted">
                 To get a fresh API key, paste your browser cookie from{" "}
                 <a
                   href="https://platform.iflow.cn"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary hover:underline"
+                  className="text-dd-accent underline outline-none focus-visible:shadow-dd-focus"
                 >
                   platform.iflow.cn
                 </a>
               </p>
-              <div className="bg-surface-secondary p-3 rounded-lg text-xs space-y-2">
-                <p className="font-medium text-text-primary">How to get cookie:</p>
-                <ol className="list-decimal list-inside space-y-1 text-text-muted">
+              <div className="flex flex-col gap-1.5 rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3 text-xs">
+                <p className="font-medium text-dd-text">How to get cookie:</p>
+                <ol className="list-inside list-decimal space-y-1 text-dd-muted">
                   <li>Open platform.iflow.cn in your browser</li>
                   <li>Login to your account</li>
                   <li>Open DevTools (F12) → Application/Storage → Cookies</li>
@@ -90,33 +105,19 @@ export default function IFlowCookieModal({ isOpen, onSuccess, onClose }) {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-text-primary">
-                Cookie String
-              </label>
-              <textarea
-                value={cookie}
-                onChange={(e) => setCookie(e.target.value)}
-                placeholder="BXAuth=xxx; ..."
-                className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-lg text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                rows={4}
-                disabled={loading}
-              />
-            </div>
+            <Textarea
+              label="Cookie string"
+              value={cookie}
+              onChange={(e) => setCookie(e.target.value)}
+              placeholder="BXAuth=xxx; ..."
+              rows={4}
+              disabled={loading}
+              error={error || undefined}
+            />
 
-            {error && (
-              <div className="p-3 bg-error/10 border border-error/20 rounded-lg">
-                <p className="text-sm text-error">{error}</p>
-              </div>
-            )}
-
-            <div className="flex gap-3 pt-2">
-              <Button variant="secondary" onClick={handleClose} disabled={loading} fullWidth>
-                Cancel
-              </Button>
-              <Button onClick={handleSubmit} loading={loading} fullWidth>
-                Authenticate
-              </Button>
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button variant="ghost" onClick={handleClose} disabled={loading}>Cancel</Button>
+              <Button variant="primary" onClick={handleSubmit} loading={loading} icon="key">Authenticate</Button>
             </div>
           </>
         )}

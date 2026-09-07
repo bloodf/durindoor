@@ -114,28 +114,34 @@ export default function ProviderIcon({
   if (stage >= candidates.length || !src) {
     return (
       <span
-        className={`inline-flex items-center justify-center font-bold rounded-lg bg-surface-2 text-text-main ${className}`.trim()}
+        role="img"
+        aria-label={alt || fallbackText}
+        className={`inline-flex shrink-0 items-center justify-center rounded-dd bg-dd-surface-3 font-semibold text-dd-muted select-none ${className}`.trim()}
         style={{
           width: size,
           height: size,
           color: fallbackColor || undefined,
-          fontSize: Math.max(10, Math.floor(size * 0.38))
-        }}>
-        
+          fontSize: Math.max(10, Math.floor(size * 0.38)),
+        }}
+      >
         {fallbackText}
-      </span>);
-
+      </span>
+    );
   }
 
   return (
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={candidates[stage]}
       alt={alt}
       width={size}
       height={size}
-      style={{ maxWidth: size, maxHeight: size }}
-      className={className}
-      onError={() => setStage((s) => s + 1)} />);
+      loading="lazy"
+      style={{ width: size, height: size }}
+      className={`shrink-0 rounded-dd object-contain ${className}`.trim()}
+      onError={() => setStage((s) => s + 1)}
+    />
+  );
 
 
 }

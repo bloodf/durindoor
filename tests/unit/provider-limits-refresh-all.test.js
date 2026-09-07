@@ -180,7 +180,7 @@ describe("ProviderLimits Refresh All manual button", () => {
     fetchMock.mockClear();
 
     const refreshAllButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.getAttribute("title") === "Refresh all",
+      (button) => button.getAttribute("aria-label") === "Refresh all",
     );
     expect(refreshAllButton).toBeDefined();
     expect(refreshNow).not.toHaveBeenCalled();

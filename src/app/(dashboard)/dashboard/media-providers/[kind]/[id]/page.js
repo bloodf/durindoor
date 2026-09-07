@@ -3,8 +3,11 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { Card, Badge, Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
-import ProviderIcon from "@/shared/components/ProviderIcon";
+import Button from "@/shared/ui/components/Button.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
+import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
+import { AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, isCustomEmbeddingProvider, isLocalOllamaProvider } from "@/shared/constants/providers";
 import ConnectionsCard from "@/app/(dashboard)/dashboard/providers/components/ConnectionsCard";
 import ModelsCard from "@/app/(dashboard)/dashboard/providers/components/ModelsCard";
@@ -22,19 +25,27 @@ export default function MediaProviderDetailPage() {
   const isCustom = isCustomEmbeddingProvider(id) && kind === "embedding";
 
   const handleDeleteCustom = async () => {
-    if (!confirm("Delete this Custom Embedding node?")) return;
+    setDeleteError("");
     try {
       const res = await fetch(`/api/provider-nodes/${id}`, { method: "DELETE" });
-      if (res.ok) router.push(`/dashboard/media-providers/${kind}`);
+      if (res.ok) {
+        router.push(`/dashboard/media-providers/${kind}`);
+      } else {
+        const error = await res.json().catch(() => ({}));
+        setDeleteError(error?.error || "Failed to delete custom embedding node");
+      }
     } catch (error) {
-      console.log("Error deleting custom embedding node:", error);
+      setDeleteError(error.message || "Failed to delete custom embedding node");
+    } finally {
+      setShowDeleteConfirm(false);
     }
   };
 
   const [customNode, setCustomNode] = useState(null);
   const [customLoading, setCustomLoading] = useState(isCustom);
   const [showEditModal, setShowEditModal] = useState(false);
-
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   // Fetch custom node info from API for custom embedding nodes
   useEffect(() => {
     if (!isCustom) return;
@@ -54,15 +65,14 @@ export default function MediaProviderDetailPage() {
 
   const builtInProvider = AI_PROVIDERS[id];
 
-  // For custom embedding nodes, build a synthetic provider object
   const provider = isCustom
-    ? (customNode ? { id, name: customNode.name || "Custom Embedding", color: "#6366F1", textIcon: "CE" } : null)
+    ? (customNode ? { id, name: customNode.name || "Custom Embedding", textIcon: "CE" } : null)
     : builtInProvider;
 
   if (!isCustom && !builtInProvider) return notFound();
   if (isCustom && !customLoading && !customNode) return notFound();
-  if (isCustom && customLoading) {
-    return <div className="text-text-muted text-sm py-12 text-center">Loading...</div>;
+  if (customLoading) {
+    return <div className="py-12 text-center text-[13px] text-dd-muted">Loading...</div>;
   }
 
   const baseKinds = provider.serviceKinds ?? ["llm"];
@@ -73,91 +83,29 @@ export default function MediaProviderDetailPage() {
   if (!isCustom && !kinds.includes(kind)) return notFound();
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Back */}
-      <div>
-        <Link
-          href={`/dashboard/media-providers/${kind}`}
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
-        >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
-          {kindConfig.label}
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      <header className="flex flex-col gap-4">
+        <Link href={`/dashboard/media-providers/${kind}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
+          <span aria-hidden="true" className="material-symbols-outlined text-[18px]">arrow_back</span>{kindConfig.label}
         </Link>
-
-        {/* Header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-          <div className="size-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${provider.color}15` }}>
-            <ProviderIcon
-              src={`/providers/${provider.id}.png`}
-              alt={provider.name}
-              size={48}
-              className="object-contain rounded-lg max-w-[48px] max-h-[48px]"
-              fallbackText={provider.textIcon || provider.id.slice(0, 2).toUpperCase()}
-              fallbackColor={provider.color}
-            />
-          </div>
-          <div className="flex-1">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight">{provider.name}</h1>
-              {!isCustom && provider.notice?.apiKeyUrl && (
-                <a
-                  href={provider.notice.apiKeyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  Get API Key
-                </a>
-              )}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <ProviderLogo provider={provider.id} fallbackText={provider.textIcon} size={48} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-dd-text">{provider.name}</h1>
+              {!isCustom && provider.notice?.apiKeyUrl && <a href={provider.notice.apiKeyUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-dd-accent outline-none hover:underline focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">open_in_new</span>Get API Key</a>}
             </div>
-            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-              {isCustom && <Badge variant="default" size="sm">Custom · {customNode?.prefix}</Badge>}
-              {kinds.map((k) => (
-                <Badge key={k} variant={k === kind ? "primary" : "default"} size="sm">
-                  {k.toUpperCase()}
-                </Badge>
-              ))}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {isCustom && <Badge tone="neutral" size="sm">Custom · {customNode?.prefix}</Badge>}
+              {kinds.map((item) => <Badge key={item} tone={item === kind ? "accent" : "neutral"} size="sm">{item.toUpperCase()}</Badge>)}
             </div>
           </div>
-          {isCustom && (
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              <Button size="sm" variant="secondary" icon="edit" onClick={() => setShowEditModal(true)}>
-                Edit
-              </Button>
-              <Button size="sm" variant="secondary" icon="delete" onClick={handleDeleteCustom}>
-                Delete
-              </Button>
-            </div>
-          )}
+          {isCustom && <div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" icon="edit" onClick={() => setShowEditModal(true)}>Edit</Button><Button size="sm" variant="danger" icon="delete" onClick={() => setShowDeleteConfirm(true)}>Delete</Button></div>}
         </div>
-      </div>
-
-      {/* Kind-specific notice (e.g. codex/image requires Plus) */}
-      {!isCustom && provider.kindNotice?.[kind] && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400">
-          <span className="material-symbols-outlined text-[20px] mt-0.5">warning</span>
-          <p className="text-sm">{provider.kindNotice[kind]}</p>
-        </div>
-      )}
-
-      {/* Provider notice text (only when there's actual text content) */}
-      {!isCustom && provider.notice?.text && !provider.deprecated && (
-        <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
-          <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">info</span>
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-blue-600 dark:text-blue-400">{provider.notice.text}</p>
-          {provider.notice.apiKeyUrl && (
-            <a
-              href={provider.notice.apiKeyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex justify-center rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 sm:py-0.5"
-            >
-              Get API Key →
-            </a>
-          )}
-        </div>
-      )}
+      </header>
+      {deleteError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{deleteError}</p>}
+      {!isCustom && provider.kindNotice?.[kind] && <div role="note" className="flex items-start gap-3 rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-4 py-3 text-[13px] text-dd-warning"><span aria-hidden="true" className="material-symbols-outlined text-[18px]">warning</span><p>{provider.kindNotice[kind]}</p></div>}
+      {!isCustom && provider.notice?.text && !provider.deprecated && <div role="note" className="flex flex-col gap-2 rounded-dd border border-dd-info/30 bg-dd-info/10 px-4 py-3 text-[13px] text-dd-info sm:flex-row sm:items-center"><span aria-hidden="true" className="material-symbols-outlined text-[18px]">info</span><p className="min-w-0 flex-1">{provider.notice.text}</p>{provider.notice.apiKeyUrl && <a href={provider.notice.apiKeyUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium underline outline-none focus-visible:shadow-dd-focus">Get API Key</a>}</div>}
 
       {/* Connections */}
       {!isCustom && provider.noAuth ? (
@@ -198,17 +146,17 @@ export default function MediaProviderDetailPage() {
       {kind === "stt" && !isCustom && <SttExampleCard providerId={id} />}
       {!isCustom && KIND_EXAMPLE_CONFIG[kind] && <GenericExampleCard providerId={id} kind={kind} />}
 
-      {isCustom && (
-        <AddCustomEmbeddingModal
-          isOpen={showEditModal}
-          node={customNode}
-          onClose={() => setShowEditModal(false)}
-          onSaved={(updated) => {
-            setCustomNode(updated);
-            setShowEditModal(false);
-          }}
-        />
-      )}
+      {isCustom && <AddCustomEmbeddingModal isOpen={showEditModal} node={customNode} onClose={() => setShowEditModal(false)} onSaved={(updated) => { setCustomNode(updated); setShowEditModal(false); }} />}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete custom embedding node?"
+        message="This removes the custom embedding node and cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        tone="danger"
+        onConfirm={handleDeleteCustom}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

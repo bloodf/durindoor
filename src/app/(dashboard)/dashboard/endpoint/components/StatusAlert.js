@@ -1,5 +1,12 @@
 "use client";
 
+const TONE_CLASS = {
+  success: "border-dd-success bg-dd-success/10 text-dd-success",
+  warning: "border-dd-warning bg-dd-warning/10 text-dd-warning",
+  info: "border-dd-info bg-dd-info/10 text-dd-info",
+  error: "border-dd-danger bg-dd-danger/10 text-dd-danger",
+};
+
 /** Reusable status alert */
 export default function StatusAlert({ status, className = "" }) {
   const renderMessage = (msg) => {
@@ -10,13 +17,13 @@ export default function StatusAlert({ status, className = "" }) {
         : part
     );
   };
+  const tone = TONE_CLASS[status.type] ?? TONE_CLASS.error;
 
   return (
-    <div className={`p-2 rounded text-sm ${className} ${status.type === "success" ? "bg-green-500/10 text-green-600 dark:text-green-400" :
-        status.type === "warning" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" :
-        status.type === "info" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
-          "bg-red-500/10 text-red-600 dark:text-red-400"
-      }`}>
+    <div
+      role={status.type === "error" ? "alert" : "status"}
+      className={`rounded-dd border px-3 py-2 text-[13px] ${className} ${tone}`}
+    >
       {renderMessage(status.message)}
     </div>
   );

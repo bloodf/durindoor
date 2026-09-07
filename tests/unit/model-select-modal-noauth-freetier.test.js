@@ -30,8 +30,8 @@ vi.mock("@/shared/constants/models", () => ({
   getModelKind: () => null,
 }));
 vi.mock("@/shared/hooks/useModelCaps", () => ({ useModelCaps: () => ({ getCaps: () => null }) }));
-vi.mock("../../src/shared/components/Modal", () => ({ default: ({ children }) => children }));
-vi.mock("../../src/shared/components/ProviderIcon", () => ({ default: () => null }));
+vi.mock("../../src/shared/ui/components/Modal.jsx", () => ({ default: ({ children }) => children }));
+vi.mock("../../src/shared/ui/components/ProviderLogo.jsx", () => ({ ProviderLogo: () => null }));
 vi.mock("../../src/shared/components/CapacityBadges", () => ({ default: () => null }));
 
 const {
@@ -62,7 +62,7 @@ describe("ModelSelectModal no-auth free-tier providers (upstream #3280)", () => 
 
   it("keeps kindFilter exclusion for active providers absent from AI_PROVIDERS", () => {
     const html = renderToStaticMarkup(React.createElement(ModelSelectModal, {
-      isOpen: false,
+      isOpen: true,
       onClose: () => {},
       onSelect: () => {},
       activeProviders: [{ provider: "non-ai-provider" }],

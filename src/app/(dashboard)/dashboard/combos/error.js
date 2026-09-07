@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import Button from "@/shared/ui/components/Button.jsx";
 
 export default function CombosError({ error, reset }) {
   useEffect(() => {
@@ -10,24 +11,21 @@ export default function CombosError({ error, reset }) {
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
-      <span className="material-symbols-outlined text-4xl text-orange-500">
+      <span aria-hidden="true" className="material-symbols-outlined text-4xl text-dd-warning">
         warning
       </span>
-      <p className="text-lg font-semibold">Something went wrong</p>
-      <p className="max-w-md text-sm text-text-muted">
+      <p className="text-lg font-semibold text-dd-text">Something went wrong</p>
+      <p className="max-w-md text-sm text-dd-muted">
         The combos page failed to load. This may happen during hydration in
         production builds.
       </p>
       <div className="flex gap-3">
-        <button
-          onClick={() => reset()}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90"
-        >
+        <Button variant="primary" onClick={() => reset()}>
           Try again
-        </button>
+        </Button>
         <Link
           href="/dashboard"
-          className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
         >
           Back to Dashboard
         </Link>

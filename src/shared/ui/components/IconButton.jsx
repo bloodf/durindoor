@@ -16,10 +16,10 @@ const VARIANTS = {
     "bg-dd-surface-2 border border-dd-border text-dd-text hover:bg-dd-surface-3",
 };
 
-/* md = 32px square, sm = 26px square. */
+/* Glyph size stays compact; the button box is always a non-overlapping 44px target. */
 const SIZES = {
-  md: "h-8 w-8",
-  sm: "h-[26px] w-[26px]",
+  md: "size-11",
+  sm: "size-11",
 };
 
 /* Standalone icon buttons use 16–18px glyphs. */
@@ -32,8 +32,7 @@ const ICON_SIZES = {
  * @param {object} props
  * @param {string} props.icon Material Symbols ligature name (required).
  * @param {string} props.label Accessible name, applied as aria-label (required).
- * @param {"ghost"|"secondary"} [props.variant] "ghost" for toolbars, "secondary" when the action needs a visible boundary.
- * @param {"sm"|"md"} [props.size] md = 32px square, sm = 26px square.
+ * @param {"sm"|"md"} [props.size] Both sizes use a 44px square pointer target; sm uses a smaller glyph.
  * @param {boolean} [props.disabled]
  * @param {string} [props.className] Appended last so callers can override spacing.
  */
@@ -47,6 +46,9 @@ export default function IconButton({
   type = "button",
   ...rest
 }) {
+  if (!label) {
+    throw new Error("IconButton requires a non-empty `label` for screen readers.");
+  }
   const resolvedSize = SIZES[size] ? size : "md";
   const classes = [
     "inline-flex items-center justify-center rounded-dd outline-none transition-colors focus-visible:shadow-dd-focus disabled:pointer-events-none disabled:opacity-50",
@@ -59,11 +61,11 @@ export default function IconButton({
 
   return (
     <button
-      type={type}
-      aria-label={label}
-      disabled={disabled}
-      className={classes}
       {...rest}
+      type={type}
+      disabled={disabled}
+      aria-label={label}
+      className={classes}
     >
       <span
         aria-hidden="true"

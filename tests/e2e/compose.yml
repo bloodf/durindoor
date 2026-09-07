@@ -1,0 +1,119 @@
+# Contained UI QA harness (H0d).
+#
+# Host invocation (executed on the host by Main, never inside a container):
+#   QA_IMAGE="<image@sha256:...>" \
+#   QA_RUNS_HOST_DIR="$(mktemp -d -t durin-qa-runs.XXXXXX)" \
+#   docker compose -f tests/e2e/compose.yml up --abort-on-container-exit --exit-code-from app
+#
+# The image is referenced exclusively through ${QA_IMAGE:?} (the colon guards
+# fail-fast at compose-config time if the host forgot to export it). The tag
+# itself MUST be a content-addressable SHA (image@sha256:...); compose will
+# refuse to pin a moving tag here because we never write `image: <name>:latest`.
+# We deliberately omit a top-level `name:` so this stack is anonymous and
+# can be brought up under any project label by `docker compose -p ...`.
+#
+# Both services share the exact same image: fake-upstream is started in fake
+# mode by env var, app is started in app mode (test entrypoint). The internal
+# `qa` network is the only network they see (internal: true, no host gateway,
+# IPv6 disabled) and we deliberately publish no host ports — cross-service
+# traffic is reachable by service name (`fake-upstream`) over the user-defined
+# bridge. This is the only acceptable contained QA topology.
+
+services:
+  fake-upstream:
+    image: ${QA_IMAGE:?}
+    user: "1000:1000"
+    read_only: true
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Only the tmpfs scratch space is writable in the image FS; the host
+    # bind for the fake-upstream's state is not needed (it is fully ephemeral
+    # and serves only canned responses from the frozen fixture).
+    tmpfs:
+      - /tmp:size=32m,mode=1777,uid=1000,gid=1000
+    environment:
+      DURIN_QA_HARDENED: "1"
+      DURIN_QA_ROLE: "fake-upstream"
+      DURIN_QA_FAKE_UPSTREAM_HOST: "0.0.0.0"
+      DURIN_QA_FAKE_UPSTREAM_PORT: "4100"
+    # The real, frozen fixture from tests/e2e/fake-upstream.mjs (owner:
+    # wt-ui-seeds, read-only). Its module exports startFakeUpstream() which
+    # reads DURIN_QA_FAKE_UPSTREAM_HOST/PORT env vars; we never inline a
+    # placeholder chat. The bind is 0.0.0.0 because cross-container
+    # reachability on the internal bridge resolves to the container IP, not
+    # loopback. Main owns adding the `node tests/e2e/fake-upstream.mjs`
+    # shim that consumes these env vars.
+    command: ["tests/e2e/fake-upstream.mjs"]
+    networks:
+      - qa
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 5s
+    stop_grace_period: 5s
+
+  app:
+    image: ${QA_IMAGE:?}
+    user: "1000:1000"
+    read_only: true
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,mode=1777,uid=1000,gid=1000
+      - /run:size=4m,mode=0755,uid=1000,gid=1000
+    environment:
+      DURIN_QA_HARDENED: "1"
+      DURIN_QA_ROLE: "app"
+      DURIN_QA_FAKE_UPSTREAM_HOST: "fake-upstream"
+      DURIN_QA_FAKE_UPSTREAM_PORT: "4100"
+      # The launcher is the canonical source of per-worker runDir; the child
+      # entry must NOT pre-declare a single global run-dir (H1 startQa mints a
+      # fresh per-worker directory under qa/runs). No DB / Docker / host creds.
+      DURIN_QA_WORKER_ID: "${QA_WORKER_ID:-0}"
+      DURINDOOR_CANDIDATE_SHA: "${DURINDOOR_CANDIDATE_SHA:-}"
+    # Fresh, host-owned, writable artifact mount. The host directory is created
+    # by Main (mktemp -d) and only this one mount is rw — every other layer in
+    # the image is read-only (container FS + tmpfs). QA_RUNS_HOST_DIR is
+    # required: the colon guards refuse to silently bind an empty path.
+    volumes:
+      - type: bind
+        source: ${QA_RUNS_HOST_DIR:?}
+        target: /usr/src/app/qa/runs
+        read_only: false
+    # Default command is `test` (the Playwright CLI) targeting `app`, with
+    # exactly one worker. Storybook mode is opt-in by overriding the
+    # --target on the host. The image ENTRYPOINT is `node`, so this command
+    # is appended to the node argv — node is never invoked twice.
+    command: ["tests/e2e/qa-child-entry.mjs", "test", "--target", "app", "--workers", "1"]
+    networks:
+      - qa
+    depends_on:
+      fake-upstream:
+        condition: service_healthy
+    stop_grace_period: 15s
+
+# `internal: true` is the only correct top-level toggle for an isolated
+# container network. With it set, Docker does not program an external default
+# route; combined with `enable_ip_masquerade: "false"` the fake-upstream cannot
+# reach the host gateway, instance metadata, or any external origin. IPv6 is
+# disabled end-to-end (we never need v6 here) and `gateway_mode_ipv4: isolated`
+# drops the host bridge gateway so the containers have no way to egress even
+# via ARP. The only traffic that ever flows is app → fake-upstream on the
+# internal bridge, the only labelled behaviour the harness audits.
+networks:
+  qa:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+      com.docker.network.bridge.gateway_mode_ipv4: "isolated"

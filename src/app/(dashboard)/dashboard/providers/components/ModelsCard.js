@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useId, useMemo, useRef } from "react";
 import PropTypes from "prop-types";
 import { Card, Button, Modal, ConfirmModal } from "@/shared/components";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
@@ -10,43 +10,43 @@ import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
 
 // ── ModelRow ───────────────────────────────────────────────────
 export function ModelRow({ model, fullModel, copied, onCopy, testStatus, deleteStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, checkbox }) {
-  const borderColor = deleteStatus === "deleting" ? "border-orange-500/40" : testStatus === "ok" ? "border-green-500/40" : testStatus === "error" ? "border-red-500/40" : testStatus === "testing" ? "border-blue-500/40" : "border-border";
-  const iconColor = deleteStatus === "deleting" ? "#f97316" : testStatus === "ok" ? "#22c55e" : testStatus === "error" ? "#ef4444" : undefined;
+  const borderColor = deleteStatus === "deleting" ? "border-dd-warning/40" : testStatus === "ok" ? "border-dd-success/40" : testStatus === "error" ? "border-dd-danger/40" : testStatus === "testing" ? "border-dd-info/40" : "border-dd-border";
+  const iconClass = deleteStatus === "deleting" ? "text-dd-warning" : testStatus === "ok" ? "text-dd-success" : testStatus === "error" ? "text-dd-danger" : "text-dd-muted";
 
   return (
-    <div className={`group px-3 py-2 rounded-lg border ${borderColor} hover:bg-sidebar/50`}>
+    <div className={`group px-3 py-2 rounded-lg border ${borderColor} hover:bg-dd-surface-2/50`}>
       <div className="flex items-center gap-2">
         {checkbox}
-        <span className="material-symbols-outlined text-base" style={iconColor ? { color: iconColor } : undefined}>
+        <span className={`material-symbols-outlined text-base ${iconClass}`}>
           {deleteStatus === "deleting" ? "delete" : testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
         </span>
         <div className="flex flex-col gap-1">
-          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
-          {model.name && <span className="text-[9px] text-text-muted/70 italic pl-1">{model.name}</span>}
+          <code className="text-xs text-dd-muted font-mono bg-dd-surface-2 px-1.5 py-0.5 rounded">{fullModel}</code>
+          {model.name && <span className="text-[9px] text-dd-subtle italic pl-1">{model.name}</span>}
         </div>
         {onTest && (
           <div className="relative group/btn">
-            <button onClick={onTest} disabled={isTesting} className={`p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary transition-opacity ${isTesting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
-              <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
+            <button onClick={onTest} disabled={isTesting} className={`p-0.5 hover:bg-dd-surface-2 rounded text-dd-muted hover:text-dd-accent transition-opacity ${isTesting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+              <span className={`material-symbols-outlined text-sm ${isTesting ? "animate-spin motion-reduce:animate-none" : ""}`}>
                 {isTesting ? "progress_activity" : "science"}
               </span>
             </button>
-            <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+            <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-dd-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
               {isTesting ? "Testing..." : "Test"}
             </span>
           </div>
         )}
         <div className="relative group/btn">
-          <button onClick={() => onCopy(fullModel, `model-${model.id}`)} className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary">
+          <button onClick={() => onCopy(fullModel, `model-${model.id}`)} className="p-0.5 hover:bg-dd-surface-2 rounded text-dd-muted hover:text-dd-accent">
             <span className="material-symbols-outlined text-sm">{copied === `model-${model.id}` ? "check" : "content_copy"}</span>
           </button>
-          <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+          <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-dd-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
             {copied === `model-${model.id}` ? "Copied!" : "Copy"}
           </span>
         </div>
-        {isFree && <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">FREE</span>}
+        {isFree && <span className="text-[10px] font-bold text-dd-success bg-dd-success/10 px-1.5 py-0.5 rounded">FREE</span>}
         {isCustom && (
-          <button onClick={onDeleteAlias} className="p-0.5 hover:bg-red-500/10 rounded text-text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-auto" title="Remove custom model">
+          <button onClick={onDeleteAlias} className="p-0.5 hover:bg-dd-danger/10 rounded text-dd-muted hover:text-dd-danger opacity-0 group-hover:opacity-100 transition-opacity ml-auto" title="Remove custom model">
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         )}
@@ -72,6 +72,7 @@ ModelRow.propTypes = {
 
 // ── AddCustomModelModal ────────────────────────────────────────
 function AddCustomModelModal({ isOpen, onSave, onClose }) {
+  const modelIdInputId = useId();
   const [modelId, setModelId] = useState("");
 
   const handleSave = () => {
@@ -84,9 +85,10 @@ function AddCustomModelModal({ isOpen, onSave, onClose }) {
     <Modal isOpen={isOpen} title="Add Custom Model" onClose={onClose}>
       <div className="flex flex-col gap-4">
         <div>
-          <label className="text-xs text-text-muted mb-1 block">Model ID</label>
+          <label htmlFor={modelIdInputId} className="text-xs text-dd-muted mb-1 block">Model ID</label>
           <input
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+            id={modelIdInputId}
+            className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent"
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
@@ -402,16 +404,16 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Models{kindFilter ? ` — ${kindFilter.toUpperCase()}` : ""}</h2>
         </div>
-        {testError && <p className="text-xs text-red-500 mb-3 break-words">{testError}</p>}
+        {testError && <p className="text-xs text-dd-danger mb-3 break-words">{testError}</p>}
 
         {myCustomModels.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
+            <label className="flex items-center gap-1.5 text-xs text-dd-muted cursor-pointer">
               <input
                 type="checkbox"
                 checked={allSelected}
                 onChange={toggleAll}
-                className="size-4 rounded border-black/20 dark:border-white/20"
+                className="size-4 rounded border-dd-border"
               />
               {allSelected ? "Unselect all" : "Select all"}
             </label>
@@ -419,9 +421,9 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         )}
 
         {selectedIds.length > 0 && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-            <span className="material-symbols-outlined text-[18px] text-primary">checklist</span>
-            <span className="text-xs font-medium text-primary">{selectedIds.length} selected</span>
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-dd-accent/30 bg-dd-accent-soft px-3 py-2">
+            <span className="material-symbols-outlined text-[18px] text-dd-accent">checklist</span>
+            <span className="text-xs font-medium text-dd-accent">{selectedIds.length} selected</span>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               {testingBulk ? (
                 <Button size="sm" variant="ghost" icon="close" onClick={handleCancelBulkTest}>
@@ -484,7 +486,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
                     type="checkbox"
                     checked={selectedIds.includes(model._key)}
                     onChange={() => toggleItem(model._key)}
-                    className="size-4 shrink-0 rounded border-black/20 dark:border-white/20"
+                    className="size-4 shrink-0 rounded border-dd-border"
                   />
                 }
               />
@@ -492,7 +494,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
 
           <button
             onClick={() => setShowAddCustomModel(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-black/15 dark:border-white/15 text-xs text-text-muted hover:text-primary hover:border-primary/40 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-dd-border text-xs text-dd-muted hover:text-dd-accent hover:border-dd-accent/40 transition-colors"
           >
             <span className="material-symbols-outlined text-sm">add</span>
             Add Model

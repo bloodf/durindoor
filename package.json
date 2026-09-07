@@ -27,7 +27,10 @@
     "catalog:diff": "node scripts/model-catalog-diff.mjs",
     "check:docs": "node scripts/check-docs.mjs",
     "storybook": "storybook dev -p 6006",
-    "storybook:build": "storybook build"
+    "storybook:build": "storybook build",
+    "test:ui": "playwright test --config playwright.config.mjs",
+    "test:storybook": "DURINDOOR_QA_MODE=storybook playwright test --config playwright.config.mjs tests/e2e/storybook.spec.js",
+    "check:storybook-coverage": "node scripts/check-storybook-coverage.mjs --manifest tests/e2e/storybook-surfaces.json --index storybook-static/index.json --mode final"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1084.0",
@@ -70,6 +73,9 @@
   },
   "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@babel/parser": "7.29.8",
+    "@playwright/test": "1.63.0",
     "@oxlint/plugins": "1.78.0",
     "@storybook/react-vite": "^10.5.10",
     "@tailwindcss/postcss": "^4.3.2",

@@ -31,12 +31,13 @@ export default function CooldownTimer({ until }) {
   if (!remaining) return null;
 
   return (
-    <span className="text-xs text-orange-500 font-mono">
-      ⏱ {remaining}
+    <span className="inline-flex items-center gap-1 rounded-dd bg-dd-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-dd-warning dd-tnum">
+      <span aria-hidden="true" className="material-symbols-outlined text-[12px] leading-none">
+        schedule
+      </span>
+      {remaining}
     </span>
   );
 }
 
-CooldownTimer.propTypes = {
-  until: PropTypes.string.isRequired,
-};
+CooldownTimer.propTypes = { until: PropTypes.string.isRequired };

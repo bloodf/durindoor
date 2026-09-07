@@ -7,4 +7,9 @@ describe("client pagination helpers", () => {
     expect(clampPage(9, 3)).toBe(3);
     expect(clampPage(0, 3)).toBe(1);
   });
+
+  it("returns every item only on first page when page size is all", () => {
+    expect(paginate([1, 2, 3], 1, "all")).toEqual([1, 2, 3]);
+    expect(paginate([1, 2, 3], 2, "all")).toEqual([]);
+  });
 });

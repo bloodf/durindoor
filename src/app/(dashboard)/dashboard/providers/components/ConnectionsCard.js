@@ -26,7 +26,7 @@ function CooldownTimer({ until }) {
   }, [until]);
 
   if (!remaining) return null;
-  return <span className="text-xs text-orange-500 font-mono">⏱ {remaining}</span>;
+  return <span className="text-xs text-dd-warning font-mono">⏱ {remaining}</span>;
 }
 
 CooldownTimer.propTypes = { until: PropTypes.string.isRequired };
@@ -103,17 +103,17 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   };
 
   return (
-    <div className={`group flex flex-col gap-3 p-2 rounded-lg sm:flex-row sm:items-center sm:justify-between hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}>
+    <div className={`group flex flex-col gap-3 p-2 rounded-lg sm:flex-row sm:items-center sm:justify-between hover:bg-dd-surface-2/[0.02] dark:hover:bg-dd-surface-2/[0.02] transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}>
       <div className="flex w-full min-w-0 flex-1 items-start gap-3 sm:items-center">
         <div className="flex flex-col">
-          <button onClick={onMoveUp} disabled={isFirst} className={`p-0.5 rounded ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}>
+          <button onClick={onMoveUp} disabled={isFirst} className={`p-0.5 rounded ${isFirst ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}>
             <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
           </button>
-          <button onClick={onMoveDown} disabled={isLast} className={`p-0.5 rounded ${isLast ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}>
+          <button onClick={onMoveDown} disabled={isLast} className={`p-0.5 rounded ${isLast ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}>
             <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
           </button>
         </div>
-        <span className="material-symbols-outlined text-base text-text-muted">{isOAuth ? "lock" : "key"}</span>
+        <span className="material-symbols-outlined text-base text-dd-muted">{isOAuth ? "lock" : "key"}</span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{displayName}</p>
           <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -123,17 +123,17 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
             {hasAnyProxy && <Badge variant={proxyBadgeVariant} size="sm">Proxy</Badge>}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
             {errorDisplay &&
-            <span className="text-xs text-red-500 truncate max-w-[300px]" title={`${errorDisplay.reason}${errorDisplay.time ? ` · ${errorDisplay.time}` : ""}`}>
+            <span className="text-xs text-dd-danger truncate max-w-[300px]" title={`${errorDisplay.reason}${errorDisplay.time ? ` · ${errorDisplay.time}` : ""}`}>
                 {errorDisplay.reason}{errorDisplay.time ? ` · ${errorDisplay.time}` : ""}
               </span>
             }
-            <span className="text-xs text-text-muted">#{connection.priority}</span>
+            <span className="text-xs text-dd-muted">#{connection.priority}</span>
           </div>
           {hasAnyProxy &&
           <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-text-muted truncate max-w-[420px]" title={proxyDisplayText}>{proxyDisplayText}</span>
-              {maskedProxyUrl && <code className="text-[10px] font-mono bg-black/5 dark:bg-white/5 px-1 py-0.5 rounded text-text-muted">{maskedProxyUrl}</code>}
-              {noProxyText && <span className="text-[11px] text-text-muted truncate max-w-[320px]" title={noProxyText}>no_proxy: {noProxyText}</span>}
+              <span className="text-[11px] text-dd-muted truncate max-w-[420px]" title={proxyDisplayText}>{proxyDisplayText}</span>
+              {maskedProxyUrl && <code className="text-[10px] font-mono bg-dd-text/5 dark:bg-dd-surface/5 px-1 py-0.5 rounded text-dd-muted">{maskedProxyUrl}</code>}
+              {noProxyText && <span className="text-[11px] text-dd-muted truncate max-w-[320px]" title={noProxyText}>no_proxy: {noProxyText}</span>}
             </div>
           }
         </div>
@@ -144,32 +144,32 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
           <div className="relative" ref={proxyDropdownRef}>
               <button
               onClick={() => setShowProxyDropdown((v) => !v)}
-              className={`flex flex-col items-center px-2 py-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${hasAnyProxy ? "text-primary" : "text-text-muted hover:text-primary"}`}
+              className={`flex flex-col items-center px-2 py-1 rounded hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 transition-colors ${hasAnyProxy ? "text-dd-accent" : "text-dd-muted hover:text-dd-accent"}`}
               disabled={updatingProxy}>
               
                 <span className="material-symbols-outlined text-[18px]">{updatingProxy ? "progress_activity" : "lan"}</span>
                 <span className="text-[10px] leading-tight">Proxy</span>
               </button>
               {showProxyDropdown &&
-            <div className="absolute right-0 top-full mt-1 z-50 bg-bg border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
-                  <button onClick={() => handleSelectProxy("__none__")} className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${!boundProxyPoolId ? "text-primary font-medium" : "text-text-main"}`}>None</button>
+            <div className="absolute right-0 top-full mt-1 z-50 bg-dd-bg-alt border border-dd-border rounded-lg shadow-lg py-1 min-w-[160px]">
+                  <button onClick={() => handleSelectProxy("__none__")} className={`w-full text-left px-3 py-1.5 text-sm hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${!boundProxyPoolId ? "text-dd-accent font-medium" : "text-dd-text"}`}>None</button>
                   {(proxyPools || []).map((pool) =>
-              <button key={pool.id} onClick={() => handleSelectProxy(pool.id)} className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${boundProxyPoolId === pool.id ? "text-primary font-medium" : "text-text-main"}`}>{pool.name}</button>
+              <button key={pool.id} onClick={() => handleSelectProxy(pool.id)} className={`w-full text-left px-3 py-1.5 text-sm hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${boundProxyPoolId === pool.id ? "text-dd-accent font-medium" : "text-dd-text"}`}>{pool.name}</button>
               )}
                 </div>
             }
             </div>
           }
-          <button onClick={onEdit} className="flex flex-col items-center px-2 py-1 rounded hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary">
+          <button onClick={onEdit} className="flex flex-col items-center px-2 py-1 rounded hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 text-dd-muted hover:text-dd-accent">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             <span className="text-[10px] leading-tight">Edit</span>
           </button>
-          <button onClick={onDelete} className="flex flex-col items-center px-2 py-1 rounded hover:bg-red-500/10 text-red-500">
+          <button onClick={onDelete} className="flex flex-col items-center px-2 py-1 rounded hover:bg-dd-danger/10 text-dd-danger">
             <span className="material-symbols-outlined text-[18px]">delete</span>
             <span className="text-[10px] leading-tight">Delete</span>
           </button>
         </div>
-        <Toggle size="sm" checked={connection.isActive ?? true} onChange={onToggleActive} title={connection.isActive ?? true ? "Disable" : "Enable"} />
+        <Toggle size="sm" checked={connection.isActive ?? true} onChange={onToggleActive} ariaLabel={`${connection.isActive ?? true ? "Disable" : "Enable"} ${connection.name || "connection"}`} title={connection.isActive ?? true ? "Disable" : "Enable"} />
       </div>
     </div>);
 
@@ -258,13 +258,13 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
     <Modal isOpen={isOpen} title={`Add ${providerName || provider} API Key`} onClose={onClose}>
       <div className="flex flex-col gap-4">
         <div>
-          <label className="text-xs text-text-muted mb-1 block">Name</label>
-          <input className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Production Key" />
+          <label className="text-xs text-dd-muted mb-1 block">Name</label>
+          <input className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Production Key" />
         </div>
         <div className="flex gap-2">
           <div className="flex-1">
-            <label className="text-xs text-text-muted mb-1 block">API Key</label>
-            <input type="password" className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.apiKey} onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })} />
+            <label className="text-xs text-dd-muted mb-1 block">API Key</label>
+            <input type="password" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.apiKey} onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })} />
           </div>
           <div className="pt-6">
             <Button onClick={handleValidate} disabled={!formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx) || validating || saving} variant="secondary">
@@ -274,8 +274,8 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         </div>
         {isGooglePseProvider(provider) &&
         <div>
-            <label className="text-xs text-text-muted mb-1 block">Search Engine ID (cx)</label>
-            <input className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.cx} onChange={(e) => setFormData({ ...formData, cx: e.target.value })} placeholder="e.g. 0123456789:abcdefg" />
+            <label className="text-xs text-dd-muted mb-1 block">Search Engine ID (cx)</label>
+            <input className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.cx} onChange={(e) => setFormData({ ...formData, cx: e.target.value })} placeholder="e.g. 0123456789:abcdefg" />
           </div>
         }
         {validationResult &&
@@ -284,8 +284,8 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
           </Badge>
         }
         <div>
-          <label className="text-xs text-text-muted mb-1 block">Priority</label>
-          <input type="number" className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value) || 1 })} />
+          <label className="text-xs text-dd-muted mb-1 block">Priority</label>
+          <input type="number" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value) || 1 })} />
         </div>
         <Select label="Proxy Pool" value={formData.proxyPoolId} onChange={(e) => setFormData({ ...formData, proxyPoolId: e.target.value })}
         options={[{ value: NONE, label: "None" }, ...(proxyPools || []).map((p) => ({ value: p.id, label: p.name }))]} />
@@ -429,7 +429,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
     } catch (e) {console.log("update connection error:", e);}
   };
 
-  if (loading) return <Card><div className="h-20 animate-pulse bg-black/5 rounded-lg" /></Card>;
+  if (loading) return <Card><div className="h-20 animate-pulse bg-dd-text/5 rounded-lg" /></Card>;
 
   return (
     <>
@@ -448,8 +448,9 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
                 Reorder
               </Button>
             }
-            <span className="text-xs text-text-muted font-medium">Round Robin</span>
+            <span className="text-xs text-dd-muted font-medium">Round Robin</span>
             <Toggle
+              ariaLabel="Round Robin"
               checked={providerStrategy === "round-robin"}
               onChange={(enabled) => {
                 const strategy = enabled ? "round-robin" : null;
@@ -460,11 +461,11 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
             
             {providerStrategy === "round-robin" &&
             <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-text-muted">Sticky:</span>
+                <span className="text-xs text-dd-muted">Sticky:</span>
                 <input
                 type="number" min={1} value={providerStickyLimit}
                 onChange={(e) => {setProviderStickyLimit(e.target.value);saveStrategy("round-robin", e.target.value);}}
-                className="w-16 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary" />
+                className="w-16 px-2 py-1 text-xs border border-dd-border rounded-md bg-dd-surface focus:outline-none focus:border-dd-accent" />
               
               </div>
             }
@@ -473,7 +474,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 
         {connections.length === 0 ?
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-text-muted">No connections yet</p>
+            <p className="text-sm text-dd-muted">No connections yet</p>
             <Button size="sm" icon="add" onClick={() => setShowAddModal(true)}>Add Connection</Button>
           </div> :
 

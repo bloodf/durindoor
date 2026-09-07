@@ -5,10 +5,18 @@ import { createRoot } from "react-dom/client";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("@/shared/components/Card", () => ({ default: ({ children }) => React.createElement("section", null, children) }));
-vi.mock("@/shared/components/Button", () => ({ default: ({ children, ...props }) => React.createElement("button", props, children) }));
-vi.mock("@/shared/components/Drawer", () => ({ default: ({ isOpen, children, title }) => isOpen ? React.createElement("aside", null, React.createElement("h2", null, title), children) : null }));
-vi.mock("@/shared/components/Pagination", () => ({ default: () => null }));
+vi.mock("@/shared/ui/components/Card.jsx", () => ({
+  Card: ({ children }) => React.createElement("section", null, children),
+  CardHeader: ({ title }) => React.createElement("h2", null, title),
+  CardContent: ({ children }) => React.createElement("div", null, children),
+}));
+vi.mock("@/shared/ui/components/Button.jsx", () => ({ default: ({ children, loading: _loading, ...props }) => React.createElement("button", props, children) }));
+vi.mock("@/shared/ui/components/Drawer.jsx", () => ({ default: ({ open, children, title }) => open ? React.createElement("aside", null, React.createElement("h2", null, title), children) : null }));
+vi.mock("@/shared/ui/components/Pagination.jsx", () => ({ default: () => null }));
+vi.mock("@/shared/ui/components/Select.jsx", () => ({ default: () => null }));
+vi.mock("@/shared/ui/components/Input.jsx", () => ({ default: () => null }));
+vi.mock("@/shared/ui/components/Badge.jsx", () => ({ Badge: ({ children }) => React.createElement("span", null, children) }));
+vi.mock("@/shared/utils/cn", () => ({ cn: (...classes) => classes.filter(Boolean).join(" ") }));
 vi.mock("@/shared/constants/providers", () => ({ AI_PROVIDERS: {}, getProviderByAlias: () => null }));
 
 import RequestDetailsTab from "@/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js";
@@ -60,6 +68,7 @@ describe("Request Details metadata-only UI", () => {
 
   it("explains all four redacted stages and offers no raw payload copy or view path", async () => {
     globalThis.fetch = vi.fn(async (url) => ({
+      ok: true,
       json: async () => String(url).startsWith("/api/usage/request-details")
         ? { details: [detail], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } }
         : String(url) === "/api/usage/providers"
@@ -95,12 +104,19 @@ describe("Request Details metadata-only UI", () => {
       await Promise.resolve();
     });
 
-    const callout = container.querySelector("[data-observability-callout=\"off\"]");
-    expect(callout).not.toBeNull();
-    expect(callout.textContent).toContain("Request details logging is turned off");
-    const link = callout.querySelector("a[href=\"/dashboard/profile\"]");
+    const callout = Array.from(container.querySelectorAll("p")).find(
+      (element) => element.textContent === "Request details logging is turned off",
+    );
+    expect(callout).toBeDefined();
+    expect(container.textContent).toContain("Enable Observability in Settings to start recording every request here.");
+    const link = container.querySelector("a[href=\"/dashboard/profile\"]");
     expect(link).not.toBeNull();
-    expect(link.textContent.trim()).toBe("Open Settings");
+    const accessibleName = Array.from(link.childNodes)
+      .filter((node) => node.nodeType !== 1 || node.getAttribute("aria-hidden") !== "true")
+      .map((node) => node.textContent)
+      .join("")
+      .trim();
+    expect(accessibleName).toBe("Open Settings");
   });
 
   it("renders the ordinary empty state when observability is enabled", async () => {

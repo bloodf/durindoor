@@ -3,7 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon } from "@/shared/components";
+import Select from "@/shared/ui/components/Select.jsx";
+import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
+
+
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, DEFAULT_PROVIDER_RPM, MAX_PROVIDER_RPM, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -1233,9 +1237,10 @@ export default function ProviderDetailPage() {
             <div className="flex shrink-0 items-center pl-1 sm:pl-2">
               <input
           type="checkbox"
+          aria-label={`Select ${conn.name}`}
           checked={isSelected(conn.id)}
           onChange={() => toggleSelectConnection(conn.id)}
-          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+          className="h-4 w-4 rounded border-dd-border text-dd-accent focus:shadow-dd-focus" />
         
             </div>
             <div className="flex-1 min-w-0">
@@ -1301,36 +1306,36 @@ export default function ProviderDetailPage() {
           <button
           onClick={handleApplyOneToOne}
           disabled={bulkUpdatingProxy || activePools.length === 0}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50">
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
           
-            <span className="material-symbols-outlined text-text-muted text-[18px]">sync_alt</span>
-            <span className="text-sm text-text-main">One-to-one (rotate)</span>
+            <span className="material-symbols-outlined text-dd-muted text-[18px]">sync_alt</span>
+            <span className="text-sm text-dd-text">One-to-one (rotate)</span>
           </button>
           <button
           onClick={() => handleApplySinglePool(null)}
           disabled={bulkUpdatingProxy}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50">
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
           
-            <span className="material-symbols-outlined text-text-muted text-[18px]">link_off</span>
-            <span className="text-sm text-text-main">None (unbind all)</span>
+            <span className="material-symbols-outlined text-dd-muted text-[18px]">link_off</span>
+            <span className="text-sm text-dd-text">None (unbind all)</span>
           </button>
           {proxyPools.map((pool) =>
         <button
           key={pool.id}
           onClick={() => handleApplySinglePool(pool.id)}
           disabled={bulkUpdatingProxy || pool.isActive !== true}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50">
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
           
-              <span className="material-symbols-outlined text-text-muted text-[18px]">lan</span>
-              <span className="truncate text-sm text-text-main">{pool.name}</span>
+              <span className="material-symbols-outlined text-dd-muted text-[18px]">lan</span>
+              <span className="truncate text-sm text-dd-text">{pool.name}</span>
               {pool.isActive !== true &&
-          <span className="text-[10px] text-text-muted">(inactive)</span>
+          <span className="text-[10px] text-dd-muted">(inactive)</span>
           }
             </button>
         )}
         </div>
 
-        {bulkUpdatingProxy && <p className="text-xs text-text-muted">Applying...</p>}
+        {bulkUpdatingProxy && <p className="text-xs text-dd-muted">Applying...</p>}
 
         <Button onClick={closeBulkProxyModal} variant="ghost" fullWidth disabled={bulkUpdatingProxy}>
           Cancel
@@ -1462,7 +1467,7 @@ export default function ProviderDetailPage() {
         {/* Add model button — inline, same style as model chips */}
         <button
           onClick={() => setShowAddCustomModel(true)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2 text-xs text-primary transition-colors hover:border-primary hover:bg-primary/5 sm:w-auto">
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-dd-accent/40 px-3 py-2 text-xs text-dd-accent transition-colors hover:border-dd-accent hover:bg-dd-accent-soft sm:w-auto">
           
           <span className="material-symbols-outlined text-sm">add</span>
           Add Model
@@ -1473,9 +1478,9 @@ export default function ProviderDetailPage() {
         <button
           onClick={handleImportQoderModels}
           disabled={importingQoderModels}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-blue-500/40 px-3 py-2 text-xs text-blue-600 dark:text-blue-400 transition-colors hover:border-blue-500 hover:bg-blue-500/5 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed">
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-dd-info/40 px-3 py-2 text-xs text-dd-info transition-colors hover:border-dd-info hover:bg-dd-info/10 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed">
           
-            <span className="material-symbols-outlined text-sm" style={importingQoderModels ? { animation: "spin 1s linear infinite" } : undefined}>
+            <span className={`material-symbols-outlined text-sm ${importingQoderModels ? "animate-spin motion-reduce:animate-none" : ""}`}>
               {importingQoderModels ? "progress_activity" : "download"}
             </span>
             {importingQoderModels ? translate("Fetching...") : translate("Fetch Qoder Models")}
@@ -1486,7 +1491,7 @@ export default function ProviderDetailPage() {
         <button
           onClick={handleSyncModels}
           disabled={syncingModels}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2 text-xs text-primary transition-colors hover:bg-primary/5 sm:w-auto disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-dd-accent/40 px-3 py-2 text-xs text-dd-accent transition-colors hover:bg-dd-accent-soft sm:w-auto disabled:opacity-50"
           title={modelsFetchedAt ? `Last synced ${modelsFetchedAt.toLocaleString()}` : "Fetch latest provider models"}>
           
             <span className={`material-symbols-outlined text-sm ${syncingModels ? "animate-spin" : ""}`}>sync</span>
@@ -1507,7 +1512,7 @@ export default function ProviderDetailPage() {
           if (notAdded.length === 0) return null;
           return (
             <div className="w-full mt-2">
-              <p className="text-xs text-text-muted mb-2">Suggested free models (≥200k context):</p>
+              <p className="text-xs text-dd-muted mb-2">Suggested free models (≥200k context):</p>
               <div className="flex flex-wrap gap-2">
                 {notAdded.map((m) =>
                 <button
@@ -1515,7 +1520,7 @@ export default function ProviderDetailPage() {
                   onClick={async () => {
                     await handleAddCustomModel(m.id, "llm", providerStorageAlias);
                   }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dd-border text-xs text-dd-muted hover:text-dd-accent hover:border-dd-accent/40 hover:bg-dd-accent-soft transition-colors"
                   title={`${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx`}>
                   
                     <span className="material-symbols-outlined text-[13px]">add</span>
@@ -1530,13 +1535,13 @@ export default function ProviderDetailPage() {
         {/* Disabled models — restorable */}
         {disabledDisplayModels.length > 0 &&
         <div className="w-full mt-2">
-            <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
+            <p className="text-xs text-dd-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
             <div className="flex flex-wrap gap-2">
               {disabledDisplayModels.map((m) =>
             <button
               key={m.id}
               onClick={() => handleEnableModel(m.id)}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-dd-border text-xs text-dd-muted hover:text-dd-accent hover:border-dd-accent/40 hover:bg-dd-accent-soft transition-colors"
               title="Restore model">
               
                   <span className="material-symbols-outlined text-[13px]">add</span>
@@ -1562,24 +1567,14 @@ export default function ProviderDetailPage() {
   if (!providerInfo) {
     return (
       <div className="text-center py-20">
-        <p className="text-text-muted">Provider not found</p>
-        <Link href="/dashboard/providers" className="text-primary mt-4 inline-block">
+        <p className="text-dd-muted">Provider not found</p>
+        <Link href="/dashboard/providers" className="text-dd-accent mt-4 inline-block">
           Back to Providers
         </Link>
       </div>);
 
   }
 
-  // Determine icon path: OpenAI Compatible providers use specialized icons
-  const getHeaderIconPath = () => {
-    if (isOpenAICompatible && providerInfo.apiType) {
-      return providerInfo.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png";
-    }
-    if (isAnthropicCompatible) {
-      return "/providers/anthropic-m.png";
-    }
-    return `/providers/${providerInfo.id}.png`;
-  };
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:gap-8 sm:px-0">
@@ -1587,30 +1582,30 @@ export default function ProviderDetailPage() {
       <div className="min-w-0">
         <Link
           href="/dashboard/providers"
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4">
+          className="inline-flex items-center gap-1 text-sm text-dd-muted hover:text-dd-accent transition-colors mb-4">
           
           <span className="material-symbols-outlined text-lg">arrow_back</span>
           Back to Providers
         </Link>
         <Link
           href={buildTimelineHref({ provider: providerId })}
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4 ml-4"
+          className="inline-flex items-center gap-1 text-sm text-dd-muted hover:text-dd-accent transition-colors mb-4 ml-4"
         >
           View all
         </Link>
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-          <div
-            className="flex size-12 shrink-0 items-center justify-center rounded-lg"
-            style={{ backgroundColor: `${providerInfo.color}15` }}>
-            
-            <ProviderIcon
-              src={providerInfo.iconUrl || getHeaderIconPath()}
-              alt={providerInfo.name}
-              size={48}
-              className="max-h-12 max-w-12 rounded-lg object-contain"
-              fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
-              fallbackColor={providerInfo.color} />
-            
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-dd-lg bg-dd-surface-2">
+            {providerInfo.iconUrl ? (
+              <ProviderIcon
+                src={providerInfo.iconUrl}
+                alt={providerInfo.name}
+                size={48}
+                className="max-h-12 max-w-12 rounded-dd object-contain"
+                fallbackText={providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
+              />
+            ) : (
+              <ProviderLogo provider={providerId} size={48} />
+            )}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
@@ -1620,19 +1615,19 @@ export default function ProviderDetailPage() {
                 href={providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-primary hover:underline inline-flex items-center gap-1">
+                className="text-xs text-dd-accent hover:underline inline-flex items-center gap-1">
                 
                   <span className="material-symbols-outlined text-sm">open_in_new</span>
                   {providerInfo.notice?.apiKeyUrl ? "Get API Key" : "Sign up / Learn more"}
                 </a>
               }
             </div>
-            <p className="text-text-muted">
+            <p className="text-dd-muted">
               {connections.length} connection{connections.length === 1 ? "" : "s"}
             </p>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <label htmlFor="provider-rpm-limit" className="hidden text-xs text-text-muted sm:inline">RPM / account</label>
+          <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+            <label htmlFor="provider-rpm-limit" className="hidden text-xs text-dd-muted sm:inline">RPM / account</label>
             <input
               id="provider-rpm-limit"
               type="number"
@@ -1643,41 +1638,30 @@ export default function ProviderDetailPage() {
               onChange={(event) => setRpmLimit(event.target.value)}
               onBlur={(event) => saveRpmLimit(event.target.value)}
               title="Maximum requests per minute per account. Blank uses provider default; 0 is unlimited."
-              className="w-16 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" />
-            
-            <label htmlFor="provider-retry-delay" className="hidden text-xs text-text-muted sm:inline">Retry delay</label>
-            <select
-              id="provider-retry-delay"
-              value={retryDelay}
-              onChange={(event) => handleRetryDelayChange(event.target.value)}
-              title="Static cooldown when the provider reports no reset deadline"
-              className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none">
-              
-              {RETRY_DELAY_OPTIONS.map(([value, label]) =>
-              <option key={value} value={value}>{label}</option>
-              )}
-            </select>
+              className="h-9 w-16 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
+            <span className="hidden text-xs text-dd-muted sm:inline">Retry delay</span>
+            <div className="w-44"><Select options={RETRY_DELAY_OPTIONS.map(([value, label]) => ({ value, label }))} value={retryDelay} onChange={(value) => handleRetryDelayChange(value)} title="Static cooldown when the provider reports no reset deadline" size="sm" aria-label="Retry delay" /></div>
           </div>
         </div>
       </div>
 
       {providerInfo.deprecated &&
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-          <span className="material-symbols-outlined text-[16px] text-yellow-500 mt-0.5 shrink-0">warning</span>
-          <p className="text-xs text-red-600 dark:text-yellow-400 leading-relaxed">{providerInfo.deprecationNotice}</p>
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dd-warning/10 border border-dd-warning/30">
+          <span className="material-symbols-outlined text-[16px] text-dd-warning mt-0.5 shrink-0">warning</span>
+          <p className="text-xs text-dd-danger dark:text-dd-warning leading-relaxed">{providerInfo.deprecationNotice}</p>
         </div>
       }
 
       {providerInfo.notice?.text && !providerInfo.deprecated &&
-      <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
-          <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">info</span>
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-blue-600 dark:text-blue-400">{providerInfo.notice.text}</p>
+      <div className="flex flex-col gap-2 rounded-lg border border-dd-info/30 bg-dd-info/10 px-3 py-2 sm:flex-row sm:items-center">
+          <span className="material-symbols-outlined text-[16px] text-dd-info shrink-0">info</span>
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-dd-info">{providerInfo.notice.text}</p>
           {providerInfo.notice.apiKeyUrl &&
         <a
           href={providerInfo.notice.apiKeyUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex justify-center rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 sm:py-0.5">
+          className="inline-flex justify-center rounded bg-dd-info px-2 py-1 text-xs font-medium text-dd-on-accent transition-colors hover:bg-dd-info sm:py-0.5">
           
               Get API Key →
             </a>
@@ -1690,7 +1674,7 @@ export default function ProviderDetailPage() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold">{isAnthropicCompatible ? "Anthropic Compatible Details" : "OpenAI Compatible Details"}</h2>
-              <p className="break-all text-sm text-text-muted">
+              <p className="break-all text-sm text-dd-muted">
                 {isAnthropicCompatible ? "Messages API" : providerNode.apiType === "responses" ? "Responses API" : "Chat Completions"} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/
                 {isAnthropicCompatible ? "messages" : providerNode.apiType === "responses" ? "responses" : "chat/completions"}
               </p>
@@ -1831,37 +1815,37 @@ export default function ProviderDetailPage() {
                   Reorder
                 </Button>
             }
-              {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-text-muted font-medium">Round Robin</span>
+                <span className="text-xs text-dd-muted font-medium">Round Robin</span>
                 <Toggle
+                ariaLabel="Toggle round robin"
                 checked={providerStrategy === "round-robin"}
                 onChange={handleRoundRobinToggle} />
               
                 {providerStrategy === "round-robin" &&
               <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-text-muted">Sticky:</span>
+                    <span className="text-xs text-dd-muted">Sticky:</span>
                     <input
                   type="number"
                   min={1}
                   value={providerStickyLimit}
                   onChange={(e) => handleStickyLimitChange(e.target.value)}
                   placeholder="1"
-                  className="w-14 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary" />
+                  className="h-9 w-14 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none focus:border-dd-accent focus-visible:shadow-dd-focus" />
                 
                   </div>
               }
               </div>
               {/* Per-provider concurrency limit */}
               <div className="flex items-center gap-2">
-                <span className="text-xs text-text-muted font-medium">Max Concurrent</span>
+                <span className="text-xs text-dd-muted font-medium">Max Concurrent</span>
                 <input
                 type="number"
                 min={0}
                 value={concurrencyLimit}
                 onChange={(e) => handleConcurrencyLimitChange(e.target.value)}
                 placeholder="∞"
-                className="w-16 px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary" />
+                className="h-9 w-16 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none focus:border-dd-accent focus-visible:shadow-dd-focus" />
               
               </div>
             </div>
@@ -1870,13 +1854,13 @@ export default function ProviderDetailPage() {
           {connections.length === 0 ?
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
-                <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0">
+                <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-dd-accent-soft text-dd-accent shrink-0">
                   <span className="material-symbols-outlined text-[18px]">{isOAuth ? "lock" : "key"}</span>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm text-text-muted">No connections yet</p>
+                  <p className="text-sm text-dd-muted">No connections yet</p>
                   {hasDualAuthModes &&
-              <p className="text-xs text-text-muted">
+              <p className="text-xs text-dd-muted">
                       Choose {oauthConnectionLabel} or {apiKeyConnectionLabel}.
                     </p>
               }
@@ -1923,14 +1907,14 @@ export default function ProviderDetailPage() {
 
         <>
               {oneByOneSummary &&
-          <div className="mb-4 rounded-lg border border-black/10 bg-black/[0.02] px-3 py-2 text-xs text-text-muted dark:border-white/10 dark:bg-white/[0.03]">
+          <div className="mb-4 rounded-lg border border-dd-border bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted">
                   <div className="flex flex-wrap items-center gap-3">
                     <span>Total: {oneByOneSummary.total}</span>
                     <span>Completed: {oneByOneSummary.completed}</span>
                     <span>Passed: {oneByOneSummary.passed}</span>
                     <span>Failed: {oneByOneSummary.failed}</span>
                     {oneByOneSummary.stopped &&
-              <span className="text-amber-600 dark:text-amber-400">Stopped</span>
+              <span className="text-dd-warning">Stopped</span>
               }
                     {oneByOneRunning && oneByOneCurrentConnectionId &&
               <span>Running: {connections.find((conn) => conn.id === oneByOneCurrentConnectionId)?.name || oneByOneCurrentConnectionId}</span>
@@ -1940,12 +1924,12 @@ export default function ProviderDetailPage() {
           }
               {connections.length > 0 &&
           <div className="mb-3 flex items-center gap-2 border-b border-black/[0.03] pb-2 dark:border-white/[0.03]">
-                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-text-muted hover:text-primary">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-dd-muted hover:text-dd-accent">
                     <input
                 type="checkbox"
                 checked={allSelected}
                 onChange={toggleSelectAllConnections}
-                className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary" />
+                className="h-3.5 w-3.5 rounded border-dd-border text-dd-accent focus:shadow-dd-focus" />
               
                     Select All
                   </label>
@@ -2033,18 +2017,16 @@ export default function ProviderDetailPage() {
             <h2 className="text-lg font-semibold">
               {"Available Models"}
             </h2>
-            {providerThinkingLevels &&
-            <select
-              value={thinkingMode}
-              onChange={(e) => handleThinkingModeChange(e.target.value)}
-              title="Appends (level) suffix to copied model names"
-              className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none">
-              
-                {providerThinkingLevels.map((opt) =>
-              <option key={opt} value={opt}>{`Thinking: ${opt.charAt(0).toUpperCase() + opt.slice(1)}`}</option>
-              )}
-              </select>
-            }
+            {providerThinkingLevels ? (
+              <div className="w-44"><Select
+                options={providerThinkingLevels.map((opt) => ({ value: opt, label: `Thinking: ${opt.charAt(0).toUpperCase() + opt.slice(1)}` }))}
+                value={thinkingMode}
+                onChange={(value) => handleThinkingModeChange(value)}
+                title="Appends (level) suffix to copied model names"
+                aria-label="Thinking mode"
+                size="sm"
+              /></div>
+            ) : null}
           </div>
           {!isCompatible && (() => {
             const allIds = [
@@ -2069,7 +2051,7 @@ export default function ProviderDetailPage() {
           })()}
         </div>
         {!!modelsTestError &&
-        <p className="text-xs text-red-500 mb-3 break-words">{modelsTestError}</p>
+        <p className="text-xs text-dd-danger mb-3 break-words">{modelsTestError}</p>
         }
         {renderModelsSection()}
       </Card>
@@ -2161,19 +2143,19 @@ export default function ProviderDetailPage() {
         }>
         
         <div className="space-y-4">
-          <p className="text-sm text-text-muted">
-            Paste the contents of <code className="rounded bg-surface-2 px-1 py-0.5">~/.grok/auth.json</code>, a raw Grok JWT, or a structured <code className="rounded bg-surface-2 px-1 py-0.5">{"{ accessToken, refreshToken }"}</code> body.
+          <p className="text-sm text-dd-muted">
+            Paste the contents of <code className="rounded bg-dd-surface-2 px-1 py-0.5">~/.grok/auth.json</code>, a raw Grok JWT, or a structured <code className="rounded bg-dd-surface-2 px-1 py-0.5">{"{ accessToken, refreshToken }"}</code> body.
           </p>
           <textarea
             value={importTokenValue}
             onChange={(event) => setImportTokenValue(event.target.value)}
             rows={10}
             spellCheck={false}
-            className="w-full rounded-[10px] border border-border bg-background px-3 py-2 font-mono text-xs text-text-main outline-none focus:border-primary"
+            className="w-full rounded-[10px] border border-dd-border bg-dd-surface px-3 py-2 font-mono text-xs text-dd-text outline-none focus:border-dd-accent"
             placeholder='{"https://auth.x.ai::client":{"key":"eyJ...","refresh_token":"...","expires_at":"..."}}' />
           
           {!!importTokenError &&
-          <p className="text-sm text-red-500">{importTokenError}</p>
+          <p className="text-sm text-dd-danger">{importTokenError}</p>
           }
         </div>
       </Modal>

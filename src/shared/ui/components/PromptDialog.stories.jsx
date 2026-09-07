@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
 import PromptDialog from "./PromptDialog";
 
 /**
@@ -54,6 +55,16 @@ export const Default = {
       placeholder="e.g. ci-runner-01"
     />
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Name gateway key" }));
+    const dialog = within(document.body);
+    await expect(await dialog.findByRole("dialog", { name: "Name this gateway key" })).toBeVisible();
+    const input = dialog.getByLabelText("Gateway key name (optional)");
+    await userEvent.type(input, "ci-runner-01");
+    await expect(input).toHaveValue("ci-runner-01");
+    await expect(dialog.getByRole("button", { name: "Save" })).toBeVisible();
+  },
 };
 
 export const WithDefaultValue = {

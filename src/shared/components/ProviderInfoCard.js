@@ -1,6 +1,6 @@
 "use client";
 
-import Card from "./Card";
+import { Card, CardContent } from "@/shared/ui/components/Card.jsx";
 
 // Only show fields user actually cares about
 const FIELD_SCHEMA = {
@@ -35,48 +35,43 @@ export default function ProviderInfoCard({ config, provider, title = "Provider I
   const noticeText = provider?.notice?.text;
 
   return (
-    <Card>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        {signupUrl && (
+    <Card padding={false}>
+      <div className="flex items-center gap-3 border-b border-dd-border-subtle px-5 py-4">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent" aria-hidden="true">
+          <span className="material-symbols-outlined text-[18px] leading-none">info</span>
+        </span>
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-dd-text">{title}</h2>
+        {signupUrl ? (
           <a
             href={signupUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+            className="ml-auto inline-flex min-h-11 shrink-0 items-center gap-1 rounded-dd px-2 text-[13px] font-medium text-dd-accent outline-none hover:bg-dd-accent-soft focus-visible:shadow-dd-focus"
           >
-            <span className="material-symbols-outlined text-sm">open_in_new</span>
+            <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">open_in_new</span>
             Get API Key
           </a>
-        )}
+        ) : null}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-        {rows.map((r) => (
-          <div key={r.key} className="flex items-center gap-3 min-w-0">
-            <span className="text-xs text-text-muted w-28 shrink-0">{r.label}</span>
-            {r.isLink ? (
-              <a
-                href={r.raw}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`text-sm text-primary hover:underline truncate ${r.mono ? "font-mono" : ""}`}
-              >
-                {r.value}
-              </a>
-            ) : (
-              <span className={`text-sm text-text-main truncate ${r.mono ? "font-mono" : ""}`}>
-                {r.value}
-              </span>
-            )}
-          </div>
-        ))}
-        {noticeText && (
-          <div className="flex items-start gap-3 min-w-0 sm:col-span-2">
-            <span className="text-xs text-text-muted w-28 shrink-0 mt-0.5">Notice</span>
-            <span className="text-sm text-text-main leading-relaxed">{noticeText}</span>
-          </div>
-        )}
-      </div>
+      <CardContent>
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+          {rows.map((row) => (
+            <div key={row.key} className="flex min-w-0 items-center gap-3">
+              <dt className="w-28 shrink-0 text-xs text-dd-muted">{row.label}</dt>
+              <dd className="min-w-0 flex-1">
+                {row.isLink ? (
+                  <a href={row.raw} target="_blank" rel="noopener noreferrer" className={`block truncate text-[13px] text-dd-accent outline-none hover:underline focus-visible:rounded-dd focus-visible:shadow-dd-focus ${row.mono ? "font-mono dd-tnum" : ""}`}>
+                    {row.value}
+                  </a>
+                ) : (
+                  <span className={`block truncate text-[13px] text-dd-text ${row.mono ? "font-mono dd-tnum" : ""}`}>{row.value}</span>
+                )}
+              </dd>
+            </div>
+          ))}
+          {noticeText ? <div className="flex min-w-0 items-start gap-3 sm:col-span-2"><dt className="w-28 shrink-0 pt-0.5 text-xs text-dd-muted">Notice</dt><dd className="text-[13px] leading-relaxed text-dd-text">{noticeText}</dd></div> : null}
+        </dl>
+      </CardContent>
     </Card>
   );
 }

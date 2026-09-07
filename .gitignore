@@ -13,6 +13,12 @@
 # testing
 /coverage
 
+# Playwright UI-harness artifacts. storageState and diagnostics stay local/private.
+/test-results/
+/playwright-report/
+/blob-report/
+/qa/runs/
+
 # next.js
 /.next/
 /.next-cli-build/
@@ -85,3 +91,4 @@ model-catalog-report.md
 
 # Storybook static build output (`npm run storybook:build`)
 storybook-static/
+storybook-production-proof/

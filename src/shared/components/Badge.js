@@ -2,19 +2,34 @@
 
 import { cn } from "@/shared/utils/cn";
 
-const variants = {
-  default: "bg-surface-2 text-text-muted",
-  primary: "bg-brand-500/10 text-brand-600 dark:text-brand-300",
-  success: "bg-green-500/10 text-green-600 dark:text-green-400",
-  warning: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
-  error: "bg-red-500/10 text-red-600 dark:text-red-400",
-  info: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+const VARIANT_CLASSES = {
+  default: "border border-dd-border bg-dd-surface-2 text-dd-muted",
+  primary: "bg-dd-accent-soft text-dd-accent",
+  success: "bg-dd-success/10 text-dd-success",
+  warning: "bg-dd-warning/10 text-dd-warning",
+  error: "bg-dd-danger/10 text-dd-danger",
+  info: "bg-dd-info/10 text-dd-info",
 };
 
-const sizes = {
-  sm: "px-2 py-0.5 text-[10px]",
-  md: "px-2.5 py-1 text-xs",
-  lg: "px-3 py-1.5 text-sm",
+const DOT_CLASSES = {
+  default: "bg-dd-muted",
+  primary: "bg-dd-accent",
+  success: "bg-dd-success",
+  warning: "bg-dd-warning",
+  error: "bg-dd-danger",
+  info: "bg-dd-info",
+};
+
+const SIZE_CLASSES = {
+  sm: "gap-1 px-1.5 py-0.5 text-[11px]",
+  md: "gap-1.5 px-2 py-1 text-xs",
+  lg: "gap-1.5 px-3 py-1.5 text-sm",
+};
+
+const ICON_CLASSES = {
+  sm: "text-[12px]",
+  md: "text-[14px]",
+  lg: "text-[16px]",
 };
 
 export default function Badge({
@@ -24,30 +39,27 @@ export default function Badge({
   dot = false,
   icon,
   className,
+  ...props
 }) {
+  const resolvedVariant = VARIANT_CLASSES[variant] ? variant : "default";
+  const resolvedSize = SIZE_CLASSES[size] ? size : "md";
+
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full font-semibold",
-        variants[variant],
-        sizes[size],
+        "inline-flex items-center rounded-full font-medium whitespace-nowrap",
+        VARIANT_CLASSES[resolvedVariant],
+        SIZE_CLASSES[resolvedSize],
         className
       )}
+      {...props}
     >
-      {dot && (
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            variant === "success" && "bg-green-500",
-            variant === "warning" && "bg-yellow-500",
-            variant === "error" && "bg-red-500",
-            variant === "info" && "bg-blue-500",
-            variant === "primary" && "bg-brand-500",
-            variant === "default" && "bg-gray-500"
-          )}
-        />
+      {dot && <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", DOT_CLASSES[resolvedVariant])} />}
+      {icon && (
+        <span aria-hidden="true" className={cn("material-symbols-outlined leading-none", ICON_CLASSES[resolvedSize])}>
+          {icon}
+        </span>
       )}
-      {icon && <span className="material-symbols-outlined text-[14px]">{icon}</span>}
       {children}
     </span>
   );

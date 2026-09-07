@@ -1,27 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Card from "@/shared/components/Card";
+import { useEffect, useMemo, useState } from "react";
+import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
+import DataTable from "@/shared/ui/components/DataTable.jsx";
+import Tabs from "@/shared/ui/components/Tabs.jsx";
+import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import { formatCompactToken } from "@/shared/utils/formatCompact";
+import { isNumber } from "@/shared/utils/typeChecks";
 
-const TABS = [
-  { value: "recent", label: "Recent Requests" },
-  { value: "sessions", label: "Sessions" },
-];
 const ENDED_VISIBILITY_MS = 15000;
 
+/** Ticks once a second so `visibleSessions` re-evaluates the 15s ended-session fade window. */
 function useClock() {
-  const [, setTick] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setTick((tick) => tick + 1), 1000);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-}
-
-/** Compact per-request token count; exact total stays available via title. */
-function TokenCount({ value, formatToken, className }) {
-  const { display, title } = formatToken(value);
-  return <span className={`dd-tnum ${className}`} title={title} aria-label={title}>{display}</span>;
+  return now;
 }
 
 function timeAgo(timestamp) {
@@ -33,65 +29,45 @@ function timeAgo(timestamp) {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-/** Render recent requests and live concurrent sessions in the existing usage card. */
+function tokens(value, formatToken) {
+  const compact = formatToken(value);
+  return <span role="img" className="dd-tnum" title={compact.title} aria-label={compact.title}>{compact.display}</span>;
+}
+
 export default function RequestsPanel({ recentRequests = [], activeSessions = [], formatToken = formatCompactToken }) {
   const [tab, setTab] = useState("recent");
-  useClock();
+  const now = useClock();
+  const visibleSessions = useMemo(
+    () => activeSessions.filter((session) => {
+      if (session.status === "active" || !session.completedAt) return true;
+      const completedAtMs = isNumber(session.completedAt) ? session.completedAt : new Date(session.completedAt).getTime();
+      return !Number.isFinite(completedAtMs) || now - completedAtMs < ENDED_VISIBILITY_MS;
+    }),
+    [activeSessions, now],
+  );
+  const columns = tab === "recent"
+    ? [
+        { key: "status", label: "", render: (request) => <StatusDot tone={!request.status || request.status === "ok" || request.status === "success" ? "success" : "danger"} /> },
+        { key: "model", label: "Model", mono: true, rowHeader: true, render: (request) => <span title={request.model}>{request.model}</span> },
+        { key: "tokens", label: "In / Out", align: "right", mono: true, render: (request) => <>{tokens(request.promptTokens, formatToken)} / {tokens(request.completionTokens, formatToken)}</> },
+        { key: "timestamp", label: "When", align: "right", render: (request) => timeAgo(request.timestamp) },
+      ]
+    : [
+        { key: "status", label: "", render: (session) => <StatusDot tone={session.status === "error" ? "danger" : session.status === "active" ? "success" : "neutral"} pulse={session.status === "active"} /> },
+        { key: "clientId", label: "Client", mono: true, rowHeader: true, render: (session) => <span title={session.clientId}>{session.clientId}</span> },
+        { key: "model", label: "Model", mono: true, render: (session) => <span title={`${session.model} · ${session.provider}`}>{session.model}</span> },
+        { key: "tokens", label: "In / Out", align: "right", mono: true, render: (session) => session.promptTokens != null || session.completionTokens != null ? <>{tokens(session.promptTokens, formatToken)} / {tokens(session.completionTokens, formatToken)}</> : "—" },
+      ];
+  const rows = tab === "recent" ? recentRequests : visibleSessions;
   return (
-    <Card className="flex min-w-0 flex-col overflow-hidden" padding="sm" style={{ height: 480 }}>
-      <div className="flex items-center justify-between gap-2 border-b border-border px-1 py-2">
-        <div className="flex gap-1">
-          {TABS.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              onClick={() => setTab(item.value)}
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${tab === item.value ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-bg-subtle hover:text-text"}`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        {tab === "sessions" && <span className="text-[11px] text-text-muted">{activeSessions.filter((session) => session.status === "active").length} active</span>}
+    <Card padding={false} className="flex min-w-0 flex-col overflow-hidden" style={{ height: 480 }}>
+      <CardHeader icon="monitoring" title="Requests" subtitle={tab === "sessions" ? `${visibleSessions.filter((session) => session.status === "active").length} active` : undefined} />
+      <div className="border-b border-dd-border-subtle px-3 py-2">
+        <Tabs tabs={[{ value: "recent", label: "Recent requests" }, { value: "sessions", label: "Sessions" }]} value={tab} onChange={setTab} />
       </div>
-      {tab === "recent" ? <RecentRequests requests={recentRequests} formatToken={formatToken} /> : <Sessions sessions={activeSessions} formatToken={formatToken} />}
+      <CardContent className="min-h-0 flex-1 overflow-auto p-0">
+        <DataTable columns={columns} rows={rows} keyFn={(row, index) => row.requestId ?? `${row.timestamp ?? row.clientId}-${index}`} density="compact" caption={tab === "recent" ? "Recent requests" : "Active sessions"} emptyState={{ icon: "inbox", title: tab === "recent" ? "No requests yet" : "No active sessions" }} />
+      </CardContent>
     </Card>
-  );
-}
-
-function RecentRequests({ requests, formatToken }) {
-  if (!requests.length) return <div className="flex flex-1 items-center justify-center text-sm text-text-muted">No requests yet.</div>;
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <table className="w-full min-w-[300px] border-collapse text-xs">
-        <thead className="sticky top-0 bg-bg"><tr className="border-b border-border"><th className="w-2 py-1.5" /><th className="py-1.5 text-left text-text-muted">Model</th><th className="py-1.5 text-right text-text-muted">In / Out</th><th className="py-1.5 text-right text-text-muted">When</th></tr></thead>
-        <tbody className="divide-y divide-border/50">
-          {requests.map((request, index) => {
-            const ok = !request.status || request.status === "ok" || request.status === "success";
-            return <tr key={`${request.timestamp}-${index}`}><td className="py-1.5"><span className={`block size-1.5 rounded-full ${ok ? "bg-success" : "bg-error"}`} /></td><td className="max-w-[120px] truncate py-1.5 font-mono" title={request.model}>{request.model}</td><td className="whitespace-nowrap py-1.5 text-right"><TokenCount value={request.promptTokens} formatToken={formatToken} className="text-primary" />↑{" "}<TokenCount value={request.completionTokens} formatToken={formatToken} className="text-success" />↓</td><td className="whitespace-nowrap py-1.5 text-right text-text-muted">{timeAgo(request.timestamp)}</td></tr>;
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Sessions({ sessions, formatToken }) {
-  const now = Date.now();
-  const visible = sessions.filter((session) => session.status === "active" || !session.completedAt || now - session.completedAt < ENDED_VISIBILITY_MS);
-  if (!visible.length) return <div className="flex flex-1 items-center justify-center text-sm text-text-muted">No active sessions.</div>;
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <table className="w-full min-w-[320px] border-collapse text-xs">
-        <thead className="sticky top-0 bg-bg"><tr className="border-b border-border"><th className="w-2 py-1.5" /><th className="py-1.5 text-left text-text-muted">Client IP</th><th className="py-1.5 text-left text-text-muted">Model</th><th className="py-1.5 text-right text-text-muted">In / Out</th></tr></thead>
-        <tbody className="divide-y divide-border/50">
-          {visible.map((session) => {
-            const dot = session.status === "error" ? "bg-error" : session.status === "active" ? "animate-pulse bg-primary" : "bg-success";
-            const hasTokens = session.promptTokens != null || session.completionTokens != null;
-            return <tr key={session.requestId}><td className="py-1.5"><span className={`block size-1.5 rounded-full ${dot}`} /></td><td className="max-w-[110px] truncate py-1.5 font-mono" title={session.clientId}>{session.clientId}</td><td className="max-w-[140px] truncate py-1.5 font-mono" title={`${session.model} · ${session.provider}`}>{session.model}</td><td className="whitespace-nowrap py-1.5 text-right">{hasTokens ? <><TokenCount value={session.promptTokens} formatToken={formatToken} className="text-primary" />↑{" "}<TokenCount value={session.completionTokens} formatToken={formatToken} className="text-success" />↓</> : "—"}</td></tr>;
-          })}
-        </tbody>
-      </table>
-    </div>
   );
 }

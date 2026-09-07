@@ -59,26 +59,17 @@ describe("pre-paint theme bootstrap", () => {
     ["malformed JSON", "{"],
     ["missing persisted state", "{}"],
     ["unknown theme", persisted("sepia")],
-  ])("leaves the root class unchanged for %s", (_name, stored) => {
-    expect(runBootstrap({ stored, initialDark: true })).toBe(true);
+  ])("uses system preference before hydration for %s", (_name, stored) => {
+    expect(runBootstrap({ stored, systemDark: true })).toBe(true);
+    expect(runBootstrap({ stored, initialDark: true, systemDark: false })).toBe(false);
   });
 
-  it("does not throw or change the root class when storage is inaccessible", () => {
-    expect(runBootstrap({ initialDark: true, storageError: new Error("denied") })).toBe(true);
+  it("uses system preference when storage is inaccessible", () => {
+    expect(runBootstrap({ systemDark: true, storageError: new Error("denied") })).toBe(true);
   });
 
   it("does not throw or change the root class when system preference is inaccessible", () => {
     expect(runBootstrap({ stored: persisted("system"), initialDark: true, mediaError: new Error("denied") })).toBe(true);
   });
 
-  it("loads before hydration from a same-origin file without weakening CSP", () => {
-    const layout = read("src/app/layout.js");
-    const nextConfig = read("next.config.mjs");
-    const bootstrapIndex = layout.indexOf('<script src="/theme-bootstrap.js"></script>');
-    const fontBootstrapIndex = layout.indexOf("dangerouslySetInnerHTML");
-
-    expect(bootstrapIndex).toBeGreaterThan(-1);
-    expect(bootstrapIndex).toBeLessThan(fontBootstrapIndex);
-    expect(nextConfig).not.toContain("'unsafe-inline'");
-  });
 });

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import PropTypes from "prop-types";
-import Card from "@/shared/components/Card";
-import Badge from "@/shared/components/Badge";
-import Pagination from "@/shared/components/Pagination";
+import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import DataTable from "@/shared/ui/components/DataTable.jsx";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { formatCompactToken } from "@/shared/utils/formatCompact";
+import { isUndefined } from "@/shared/utils/typeChecks";
 
 const fmt = (n) => new Intl.NumberFormat().format(n || 0);
 const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
@@ -20,123 +21,150 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleDateString();
 }
 
-function SortIcon({ field, currentSort, currentOrder }) {
-  if (currentSort !== field) return <span className="ml-1 opacity-20">↕</span>;
-  return <span className="ml-1">{currentOrder === "asc" ? "↑" : "↓"}</span>;
+function pendingBadge(pending, neutralTone = "neutral") {
+  if (pending > 0) {
+    return <Badge tone="accent" size="sm">{fmt(pending)} pending</Badge>;
+  }
+  return <Badge tone={neutralTone} size="sm">Settled</Badge>;
 }
 
-SortIcon.propTypes = {
-  field: PropTypes.string.isRequired,
-  currentSort: PropTypes.string.isRequired,
-  currentOrder: PropTypes.string.isRequired,
-};
+function summaryTokenColumn(field, label) {
+  return {
+    key: field,
+    label,
+    align: "right",
+    mono: true,
+    render: (summary) => {
+      const compact = formatCompactToken(summary[field]);
+      return (
+        <span role="img" className="dd-tnum" title={compact.title} aria-label={compact.title}>
+          {compact.display}
+        </span>
+      );
+    },
+  };
+}
+
+function summaryCostColumn(field, label) {
+  return {
+    key: field,
+    label,
+    align: "right",
+    mono: true,
+    render: (summary) => (
+      <span className="dd-tnum text-dd-warning">{fmtCost(summary[field])}</span>
+    ),
+  };
+}
 
 /**
- * Render 3 token or cost cells based on viewMode
+ * Build the trailing value columns based on viewMode ("tokens" | "costs").
+ * Exposed so the caller's `groupColumns` can extend the same axis.
  */
-function ValueCells({ item, viewMode, isSummary = false }) {
-  if (viewMode === "tokens") {
-    return (
-      <>
-        <td className="px-6 py-3 text-right text-text-muted">
-          {isSummary && item.promptTokens === undefined ? "—" : <span className="dd-tnum" title={formatCompactToken(item.promptTokens).title} aria-label={formatCompactToken(item.promptTokens).title}>{formatCompactToken(item.promptTokens).display}</span>}
-        </td>
-        <td className="px-6 py-3 text-right text-text-muted">
-          {item.cachedTokens ? <span className="dd-tnum" title={formatCompactToken(item.cachedTokens).title} aria-label={formatCompactToken(item.cachedTokens).title}>{formatCompactToken(item.cachedTokens).display}</span> : "—"}
-        </td>
-        <td className="px-6 py-3 text-right text-text-muted">
-          {item.cacheCreationTokens ? <span className="dd-tnum" title={formatCompactToken(item.cacheCreationTokens).title} aria-label={formatCompactToken(item.cacheCreationTokens).title}>{formatCompactToken(item.cacheCreationTokens).display}</span> : "—"}
-        </td>
-        <td className="px-6 py-3 text-right text-text-muted">
-          {isSummary && item.completionTokens === undefined ? "—" : <span className="dd-tnum" title={formatCompactToken(item.completionTokens).title} aria-label={formatCompactToken(item.completionTokens).title}>{formatCompactToken(item.completionTokens).display}</span>}
-        </td>
-        <td className="px-6 py-3 text-right text-text-muted">
-          {item.reasoningTokens ? <span className="dd-tnum" title={formatCompactToken(item.reasoningTokens).title} aria-label={formatCompactToken(item.reasoningTokens).title}>{formatCompactToken(item.reasoningTokens).display}</span> : "—"}
-        </td>
-        <td className="px-6 py-3 text-right font-medium">
-          {<span className="dd-tnum" title={formatCompactToken(item.totalTokens).title} aria-label={formatCompactToken(item.totalTokens).title}>{formatCompactToken(item.totalTokens).display}</span>}
-        </td>
-      </>
-    );
+export function buildValueColumns(viewMode) {
+  if (viewMode === "costs") {
+    return [
+      summaryCostColumn("inputCost", "Input Cost"),
+      summaryCostColumn("cachedCost", "Cached Cost"),
+      summaryCostColumn("cacheCreationCost", "Cache Write"),
+      summaryCostColumn("outputCost", "Output Cost"),
+      summaryCostColumn("reasoningCost", "Reasoning Cost"),
+      summaryCostColumn("cost", "Total Cost"),
+    ];
   }
-  return (
-    <>
-      <td className="px-6 py-3 text-right text-text-muted">
-        {isSummary && item.inputCost === undefined ? "—" : fmtCost(item.inputCost)}
-      </td>
-      <td className="px-6 py-3 text-right text-text-muted">
-        {item.cachedCost ? fmtCost(item.cachedCost) : "—"}
-      </td>
-      <td className="px-6 py-3 text-right text-text-muted">
-        {item.cacheCreationCost ? fmtCost(item.cacheCreationCost) : "—"}
-      </td>
-      <td className="px-6 py-3 text-right text-text-muted">
-        {isSummary && item.outputCost === undefined ? "—" : fmtCost(item.outputCost)}
-      </td>
-      <td className="px-6 py-3 text-right text-text-muted">
-        {item.reasoningCost ? fmtCost(item.reasoningCost) : "—"}
-      </td>
-      <td className="px-6 py-3 text-right font-medium text-warning">
-        {fmtCost(item.totalCost || item.cost)}
-      </td>
-    </>
-  );
+  return [
+    summaryTokenColumn("promptTokens", "Input"),
+    summaryTokenColumn("cachedTokens", "Cached"),
+    summaryTokenColumn("cacheCreationTokens", "Cache Write"),
+    summaryTokenColumn("completionTokens", "Output"),
+    summaryTokenColumn("reasoningTokens", "Reasoning"),
+    summaryTokenColumn("totalTokens", "Total"),
+  ];
 }
 
-ValueCells.propTypes = {
-  item: PropTypes.object.isRequired,
-  viewMode: PropTypes.string.isRequired,
-  isSummary: PropTypes.bool,
-};
+function buildDetailValueColumns(viewMode) {
+  if (viewMode === "costs") {
+    return [
+      summaryCostColumn("inputCost", "Input"),
+      summaryCostColumn("cachedCost", "Cached"),
+      summaryCostColumn("cacheCreationCost", "Cache Write"),
+      summaryCostColumn("outputCost", "Output"),
+      summaryCostColumn("reasoningCost", "Reasoning"),
+      summaryCostColumn("cost", "Total"),
+    ];
+  }
+  return [
+    summaryTokenColumn("promptTokens", "Input"),
+    summaryTokenColumn("cachedTokens", "Cached"),
+    summaryTokenColumn("cacheCreationTokens", "Cache Write"),
+    summaryTokenColumn("completionTokens", "Output"),
+    summaryTokenColumn("reasoningTokens", "Reasoning"),
+    summaryTokenColumn("totalTokens", "Total"),
+  ];
+}
+
+const GROUP_ROW_LABEL_TONE = "font-medium text-dd-text";
 
 /**
  * Reusable sortable usage table with expandable group rows.
+ * Durin DS strict contract: parent (UsageStats) supplies:
+ *   - `groupColumns`     [{ key, label, align?, mono?, render: (summary) => ReactNode }]  - summary row cells
+ *   - `detailColumns`    [{ key, label, align?, mono?, render: (item) => ReactNode }]     - detail row cells
+ *   - `detailValueColumns` (optional, overrides built-in trailing value columns)
+ *   - `groupKeyRender`   (optional) (summary) => ReactNode for the row-header cell
+ *   - `valueMode`        "tokens" | "costs"   drives trailing value columns
+ *
+ * Each expanded group renders its detail rows inside a nested DS DataTable.
+ *
+ * Sort: `sortBy` + `sortOrder` drive a header button per column. Click
+ * callbacks flow through `onToggleSort(tableType, field)`.
  *
  * @param {object} props
- * @param {string} props.title - Table title
- * @param {Array} props.columns - Column definitions [{field, label}]
- * @param {Array} props.groupedData - Grouped data from groupDataByKey
- * @param {string} props.tableType - Table type key for sort URL params
- * @param {string} props.sortBy - Current sort field
- * @param {string} props.sortOrder - Current sort order
- * @param {function} props.onToggleSort - Sort toggle handler
- * @param {string} props.viewMode - "tokens" or "costs"
- * @param {string} props.storageKey - localStorage key for expanded state
- * @param {function} props.renderGroupLabel - Render group summary first cell content
- * @param {function} props.renderDetailCells - Render detail row custom cells (before value cells)
- * @param {function} props.renderSummaryCells - Render summary row cells after group label (placeholder cols)
- * @param {string} props.emptyMessage - Empty state message
+ * @param {string} props.title
+ * @param {Array<{key:string,label:string,align?:string,mono?:boolean,render?:(row:object)=>React.ReactNode}>} props.groupColumns
+ * @param {Array<{key:string,label:string,align?:string,mono?:boolean,render?:(row:object)=>React.ReactNode}>} props.detailColumns
+ * @param {Array<{key:string,label:string,align?:string,mono?:boolean,render?:(row:object)=>React.ReactNode}>} [props.detailValueColumns]
+ * @param {Array} props.groupedData
+ * @param {string} props.tableType
+ * @param {string} props.sortBy
+ * @param {string} props.sortOrder
+ * @param {(tableType:string, field:string) => void} props.onToggleSort
+ * @param {"tokens"|"costs"} props.valueMode
+ * @param {string} props.storageKey
+ * @param {(summary:object) => React.ReactNode} [props.groupKeyRender]
+ * @param {string} props.emptyMessage
  */
 export default function UsageTable({
   title,
-  columns,
-  groupedData,
+  groupColumns = [],
+  detailColumns = [],
+  detailValueColumns,
+  groupedData = [],
   tableType,
   sortBy,
   sortOrder,
   onToggleSort,
-  viewMode,
+  valueMode = "tokens",
   storageKey,
-  renderDetailCells,
-  renderSummaryCells,
+  groupKeyRender,
   emptyMessage,
 }) {
   const [expanded, setExpanded] = useState(new Set());
 
-  // Load expanded state from localStorage
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(storageKey);
+      const saved = !isUndefined(globalThis.localStorage) ? globalThis.localStorage.getItem(storageKey) : null;
       if (saved) setExpanded(new Set(JSON.parse(saved)));
     } catch (e) {
       console.error(`Failed to load ${storageKey}:`, e);
     }
   }, [storageKey]);
 
-  // Save expanded state to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify([...expanded]));
+      if (!isUndefined(globalThis.localStorage)) {
+        globalThis.localStorage.setItem(storageKey, JSON.stringify([...expanded]));
+      }
     } catch (e) {
       console.error(`Failed to save ${storageKey}:`, e);
     }
@@ -145,144 +173,179 @@ export default function UsageTable({
   const toggleGroup = useCallback((groupKey) => {
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(groupKey) ? next.delete(groupKey) : next.add(groupKey);
+      if (next.has(groupKey)) next.delete(groupKey); else next.add(groupKey);
       return next;
     });
   }, []);
 
-  const valueColumns = useMemo(() => {
-    if (viewMode === "tokens") {
-      return [
-        { field: "promptTokens", label: "Input Tokens" },
-        { field: "cachedTokens", label: "Cached" },
-        { field: "cacheCreationTokens", label: "Cache Write" },
-        { field: "completionTokens", label: "Output Tokens" },
-        { field: "reasoningTokens", label: "Reasoning" },
-        { field: "totalTokens", label: "Total Tokens" },
-      ];
-    }
-    return [
-      { field: "promptTokens", label: "Input Cost" },
-      { field: "cachedCost", label: "Cached Cost" },
-      { field: "cacheCreationCost", label: "Cache Write Cost" },
-      { field: "completionTokens", label: "Output Cost" },
-      { field: "reasoningCost", label: "Reasoning Cost" },
-      { field: "cost", label: "Total Cost" },
-    ];
-  }, [viewMode]);
+  const trailingValueColumns = useMemo(
+    () => detailValueColumns ?? buildDetailValueColumns(valueMode),
+    [detailValueColumns, valueMode],
+  );
 
   const { pageItems: pageGroups, page, pageSize, setPage, setPageSize, totalItems, totalPages } = usePagination({
     items: groupedData,
     pageSize: 20,
-    resetKey: `${tableType}-${sortBy}-${sortOrder}`,
+    resetKey: `${tableType}-${sortBy}-${sortOrder}-${valueMode}`,
   });
 
-  const totalColSpan = columns.length + valueColumns.length;
+  const headerColumns = useMemo(() => {
+    const cols = [
+      {
+        key: "__group",
+        label: "Group",
+        render: (row) => row.__group,
+        rowHeader: true,
+      },
+      ...groupColumns.map((col) => ({
+        key: col.key,
+        label: (
+          <span className="inline-flex items-center gap-1">
+            <span>{col.label}</span>
+            {col.key === sortBy
+              ? <span aria-hidden="true" className="material-symbols-outlined text-[14px] leading-none text-dd-accent">{sortOrder === "asc" ? "arrow_upward" : "arrow_downward"}</span>
+              : <span aria-hidden="true" className="material-symbols-outlined text-[14px] leading-none text-dd-subtle opacity-50">sort</span>}
+          </span>
+        ),
+        align: col.align ?? "left",
+        mono: col.mono,
+        sortDirection: col.key === sortBy ? (sortOrder === "asc" ? "ascending" : "descending") : "none",
+        onSort: () => onToggleSort(tableType, col.key),
+        render: (row) => col.render?.(row),
+      })),
+      ...trailingValueColumns.map((col) => ({
+        key: col.key,
+        label: (
+          <span className="inline-flex items-center gap-1">
+            <span>{col.label}</span>
+            {col.key === sortBy
+              ? <span aria-hidden="true" className="material-symbols-outlined text-[14px] leading-none text-dd-accent">{sortOrder === "asc" ? "arrow_upward" : "arrow_downward"}</span>
+              : <span aria-hidden="true" className="material-symbols-outlined text-[14px] leading-none text-dd-subtle opacity-50">sort</span>}
+          </span>
+        ),
+        align: col.align ?? "right",
+        mono: col.mono ?? true,
+        sortDirection: col.key === sortBy ? (sortOrder === "asc" ? "ascending" : "descending") : "none",
+        onSort: () => onToggleSort(tableType, col.key),
+        render: (row) => col.render?.(row),
+      })),
+    ];
+    return cols;
+  }, [groupColumns, trailingValueColumns, sortBy, sortOrder, tableType, onToggleSort]);
+
+  const detailTable = useCallback((group) => {
+    const rows = group.items;
+    const detailHeaderColumns = [
+      ...detailColumns.map((col) => ({
+        key: col.key,
+        label: col.label,
+        align: col.align ?? "left",
+        mono: col.mono,
+        render: (row) => col.render?.(row),
+      })),
+      ...trailingValueColumns.map((col) => ({
+        key: col.key,
+        label: col.label,
+        align: col.align ?? "right",
+        mono: col.mono ?? true,
+        render: (row) => col.render?.(row),
+      })),
+    ];
+    return (
+      <DataTable
+        columns={detailHeaderColumns}
+        rows={rows}
+        keyFn={(item, index) => {
+          if (item && item.key != null) return `${group.groupKey}-${item.key}`;
+          if (item?.rawModel) return `${group.groupKey}-${item.rawModel}`;
+          if (item?.endpoint) return `${group.groupKey}-${item.endpoint}`;
+          if (item?.keyName) return `${group.groupKey}-${item.keyName}`;
+          if (item?.accountName) return `${group.groupKey}-${item.accountName}`;
+          return `${group.groupKey}-detail-${index}`;
+        }}
+        density="compact"
+        emptyState={{ icon: "inbox", title: "No items" }}
+        caption={`Items for ${group.groupKey}`}
+        getRowLabel={(item) => item?.rawModel ?? item?.endpoint ?? item?.keyName ?? item?.accountName ?? item?.key ?? "row"}
+      />
+    );
+  }, [detailColumns, trailingValueColumns]);
+
+  const summaryRows = useMemo(() => pageGroups.map((group) => ({
+    ...group,
+    ...(group.summary || {}),
+    __group: (
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={GROUP_ROW_LABEL_TONE}>
+          {groupKeyRender ? groupKeyRender(group) : group.groupKey}
+        </span>
+        {group.summary?.pending > 0 ? pendingBadge(group.summary.pending) : null}
+      </div>
+    ),
+  })), [pageGroups, groupKeyRender]);
+
+  const renderExpandedRow = useCallback((row) => (
+    <div className="px-3 py-2">{detailTable(row)}</div>
+  ), [detailTable]);
+
+  const getRowLabel = useCallback((row) => `Group ${row.groupKey}`, []);
+
+  const paginationProps = totalPages > 1
+    ? {
+        page,
+        pageCount: totalPages,
+        total: totalItems,
+        onPage: setPage,
+        rowsPerPage: pageSize,
+        onRowsPerPageChange: (size) => { setPageSize(size); setPage(1); },
+        rowsLabel: `Showing page ${page} of ${totalPages} (${totalItems} groups)`,
+      }
+    : null;
 
   return (
-    <Card className="overflow-hidden">
-      <div className="p-4 border-b border-border bg-bg-subtle/50">
-        <h3 className="font-semibold">{title}</h3>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-bg-subtle/30 text-text-muted uppercase text-xs">
-            <tr>
-              {columns.map((col) => (
-                <th
-                  key={col.field}
-                  className={`px-6 py-3 cursor-pointer hover:bg-bg-subtle/50 ${col.align === "right" ? "text-right" : ""}`}
-                  onClick={() => onToggleSort(tableType, col.field)}
-                >
-                  {col.label}{" "}
-                  <SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
-                </th>
-              ))}
-              {valueColumns.map((col) => (
-                <th
-                  key={col.field}
-                  className="px-6 py-3 text-right cursor-pointer hover:bg-bg-subtle/50"
-                  onClick={() => onToggleSort(tableType, col.field)}
-                >
-                  {col.label}{" "}
-                  <SortIcon field={col.field} currentSort={sortBy} currentOrder={sortOrder} />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {pageGroups.map((group) => (
-              <Fragment key={group.groupKey}>
-                {/* Group summary row */}
-                <tr
-                  className="group-summary cursor-pointer hover:bg-bg-subtle/50 transition-colors"
-                  onClick={() => toggleGroup(group.groupKey)}
-                >
-                  <td className="px-6 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className={`material-symbols-outlined text-[18px] text-text-muted transition-transform ${expanded.has(group.groupKey) ? "rotate-90" : ""}`}>
-                        chevron_right
-                      </span>
-                      <span className={`font-medium transition-colors ${group.summary.pending > 0 ? "text-primary" : ""}`}>
-                        {group.groupKey}
-                      </span>
-                    </div>
-                  </td>
-                  {renderSummaryCells(group)}
-                  <ValueCells item={group.summary} viewMode={viewMode} isSummary />
-                </tr>
-                {/* Detail rows */}
-                {expanded.has(group.groupKey) && group.items.map((item) => (
-                  <tr
-                    key={`detail-${item.key}`}
-                    className="group-detail hover:bg-bg-subtle/20 transition-colors"
-                  >
-                    {renderDetailCells(item)}
-                    <ValueCells item={item} viewMode={viewMode} />
-                  </tr>
-                ))}
-              </Fragment>
-            ))}
-            {pageGroups.length === 0 && (
-              <tr>
-                <td colSpan={totalColSpan} className="px-6 py-8 text-center text-text-muted">
-                  {emptyMessage}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {totalPages > 1 && (
-        <Pagination
-          currentPage={page}
-          pageSize={pageSize}
-          totalItems={totalItems}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
+    <Card padding={false} className="flex min-w-0 flex-col gap-0">
+      {title ? (
+        <CardHeader icon="table_chart" title={title} />
+      ) : null}
+      <CardContent className="p-0">
+        <DataTable
+          columns={headerColumns}
+          rows={summaryRows}
+          keyFn={(row) => row.groupKey}
+          density="compact"
+          renderExpandedRow={renderExpandedRow}
+          expandedRowKeys={Array.from(expanded)}
+          onExpandedRowKeysChange={(keys) => {
+            setExpanded((prev) => {
+              const currentPage = new Set(pageGroups.map((g) => g.groupKey));
+              const merged = new Set([...prev].filter((k) => !currentPage.has(k)));
+              keys.forEach((k) => merged.add(k));
+              return merged;
+            });
+          }}
+          getRowLabel={getRowLabel}
+          emptyState={{ icon: "inbox", title: emptyMessage || "Nothing to show" }}
+          pagination={paginationProps ?? undefined}
         />
-      )}
+      </CardContent>
     </Card>
   );
 }
 
 UsageTable.propTypes = {
-  title: PropTypes.string.isRequired,
-  columns: PropTypes.arrayOf(PropTypes['shape']({
-    field: PropTypes.string.isRequired,
-    label: PropTypes.string.isRequired,
-    align: PropTypes.string,
-  })).isRequired,
+  title: PropTypes.string,
+  groupColumns: PropTypes.array.isRequired,
+  detailColumns: PropTypes.array.isRequired,
+  detailValueColumns: PropTypes.array,
   groupedData: PropTypes.array.isRequired,
   tableType: PropTypes.string.isRequired,
   sortBy: PropTypes.string.isRequired,
   sortOrder: PropTypes.string.isRequired,
   onToggleSort: PropTypes.func.isRequired,
-  viewMode: PropTypes.string.isRequired,
+  valueMode: PropTypes.string,
   storageKey: PropTypes.string.isRequired,
-  renderDetailCells: PropTypes.func.isRequired,
-  renderSummaryCells: PropTypes.func.isRequired,
-  emptyMessage: PropTypes.string.isRequired,
+  groupKeyRender: PropTypes.func,
+  emptyMessage: PropTypes.string,
 };
 
 // Re-export utilities for use in UsageStats orchestrator

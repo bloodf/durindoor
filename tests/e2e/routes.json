@@ -1,0 +1,1321 @@
+{
+  "schemaVersion": 2,
+  "sourceRoot": "src/app",
+  "fixtureInterface": "tests/e2e/fixtures.js qa fixture (H1): qa.baseURL, qa.theme, qa.seed(name)->{scenario,dataDir,manifest,urls,ids,records}, qa.reset(), qa.artifactPath(name), qa.assertNoExternalEffects(), qa.authenticate(page)->{baseURL}, qa.runtimeStop",
+  "seedScenarios": [
+    "baseline",
+    "empty",
+    "providers",
+    "key",
+    "combo",
+    "timeline",
+    "media",
+    "fail",
+    "stream"
+  ],
+  "redirects": {
+    "R18": {
+      "redirectsTo": "/dashboard/usage",
+      "guardFor": "unauthenticated user redirected to /login by middleware",
+      "authGuardSource": "src/middleware.js (unverified, see runtime H0a evidence)"
+    },
+    "R37": {
+      "redirectsTo": "/dashboard",
+      "authGuard": "next chained auth guard"
+    },
+    "R14_webSearch_webFetch": {
+      "listings": "/dashboard/media-providers/webSearch and /dashboard/media-providers/webFetch",
+      "redirectsTo": "/dashboard/media-providers/web"
+    }
+  },
+  "routes": [
+    {
+      "id": "R01",
+      "template": "/dashboard/api-docs",
+      "entry": "src/app/(dashboard)/dashboard/api-docs/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/api-docs",
+          "expectedSecondaryLocator": "heading",
+          "predicate": "static, source-of-truth ENDPOINTS array"
+        }
+      ],
+      "expectedText": "API Documentation",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/api-docs/page.js:188 <h1>API Documentation</h1>",
+      "expectedSecondary": [
+        "Chat & Completions",
+        "Models"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default"
+      ],
+      "actions": [
+        "read-sections"
+      ]
+    },
+    {
+      "id": "R02",
+      "template": "/dashboard/auto-configure",
+      "entry": "src/app/(dashboard)/dashboard/auto-configure/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/auto-configure",
+          "predicate": "static, renders AutoConfigureClient"
+        }
+      ],
+      "expectedText": "Auto-configure",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js:147 <h1>Auto-configure</h1>",
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "preview",
+        "cancel"
+      ]
+    },
+    {
+      "id": "R03",
+      "template": "/dashboard/cli-tools/[toolId]",
+      "entry": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/cli-tools/claude",
+          "expectedText": "Claude Code",
+          "expectedTextSource": "CLI_TOOLS.claude.name",
+          "predicate": "CLI_TOOLS.claude"
+        },
+        {
+          "url": "/dashboard/cli-tools/openclaw",
+          "expectedText": "Open Claw",
+          "expectedTextSource": "CLI_TOOLS.openclaw.name",
+          "predicate": "CLI_TOOLS.openclaw"
+        },
+        {
+          "url": "/dashboard/cli-tools/codex",
+          "expectedText": "OpenAI Codex CLI / App",
+          "expectedTextSource": "CLI_TOOLS.codex.name",
+          "predicate": "CLI_TOOLS.codex"
+        },
+        {
+          "url": "/dashboard/cli-tools/opencode",
+          "expectedText": "OpenCode",
+          "expectedTextSource": "CLI_TOOLS.opencode.name",
+          "predicate": "CLI_TOOLS.opencode"
+        },
+        {
+          "url": "/dashboard/cli-tools/cowork",
+          "expectedText": "Claude Cowork",
+          "expectedTextSource": "CLI_TOOLS.cowork.name",
+          "predicate": "CLI_TOOLS.cowork"
+        },
+        {
+          "url": "/dashboard/cli-tools/hermes",
+          "expectedText": "Hermes Agent",
+          "expectedTextSource": "CLI_TOOLS.hermes.name",
+          "predicate": "CLI_TOOLS.hermes"
+        },
+        {
+          "url": "/dashboard/cli-tools/droid",
+          "expectedText": "Factory Droid",
+          "expectedTextSource": "CLI_TOOLS.droid.name",
+          "predicate": "CLI_TOOLS.droid"
+        },
+        {
+          "url": "/dashboard/cli-tools/cursor",
+          "expectedText": "Cursor",
+          "expectedTextSource": "CLI_TOOLS.cursor.name",
+          "predicate": "CLI_TOOLS.cursor"
+        },
+        {
+          "url": "/dashboard/cli-tools/cline",
+          "expectedText": "Cline",
+          "expectedTextSource": "CLI_TOOLS.cline.name",
+          "predicate": "CLI_TOOLS.cline"
+        },
+        {
+          "url": "/dashboard/cli-tools/kilo",
+          "expectedText": "Kilo Code",
+          "expectedTextSource": "CLI_TOOLS.kilo.name",
+          "predicate": "CLI_TOOLS.kilo"
+        },
+        {
+          "url": "/dashboard/cli-tools/roo",
+          "expectedText": "Roo",
+          "expectedTextSource": "CLI_TOOLS.roo.name",
+          "predicate": "CLI_TOOLS.roo"
+        },
+        {
+          "url": "/dashboard/cli-tools/continue",
+          "expectedText": "Continue",
+          "expectedTextSource": "CLI_TOOLS.continue.name",
+          "predicate": "CLI_TOOLS.continue"
+        },
+        {
+          "url": "/dashboard/cli-tools/amp",
+          "expectedText": "Amp CLI",
+          "expectedTextSource": "CLI_TOOLS.amp.name",
+          "predicate": "CLI_TOOLS.amp unsupported manual guide"
+        },
+        {
+          "url": "/dashboard/cli-tools/qwen",
+          "expectedText": "Qwen Code",
+          "expectedTextSource": "CLI_TOOLS.qwen.name",
+          "predicate": "CLI_TOOLS.qwen"
+        },
+        {
+          "url": "/dashboard/cli-tools/deepseek-tui",
+          "expectedText": "DeepSeek TUI",
+          "expectedTextSource": "CLI_TOOLS[deepseek-tui].name",
+          "predicate": "CLI_TOOLS[deepseek-tui]"
+        },
+        {
+          "url": "/dashboard/cli-tools/jcode",
+          "expectedText": "jcode",
+          "expectedTextSource": "CLI_TOOLS.jcode.name",
+          "predicate": "CLI_TOOLS.jcode"
+        },
+        {
+          "url": "/dashboard/cli-tools/grok-build",
+          "expectedText": "Grok Build",
+          "expectedTextSource": "CLI_TOOLS[grok-build].name",
+          "predicate": "CLI_TOOLS[grok-build]"
+        },
+        {
+          "url": "/dashboard/cli-tools/omp",
+          "expectedText": "Oh My Pi",
+          "expectedTextSource": "CLI_TOOLS.omp.name",
+          "predicate": "CLI_TOOLS.omp"
+        },
+        {
+          "url": "/dashboard/cli-tools/copilot",
+          "expectedHttpStatus": 404,
+          "predicate": "MITM-only Copilot is not a CLI detail route; supported navigation is /dashboard/mitm",
+          "branch": "unsupported-cli-detail"
+        }
+      ],
+      "expectedText": null,
+      "expectedTextNote": "Header is rendered as <h1>{tool.name}</h1>; assertion must be per-variant, not template-level",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js:174",
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "not-found"
+      ],
+      "actions": [
+        "copy-config"
+      ]
+    },
+    {
+      "id": "R04",
+      "template": "/dashboard/cli-tools",
+      "entry": "src/app/(dashboard)/dashboard/cli-tools/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/cli-tools",
+          "predicate": "static, renders CLIToolsPageClient"
+        }
+      ],
+      "expectedText": "MITM Tools",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.js:56 <h2>MITM Tools</h2>",
+      "expectedSecondary": [
+        "CLI Tools"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default"
+      ],
+      "actions": [
+        "open-card"
+      ]
+    },
+    {
+      "id": "R05",
+      "template": "/dashboard/combos",
+      "entry": "src/app/(dashboard)/dashboard/combos/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/combos",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "QA Weighted Combo",
+      "expectedTextSource": "tests/e2e/seeds.mjs combo fixture name",
+      "expectedSecondary": [
+        "Connection allow-list"
+      ],
+      "fixture": "combo",
+      "states": [
+        "default",
+        "empty",
+        "error"
+      ],
+      "actions": [
+        "create",
+        "cancel",
+        "reload"
+      ],
+      "headingLocator": false
+    },
+    {
+      "id": "R06",
+      "template": "/dashboard/compression-studio",
+      "entry": "src/app/(dashboard)/dashboard/compression-studio/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/compression-studio",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Test Savers",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/compression-studio/page.js page identity heading",
+      "expectedSecondary": [
+        "No preview yet"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default"
+      ],
+      "actions": [
+        "select-tab"
+      ]
+    },
+    {
+      "id": "R07",
+      "template": "/dashboard/console-log",
+      "entry": "src/app/(dashboard)/dashboard/console-log/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/console-log",
+          "predicate": "static, renders ConsoleLogClient"
+        }
+      ],
+      "expectedText": "Console Log",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js:95 <h2>Console Log</h2>",
+      "fixture": "stream",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "pause"
+      ]
+    },
+    {
+      "id": "R08",
+      "template": "/dashboard/endpoint",
+      "entry": "src/app/(dashboard)/dashboard/endpoint/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/endpoint",
+          "predicate": "static, renders EndpointPageClient"
+        },
+        {
+          "url": "/dashboard/endpoint",
+          "seedScenario": "empty",
+          "expectedText": "No API keys yet",
+          "expectedTextSource": "EndpointPageClient empty API key state",
+          "predicate": "empty fixture renders API-key empty state",
+          "expectedSecondary": []
+        }
+      ],
+      "expectedText": "QA Primary Key",
+      "expectedTextSource": "tests/e2e/seeds.mjs key fixture name",
+      "expectedSecondary": [
+        "Require API key",
+        "API Keys"
+      ],
+      "fixture": "key",
+      "states": [
+        "default"
+      ],
+      "actions": [
+        "create-key",
+        "reload"
+      ],
+      "headingLocator": false
+    },
+    {
+      "id": "R09",
+      "template": "/dashboard/headroom",
+      "entry": "src/app/(dashboard)/dashboard/headroom/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/headroom",
+          "predicate": "static, renders HeadroomClient"
+        }
+      ],
+      "expectedText": "Recent Headroom compression events",
+      "expectedTextSource": "HeadroomClient DataTable caption + region accessible name",
+      "expectedLocator": "table",
+      "expectedSecondary": [
+        "Compress user messages",
+        "Tokens saved per day"
+      ],
+      "headingLocator": false,
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "refresh"
+      ]
+    },
+    {
+      "id": "R10",
+      "template": "/dashboard/health",
+      "entry": "src/app/(dashboard)/dashboard/health/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/health",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Provider Health",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/health/page.js:94 <h1>Provider Health</h1>",
+      "fixture": "providers",
+      "states": [
+        "default",
+        "empty",
+        "error"
+      ],
+      "actions": [
+        "refresh"
+      ]
+    },
+    {
+      "id": "R11",
+      "template": "/dashboard/mcp-gateway",
+      "entry": "src/app/(dashboard)/dashboard/mcp-gateway/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/mcp-gateway",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "MCP Gateway",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/mcp-gateway/page.js:295 <h1>MCP Gateway</h1>",
+      "expectedSecondary": [
+        "No instances yet",
+        "No gateway keys yet"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "open-marketplace"
+      ]
+    },
+    {
+      "id": "R12",
+      "template": "/dashboard/mcp-help",
+      "entry": "src/app/(dashboard)/dashboard/mcp-help/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/mcp-help",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "MCP Help",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/mcp-help/page.js:67 <h1>MCP Help</h1>",
+      "expectedSecondary": [
+        "Overview",
+        "Transports",
+        "Authentication",
+        "Keys & tool grants",
+        "Client configuration"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default"
+      ],
+      "actions": [
+        "follow-help-link"
+      ]
+    },
+    {
+      "id": "R13",
+      "template": "/dashboard/media-providers/[kind]/[id]",
+      "entry": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/media-providers/image/codex",
+          "expectedText": "OpenAI Codex",
+          "predicate": "codex registry display name; serviceKinds includes 'image'",
+          "branch": "builtin-image-notice"
+        },
+        {
+          "url": "/dashboard/media-providers/embedding/ollama-local",
+          "expectedText": "Ollama Local",
+          "predicate": "ollama-local local embedding override (serviceKinds defaults ['llm'] + localEmbeddingOverride adds 'embedding')",
+          "branch": "local-ollama-embedding"
+        },
+        {
+          "url": "/dashboard/media-providers/tts/edge-tts",
+          "expectedText": "Edge TTS",
+          "predicate": "edge-tts noAuth:true and serviceKinds includes 'tts'",
+          "branch": "no-auth-tts"
+        },
+        {
+          "expectedText": "QA Local Embedding Node",
+          "predicate": "custom-embedding- prefix + stored seed node",
+          "seedScenario": "media",
+          "branch": "custom-embedding",
+          "urlFrom": "seed.ids.mediaProviderNodeId",
+          "expectedSecondary": [
+            "Custom · qa-embed"
+          ]
+        },
+        {
+          "url": "/dashboard/media-providers/embedding/custom-embedding-missing",
+          "expectedText": "This page could not be found.",
+          "expectedLocator": "text",
+          "predicate": "missing custom node becomes client-side not-found after provider-node lookup; navigation response remains 200",
+          "branch": "missing-custom-node"
+        },
+        {
+          "url": "/dashboard/media-providers/embedding/codex",
+          "expectedHttpStatus": 404,
+          "predicate": "codex serviceKinds lacks 'embedding'",
+          "branch": "incompatible-kind-embedding"
+        },
+        {
+          "url": "/dashboard/media-providers/webSearch/9router",
+          "expectedHttpStatus": 404,
+          "predicate": "9router noAuth does not grant webSearch; derived kinds default ['llm']",
+          "branch": "incompatible-no-auth-web-search"
+        },
+        {
+          "url": "/dashboard/media-providers/no-such-kind/no-such-provider",
+          "expectedHttpStatus": 404,
+          "predicate": "unknown kind and provider",
+          "branch": "unknown-pair"
+        }
+      ],
+      "expectedText": null,
+      "expectedTextNote": "Header is <h1>{provider.name}</h1> (page.js:101); assertion must be per-variant, not template-level",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.js:101",
+      "fixture": "media",
+      "states": [
+        "default",
+        "not-found"
+      ],
+      "actions": [
+        "run-example"
+      ]
+    },
+    {
+      "id": "R14",
+      "template": "/dashboard/media-providers/[kind]",
+      "entry": "src/app/(dashboard)/dashboard/media-providers/[kind]/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/media-providers/embedding",
+          "expectedText": "Embedding",
+          "predicate": "MEDIA_PROVIDER_KINDS.embedding"
+        },
+        {
+          "url": "/dashboard/media-providers/rerank",
+          "expectedText": "Rerank",
+          "predicate": "MEDIA_PROVIDER_KINDS.rerank"
+        },
+        {
+          "url": "/dashboard/media-providers/image",
+          "expectedText": "Text to Image",
+          "predicate": "MEDIA_PROVIDER_KINDS.image"
+        },
+        {
+          "url": "/dashboard/media-providers/imageToText",
+          "expectedText": "Image to Text",
+          "predicate": "MEDIA_PROVIDER_KINDS.imageToText"
+        },
+        {
+          "url": "/dashboard/media-providers/tts",
+          "expectedText": "Text To Speech",
+          "predicate": "MEDIA_PROVIDER_KINDS.tts"
+        },
+        {
+          "url": "/dashboard/media-providers/stt",
+          "expectedText": "Speech To Text",
+          "predicate": "MEDIA_PROVIDER_KINDS.stt"
+        },
+        {
+          "url": "/dashboard/media-providers/webSearch",
+          "destination": "/dashboard/media-providers/web",
+          "predicate": "listing redirect webSearch→web",
+          "expectedFinalText": "Web Search"
+        },
+        {
+          "url": "/dashboard/media-providers/webFetch",
+          "destination": "/dashboard/media-providers/web",
+          "predicate": "listing redirect webFetch→web",
+          "expectedFinalText": "Web Fetch"
+        },
+        {
+          "url": "/dashboard/media-providers/video",
+          "expectedText": "Video",
+          "predicate": "MEDIA_PROVIDER_KINDS.video"
+        },
+        {
+          "url": "/dashboard/media-providers/music",
+          "expectedText": "Music",
+          "predicate": "MEDIA_PROVIDER_KINDS.music"
+        },
+        {
+          "url": "/dashboard/media-providers/no-such-kind",
+          "expectedHttpStatus": 404,
+          "predicate": "invalid kind must 404"
+        }
+      ],
+      "expectedText": null,
+      "expectedTextNote": "MEDIA_PROVIDER_KINDS label per-kind; webSearch/webFetch redirect to /web whose content is asserted by R16",
+      "expectedTextSource": "src/shared/constants/providers.js:78-88",
+      "fixture": "media",
+      "states": [
+        "default",
+        "not-found"
+      ],
+      "actions": [
+        "open-provider"
+      ],
+      "headingLocator": false
+    },
+    {
+      "id": "R15",
+      "template": "/dashboard/media-providers/combo/[id]",
+      "entry": "src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.js",
+      "variants": [
+        {
+          "urlFrom": "seed.ids.comboIds[0]",
+          "expectedText": "QA Embedding Combo",
+          "predicate": "seeded embedding combo with provider ordering and usage logs; no embedding example endpoint",
+          "seedScenario": "media",
+          "branch": "valid-combo",
+          "expectedSecondary": [
+            "Settings",
+            "Providers",
+            "Usage Logs"
+          ],
+          "expectedLocator": "text"
+        },
+        {
+          "url": "/dashboard/media-providers/combo/no-such-combo",
+          "expectedText": "This page could not be found.",
+          "expectedLocator": "text",
+          "predicate": "missing combo invokes client notFound after lookup; navigation may remain 200",
+          "expectedApiNotFound": "/api/combos/no-such-combo",
+          "branch": "unknown-combo"
+        }
+      ],
+      "expectedText": null,
+      "expectedTextNote": "Page renders combo.name or 'Settings' once loaded; per-variant assertion is name/role specific",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.js:262 <h2>Settings</h2>",
+      "fixture": "combo",
+      "states": [
+        "default",
+        "not-found"
+      ],
+      "actions": [
+        "cancel-edit"
+      ]
+    },
+    {
+      "id": "R16",
+      "template": "/dashboard/media-providers/web",
+      "entry": "src/app/(dashboard)/dashboard/media-providers/web/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/media-providers/web",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Web Search",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/media-providers/web/page.js:195 kind card 'Web Search'",
+      "expectedSecondary": [
+        "Web Fetch"
+      ],
+      "fixture": "media",
+      "states": [
+        "default",
+        "empty",
+        "error"
+      ],
+      "actions": [
+        "open-detail"
+      ],
+      "headingLocator": false
+    },
+    {
+      "id": "R17",
+      "template": "/dashboard/mitm",
+      "entry": "src/app/(dashboard)/dashboard/mitm/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/mitm",
+          "predicate": "static, renders MitmPageClient"
+        }
+      ],
+      "expectedText": "MITM Server",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/cli-tools/components/MitmServerCard.js:138 <span>MITM Server</span>",
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "open-tool"
+      ],
+      "expectedSecondary": [
+        "Antigravity",
+        "GitHub Copilot",
+        "Kiro"
+      ],
+      "headingLocator": false
+    },
+    {
+      "id": "R18",
+      "template": "/dashboard",
+      "entry": "src/app/(dashboard)/dashboard/page.js",
+      "variants": [
+        {
+          "url": "/dashboard",
+          "destination": "/dashboard/usage",
+          "predicate": "next redirect authenticated",
+          "branch": "authed-redirect"
+        }
+      ],
+      "expectedText": null,
+      "expectedTextSource": "src/app/(dashboard)/dashboard/page.js:4 redirect('/dashboard/usage')",
+      "fixture": "baseline",
+      "states": [
+        "redirect"
+      ],
+      "actions": []
+    },
+    {
+      "id": "R19",
+      "template": "/dashboard/playground",
+      "entry": "src/app/(dashboard)/dashboard/playground/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/playground",
+          "predicate": "static, renders PlaygroundPageClient"
+        }
+      ],
+      "expectedText": "Message input",
+      "expectedLocator": "label",
+      "expectedTextSource": "PlaygroundPageClient renders the accessible message composer",
+      "fixture": "stream",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "send",
+        "stop"
+      ]
+    },
+    {
+      "id": "R20",
+      "template": "/dashboard/profile",
+      "entry": "src/app/(dashboard)/dashboard/profile/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/profile",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Settings",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/profile/page.js:733 <h1>Settings</h1>",
+      "expectedSecondary": [
+        "Language",
+        "Model catalog",
+        "Security"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default"
+      ],
+      "actions": [
+        "save",
+        "reload"
+      ]
+    },
+    {
+      "id": "R21",
+      "template": "/dashboard/providers/[id]",
+      "entry": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/providers/openai",
+          "expectedText": "OpenAI",
+          "predicate": "registry category apikey (openai.js:2,15)",
+          "branch": "apikey-openai",
+          "expectedSecondary": [
+            "QA OpenAI Main"
+          ]
+        },
+        {
+          "url": "/dashboard/providers/codex",
+          "expectedText": "OpenAI Codex",
+          "predicate": "registry category oauth (codex.js:4,23)",
+          "branch": "oauth-codex",
+          "expectedSecondary": [
+            "Connections"
+          ]
+        },
+        {
+          "url": "/dashboard/providers/iflow",
+          "expectedText": "iFlow AI",
+          "predicate": "registry category oauth (iflow.js:2,15)",
+          "branch": "oauth-iflow"
+        },
+        {
+          "url": "/dashboard/providers/antigravity",
+          "expectedText": "Antigravity",
+          "predicate": "registry category oauth + first-use confirmation (antigravity.js:4,19)",
+          "branch": "oauth-first-use"
+        },
+        {
+          "url": "/dashboard/providers/cursor",
+          "expectedText": "Cursor IDE",
+          "predicate": "registry category oauth (cursor.js:2,15)",
+          "branch": "oauth-cursor"
+        },
+        {
+          "url": "/dashboard/providers/gitlab-duo",
+          "expectedText": "GitLab Duo",
+          "predicate": "registry category oauth (gitlab-duo.js:2,14)",
+          "branch": "oauth-gitlab-duo"
+        },
+        {
+          "url": "/dashboard/providers/github",
+          "expectedText": "GitHub Copilot",
+          "predicate": "registry category oauth (github.js:7,22)",
+          "branch": "oauth-github"
+        },
+        {
+          "url": "/dashboard/providers/kiro",
+          "expectedText": "Kiro AI",
+          "predicate": "registry category free (kiro.js), wrapper/social variant",
+          "branch": "free-kiro"
+        },
+        {
+          "url": "/dashboard/providers/mimocode",
+          "expectedText": "MiMoCode",
+          "predicate": "registry category free + noAuth:true (mimocode.js), valid detail page without a connection",
+          "branch": "free-no-auth-mimocode"
+        },
+        {
+          "url": "/dashboard/providers/nvidia",
+          "expectedText": "NVIDIA NIM",
+          "predicate": "registry category freeTier (nvidia.js)",
+          "branch": "free-tier-nvidia"
+        },
+        {
+          "url": "/dashboard/providers/coqui",
+          "expectedText": "Coqui TTS",
+          "predicate": "registry category freeTier (coqui.js)",
+          "branch": "free-tier-coqui"
+        },
+        {
+          "url": "/dashboard/providers/grok-web",
+          "expectedText": "Grok Web (Subscription)",
+          "predicate": "registry category webCookie (grok-web.js)",
+          "branch": "web-cookie-grok-web"
+        },
+        {
+          "url": "/dashboard/providers/copilot-web",
+          "expectedText": "Copilot Web",
+          "predicate": "registry category webCookie (copilot-web.js)",
+          "branch": "web-cookie-copilot-web"
+        },
+        {
+          "url": "/dashboard/providers/chatgpt-web",
+          "expectedText": "ChatGPT Web",
+          "predicate": "registry category webCookie (chatgpt-web.js)",
+          "branch": "web-cookie-chatgpt-web"
+        },
+        {
+          "urlFrom": "seed.ids.openaiCompatibleNodeId",
+          "expectedTextFrom": "seed.ids.openaiCompatibleNodeId",
+          "branch": "openai-compatible-stored"
+        },
+        {
+          "urlFrom": "seed.ids.anthropicCompatibleNodeId",
+          "expectedTextFrom": "seed.ids.anthropicCompatibleNodeId",
+          "branch": "anthropic-compatible-stored"
+        },
+        {
+          "url": "/dashboard/providers/no-such-provider",
+          "expectedText": "Provider not found",
+          "predicate": "unknown provider visible message",
+          "branch": "unknown-provider",
+          "headingLocator": false
+        }
+      ],
+      "expectedText": null,
+      "expectedTextNote": "Page renders <h1>{providerInfo.name}</h1> (page.js:1617); per-variant assertion required",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/providers/[id]/page.js:1617",
+      "fixture": "providers",
+      "states": [
+        "default",
+        "unknown-provider"
+      ],
+      "actions": [
+        "cancel-edit"
+      ]
+    },
+    {
+      "id": "R22",
+      "template": "/dashboard/providers",
+      "entry": "src/app/(dashboard)/dashboard/providers/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/providers",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Providers",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/providers/page.js PageHeader title",
+      "expectedSecondary": [
+        "Custom Providers (OpenAI/Anthropic Compatible)",
+        "API Key Providers",
+        "QA OpenAI Compatible"
+      ],
+      "fixture": "providers",
+      "states": [
+        "default",
+        "empty",
+        "error"
+      ],
+      "actions": [
+        "search"
+      ],
+      "headingLocator": true
+    },
+    {
+      "id": "R23",
+      "template": "/dashboard/proxy-pools",
+      "entry": "src/app/(dashboard)/dashboard/proxy-pools/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/proxy-pools",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Proxy Pools",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/proxy-pools/page.js:565 <h1>Proxy Pools</h1>",
+      "expectedSecondary": ["Batch import", "Deploy relay"],
+      "expectedSecondaryLocator": "button",
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "empty",
+        "error"
+      ],
+      "actions": [
+        "cancel-add"
+      ]
+    },
+    {
+      "id": "R24",
+      "template": "/dashboard/pxpipe",
+      "entry": "src/app/(dashboard)/dashboard/pxpipe/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/pxpipe",
+          "predicate": "static, renders PxpipeClient"
+        }
+      ],
+      "expectedText": "PXPIPE Dashboard",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js:140 PageHeader title",
+      "expectedSecondary": [
+        "PXPIPE status summary"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "cancel"
+      ],
+      "expectedLocator": "heading",
+      "expectedSecondaryLocator": "region"
+    },
+    {
+      "id": "R25",
+      "template": "/dashboard/quota",
+      "entry": "src/app/(dashboard)/dashboard/quota/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/quota",
+          "expectedLocator": "combobox",
+          "expectedSecondaryLocator": "combobox",
+          "expectedText": "Filter quota providers",
+          "expectedSecondary": [
+            "Filter accounts by status"
+          ],
+          "headingLocator": false
+        }
+      ],
+      "fixture": "providers",
+      "states": [
+        "default",
+        "empty",
+        "error"
+      ],
+      "actions": [
+        "refresh"
+      ]
+    },
+    {
+      "id": "R26",
+      "template": "/dashboard/skills",
+      "entry": "src/app/(dashboard)/dashboard/skills/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/skills",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Skills",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/skills/page.js:26 PageHeader title",
+      "expectedSecondary": ["Copy instruction"],
+      "expectedSecondaryLocator": "button",
+      "fixture": "key",
+      "states": [
+        "default"
+      ],
+      "actions": [
+        "copy-command"
+      ],
+      "headingLocator": false
+    },
+    {
+      "id": "R27",
+      "template": "/dashboard/timeline/[id]",
+      "entry": "src/app/(dashboard)/dashboard/timeline/[id]/page.js",
+      "variants": [
+        {
+          "urlFrom": "seed.ids.traceIds[0]",
+          "expectedText": "Copy as JSON",
+          "predicate": "seed ok trace",
+          "seedScenario": "timeline",
+          "branch": "valid-trace",
+          "expectedSecondary": [
+            "Back to Timeline"
+          ],
+          "expectedLocator": "button",
+          "expectedSecondaryLocator": "text"
+        },
+        {
+          "url": "/dashboard/timeline/no-such-trace",
+          "expectedText": "Trace not found",
+          "predicate": "unknown trace",
+          "expectedApiNotFound": "/api/timeline/no-such-trace",
+          "branch": "unknown-trace"
+        }
+      ],
+      "expectedText": null,
+      "expectedTextNote": "Per-variant: valid trace asserts 'Back to Timeline' link + provider/model line; 404 asserts 'Trace not found'",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/timeline/[id]/page.js (Back to Timeline + Trace not found)",
+      "fixture": "timeline",
+      "states": [
+        "default",
+        "not-found",
+        "error"
+      ],
+      "actions": [
+        "expand-sse"
+      ],
+      "headingLocator": false
+    },
+    {
+      "id": "R28",
+      "template": "/dashboard/timeline",
+      "entry": "src/app/(dashboard)/dashboard/timeline/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/timeline",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Timeline",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/timeline/page.js:129 PageHeader title",
+      "expectedSecondary": [
+        "Timeline traces"
+      ],
+      "fixture": "timeline",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "filter",
+        "pause"
+      ],
+      "headingLocator": false,
+      "expectedSecondaryLocator": "table"
+    },
+    {
+      "id": "R29",
+      "template": "/dashboard/token-saver",
+      "entry": "src/app/(dashboard)/dashboard/token-saver/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/token-saver",
+          "predicate": "static, renders TokenSaverClient view=overview"
+        }
+      ],
+      "expectedText": "Token Saver",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js:27 PageHeader title",
+      "expectedSecondary": [
+        "No Token Saver events yet"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "empty",
+        "error"
+      ],
+      "actions": [
+        "select-tool"
+      ],
+      "headingLocator": false,
+      "expectedLocator": "heading"
+    },
+    {
+      "id": "R30",
+      "template": "/dashboard/token-saver/settings",
+      "entry": "src/app/(dashboard)/dashboard/token-saver/settings/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/token-saver/settings",
+          "predicate": "static, renders TokenSaverClient view=settings"
+        }
+      ],
+      "expectedText": "Token Saver settings",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx:484 PageHeader title",
+      "expectedSecondary": ["Minimum chars"],
+      "expectedSecondaryLocator": "label",
+      "fixture": "baseline",
+      "states": [
+        "default"
+      ],
+      "actions": [
+        "save",
+        "reload"
+      ],
+      "headingLocator": false
+    },
+    {
+      "id": "R31",
+      "template": "/dashboard/translator",
+      "entry": "src/app/(dashboard)/dashboard/translator/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/translator",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Translator Debug",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/translator/page.js:219 <h1>Translator Debug</h1>",
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "translate"
+      ]
+    },
+    {
+      "id": "R32",
+      "template": "/dashboard/usage",
+      "entry": "src/app/(dashboard)/dashboard/usage/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/usage",
+          "expectedLocator": "group",
+          "expectedSecondaryLocator": "heading",
+          "expectedText": "Date range",
+          "headingLocator": false
+        }
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "empty",
+        "error"
+      ],
+      "actions": [
+        "range"
+      ]
+    },
+    {
+      "id": "R33",
+      "template": "/callback",
+      "entry": "src/app/callback/page.js",
+      "variants": [
+        {
+          "url": "/callback",
+          "expectedText": "Copy this URL",
+          "predicate": "no callback data enters manual-copy state",
+          "branch": "manual"
+        },
+        {
+          "url": "/callback?code=fixture-success&state=fixture&provider=fixture",
+          "expectedText": "Authorization successful!",
+          "predicate": "callback code enters success state",
+          "branch": "success"
+        },
+        {
+          "url": "/callback?error=fixture-error&error_description=fixture",
+          "expectedText": "Authorization failed",
+          "predicate": "OAuth error enters failure state",
+          "branch": "error"
+        }
+      ],
+      "expectedText": null,
+      "expectedTextNote": "Branch-specific callback status heading; no template-level sentinel",
+      "expectedTextSource": "src/app/callback/CallbackStatusView.js:22",
+      "fixture": "baseline",
+      "states": [
+        "manual",
+        "success",
+        "error"
+      ],
+      "actions": [
+        "manual-copy"
+      ]
+    },
+    {
+      "id": "R34",
+      "template": "/dashboard/settings/pricing",
+      "entry": "src/app/dashboard/settings/pricing/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/settings/pricing",
+          "predicate": "static outside dashboard group"
+        }
+      ],
+      "expectedText": "Pricing Settings",
+      "expectedTextSource": "src/app/dashboard/settings/pricing/page.js:58 <h1>Pricing Settings</h1>",
+      "expectedSecondary": [
+        "How Pricing Works",
+        "Current Pricing Overview"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "cancel"
+      ]
+    },
+    {
+      "id": "R35",
+      "template": "/landing",
+      "entry": "src/app/landing/page.js",
+      "variants": [
+        {
+          "url": "/landing",
+          "predicate": "static marketing"
+        }
+      ],
+      "expectedText": "One endpoint for all AI providers",
+      "expectedTextSource": "src/app/landing/components/HeroSection.js:14-17 <h1>One endpoint for all AI providers</h1>",
+      "fixture": "baseline",
+      "states": [
+        "default"
+      ],
+      "actions": [
+        "open-mobile-menu"
+      ],
+      "expectedLocator": "heading"
+    },
+    {
+      "id": "R36",
+      "template": "/login",
+      "entry": "src/app/login/page.js",
+      "variants": [
+        {
+          "url": "/login",
+          "expectedText": "DurinDoor",
+          "predicate": "loading then password form (wordmark image alt text or fallback span)",
+          "branch": "default",
+          "expectedLocator": "img"
+        },
+        {
+          "url": "/login?next=/dashboard/quota",
+          "expectedText": "DurinDoor",
+          "predicate": "preserve safe nextPath",
+          "branch": "next-redirect",
+          "expectedLocator": "img"
+        },
+        {
+          "url": "/login",
+          "expectedText": "Wait %ds",
+          "predicate": "rate-limit countdown after injected login 429",
+          "branch": "rate-limit",
+          "expectedSecondary": [
+            "Locked. Retry in"
+          ],
+          "injectLogin429": true,
+          "headingLocator": false
+        },
+        {
+          "url": "/login",
+          "expectedText": "Set password",
+          "predicate": "forced default-password change after injected login 403",
+          "branch": "forced-change",
+          "expectedSecondary": [
+            "New password"
+          ],
+          "injectForcedPasswordChange": true,
+          "headingLocator": false
+        }
+      ],
+      "expectedText": null,
+      "expectedTextNote": "Per-variant assertion: DurinDoor wordmark image alt for default/next, Wait Ns button, Set password button",
+      "expectedTextSource": "src/app/login/page.js (DurinDoor wordmark alt, Wait Ns button, Set password button)",
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "rate-limit",
+        "forced-change"
+      ],
+      "actions": [
+        "submit"
+      ]
+    },
+    {
+      "id": "R37",
+      "template": "/",
+      "entry": "src/app/page.js",
+      "variants": [
+        {
+          "url": "/",
+          "destination": "/dashboard/usage",
+          "predicate": "next redirect chain authenticated",
+          "branch": "authed-chain"
+        }
+      ],
+      "expectedText": null,
+      "expectedTextSource": "src/app/page.js:4 redirect('/dashboard')",
+      "fixture": "baseline",
+      "states": [
+        "redirect"
+      ],
+      "actions": []
+    }
+  ]
+}

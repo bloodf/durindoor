@@ -2,7 +2,16 @@
 
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Button, Badge, Input, Modal, Select } from "@/shared/components";
+import Button from "@/shared/ui/components/Button.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+
+const API_TYPE_OPTIONS = [
+  { value: "chat", label: "Chat Completions" },
+  { value: "responses", label: "Responses API" },
+];
 
 export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose, isAnthropic }) {
   const [formData, setFormData] = useState({
@@ -31,11 +40,6 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
       setSaveError("");
     }
   }, [node, isAnthropic]);
-
-  const apiTypeOptions = [
-    { value: "chat", label: "Chat Completions" },
-    { value: "responses", label: "Responses API" },
-  ];
 
   const handleSubmit = async () => {
     if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
@@ -69,7 +73,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
           baseUrl: formData.baseUrl,
           apiKey: checkKey,
           type: isAnthropic ? "anthropic-compatible" : "openai-compatible",
-          modelId: checkModelId.trim() || undefined
+          modelId: checkModelId.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -84,7 +88,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
   if (!node) return null;
 
   return (
-    <Modal isOpen={isOpen} title={`Edit ${isAnthropic ? "Anthropic" : "OpenAI"} Compatible`} onClose={onClose}>
+    <Modal open={isOpen} title={`Edit ${isAnthropic ? "Anthropic" : "OpenAI"} Compatible`} onClose={onClose}>
       <div className="flex flex-col gap-4">
         <Input
           label="Name"
@@ -100,14 +104,14 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
           placeholder={isAnthropic ? "ac-prod" : "oc-prod"}
           hint="Required. Used as the provider prefix for model IDs."
         />
-        {!isAnthropic && (
+        {!isAnthropic ? (
           <Select
-            label="API Type"
-            options={apiTypeOptions}
+            options={API_TYPE_OPTIONS}
             value={formData.apiType}
-            onChange={(e) => setFormData({ ...formData, apiType: e.target.value })}
+            onChange={(value) => setFormData({ ...formData, apiType: value })}
+            aria-label="API Type"
           />
-        )}
+        ) : null}
         <Input
           label="Base URL"
           value={formData.baseUrl}
@@ -143,22 +147,22 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
           placeholder="e.g. my-model-id"
           hint="If provider lacks /models endpoint, enter a model ID to validate via chat/completions instead."
         />
-        {validationResult && (
-          <Badge variant={validationResult === "success" ? "success" : "error"}>
+        {validationResult ? (
+          <Badge tone={validationResult === "success" ? "success" : "danger"}>
             {validationResult === "success" ? "Valid" : "Invalid"}
           </Badge>
-        )}
-        {saveError && (
-          <div className="flex items-center gap-1.5 text-sm text-red-500" role="alert">
-            <span className="material-symbols-outlined text-base shrink-0">cancel</span>
+        ) : null}
+        {saveError ? (
+          <div className="flex items-center gap-1.5 text-sm text-dd-danger" role="alert">
+            <span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">cancel</span>
             <span>{saveError}</span>
           </div>
-        )}
+        ) : null}
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim() || saving}>
+          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim() || saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
-          <Button onClick={onClose} variant="ghost" fullWidth>
+          <Button onClick={onClose} variant="ghost" className="w-full">
             Cancel
           </Button>
         </div>

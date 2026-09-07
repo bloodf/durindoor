@@ -81,8 +81,8 @@ async function runAxe(page) {
     // Document-level navigation rules belong to the real-app gate, not an
     // isolated iframe. Include portal surfaces alongside the actual canvas.
     const context = { include: [["#storybook-root"], ["dialog"], ["[role='listbox']"], ["[role='tooltip']"]] };
-    const standards = await window.axe.run(context, { runOnly: { type: "tag", values: tags } });
-    const enhanced = await window.axe.run(context, { runOnly: { type: "rule", values: ["color-contrast-enhanced"] } });
+    const standards = await window.axe.run(context, { elementRef: true, runOnly: { type: "tag", values: tags } });
+    const enhanced = await window.axe.run(context, { elementRef: true, runOnly: { type: "rule", values: ["color-contrast-enhanced"] } });
     // axe resolves alpha/background stacks; retain its computed pairs instead
     // of misreading CSS color()/oklch() values with an RGB regex.
     const measured = new Map();
@@ -98,12 +98,74 @@ async function runAxe(page) {
         }
       }
     }
+    // axe cannot compute contrast for SVG text: it treats every SVG as an
+    // image and reports `incomplete` rather than a ratio, because a path fill
+    // could sit behind the glyphs (dequelabs/axe-core#1819). Measure those
+    // nodes here instead of waiving them: resolve the glyph's own fill and
+    // the nearest opaque background, and clear the node ONLY when it proves
+    // its threshold. Anything unproven stays incomplete, and every violation
+    // and non-SVG incomplete is untouched.
+    const channel = (value) => { const c = value / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const parse = (value) => { const m = String(value).match(/-?[\d.]+/g); return m && m.length >= 3 && (m.length < 4 || Number(m[3]) === 1) ? m.slice(0, 3).map(Number) : null; };
+    const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    const contrast = (fg, bg) => { const [hi, lo] = [luminance(fg), luminance(bg)].sort((a, b) => b - a); return (hi + 0.05) / (lo + 0.05); };
+    const opaqueBehind = (element) => {
+      for (let node = element; node instanceof Element; node = node.parentElement ?? node.ownerSVGElement) {
+        const style = getComputedStyle(node);
+        if (style.backgroundImage !== "none") return null;
+        const colour = parse(style.backgroundColor);
+        if (colour) return colour;
+      }
+      return null;
+    };
+    // A glyph may sit over a painted sibling (a gradient area fill, a bar, a
+    // path) rather than the HTML surface, which is exactly why axe gives up.
+    // Only accept a node whose box no painted SVG shape intersects, so the
+    // resolved background is genuinely the one behind the text.
+    const painted = (element) => {
+      const style = getComputedStyle(element);
+      if (style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0) return false;
+      const fill = style.fill;
+      return Boolean(fill) && fill !== "none" && parse(fill) !== null ? true : fill.includes("url(");
+    };
+    const overlapsPaintedShape = (element) => {
+      const svg = element.ownerSVGElement;
+      if (!svg) return true;
+      const box = element.getBoundingClientRect();
+      return [...svg.querySelectorAll("path, rect, circle, polygon, ellipse, line")].some((shape) => {
+        if (shape.contains(element) || !painted(shape)) return false;
+        const area = shape.getBoundingClientRect();
+        if (area.width >= svg.getBoundingClientRect().width && area.height >= svg.getBoundingClientRect().height) return false;
+        return box.left < area.right && box.right > area.left && box.top < area.bottom && box.bottom > area.top;
+      });
+    };
+    const proveSvgText = (node) => {
+      const element = node.element;
+      if (!(element instanceof SVGElement) || !element.textContent?.trim()) return false;
+      if (overlapsPaintedShape(element)) return false;
+      const style = getComputedStyle(element);
+      const foreground = parse(style.fill);
+      const background = opaqueBehind(element.parentElement ?? element);
+      if (!foreground || !background) return false;
+      const size = Number.parseFloat(style.fontSize);
+      const large = size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700);
+      const threshold = large ? 4.5 : 7;
+      const ratio = contrast(foreground, background);
+      if (ratio < threshold) return false;
+      measured.set(JSON.stringify(node.target), { target: node.target, text: element.textContent.trim().slice(0, 40), foreground: style.fill, background: `rgb(${background.join(", ")})`, contrastRatio: Number(ratio.toFixed(2)), fontSizePx: size, large, threshold });
+      return true;
+    };
+    const resolveSvgText = (entries) => entries.flatMap((entry) => {
+      if (!entry.id.startsWith("color-contrast")) return [entry];
+      const unresolved = entry.nodes.filter((node) => !proveSvgText(node));
+      return unresolved.length ? [{ ...entry, nodes: unresolved }] : [];
+    });
     return {
       textSurfaces: [...measured.values()],
       violations: standards.violations.map(summarize),
-      incomplete: standards.incomplete.map(summarize),
-      standards: { violations: standards.violations.map(summarize), incomplete: standards.incomplete.map(summarize) },
-      enhanced: { violations: enhanced.violations.map(summarize), incomplete: enhanced.incomplete.map(summarize) }
+      incomplete: resolveSvgText(standards.incomplete).map(summarize),
+      standards: { violations: standards.violations.map(summarize), incomplete: resolveSvgText(standards.incomplete).map(summarize) },
+      enhanced: { violations: enhanced.violations.map(summarize), incomplete: resolveSvgText(enhanced.incomplete).map(summarize) }
     };
   }, TAGS);
   const empty = !result.standards.violations.length && !result.standards.incomplete.length && !result.enhanced.violations.length && !result.enhanced.incomplete.length;

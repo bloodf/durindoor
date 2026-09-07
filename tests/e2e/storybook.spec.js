@@ -146,9 +146,11 @@ async function runAxe(page, storyId) {
     const standardsIncomplete = standardsAudit.entries;
     const enhancedIncomplete = enhancedAudit.entries;
     const unmeasurable = [...standardsAudit.unmeasurable, ...enhancedAudit.unmeasurable];
+    const refusedExemptions = [...standardsAudit.refused ?? [], ...enhancedAudit.refused ?? []];
     return {
       textSurfaces: [...measured.values()],
       unmeasurable,
+      refusedExemptions,
       violations: standards.violations.map(summarize),
       incomplete: standardsIncomplete.map(summarize),
       standards: { violations: standards.violations.map(summarize), incomplete: standardsIncomplete.map(summarize) },
@@ -268,6 +270,7 @@ for (const { storyId, rows, sourceHashes, scenario, hasPlay } of planned) test(s
         expectedConsoleErrors: scenario.expectedConsoleErrors,
         a11y: typeof a11y !== "undefined" ? a11y : null,
         unmeasurable: typeof a11y !== "undefined" ? a11y?.unmeasurable ?? [] : null,
+        refusedExemptions: typeof a11y !== "undefined" ? a11y?.refusedExemptions ?? [] : null,
         controls: typeof controls !== "undefined" ? controls : null,
         storybookFinished: typeof finalStorybookFinished !== "undefined" ? finalStorybookFinished.finished : null,
         consoleErrors: [...consoleErrors],

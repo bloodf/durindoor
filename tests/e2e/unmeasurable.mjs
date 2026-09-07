@@ -56,19 +56,28 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
  */
 export function auditIncomplete(entries, { storyId, chartStories, resolve, computeStyle }) {
   const unmeasurable = [];
+  const refused = [];
   const audited = entries.flatMap((entry) => {
     if (!CONTRAST_RULES.has(entry.id)) return [entry];
     const remaining = entry.nodes.filter((node) => {
       const element = resolve(node);
       if (!element) return true;
       const reason = exemptionFor(element, storyId, chartStories, computeStyle);
-      if (!reason) return true;
+      if (!reason) {
+        // Record why a candidate surface was NOT cleared, so a refusal is
+        // diagnosable without another instrumented run.
+        if (element.matches?.("textarea") || element.closest?.(".monaco-editor")) {
+          const style = computeStyle(element);
+          refused.push({ storyId, target: node.target, rule: entry.id, className: element.getAttribute?.("class") ?? null, zIndex: style.zIndex, color: style.color, backgroundColor: style.backgroundColor, opacity: style.opacity, visibility: style.visibility });
+        }
+        return true;
+      }
       unmeasurable.push({ storyId, target: node.target, rule: entry.id, reason });
       return false;
     });
     return remaining.length ? [{ ...entry, nodes: remaining }] : [];
   });
-  return { entries: audited, unmeasurable };
+  return { entries: audited, unmeasurable, refused };
 }
 
 /** Resolve an axe node, refusing targets that cross a frame or shadow root. */

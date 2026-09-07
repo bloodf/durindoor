@@ -81,7 +81,7 @@ export default function EndpointPresetControl({ baseUrl, apiKey, onBaseUrlChange
     <div className="flex items-center gap-2">
       <span className="w-32 shrink-0 text-sm font-semibold text-dd-text text-right">Preset</span>
       <span className="material-symbols-outlined text-dd-muted text-[14px]" aria-hidden="true">arrow_forward</span>
-      <Select value={selectedName} onChange={handleSelect} options={options} size="sm" className="flex-1" />
+      <Select aria-label="Endpoint preset" value={selectedName} onChange={handleSelect} options={options} size="sm" className="flex-1" />
       <Button
         variant="secondary"
         size="sm"

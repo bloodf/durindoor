@@ -339,7 +339,7 @@ export default function ComboDetailPage() {
             </Button>
           </div>
           <Input type="password" label="API key secret" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" placeholder="Paste a saved API key secret" className="font-mono" />
-          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{curlExample}</pre>
+          <pre tabIndex={0} aria-label="API request example" className="mt-3 overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{curlExample}</pre>
           {testError && <p role="alert" className="mt-3 break-words text-xs text-dd-danger">{testError}</p>}
           {testResult && (
             <div className="mt-3 flex flex-col gap-3">
@@ -364,7 +364,7 @@ export default function ComboDetailPage() {
                   <audio controls src={testResult.audioUrl} className="w-full" />
                 </div>
               )}
-              {testResult.json && <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{testResult.json}</pre>}
+              {testResult.json && <pre tabIndex={0} aria-label="API response output" className="max-h-[300px] overflow-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{testResult.json}</pre>}
             </div>
           )}
         </Card>
@@ -375,7 +375,7 @@ export default function ComboDetailPage() {
         {logs.length === 0 ? (
           <p className="text-xs italic text-dd-muted">No usage yet.</p>
         ) : (
-          <pre className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded-dd bg-dd-surface-2 p-3 text-[11px] text-dd-text">{logs.join("\n")}</pre>
+          <pre tabIndex={0} aria-label="Connection logs" className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded-dd bg-dd-surface-2 p-3 text-[11px] text-dd-text" role="region">{logs.join("\n")}</pre>
         )}
       </Card>
 

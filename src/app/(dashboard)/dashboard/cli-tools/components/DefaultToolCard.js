@@ -60,7 +60,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
     return (
       <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
         <input
-          type="text"
+          type="text" aria-label="Model ID"
           value={modelValue}
           onChange={(e) => setModelValue(e.target.value)}
           placeholder="provider/model-id"
@@ -193,7 +193,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
                 {copiedField === "codeblock" ? "Copied!" : "Copy"}
               </Button>
             </div>
-            <pre className="p-4 bg-dd-surface-2 rounded-dd-lg border border-dd-border overflow-x-auto">
+            <pre tabIndex={0} aria-label={`${tool.name} configuration`} className="p-4 bg-dd-surface-2 rounded-dd-lg border border-dd-border overflow-x-auto" role="region">
               <code className="text-sm font-mono whitespace-pre">{replaceVars(tool.codeBlock.code)}</code>
             </pre>
           </div>

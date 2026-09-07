@@ -110,39 +110,39 @@ export function SttExampleCard({ providerId }) {
       <h2 className="mb-4 text-lg font-semibold text-dd-text">Example</h2>
       <div className="flex flex-col gap-3">
         <Row label="Model">
-          {sttModels.length > 0 ? <Select value={selectedModel} onChange={setSelectedModel} options={sttModels.map((m) => ({ value: m.id, label: m.name || m.id }))} /> : <Input value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} placeholder="Enter model id" className="font-mono" />}
+          {sttModels.length > 0 ? <Select aria-label="Model" value={selectedModel} onChange={setSelectedModel} options={sttModels.map((m) => ({ value: m.id, label: m.name || m.id }))} /> : <Input aria-label="Model" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} placeholder="Enter model id" className="font-mono" />}
         </Row>
         <Row label="Endpoint">
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Input value={`${endpoint}/v1/audio/transcriptions`} readOnly className="flex-1 font-mono" />
-            {tunnelEndpoint && <Button size="sm" variant={useTunnel ? "primary" : "secondary"} icon="wifi_tethering" onClick={() => setUseTunnel((value) => !value)}>{useTunnel ? "Tunnel" : "Local"}</Button>}
+            <Input aria-label="Transcription endpoint URL" value={`${endpoint}/v1/audio/transcriptions`} readOnly className="flex-1 font-mono" />
+            {tunnelEndpoint && <Button size="sm" variant={useTunnel ? "primary" : "secondary"} icon="wifi_tethering" aria-label={useTunnel ? "Use local endpoint" : "Use tunnel endpoint"} onClick={() => setUseTunnel((value) => !value)}>{useTunnel ? "Tunnel" : "Local"}</Button>}
           </div>
         </Row>
-        <Row label="API Key"><Input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" placeholder="Paste a saved API key secret" className="font-mono" /></Row>
+        <Row label="API Key"><Input aria-label="API key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" placeholder="Paste a saved API key secret" className="font-mono" /></Row>
         <Row label="Audio File">
           <div className="flex flex-col gap-2">
             <label className="flex w-full cursor-pointer items-center gap-2 rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-[13px] text-dd-text outline-none transition-colors hover:border-dd-border-subtle focus-within:border-dd-accent focus-within:shadow-dd-focus">
               <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-dd-muted">upload_file</span>
               <span>{audioFile ? "Replace file" : "Choose audio file"}</span>
-              <input type="file" accept="audio/*,video/mp4,.m4a,.mp3,.wav,.ogg,.flac,.webm,.opus" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} className="sr-only" />
+              <input type="file" aria-label="Audio file" accept="audio/*,video/mp4,.m4a,.mp3,.wav,.ogg,.flac,.webm,.opus" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} className="sr-only" />
             </label>
             {audioFile && <span className="font-mono text-xs text-dd-muted">{audioFile.name} · {(audioFile.size / 1024).toFixed(1)} KB</span>}
           </div>
         </Row>
-        {allowedParams.includes("language") && <Row label="Language"><Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="e.g. en, vi, ja (auto-detect if empty)" className="font-mono" /></Row>}
-        {allowedParams.includes("prompt") && <Row label="Prompt"><Input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="optional context to improve accuracy" /></Row>}
-        {allowedParams.includes("temperature") && <Row label="Temperature"><Input type="number" step="0.1" min="0" max="1" value={temperature} onChange={(e) => setTemperature(e.target.value)} placeholder="0 - 1 (default 0)" /></Row>}
+        {allowedParams.includes("language") && <Row label="Language"><Input aria-label="Language" value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="e.g. en, vi, ja (auto-detect if empty)" className="font-mono" /></Row>}
+        {allowedParams.includes("prompt") && <Row label="Prompt"><Input aria-label="Prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="optional context to improve accuracy" /></Row>}
+        {allowedParams.includes("temperature") && <Row label="Temperature"><Input aria-label="Temperature" type="number" step="0.1" min="0" max="1" value={temperature} onChange={(e) => setTemperature(e.target.value)} placeholder="0 - 1 (default 0)" /></Row>}
         {allowedParams.includes("response_format") && (
           <Row label="Response Format">
-            <Select value={responseFormat} onChange={setResponseFormat} options={[{ value: "json", label: "json" }, { value: "text", label: "text" }, { value: "srt", label: "srt" }, { value: "verbose_json", label: "verbose_json" }, { value: "vtt", label: "vtt" }]} />
+            <Select aria-label="Response format" value={responseFormat} onChange={setResponseFormat} options={[{ value: "json", label: "json" }, { value: "text", label: "text" }, { value: "srt", label: "srt" }, { value: "verbose_json", label: "verbose_json" }, { value: "vtt", label: "vtt" }]} />
           </Row>
         )}
         <div className="mt-1">
           <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Request</span><div className="flex gap-2"><Button size="sm" variant="ghost" icon={copiedCurl ? "check" : "content_copy"} onClick={() => copyCurl(curlSnippet)}>{copiedCurl ? "Copied" : "Copy"}</Button><Button size="sm" variant="primary" icon="play_arrow" loading={running} onClick={handleRun} disabled={!audioFile || !modelFull}>{running ? "Transcribing..." : "Run"}</Button></div></div>
-          <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{curlSnippet}</pre>
+          <pre tabIndex={0} aria-label="Request example" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{curlSnippet}</pre>
         </div>
         {error && <p role="alert" className="break-words text-xs text-dd-danger">{error}</p>}
-        <div><div className="mb-1.5 flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response {result && latency && <span className="font-normal normal-case">⚡ {latency}ms</span>}</span>{result && <Button size="sm" variant="ghost" icon={copiedRes ? "check" : "content_copy"} onClick={() => copyRes(resultStr)}>{copiedRes ? "Copied" : "Copy"}</Button>}</div><pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{resultStr}</pre></div>
+        <div><div className="mb-1.5 flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response {result && latency && <span className="font-normal normal-case">⚡ {latency}ms</span>}</span>{result && <Button size="sm" variant="ghost" icon={copiedRes ? "check" : "content_copy"} onClick={() => copyRes(resultStr)}>{copiedRes ? "Copied" : "Copy"}</Button>}</div><pre tabIndex={0} aria-label="Response output" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{resultStr}</pre></div>
       </div>
     </Card>
   );

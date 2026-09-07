@@ -331,7 +331,7 @@ export function TtsExampleCard({ providerId }) {
                 <Button size="sm" variant="primary" icon="play_arrow" loading={running} onClick={handleRun} disabled={!input.trim() || !modelFull}>{running ? "Generating..." : "Run"}</Button>
               </div>
             </div>
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{curlSnippet}</pre>
+            <pre tabIndex={0} aria-label="Request example" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{curlSnippet}</pre>
           </div>
 
           {error && <p role="alert" className="break-words text-xs text-dd-danger">{error}</p>}
@@ -350,14 +350,14 @@ export function TtsExampleCard({ providerId }) {
                   <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">JSON Response</span>
                   </div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{JSON.stringify({ format: jsonResponse.format, audio: jsonResponse.audio ? `${jsonResponse.audio.substring(0, 100)}...` : "" }, null, 2)}</pre>
+                  <pre tabIndex={0} aria-label="JSON response output" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{JSON.stringify({ format: jsonResponse.format, audio: jsonResponse.audio ? `${jsonResponse.audio.substring(0, 100)}...` : "" }, null, 2)}</pre>
                 </div>
               )}
             </div>
           ) : (
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response</span>
-              <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text opacity-50">{DEFAULT_TTS_RESPONSE_EXAMPLE}</pre>
+              <pre tabIndex={0} aria-label="Example response output" className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text opacity-50" role="region">{DEFAULT_TTS_RESPONSE_EXAMPLE}</pre>
             </div>
           )}
         </div>
@@ -370,7 +370,7 @@ export function TtsExampleCard({ providerId }) {
           {modalLoading ? (
             <p className="px-2 py-3 text-xs text-dd-muted">Loading...</p>
           ) : (
-            <div className="flex max-h-[55vh] flex-col gap-1 overflow-y-auto">
+            <div tabIndex={0} aria-label="Available languages" className="flex max-h-[55vh] flex-col gap-1 overflow-y-auto" role="region">
               {filteredLanguages.map((c) => (
                 <button
                   key={c.code}

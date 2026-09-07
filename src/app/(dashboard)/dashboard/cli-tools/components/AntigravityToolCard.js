@@ -342,6 +342,7 @@ export default function AntigravityToolCard({
                   <div className="relative w-full min-w-0">
                     <input
                       type="text"
+                      aria-label={`${model.name} model`}
                       value={modelMappings[model.alias] || ""}
                       onChange={(e) => handleModelMappingChange(model.alias, e.target.value)}
                       placeholder="provider/model-id"
@@ -423,6 +424,7 @@ export default function AntigravityToolCard({
           </div>
 
           <Input
+            label="Sudo password"
             type="password"
             placeholder="Enter sudo password"
             value={sudoPassword}

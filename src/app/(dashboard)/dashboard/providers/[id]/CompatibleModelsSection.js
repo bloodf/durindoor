@@ -39,10 +39,12 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
           <code className="text-xs text-dd-muted font-mono bg-dd-surface-2 px-1.5 py-0.5 rounded">{fullModel}</code>
           <div className="relative group/btn">
             <button
+              type="button"
+              aria-label={copied === `model-${modelId}` ? `${modelId} copied` : `Copy ${modelId}`}
               onClick={() => onCopy(fullModel, `model-${modelId}`)}
               className="p-0.5 hover:bg-dd-surface-2 rounded text-dd-muted hover:text-dd-accent"
             >
-              <span className="material-symbols-outlined text-sm">
+              <span aria-hidden="true" className="material-symbols-outlined text-sm">
                 {copied === `model-${modelId}` ? "check" : "content_copy"}
               </span>
             </button>
@@ -53,11 +55,13 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
           {onTest && (
             <div className="relative group/btn">
               <button
+                type="button"
+                aria-label={isTesting ? `Testing ${modelId}` : `Test ${modelId}`}
                 onClick={onTest}
                 disabled={isTesting}
                 className="p-0.5 hover:bg-dd-surface-2 rounded text-dd-muted hover:text-dd-accent transition-colors"
               >
-                <span className={`material-symbols-outlined text-sm ${isTesting ? "animate-spin motion-reduce:animate-none" : ""}`}>
+                <span aria-hidden="true" className={`material-symbols-outlined text-sm ${isTesting ? "animate-spin motion-reduce:animate-none" : ""}`}>
                   {isTesting ? "progress_activity" : "science"}
                 </span>
               </button>
@@ -71,19 +75,20 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
       {onEdit && (
         <button
           type="button"
+          aria-label={`Edit ${modelId} capabilities`}
           onClick={onEdit}
           className="p-1 hover:bg-dd-surface-2 rounded text-dd-muted"
-          title="Edit capabilities"
         >
-          <span className="material-symbols-outlined text-sm">edit</span>
+          <span aria-hidden="true" className="material-symbols-outlined text-sm">edit</span>
         </button>
       )}
       <button
+        type="button"
+        aria-label={`Remove ${modelId}`}
         onClick={onDeleteAlias}
         className="p-1 hover:bg-dd-danger/10 rounded text-dd-danger"
-        title="Remove model"
       >
-        <span className="material-symbols-outlined text-sm">delete</span>
+        <span aria-hidden="true" className="material-symbols-outlined text-sm">delete</span>
       </button>
     </div>
   );

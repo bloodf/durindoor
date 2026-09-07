@@ -138,7 +138,7 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
               {result.failed > 0 ? `, ✗ ${result.failed} ${translate("failed")}` : ""}
             </div>
             {failedItems.length > 0 ? (
-              <ul className="max-h-40 overflow-y-auto rounded-dd border border-dd-border bg-dd-surface-2 p-2 font-mono text-xs">
+              <ul tabIndex={0} aria-label="Failed Codex imports" className="max-h-40 overflow-y-auto rounded-dd border border-dd-border bg-dd-surface-2 p-2 font-mono text-xs" role="region">
                 {failedItems.map((item) => (
                   <li key={item.index} className="text-dd-danger">
                     [{item.index}] {item.error}

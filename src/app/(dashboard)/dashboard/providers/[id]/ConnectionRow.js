@@ -157,6 +157,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
         {/* Priority arrows */}
         <div className="flex shrink-0 flex-col">
           <button
+            aria-label={`Move ${displayName} up`}
             onClick={onMoveUp}
             disabled={isFirst}
             className={`p-0.5 rounded ${isFirst ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}
@@ -164,6 +165,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
             <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
           </button>
           <button
+            aria-label={`Move ${displayName} down`}
             onClick={onMoveDown}
             disabled={isLast}
             className={`p-0.5 rounded ${isLast ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}
@@ -306,6 +308,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
           size="sm"
           checked={connection.isActive ?? true}
           onChange={onToggleActive}
+          ariaLabel={`${connection.isActive ?? true ? "Disable" : "Enable"} ${displayName}`}
           title={(connection.isActive ?? true) ? "Disable connection" : "Enable connection"}
         />
       </div>

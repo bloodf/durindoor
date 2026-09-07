@@ -155,8 +155,11 @@ export const test = base.extend({
   // forcing specs to consume `qa` directly. Inheriting the built-in fixture
   // preserves every matrix option (viewport, colorScheme, isMobile, hasTouch,
   // screen, storageState) without re-implementing newContext.
-  context: [async ({ context, runtime }, use) => {
+  context: [async ({ context, runtime, browserName }, use) => {
     const detach = await installDestinationGuard(context, runtime, "test");
+    if (storybookMode() && browserName === "chromium") {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: runtime.baseUrl });
+    }
     try {
       await use(context);
     } finally {

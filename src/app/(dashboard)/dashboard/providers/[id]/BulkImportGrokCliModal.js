@@ -102,7 +102,7 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
               {result.success} {translate("added")}{result.failed ? `, ${result.failed} ${translate("failed")}` : ""}
             </p>
             {failedItems.length > 0 ? (
-              <ul className="max-h-40 overflow-y-auto rounded-dd border border-dd-border bg-dd-surface-2 p-2 font-mono text-xs">
+              <ul tabIndex={0} aria-label="Failed Grok CLI imports" className="max-h-40 overflow-y-auto rounded-dd border border-dd-border bg-dd-surface-2 p-2 font-mono text-xs" role="region">
                 {failedItems.map((item) => (
                   <li key={item.index} className="text-dd-danger">[{item.index}] {item.error}</li>
                 ))}

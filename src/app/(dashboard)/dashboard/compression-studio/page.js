@@ -30,7 +30,7 @@ function buildPayload(useAdvanced, model, inputText, parsedJSON) {
   return null;
 }
 function RawOutput({ id, raw }) {
-  return <section aria-label={`${id} raw output`} className="rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3"><h3 className="mb-1 text-xs font-semibold text-dd-muted">{id} raw output</h3><pre className="max-h-56 overflow-auto whitespace-pre-wrap font-mono text-xs leading-5 text-dd-text">{isString(raw) ? raw : JSON.stringify(raw, null, 2)}</pre></section>;
+  return <section aria-label={`${id} raw output`} className="rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3"><h3 className="mb-1 text-xs font-semibold text-dd-muted">{id} raw output</h3><pre tabIndex={0} aria-label={`${id} raw output`} className="max-h-56 overflow-auto whitespace-pre-wrap font-mono text-xs leading-5 text-dd-text" role="region">{isString(raw) ? raw : JSON.stringify(raw, null, 2)}</pre></section>;
 }
 
 export default function CompressionStudioPage() {

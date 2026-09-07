@@ -6,6 +6,7 @@ export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabl
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
       <Input
+        aria-label="API key"
         type="password"
         value={value || ""}
         onChange={(event) => onChange(event.target.value)}

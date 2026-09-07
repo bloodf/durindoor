@@ -391,9 +391,9 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                 <span className="text-[11px] font-medium text-dd-muted">{translate("Judge")}</span>
                 <button
                   type="button"
+                  aria-label="Pick the model that fuses panel answers"
                   onClick={() => setShowJudgeSelect(true)}
                   className="inline-flex min-h-11 max-w-full items-center gap-1 rounded-dd border border-dashed border-dd-accent/40 px-2 py-1 font-mono text-[11px] text-dd-accent outline-none transition-colors hover:border-dd-accent hover:bg-dd-accent-soft focus-visible:shadow-dd-focus"
-                  title="Pick the model that fuses panel answers"
                 >
                   <span aria-hidden="true" className="material-symbols-outlined text-[14px]">gavel</span>
                   <span className="truncate">{judge || `${translate("Auto")} — ${combo.models[0] || translate("first model")}`}</span>
@@ -524,8 +524,8 @@ function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWe
         {...attributes}
         {...listeners}
         type="button"
+        aria-label={`Drag to reorder ${model || `model ${index + 1}`}`}
         className="flex min-h-11 min-w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-dd text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus active:cursor-grabbing"
-        title="Drag to reorder"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
           <circle cx="9" cy="4" r="2"/><circle cx="15" cy="4" r="2"/>
@@ -770,7 +770,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             ) : (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis, restrictToParentElement]}>
                 <SortableContext items={modelItems.map((m) => m.uid)} strategy={verticalListSortingStrategy}>
-                  <div className="flex max-h-[55vh] min-w-0 flex-col gap-1 overflow-y-auto sm:max-h-[350px]">
+                  <div tabIndex={0} aria-label="Combo models" className="flex max-h-[55vh] min-w-0 flex-col gap-1 overflow-y-auto sm:max-h-[350px]" role="region">
                     {modelItems.map(({ uid, model }, index) => (
                       <ModelItem
                         key={uid}

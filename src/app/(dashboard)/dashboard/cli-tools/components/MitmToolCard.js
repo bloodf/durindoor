@@ -276,6 +276,7 @@ export default function MitmToolCard({
             <p className="text-xs text-dd-muted">Required to modify /etc/hosts and flush DNS cache</p>
           </div>
           <Input
+            label="Sudo password"
             type="password"
             placeholder="Enter sudo password"
             value={sudoPassword}

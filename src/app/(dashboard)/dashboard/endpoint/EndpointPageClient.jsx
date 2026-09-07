@@ -1494,7 +1494,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
                 <p className="text-[13px] font-semibold text-dd-text">Allowed Combos</p>
                 <p className="text-xs text-dd-muted">Choose &quot;All combos&quot; for unrestricted access, or select specific combos to restrict this key.</p>
               </div>
-              <div className="flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-dd-lg border border-dd-border p-2">
+              <div tabIndex={0} aria-label="Allowed combos for new key" className="flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-dd-lg border border-dd-border p-2" role="region">
                 <Checkbox
                   checked={newKeyAllowedCombos.length === 0}
                   onChange={() => setNewKeyAllowedCombos([])}
@@ -1729,8 +1729,10 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
               {tsInstallLog.length > 0 ? (
                 <div
                   ref={tsLogRef}
+                  tabIndex={0}
+                  aria-label="Tailscale install log"
                   className="max-h-40 overflow-y-auto rounded-dd bg-dd-surface-2 p-2 font-mono text-xs text-dd-muted"
-                >
+                 role="region">
                   {tsInstallLog.map((line, i) => (
                     <div key={i}>{line}</div>
                   ))}
@@ -1825,7 +1827,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
           {combos.length > 0 ? (
             <div className="flex flex-col gap-2">
               <p className="text-xs text-dd-muted">Select which combos this key can access. Leave empty to allow all.</p>
-              <div className="flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-dd-lg border border-dd-border p-2">
+              <div tabIndex={0} aria-label="Allowed combos for key" className="flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-dd-lg border border-dd-border p-2" role="region">
                 {combos.map((combo) => (
                   <Checkbox
                     key={combo.id || combo.name}

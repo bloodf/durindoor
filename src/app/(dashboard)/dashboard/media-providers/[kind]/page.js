@@ -28,7 +28,7 @@ function ComboList({ combos }) {
           <Card hover className="flex min-w-0 items-center gap-3 p-3">
             <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-dd-accent">layers</span>
             <code className="min-w-0 flex-1 truncate text-[13px] font-medium text-dd-text">{combo.name}</code>
-            <div className="flex flex-wrap items-center gap-1" aria-label={`${combo.models.length} providers`}>
+            <div role="group" className="flex flex-wrap items-center gap-1" aria-label={`${combo.models.length} providers`}>
               {combo.models.slice(0, 6).map((entry, index) => {
                 const providerId = isString(entry) ? entry.split("/")[0] : "";
                 return <ProviderLogo key={`${entry}-${index}`} provider={providerId} size={20} />;

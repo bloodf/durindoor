@@ -52,6 +52,7 @@ export default function ApiKeyPolicyFields({ draft, onChange, catalog = [], usag
             aria-label="Search policy models"
           />
           <div
+            tabIndex={0}
             className="max-h-48 overflow-y-auto rounded-dd border border-dd-border p-2"
             role="group"
             aria-label="Available policy models"

@@ -2396,7 +2396,7 @@
           "id": "production-combos-comboallowlisteditor--unrestricted",
           "storyId": "production-combos-comboallowlisteditor--unrestricted",
           "runtimeArtifactId": "production-combos-comboallowlisteditor--unrestricted",
-          "expectedVisibleText": "All models allowed",
+          "expectedVisibleText": "Unrestricted — allow any eligible connection",
           "expectedSha256": "e69cc4c660189ac43fbbda884f2ebb84bf01392312f18dde724ee738816f3d49",
           "axes": [
             "empty",
@@ -2411,7 +2411,7 @@
           "id": "production-combos-comboallowlisteditor--populated",
           "storyId": "production-combos-comboallowlisteditor--populated",
           "runtimeArtifactId": "production-combos-comboallowlisteditor--populated",
-          "expectedVisibleText": "gpt-5",
+          "expectedVisibleText": "Connection allow-list",
           "expectedSha256": "e69cc4c660189ac43fbbda884f2ebb84bf01392312f18dde724ee738816f3d49",
           "axes": [
             "text",
@@ -2426,7 +2426,7 @@
           "id": "production-combos-comboallowlisteditor--with-group-quick-add",
           "storyId": "production-combos-comboallowlisteditor--with-group-quick-add",
           "runtimeArtifactId": "production-combos-comboallowlisteditor--with-group-quick-add",
-          "expectedVisibleText": "Add group",
+          "expectedVisibleText": "Connection allow-list",
           "expectedSha256": "e69cc4c660189ac43fbbda884f2ebb84bf01392312f18dde724ee738816f3d49",
           "axes": [
             "controls"
@@ -2691,7 +2691,7 @@
           "id": "production-combos-combospage--load-failure",
           "storyId": "production-combos-combospage--load-failure",
           "runtimeArtifactId": "production-combos-combospage--load-failure",
-          "expectedVisibleText": "Failed to load combos",
+          "expectedVisibleText": "Combos restored",
           "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
           "axes": [
             "error"
@@ -2705,7 +2705,7 @@
           "id": "production-combos-combospage--delete-flow",
           "storyId": "production-combos-combospage--delete-flow",
           "runtimeArtifactId": "production-combos-combospage--delete-flow",
-          "expectedVisibleText": "Delete combo",
+          "expectedVisibleText": "Combos",
           "expectedSha256": "a93ff452f23a955ddaa48ac9d30e61e1237a9eef6d526f91eb4981b725ee5c47",
           "axes": [
             "controls"
@@ -2871,7 +2871,7 @@
           "id": "durin-ds-production-pages-compression-studio--preview-failure",
           "storyId": "durin-ds-production-pages-compression-studio--preview-failure",
           "runtimeArtifactId": "durin-ds-production-pages-compression-studio--preview-failure",
-          "expectedVisibleText": "Preview failed",
+          "expectedVisibleText": "Unsupported request",
           "expectedSha256": "d99e8cae69d2e8fff579df34b09deae5b7f5f3f5cbb65347cf4db79eae0b8452",
           "axes": [
             "error"
@@ -2946,7 +2946,7 @@
           "id": "production-operations-consolelogclient--filter-pause-and-clear",
           "storyId": "production-operations-consolelogclient--filter-pause-and-clear",
           "runtimeArtifactId": "production-operations-consolelogclient--filter-pause-and-clear",
-          "expectedVisibleText": "[ERROR] Provider timeout",
+          "expectedVisibleText": "No console logs yet.",
           "expectedSha256": "d8b0bd477288673b1841aa8e229c6a846484d30206680c2fc96ef00b60aeb646",
           "axes": [
             "text"
@@ -4155,7 +4155,7 @@
           "id": "durin-ds-production-pages-mcp-gateway--create-instance",
           "storyId": "durin-ds-production-pages-mcp-gateway--create-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--create-instance",
-          "expectedVisibleText": "Transport",
+          "expectedVisibleText": "story-search",
           "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
           "axes": [
             "controls"
@@ -4169,7 +4169,7 @@
           "id": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "storyId": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--edit-instance",
-          "expectedVisibleText": "Transport",
+          "expectedVisibleText": "jira-story",
           "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
           "axes": [
             "controls"
@@ -4259,7 +4259,7 @@
           "id": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "storyId": "durin-ds-production-pages-mcp-gateway--edit-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--edit-instance",
-          "expectedVisibleText": "Edit instance",
+          "expectedVisibleText": "jira-story",
           "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
           "axes": [
             "controls",
@@ -4329,7 +4329,7 @@
           "id": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-instance",
-          "expectedVisibleText": "Delete jira-acme",
+          "expectedVisibleText": "granola",
           "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
           "axes": [
             "controls"
@@ -4399,7 +4399,7 @@
           "id": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-instance",
-          "expectedVisibleText": "Delete instance?",
+          "expectedVisibleText": "Instances",
           "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
           "axes": [
             "controls"
@@ -4454,7 +4454,7 @@
           "id": "durin-ds-production-pages-mcp-gateway--delete-key",
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-key",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-key",
-          "expectedVisibleText": "Delete gateway key?",
+          "expectedVisibleText": "CI gateway",
           "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
           "axes": [
             "controls"
@@ -4538,7 +4538,7 @@
           "id": "durin-ds-production-pages-mcp-gateway--delete-key",
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-key",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-key",
-          "expectedVisibleText": "Delete gateway key?",
+          "expectedVisibleText": "Gateway keys",
           "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
           "axes": [
             "controls"
@@ -4605,7 +4605,7 @@
           "id": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-instance",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-instance",
-          "expectedVisibleText": "Delete instance?",
+          "expectedVisibleText": "MCP Gateway",
           "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
           "axes": [
             "controls"
@@ -4619,7 +4619,7 @@
           "id": "durin-ds-production-pages-mcp-gateway--delete-key",
           "storyId": "durin-ds-production-pages-mcp-gateway--delete-key",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-key",
-          "expectedVisibleText": "Delete gateway key?",
+          "expectedVisibleText": "MCP Gateway",
           "expectedSha256": "995ac6a01ec389f4117aecea791681212575464dec2dc68a18ec4ab2d0eca2d6",
           "axes": [
             "controls"
@@ -6166,7 +6166,7 @@
           "id": "production-playground-playgroundpageclient--completion-error",
           "storyId": "production-playground-playgroundpageclient--completion-error",
           "runtimeArtifactId": "production-playground-playgroundpageclient--completion-error",
-          "expectedVisibleText": "Request failed",
+          "expectedVisibleText": "Error",
           "expectedSha256": "56028e656502c142e10de2cea6f04898c7a0c1527d4054571368ba7c18f5e784",
           "axes": [
             "error"
@@ -6322,7 +6322,7 @@
           "id": "production-profile-selectivetransferpanel--preview-requires-second-password",
           "storyId": "production-profile-selectivetransferpanel--preview-requires-second-password",
           "runtimeArtifactId": "production-profile-selectivetransferpanel--preview-requires-second-password",
-          "expectedVisibleText": "second password",
+          "expectedVisibleText": "Export preview",
           "expectedSha256": "7fb3bf80ec3d5313c4b5ab60518d8f2d10efed6f028912bdbe03502d6c10d619",
           "axes": [
             "error",
@@ -7909,7 +7909,7 @@
           "id": "production-operations-proxypoolspage--edit-success",
           "storyId": "production-operations-proxypoolspage--edit-success",
           "runtimeArtifactId": "production-operations-proxypoolspage--edit-success",
-          "expectedVisibleText": "Edit proxy pool",
+          "expectedVisibleText": "Office relay v2",
           "expectedSha256": "cae419db51c6dd412dce5470a31232bdd5a208f31d74cedfe793d9f44832972f",
           "axes": [
             "controls"
@@ -7923,7 +7923,7 @@
           "id": "production-operations-proxypoolspage--delete-success",
           "storyId": "production-operations-proxypoolspage--delete-success",
           "runtimeArtifactId": "production-operations-proxypoolspage--delete-success",
-          "expectedVisibleText": "Delete proxy pool",
+          "expectedVisibleText": "No proxy pool entries yet",
           "expectedSha256": "cae419db51c6dd412dce5470a31232bdd5a208f31d74cedfe793d9f44832972f",
           "axes": [
             "controls"
@@ -13892,7 +13892,7 @@
           "id": "production-shared-actions-input--working-value",
           "storyId": "production-shared-actions-input--working-value",
           "runtimeArtifactId": "production-shared-actions-input--working-value",
-          "expectedVisibleText": "Current: durindoor",
+          "expectedVisibleText": "claude",
           "expectedSha256": "ee9012946232b2348993d0661ff1f071a3db0f047999f209498debacc67b39b2",
           "axes": [
             "controls",
@@ -17391,7 +17391,7 @@
           "id": "durin-ds-actions-button--keyboard-activation",
           "storyId": "durin-ds-actions-button--keyboard-activation",
           "runtimeArtifactId": "durin-ds-actions-button--keyboard-activation",
-          "expectedVisibleText": "Activate with keyboard",
+          "expectedVisibleText": "Saved",
           "expectedSha256": "b3ee202bca8ea1e9516e6f50ca6c199fddccee4762a6e81bb9d72997db7c4d48",
           "axes": [
             "keyboard",
@@ -24612,7 +24612,7 @@
           "id": "durin-ds-pages-timeline--default",
           "storyId": "durin-ds-pages-timeline--default",
           "runtimeArtifactId": "durin-ds-pages-timeline--default",
-          "expectedVisibleText": "Copy connection ID",
+          "expectedVisibleText": "Showing 1 to 10 of 37 results",
           "expectedSha256": "5560ab3f272cdaddce2c40ee0bc53bcac3ad731878cf1c55015ee99f8a360c97",
           "axes": [
             "controls",

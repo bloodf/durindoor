@@ -77,7 +77,7 @@ async function runAxe(page) {
   if (!AXE_SOURCE) return { status: "fail", tags: TAGS, scope, standards: { violations: [], incomplete: [] }, enhanced: { violations: [], incomplete: [] }, unverifiedCriteria: ["axe-core source missing; runtime scan not executed"] };
   await page.addScriptTag({ path: AXE_SOURCE });
   const result = await page.evaluate(async (tags) => {
-    const summarize = (entry) => ({ id: entry.id, impact: entry.impact, help: entry.help, nodes: entry.nodes.length });
+    const summarize = (entry) => ({ id: entry.id, impact: entry.impact, help: entry.help, nodes: entry.nodes.length, targets: entry.nodes.map((node) => node.target) });
     // Document-level navigation rules belong to the real-app gate, not an
     // isolated iframe. Include portal surfaces alongside the actual canvas.
     const context = { include: [["#storybook-root"], ["dialog"], ["[role='listbox']"], ["[role='tooltip']"]] };
@@ -178,61 +178,104 @@ for (const { storyId, rows, sourceHashes, scenario, hasPlay } of planned) test(s
   if (!/^[a-f0-9]{40}$/.test(candidateCommitSha ?? "")) throw new Error("DURINDOOR_CANDIDATE_SHA 40-hex commit SHA required");
   const { browser, theme, viewport } = qa.project;
   if (browserName !== browser) throw new Error(`project browser ${browser} differs from Playwright engine ${browserName}`);
-  const artifactDir = process.env.DURINDOOR_QA_ARTIFACT_DIR || qa.artifactDir; const storybookArtifactDir = path.join(artifactDir, "storybook"); mkdirSync(storybookArtifactDir, { recursive: true });
+  const artifactDir = process.env.DURINDOOR_QA_ARTIFACT_DIR || qa.artifactDir;
+  const storybookArtifactDir = path.join(artifactDir, "storybook");
+  const failureArtifactDir = path.join(artifactDir, "failures");
+  mkdirSync(storybookArtifactDir, { recursive: true });
+  mkdirSync(failureArtifactDir, { recursive: true });
   const consoleErrors = []; const pageErrors = []; const networkFailures = []; const networkExternalEffects = [];
   const recordConsole = (message) => { if (message.type() === "error") consoleErrors.push(message.text()); };
   const recordPageError = (error) => pageErrors.push(error.message);
   const recordFailedRequest = (request) => networkFailures.push(`${request.url()}: ${request.failure()?.errorText}`);
   const recordRequest = (request) => { try { if (new URL(request.url()).origin !== new URL(qa.baseURL).origin) networkExternalEffects.push(request.url()); } catch { networkExternalEffects.push(request.url()); } };
   page.on("console", recordConsole); page.on("pageerror", recordPageError); page.on("requestfailed", recordFailedRequest); page.on("request", recordRequest);
-  try {
-  await installListener(page);
-  const url = new URL(`/iframe.html?id=${storyId}&viewMode=story`, qa.baseURL); url.searchParams.set("globals", `theme:${theme}`);
-  await page.goto(url.toString());
-  const storybookFinished = await proveStable(page, storyId);
-  const beforeEvidence = await page.evaluate(() => ({ phases: window.__durindoorStoryEvidence?.phases, actualTheme: document.documentElement.classList.contains("dark") ? "dark" : "light" }));
-  const beforePhaseErrors = validateStorybookLifecycle({ storyId, phases: beforeEvidence.phases, expectedHasPlay: hasPlay });
-  if (beforePhaseErrors.length) throw new Error(`Storybook phase evidence failed before scans for ${storyId}: ${beforePhaseErrors.join("; ")}`);
-  if (beforeEvidence.actualTheme !== theme) throw new Error(`Storybook stable theme is ${beforeEvidence.actualTheme}, expected ${theme}`);
-  const a11y = await runAxe(page);
-  const controls = await geometry(page);
-  const image = await page.screenshot({ fullPage: true });
+
+  // Diagnostic-only capture. Coverage validator ignores subdirs; persisting
+  // this snapshot cannot make a failing case pass. The snapshot is taken for
   const key = artifactKey(storyId, browser, theme, viewport).replace(/[^a-zA-Z0-9_.-]/g, "_");
-  const artifactRelativePath = path.join("storybook", `${key}.png`);
-  writeFileSync(path.join(storybookArtifactDir, `${key}.png`), image);
-  const finalStorybookFinished = await page.evaluate((id) => {
-    const state = window.__durindoorStoryEvidence;
-    if (!state?.installed) throw new Error("Storybook addon channel listener did not install");
-    if (state.failures.length) throw new Error(`Storybook failure event ${JSON.stringify(state.failures)}`);
-    if (!state.finished || state.finished.storyId !== id || state.finished.status !== "success") throw new Error(`Storybook storyFinished changed or failed for ${id}`);
-    return { finished: state.finished, phases: state.phases };
-  }, storyId);
-  const phaseErrors = validateStorybookLifecycle({ storyId, phases: finalStorybookFinished.phases, expectedHasPlay: hasPlay });
-  if (phaseErrors.length) throw new Error(`Storybook phase evidence failed for ${storyId}: ${phaseErrors.join("; ")}`);
-  const actualTheme = await page.evaluate(() => document.documentElement.classList.contains("dark") ? "dark" : "light");
-  const finalStorybookStatus = finalStorybookFinished.finished;
-  const version = await page.evaluate(() => navigator.userAgent.match(/(?:Chrome|Firefox|Version)\/([\d.]+)/)?.[1] ?? "unknown");
-  await qa.assertNoExternalEffects();
-  expect(a11y.status, `${storyId} standards+enhanced axe failures: standards=${JSON.stringify(a11y.standards)} enhanced=${JSON.stringify(a11y.enhanced)}`).toBe("pass");
-  expect(controls.filter((c) => c.status === "fail"), `${storyId} rendered control geometry failures`).toEqual([]);
-  for (const text of scenario.expectedVisibleTexts) await expect(page.getByText(text, { exact: false }).first()).toBeVisible();
-  // Each declared expectation consumes exactly one distinct log, so one log cannot
-  // satisfy two expectations and undeclared logs still fail.
-  const unconsumedConsoleErrors = [...consoleErrors];
-  const missingConsoleErrors = [];
-  for (const expected of scenario.expectedConsoleErrors) {
-    const at = unconsumedConsoleErrors.findIndex((text) => text.includes(expected));
-    if (at === -1) missingConsoleErrors.push(expected); else unconsumedConsoleErrors.splice(at, 1);
-  }
-  expect(unconsumedConsoleErrors, `${storyId} undeclared console errors`).toEqual([]);
-  expect(missingConsoleErrors, `${storyId} declared console errors never logged`).toEqual([]);
-  expect(pageErrors, `${storyId} page errors`).toEqual([]);
-  expect(networkFailures, `${storyId} network failures`).toEqual([]);
-  expect(networkExternalEffects, `${storyId} network external effects`).toEqual([]);
-  expect(finalStorybookStatus?.status, `${storyId} final play status`).toBe("success");
-  expect(finalStorybookStatus?.storyId, `${storyId} final finished story id`).toBe(storyId);
-  expect(actualTheme, `${storyId} final theme`).toBe(theme);
-  save(artifactDir, { runtimeArtifactId: storyId, storyId, scenarioId: storyId, sourceHashes, candidateCommitSha, artifactRelativePath, artifactSha256: hash(image), theme, actualThemeBefore: beforeEvidence.actualTheme, actualTheme, viewportLabel: viewport, browser: { name: browserName, version }, axes: scenario.axes ?? [], expectedConsoleErrors: scenario.expectedConsoleErrors, hasPlay, playStatus: "success", storybookFinished: finalStorybookStatus, renderId: finalStorybookFinished.phases[0]?.renderId, renderPhases: finalStorybookFinished.phases, consoleErrors, pageErrors, networkFailures, networkExternalEffects, a11y, geometry: { controls, textSurfaces: a11y.textSurfaces }, manifestMappings: rows.map((row) => ({ id: row.id, reviewStatus: row.reviewStatus, approvedClassification: row.approvedClassification, sourcePath: row.sourcePath })), unverifiedCriteria: a11y.unverifiedCriteria ?? [] });
+  let version = null;
+  const writeFailureDiagnostic = (error) => {
+    try {
+      writeFileSync(path.join(failureArtifactDir, `${key}-failure.json`), JSON.stringify({
+        storyId,
+        runtimeArtifactId: storyId,
+        browser: { name: browserName, version },
+        theme,
+        viewportLabel: viewport,
+        assertion: { message: String(error?.message ?? error), stack: error?.stack ?? null },
+        axes: scenario.axes ?? [],
+        expectedVisibleTexts: scenario.expectedVisibleTexts,
+        expectedConsoleErrors: scenario.expectedConsoleErrors,
+        a11y: typeof a11y !== "undefined" ? a11y : null,
+        controls: typeof controls !== "undefined" ? controls : null,
+        storybookFinished: typeof finalStorybookFinished !== "undefined" ? finalStorybookFinished.finished : null,
+        consoleErrors: [...consoleErrors],
+        pageErrors: [...pageErrors],
+        networkFailures: [...networkFailures],
+        networkExternalEffects: [...networkExternalEffects],
+        actualTheme: typeof actualTheme !== "undefined" ? actualTheme : null,
+        actualThemeBefore: typeof beforeEvidence !== "undefined" ? beforeEvidence.actualTheme : null,
+        capturedAt: new Date().toISOString(),
+      }, null, 2));
+    } catch { /* diagnostic best-effort; never mask the original failure */ }
+  };
+
+  let a11y;
+  let controls;
+  let image;
+  let artifactRelativePath;
+  let finalStorybookFinished;
+  let actualTheme;
+  let beforeEvidence;
+  try {
+    await installListener(page);
+    const url = new URL(`/iframe.html?id=${storyId}&viewMode=story`, qa.baseURL);
+    url.searchParams.set("globals", `theme:${theme}`);
+    await page.goto(url.toString());
+    await proveStable(page, storyId);
+    beforeEvidence = await page.evaluate(() => ({ phases: window.__durindoorStoryEvidence?.phases, actualTheme: document.documentElement.classList.contains("dark") ? "dark" : "light" }));
+    const beforePhaseErrors = validateStorybookLifecycle({ storyId, phases: beforeEvidence.phases, expectedHasPlay: hasPlay });
+    if (beforePhaseErrors.length) throw new Error(`Storybook phase evidence failed before scans for ${storyId}: ${beforePhaseErrors.join("; ")}`);
+    if (beforeEvidence.actualTheme !== theme) throw new Error(`Storybook stable theme is ${beforeEvidence.actualTheme}, expected ${theme}`);
+    a11y = await runAxe(page);
+    controls = await geometry(page);
+    image = await page.screenshot({ fullPage: true });
+    artifactRelativePath = path.join("storybook", `${key}.png`);
+    writeFileSync(path.join(storybookArtifactDir, `${key}.png`), image);
+    finalStorybookFinished = await page.evaluate((id) => {
+      const state = window.__durindoorStoryEvidence;
+      if (!state?.installed) throw new Error("Storybook addon channel listener did not install");
+      if (state.failures.length) throw new Error(`Storybook failure event ${JSON.stringify(state.failures)}`);
+      if (!state.finished || state.finished.storyId !== id || state.finished.status !== "success") throw new Error(`Storybook storyFinished changed or failed for ${id}`);
+      return { finished: state.finished, phases: state.phases };
+    }, storyId);
+    version = await page.evaluate(() => navigator.userAgent.match(/(?:Chrome|Firefox|Version)\/([\d.]+)/)?.[1] ?? "unknown");
+    const phaseErrors = validateStorybookLifecycle({ storyId, phases: finalStorybookFinished.phases, expectedHasPlay: hasPlay });
+    if (phaseErrors.length) throw new Error(`Storybook phase evidence failed for ${storyId}: ${phaseErrors.join("; ")}`);
+    actualTheme = await page.evaluate(() => document.documentElement.classList.contains("dark") ? "dark" : "light");
+    const finalStorybookStatus = finalStorybookFinished.finished;
+    await qa.assertNoExternalEffects();
+    expect(a11y.status, `${storyId} standards+enhanced axe failures: standards=${JSON.stringify(a11y.standards)} enhanced=${JSON.stringify(a11y.enhanced)}`).toBe("pass");
+    expect(controls.filter((c) => c.status === "fail"), `${storyId} rendered control geometry failures`).toEqual([]);
+    for (const text of scenario.expectedVisibleTexts) await expect(page.getByText(text, { exact: false }).first()).toBeVisible();
+    const unconsumedConsoleErrors = [...consoleErrors];
+    const missingConsoleErrors = [];
+    for (const expected of scenario.expectedConsoleErrors) {
+      const at = unconsumedConsoleErrors.findIndex((text) => text.includes(expected));
+      if (at === -1) missingConsoleErrors.push(expected); else unconsumedConsoleErrors.splice(at, 1);
+    }
+    expect(unconsumedConsoleErrors, `${storyId} undeclared console errors`).toEqual([]);
+    expect(missingConsoleErrors, `${storyId} declared console errors never logged`).toEqual([]);
+    expect(pageErrors, `${storyId} page errors`).toEqual([]);
+    expect(networkFailures, `${storyId} network failures`).toEqual([]);
+    expect(networkExternalEffects, `${storyId} network external effects`).toEqual([]);
+    expect(finalStorybookStatus?.status, `${storyId} final play status`).toBe("success");
+    expect(finalStorybookStatus?.storyId, `${storyId} final finished story id`).toBe(storyId);
+    expect(actualTheme, `${storyId} final theme`).toBe(theme);
+    save(artifactDir, { runtimeArtifactId: storyId, storyId, scenarioId: storyId, sourceHashes, candidateCommitSha, artifactRelativePath, artifactSha256: hash(image), theme, actualThemeBefore: beforeEvidence.actualTheme, actualTheme, viewportLabel: viewport, browser: { name: browserName, version }, axes: scenario.axes ?? [], expectedConsoleErrors: scenario.expectedConsoleErrors, hasPlay, playStatus: "success", storybookFinished: finalStorybookStatus, renderId: finalStorybookFinished.phases[0]?.renderId, renderPhases: finalStorybookFinished.phases, consoleErrors, pageErrors, networkFailures, networkExternalEffects, a11y, geometry: { controls, textSurfaces: a11y.textSurfaces }, manifestMappings: rows.map((row) => ({ id: row.id, reviewStatus: row.reviewStatus, approvedClassification: row.approvedClassification, sourcePath: row.sourcePath })), unverifiedCriteria: a11y.unverifiedCriteria ?? [] });
+  } catch (error) {
+    writeFailureDiagnostic(error);
+    throw error;
   } finally {
     page.off("console", recordConsole); page.off("pageerror", recordPageError); page.off("requestfailed", recordFailedRequest); page.off("request", recordRequest);
   }

@@ -103,7 +103,7 @@ export default function ConsoleLogClient() {
           <Button size="sm" variant="ghost" icon="delete_sweep" onClick={handleClear}>Clear</Button>
           <span role="status" className="dd-tnum text-xs text-dd-muted" aria-label={`${visibleLogs.length} of ${logs.length} log lines`}>{visibleLogs.length}/{logs.length}</span>
         </CardContent>
-        <div ref={logRef} role="log" aria-live={paused ? "off" : "polite"} className="h-[calc(100vh-260px)] min-h-80 overflow-y-auto bg-dd-surface-2 py-2">
+        <div ref={logRef} role="log" tabIndex={0} aria-label="Console log output" aria-live={paused ? "off" : "polite"} className="h-[calc(100vh-260px)] min-h-80 overflow-y-auto bg-dd-surface-2 py-2">
           {visibleLogs.length === 0 ? <div className="flex h-full items-center justify-center text-[13px] text-dd-muted">{logs.length === 0 ? "No console logs yet." : "No matching console logs."}</div> : visibleLogs.map((line, index) => <div key={`${index}-${line}`} className="break-words px-3 py-1 font-mono text-xs leading-relaxed hover:bg-dd-surface"><span>{colorLine(line)}</span></div>)}
         </div>
       </Card>

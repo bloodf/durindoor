@@ -315,7 +315,7 @@ api_key = "${keyToUse}"
                   <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
                   <div className="relative w-full min-w-0">
                     <input
-                  type="text"
+                  type="text" aria-label="Model ID"
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
                   placeholder="provider/model-id"

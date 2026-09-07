@@ -341,7 +341,7 @@ export default function DroidToolCard({
                     {/* Model input row */}
                     <div className="flex items-center gap-1.5">
                       <input
-                    type="text"
+                    type="text" aria-label="Model ID"
                     value={modelInput}
                     onChange={(e) => setModelInput(e.target.value)}
                     onKeyDown={(e) => {if (e.key === "Enter") {e.preventDefault();addModel();}}}

@@ -28,7 +28,7 @@ function ActionEntry({ action }) {
   if (diagnostic) return <SetupDiagnosticCard diagnostic={diagnostic} />;
   if (!isString(action)) return null;
   if (!isCommandAction(action)) return <span className="whitespace-pre-wrap break-words text-xs text-dd-muted">{action}</span>;
-  return <div className="flex flex-wrap items-center gap-2"><code className="max-w-full overflow-x-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1 font-mono text-xs text-dd-text">{action}</code><Button variant="secondary" size="sm" onClick={() => copy(action, action)} icon="content_copy">{copied === action ? "Copied" : "Copy"}</Button></div>;
+  return <div className="flex flex-wrap items-center gap-2"><code tabIndex={0} aria-label="Configuration command" className="max-w-full overflow-x-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1 font-mono text-xs text-dd-text" role="region">{action}</code><Button variant="secondary" size="sm" onClick={() => copy(action, action)} icon="content_copy">{copied === action ? "Copied" : "Copy"}</Button></div>;
 }
 function ServiceRow({ name, svc, dryRun }) {
   const meta = SERVICE_META[name] || { label: name, icon: "settings" };

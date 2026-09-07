@@ -73,7 +73,7 @@ function RouterNode({ data }) {
       <img src="/favicon.svg" alt="DurinDoor" className="size-6" />
       <span className="text-[13px] font-bold text-dd-text">DurinDoor</span>
       {data.activeCount > 0 ? (
-        <span aria-label={`${data.activeCount} active`} className="ml-auto rounded-full bg-dd-accent px-1.5 py-0.5 text-[11px] font-bold text-dd-on-accent dd-tnum">
+        <span role="status" aria-label={`${data.activeCount} active`} className="ml-auto rounded-full bg-dd-accent px-1.5 py-0.5 text-[11px] font-bold text-dd-on-accent dd-tnum">
           {data.activeCount}
         </span>
       ) : null}

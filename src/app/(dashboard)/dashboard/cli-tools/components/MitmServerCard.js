@@ -178,6 +178,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
               <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">DurinDoor Base URL</span>
               <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
               <input
+                aria-label="DurinDoor base URL"
                 type="text"
                 value={mitmRouterBaseUrl}
                 onChange={(e) => setMitmRouterBaseUrl(e.target.value)}
@@ -191,6 +192,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
                 <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">API Key</span>
                 <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
                 <input
+                  aria-label="API key"
                   type="password"
                   value={selectedApiKey}
                   onChange={(e) => setSelectedApiKey(e.target.value)}
@@ -282,6 +284,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             <p className="text-xs text-dd-muted">Required for SSL certificate and server startup</p>
           </div>
           <Input
+            label="Sudo password"
             type="password"
             placeholder="Enter sudo password"
             value={sudoPassword}

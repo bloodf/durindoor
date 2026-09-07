@@ -409,6 +409,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                   <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
                   <input
                     type="text"
+                    aria-label="Subagent model"
                     value={subagentModel}
                     onChange={(e) => setSubagentModel(e.target.value)}
                     placeholder={selectedModel || "provider/model-id (defaults to main model)"}

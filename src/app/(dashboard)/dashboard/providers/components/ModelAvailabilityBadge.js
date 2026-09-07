@@ -122,15 +122,16 @@ export default function ModelAvailabilityBadge() {
               <span className="text-sm font-semibold text-dd-text">Model Status</span>
             </div>
             <button
+              type="button"
+              aria-label="Refresh model availability"
               onClick={fetchStatus}
               className="p-1 rounded-lg hover:bg-dd-surface text-dd-muted hover:text-dd-text transition-colors"
-              title="Refresh"
             >
-              <span className="material-symbols-outlined text-[14px]">refresh</span>
+              <span aria-hidden="true" className="material-symbols-outlined text-[14px]">refresh</span>
             </button>
           </div>
 
-          <div className="px-4 py-3 max-h-60 overflow-y-auto">
+          <div tabIndex={0} aria-label="Model availability details" className="px-4 py-3 max-h-60 overflow-y-auto" role="region">
             {isHealthy ? (
               <p className="text-sm text-dd-muted text-center py-2">
                 All models are responding normally.

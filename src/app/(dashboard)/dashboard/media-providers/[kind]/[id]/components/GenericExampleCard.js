@@ -320,7 +320,7 @@ export function GenericExampleCard({ providerId, kind }) {
               <Button size="sm" variant="primary" icon="play_arrow" loading={running} onClick={handleRun} disabled={!input.trim() || !modelFull}>Run</Button>
             </div>
           </div>
-          <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{curlSnippet}</pre>
+          <pre tabIndex={0} aria-label="Request example" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{curlSnippet}</pre>
         </div>
 
         {(running || progress) && useStreaming && (
@@ -344,7 +344,7 @@ export function GenericExampleCard({ providerId, kind }) {
             <span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response {result && <span className="font-normal normal-case">⚡ {result.latencyMs}ms</span>}</span>
             {result && <Button size="sm" variant="ghost" icon={copiedRes ? "check" : "content_copy"} onClick={() => copyRes(resultJson)}>{copiedRes ? "Copied" : "Copy"}</Button>}
           </div>
-          <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{result ? resultJson : exConfig.defaultResponse}</pre>
+          <pre tabIndex={0} aria-label="Response output" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{result ? resultJson : exConfig.defaultResponse}</pre>
           {kind === "image" && (binaryImageUrl || result?.data?.data?.[0]) && (
             <div className="mt-2">
               <div className="mb-1.5 flex items-center justify-end">

@@ -121,10 +121,10 @@ export function EmbeddingExampleCard({ providerId, customAlias }) {
         <Row label="Dimensions"><Input aria-label="Dimensions" type="number" min="1" value={dimensions} onChange={(e) => setDimensions(e.target.value)} placeholder="optional, e.g. 512" /></Row>
         <div className="mt-1">
           <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Request</span><div className="flex gap-2"><Button size="sm" variant="ghost" icon={copiedCurl ? "check" : "content_copy"} onClick={() => copyCurl(curlSnippet)}>{copiedCurl ? "Copied" : "Copy"}</Button><Button size="sm" variant="primary" icon="play_arrow" loading={running} onClick={handleRun} disabled={!input.trim() || !modelFull}>Run</Button></div></div>
-          <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{curlSnippet}</pre>
+          <pre tabIndex={0} aria-label="Request example" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{curlSnippet}</pre>
         </div>
         {error && <p role="alert" className="break-words text-xs text-dd-danger">{error}</p>}
-        <div><div className="mb-1.5 flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response {result && <span className="font-normal normal-case">⚡ {result.latencyMs}ms</span>}</span>{result && <Button size="sm" variant="ghost" icon={copiedRes ? "check" : "content_copy"} onClick={() => copyRes(resultJson)}>{copiedRes ? "Copied" : "Copy"}</Button>}</div><pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text">{formatResultJson(result?.data)}</pre></div>
+        <div><div className="mb-1.5 flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response {result && <span className="font-normal normal-case">⚡ {result.latencyMs}ms</span>}</span>{result && <Button size="sm" variant="ghost" icon={copiedRes ? "check" : "content_copy"} onClick={() => copyRes(resultJson)}>{copiedRes ? "Copied" : "Copy"}</Button>}</div><pre tabIndex={0} aria-label="Response output" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{formatResultJson(result?.data)}</pre></div>
       </div>
     </Card>
   );

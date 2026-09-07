@@ -11,7 +11,8 @@ import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
-import { isString } from "../../../shared/utils/typeChecks.js";
+import { isFunction, isString } from "../../../shared/utils/typeChecks.js";
+import { PROVIDER_MODELS_CONFIG } from "./[id]/models/modelsConfig.js";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,58 @@ function sanitizeProviderConnection(connection) {
     firecrawlHeaders: undefined,
     ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
   };
+}
+// Mirrors src/app/api/providers/[id]/models/route.js branch-for-branch plus
+// the per-resolver contracts in open-sse/services/*Models.js so this flag is
+// never more permissive than what each resolver actually consumes.
+export function canDiscoverModels(connection) {
+  const provider = connection.provider;
+
+  if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
+    // route.js:28-36 — needs a configured base URL and a token, else 400/401.
+    if (!connection.providerSpecificData?.baseUrl) return false;
+    return Boolean(connection.accessToken || connection.apiKey);
+  }
+
+  const config = PROVIDER_MODELS_CONFIG[provider];
+  if (!config) {
+    const fetcher = AI_PROVIDERS[provider]?.modelsFetcher;
+    if (!fetcher?.url) return false;
+    // route.js:99-119 — generic fetcher issues an Authorization header only
+    // when `apiKey` exists; without one, upstream 401 surfaces in the
+    // browser console. `noAuth` providers can skip auth.
+    if (AI_PROVIDERS[provider]?.noAuth === true) return true;
+    return Boolean(connection.apiKey);
+  }
+
+  if (isFunction(config.customResolver)) {
+    // Resolver-specific preconditions — keep in sync with the matching
+    // resolve*Models() guard. Returning false here short-circuits the
+    // request so the client never spends an HTTP round-trip on a call
+    // the resolver would refuse or refuse meaningfully.
+    switch (provider) {
+      case "kimchi":
+        return Boolean(connection.accessToken || connection.apiKey);
+      case "kiro":
+        return Boolean(connection.accessToken);
+      case "qoder":
+        return Boolean(connection.accessToken && connection.providerSpecificData?.userId);
+      case "github":
+        // copilotModels.js:106 — copilotToken OR accessToken; refreshToken
+        // alone cannot start refresh.
+        return Boolean(connection.providerSpecificData?.copilotToken || connection.accessToken);
+      case "gemini-cli":
+      case "agy":
+        return Boolean(connection.accessToken);
+      case "ollama-local":
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // route.js:153-156 — plain config path requires a resolvable token.
+  return Boolean(connection.providerSpecificData?.copilotToken || connection.accessToken || connection.apiKey);
 }
 
 function normalizeProxyConfig(body = {}) {
@@ -96,7 +149,10 @@ export async function GET() {
       const name = isCompatible ?
       c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider :
       c.name;
-      return sanitizeProviderConnection({ ...c, name });
+      return {
+        ...sanitizeProviderConnection({ ...c, name }),
+        canDiscoverModels: canDiscoverModels(c)
+      };
     });
 
     return NextResponse.json({ connections: safeConnections });

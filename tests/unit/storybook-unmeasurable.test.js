@@ -40,6 +40,16 @@ describe("unmeasurable node policy", () => {
     expect(exemptionFor(document.getElementById("label"), CHARTED, chartStories, styleOf())).toBe("chart-axis-aaa-v1");
   });
 
+  it("clears the ime-text-area proxy Monaco actually renders", () => {
+    // The shipped editor names the proxy `ime-text-area`, not `inputarea`, so
+    // a policy matching only the latter exempted nothing and left two stories
+    // failing for a node axe never judged.
+    expect(exemptionFor(monacoProxy("ime-text-area"), CHARTED, chartStories, styleOf())).toBe("monaco-input-proxy");
+    expect(exemptionFor(monacoProxy("ime-text-area ime-input"), CHARTED, chartStories, styleOf())).toBeNull();
+    // A renamed class must never be enough on its own; the paint still decides.
+    expect(exemptionFor(monacoProxy("ime-text-area"), CHARTED, chartStories, styleOf({ color: "rgb(0, 0, 0)" }))).toBeNull();
+  });
+
   it("clears Monaco's proxy only while it is genuinely invisible", () => {
     expect(exemptionFor(monacoProxy(), CHARTED, chartStories, styleOf())).toBe("monaco-input-proxy");
     // Visible during composition: a real contrast failure would reach the

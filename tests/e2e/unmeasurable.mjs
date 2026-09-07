@@ -35,10 +35,12 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
     // stories it covers; any other chart keeps failing.
     return chartStories.includes(storyId) ? "chart-axis-aaa-v1" : null;
   }
-  if (element.matches("textarea.inputarea:not(.ime-input)")) {
-    // Monaco parks this at the caret to receive keystrokes and IME
-    // composition. Re-check that it really is invisible right now, so the
-    // `.ime-input` state a person composing CJK text sees stays checked.
+  // Monaco names its input proxy `inputarea` or `ime-text-area` depending on
+  // version; both are declared `color: transparent; background-color:
+  // transparent; z-index: -10`, and both gain `ime-input` when composition
+  // makes them visible. Match either, exclude the visible state, and still
+  // re-check the paint below so a renamed class alone never clears a node.
+  if (element.matches("textarea.inputarea:not(.ime-input), textarea.ime-text-area:not(.ime-input)")) {
     const style = computeStyle(element);
     const invisible = Number(style.zIndex) < 0
       && style.color === "rgba(0, 0, 0, 0)"

@@ -46,13 +46,13 @@ export default function ModelRow({
           <code className="max-w-[72vw] truncate rounded-dd bg-dd-surface-2 px-1.5 py-0.5 font-mono text-xs text-dd-text sm:max-w-[360px]">
             {displayModel}
           </code>
-          <span className="flex min-w-0 items-center gap-1 pl-1 text-[9px]">
+          <span className="flex min-w-0 items-center gap-1 pl-1 text-xs">
             {model.name ? (
-              <span className="truncate text-[9px] italic text-dd-subtle">{model.name}</span>
+              <span className="truncate text-xs italic text-dd-subtle">{model.name}</span>
             ) : null}
             <CapacityBadges caps={caps} colorOverride="text-dd-subtle" size={12} />
             {caps?.contextWindow ? (
-              <span className="shrink-0 rounded-dd bg-dd-surface-2 px-1 text-[9px] font-medium text-dd-subtle">
+              <span className="shrink-0 rounded-dd bg-dd-surface-2 px-1 text-xs font-medium text-dd-subtle">
                 {caps.contextWindow >= 1000000
                   ? `${(caps.contextWindow / 1000000).toFixed(caps.contextWindow % 1000000 ? 1 : 0)}M`
                   : `${Math.round(caps.contextWindow / 1000)}K`}{" "}

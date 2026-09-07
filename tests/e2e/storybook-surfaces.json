@@ -6790,7 +6790,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js#ModelRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js",
       "symbol": "ModelRow",
-      "sourceSha256": "abca2b56a7d798d546a5153dabb225c4baedb67b9832ec95d2d94f2db4499e76",
+      "sourceSha256": "472b3804a74cd67671a680c4eb8ad7ba53df324434855f1f1956e4fbed1a9d31",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
@@ -6808,7 +6808,7 @@
           "storyId": "production-providers-providerdetailpage--open-ai-detail",
           "runtimeArtifactId": "production-providers-providerdetailpage--open-ai-detail",
           "expectedVisibleText": null,
-          "expectedSha256": "abca2b56a7d798d546a5153dabb225c4baedb67b9832ec95d2d94f2db4499e76",
+          "expectedSha256": "472b3804a74cd67671a680c4eb8ad7ba53df324434855f1f1956e4fbed1a9d31",
           "axes": [
             "provider=openai",
             "loaded"
@@ -7427,7 +7427,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js#AddCustomModelModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js",
       "symbol": "AddCustomModelModal",
-      "sourceSha256": "99d156be16cf29fe07d9b469bc9271f401998c548b83243ab562067401c9ba86",
+      "sourceSha256": "b86e446b97fe8a17220e32672dd2b66ccec6d30843fc30bb84297feb52eebc1e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "ModelsCard ModelsList story renders private model row and opens real AddCustomModelModal.",
@@ -7445,7 +7445,7 @@
           "storyId": "production-providers-components-modelscard--models-list",
           "runtimeArtifactId": "production-providers-components-modelscard--models-list",
           "expectedVisibleText": null,
-          "expectedSha256": "99d156be16cf29fe07d9b469bc9271f401998c548b83243ab562067401c9ba86",
+          "expectedSha256": "b86e446b97fe8a17220e32672dd2b66ccec6d30843fc30bb84297feb52eebc1e",
           "axes": [
             "text",
             "controls",
@@ -7467,7 +7467,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js#ModelRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js",
       "symbol": "ModelRow",
-      "sourceSha256": "99d156be16cf29fe07d9b469bc9271f401998c548b83243ab562067401c9ba86",
+      "sourceSha256": "b86e446b97fe8a17220e32672dd2b66ccec6d30843fc30bb84297feb52eebc1e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "ModelsCard ModelsList story renders private model row and opens real AddCustomModelModal.",
@@ -7483,7 +7483,7 @@
           "storyId": "production-providers-components-modelscard--models-list",
           "runtimeArtifactId": "production-providers-components-modelscard--models-list",
           "expectedVisibleText": null,
-          "expectedSha256": "99d156be16cf29fe07d9b469bc9271f401998c548b83243ab562067401c9ba86",
+          "expectedSha256": "b86e446b97fe8a17220e32672dd2b66ccec6d30843fc30bb84297feb52eebc1e",
           "axes": [
             "text",
             "controls",
@@ -7505,7 +7505,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js#ModelsCard",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ModelsCard.js",
       "symbol": "ModelsCard",
-      "sourceSha256": "99d156be16cf29fe07d9b469bc9271f401998c548b83243ab562067401c9ba86",
+      "sourceSha256": "b86e446b97fe8a17220e32672dd2b66ccec6d30843fc30bb84297feb52eebc1e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-providers-components-modelscard--models-list. Pending runtime review.",
@@ -7523,7 +7523,7 @@
           "storyId": "production-providers-components-modelscard--models-list",
           "runtimeArtifactId": "production-providers-components-modelscard--models-list",
           "expectedVisibleText": null,
-          "expectedSha256": "99d156be16cf29fe07d9b469bc9271f401998c548b83243ab562067401c9ba86",
+          "expectedSha256": "b86e446b97fe8a17220e32672dd2b66ccec6d30843fc30bb84297feb52eebc1e",
           "axes": [
             "text",
             "controls",
@@ -15350,7 +15350,7 @@
       "id": "src/shared/components/ModelSelectModal.js#ModelSelectModal",
       "sourcePath": "src/shared/components/ModelSelectModal.js",
       "symbol": "ModelSelectModal",
-      "sourceSha256": "10b37afff5976ed72d79e38611ae2db1412a72a166cb00bc16ff93b280877c56",
+      "sourceSha256": "4fdfbefeff64375fc79c54919ccc9e607ce55c0c066bbd2e76b182ddce6a3174",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-shared-config-modelselectmodal--open-llm, production-shared-config-modelselectmodal--with-selection, production-shared-config-modelselectmodal--with-combos-and-selection, production-shared-config-modelselectmodal--embedding-kind, production-shared-config-modelselectmodal--closed. Pending runtime review.",
@@ -15376,7 +15376,7 @@
           "storyId": "production-shared-config-modelselectmodal--open-llm",
           "runtimeArtifactId": "production-shared-config-modelselectmodal--open-llm",
           "expectedVisibleText": "Select Model",
-          "expectedSha256": "10b37afff5976ed72d79e38611ae2db1412a72a166cb00bc16ff93b280877c56",
+          "expectedSha256": "4fdfbefeff64375fc79c54919ccc9e607ce55c0c066bbd2e76b182ddce6a3174",
           "axes": [
             "open",
             "llm"
@@ -15391,7 +15391,7 @@
           "storyId": "production-shared-config-modelselectmodal--with-selection",
           "runtimeArtifactId": "production-shared-config-modelselectmodal--with-selection",
           "expectedVisibleText": "Selected model",
-          "expectedSha256": "10b37afff5976ed72d79e38611ae2db1412a72a166cb00bc16ff93b280877c56",
+          "expectedSha256": "4fdfbefeff64375fc79c54919ccc9e607ce55c0c066bbd2e76b182ddce6a3174",
           "axes": [
             "open",
             "selected"
@@ -15406,7 +15406,7 @@
           "storyId": "production-shared-config-modelselectmodal--with-combos-and-selection",
           "runtimeArtifactId": "production-shared-config-modelselectmodal--with-combos-and-selection",
           "expectedVisibleText": null,
-          "expectedSha256": "10b37afff5976ed72d79e38611ae2db1412a72a166cb00bc16ff93b280877c56",
+          "expectedSha256": "4fdfbefeff64375fc79c54919ccc9e607ce55c0c066bbd2e76b182ddce6a3174",
           "axes": [
             "text"
           ],
@@ -15419,7 +15419,7 @@
           "storyId": "production-shared-config-modelselectmodal--embedding-kind",
           "runtimeArtifactId": "production-shared-config-modelselectmodal--embedding-kind",
           "expectedVisibleText": "Select Embedding Model",
-          "expectedSha256": "10b37afff5976ed72d79e38611ae2db1412a72a166cb00bc16ff93b280877c56",
+          "expectedSha256": "4fdfbefeff64375fc79c54919ccc9e607ce55c0c066bbd2e76b182ddce6a3174",
           "axes": [
             "open",
             "embedding"
@@ -15434,7 +15434,7 @@
           "storyId": "production-shared-config-modelselectmodal--closed",
           "runtimeArtifactId": "production-shared-config-modelselectmodal--closed",
           "expectedVisibleText": null,
-          "expectedSha256": "10b37afff5976ed72d79e38611ae2db1412a72a166cb00bc16ff93b280877c56",
+          "expectedSha256": "4fdfbefeff64375fc79c54919ccc9e607ce55c0c066bbd2e76b182ddce6a3174",
           "axes": [
             "closed"
           ],

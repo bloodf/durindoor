@@ -22,7 +22,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, deleteS
         </span>
         <div className="flex flex-col gap-1">
           <code className="text-xs text-dd-muted font-mono bg-dd-surface-2 px-1.5 py-0.5 rounded">{fullModel}</code>
-          {model.name && <span className="text-[9px] text-dd-subtle italic pl-1">{model.name}</span>}
+          {model.name && <span className="text-xs text-dd-subtle italic pl-1">{model.name}</span>}
         </div>
         {onTest && (
           <div className="relative group/btn">

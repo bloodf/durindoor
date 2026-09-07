@@ -68,9 +68,9 @@ export function auditIncomplete(entries, { storyId, chartStories, resolve, compu
       if (!reason) {
         // Record why a candidate surface was NOT cleared, so a refusal is
         // diagnosable without another instrumented run.
-        if (element.matches?.("textarea") || element.closest?.(".monaco-editor")) {
+        if (element.matches?.("textarea") || element.closest?.(".monaco-editor") || entry.id.startsWith("color-contrast")) {
           const style = computeStyle(element);
-          refused.push({ storyId, target: node.target, rule: entry.id, className: element.getAttribute?.("class") ?? null, zIndex: style.zIndex, color: style.color, backgroundColor: style.backgroundColor, opacity: style.opacity, visibility: style.visibility });
+          refused.push({ storyId, target: node.target, rule: entry.id, tag: element.tagName, className: element.getAttribute?.("class") ?? null, text: element.textContent?.trim().slice(0, 40) ?? null, zIndex: style.zIndex, color: style.color, backgroundColor: style.backgroundColor, backgroundImage: style.backgroundImage, opacity: style.opacity, visibility: style.visibility, animationName: style.animationName, outerHTML: element.outerHTML?.slice(0, 300) ?? null });
         }
         return true;
       }

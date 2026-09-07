@@ -50,7 +50,9 @@ describe("Durin DS Select", () => {
     const trigger = getTrigger(container);
     expect(trigger).toBeTruthy();
     expect(trigger.tagName).toBe("BUTTON");
-    expect(trigger.getAttribute("aria-haspopup")).toBe("listbox");
+    // role="combobox" carries an implicit aria-haspopup="listbox" (ARIA 1.2),
+    // so assert the role a consumer observes, not the redundant attribute.
+    expect(trigger.getAttribute("role")).toBe("combobox");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(trigger.getAttribute("name")).toBe("provider");
     expect(trigger.getAttribute("aria-describedby")).toBe("provider-hint");

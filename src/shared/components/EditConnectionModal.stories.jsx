@@ -124,6 +124,7 @@ export const CodexFingerprintPanel = {
     const dialog = await within(document.body).findByRole("dialog", { name: "Edit Connection" });
     const trigger = within(dialog).getByRole("combobox", { name: "OAuth fingerprint mode" });
     await userEvent.click(trigger);
+    await userEvent.keyboard("{Escape}");
   },
 };
 

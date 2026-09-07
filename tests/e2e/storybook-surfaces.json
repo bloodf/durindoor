@@ -9502,7 +9502,7 @@
           "id": "production-translator-translatorstepcard--loading",
           "storyId": "production-translator-translatorstepcard--loading",
           "runtimeArtifactId": "production-translator-translatorstepcard--loading",
-          "expectedVisibleText": "Loading",
+          "expectedVisibleText": "Client Request",
           "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
           "axes": [
             "loading"
@@ -9510,7 +9510,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5"
           },
-          "proposedSourceEvidence": "Loading direct fixture."
+          "proposedSourceEvidence": "Loading fixture renders Client Request card title; StatusDot emits a screen-reader-only text node and a hidden Storybook recovery listbox also matches 'Loading' but visible card title is Client Request."
         },
         {
           "id": "production-translator-translatorstepcard--keyboard-enter-toggle",
@@ -9654,7 +9654,7 @@
           "id": "production-translator-translatorworkspace--mobile-keyboard",
           "storyId": "production-translator-translatorworkspace--mobile-keyboard",
           "runtimeArtifactId": "production-translator-translatorworkspace--mobile-keyboard",
-          "expectedVisibleText": "Collapse Source Body",
+          "expectedVisibleText": "Source Body",
           "expectedSha256": "5cae7bd6d9265e1f6b49a29e6564e0cdb2236ef313e95248521c407d330314b6",
           "axes": [
             "mobile",
@@ -9664,7 +9664,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/translator/TranslatorWorkspace.jsx": "8fc60468d51d5d170f66425ce887a5d56698491f44c1048f924887ba399364b5"
           },
-          "proposedSourceEvidence": "Mobile Enter toggle play."
+          "proposedSourceEvidence": "Mobile play expands step 2; title 'Source Body' is visible text. 'Collapse Source Body' is IconButton aria-label, not displayed text."
         },
         {
           "id": "production-translator-translatorworkspace--rtl",

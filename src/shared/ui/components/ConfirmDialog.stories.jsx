@@ -87,7 +87,9 @@ export const Primary = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Regenerate gateway key" }));
     const dialog = within(document.body);
-    await expect(await dialog.findByRole("dialog", { name: "Regenerate gateway key?" })).toBeVisible();
+    const dialogEl = await dialog.findByRole("dialog", { name: "Regenerate gateway key?" });
+    await Promise.all(dialogEl.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
+    await expect(dialogEl).toBeVisible();
     await expect(dialog.getByText("The old key stops working immediately. Any CLI tool still configured with it will need the new key.")).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Regenerate" })).toBeVisible();

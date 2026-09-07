@@ -141,9 +141,12 @@ async function runAxe(page) {
     };
     const proveSvgText = (node) => {
       // `element` is only populated when axe serializes a result, so resolve
-      // the node from the selector axe reported instead.
-      const selector = Array.isArray(node.target) ? node.target[node.target.length - 1] : node.target;
-      const element = typeof selector === "string" ? document.querySelector(selector) : null;
+      // the node from the selector axe reported. Require a single segment: a
+      // multi-segment target crosses a frame or shadow boundary, where the
+      // last segment alone can resolve to a different element entirely.
+      if (!Array.isArray(node.target) || node.target.length !== 1 || typeof node.target[0] !== "string") return false;
+      let element = null;
+      try { element = document.querySelector(node.target[0]); } catch { return false; }
       if (!(element instanceof SVGElement) || !element.textContent?.trim()) return false;
       // Scope: our own chart axis tick labels only. They are plain text drawn
       // from a known token over the chart surface, so their pair is genuinely

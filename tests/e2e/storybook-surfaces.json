@@ -25794,7 +25794,7 @@
     {
       "storyId": "durin-ds-foundation--palette",
       "sourcePath": "./src/shared/ui/foundation/Palette.stories.jsx",
-      "sourceSha256": "abe4d1dc70a5d1a43a25896775e3ae8e7e0d42b6d7aa9161b4bcc2ab2321be51",
+      "sourceSha256": "945ee080683218ab3e31e70a21cb97b5b132922590bd03bcaab952b9fac6bb03",
       "reviewStatus": "approved",
       "reviewedBy": "integration-review",
       "reason": "Story-only token/style demonstration, not production component or page coverage."
@@ -25802,7 +25802,7 @@
     {
       "storyId": "durin-ds-foundation--typography",
       "sourcePath": "./src/shared/ui/foundation/Palette.stories.jsx",
-      "sourceSha256": "abe4d1dc70a5d1a43a25896775e3ae8e7e0d42b6d7aa9161b4bcc2ab2321be51",
+      "sourceSha256": "945ee080683218ab3e31e70a21cb97b5b132922590bd03bcaab952b9fac6bb03",
       "reviewStatus": "approved",
       "reviewedBy": "integration-review",
       "reason": "Story-only token/style demonstration, not production component or page coverage."

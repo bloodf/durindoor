@@ -95,6 +95,26 @@ describe("unmeasurable node policy", () => {
     expect(exemptionFor(small, CHARTED, chartStories, smallStyle)).toBeNull();
   });
 
+  it("reads the surface an ancestor paints when the text has none", () => {
+    // Most text sits on a parent's surface; axe declines exactly these, so the
+    // walk is what makes 105 of the refused nodes measurable at all.
+    document.body.innerHTML = `<div id="card"><p id="copy">Requests over time</p></div>`;
+    const style = (element) => element.id === "card"
+      ? { color: "rgb(0, 0, 0)", backgroundColor: "rgb(34, 32, 28)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" }
+      : { color: "rgb(237, 230, 216)", backgroundColor: "rgba(0, 0, 0, 0)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" };
+    expect(exemptionFor(document.getElementById("copy"), CHARTED, chartStories, style)).toBe("measured-aaa 13.10:1");
+  });
+
+  it("refuses a partly translucent ancestor rather than reading through it", () => {
+    // `rgba(0, 0, 0, 0.5)` shares a prefix with the fully clear colour, so a
+    // prefix test would silently treat a half-opaque layer as absent.
+    document.body.innerHTML = `<div id="card"><p id="copy">Requests over time</p></div>`;
+    const style = (element) => element.id === "card"
+      ? { color: "rgb(0, 0, 0)", backgroundColor: "rgba(0, 0, 0, 0.5)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" }
+      : { color: "rgb(237, 230, 216)", backgroundColor: "rgba(0, 0, 0, 0)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" };
+    expect(exemptionFor(document.getElementById("copy"), CHARTED, chartStories, style)).toBeNull();
+  });
+
   it("keeps text whose surface it cannot read", () => {
     // A bare paragraph inherits a transparent background, so the pair is not
     // computable here and the node must keep failing.

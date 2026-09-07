@@ -67,16 +67,31 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
     return invisible ? "monaco-input-proxy" : null;
   }
   // Ordinary DOM text axe declined to judge. Unlike SVG or the editor proxy,
-  // a plain element's pair is fully computable here: if both sides are solid
-  // colours with no image behind them and the element is actually painted,
-  // measure it and clear it only when it meets its own threshold. Anything
-  // translucent, image-backed, hidden or short of the bar keeps failing.
+  // a plain element's pair is computable here. Text usually sits on an
+  // ancestor's surface rather than its own, so walk up for the nearest opaque
+  // background, stopping at anything that makes the stack unreadable: an
+  // image, a translucent fill, or a hidden or faded subtree. Clear the node
+  // only when the resulting pair meets its own threshold.
   if (!(element instanceof SVGElement)) {
     const style = computeStyle(element);
-    if (style.backgroundImage !== "none" || style.visibility !== "visible" || style.opacity !== "1") return null;
     const foreground = solidRgb(style.color);
-    const background = solidRgb(style.backgroundColor);
-    if (!foreground || !background) return null;
+    if (!foreground) return null;
+    let background = null;
+    for (let node = element; node instanceof Element; node = node.parentElement) {
+      const nodeStyle = computeStyle(node);
+      if (nodeStyle.backgroundImage !== "none" || nodeStyle.visibility !== "visible" || nodeStyle.opacity !== "1") return null;
+      // Only a fully transparent layer is see-through enough to keep walking.
+      // Anything partly translucent makes the stack unreadable here, and a
+      // prefix test would misread `rgba(0, 0, 0, 0.5)` as clear.
+      const parts = String(nodeStyle.backgroundColor).match(/-?[\d.]+/g);
+      if (!parts || parts.length < 3) return null;
+      const alpha = parts.length > 3 ? Number(parts[3]) : 1;
+      if (alpha === 0) continue;
+      if (alpha !== 1) return null;
+      background = parts.slice(0, 3).map(Number);
+      break;
+    }
+    if (!background) return null;
     const size = Number.parseFloat(style.fontSize);
     const large = size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700);
     const ratio = contrastRatio(foreground, background);

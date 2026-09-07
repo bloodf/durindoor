@@ -29,7 +29,7 @@ export const Populated = {
     await waitFor(() => {
       expect(canvas.getByText("gpt-4")).toBeVisible();
     });
-    expect(canvas.getByLabelText("Status: PENDING")).toBeVisible();
+    expect(canvas.getByText("PENDING")).toBeVisible();
   },
 };
 

@@ -1466,7 +1466,7 @@ export default function ProviderDetailPage() {
         {/* Add model button — inline, same style as model chips */}
         <button
           onClick={() => setShowAddCustomModel(true)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-dd-accent/40 px-3 py-2 text-xs text-dd-accent transition-colors hover:border-dd-accent hover:bg-dd-accent-soft sm:w-auto">
+          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-dd-accent/40 px-3 py-2 text-xs text-dd-accent transition-colors hover:border-dd-accent hover:bg-dd-accent-soft sm:w-auto">
           
           <span className="material-symbols-outlined text-sm">add</span>
           Add Model

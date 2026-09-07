@@ -2,6 +2,7 @@ import React from "react";
 import { expect, userEvent, within, waitFor } from "storybook/test";
 import ProxyPoolsPage from "./page";
 import { useNotificationStore } from "@/store/notificationStore";
+import DashboardLayout from "@/shared/components/layouts/DashboardLayout";
 
 const initialPool = { id: "pool-1", name: "Office relay", proxyUrl: "http://proxy.example:8080", noProxy: "localhost", isActive: true, testStatus: "active", boundConnectionCount: 2, lastTestedAt: "2026-09-05T00:00:00.000Z", type: "cloudflare" };
 
@@ -96,7 +97,8 @@ export const DisableDeadProxies = {
   },
 };
 export const CreateError = {
-  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/proxy-pools", routes: failedCreateRoutes } },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/proxy-pools", routes: { ...failedCreateRoutes, "GET /api/settings": { body: {} }, "GET /api/version": { body: {} }, "GET /api/auth/status": { body: {} } } } },
+  render: () => <DashboardLayout><ProxyPoolsPage /></DashboardLayout>,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Add proxy pool" }));

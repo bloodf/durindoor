@@ -160,7 +160,7 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
             }
             </div>
           }
-          <button onClick={onEdit} className="flex flex-col items-center px-2 py-1 rounded hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 text-dd-muted hover:text-dd-accent">
+          <button onClick={onEdit} className="flex min-h-11 min-w-11 flex-col items-center px-2 py-1 rounded hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 text-dd-muted hover:text-dd-accent">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             <span className="text-[10px] leading-tight">Edit</span>
           </button>

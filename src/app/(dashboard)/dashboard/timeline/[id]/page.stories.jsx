@@ -1,5 +1,5 @@
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, within, spyOn } from "storybook/test";
 import TimelineDetailPage from "./page";
 import TimelineDetailSkeleton from "./TimelineDetailSkeleton.jsx";
 
@@ -48,8 +48,12 @@ export const ExpandSseChunks = {
 export const CopyAsJson = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Copy as JSON" }));
-    await expect(canvas.getByRole("button", { name: "Copied" })).toBeVisible();
+    const clipboard = spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    try {
+      await userEvent.click(await canvas.findByRole("button", { name: "Copy as JSON" }));
+      await expect(await canvas.findByRole("button", { name: "Copied" })).toBeVisible();
+      expect(clipboard).toHaveBeenCalledWith(JSON.stringify(trace, null, 2));
+    } finally { clipboard.mockRestore(); }
   },
 };
 

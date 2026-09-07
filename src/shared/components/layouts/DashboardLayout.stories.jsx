@@ -28,7 +28,7 @@ export const InfoToast = { ...toast("info"), tags: ["play-fn"] };
 export const MobileDrawer = {
   parameters: { viewport: { defaultViewport: "mobile1" } },
   globals: { viewport: { value: "mobile1", isRotated: false } },
-  render: () => <div className="[&_.lg\\:hidden]:!flex"><DashboardLayout><p>Mobile body</p></DashboardLayout></div>,
+  render: () => <div className="mobile-drawer-story"><style>{".lg\\:hidden{display:flex!important}"}</style><DashboardLayout><p>Mobile body</p></DashboardLayout></div>,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const toggle = await canvas.findByRole("button", { name: "Open navigation" });

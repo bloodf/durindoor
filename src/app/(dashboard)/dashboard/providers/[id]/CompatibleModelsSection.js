@@ -378,7 +378,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
             onChange={(e) => setNewModel(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
             placeholder={isAnthropic ? "claude-3-opus-20240229" : "gpt-4o"}
-            className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent"
+            className="min-h-11 w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent"
           />
         </div>
         <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>

@@ -550,7 +550,7 @@ function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWe
         <div
           role="button"
           tabIndex={0}
-          className="min-w-0 flex-1 cursor-text truncate rounded-dd px-1.5 py-0.5 font-mono text-xs text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
+          className="flex min-h-11 min-w-0 flex-1 cursor-text items-center truncate rounded-dd px-1.5 py-0.5 font-mono text-xs text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
           onClick={() => setEditing(true)}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setEditing(true); } }}
           title="Click to edit"

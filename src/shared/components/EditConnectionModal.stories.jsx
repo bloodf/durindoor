@@ -1,5 +1,5 @@
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import EditConnectionModal from "./EditConnectionModal.js";
 
@@ -206,7 +206,7 @@ export const TestFailureBadge = {
   play: async () => {
     const dialog = await within(document.body).findByRole("dialog", { name: "Edit Connection" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Test Connection" }));
-    await expect(within(dialog).findByText("Failed")).resolves.toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByText("Failed")).toBeVisible());
   },
 };
 

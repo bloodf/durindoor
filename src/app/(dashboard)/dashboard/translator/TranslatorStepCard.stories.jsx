@@ -18,7 +18,16 @@ export const CollapsedEmpty = {};
 export const CollapsedLoaded = { args: { content: clientRequest } };
 export const Expanded = { args: { content: clientRequest, expanded: true } };
 export const TextExpanded = { args: { step: sampleTextStep, content: "data: hello\n\n", expanded: true } };
-export const Loading = { args: { expanded: true, loading: true } };
+export const Loading = {
+  args: { expanded: true, loading: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // The loading state is only observable through the status label and the
+    // busy Load button; the card heading renders either way.
+    await expect(await canvas.findByText("Loading")).toBeVisible();
+    await expect(canvas.getByRole("button", { name: "Load" })).toBeDisabled();
+  },
+};
 export const KeyboardEnterToggle = {
   args: { content: clientRequest },
   play: async ({ canvasElement, args }) => {

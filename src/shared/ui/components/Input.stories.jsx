@@ -24,17 +24,17 @@ export const Default = {
 };
 
 export const WithIcon = {
-  render: () => <Input icon="search" placeholder="Search providers…" aria-label="Search providers" />,
+  render: () => <Input label="Search providers" icon="search" placeholder="Search providers…" aria-label="Search providers" />,
 };
 
 export const Small = {
   render: () => (
-    <Input size="sm" icon="search" placeholder="Filter models…" aria-label="Filter models" />
+    <Input label="Filter models" size="sm" icon="search" placeholder="Filter models…" aria-label="Filter models" />
   ),
 };
 
 export const Disabled = {
-  render: () => <Input disabled defaultValue="sk-prod-key" aria-label="API key" />,
+  render: () => <Input label="API key" disabled defaultValue="sk-prod-key" aria-label="API key" />,
 };
 
 export const WithHint = {

@@ -162,7 +162,7 @@ export default function RangeSelector({ value, onChange, presets = PRESETS, size
           const selected = value?.preset === preset.value;
           return <button key={preset.value} type="button" aria-pressed={selected} onClick={() => choosePreset(preset.value)} className={`${controlClassName} ${segmentSize} ${selected ? "bg-dd-surface text-dd-text shadow-sm" : "text-dd-muted hover:text-dd-text"}`}>{preset.label}</button>;
         })}
-        <button ref={customButtonRef} type="button" aria-haspopup="dialog" aria-expanded={open} aria-pressed={value?.preset === "custom"} onClick={openCustom} className={`${controlClassName} ${customSize} ${value?.preset === "custom" ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:text-dd-text"}`}>
+        <button ref={customButtonRef} type="button" aria-haspopup="dialog" aria-expanded={open} aria-pressed={value?.preset === "custom"} onClick={openCustom} className={`${controlClassName} ${customSize} ${value?.preset === "custom" ? "bg-dd-accent-soft text-dd-text" : "text-dd-muted hover:text-dd-text"}`}>
           <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">date_range</span>
           Custom
         </button>

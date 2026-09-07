@@ -129,16 +129,16 @@ function RadiusAndElevation({ theme }) {
 function ActionContrastStates() {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-dd-lg border border-dd-border bg-dd-surface p-4">
-      <button type="button" className="rounded-dd bg-dd-accent px-4 py-2 text-sm font-semibold text-dd-on-accent">
+      <button type="button" className="min-h-11 min-w-11 rounded-dd bg-dd-accent px-4 py-2 text-sm font-semibold text-dd-on-accent">
         Primary action
       </button>
-      <button type="button" className="rounded-dd bg-dd-accent-hover px-4 py-2 text-sm font-semibold text-dd-on-accent">
+      <button type="button" className="min-h-11 min-w-11 rounded-dd bg-dd-accent-hover px-4 py-2 text-sm font-semibold text-dd-on-accent">
         Primary hover
       </button>
-      <button type="button" className="rounded-dd bg-dd-danger-action px-4 py-2 text-sm font-semibold text-dd-on-danger">
+      <button type="button" className="min-h-11 min-w-11 rounded-dd bg-dd-danger-action px-4 py-2 text-sm font-semibold text-dd-on-danger">
         Destructive action
       </button>
-      <button type="button" className="rounded-dd bg-dd-danger-action-hover px-4 py-2 text-sm font-semibold text-dd-on-danger">
+      <button type="button" className="min-h-11 min-w-11 rounded-dd bg-dd-danger-action-hover px-4 py-2 text-sm font-semibold text-dd-on-danger">
         Destructive hover
       </button>
       <span className="text-xs text-dd-muted">Filled labels ≥7:1</span>

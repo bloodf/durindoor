@@ -60,7 +60,7 @@ function ModelSelect({ options, value, onChange }) {
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
         onClick={() => setOpen((current) => !current)}
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-dd border border-dd-border bg-dd-surface px-3 text-left text-[13px] text-dd-text outline-none transition-colors hover:border-dd-border-subtle focus-visible:border-dd-accent focus-visible:shadow-dd-focus"
+        className="flex min-h-11 min-w-11 w-full items-center justify-between gap-2 rounded-dd border border-dd-border bg-dd-surface px-3 text-left text-[13px] text-dd-text outline-none transition-colors hover:border-dd-border-subtle focus-visible:border-dd-accent focus-visible:shadow-dd-focus"
       >
         {selected ? (
           <span className="flex min-w-0 items-center gap-2">
@@ -217,6 +217,7 @@ function ChatMessage({ message, model, streaming = false }) {
           {message.content}
           {streaming ? (
             <span
+              role="status"
               aria-label="Streaming response"
               className="ml-1 inline-block h-2 w-2 rounded-full bg-dd-accent align-middle animate-pulse"
             />

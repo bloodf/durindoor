@@ -12,7 +12,7 @@ import PromptDialog from "./PromptDialog";
  */
 
 const TRIGGER_CLASS =
-  "h-9 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus";
+  "min-h-11 min-w-11 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus";
 
 function PromptDemo({ triggerLabel, ...dialogProps }) {
   const [open, setOpen] = useState(false);

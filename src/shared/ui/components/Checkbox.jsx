@@ -38,7 +38,7 @@ const Checkbox = forwardRef(function Checkbox(
     <label
       htmlFor={inputId}
       className={[
-        "group flex min-h-11 items-start gap-2.5",
+        "group relative flex min-h-11 min-w-11 items-start gap-2.5",
         disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
         className,
       ]
@@ -49,7 +49,7 @@ const Checkbox = forwardRef(function Checkbox(
         ref={ref}
         id={inputId}
         type="checkbox"
-        className="peer sr-only"
+        className="peer absolute left-0 top-0 size-11 cursor-inherit opacity-0"
         checked={checked}
         disabled={disabled}
         onChange={(event) => onChange?.(event.target.checked)}

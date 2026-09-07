@@ -75,7 +75,7 @@ export default function SettingsPage({
             <div className="flex items-center gap-3">
               <a
                 href="#headroom"
-                className="text-xs font-medium text-dd-accent hover:text-dd-accent-hover"
+                className="-m-2.5 inline-flex min-h-11 min-w-11 items-center rounded-dd p-2.5 text-xs font-medium text-dd-accent outline-none hover:text-dd-accent-hover focus-visible:shadow-dd-focus"
               >
                 Open full page →
               </a>

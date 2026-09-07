@@ -19,6 +19,12 @@ export default meta;
 
 export const Playground = {
   args: { name: "Arwen Undómiel", size: "md" },
+  render: (args) => (
+    <div className="flex flex-col items-center gap-1">
+      <Avatar {...args} />
+      <span className="text-[11px] text-dd-muted">Avatar initials: AU</span>
+    </div>
+  ),
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByRole("img", { name: "Avatar" })).toHaveTextContent("AU");
   },
@@ -61,4 +67,10 @@ export const FallbackForEmptyName = {
 
 export const BackgroundImageSource = {
   args: { src: "/providers/xai.svg", size: "lg", alt: "Gandalf avatar" },
+  render: (args) => (
+    <div className="flex flex-col items-center gap-1">
+      <Avatar {...args} />
+      <span className="text-[11px] text-dd-muted">Gandalf avatar</span>
+    </div>
+  ),
 };

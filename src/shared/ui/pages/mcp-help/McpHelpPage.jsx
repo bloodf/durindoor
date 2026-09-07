@@ -21,7 +21,7 @@ function CodeBlock({ label, children }) {
       <span className="text-[11px] font-medium uppercase tracking-wide text-dd-subtle">
         {label}
       </span>
-      <pre className="overflow-x-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-4 font-mono text-xs leading-5 text-dd-text">
+      <pre tabIndex={0} aria-label={label} className="overflow-x-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-4 font-mono text-xs leading-5 text-dd-text" role="region">
         <code>{children}</code>
       </pre>
     </div>

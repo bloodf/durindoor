@@ -11907,7 +11907,7 @@
           "id": "production-shared-surfaces-avatar--playground",
           "storyId": "production-shared-surfaces-avatar--playground",
           "runtimeArtifactId": "production-shared-surfaces-avatar--playground",
-          "expectedVisibleText": "AU",
+          "expectedVisibleText": "Avatar initials: AU",
           "expectedSha256": "a1c17c8f10da83d66504f61ff49417dd36a4f02fe845f9cd03ec34f9082b381a",
           "axes": [
             "initials",
@@ -17581,7 +17581,7 @@
           "id": "durin-ds-surfaces-card--composed",
           "storyId": "durin-ds-surfaces-card--composed",
           "runtimeArtifactId": "durin-ds-surfaces-card--composed",
-          "expectedVisibleText": "Requests are routed through this connection.",
+          "expectedVisibleText": "Keys authenticate CLI tools against your DurinDoor instance.",
           "expectedSha256": "70478330b5a12a5478b3a7161dabea70d5166d9f9cba2130999c7e53a8992cf6",
           "axes": [
             "text"
@@ -17618,7 +17618,7 @@
           "id": "durin-ds-surfaces-card--composed",
           "storyId": "durin-ds-surfaces-card--composed",
           "runtimeArtifactId": "durin-ds-surfaces-card--composed",
-          "expectedVisibleText": "Last checked",
+          "expectedVisibleText": "Last used 2h ago",
           "expectedSha256": "70478330b5a12a5478b3a7161dabea70d5166d9f9cba2130999c7e53a8992cf6",
           "axes": [
             "text",
@@ -17656,7 +17656,7 @@
           "id": "durin-ds-surfaces-card--composed",
           "storyId": "durin-ds-surfaces-card--composed",
           "runtimeArtifactId": "durin-ds-surfaces-card--composed",
-          "expectedVisibleText": "Connection details",
+          "expectedVisibleText": "API keys",
           "expectedSha256": "70478330b5a12a5478b3a7161dabea70d5166d9f9cba2130999c7e53a8992cf6",
           "axes": [
             "text",
@@ -17677,7 +17677,7 @@
       "id": "src/shared/ui/components/Checkbox.jsx#Checkbox",
       "sourcePath": "src/shared/ui/components/Checkbox.jsx",
       "symbol": "Checkbox",
-      "sourceSha256": "d319fabfe30b885006de4bb1366754c287052a61f00d284cc63bd5c4c579b438",
+      "sourceSha256": "ac93e69e934ad04f7330c351490bfa42296289c228041318f8c30444dab20918",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-forms-checkbox--solo-unchecked, durin-ds-forms-checkbox--solo-checked, durin-ds-forms-checkbox--with-label-and-hint, durin-ds-forms-checkbox--error, durin-ds-forms-checkbox--disabled, durin-ds-forms-checkbox--controlled. Pending runtime review.",
@@ -17705,7 +17705,7 @@
           "storyId": "durin-ds-forms-checkbox--solo-unchecked",
           "runtimeArtifactId": "durin-ds-forms-checkbox--solo-unchecked",
           "expectedVisibleText": null,
-          "expectedSha256": "d319fabfe30b885006de4bb1366754c287052a61f00d284cc63bd5c4c579b438",
+          "expectedSha256": "ac93e69e934ad04f7330c351490bfa42296289c228041318f8c30444dab20918",
           "axes": [
             "unchecked"
           ],
@@ -17719,7 +17719,7 @@
           "storyId": "durin-ds-forms-checkbox--solo-checked",
           "runtimeArtifactId": "durin-ds-forms-checkbox--solo-checked",
           "expectedVisibleText": null,
-          "expectedSha256": "d319fabfe30b885006de4bb1366754c287052a61f00d284cc63bd5c4c579b438",
+          "expectedSha256": "ac93e69e934ad04f7330c351490bfa42296289c228041318f8c30444dab20918",
           "axes": [
             "checked"
           ],
@@ -17733,7 +17733,7 @@
           "storyId": "durin-ds-forms-checkbox--with-label-and-hint",
           "runtimeArtifactId": "durin-ds-forms-checkbox--with-label-and-hint",
           "expectedVisibleText": "Help improve Durin Door with anonymous diagnostics.",
-          "expectedSha256": "d319fabfe30b885006de4bb1366754c287052a61f00d284cc63bd5c4c579b438",
+          "expectedSha256": "ac93e69e934ad04f7330c351490bfa42296289c228041318f8c30444dab20918",
           "axes": [
             "unchecked",
             "label",
@@ -17750,7 +17750,7 @@
           "storyId": "durin-ds-forms-checkbox--error",
           "runtimeArtifactId": "durin-ds-forms-checkbox--error",
           "expectedVisibleText": "Accept the connection policy to continue.",
-          "expectedSha256": "d319fabfe30b885006de4bb1366754c287052a61f00d284cc63bd5c4c579b438",
+          "expectedSha256": "ac93e69e934ad04f7330c351490bfa42296289c228041318f8c30444dab20918",
           "axes": [
             "invalid",
             "error",
@@ -17767,7 +17767,7 @@
           "storyId": "durin-ds-forms-checkbox--disabled",
           "runtimeArtifactId": "durin-ds-forms-checkbox--disabled",
           "expectedVisibleText": "Disabled checked",
-          "expectedSha256": "d319fabfe30b885006de4bb1366754c287052a61f00d284cc63bd5c4c579b438",
+          "expectedSha256": "ac93e69e934ad04f7330c351490bfa42296289c228041318f8c30444dab20918",
           "axes": [
             "disabled",
             "checked",
@@ -17784,7 +17784,7 @@
           "storyId": "durin-ds-forms-checkbox--controlled",
           "runtimeArtifactId": "durin-ds-forms-checkbox--controlled",
           "expectedVisibleText": "Streaming is disabled.",
-          "expectedSha256": "d319fabfe30b885006de4bb1366754c287052a61f00d284cc63bd5c4c579b438",
+          "expectedSha256": "ac93e69e934ad04f7330c351490bfa42296289c228041318f8c30444dab20918",
           "axes": [
             "controlled",
             "unchecked",
@@ -18720,7 +18720,7 @@
       "id": "src/shared/ui/components/IconButton.jsx#IconButton",
       "sourcePath": "src/shared/ui/components/IconButton.jsx",
       "symbol": "IconButton",
-      "sourceSha256": "135630c7a011661371b5c78c649fbb25f4c54911202b0dc3dcf3c3bf4ed5cc9d",
+      "sourceSha256": "e4dbf28bc7cdf0fbaa24b134bad15bc845439170b989396efd88a5179af8b3a7",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-actions-iconbutton--ghost, durin-ds-actions-iconbutton--secondary, durin-ds-actions-iconbutton--sizes, durin-ds-actions-iconbutton--disabled, durin-ds-actions-iconbutton--keyboard-activation, durin-ds-actions-iconbutton--variant-matrix, durin-ds-actions-iconbutton--toolbar-row. Pending runtime review.",
@@ -18750,7 +18750,7 @@
           "storyId": "durin-ds-actions-iconbutton--ghost",
           "runtimeArtifactId": "durin-ds-actions-iconbutton--ghost",
           "expectedVisibleText": null,
-          "expectedSha256": "135630c7a011661371b5c78c649fbb25f4c54911202b0dc3dcf3c3bf4ed5cc9d",
+          "expectedSha256": "e4dbf28bc7cdf0fbaa24b134bad15bc845439170b989396efd88a5179af8b3a7",
           "axes": [
             "variants"
           ],
@@ -18763,7 +18763,7 @@
           "storyId": "durin-ds-actions-iconbutton--secondary",
           "runtimeArtifactId": "durin-ds-actions-iconbutton--secondary",
           "expectedVisibleText": null,
-          "expectedSha256": "135630c7a011661371b5c78c649fbb25f4c54911202b0dc3dcf3c3bf4ed5cc9d",
+          "expectedSha256": "e4dbf28bc7cdf0fbaa24b134bad15bc845439170b989396efd88a5179af8b3a7",
           "axes": [
             "variants"
           ],
@@ -18776,7 +18776,7 @@
           "storyId": "durin-ds-actions-iconbutton--sizes",
           "runtimeArtifactId": "durin-ds-actions-iconbutton--sizes",
           "expectedVisibleText": null,
-          "expectedSha256": "135630c7a011661371b5c78c649fbb25f4c54911202b0dc3dcf3c3bf4ed5cc9d",
+          "expectedSha256": "e4dbf28bc7cdf0fbaa24b134bad15bc845439170b989396efd88a5179af8b3a7",
           "axes": [
             "size",
             "variants",
@@ -18791,7 +18791,7 @@
           "storyId": "durin-ds-actions-iconbutton--disabled",
           "runtimeArtifactId": "durin-ds-actions-iconbutton--disabled",
           "expectedVisibleText": null,
-          "expectedSha256": "135630c7a011661371b5c78c649fbb25f4c54911202b0dc3dcf3c3bf4ed5cc9d",
+          "expectedSha256": "e4dbf28bc7cdf0fbaa24b134bad15bc845439170b989396efd88a5179af8b3a7",
           "axes": [
             "variants",
             "icon"
@@ -18805,7 +18805,7 @@
           "storyId": "durin-ds-actions-iconbutton--keyboard-activation",
           "runtimeArtifactId": "durin-ds-actions-iconbutton--keyboard-activation",
           "expectedVisibleText": null,
-          "expectedSha256": "135630c7a011661371b5c78c649fbb25f4c54911202b0dc3dcf3c3bf4ed5cc9d",
+          "expectedSha256": "e4dbf28bc7cdf0fbaa24b134bad15bc845439170b989396efd88a5179af8b3a7",
           "axes": [
             "text",
             "controls",
@@ -18820,7 +18820,7 @@
           "storyId": "durin-ds-actions-iconbutton--variant-matrix",
           "runtimeArtifactId": "durin-ds-actions-iconbutton--variant-matrix",
           "expectedVisibleText": null,
-          "expectedSha256": "135630c7a011661371b5c78c649fbb25f4c54911202b0dc3dcf3c3bf4ed5cc9d",
+          "expectedSha256": "e4dbf28bc7cdf0fbaa24b134bad15bc845439170b989396efd88a5179af8b3a7",
           "axes": [
             "size",
             "variants",
@@ -18835,7 +18835,7 @@
           "storyId": "durin-ds-actions-iconbutton--toolbar-row",
           "runtimeArtifactId": "durin-ds-actions-iconbutton--toolbar-row",
           "expectedVisibleText": null,
-          "expectedSha256": "135630c7a011661371b5c78c649fbb25f4c54911202b0dc3dcf3c3bf4ed5cc9d",
+          "expectedSha256": "e4dbf28bc7cdf0fbaa24b134bad15bc845439170b989396efd88a5179af8b3a7",
           "axes": [
             "size",
             "variants",
@@ -18957,7 +18957,7 @@
           "id": "durin-ds-forms-input--with-icon",
           "storyId": "durin-ds-forms-input--with-icon",
           "runtimeArtifactId": "durin-ds-forms-input--with-icon",
-          "expectedVisibleText": "Search providers…",
+          "expectedVisibleText": "Search providers",
           "expectedSha256": "42c8a23d5002c685ab611fb2285a7b0344f7283715288b1043015fd828f82786",
           "axes": [
             "icon",
@@ -18972,7 +18972,7 @@
           "id": "durin-ds-forms-input--small",
           "storyId": "durin-ds-forms-input--small",
           "runtimeArtifactId": "durin-ds-forms-input--small",
-          "expectedVisibleText": "Filter models…",
+          "expectedVisibleText": "Filter models",
           "expectedSha256": "42c8a23d5002c685ab611fb2285a7b0344f7283715288b1043015fd828f82786",
           "axes": [
             "small",
@@ -18988,7 +18988,7 @@
           "id": "durin-ds-forms-input--disabled",
           "storyId": "durin-ds-forms-input--disabled",
           "runtimeArtifactId": "durin-ds-forms-input--disabled",
-          "expectedVisibleText": "sk-prod-key",
+          "expectedVisibleText": "API key",
           "expectedSha256": "42c8a23d5002c685ab611fb2285a7b0344f7283715288b1043015fd828f82786",
           "axes": [
             "disabled",
@@ -19828,7 +19828,7 @@
       "id": "src/shared/ui/components/RangeSelector.jsx#RangeSelector",
       "sourcePath": "src/shared/ui/components/RangeSelector.jsx",
       "symbol": "RangeSelector",
-      "sourceSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+      "sourceSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-data-rangeselector--default, durin-ds-data-rangeselector--valid-custom, durin-ds-data-rangeselector--custom-cancel, durin-ds-data-rangeselector--small, durin-ds-data-rangeselector--long, durin-ds-data-rangeselector--narrow, durin-ds-data-rangeselector--keyboard, durin-ds-data-rangeselector--in-toolbar. Pending runtime review.",
@@ -19863,7 +19863,7 @@
           "storyId": "durin-ds-data-rangeselector--default",
           "runtimeArtifactId": "durin-ds-data-rangeselector--default",
           "expectedVisibleText": "Last 7 days",
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "preset",
             "selected",
@@ -19879,7 +19879,7 @@
           "storyId": "durin-ds-data-rangeselector--valid-custom",
           "runtimeArtifactId": "durin-ds-data-rangeselector--valid-custom",
           "expectedVisibleText": "May 1 – Aug 30",
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "custom-selection",
             "text"
@@ -19894,7 +19894,7 @@
           "storyId": "durin-ds-data-rangeselector--custom-cancel",
           "runtimeArtifactId": "durin-ds-data-rangeselector--custom-cancel",
           "expectedVisibleText": "Last 7 days",
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "validation",
             "cancel",
@@ -19910,7 +19910,7 @@
           "storyId": "durin-ds-data-rangeselector--small",
           "runtimeArtifactId": "durin-ds-data-rangeselector--small",
           "expectedVisibleText": "Last 15 days",
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "size",
             "preset",
@@ -19926,7 +19926,7 @@
           "storyId": "durin-ds-data-rangeselector--keyboard",
           "runtimeArtifactId": "durin-ds-data-rangeselector--keyboard",
           "expectedVisibleText": null,
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "text",
             "controls",
@@ -19940,8 +19940,8 @@
           "id": "durin-ds-data-rangeselector--open-custom",
           "storyId": "durin-ds-data-rangeselector--open-custom",
           "runtimeArtifactId": "durin-ds-data-rangeselector--open-custom",
-          "expectedVisibleText": "Custom date range",
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedVisibleText": "Last 7 days",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "custom-selection",
             "expanded",
@@ -19957,7 +19957,7 @@
           "storyId": "durin-ds-data-rangeselector--invalid-custom",
           "runtimeArtifactId": "durin-ds-data-rangeselector--invalid-custom",
           "expectedVisibleText": "Apply",
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "custom-selection",
             "validation",
@@ -19973,7 +19973,7 @@
           "storyId": "durin-ds-data-rangeselector--applied-custom",
           "runtimeArtifactId": "durin-ds-data-rangeselector--applied-custom",
           "expectedVisibleText": "2026-05-01 → 2026-08-30",
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "custom-selection",
             "applied",
@@ -19994,7 +19994,7 @@
             "selected",
             "text"
           ],
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "sourceHashes": {
             "src/shared/ui/components/RangeSelector.jsx": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2"
           }
@@ -20009,7 +20009,7 @@
             "selected",
             "text"
           ],
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "sourceHashes": {
             "src/shared/ui/components/RangeSelector.jsx": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2"
           }
@@ -20018,13 +20018,13 @@
           "id": "durin-ds-data-rangeselector--in-toolbar",
           "storyId": "durin-ds-data-rangeselector--in-toolbar",
           "runtimeArtifactId": "durin-ds-data-rangeselector--in-toolbar",
-          "expectedVisibleText": "Last month",
+          "expectedVisibleText": "All statuses",
           "axes": [
             "size",
             "preset",
             "text"
           ],
-          "expectedSha256": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2",
+          "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "sourceHashes": {
             "src/shared/ui/components/RangeSelector.jsx": "e5a1f6278042ce472c54347a164a43d120f1d83341405caf192678d3c67840f2"
           }
@@ -20198,7 +20198,7 @@
       "id": "src/shared/ui/components/Select.jsx#listbox",
       "sourcePath": "src/shared/ui/components/Select.jsx",
       "symbol": "listbox",
-      "sourceSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+      "sourceSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Many Options opens rendered listbox.",
@@ -20216,7 +20216,7 @@
           "storyId": "durin-ds-forms-select--many-options",
           "runtimeArtifactId": "durin-ds-forms-select--many-options",
           "expectedVisibleText": null,
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "axes": [
             "many-options",
             "keyboard",
@@ -20274,7 +20274,7 @@
       "id": "src/shared/ui/components/Select.jsx#Select",
       "sourcePath": "src/shared/ui/components/Select.jsx",
       "symbol": "Select",
-      "sourceSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+      "sourceSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-forms-select--default, durin-ds-forms-select--with-label-and-hint, durin-ds-forms-select--error, durin-ds-forms-select--disabled, durin-ds-forms-select--many-options, durin-ds-forms-select--with-icons-and-hints, durin-ds-forms-select--placement-top, durin-ds-forms-select--empty, durin-ds-forms-select--inside-modal, durin-ds-forms-select--example-form. Pending runtime review.",
@@ -20308,7 +20308,7 @@
           "storyId": "durin-ds-forms-select--default",
           "runtimeArtifactId": "durin-ds-forms-select--default",
           "expectedVisibleText": "OpenAI",
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "axes": [
             "selection",
             "keyboard",
@@ -20324,7 +20324,7 @@
           "storyId": "durin-ds-forms-select--error",
           "runtimeArtifactId": "durin-ds-forms-select--error",
           "expectedVisibleText": "Choose a provider before continuing.",
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "axes": [
             "error",
             "required",
@@ -20341,7 +20341,7 @@
           "storyId": "durin-ds-forms-select--disabled",
           "runtimeArtifactId": "durin-ds-forms-select--disabled",
           "expectedVisibleText": "Anthropic",
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "axes": [
             "disabled",
             "selection",
@@ -20357,7 +20357,7 @@
           "storyId": "durin-ds-forms-select--many-options",
           "runtimeArtifactId": "durin-ds-forms-select--many-options",
           "expectedVisibleText": "Model 18",
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "axes": [
             "many-options",
             "keyboard",
@@ -20374,7 +20374,7 @@
           "storyId": "durin-ds-forms-select--with-icons-and-hints",
           "runtimeArtifactId": "durin-ds-forms-select--with-icons-and-hints",
           "expectedVisibleText": "Claude Sonnet",
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "axes": [
             "icon",
             "hint",
@@ -20391,7 +20391,7 @@
           "storyId": "durin-ds-forms-select--placement-top",
           "runtimeArtifactId": "durin-ds-forms-select--placement-top",
           "expectedVisibleText": null,
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "axes": [
             "text",
             "controls"
@@ -20405,7 +20405,7 @@
           "storyId": "durin-ds-forms-select--empty",
           "runtimeArtifactId": "durin-ds-forms-select--empty",
           "expectedVisibleText": "No options",
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "axes": [
             "expanded",
             "empty",
@@ -20421,7 +20421,7 @@
           "storyId": "durin-ds-forms-select--inside-modal",
           "runtimeArtifactId": "durin-ds-forms-select--inside-modal",
           "expectedVisibleText": "Provider settings",
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "axes": [
             "expanded",
             "controls",
@@ -20442,7 +20442,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "sourceHashes": {
             "src/shared/ui/components/Select.jsx": "5415e6d72dda683a1d19db7f8a397d4ae0527dfcd9c75df92557efc99b5bd9d0"
           }
@@ -20457,7 +20457,7 @@
             "text",
             "controls"
           ],
-          "expectedSha256": "b06cf798a2e0535f0b036e220dc39f491ab77ce0df5a86ea1281165c1dbd5bcf",
+          "expectedSha256": "cacaa74a76c13a79fc6a3a4d539befaa5da50d707e43d4338bbe4169366ab25e",
           "sourceHashes": {
             "src/shared/ui/components/Select.jsx": "5415e6d72dda683a1d19db7f8a397d4ae0527dfcd9c75df92557efc99b5bd9d0"
           }
@@ -20792,7 +20792,7 @@
           "id": "durin-ds-forms-textarea--default",
           "storyId": "durin-ds-forms-textarea--default",
           "runtimeArtifactId": "durin-ds-forms-textarea--default",
-          "expectedVisibleText": "Write a request body…",
+          "expectedVisibleText": "Deployment notes",
           "expectedSha256": "8e7ce419f267b2756b9914588d6144296d8ebbc0c8cfcdb4601445565f05a782",
           "axes": [
             "controls"
@@ -20861,7 +20861,7 @@
           "id": "durin-ds-forms-textarea--with-error",
           "storyId": "durin-ds-forms-textarea--with-error",
           "runtimeArtifactId": "durin-ds-forms-textarea--with-error",
-          "expectedVisibleText": "Request body",
+          "expectedVisibleText": "Webhook payload",
           "expectedSha256": "8e7ce419f267b2756b9914588d6144296d8ebbc0c8cfcdb4601445565f05a782",
           "axes": [
             "error",
@@ -21267,7 +21267,7 @@
           "id": "durin-ds-overlays-tooltip--keyboard",
           "storyId": "durin-ds-overlays-tooltip--keyboard",
           "runtimeArtifactId": "durin-ds-overlays-tooltip--keyboard",
-          "expectedVisibleText": "Keyboard description",
+          "expectedVisibleText": "top",
           "expectedSha256": "f516b35ea4fd42d7fdcd8271394b2576b25279c09c1e0709216ca6feb8c17a69",
           "axes": [
             "keyboard",
@@ -21474,7 +21474,7 @@
           "id": "durin-ds-pages-cli-tools--default",
           "storyId": "durin-ds-pages-cli-tools--default",
           "runtimeArtifactId": "durin-ds-pages-cli-tools--default",
-          "expectedVisibleText": "DurinDoor CLI",
+          "expectedVisibleText": "MITM Tools",
           "expectedSha256": "89f150715774f5ce9427365cc4dfd517a702c540936629f1bf0a66d434a03006",
           "axes": [
             "text"
@@ -21535,7 +21535,7 @@
       "id": "src/shared/ui/pages/combos/CombosPage.jsx#ComboCard",
       "sourcePath": "src/shared/ui/pages/combos/CombosPage.jsx",
       "symbol": "ComboCard",
-      "sourceSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+      "sourceSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-combos--default imports and renders page; reference-only DS mock scenario reaches ComboCard. Missing branch proof: ['No production story renders ComboCard; mapped story is DS mock/reference only.']",
@@ -21553,7 +21553,7 @@
           "storyId": "durin-ds-pages-combos--default",
           "runtimeArtifactId": "durin-ds-pages-combos--default",
           "expectedVisibleText": "Primary route",
-          "expectedSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+          "expectedSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
           "axes": [
             "text"
           ],
@@ -21574,7 +21574,7 @@
       "id": "src/shared/ui/pages/combos/CombosPage.jsx#CombosPage",
       "sourcePath": "src/shared/ui/pages/combos/CombosPage.jsx",
       "symbol": "CombosPage",
-      "sourceSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+      "sourceSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-combos--default, durin-ds-pages-combos--open-create-modal, durin-ds-pages-combos--empty-state. Pending runtime review.",
@@ -21596,7 +21596,7 @@
           "storyId": "durin-ds-pages-combos--default",
           "runtimeArtifactId": "durin-ds-pages-combos--default",
           "expectedVisibleText": "Combos",
-          "expectedSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+          "expectedSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
           "axes": [
             "text",
             "controls"
@@ -21611,7 +21611,7 @@
           "storyId": "durin-ds-pages-combos--open-create-modal",
           "runtimeArtifactId": "durin-ds-pages-combos--open-create-modal",
           "expectedVisibleText": null,
-          "expectedSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+          "expectedSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
           "axes": [
             "modal=open",
             "controls",
@@ -21626,7 +21626,7 @@
           "storyId": "durin-ds-pages-combos--empty-state",
           "runtimeArtifactId": "durin-ds-pages-combos--empty-state",
           "expectedVisibleText": "No combos yet",
-          "expectedSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+          "expectedSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
           "axes": [
             "empty",
             "text",
@@ -21649,7 +21649,7 @@
       "id": "src/shared/ui/pages/combos/CombosPage.jsx#ModelChip",
       "sourcePath": "src/shared/ui/pages/combos/CombosPage.jsx",
       "symbol": "ModelChip",
-      "sourceSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+      "sourceSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-combos--default imports and renders page; reference-only DS mock scenario reaches ModelChip. Missing branch proof: ['No production story renders ModelChip; mapped story is DS mock/reference only.']",
@@ -21667,7 +21667,7 @@
           "storyId": "durin-ds-pages-combos--default",
           "runtimeArtifactId": "durin-ds-pages-combos--default",
           "expectedVisibleText": "gpt-4o",
-          "expectedSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+          "expectedSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
           "axes": [
             "text"
           ],
@@ -21688,7 +21688,7 @@
       "id": "src/shared/ui/pages/combos/CombosPage.jsx#StrategyGuide",
       "sourcePath": "src/shared/ui/pages/combos/CombosPage.jsx",
       "symbol": "StrategyGuide",
-      "sourceSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+      "sourceSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-combos--default imports and renders page; reference-only DS mock scenario reaches StrategyGuide. Missing branch proof: ['No production story renders StrategyGuide; mapped story is DS mock/reference only.']",
@@ -21706,7 +21706,7 @@
           "storyId": "durin-ds-pages-combos--default",
           "runtimeArtifactId": "durin-ds-pages-combos--default",
           "expectedVisibleText": "Strategy guide",
-          "expectedSha256": "a16136de4d9b66e3be5d93c271f0395ad2debe16c47f7612536cfc9355e7c82c",
+          "expectedSha256": "6ebb4d72d0b6575b27c25022b63df6c4507a1d85ab6ec9ee2660591c7d594dde",
           "axes": [
             "text"
           ],
@@ -21745,7 +21745,7 @@
       "id": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx#ConsoleLogPage",
       "sourcePath": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
       "symbol": "ConsoleLogPage",
-      "sourceSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+      "sourceSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-console-log--log, durin-ds-pages-console-log--timeline, durin-ds-pages-console-log--paused. Pending runtime review.",
@@ -21767,7 +21767,7 @@
           "storyId": "durin-ds-pages-console-log--log",
           "runtimeArtifactId": "durin-ds-pages-console-log--log",
           "expectedVisibleText": "Console Log",
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "text",
             "controls"
@@ -21782,7 +21782,7 @@
           "storyId": "durin-ds-pages-console-log--timeline",
           "runtimeArtifactId": "durin-ds-pages-console-log--timeline",
           "expectedVisibleText": "Log volume",
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "text",
             "controls"
@@ -21797,7 +21797,7 @@
           "storyId": "durin-ds-pages-console-log--paused",
           "runtimeArtifactId": "durin-ds-pages-console-log--paused",
           "expectedVisibleText": "Resume",
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "paused",
             "text",
@@ -21820,7 +21820,7 @@
       "id": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx#LevelBreakdown",
       "sourcePath": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
       "symbol": "LevelBreakdown",
-      "sourceSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+      "sourceSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-console-log--log imports and renders page; reference-only DS mock scenario reaches LevelBreakdown. Missing branch proof: ['No production story renders LevelBreakdown; mapped story is DS mock/reference only.']",
@@ -21838,7 +21838,7 @@
           "storyId": "durin-ds-pages-console-log--log",
           "runtimeArtifactId": "durin-ds-pages-console-log--log",
           "expectedVisibleText": null,
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "text",
             "controls"
@@ -21859,7 +21859,7 @@
       "id": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx#LevelFilters",
       "sourcePath": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
       "symbol": "LevelFilters",
-      "sourceSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+      "sourceSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-console-log--log imports and renders page; reference-only DS mock scenario reaches LevelFilters. Missing branch proof: ['No production story renders LevelFilters; mapped story is DS mock/reference only.']",
@@ -21877,7 +21877,7 @@
           "storyId": "durin-ds-pages-console-log--log",
           "runtimeArtifactId": "durin-ds-pages-console-log--log",
           "expectedVisibleText": "Errors",
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "controls",
             "text"
@@ -21899,7 +21899,7 @@
       "id": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx#LogLine",
       "sourcePath": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
       "symbol": "LogLine",
-      "sourceSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+      "sourceSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-console-log--log imports and renders page; reference-only DS mock scenario reaches LogLine. Missing branch proof: ['No production story renders LogLine; mapped story is DS mock/reference only.']",
@@ -21917,7 +21917,7 @@
           "storyId": "durin-ds-pages-console-log--log",
           "runtimeArtifactId": "durin-ds-pages-console-log--log",
           "expectedVisibleText": "INFO",
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "text"
           ],
@@ -21938,7 +21938,7 @@
       "id": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx#LogViewer",
       "sourcePath": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
       "symbol": "LogViewer",
-      "sourceSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+      "sourceSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-console-log--log imports and renders page; reference-only DS mock scenario reaches LogViewer. Missing branch proof: ['No production story renders LogViewer; mapped story is DS mock/reference only.']",
@@ -21956,7 +21956,7 @@
           "storyId": "durin-ds-pages-console-log--log",
           "runtimeArtifactId": "durin-ds-pages-console-log--log",
           "expectedVisibleText": "Console Log",
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "text"
           ],
@@ -21977,7 +21977,7 @@
       "id": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx#LogVolumeChart",
       "sourcePath": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
       "symbol": "LogVolumeChart",
-      "sourceSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+      "sourceSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-console-log--log imports and renders page; reference-only DS mock scenario reaches LogVolumeChart. Missing branch proof: ['No production story renders LogVolumeChart; mapped story is DS mock/reference only.']",
@@ -21995,7 +21995,7 @@
           "storyId": "durin-ds-pages-console-log--log",
           "runtimeArtifactId": "durin-ds-pages-console-log--log",
           "expectedVisibleText": null,
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "text",
             "controls"
@@ -22016,7 +22016,7 @@
       "id": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx#TimelineView",
       "sourcePath": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
       "symbol": "TimelineView",
-      "sourceSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+      "sourceSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] Timeline scenario renders TimelineView. Missing branch proof: ['No production story renders TimelineView; mapped story is DS mock/reference only.']",
@@ -22034,7 +22034,7 @@
           "storyId": "durin-ds-pages-console-log--timeline",
           "runtimeArtifactId": "durin-ds-pages-console-log--timeline",
           "expectedVisibleText": "Log volume",
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "text"
           ],
@@ -22055,7 +22055,7 @@
       "id": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx#Toolbar",
       "sourcePath": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
       "symbol": "Toolbar",
-      "sourceSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+      "sourceSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-console-log--log imports and renders page; reference-only DS mock scenario reaches Toolbar. Missing branch proof: ['No production story renders Toolbar; mapped story is DS mock/reference only.']",
@@ -22073,7 +22073,7 @@
           "storyId": "durin-ds-pages-console-log--log",
           "runtimeArtifactId": "durin-ds-pages-console-log--log",
           "expectedVisibleText": null,
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "text",
             "controls"
@@ -22094,7 +22094,7 @@
       "id": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx#TopSources",
       "sourcePath": "src/shared/ui/pages/console-log/ConsoleLogPage.jsx",
       "symbol": "TopSources",
-      "sourceSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+      "sourceSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-console-log--log imports and renders page; reference-only DS mock scenario reaches TopSources. Missing branch proof: ['No production story renders TopSources; mapped story is DS mock/reference only.']",
@@ -22112,7 +22112,7 @@
           "storyId": "durin-ds-pages-console-log--log",
           "runtimeArtifactId": "durin-ds-pages-console-log--log",
           "expectedVisibleText": null,
-          "expectedSha256": "31bf5fe8ff5321bec9c10f00ab1e9de8a9644f012a3a910142660549edc5fa23",
+          "expectedSha256": "50e3857cc06ed555e619c8ad69fd87d054fdf92a82172d5e2cb2291da01cafe2",
           "axes": [
             "text",
             "controls"
@@ -22406,7 +22406,7 @@
       "id": "src/shared/ui/pages/headroom/HeadroomPage.jsx#HeadroomPage",
       "sourcePath": "src/shared/ui/pages/headroom/HeadroomPage.jsx",
       "symbol": "HeadroomPage",
-      "sourceSha256": "d18fc7d8b003295babe33d341b1dc57e987945e998613282018bd2324f8129b0",
+      "sourceSha256": "c770553c574e04cf5e55c4cd8478ad437dd92afb75053f2b6d5ac7867f4c709f",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-headroom--default, durin-ds-pages-headroom--custom-range. Pending runtime review.",
@@ -22426,7 +22426,7 @@
           "storyId": "durin-ds-pages-headroom--default",
           "runtimeArtifactId": "durin-ds-pages-headroom--default",
           "expectedVisibleText": null,
-          "expectedSha256": "d18fc7d8b003295babe33d341b1dc57e987945e998613282018bd2324f8129b0",
+          "expectedSha256": "c770553c574e04cf5e55c4cd8478ad437dd92afb75053f2b6d5ac7867f4c709f",
           "axes": [
             "text"
           ],
@@ -22439,7 +22439,7 @@
           "storyId": "durin-ds-pages-headroom--custom-range",
           "runtimeArtifactId": "durin-ds-pages-headroom--custom-range",
           "expectedVisibleText": "Headroom Dashboard",
-          "expectedSha256": "d18fc7d8b003295babe33d341b1dc57e987945e998613282018bd2324f8129b0",
+          "expectedSha256": "c770553c574e04cf5e55c4cd8478ad437dd92afb75053f2b6d5ac7867f4c709f",
           "axes": [
             "controls",
             "text"
@@ -22554,7 +22554,7 @@
           "id": "durin-ds-pages-mcp-gateway--default",
           "storyId": "durin-ds-pages-mcp-gateway--default",
           "runtimeArtifactId": "durin-ds-pages-mcp-gateway--default",
-          "expectedVisibleText": "Test",
+          "expectedVisibleText": "Instances",
           "expectedSha256": "f0426acc4553a940ea6239a822b46b1b42cf771f707b8566b64bc1e0dbb89dc6",
           "axes": [
             "controls",
@@ -22707,7 +22707,7 @@
       "id": "src/shared/ui/pages/mcp-help/McpHelpPage.jsx#CodeBlock",
       "sourcePath": "src/shared/ui/pages/mcp-help/McpHelpPage.jsx",
       "symbol": "CodeBlock",
-      "sourceSha256": "eb0ae21ed74a94ce7253b9a3e7b76e853fc49bb7e2ac007a9728c1503a595d93",
+      "sourceSha256": "d255214f41591e840e80d60b4ae4b9d2b1aa99a32190ab4f333e016f5a6b7131",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-mcp-help--default imports and renders page; reference-only DS mock scenario reaches CodeBlock. Missing branch proof: ['No production story renders CodeBlock; mapped story is DS mock/reference only.']",
@@ -22725,7 +22725,7 @@
           "storyId": "durin-ds-pages-mcp-help--default",
           "runtimeArtifactId": "durin-ds-pages-mcp-help--default",
           "expectedVisibleText": "Authorization header",
-          "expectedSha256": "eb0ae21ed74a94ce7253b9a3e7b76e853fc49bb7e2ac007a9728c1503a595d93",
+          "expectedSha256": "d255214f41591e840e80d60b4ae4b9d2b1aa99a32190ab4f333e016f5a6b7131",
           "axes": [
             "text"
           ],
@@ -22746,7 +22746,7 @@
       "id": "src/shared/ui/pages/mcp-help/McpHelpPage.jsx#DocCard",
       "sourcePath": "src/shared/ui/pages/mcp-help/McpHelpPage.jsx",
       "symbol": "DocCard",
-      "sourceSha256": "eb0ae21ed74a94ce7253b9a3e7b76e853fc49bb7e2ac007a9728c1503a595d93",
+      "sourceSha256": "d255214f41591e840e80d60b4ae4b9d2b1aa99a32190ab4f333e016f5a6b7131",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-mcp-help--default imports and renders page; reference-only DS mock scenario reaches DocCard. Missing branch proof: ['No production story renders DocCard; mapped story is DS mock/reference only.']",
@@ -22764,7 +22764,7 @@
           "storyId": "durin-ds-pages-mcp-help--default",
           "runtimeArtifactId": "durin-ds-pages-mcp-help--default",
           "expectedVisibleText": "Overview",
-          "expectedSha256": "eb0ae21ed74a94ce7253b9a3e7b76e853fc49bb7e2ac007a9728c1503a595d93",
+          "expectedSha256": "d255214f41591e840e80d60b4ae4b9d2b1aa99a32190ab4f333e016f5a6b7131",
           "axes": [
             "text"
           ],
@@ -22785,7 +22785,7 @@
       "id": "src/shared/ui/pages/mcp-help/McpHelpPage.jsx#InlineCode",
       "sourcePath": "src/shared/ui/pages/mcp-help/McpHelpPage.jsx",
       "symbol": "InlineCode",
-      "sourceSha256": "eb0ae21ed74a94ce7253b9a3e7b76e853fc49bb7e2ac007a9728c1503a595d93",
+      "sourceSha256": "d255214f41591e840e80d60b4ae4b9d2b1aa99a32190ab4f333e016f5a6b7131",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-mcp-help--default imports and renders page; reference-only DS mock scenario reaches InlineCode. Missing branch proof: ['No production story renders InlineCode; mapped story is DS mock/reference only.']",
@@ -22803,7 +22803,7 @@
           "storyId": "durin-ds-pages-mcp-help--default",
           "runtimeArtifactId": "durin-ds-pages-mcp-help--default",
           "expectedVisibleText": "brave__search",
-          "expectedSha256": "eb0ae21ed74a94ce7253b9a3e7b76e853fc49bb7e2ac007a9728c1503a595d93",
+          "expectedSha256": "d255214f41591e840e80d60b4ae4b9d2b1aa99a32190ab4f333e016f5a6b7131",
           "axes": [
             "text"
           ],
@@ -22824,7 +22824,7 @@
       "id": "src/shared/ui/pages/mcp-help/McpHelpPage.jsx#McpHelpPage",
       "sourcePath": "src/shared/ui/pages/mcp-help/McpHelpPage.jsx",
       "symbol": "McpHelpPage",
-      "sourceSha256": "eb0ae21ed74a94ce7253b9a3e7b76e853fc49bb7e2ac007a9728c1503a595d93",
+      "sourceSha256": "d255214f41591e840e80d60b4ae4b9d2b1aa99a32190ab4f333e016f5a6b7131",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-mcp-help--default. Pending runtime review.",
@@ -22842,7 +22842,7 @@
           "storyId": "durin-ds-pages-mcp-help--default",
           "runtimeArtifactId": "durin-ds-pages-mcp-help--default",
           "expectedVisibleText": "MCP Help",
-          "expectedSha256": "eb0ae21ed74a94ce7253b9a3e7b76e853fc49bb7e2ac007a9728c1503a595d93",
+          "expectedSha256": "d255214f41591e840e80d60b4ae4b9d2b1aa99a32190ab4f333e016f5a6b7131",
           "axes": [
             "text"
           ],
@@ -23035,7 +23035,7 @@
       "id": "src/shared/ui/pages/playground/PlaygroundPage.jsx#ChatMessage",
       "sourcePath": "src/shared/ui/pages/playground/PlaygroundPage.jsx",
       "symbol": "ChatMessage",
-      "sourceSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+      "sourceSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-playground--with-conversation imports and renders page; reference-only DS mock scenario reaches ChatMessage. Missing branch proof: ['No production story renders ChatMessage; mapped story is DS mock/reference only.']",
@@ -23053,7 +23053,7 @@
           "storyId": "durin-ds-pages-playground--with-conversation",
           "runtimeArtifactId": "durin-ds-pages-playground--with-conversation",
           "expectedVisibleText": null,
-          "expectedSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+          "expectedSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
           "axes": [
             "text"
           ],
@@ -23073,7 +23073,7 @@
       "id": "src/shared/ui/pages/playground/PlaygroundPage.jsx#Composer",
       "sourcePath": "src/shared/ui/pages/playground/PlaygroundPage.jsx",
       "symbol": "Composer",
-      "sourceSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+      "sourceSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-playground--with-conversation imports and renders page; reference-only DS mock scenario reaches Composer. Missing branch proof: ['No production story renders Composer; mapped story is DS mock/reference only.']",
@@ -23091,7 +23091,7 @@
           "storyId": "durin-ds-pages-playground--with-conversation",
           "runtimeArtifactId": "durin-ds-pages-playground--with-conversation",
           "expectedVisibleText": null,
-          "expectedSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+          "expectedSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
           "axes": [
             "text"
           ],
@@ -23111,7 +23111,7 @@
       "id": "src/shared/ui/pages/playground/PlaygroundPage.jsx#Conversation",
       "sourcePath": "src/shared/ui/pages/playground/PlaygroundPage.jsx",
       "symbol": "Conversation",
-      "sourceSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+      "sourceSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-playground--with-conversation imports and renders page; reference-only DS mock scenario reaches Conversation. Missing branch proof: ['No production story renders Conversation; mapped story is DS mock/reference only.']",
@@ -23129,7 +23129,7 @@
           "storyId": "durin-ds-pages-playground--with-conversation",
           "runtimeArtifactId": "durin-ds-pages-playground--with-conversation",
           "expectedVisibleText": "Assistant",
-          "expectedSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+          "expectedSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
           "axes": [
             "text"
           ],
@@ -23150,7 +23150,7 @@
       "id": "src/shared/ui/pages/playground/PlaygroundPage.jsx#EmptyPlayground",
       "sourcePath": "src/shared/ui/pages/playground/PlaygroundPage.jsx",
       "symbol": "EmptyPlayground",
-      "sourceSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+      "sourceSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] Empty scenario renders EmptyPlayground. Missing branch proof: ['No production story renders EmptyPlayground; mapped story is DS mock/reference only.']",
@@ -23168,7 +23168,7 @@
           "storyId": "durin-ds-pages-playground--empty",
           "runtimeArtifactId": "durin-ds-pages-playground--empty",
           "expectedVisibleText": "Playground",
-          "expectedSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+          "expectedSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
           "axes": [
             "empty",
             "controls",
@@ -23191,7 +23191,7 @@
       "id": "src/shared/ui/pages/playground/PlaygroundPage.jsx#ModelSelect",
       "sourcePath": "src/shared/ui/pages/playground/PlaygroundPage.jsx",
       "symbol": "ModelSelect",
-      "sourceSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+      "sourceSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-playground--with-conversation imports and renders page; reference-only DS mock scenario reaches ModelSelect. Missing branch proof: ['No production story renders ModelSelect; mapped story is DS mock/reference only.']",
@@ -23209,7 +23209,7 @@
           "storyId": "durin-ds-pages-playground--with-conversation",
           "runtimeArtifactId": "durin-ds-pages-playground--with-conversation",
           "expectedVisibleText": null,
-          "expectedSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+          "expectedSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
           "axes": [
             "text"
           ],
@@ -23229,7 +23229,7 @@
       "id": "src/shared/ui/pages/playground/PlaygroundPage.jsx#PlaygroundPage",
       "sourcePath": "src/shared/ui/pages/playground/PlaygroundPage.jsx",
       "symbol": "PlaygroundPage",
-      "sourceSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+      "sourceSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-playground--empty, durin-ds-pages-playground--with-conversation, durin-ds-pages-playground--streaming. Pending runtime review.",
@@ -23251,7 +23251,7 @@
           "storyId": "durin-ds-pages-playground--empty",
           "runtimeArtifactId": "durin-ds-pages-playground--empty",
           "expectedVisibleText": "Playground",
-          "expectedSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+          "expectedSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
           "axes": [
             "empty",
             "text",
@@ -23267,7 +23267,7 @@
           "storyId": "durin-ds-pages-playground--with-conversation",
           "runtimeArtifactId": "durin-ds-pages-playground--with-conversation",
           "expectedVisibleText": null,
-          "expectedSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+          "expectedSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
           "axes": [
             "text"
           ],
@@ -23280,7 +23280,7 @@
           "storyId": "durin-ds-pages-playground--streaming",
           "runtimeArtifactId": "durin-ds-pages-playground--streaming",
           "expectedVisibleText": "Assistant",
-          "expectedSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+          "expectedSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
           "axes": [
             "streaming",
             "text"
@@ -23302,7 +23302,7 @@
       "id": "src/shared/ui/pages/playground/PlaygroundPage.jsx#Toolbar",
       "sourcePath": "src/shared/ui/pages/playground/PlaygroundPage.jsx",
       "symbol": "Toolbar",
-      "sourceSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+      "sourceSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-playground--with-conversation imports and renders page; reference-only DS mock scenario reaches Toolbar. Missing branch proof: ['No production story renders Toolbar; mapped story is DS mock/reference only.']",
@@ -23320,7 +23320,7 @@
           "storyId": "durin-ds-pages-playground--with-conversation",
           "runtimeArtifactId": "durin-ds-pages-playground--with-conversation",
           "expectedVisibleText": null,
-          "expectedSha256": "3ffc119d6eca5ebb27f07008e70383bce732ecb100c8a221c9187b66131d9549",
+          "expectedSha256": "547a4f2c92b162778da5ec26a69840b5203195f63c0273172641ed6fb77d42e2",
           "axes": [
             "text"
           ],
@@ -23394,7 +23394,7 @@
           "id": "durin-ds-pages-providers--filter-all",
           "storyId": "durin-ds-pages-providers--filter-all",
           "runtimeArtifactId": "durin-ds-pages-providers--filter-all",
-          "expectedVisibleText": "Disable",
+          "expectedVisibleText": "Free Tier Providers",
           "expectedSha256": "d132a32cd9739287b32f4f6b668190d14dab46e6a5e444313edfbe4c93929921",
           "axes": [
             "controls",
@@ -23525,7 +23525,7 @@
           "id": "durin-ds-pages-providers--overview",
           "storyId": "durin-ds-pages-providers--overview",
           "runtimeArtifactId": "durin-ds-pages-providers--overview",
-          "expectedVisibleText": "Providers",
+          "expectedVisibleText": "Manage your AI provider connections",
           "expectedSha256": "d132a32cd9739287b32f4f6b668190d14dab46e6a5e444313edfbe4c93929921",
           "axes": [
             "empty",
@@ -23709,7 +23709,7 @@
       "id": "src/shared/ui/pages/quota/QuotaPage.jsx#ProgressBar",
       "sourcePath": "src/shared/ui/pages/quota/QuotaPage.jsx",
       "symbol": "ProgressBar",
-      "sourceSha256": "6c126bfd429f351baf2762d4f774af9e5f0512eb0bfc3d997db02a8bce5c9e1f",
+      "sourceSha256": "a1626673db701058c5607850b37d733199aafe6e692f44a37aec0b92e7ed53ae",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-quota-tracker--default imports and renders page; reference-only DS mock scenario reaches ProgressBar. Missing branch proof: ['No production story renders ProgressBar; mapped story is DS mock/reference only.']",
@@ -23727,7 +23727,7 @@
           "storyId": "durin-ds-pages-quota-tracker--default",
           "runtimeArtifactId": "durin-ds-pages-quota-tracker--default",
           "expectedVisibleText": null,
-          "expectedSha256": "6c126bfd429f351baf2762d4f774af9e5f0512eb0bfc3d997db02a8bce5c9e1f",
+          "expectedSha256": "a1626673db701058c5607850b37d733199aafe6e692f44a37aec0b92e7ed53ae",
           "axes": [
             "text"
           ],
@@ -23747,7 +23747,7 @@
       "id": "src/shared/ui/pages/quota/QuotaPage.jsx#ProviderCard",
       "sourcePath": "src/shared/ui/pages/quota/QuotaPage.jsx",
       "symbol": "ProviderCard",
-      "sourceSha256": "6c126bfd429f351baf2762d4f774af9e5f0512eb0bfc3d997db02a8bce5c9e1f",
+      "sourceSha256": "a1626673db701058c5607850b37d733199aafe6e692f44a37aec0b92e7ed53ae",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-quota-tracker--default imports and renders page; reference-only DS mock scenario reaches ProviderCard. Missing branch proof: ['No production story renders ProviderCard; mapped story is DS mock/reference only.']",
@@ -23765,7 +23765,7 @@
           "storyId": "durin-ds-pages-quota-tracker--default",
           "runtimeArtifactId": "durin-ds-pages-quota-tracker--default",
           "expectedVisibleText": null,
-          "expectedSha256": "6c126bfd429f351baf2762d4f774af9e5f0512eb0bfc3d997db02a8bce5c9e1f",
+          "expectedSha256": "a1626673db701058c5607850b37d733199aafe6e692f44a37aec0b92e7ed53ae",
           "axes": [
             "text"
           ],
@@ -23785,7 +23785,7 @@
       "id": "src/shared/ui/pages/quota/QuotaPage.jsx#QuotaPage",
       "sourcePath": "src/shared/ui/pages/quota/QuotaPage.jsx",
       "symbol": "QuotaPage",
-      "sourceSha256": "6c126bfd429f351baf2762d4f774af9e5f0512eb0bfc3d997db02a8bce5c9e1f",
+      "sourceSha256": "a1626673db701058c5607850b37d733199aafe6e692f44a37aec0b92e7ed53ae",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-quota-tracker--default, durin-ds-pages-quota-tracker--filtered-to-codex. Pending runtime review.",
@@ -23805,7 +23805,7 @@
           "storyId": "durin-ds-pages-quota-tracker--default",
           "runtimeArtifactId": "durin-ds-pages-quota-tracker--default",
           "expectedVisibleText": null,
-          "expectedSha256": "6c126bfd429f351baf2762d4f774af9e5f0512eb0bfc3d997db02a8bce5c9e1f",
+          "expectedSha256": "a1626673db701058c5607850b37d733199aafe6e692f44a37aec0b92e7ed53ae",
           "axes": [
             "text"
           ],
@@ -23818,7 +23818,7 @@
           "storyId": "durin-ds-pages-quota-tracker--filtered-to-codex",
           "runtimeArtifactId": "durin-ds-pages-quota-tracker--filtered-to-codex",
           "expectedVisibleText": null,
-          "expectedSha256": "6c126bfd429f351baf2762d4f774af9e5f0512eb0bfc3d997db02a8bce5c9e1f",
+          "expectedSha256": "a1626673db701058c5607850b37d733199aafe6e692f44a37aec0b92e7ed53ae",
           "axes": [
             "filtered",
             "text"
@@ -23839,7 +23839,7 @@
       "id": "src/shared/ui/pages/quota/QuotaPage.jsx#QuotaRow",
       "sourcePath": "src/shared/ui/pages/quota/QuotaPage.jsx",
       "symbol": "QuotaRow",
-      "sourceSha256": "6c126bfd429f351baf2762d4f774af9e5f0512eb0bfc3d997db02a8bce5c9e1f",
+      "sourceSha256": "a1626673db701058c5607850b37d733199aafe6e692f44a37aec0b92e7ed53ae",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-quota-tracker--default imports and renders page; reference-only DS mock scenario reaches QuotaRow. Missing branch proof: ['No production story renders QuotaRow; mapped story is DS mock/reference only.']",
@@ -23857,7 +23857,7 @@
           "storyId": "durin-ds-pages-quota-tracker--default",
           "runtimeArtifactId": "durin-ds-pages-quota-tracker--default",
           "expectedVisibleText": null,
-          "expectedSha256": "6c126bfd429f351baf2762d4f774af9e5f0512eb0bfc3d997db02a8bce5c9e1f",
+          "expectedSha256": "a1626673db701058c5607850b37d733199aafe6e692f44a37aec0b92e7ed53ae",
           "axes": [
             "text"
           ],
@@ -23895,7 +23895,7 @@
       "id": "src/shared/ui/pages/settings/SettingsPage.jsx#CopyValue",
       "sourcePath": "src/shared/ui/pages/settings/SettingsPage.jsx",
       "symbol": "CopyValue",
-      "sourceSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+      "sourceSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-settings--default imports and renders page; reference-only DS mock scenario reaches CopyValue. Missing branch proof: ['No production story renders CopyValue; mapped story is DS mock/reference only.']",
@@ -23913,7 +23913,7 @@
           "storyId": "durin-ds-pages-settings--default",
           "runtimeArtifactId": "durin-ds-pages-settings--default",
           "expectedVisibleText": "Copy value",
-          "expectedSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+          "expectedSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
           "axes": [
             "controls",
             "text"
@@ -23935,7 +23935,7 @@
       "id": "src/shared/ui/pages/settings/SettingsPage.jsx#SectionCard",
       "sourcePath": "src/shared/ui/pages/settings/SettingsPage.jsx",
       "symbol": "SectionCard",
-      "sourceSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+      "sourceSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-settings--default imports and renders page; reference-only DS mock scenario reaches SectionCard. Missing branch proof: ['No production story renders SectionCard; mapped story is DS mock/reference only.']",
@@ -23953,7 +23953,7 @@
           "storyId": "durin-ds-pages-settings--default",
           "runtimeArtifactId": "durin-ds-pages-settings--default",
           "expectedVisibleText": "Local Mode",
-          "expectedSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+          "expectedSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
           "axes": [
             "text",
             "controls"
@@ -23975,7 +23975,7 @@
       "id": "src/shared/ui/pages/settings/SettingsPage.jsx#SectionNav",
       "sourcePath": "src/shared/ui/pages/settings/SettingsPage.jsx",
       "symbol": "SectionNav",
-      "sourceSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+      "sourceSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-settings--default imports and renders page; reference-only DS mock scenario reaches SectionNav. Missing branch proof: ['No production story renders SectionNav; mapped story is DS mock/reference only.']",
@@ -23993,7 +23993,7 @@
           "storyId": "durin-ds-pages-settings--default",
           "runtimeArtifactId": "durin-ds-pages-settings--default",
           "expectedVisibleText": "On this page",
-          "expectedSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+          "expectedSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
           "axes": [
             "controls",
             "text"
@@ -24015,7 +24015,7 @@
       "id": "src/shared/ui/pages/settings/SettingsPage.jsx#SettingRow",
       "sourcePath": "src/shared/ui/pages/settings/SettingsPage.jsx",
       "symbol": "SettingRow",
-      "sourceSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+      "sourceSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-settings--default imports and renders page; reference-only DS mock scenario reaches SettingRow. Missing branch proof: ['No production story renders SettingRow; mapped story is DS mock/reference only.']",
@@ -24033,7 +24033,7 @@
           "storyId": "durin-ds-pages-settings--default",
           "runtimeArtifactId": "durin-ds-pages-settings--default",
           "expectedVisibleText": "Theme",
-          "expectedSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+          "expectedSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
           "axes": [
             "controls",
             "text"
@@ -24055,7 +24055,7 @@
       "id": "src/shared/ui/pages/settings/SettingsPage.jsx#SettingsPage",
       "sourcePath": "src/shared/ui/pages/settings/SettingsPage.jsx",
       "symbol": "SettingsPage",
-      "sourceSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+      "sourceSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-settings--default. Pending runtime review.",
@@ -24073,7 +24073,7 @@
           "storyId": "durin-ds-pages-settings--default",
           "runtimeArtifactId": "durin-ds-pages-settings--default",
           "expectedVisibleText": "Settings",
-          "expectedSha256": "091f38808a3ef3b1888d8c1690de7da99ce785934082c355b69ff82504d02e29",
+          "expectedSha256": "bd8284adddd4a417abe78bf0d0c385ce77af154f83348fbed96f06955154598c",
           "axes": [
             "controls",
             "text"
@@ -24113,7 +24113,7 @@
       "id": "src/shared/ui/pages/skills/SkillsPage.jsx#CopyButton",
       "sourcePath": "src/shared/ui/pages/skills/SkillsPage.jsx",
       "symbol": "CopyButton",
-      "sourceSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+      "sourceSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-skills--default imports and renders page; reference-only DS mock scenario reaches CopyButton. Missing branch proof: ['No production story renders CopyButton; mapped story is DS mock/reference only.']",
@@ -24131,7 +24131,7 @@
           "storyId": "durin-ds-pages-skills--default",
           "runtimeArtifactId": "durin-ds-pages-skills--default",
           "expectedVisibleText": "Copy snippet",
-          "expectedSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+          "expectedSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
           "axes": [
             "controls",
             "text"
@@ -24153,7 +24153,7 @@
       "id": "src/shared/ui/pages/skills/SkillsPage.jsx#IntroCard",
       "sourcePath": "src/shared/ui/pages/skills/SkillsPage.jsx",
       "symbol": "IntroCard",
-      "sourceSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+      "sourceSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-skills--default imports and renders page; reference-only DS mock scenario reaches IntroCard. Missing branch proof: ['No production story renders IntroCard; mapped story is DS mock/reference only.']",
@@ -24171,7 +24171,7 @@
           "storyId": "durin-ds-pages-skills--default",
           "runtimeArtifactId": "durin-ds-pages-skills--default",
           "expectedVisibleText": "One-line handoff",
-          "expectedSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+          "expectedSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
           "axes": [
             "text",
             "controls"
@@ -24193,7 +24193,7 @@
       "id": "src/shared/ui/pages/skills/SkillsPage.jsx#PreviewCard",
       "sourcePath": "src/shared/ui/pages/skills/SkillsPage.jsx",
       "symbol": "PreviewCard",
-      "sourceSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+      "sourceSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-skills--default imports and renders page; reference-only DS mock scenario reaches PreviewCard. Missing branch proof: ['No production story renders PreviewCard; mapped story is DS mock/reference only.']",
@@ -24211,7 +24211,7 @@
           "storyId": "durin-ds-pages-skills--default",
           "runtimeArtifactId": "durin-ds-pages-skills--default",
           "expectedVisibleText": null,
-          "expectedSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+          "expectedSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
           "axes": [
             "controls",
             "text"
@@ -24232,7 +24232,7 @@
       "id": "src/shared/ui/pages/skills/SkillsPage.jsx#SkillRow",
       "sourcePath": "src/shared/ui/pages/skills/SkillsPage.jsx",
       "symbol": "SkillRow",
-      "sourceSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+      "sourceSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-skills--default imports and renders page; reference-only DS mock scenario reaches SkillRow. Missing branch proof: ['No production story renders SkillRow; mapped story is DS mock/reference only.']",
@@ -24250,7 +24250,7 @@
           "storyId": "durin-ds-pages-skills--default",
           "runtimeArtifactId": "durin-ds-pages-skills--default",
           "expectedVisibleText": "Open",
-          "expectedSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+          "expectedSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
           "axes": [
             "text",
             "controls"
@@ -24272,7 +24272,7 @@
       "id": "src/shared/ui/pages/skills/SkillsPage.jsx#SkillsPage",
       "sourcePath": "src/shared/ui/pages/skills/SkillsPage.jsx",
       "symbol": "SkillsPage",
-      "sourceSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+      "sourceSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-skills--default, durin-ds-pages-skills--custom-endpoint, durin-ds-pages-skills--no-key. Pending runtime review.",
@@ -24294,7 +24294,7 @@
           "storyId": "durin-ds-pages-skills--default",
           "runtimeArtifactId": "durin-ds-pages-skills--default",
           "expectedVisibleText": null,
-          "expectedSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+          "expectedSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
           "axes": [
             "controls",
             "text"
@@ -24308,7 +24308,7 @@
           "storyId": "durin-ds-pages-skills--custom-endpoint",
           "runtimeArtifactId": "durin-ds-pages-skills--custom-endpoint",
           "expectedVisibleText": null,
-          "expectedSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+          "expectedSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
           "axes": [
             "text"
           ],
@@ -24321,7 +24321,7 @@
           "storyId": "durin-ds-pages-skills--no-key",
           "runtimeArtifactId": "durin-ds-pages-skills--no-key",
           "expectedVisibleText": "keyless — works only when Require API key is off",
-          "expectedSha256": "5264fcb5a66674786f3665d6d0a12653f1d727043888f1eb9407bab02946f2a7",
+          "expectedSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
           "axes": [
             "warning",
             "text",
@@ -24832,7 +24832,7 @@
       "id": "src/shared/ui/pages/token-saver-settings/SettingsPage.jsx#SettingRow",
       "sourcePath": "src/shared/ui/pages/token-saver-settings/SettingsPage.jsx",
       "symbol": "SettingRow",
-      "sourceSha256": "ea0a34f9b79e068cbbf820cd28a9eb4ba1939048e1a1951b7236d997722e5848",
+      "sourceSha256": "75548436a37d477860732c11b3cc046ae508d903ac921a0d78e3053d74ea7f07",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-token-saver-settings--default imports and renders page; reference-only DS mock scenario reaches SettingRow. Missing branch proof: ['No production story renders SettingRow; mapped story is DS mock/reference only.']",
@@ -24850,7 +24850,7 @@
           "storyId": "durin-ds-pages-token-saver-settings--default",
           "runtimeArtifactId": "durin-ds-pages-token-saver-settings--default",
           "expectedVisibleText": null,
-          "expectedSha256": "ea0a34f9b79e068cbbf820cd28a9eb4ba1939048e1a1951b7236d997722e5848",
+          "expectedSha256": "75548436a37d477860732c11b3cc046ae508d903ac921a0d78e3053d74ea7f07",
           "axes": [
             "expanded",
             "controls",
@@ -24872,7 +24872,7 @@
       "id": "src/shared/ui/pages/token-saver-settings/SettingsPage.jsx#SettingsPage",
       "sourcePath": "src/shared/ui/pages/token-saver-settings/SettingsPage.jsx",
       "symbol": "SettingsPage",
-      "sourceSha256": "ea0a34f9b79e068cbbf820cd28a9eb4ba1939048e1a1951b7236d997722e5848",
+      "sourceSha256": "75548436a37d477860732c11b3cc046ae508d903ac921a0d78e3053d74ea7f07",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-token-saver-settings--default, durin-ds-pages-token-saver-settings--mixed-state. Pending runtime review.",
@@ -24892,7 +24892,7 @@
           "storyId": "durin-ds-pages-token-saver-settings--default",
           "runtimeArtifactId": "durin-ds-pages-token-saver-settings--default",
           "expectedVisibleText": "Token Saver Settings",
-          "expectedSha256": "ea0a34f9b79e068cbbf820cd28a9eb4ba1939048e1a1951b7236d997722e5848",
+          "expectedSha256": "75548436a37d477860732c11b3cc046ae508d903ac921a0d78e3053d74ea7f07",
           "axes": [
             "expanded",
             "controls",
@@ -24908,7 +24908,7 @@
           "storyId": "durin-ds-pages-token-saver-settings--mixed-state",
           "runtimeArtifactId": "durin-ds-pages-token-saver-settings--mixed-state",
           "expectedVisibleText": null,
-          "expectedSha256": "ea0a34f9b79e068cbbf820cd28a9eb4ba1939048e1a1951b7236d997722e5848",
+          "expectedSha256": "75548436a37d477860732c11b3cc046ae508d903ac921a0d78e3053d74ea7f07",
           "axes": [
             "text"
           ],
@@ -25175,7 +25175,7 @@
       "id": "src/shared/ui/pages/usage/UsagePage.jsx#ApiKeyUsage",
       "sourcePath": "src/shared/ui/pages/usage/UsagePage.jsx",
       "symbol": "ApiKeyUsage",
-      "sourceSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+      "sourceSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-usage-analytics--default imports and renders page; reference-only DS mock scenario reaches ApiKeyUsage. Missing branch proof: ['No production story renders ApiKeyUsage; mapped story is DS mock/reference only.']",
@@ -25193,7 +25193,7 @@
           "storyId": "durin-ds-pages-usage-analytics--default",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--default",
           "expectedVisibleText": null,
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "text"
           ],
@@ -25213,7 +25213,7 @@
       "id": "src/shared/ui/pages/usage/UsagePage.jsx#ProviderSpend",
       "sourcePath": "src/shared/ui/pages/usage/UsagePage.jsx",
       "symbol": "ProviderSpend",
-      "sourceSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+      "sourceSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-usage-analytics--default imports and renders page; reference-only DS mock scenario reaches ProviderSpend. Missing branch proof: ['No production story renders ProviderSpend; mapped story is DS mock/reference only.']",
@@ -25231,7 +25231,7 @@
           "storyId": "durin-ds-pages-usage-analytics--default",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--default",
           "expectedVisibleText": "Provider spend",
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "text"
           ],
@@ -25252,7 +25252,7 @@
       "id": "src/shared/ui/pages/usage/UsagePage.jsx#RecentRequests",
       "sourcePath": "src/shared/ui/pages/usage/UsagePage.jsx",
       "symbol": "RecentRequests",
-      "sourceSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+      "sourceSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-usage-analytics--default imports and renders page; reference-only DS mock scenario reaches RecentRequests. Missing branch proof: ['No production story renders RecentRequests; mapped story is DS mock/reference only.']",
@@ -25270,7 +25270,7 @@
           "storyId": "durin-ds-pages-usage-analytics--default",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--default",
           "expectedVisibleText": null,
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "text"
           ],
@@ -25290,7 +25290,7 @@
       "id": "src/shared/ui/pages/usage/UsagePage.jsx#UsageChart",
       "sourcePath": "src/shared/ui/pages/usage/UsagePage.jsx",
       "symbol": "UsageChart",
-      "sourceSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+      "sourceSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "[DS reference-only] durin-ds-pages-usage-analytics--default imports and renders page; reference-only DS mock scenario reaches UsageChart. Missing branch proof: ['No production story renders UsageChart; mapped story is DS mock/reference only.']",
@@ -25308,7 +25308,7 @@
           "storyId": "durin-ds-pages-usage-analytics--default",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--default",
           "expectedVisibleText": null,
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "text"
           ],
@@ -25328,7 +25328,7 @@
       "id": "src/shared/ui/pages/usage/UsagePage.jsx#UsagePage",
       "sourcePath": "src/shared/ui/pages/usage/UsagePage.jsx",
       "symbol": "UsagePage",
-      "sourceSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+      "sourceSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: durin-ds-pages-usage-analytics--default, durin-ds-pages-usage-analytics--ten-rows, durin-ds-pages-usage-analytics--range-preset-changes-table, durin-ds-pages-usage-analytics--api-key-expanded, durin-ds-pages-usage-analytics--filtered, durin-ds-pages-usage-analytics--custom-range. Pending runtime review.",
@@ -25356,7 +25356,7 @@
           "storyId": "durin-ds-pages-usage-analytics--default",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--default",
           "expectedVisibleText": null,
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "text"
           ],
@@ -25369,7 +25369,7 @@
           "storyId": "durin-ds-pages-usage-analytics--ten-rows",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--ten-rows",
           "expectedVisibleText": null,
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "text"
           ],
@@ -25382,7 +25382,7 @@
           "storyId": "durin-ds-pages-usage-analytics--range-preset-changes-table",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--range-preset-changes-table",
           "expectedVisibleText": null,
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "text",
             "controls"
@@ -25396,7 +25396,7 @@
           "storyId": "durin-ds-pages-usage-analytics--api-key-expanded",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--api-key-expanded",
           "expectedVisibleText": null,
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "text",
             "controls"
@@ -25410,7 +25410,7 @@
           "storyId": "durin-ds-pages-usage-analytics--filtered",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--filtered",
           "expectedVisibleText": "Usage Analytics",
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "filtered",
             "controls",
@@ -25426,7 +25426,7 @@
           "storyId": "durin-ds-pages-usage-analytics--custom-range",
           "runtimeArtifactId": "durin-ds-pages-usage-analytics--custom-range",
           "expectedVisibleText": null,
-          "expectedSha256": "c418a293348c51904c9064e65b9a655eef0cb9b1c1f9166e95089bdda5b25bc4",
+          "expectedSha256": "21462886ee2c1f1626c0347a12542d63c2f870b4df7233d4189205d5f980a3c0",
           "axes": [
             "custom-range",
             "text"
@@ -25447,7 +25447,7 @@
       "id": "src/shared/ui/shell/DashboardShell.jsx#DashboardShell",
       "sourcePath": "src/shared/ui/shell/DashboardShell.jsx",
       "symbol": "DashboardShell",
-      "sourceSha256": "c3b429256aa1a34430f937b1b8bed4cf9545fbfccaa8d3cfbff88deea7b35940",
+      "sourceSha256": "c0a5425cfd7d1659ef3c9ad5349bf16614fd06f8c42ef2e3201632876c7300ab",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Full Dashboard Shell directly renders DashboardShell.",
@@ -25464,8 +25464,8 @@
           "id": "durin-ds-shell--full-dashboard-shell",
           "storyId": "durin-ds-shell--full-dashboard-shell",
           "runtimeArtifactId": "durin-ds-shell--full-dashboard-shell",
-          "expectedVisibleText": "Providers",
-          "expectedSha256": "c3b429256aa1a34430f937b1b8bed4cf9545fbfccaa8d3cfbff88deea7b35940",
+          "expectedVisibleText": "Manage upstream model connections",
+          "expectedSha256": "c0a5425cfd7d1659ef3c9ad5349bf16614fd06f8c42ef2e3201632876c7300ab",
           "axes": [
             "expanded",
             "text",
@@ -25635,7 +25635,7 @@
           "id": "durin-ds-shell--sidebar-collapsed",
           "storyId": "durin-ds-shell--sidebar-collapsed",
           "runtimeArtifactId": "durin-ds-shell--sidebar-collapsed",
-          "expectedVisibleText": "DurinDoor",
+          "expectedVisibleText": "Collapsed navigation",
           "expectedSha256": "be318b30fbd82c21b6e71b3d5c6336d3ea250638e1f3e11462fbcbc2377396ef",
           "axes": [
             "collapsed",

@@ -63,8 +63,8 @@ function SectionNav({ activeSection, onSelect }) {
                 onClick={() => onSelect(section.id)}
                 className={
                   active
-                    ? "flex items-center gap-2 rounded-dd border-l-2 border-dd-accent bg-dd-accent-soft px-3 py-2 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
-                    : "flex items-center gap-2 rounded-dd border-l-2 border-transparent px-3 py-2 text-[13px] text-dd-muted outline-none transition-colors hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                    ? "flex min-h-11 min-w-11 items-center gap-2 rounded-dd border-l-2 border-dd-accent bg-dd-accent-soft px-3 py-2 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
+                    : "flex min-h-11 min-w-11 items-center gap-2 rounded-dd border-l-2 border-transparent px-3 py-2 text-[13px] text-dd-muted outline-none transition-colors hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
                 }
               >
                 <span aria-hidden="true" className="material-symbols-outlined text-[17px] leading-none">

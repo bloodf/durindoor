@@ -187,7 +187,7 @@ export default function Select({
       style={position}
     >
       {options.length === 0 ? (
-        <li className="min-h-11 px-3 py-3 text-[13px] text-dd-subtle">No options</li>
+        <li className="flex min-h-11 items-center px-3 py-3 text-[13px] text-dd-subtle" role="option" aria-disabled="true">No options</li>
       ) : options.map((option, index) => {
         const isSelected = option.value === value;
         const isActive = index === activeIndex;

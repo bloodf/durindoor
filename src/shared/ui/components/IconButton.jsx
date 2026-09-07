@@ -51,7 +51,7 @@ export default function IconButton({
   }
   const resolvedSize = SIZES[size] ? size : "md";
   const classes = [
-    "inline-flex items-center justify-center rounded-dd outline-none transition-colors focus-visible:shadow-dd-focus disabled:pointer-events-none disabled:opacity-50",
+    "inline-flex shrink-0 items-center justify-center rounded-dd outline-none transition-colors focus-visible:shadow-dd-focus disabled:pointer-events-none disabled:opacity-50",
     VARIANTS[variant] ?? VARIANTS.ghost,
     SIZES[resolvedSize],
     className,

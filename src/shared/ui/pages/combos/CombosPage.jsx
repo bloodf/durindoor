@@ -21,16 +21,16 @@ function StrategyGuide() {
       </div>
       <dl className="grid divide-y divide-dd-border-subtle sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-5 lg:divide-x">
         {strategyDescriptions.map((strategy) => (
-          <div key={strategy.name} className="flex gap-3 px-4 py-4">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent">
-              <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">
-                {strategy.icon}
+          <div key={strategy.name} className="px-4 py-4">
+            <dt className="flex gap-3 text-[13px] font-semibold text-dd-text">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent">
+                <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">
+                  {strategy.icon}
+                </span>
               </span>
-            </span>
-            <div>
-              <dt className="text-[13px] font-semibold text-dd-text">{strategy.name}</dt>
-              <dd className="mt-1 text-xs leading-relaxed text-dd-muted">{strategy.description}</dd>
-            </div>
+              <span className="pt-1">{strategy.name}</span>
+            </dt>
+            <dd className="mt-1 pl-11 text-xs leading-relaxed text-dd-muted">{strategy.description}</dd>
           </div>
         ))}
       </dl>

@@ -142,6 +142,12 @@ async function runAxe(page) {
     const proveSvgText = (node) => {
       const element = node.element;
       if (!(element instanceof SVGElement) || !element.textContent?.trim()) return false;
+      // Scope: our own chart axis tick labels only. They are plain text drawn
+      // from a known token over the chart surface, so their pair is genuinely
+      // computable. Every other SVG incomplete stays failing, because bounding
+      // boxes are not painted pixels and strokes, masks, clip paths and paint
+      // order can all hide a real contrast problem.
+      if (!element.closest(".recharts-cartesian-axis-tick")) return false;
       if (overlapsPaintedShape(element)) return false;
       const style = getComputedStyle(element);
       const foreground = parse(style.fill);

@@ -49,16 +49,6 @@ async function proveStable(page, storyId) {
     if (state.finished && (state.finished.storyId === id || state.finished.id === id)) return true;
     return false;
   }, storyId, { timeout: 20_000 });
-  // Icon glyphs are ligatures from a web font. Until it settles, a control's
-  // text can still be mid-swap, and axe intermittently reports it as an
-  // unresolvable contrast node even though the button is opaque and static
-  // (one such pair measured 13.10:1 while reported incomplete). Wait for the
-  // font set, then let the swap paint, so the scan sees a settled page.
-  await page.evaluate(async () => {
-    if (!document.fonts) throw new Error("Font Loading API unavailable; cannot prove the page settled");
-    await document.fonts.ready;
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  });
   return page.evaluate((id) => {
     const state = window.__durindoorStoryEvidence;
     if (state.failures.length) throw new Error(`Storybook failure event ${JSON.stringify(state.failures)}`);

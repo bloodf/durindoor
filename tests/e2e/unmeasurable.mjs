@@ -16,6 +16,25 @@
 /** Rules whose incomplete results may be audited; nothing else is touched. */
 const CONTRAST_RULES = new Set(["color-contrast", "color-contrast-enhanced"]);
 
+/** Parse a fully opaque CSS colour into RGB, or null when it is translucent. */
+export function solidRgb(value) {
+  const parts = String(value).match(/-?[\d.]+/g);
+  if (!parts || parts.length < 3) return null;
+  if (parts.length > 3 && Number(parts[3]) !== 1) return null;
+  return parts.slice(0, 3).map(Number);
+}
+
+/** WCAG contrast ratio between two opaque RGB triples. */
+export function contrastRatio(foreground, background) {
+  const channel = (value) => {
+    const c = value / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  const [hi, lo] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 /**
  * Why this node cannot be measured, or null when it must keep failing.
  *
@@ -46,6 +65,23 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
       && style.color === "rgba(0, 0, 0, 0)"
       && style.backgroundColor === "rgba(0, 0, 0, 0)";
     return invisible ? "monaco-input-proxy" : null;
+  }
+  // Ordinary DOM text axe declined to judge. Unlike SVG or the editor proxy,
+  // a plain element's pair is fully computable here: if both sides are solid
+  // colours with no image behind them and the element is actually painted,
+  // measure it and clear it only when it meets its own threshold. Anything
+  // translucent, image-backed, hidden or short of the bar keeps failing.
+  if (!(element instanceof SVGElement)) {
+    const style = computeStyle(element);
+    if (style.backgroundImage !== "none" || style.visibility !== "visible" || style.opacity !== "1") return null;
+    const foreground = solidRgb(style.color);
+    const background = solidRgb(style.backgroundColor);
+    if (!foreground || !background) return null;
+    const size = Number.parseFloat(style.fontSize);
+    const large = size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700);
+    const ratio = contrastRatio(foreground, background);
+    if (!Number.isFinite(ratio) || ratio < (large ? 4.5 : 7)) return null;
+    return `measured-aaa ${ratio.toFixed(2)}:1`;
   }
   return null;
 }

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { auditIncomplete, exemptionFor, resolveNode } from "../e2e/unmeasurable.mjs";
+import { auditIncomplete, contrastRatio, exemptionFor, resolveNode, solidRgb } from "../e2e/unmeasurable.mjs";
 
 const CHARTED = "durin-ds-pages-timeline--default";
 const UNCHARTED = "durin-ds-actions-button--primary";
@@ -25,6 +25,9 @@ function monacoProxy(className = "inputarea") {
 }
 
 const node = (id) => ({ target: [`#${id}`], html: `<${id}>` });
+
+/** Spread a [element, style] pair into exemptionFor's argument order. */
+const withStyle = ([element, style]) => [element, CHARTED, chartStories, style];
 
 describe("unmeasurable node policy", () => {
   it("clears a chart tick only for a story whose contrast is proved", () => {
@@ -59,9 +62,45 @@ describe("unmeasurable node policy", () => {
     expect(exemptionFor(monacoProxy(), CHARTED, chartStories, styleOf({ color: "rgb(0, 0, 0)" }))).toBeNull();
   });
 
-  it("leaves ordinary text alone", () => {
+  // A DS button axe declined to judge, whose pair is fully computable here.
+  const button = (overrides = {}) => {
+    document.body.innerHTML = `<button id="btn" class="min-w-11">Format</button>`;
+    return [document.getElementById("btn"), () => ({ color: "rgb(237, 230, 216)", backgroundColor: "rgb(34, 32, 28)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "500", ...overrides })];
+  };
+
+  it("clears ordinary text only when its own pair proves the threshold", () => {
+    const [element, style] = button();
+    expect(exemptionFor(element, CHARTED, chartStories, style)).toBe("measured-aaa 13.10:1");
+  });
+
+  it("keeps ordinary text that misses the threshold", () => {
+    const [element, style] = button({ color: "rgb(120, 116, 108)" });
+    expect(exemptionFor(element, CHARTED, chartStories, style)).toBeNull();
+  });
+
+  it("keeps text whose pair cannot be computed here", () => {
+    // Translucent, image-backed, hidden or transparent surfaces are exactly
+    // the cases axe cannot resolve either, so they must keep failing.
+    expect(exemptionFor(...withStyle(button({ backgroundColor: "rgba(34, 32, 28, 0.5)" })))).toBeNull();
+    expect(exemptionFor(...withStyle(button({ backgroundImage: "linear-gradient(red, blue)" })))).toBeNull();
+    expect(exemptionFor(...withStyle(button({ visibility: "hidden" })))).toBeNull();
+    expect(exemptionFor(...withStyle(button({ opacity: "0.4" })))).toBeNull();
+  });
+
+  it("applies the large-text threshold only to genuinely large text", () => {
+    const [element, style] = button({ color: "rgb(150, 145, 135)", fontSize: "24px" });
+    expect(contrastRatio(solidRgb("rgb(150, 145, 135)"), solidRgb("rgb(34, 32, 28)"))).toBeGreaterThan(4.5);
+    expect(exemptionFor(element, CHARTED, chartStories, style)).toMatch(/^measured-aaa /);
+    const [small, smallStyle] = button({ color: "rgb(150, 145, 135)", fontSize: "13px" });
+    expect(exemptionFor(small, CHARTED, chartStories, smallStyle)).toBeNull();
+  });
+
+  it("keeps text whose surface it cannot read", () => {
+    // A bare paragraph inherits a transparent background, so the pair is not
+    // computable here and the node must keep failing.
     document.body.innerHTML = `<p id="copy">Requests over time</p>`;
-    expect(exemptionFor(document.getElementById("copy"), CHARTED, chartStories, styleOf())).toBeNull();
+    const style = () => ({ color: "rgb(237, 230, 216)", backgroundColor: "rgba(0, 0, 0, 0)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" });
+    expect(exemptionFor(document.getElementById("copy"), CHARTED, chartStories, style)).toBeNull();
   });
 
   it("drops a cleared node and records why, keeping the rest of its entry", () => {

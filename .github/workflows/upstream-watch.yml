@@ -1,7 +1,6 @@
 name: Upstream Watch
 on:
-  schedule:
-    - cron: '0 */4 * * *'
+  # Emergency fallback only. Repository workflow remains disabled; no scheduled runs.
   workflow_dispatch:
 jobs:
   scan:
@@ -17,7 +16,7 @@ jobs:
         run: |
           echo "Fetching upstream PRs from decolua/9router..."
           gh pr list --repo decolua/9router --state open \
-            --json number,title,author,additions,deletions,createdAt \
+            --json number,title,additions,deletions,createdAt \
             --limit 1000 > upstream-prs.json
           # Ported set = `port(upstream): #N` commit subjects UNION the reviewed
           # ledger at .github/upstream-ported.json (one commit often lands

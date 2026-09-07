@@ -97,6 +97,11 @@ describe("upstream-scan-report.sh", () => {
     expect(stdout.trim()).toContain("new=1");
   });
 
+  it("never mentions upstream PR authors", () => {
+    const { pages } = run([makePr(9999)], []);
+    expect(pages.join("\n")).not.toContain("someone");
+  });
+
   it("reports cleanly when everything is already ported", () => {
     const { pages, stdout } = run([makePr(3660), makePr(3624)], [3624, 3660]);
     expect(listedNumbers(pages)).toEqual([]);
@@ -203,6 +208,12 @@ describe("ported ledger", () => {
 
 describe("upstream-watch workflow wiring", () => {
   const yml = () => readFileSync(WORKFLOW, "utf8");
+
+  it("has no scheduled trigger and does not request author data", () => {
+    const text = yml();
+    expect(text).not.toContain("schedule:");
+    expect(text).not.toContain("number,title,author");
+  });
 
   it("scans the full open set with full git history", () => {
     // Reading ported subjects needs full history, not a shallow clone.

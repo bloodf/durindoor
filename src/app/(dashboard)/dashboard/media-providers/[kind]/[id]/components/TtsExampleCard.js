@@ -357,7 +357,7 @@ export function TtsExampleCard({ providerId }) {
           ) : (
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response</span>
-              <pre tabIndex={0} aria-label="Example response output" className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text opacity-50" role="region">{DEFAULT_TTS_RESPONSE_EXAMPLE}</pre>
+              <pre tabIndex={0} aria-label="Example response output" className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{DEFAULT_TTS_RESPONSE_EXAMPLE}</pre>
             </div>
           )}
         </div>

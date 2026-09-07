@@ -85,7 +85,7 @@ export default function MediaProviderDetailPage() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
       <header className="flex flex-col gap-4">
-        <Link href={`/dashboard/media-providers/${kind}`} className="inline-flex w-fit items-center gap-1 text-[13px] text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
+        <Link href={`/dashboard/media-providers/${kind}`} className="inline-flex min-h-11 w-fit items-center gap-1 rounded-dd px-2 text-[13px] text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
           <span aria-hidden="true" className="material-symbols-outlined text-[18px]">arrow_back</span>{kindConfig.label}
         </Link>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

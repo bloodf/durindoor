@@ -219,11 +219,11 @@ export function Sidebar({
                       className={
                         active
                           ? collapsed
-                            ? "flex h-8 min-w-0 flex-1 items-center justify-center rounded-dd bg-dd-accent-soft px-0 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
-                            : "flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-dd bg-dd-accent-soft px-3 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
+                            ? "flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-dd bg-dd-accent-soft px-0 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
+                            : "flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-dd bg-dd-accent-soft px-3 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
                           : collapsed
-                            ? "flex h-8 min-w-0 flex-1 items-center justify-center rounded-dd px-0 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
-                            : "flex h-8 min-w-0 flex-1 items-center gap-2.5 rounded-dd px-3 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                            ? "flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-dd px-0 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                            : "flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-dd px-3 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
                       }
                     >
                       <NavIcon name={item.icon} />
@@ -258,7 +258,7 @@ export function Sidebar({
                             expanded: !tokenSaverExpanded,
                           })
                         }
-                        className="absolute right-1 inline-flex size-7 items-center justify-center rounded-dd text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                        className="absolute right-1 inline-flex size-11 items-center justify-center rounded-dd text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
                       >
                         <span
                           aria-hidden="true"
@@ -282,8 +282,8 @@ export function Sidebar({
                             onClick={(event) => navigate(event, child.href)}
                             className={
                               childActive
-                                ? "flex h-7 items-center rounded-dd bg-dd-accent-soft px-3 text-xs font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
-                                : "flex h-7 items-center rounded-dd px-3 text-xs font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                                ? "flex min-h-11 items-center rounded-dd bg-dd-accent-soft px-3 text-xs font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
+                                : "flex min-h-11 items-center rounded-dd px-3 text-xs font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
                             }
                           >
                             {child.label}
@@ -308,8 +308,8 @@ export function Sidebar({
             onClick={onToggleCollapse}
             className={
               collapsed
-                ? "flex h-8 w-full items-center justify-center rounded-dd px-3 text-[13px] text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
-                : "flex h-8 w-full items-center gap-2.5 rounded-dd px-3 text-[13px] text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                ? "flex min-h-11 w-full items-center justify-center rounded-dd px-3 text-[13px] text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                : "flex min-h-11 w-full items-center gap-2.5 rounded-dd px-3 text-[13px] text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
             }
           >
             <NavIcon name={collapsed ? "chevron_right" : "chevron_left"} />
@@ -335,11 +335,11 @@ export function Sidebar({
           className={
             pathMatches(activePath, "/dashboard/profile")
               ? collapsed
-                ? "relative flex h-8 items-center justify-center rounded-dd bg-dd-accent-soft px-0 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
-                : "relative flex h-8 items-center gap-2.5 rounded-dd bg-dd-accent-soft px-3 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
+                ? "relative flex min-h-11 items-center justify-center rounded-dd bg-dd-accent-soft px-0 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
+                : "relative flex min-h-11 items-center gap-2.5 rounded-dd bg-dd-accent-soft px-3 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
               : collapsed
-                ? "flex h-8 items-center justify-center rounded-dd px-0 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
-                : "flex h-8 items-center gap-2.5 rounded-dd px-3 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                ? "flex min-h-11 items-center justify-center rounded-dd px-0 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                : "flex min-h-11 items-center gap-2.5 rounded-dd px-3 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
           }
         >
           {pathMatches(activePath, "/dashboard/profile") ? (

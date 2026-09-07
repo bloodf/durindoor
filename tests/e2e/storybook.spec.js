@@ -119,7 +119,16 @@ async function geometry(page) {
       if (!node.isConnected || node.tabIndex < 0 || node.matches(":disabled") || node.closest("[inert]")) continue;
       const style = getComputedStyle(node);
       if (style.visibility !== "visible" || style.display === "none" || !node.getClientRects().length) continue;
-      const target = node.matches("input[type=checkbox],input[type=radio]") && node.labels?.length ? node.labels[0] : node;
+      // Measure the surface a user actually points at. Checkboxes/radios are
+      // operated through their label; a code editor is operated through its
+      // focusable wrapper, not the offscreen textarea the editor positions at
+      // the caret for keystrokes and IME composition (resizing that breaks
+      // caret math, so the wrapper is the honest target).
+      const editorHost = node.matches("textarea.inputarea")
+        ? node.closest(".dd-monaco-surface[tabindex]")
+        : null;
+      const target = editorHost
+        ?? (node.matches("input[type=checkbox],input[type=radio]") && node.labels?.length ? node.labels[0] : node);
       target.scrollIntoView({ block: "nearest", inline: "nearest" });
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const rect = target.getBoundingClientRect();
@@ -128,7 +137,7 @@ async function geometry(page) {
       const inlineLink = node.tagName === "A" && getComputedStyle(node).display === "inline" && node.parentElement?.closest("p,li");
       const targetSize = !!inlineLink || (rect.width >= 44 && rect.height >= 44);
       node.focus({ preventScroll: true });
-      const focused = document.activeElement === node;
+      const focused = document.activeElement === node || (!!editorHost && editorHost.contains(document.activeElement));
       controls.push({ name: node.getAttribute("aria-label") || node.textContent.trim(), rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, hitTest, targetSize, focused, status: hitTest && targetSize && focused ? "pass" : "fail" });
     }
     if (opener?.isConnected) opener.focus({ preventScroll: true });

@@ -44,7 +44,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
               type="button"
               aria-label={copied === `model-${modelId}` ? `${modelId} copied` : `Copy ${modelId}`}
               onClick={() => onCopy(fullModel, `model-${modelId}`)}
-              className="p-0.5 hover:bg-dd-surface-2 rounded text-dd-muted hover:text-dd-accent"
+              className="-m-2 inline-flex size-11 items-center justify-center rounded text-dd-muted hover:bg-dd-surface-2 hover:text-dd-accent"
             >
               <span aria-hidden="true" className="material-symbols-outlined text-sm">
                 {copied === `model-${modelId}` ? "check" : "content_copy"}
@@ -61,7 +61,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
                 aria-label={isTesting ? `Testing ${modelId}` : `Test ${modelId}`}
                 onClick={onTest}
                 disabled={isTesting}
-                className="p-0.5 hover:bg-dd-surface-2 rounded text-dd-muted hover:text-dd-accent transition-colors"
+                className="-m-2 inline-flex size-11 items-center justify-center rounded text-dd-muted hover:bg-dd-surface-2 hover:text-dd-accent transition-colors"
               >
                 <span aria-hidden="true" className={`material-symbols-outlined text-sm ${isTesting ? "animate-spin motion-reduce:animate-none" : ""}`}>
                   {isTesting ? "progress_activity" : "science"}

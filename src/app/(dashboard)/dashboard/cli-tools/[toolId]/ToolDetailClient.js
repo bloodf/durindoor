@@ -134,7 +134,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
   if (!tool) {
     return (
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 text-[13px]">
-        <Link href="/dashboard/cli-tools" className="inline-flex w-fit items-center gap-1 rounded-dd px-1 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
+        <Link href="/dashboard/cli-tools" className="inline-flex min-h-11 w-fit items-center gap-1 rounded-dd px-2 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
           <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_back</span>
           Back to CLI Tools
         </Link>
@@ -145,7 +145,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 text-[13px]">
-      <Link href="/dashboard/cli-tools" className="inline-flex w-fit items-center gap-1 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
+      <Link href="/dashboard/cli-tools" className="inline-flex min-h-11 w-fit items-center gap-1 rounded-dd px-2 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
         <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_back</span>
         Back to CLI Tools
       </Link>

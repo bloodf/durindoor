@@ -187,6 +187,25 @@
   font-feature-settings: "tnum" 1;
 }
 
+/* Monaco paints its input and gutter over a transparent canvas. Bind this
+   editor-only surface to opaque DS tokens so contrast tools can resolve both. */
+.dd-monaco-surface .monaco-editor,
+.dd-monaco-surface .monaco-editor .margin,
+.dd-monaco-surface .monaco-editor .inputarea,
+.dd-monaco-surface .monaco-editor textarea {
+  background-color: var(--dd-surface-2) !important;
+}
+
+.dd-monaco-surface .monaco-editor .inputarea,
+.dd-monaco-surface .monaco-editor textarea {
+  color: var(--dd-text) !important;
+}
+
+.dd-monaco-surface .monaco-editor .line-numbers,
+.dd-monaco-surface .monaco-editor .dimmed-line-number {
+  color: var(--dd-text-subtle) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-spin,
   .animate-pulse,

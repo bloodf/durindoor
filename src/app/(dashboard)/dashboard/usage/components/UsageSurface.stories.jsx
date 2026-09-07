@@ -326,6 +326,7 @@ export const RequestDetailsDefault = {
       expect(node).toBeVisible();
       return node;
     });
+    await Promise.all(drawer.getAnimations({ subtree: true }).map(({ finished }) => finished.catch(() => {})));
     const drawerScope = within(drawer);
     const payloads = await drawerScope.findByRole("button", { name: "Diagnostic payloads" });
     await expect(payloads).toHaveAttribute("aria-expanded", "true");

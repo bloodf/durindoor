@@ -1582,14 +1582,13 @@ export default function ProviderDetailPage() {
       <div className="min-w-0">
         <Link
           href="/dashboard/providers"
-          className="inline-flex items-center gap-1 text-sm text-dd-muted hover:text-dd-accent transition-colors mb-4">
-          
+          className="inline-flex min-h-11 items-center gap-1 rounded-dd px-2 text-sm text-dd-muted outline-none hover:text-dd-accent focus-visible:shadow-dd-focus transition-colors mb-4">
           <span className="material-symbols-outlined text-lg">arrow_back</span>
           Back to Providers
         </Link>
         <Link
           href={buildTimelineHref({ provider: providerId })}
-          className="inline-flex items-center gap-1 text-sm text-dd-muted hover:text-dd-accent transition-colors mb-4 ml-4"
+          className="inline-flex min-h-11 items-center gap-1 rounded-dd px-2 text-sm text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus mb-4 ml-4"
         >
           View all
         </Link>
@@ -1615,8 +1614,8 @@ export default function ProviderDetailPage() {
                 href={providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-dd-accent hover:underline inline-flex items-center gap-1">
-                
+                className="inline-flex min-h-11 items-center gap-1 rounded-dd px-2 text-xs text-dd-accent outline-none hover:underline focus-visible:shadow-dd-focus">
+
                   <span className="material-symbols-outlined text-sm">open_in_new</span>
                   {providerInfo.notice?.apiKeyUrl ? "Get API Key" : "Sign up / Learn more"}
                 </a>

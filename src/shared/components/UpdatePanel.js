@@ -273,7 +273,7 @@ export default function UpdatePanel({
   // ── Auto mode (default) ──────────────────────────────────────────────────
   if (mode === "auto") {
     return (
-      <Card padding={false} className="w-full max-w-xl" aria-label={title}>
+      <Card padding={false} role="region" className="w-full max-w-xl" aria-label={title}>
         <CardContent>
           <div role="status" aria-live="polite" className="sr-only">
             {phase === "idle" ? "Update ready" : phaseLabel}
@@ -323,7 +323,7 @@ export default function UpdatePanel({
                   <span className="text-dd-text">{phaseLabel}</span>
                   <span className="dd-tnum text-dd-muted">{progress}%</span>
                 </div>
-                <div className={PROGRESS_BAR} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, progress)}>
+                <div className={PROGRESS_BAR} role="progressbar" aria-label="Update progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, progress)}>
                   <div
                     className={PROGRESS_FILL}
                     style={{ width: `${Math.min(100, progress)}%` }}
@@ -385,7 +385,7 @@ export default function UpdatePanel({
   // ── Manual fallback ──────────────────────────────────────────────────────
   const isCountingDown = countdown > 0;
   return (
-    <Card padding={false} className="relative w-full max-w-xl" aria-label={`${title} — manual`}>
+    <Card padding={false} role="region" className="relative w-full max-w-xl" aria-label={`${title} — manual`}>
         <div role="status" aria-live="polite" className="sr-only">
           {isDisconnected ? "Server stopped" : isCountingDown ? `Server stops in ${countdown} seconds` : "Manual install ready"}
         </div>

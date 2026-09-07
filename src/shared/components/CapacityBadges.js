@@ -41,7 +41,7 @@ export default function CapacityBadges({ caps, className = "", colorOverride, si
               role="img"
               aria-label={label}
               className={cn(
-                "inline-flex min-h-6 min-w-6 items-center justify-center rounded-dd outline-none focus-visible:shadow-dd-focus",
+                "-m-2.5 inline-flex min-h-11 min-w-11 items-center justify-center rounded-dd p-2.5 outline-none focus-visible:shadow-dd-focus",
                 resolveColorClass(colorOverride, key)
               )}
             >

@@ -31,7 +31,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, deleteS
               aria-label={isTesting ? `Testing ${model.id}` : `Test ${model.id}`}
               onClick={onTest}
               disabled={isTesting}
-              className={`p-0.5 hover:bg-dd-surface-2 rounded text-dd-muted hover:text-dd-accent transition-opacity ${isTesting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+              className={`-m-2 inline-flex size-11 items-center justify-center rounded text-dd-muted transition-opacity hover:bg-dd-surface-2 hover:text-dd-accent ${isTesting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
             >
               <span aria-hidden="true" className={`material-symbols-outlined text-sm ${isTesting ? "animate-spin motion-reduce:animate-none" : ""}`}>
                 {isTesting ? "progress_activity" : "science"}
@@ -47,7 +47,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, deleteS
             type="button"
             aria-label={copied === `model-${model.id}` ? `${model.id} copied` : `Copy ${model.id}`}
             onClick={() => onCopy(fullModel, `model-${model.id}`)}
-            className="p-0.5 hover:bg-dd-surface-2 rounded text-dd-muted hover:text-dd-accent"
+            className="-m-2 inline-flex size-11 items-center justify-center rounded text-dd-muted hover:bg-dd-surface-2 hover:text-dd-accent"
           >
             <span aria-hidden="true" className="material-symbols-outlined text-sm">{copied === `model-${model.id}` ? "check" : "content_copy"}</span>
           </button>

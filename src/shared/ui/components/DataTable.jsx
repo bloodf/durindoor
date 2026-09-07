@@ -72,8 +72,8 @@ export default function DataTable({
               {columns.map((column) => {
                 const sortable = isFunction(column.onSort);
                 return (
-                  <th key={column.key} scope="col" aria-sort={column.sortDirection} style={column.width ? { width: column.width } : undefined} className={`${cellPadding} ${HEADER_ALIGN[column.align ?? "left"]} font-medium`}>
-                    {sortable ? <button type="button" onClick={column.onSort} className="min-h-11 rounded-dd outline-none focus-visible:shadow-dd-focus">{column.label}<span className="sr-only">, sort</span></button> : column.label}
+                  <th key={column.key} scope="col" aria-sort={column.sortDirection} style={column.width ? { width: column.width } : undefined} className={`p-0 ${HEADER_ALIGN[column.align ?? "left"]} font-medium`}>
+                    {sortable ? <button type="button" onClick={column.onSort} className="flex min-h-11 w-full items-center gap-1 rounded-dd px-4 py-2.5 text-start outline-none focus-visible:shadow-dd-focus">{column.label}<span className="sr-only">, sort</span></button> : <span className={cellPadding}>{column.label}</span>}
                   </th>
                 );
               })}

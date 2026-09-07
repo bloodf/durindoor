@@ -8,7 +8,7 @@ export default function ThemeToggle({ className, variant = "default" }) {
 
   const variants = {
     default: cn(
-      "flex items-center justify-center size-10 rounded-dd-lg",
+      "flex items-center justify-center size-11 rounded-dd-lg",
       "text-dd-muted hover:text-dd-text",
       "hover:bg-dd-surface-2 transition-colors"
     ),

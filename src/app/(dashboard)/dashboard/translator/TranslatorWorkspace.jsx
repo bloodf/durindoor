@@ -59,7 +59,7 @@ export function TranslatorStepCard({ step, content, expanded, loading, onToggle,
       {expanded ? (
         <>
           <CardContent className="space-y-3">
-            <div role="region" aria-label={`${step.label} editor`} className="overflow-hidden rounded-dd border border-dd-border bg-dd-surface-2">
+            <div role="region" tabIndex={0} aria-label={`${step.label} editor`} className="dd-monaco-surface min-h-11 overflow-hidden rounded-dd border border-dd-border bg-dd-surface-2 outline-none focus-visible:shadow-dd-focus">
               <Editor
                 height="400px"
                 defaultLanguage={step.lang === "text" ? "plaintext" : "json"}

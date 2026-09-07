@@ -49,7 +49,7 @@ export const Composed = {
             <button
               type="button"
               aria-label="Key settings"
-              className="inline-flex size-7 items-center justify-center rounded-dd text-dd-muted outline-none transition-colors hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+              className="-m-2 inline-flex size-11 items-center justify-center rounded-dd text-dd-muted outline-none transition-colors hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
             >
               <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">
                 settings
@@ -57,7 +57,7 @@ export const Composed = {
             </button>
             <button
               type="button"
-              className="h-7 rounded-dd bg-dd-accent px-2.5 text-xs font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus"
+              className="ml-auto min-h-11 rounded-dd bg-dd-accent px-2.5 text-xs font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus"
             >
               New key
             </button>
@@ -74,7 +74,7 @@ export const Composed = {
         <span className="text-xs text-dd-muted">Last used 2h ago</span>
         <button
           type="button"
-          className="ml-auto h-7 rounded-dd px-2.5 text-xs font-medium text-dd-accent outline-none transition-colors hover:text-dd-accent-hover focus-visible:shadow-dd-focus"
+          className="ml-auto min-h-11 rounded-dd px-2.5 text-xs font-medium text-dd-accent outline-none transition-colors hover:text-dd-accent-hover focus-visible:shadow-dd-focus"
         >
           View all
         </button>
@@ -131,7 +131,7 @@ export const ProviderCard = {
         <span className="dd-tnum text-xs text-dd-muted">$3.41</span>
         <button
           type="button"
-          className="ml-auto h-7 rounded-dd px-2.5 text-xs font-medium text-dd-accent outline-none transition-colors hover:text-dd-accent-hover focus-visible:shadow-dd-focus"
+          className="ml-auto min-h-11 rounded-dd px-2.5 text-xs font-medium text-dd-accent outline-none transition-colors hover:text-dd-accent-hover focus-visible:shadow-dd-focus"
         >
           Configure
         </button>

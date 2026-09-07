@@ -108,6 +108,7 @@ function RequestsChart({ rows }) {
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 12, right: 8, left: 4, bottom: 0 }}>
+              <rect width="100%" height="100%" fill="var(--dd-surface)" />
               <defs>
                 <linearGradient id="timelineRequestsFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="var(--dd-accent)" stopOpacity={0.28} />

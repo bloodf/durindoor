@@ -149,6 +149,7 @@ export default function Select({
   };
 
   const describedBy = [...new Set([error ? errorId : hint ? hintId : undefined, rest["aria-describedby"]].filter(Boolean))].join(" ") || undefined;
+  const listboxMounted = Boolean(open && position && portalHost);
   const listboxContent = open && position ? (
     <ul
       ref={listboxRef}
@@ -160,7 +161,7 @@ export default function Select({
       style={position}
     >
       {options.length === 0 ? (
-        <li className="flex min-h-11 items-center px-3 py-2 text-[13px] text-dd-subtle">{placeholder}</li>
+        <li role="option" aria-disabled="true" className="flex min-h-11 items-center px-3 py-2 text-[13px] text-dd-subtle">{placeholder}</li>
       ) : options.map((option, index) => {
         const selectedOption = option.value === value;
         const active = index === activeIndex;
@@ -217,8 +218,8 @@ export default function Select({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls={open ? listboxId : undefined}
-        aria-activedescendant={open && activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
+        aria-controls={listboxMounted ? listboxId : undefined}
+        aria-activedescendant={listboxMounted && activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
         aria-labelledby={label ? labelId : undefined}
         aria-label={label ? undefined : ariaLabel}
         aria-invalid={error ? true : rest["aria-invalid"]}

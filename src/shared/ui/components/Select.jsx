@@ -176,6 +176,7 @@ export default function Select({
     "disabled:cursor-not-allowed disabled:opacity-60",
   ].join(" ");
 
+  const listboxMounted = Boolean(open && position && portalHost);
   const listbox = open && position ? (
     <ul
       ref={listboxRef}
@@ -229,8 +230,8 @@ export default function Select({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls={open ? listboxId : undefined}
-        aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}
+        aria-controls={listboxMounted ? listboxId : undefined}
+        aria-activedescendant={listboxMounted && activeIndex >= 0 ? optionId(activeIndex) : undefined}
         onClick={() => open ? close() : openAt()}
         onKeyDown={onKeyDown}
         className={triggerClassName}

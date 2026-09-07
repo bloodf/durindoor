@@ -121,10 +121,10 @@ export function SttExampleCard({ providerId }) {
         <Row label="API Key"><Input aria-label="API key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" placeholder="Paste a saved API key secret" className="font-mono" /></Row>
         <Row label="Audio File">
           <div className="flex flex-col gap-2">
-            <label className="flex w-full cursor-pointer items-center gap-2 rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-[13px] text-dd-text outline-none transition-colors hover:border-dd-border-subtle focus-within:border-dd-accent focus-within:shadow-dd-focus">
+            <label className="relative flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-[13px] text-dd-text outline-none transition-colors hover:border-dd-border-subtle focus-within:border-dd-accent focus-within:shadow-dd-focus">
               <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-dd-muted">upload_file</span>
               <span>{audioFile ? "Replace file" : "Choose audio file"}</span>
-              <input type="file" aria-label="Audio file" accept="audio/*,video/mp4,.m4a,.mp3,.wav,.ogg,.flac,.webm,.opus" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} className="sr-only" />
+              <input type="file" aria-label="Audio file" accept="audio/*,video/mp4,.m4a,.mp3,.wav,.ogg,.flac,.webm,.opus" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} className="absolute inset-0 size-full cursor-pointer opacity-0" />
             </label>
             {audioFile && <span className="font-mono text-xs text-dd-muted">{audioFile.name} · {(audioFile.size / 1024).toFixed(1)} KB</span>}
           </div>

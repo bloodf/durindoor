@@ -184,7 +184,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
                 onChange={(e) => setMitmRouterBaseUrl(e.target.value)}
                 placeholder={DEFAULT_MITM_ROUTER_BASE}
                 disabled={isRunning}
-                className="flex-1 min-w-0 px-2 py-1.5 bg-dd-surface rounded-dd border border-dd-border text-xs text-dd-text focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus disabled:opacity-50"
+                className="flex-1 min-h-11 min-w-0 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus disabled:opacity-50"
               />
             </div>
             {!isRunning && (
@@ -198,7 +198,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
                   onChange={(e) => setSelectedApiKey(e.target.value)}
                   autoComplete="off"
                   placeholder={cloudEnabled ? "Paste the API key secret" : "sk_durindoor (default)"}
-                  className="flex-1 min-w-0 px-2 py-1.5 bg-dd-surface rounded-dd border border-dd-border text-xs text-dd-text focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus"
+                  className="flex-1 min-h-11 min-w-0 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text focus:outline-none focus:ring-1 focus-visible:shadow-dd-focus"
                 />
                 {apiKeys?.length > 0 && (
                   <span className="text-[11px] text-dd-muted sm:col-start-3">

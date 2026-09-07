@@ -513,7 +513,7 @@ export default function ProvidersPage() {
             <button
               onClick={() => handleBatchTest("oauth")}
               disabled={!!testingMode}
-              className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
+              className={`flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto ${
               testingMode === "oauth" ?
               "bg-dd-accent-soft border-dd-accent/40 text-dd-accent animate-pulse" :
               "bg-dd-bg-alt border-dd-border text-dd-muted hover:text-dd-text hover:border-dd-accent/40"}`
@@ -555,7 +555,7 @@ export default function ProvidersPage() {
           <button
             onClick={() => handleBatchTest("free")}
             disabled={!!testingMode}
-            className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
+            className={`flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto ${
             testingMode === "free" ?
             "bg-dd-accent-soft border-dd-accent/40 text-dd-accent animate-pulse" :
             "bg-dd-bg-alt border-dd-border text-dd-muted hover:text-dd-text hover:border-dd-accent/40"}`
@@ -614,7 +614,7 @@ export default function ProvidersPage() {
           <button
             onClick={() => handleBatchTest("apikey")}
             disabled={!!testingMode}
-            className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
+            className={`flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto ${
             testingMode === "apikey" ?
             "bg-dd-accent-soft border-dd-accent/40 text-dd-accent animate-pulse" :
             "bg-dd-bg-alt border-dd-border text-dd-muted hover:text-dd-text hover:border-dd-accent/40"}`

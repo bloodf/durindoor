@@ -208,6 +208,7 @@ export default function PxpipeClient({ embedded = false }) {
               <div className="h-56" role="img" aria-label="Area chart of PXPIPE tokens saved over the last 30 days">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={stats.timeline} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
+                    <rect width="100%" height="100%" fill="var(--dd-surface)" />
                     <defs>
                       <linearGradient id="pxpipeTokensFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="var(--dd-accent)" stopOpacity={0.28} />

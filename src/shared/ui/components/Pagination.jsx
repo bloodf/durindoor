@@ -64,15 +64,14 @@ export default function Pagination({
       {rowsPerPage !== undefined ? (
         <label className="flex items-center gap-1.5 text-xs text-dd-muted">
           Rows:
-          <span className="relative">
-            <select aria-label="Rows per page" value={rowsPerPage} onChange={(event) => onRowsPerPageChange?.(event.target.value === "all" ? "all" : Number(event.target.value))} className="h-11 appearance-none rounded-dd border border-dd-border bg-dd-surface py-0 ps-3 pe-9 text-xs text-dd-text outline-none hover:border-dd-border-subtle focus-visible:border-dd-accent focus-visible:shadow-dd-focus">
+          <span className="relative inline-block">
+            {/* Native select: no appearance-none / no overlay. The browser draws
+                its own arrow inside the field against the opaque surface token,
+                so axe resolves the select's effective background rather than
+                reporting an indeterminate "bgOverlap" stack. */}
+            <select aria-label="Rows per page" value={rowsPerPage} onChange={(event) => onRowsPerPageChange?.(event.target.value === "all" ? "all" : Number(event.target.value))} className="h-11 rounded-dd border border-dd-border bg-dd-surface pe-4 ps-3 text-xs text-dd-text outline-none hover:border-dd-border-subtle focus-visible:border-dd-accent focus-visible:shadow-dd-focus">
               {rowsPerPageOptions.map((option) => <option key={String(option)} value={option}>{option === "all" ? "All" : option}</option>)}
             </select>
-            {/* axe reports the select's background as indeterminate ("bgOverlap")
-                because this chevron is painted over it. Giving the chevron the
-                same opaque surface token keeps the visual identical and makes
-                the stack resolvable. */}
-            <span aria-hidden="true" className="pointer-events-none absolute end-px top-px bottom-px flex items-center rounded-dd bg-dd-surface pe-2 ps-1 material-symbols-outlined text-[18px] leading-none text-dd-muted">expand_more</span>
           </span>
         </label>
       ) : null}

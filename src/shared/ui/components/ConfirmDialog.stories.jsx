@@ -11,10 +11,10 @@ import ConfirmDialog from "./ConfirmDialog";
  */
 
 const TRIGGER_CLASS =
-  "h-9 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus";
+  "min-h-11 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus";
 
 const DANGER_TRIGGER_CLASS =
-  "h-9 rounded-dd bg-dd-danger px-3.5 text-[13px] font-medium text-dd-on-danger outline-none transition-colors hover:opacity-90 focus-visible:shadow-dd-focus";
+  "min-h-11 rounded-dd bg-dd-danger px-3.5 text-[13px] font-medium text-dd-on-danger outline-none transition-colors hover:opacity-90 focus-visible:shadow-dd-focus";
 
 function ConfirmDemo({ triggerClass, resultIdle, ...dialogProps }) {
   const [open, setOpen] = useState(false);

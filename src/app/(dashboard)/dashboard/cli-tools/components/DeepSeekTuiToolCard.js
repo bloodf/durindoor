@@ -182,7 +182,7 @@ model = "${selectedModel || "provider/model-id"}"
 
   return (
     <Card padding={false} className="overflow-hidden p-4">
-      <button type="button" aria-expanded={isExpanded} className="w-full text-left outline-none focus-visible:shadow-dd-focus flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
+      <button type="button" aria-expanded={isExpanded} className="w-full min-h-11 text-left outline-none focus-visible:shadow-dd-focus flex items-start justify-between gap-3 hover:cursor-pointer sm:items-center" onClick={onToggle}>
 
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">

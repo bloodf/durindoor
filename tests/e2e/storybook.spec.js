@@ -72,11 +72,42 @@ function detectScope(page) {
   });
 }
 
-async function runAxe(page) {
+// Stories rendering a chart whose axis-tick contrast is proved by
+// tests/unit/durin-ds-contrast.test.js. Derived from the manifest rows for the
+// seven guarded chart sources; a chart added without that guard is absent here
+// and its ticks keep failing.
+const CHART_AAA_STORIES = [
+  "durin-ds-pages-console-log--log",
+  "durin-ds-pages-console-log--paused",
+  "durin-ds-pages-console-log--timeline",
+  "durin-ds-pages-headroom--custom-range",
+  "durin-ds-pages-headroom--default",
+  "durin-ds-pages-timeline--default",
+  "durin-ds-pages-timeline--empty",
+  "durin-ds-pages-timeline--filtered-to-aborted",
+  "durin-ds-pages-timeline--loading",
+  "durin-ds-pages-timeline--with-detail-drawer",
+  "durin-ds-pages-token-saver-statistics--custom-range",
+  "durin-ds-pages-token-saver-statistics--statistics",
+  "production-pxpipe-pxpipeclient--empty",
+  "production-pxpipe-pxpipeclient--keyboard-paging-and-range",
+  "production-pxpipe-pxpipeclient--loading",
+  "production-pxpipe-pxpipeclient--mobile-viewport",
+  "production-pxpipe-pxpipeclient--populated",
+  "production-pxpipe-pxpipeclient--rtl",
+  "production-pxpipe-pxpipeclient--unavailable",
+  "production-pxpipe-pxpipepage--default",
+  "production-savers-tokensaveroverview--empty-with-diagnostic",
+  "production-savers-tokensaveroverview--metrics",
+  "production-usage-usage-surfaces--usage-trend",
+  "production-usage-usage-surfaces--usage-trend-empty",
+];
+
+async function runAxe(page, storyId) {
   const scope = await detectScope(page);
   if (!AXE_SOURCE) return { status: "fail", tags: TAGS, scope, standards: { violations: [], incomplete: [] }, enhanced: { violations: [], incomplete: [] }, unverifiedCriteria: ["axe-core source missing; runtime scan not executed"] };
   await page.addScriptTag({ path: AXE_SOURCE });
-  const result = await page.evaluate(async (tags) => {
+  const result = await page.evaluate(async ({ tags, storyId, chartStories }) => {
     const summarize = (entry) => ({ id: entry.id, impact: entry.impact, help: entry.help, nodes: entry.nodes.length, targets: entry.nodes.map((node) => node.target) });
     // Document-level navigation rules belong to the real-app gate, not an
     // isolated iframe. Include portal surfaces alongside the actual canvas.
@@ -98,14 +129,61 @@ async function runAxe(page) {
         }
       }
     }
+    // axe cannot measure two surfaces we own, and reports them `incomplete`
+    // (no verdict) rather than failing them: SVG text, which it treats as an
+    // image (dequelabs/axe-core#1819), and Monaco's input proxy, which is
+    // transparent and painted behind the editor. Exempt ONLY those, and only
+    // after re-checking at scan time that each node really is unmeasurable —
+    // never on a selector alone. Chart ticks are separately proved >= 7:1 by
+    // tests/unit/durin-ds-contrast.test.js; Monaco's proxy becomes visible as
+    // `.ime-input` during composition and stays checked in that state.
+    const exempt = (element) => {
+      // Chart ticks: axe cannot resolve a background through the SVG paint
+      // stack, and neither can this page context — a DOM walk cannot see the
+      // area fill drawn between the surface and the glyph, which is how an
+      // earlier attempt would have cleared text measured at 5.08:1. So the
+      // proof lives in tests/unit/durin-ds-contrast.test.js, which composites
+      // each chart's real fill over its surface and requires 7:1 in both
+      // themes. Here we only honour that contract, for the enumerated stories
+      // it covers, on nodes that really are chart ticks.
+      if (element.closest(".recharts-cartesian-axis-tick")) {
+        return chartStories.includes(storyId) ? "chart-axis-aaa-v1" : null;
+      }
+      if (element.matches("textarea.inputarea:not(.ime-input)")) {
+        const style = getComputedStyle(element);
+        const invisible = Number(style.zIndex) < 0
+          && style.color === "rgba(0, 0, 0, 0)"
+          && style.backgroundColor === "rgba(0, 0, 0, 0)";
+        return invisible ? "monaco-input-proxy" : null;
+      }
+      return null;
+    };
+    const unmeasurable = [];
+    const audit = (entries) => entries.flatMap((entry) => {
+      if (entry.id !== "color-contrast" && entry.id !== "color-contrast-enhanced") return [entry];
+      const remaining = entry.nodes.filter((node) => {
+        const selector = Array.isArray(node.target) && node.target.length === 1 ? node.target[0] : null;
+        let element = null;
+        try { element = typeof selector === "string" ? document.querySelector(selector) : null; } catch { return true; }
+        if (!element) return true;
+        const reason = exempt(element);
+        if (!reason) return true;
+        unmeasurable.push({ storyId, target: node.target, rule: entry.id, reason });
+        return false;
+      });
+      return remaining.length ? [{ ...entry, nodes: remaining }] : [];
+    });
+    const standardsIncomplete = audit(standards.incomplete);
+    const enhancedIncomplete = audit(enhanced.incomplete);
     return {
       textSurfaces: [...measured.values()],
+      unmeasurable,
       violations: standards.violations.map(summarize),
-      incomplete: standards.incomplete.map(summarize),
-      standards: { violations: standards.violations.map(summarize), incomplete: standards.incomplete.map(summarize) },
-      enhanced: { violations: enhanced.violations.map(summarize), incomplete: enhanced.incomplete.map(summarize) }
+      incomplete: standardsIncomplete.map(summarize),
+      standards: { violations: standards.violations.map(summarize), incomplete: standardsIncomplete.map(summarize) },
+      enhanced: { violations: enhanced.violations.map(summarize), incomplete: enhancedIncomplete.map(summarize) }
     };
-  }, TAGS);
+  }, { tags: TAGS, storyId, chartStories: CHART_AAA_STORIES });
   const empty = !result.standards.violations.length && !result.standards.incomplete.length && !result.enhanced.violations.length && !result.enhanced.incomplete.length;
   return { status: empty ? "pass" : "fail", tags: TAGS, scope, ...result };
 }
@@ -248,7 +326,7 @@ for (const { storyId, rows, sourceHashes, scenario, hasPlay } of planned) test(s
     const beforePhaseErrors = validateStorybookLifecycle({ storyId, phases: beforeEvidence.phases, expectedHasPlay: hasPlay });
     if (beforePhaseErrors.length) throw new Error(`Storybook phase evidence failed before scans for ${storyId}: ${beforePhaseErrors.join("; ")}`);
     if (beforeEvidence.actualTheme !== theme) throw new Error(`Storybook stable theme is ${beforeEvidence.actualTheme}, expected ${theme}`);
-    a11y = await runAxe(page);
+    a11y = await runAxe(page, storyId);
     controls = await geometry(page);
     image = await page.screenshot({ fullPage: true });
     artifactRelativePath = path.join("storybook", `${key}.png`);
@@ -283,7 +361,7 @@ for (const { storyId, rows, sourceHashes, scenario, hasPlay } of planned) test(s
     expect(finalStorybookStatus?.status, `${storyId} final play status`).toBe("success");
     expect(finalStorybookStatus?.storyId, `${storyId} final finished story id`).toBe(storyId);
     expect(actualTheme, `${storyId} final theme`).toBe(theme);
-    save(artifactDir, { runtimeArtifactId: storyId, storyId, scenarioId: storyId, sourceHashes, candidateCommitSha, artifactRelativePath, artifactSha256: hash(image), theme, actualThemeBefore: beforeEvidence.actualTheme, actualTheme, viewportLabel: viewport, browser: { name: browserName, version }, axes: scenario.axes ?? [], expectedConsoleErrors: scenario.expectedConsoleErrors, hasPlay, playStatus: "success", storybookFinished: finalStorybookStatus, renderId: finalStorybookFinished.phases[0]?.renderId, renderPhases: finalStorybookFinished.phases, consoleErrors, pageErrors, networkFailures, networkExternalEffects, a11y, geometry: { controls, textSurfaces: a11y.textSurfaces }, manifestMappings: rows.map((row) => ({ id: row.id, reviewStatus: row.reviewStatus, approvedClassification: row.approvedClassification, sourcePath: row.sourcePath })), unverifiedCriteria: a11y.unverifiedCriteria ?? [] });
+    save(artifactDir, { runtimeArtifactId: storyId, storyId, scenarioId: storyId, sourceHashes, candidateCommitSha, artifactRelativePath, artifactSha256: hash(image), theme, actualThemeBefore: beforeEvidence.actualTheme, actualTheme, viewportLabel: viewport, browser: { name: browserName, version }, axes: scenario.axes ?? [], expectedConsoleErrors: scenario.expectedConsoleErrors, hasPlay, playStatus: "success", storybookFinished: finalStorybookStatus, renderId: finalStorybookFinished.phases[0]?.renderId, renderPhases: finalStorybookFinished.phases, consoleErrors, pageErrors, networkFailures, networkExternalEffects, a11y, unmeasurable: a11y.unmeasurable ?? [], geometry: { controls, textSurfaces: a11y.textSurfaces }, manifestMappings: rows.map((row) => ({ id: row.id, reviewStatus: row.reviewStatus, approvedClassification: row.approvedClassification, sourcePath: row.sourcePath })), unverifiedCriteria: a11y.unverifiedCriteria ?? [] });
   } catch (error) {
     writeFailureDiagnostic(error);
     throw error;

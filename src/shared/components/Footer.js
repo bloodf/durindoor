@@ -21,7 +21,7 @@ const footerLinks = {
   ],
 };
 
-const linkClassName = "inline-flex min-h-11 min-w-11 items-center rounded-dd px-2 text-[13px] text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus"
+const linkClassName = "inline-flex min-h-11 min-w-11 items-center rounded-dd px-2 text-[13px] text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus";
 
 function LinkGroup({ title, links }) {
   return (

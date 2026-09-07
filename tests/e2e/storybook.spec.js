@@ -121,10 +121,12 @@ async function geometry(page) {
       if (style.visibility !== "visible" || style.display === "none" || !node.getClientRects().length) continue;
       // Measure the surface a user actually points at. Checkboxes/radios are
       // operated through their label; a code editor is operated through its
-      // focusable wrapper, not the offscreen textarea the editor positions at
-      // the caret for keystrokes and IME composition (resizing that breaks
-      // caret math, so the wrapper is the honest target).
-      const editorHost = node.matches("textarea.inputarea")
+      // focusable wrapper, not the element the editor parks at the caret to
+      // receive keystrokes and IME composition. Monaco uses either a hidden
+      // textarea or, with the newer EditContext path, a `.native-edit-context`
+      // div; both are positioned at the caret and cannot be resized without
+      // breaking caret math, so the wrapper is the honest target.
+      const editorHost = node.matches("textarea.inputarea, .native-edit-context")
         ? node.closest(".dd-monaco-surface[tabindex]")
         : null;
       const target = editorHost

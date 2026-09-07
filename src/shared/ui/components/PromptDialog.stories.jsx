@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import PromptDialog from "./PromptDialog";
 
 /**
@@ -63,7 +63,9 @@ export const Default = {
     const input = dialog.getByLabelText("Gateway key name (optional)");
     await userEvent.type(input, "ci-runner-01");
     await expect(input).toHaveValue("ci-runner-01");
-    await expect(dialog.getByRole("button", { name: "Save" })).toBeVisible();
+    // The footer arrives with the modal's entrance transition, so assert
+    // through a wait rather than racing the animation on a cold render.
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Save" })).toBeVisible());
   },
 };
 

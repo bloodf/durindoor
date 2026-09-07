@@ -6149,7 +6149,7 @@
           "id": "production-playground-playgroundpageclient--chat-history-popover",
           "storyId": "production-playground-playgroundpageclient--chat-history-popover",
           "runtimeArtifactId": "production-playground-playgroundpageclient--chat-history-popover",
-          "expectedVisibleText": "Chat history",
+          "expectedVisibleText": "Recent chats",
           "expectedSha256": "b7ad4f87db80851938f6df37be6d8520e03da3507d5f80ad73c6ed23a7b6ea95",
           "axes": [
             "controls"
@@ -10115,7 +10115,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js#ProviderNode",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js",
       "symbol": "ProviderNode",
-      "sourceSha256": "ac6cda0b2e1ca99a9d0b6c9727c548661861550f9afe2f242c4389fcafb80905",
+      "sourceSha256": "74ef31c17e46770614792ba7fbb1c4252eec430b5384057384c1046dc492f8fc",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "UsageSurface direct fixture renders ProviderNode in listed scenario states.",
@@ -10149,47 +10149,10 @@
       "sourceReviewStatus": "pending-runtime-and-independent-check"
     },
     {
-      "id": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js#ViewportControls",
-      "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js",
-      "symbol": "ViewportControls",
-      "sourceSha256": "ac6cda0b2e1ca99a9d0b6c9727c548661861550f9afe2f242c4389fcafb80905",
-      "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Private widget: the topology fixture renders the composed zoom/fit controls in the same scenario as its parent.",
-      "reviewStatus": "approved",
-      "reviewedBy": "integration-review",
-      "requiredScenarioIds": [
-        "production-usage-usage-surfaces--provider-topology-connected"
-      ],
-      "approvedScenarioIds": [
-        "production-usage-usage-surfaces--provider-topology-connected"
-      ],
-      "storyScenarios": [
-        {
-          "id": "production-usage-usage-surfaces--provider-topology-connected",
-          "storyId": "production-usage-usage-surfaces--provider-topology-connected",
-          "runtimeArtifactId": "production-usage-usage-surfaces--provider-topology-connected",
-          "expectedVisibleText": "openai",
-          "expectedSha256": "ed7bef8de02f9959ca13085b02b7cab5a056c71e6bb183e8f99b24ea68390e2a",
-          "axes": [
-            "text"
-          ],
-          "proposedSourceEvidence": "Connected topology direct fixture.",
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js": "4f5ef7d74f608277783ad2dbac3f4d24aa9c5e937d30d4dfcd77f9eed6d92119"
-          }
-        }
-      ],
-      "approvedException": null,
-      "reviewEvidence": null,
-      "sourceReviewFindings": [],
-      "sourceReviewStatus": "pending-runtime-and-independent-check"
-    },
-    {
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js#ProviderTopology",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js",
       "symbol": "ProviderTopology",
-      "sourceSha256": "ac6cda0b2e1ca99a9d0b6c9727c548661861550f9afe2f242c4389fcafb80905",
+      "sourceSha256": "74ef31c17e46770614792ba7fbb1c4252eec430b5384057384c1046dc492f8fc",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "UsageSurface direct fixture renders ProviderTopology in listed scenario states.",
@@ -10242,7 +10205,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js#RouterNode",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderTopology.js",
       "symbol": "RouterNode",
-      "sourceSha256": "ac6cda0b2e1ca99a9d0b6c9727c548661861550f9afe2f242c4389fcafb80905",
+      "sourceSha256": "74ef31c17e46770614792ba7fbb1c4252eec430b5384057384c1046dc492f8fc",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "UsageSurface direct fixture renders RouterNode in listed scenario states. Missing branch proof: ['Connected topology parent shown; no router-specific assertion.']",

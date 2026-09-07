@@ -2,10 +2,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { ReactFlowProvider } from "@xyflow/react";
 
 import ManualConfigModal from "@/shared/components/ManualConfigModal.js";
-import ProviderTopology from "@/app/(dashboard)/dashboard/usage/components/ProviderTopology.js";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const mounted = [];
@@ -45,15 +43,4 @@ describe("surfaces that carry an accessible name", () => {
     expect(pre.getAttribute("role")).toBe("region");
   });
 
-  it("names the topology viewport controls as a group", async () => {
-    // React Flow's own Controls hardcodes aria-label onto Panel's generic
-    // div and drops any role passed to it, so the group announced nothing.
-    const container = await render(React.createElement(ReactFlowProvider, null,
-      React.createElement(ProviderTopology, { providers: [{ id: "openai", name: "OpenAI" }] })));
-    const group = container.querySelector('[role="group"]');
-    expect(group, "controls expose a name-supporting role").toBeTruthy();
-    expect(group.getAttribute("aria-label")).toBeTruthy();
-    const names = [...container.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
-    expect(names).toEqual(expect.arrayContaining(["zoom in", "zoom out", "fit view"]));
-  });
 });

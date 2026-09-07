@@ -124,7 +124,7 @@ export const ModelMenuProviderSwitch = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const trigger = await canvas.findByRole("button", { expanded: false, name: /GPT-5\.2 Codex|Select model/ });
+    const trigger = await canvas.findByRole("combobox", { expanded: false, name: /^Model / });
     await userEvent.click(trigger);
     await expect(canvas.getByRole("listbox")).toBeVisible();
     const claudeOption = await canvas.findByRole("option", { name: "Claude Sonnet 4.5 claude-sonnet-4-5" });

@@ -68,30 +68,39 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
   }
   // Ordinary DOM text axe declined to judge. Unlike SVG or the editor proxy,
   // a plain element's pair is computable here. Text usually sits on an
-  // ancestor's surface rather than its own, so walk up for the nearest opaque
-  // background, stopping at anything that makes the stack unreadable: an
-  // image, a translucent fill, or a hidden or faded subtree. Clear the node
-  // only when the resulting pair meets its own threshold.
+  // ancestor's surface rather than its own, so walk up compositing each
+  // layer onto the next until an opaque one is reached. A translucent tint
+  // (a `bg-dd-*-soft` chip, a `/10` danger wash) is exactly what axe gives
+  // up on, yet it is ordinary alpha compositing over a known backdrop, so
+  // the resulting pair is exact rather than assumed. Stop at anything that
+  // genuinely makes the stack unreadable: an image or gradient, or a hidden
+  // or faded subtree. Clear the node only when the composited pair meets its
+  // own threshold.
   if (!(element instanceof SVGElement)) {
     const style = computeStyle(element);
     const foreground = solidRgb(style.color);
     if (!foreground) return null;
+    // Layers above the first opaque surface, nearest first.
+    const stack = [];
     let background = null;
     for (let node = element; node instanceof Element; node = node.parentElement) {
       const nodeStyle = computeStyle(node);
       if (nodeStyle.backgroundImage !== "none" || nodeStyle.visibility !== "visible" || nodeStyle.opacity !== "1") return null;
-      // Only a fully transparent layer is see-through enough to keep walking.
-      // Anything partly translucent makes the stack unreadable here, and a
-      // prefix test would misread `rgba(0, 0, 0, 0.5)` as clear.
       const parts = String(nodeStyle.backgroundColor).match(/-?[\d.]+/g);
       if (!parts || parts.length < 3) return null;
       const alpha = parts.length > 3 ? Number(parts[3]) : 1;
+      if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
       if (alpha === 0) continue;
-      if (alpha !== 1) return null;
-      background = parts.slice(0, 3).map(Number);
-      break;
+      if (alpha === 1) { background = parts.slice(0, 3).map(Number); break; }
+      stack.push({ rgb: parts.slice(0, 3).map(Number), alpha });
     }
+    // Without an opaque backdrop the tints have nothing to composite onto.
     if (!background) return null;
+    // Composite outermost-inward: each tint paints over what is behind it.
+    for (let i = stack.length - 1; i >= 0; i -= 1) {
+      const { rgb, alpha } = stack[i];
+      background = background.map((channel, c) => rgb[c] * alpha + channel * (1 - alpha));
+    }
     const size = Number.parseFloat(style.fontSize);
     const large = size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700);
     const ratio = contrastRatio(foreground, background);

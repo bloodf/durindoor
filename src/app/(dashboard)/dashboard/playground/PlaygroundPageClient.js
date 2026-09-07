@@ -228,6 +228,8 @@ export default function PlaygroundPageClient() {
   const modelMenuRef = useRef(null);
   const modelTriggerRef = useRef(null);
   const modelListboxId = useId();
+  const modelLabelId = useId();
+  const modelValueId = useId();
   const historyMenuRef = useRef(null);
   const historyTriggerRef = useRef(null);
 
@@ -813,7 +815,7 @@ export default function PlaygroundPageClient() {
         <header className="sticky top-0 z-20 shrink-0 border-b border-dd-border-subtle bg-dd-bg-alt/95 px-3 py-3 backdrop-blur sm:px-4 lg:px-6">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-md">
-              <span className="px-0.5 text-xs font-medium text-dd-muted">Model</span>
+              <span id={modelLabelId} className="px-0.5 text-xs font-medium text-dd-muted">Model</span>
               <div ref={modelMenuRef} className="relative min-w-0">
                 <button
                   ref={modelTriggerRef}
@@ -824,11 +826,12 @@ export default function PlaygroundPageClient() {
                   aria-haspopup="listbox"
                   aria-expanded={modelMenuOpen}
                   aria-controls={modelMenuOpen ? modelListboxId : undefined}
+                  aria-labelledby={`${modelLabelId} ${modelValueId}`}
                   className="flex min-h-11 w-full items-center gap-3 rounded-dd border border-dd-border bg-dd-surface px-3 py-2 text-left outline-none transition-colors hover:border-dd-border-subtle hover:bg-dd-surface-2 focus-visible:shadow-dd-focus"
                 >
                   {activeProviderGroup ? <ProviderLogo provider={activeProviderGroup.providerId} size={28} className="shrink-0" /> : <span className="flex size-7 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2 text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">smart_toy</span></span>}
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5"><span className="truncate text-[13px] font-semibold text-dd-text">{modelLabel}</span><span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[18px] leading-none text-dd-muted">expand_more</span></span>
+                    <span className="flex items-center gap-1.5"><span id={modelValueId} className="truncate text-[13px] font-semibold text-dd-text">{modelLabel}</span><span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[18px] leading-none text-dd-muted">expand_more</span></span>
                     <span className="block truncate text-xs text-dd-muted">{modelSubLabel}</span>
                   </span>
                 </button>

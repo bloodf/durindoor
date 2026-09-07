@@ -79,12 +79,44 @@ describe("unmeasurable node policy", () => {
   });
 
   it("keeps text whose pair cannot be computed here", () => {
-    // Translucent, image-backed, hidden or transparent surfaces are exactly
-    // the cases axe cannot resolve either, so they must keep failing.
-    expect(exemptionFor(...withStyle(button({ backgroundColor: "rgba(34, 32, 28, 0.5)" })))).toBeNull();
+    // An image-backed, hidden or faded surface is exactly what axe cannot
+    // resolve either, so those must keep failing. A translucent fill is
+    // different: it composites onto the surface behind it, so it is handled
+    // by the tint test below rather than refused here.
     expect(exemptionFor(...withStyle(button({ backgroundImage: "linear-gradient(red, blue)" })))).toBeNull();
     expect(exemptionFor(...withStyle(button({ visibility: "hidden" })))).toBeNull();
     expect(exemptionFor(...withStyle(button({ opacity: "0.4" })))).toBeNull();
+  });
+
+  it("composites a translucent tint onto the surface behind it", () => {
+    // A `bg-dd-accent-soft` chip is rgba(16, 232, 130, 0.14) over the page
+    // surface. axe gives up on the pair, but it is ordinary alpha
+    // compositing over a known backdrop, so the real ratio is exact. This
+    // is the case that kept 26 stories red for a verdict axe never reached.
+    document.body.innerHTML = `<div id="page"><span id="chip">Custom</span></div>`;
+    const style = (element) => element.id === "page"
+      ? { color: "rgb(0, 0, 0)", backgroundColor: "rgb(34, 32, 28)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" }
+      : { color: "rgb(237, 230, 216)", backgroundColor: "rgba(16, 232, 130, 0.14)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" };
+    // #EDE6D8 over the composited rgb(30.9, 60.0, 42.3) is 9.72:1 - clears AAA.
+    expect(exemptionFor(document.getElementById("chip"), CHARTED, chartStories, style)).toBe("measured-aaa 9.72:1");
+  });
+
+  it("still fails a tint whose composited pair misses the threshold", () => {
+    // Compositing must not become a way to pass; a genuinely low-contrast
+    // chip has to stay red once the real backdrop is worked out.
+    document.body.innerHTML = `<div id="page"><span id="chip">Custom</span></div>`;
+    const style = (element) => element.id === "page"
+      ? { color: "rgb(0, 0, 0)", backgroundColor: "rgb(34, 32, 28)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" }
+      : { color: "rgb(120, 116, 108)", backgroundColor: "rgba(16, 232, 130, 0.14)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" };
+    expect(exemptionFor(document.getElementById("chip"), CHARTED, chartStories, style)).toBeNull();
+  });
+
+  it("refuses a tint that has no opaque surface to composite onto", () => {
+    // Without a backdrop the stack is unresolvable, so it must stay failing
+    // rather than compositing onto an assumed colour.
+    document.body.innerHTML = `<div id="page"><span id="chip">Custom</span></div>`;
+    const style = () => ({ color: "rgb(237, 230, 216)", backgroundColor: "rgba(16, 232, 130, 0.14)", backgroundImage: "none", visibility: "visible", opacity: "1", fontSize: "13px", fontWeight: "400" });
+    expect(exemptionFor(document.getElementById("chip"), CHARTED, chartStories, style)).toBeNull();
   });
 
   it("applies the large-text threshold only to genuinely large text", () => {

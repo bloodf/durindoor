@@ -1,6 +1,6 @@
 "use client";
 
-const LINK = "inline-flex min-h-11 items-center rounded-dd text-sm text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus";
+const LINK = "inline-flex min-h-11 min-w-11 items-center rounded-dd text-sm text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus";
 
 export default function Footer() {
   return (

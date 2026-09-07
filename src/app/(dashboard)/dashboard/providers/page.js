@@ -707,7 +707,8 @@ export default function ProvidersPage() {
           tabIndex={0}
           aria-label="Provider connection test results"
           className="relative bg-dd-surface border border-dd-border rounded-dd-lg w-full max-w-[600px] max-h-[86vh] sm:max-h-[80vh] overflow-y-auto shadow-dd-elevated"
-          onClick={(e) = role="region"> e.stopPropagation()}>
+          role="region"
+          onClick={(e) => e.stopPropagation()}>
           
             <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 border-b border-dd-border bg-dd-surface/95 backdrop-blur-sm rounded-t-xl">
               <h3 className="font-semibold">Test Results</h3>

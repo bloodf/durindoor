@@ -105,7 +105,7 @@ function LevelFilters({ value, onChange }) {
             ].join(" ")}
           >
             <span>{filter.label}</span>
-            <span className="dd-tnum opacity-80">{filter.count}</span>
+            <span className="dd-tnum">{filter.count}</span>
           </button>
         );
       })}

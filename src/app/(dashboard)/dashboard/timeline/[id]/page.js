@@ -83,6 +83,7 @@ export default function TimelineDetailPage() {
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState({});
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,10 +116,18 @@ export default function TimelineDetailPage() {
   }
   if (!row) return <TimelineDetailSkeleton />;
 
+  // Await the write so the button reports what actually happened: a denied
+  // permission or insecure context must not show "Copied" for a clipboard
+  // that was never written.
   const copy = async () => {
-    await navigator.clipboard.writeText(JSON.stringify(row, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(row, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 1500);
+    }
   };
   const trace = row.trace || {};
 
@@ -128,7 +137,7 @@ export default function TimelineDetailPage() {
         icon="timeline"
         title="Trace detail"
         subtitle={trace.started_at || "Redacted sidecar trace"}
-        actions={<Button variant="secondary" icon="content_copy" onClick={copy}>{copied ? "Copied" : "Copy as JSON"}</Button>}
+        actions={<Button variant="secondary" icon={copyFailed ? "error" : "content_copy"} onClick={copy}>{copyFailed ? "Copy failed" : copied ? "Copied" : "Copy as JSON"}</Button>}
       />
       <Link href="/dashboard/timeline" className="inline-flex w-fit min-h-11 items-center text-[13px] text-dd-accent outline-none hover:underline focus-visible:shadow-dd-focus">Back to Timeline</Link>
       <Card padding={false}>

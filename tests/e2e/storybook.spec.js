@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "./fixtures.js";
 import { artifactKey } from "../../scripts/check-storybook-coverage.mjs";
+import { anyVisible } from "./visibleText.mjs";
 import { validateStorybookLifecycle } from "./storybook-lifecycle.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const manifest = JSON.parse(readFileSync(path.join(root, "tests/e2e/storybook-surfaces.json"), "utf8"));
@@ -321,7 +322,20 @@ for (const { storyId, rows, sourceHashes, scenario, hasPlay } of planned) test(s
     await qa.assertNoExternalEffects();
     expect(a11y.status, `${storyId} standards+enhanced axe failures: standards=${JSON.stringify(a11y.standards)} enhanced=${JSON.stringify(a11y.enhanced)}`).toBe("pass");
     expect(controls.filter((c) => c.status === "fail"), `${storyId} rendered control geometry failures`).toEqual([]);
-    for (const text of scenario.expectedVisibleTexts) await expect(page.getByText(text, { exact: false }).first()).toBeVisible();
+    // A substring can legitimately appear more than once - "Settings" is both
+    // a nav link and a page heading - and `.first()` asserts whichever the DOM
+    // happens to order first, which is the nav item. That fails a page whose
+    // heading is present and visible. Require that at least one match is
+    // visible instead, and report every candidate when none is.
+    for (const text of scenario.expectedVisibleTexts) {
+      const matches = page.getByText(text, { exact: false });
+      await expect
+        .poll(async () => anyVisible(await matches.evaluateAll((nodes) => nodes.map((node) => {
+          const style = getComputedStyle(node);
+          return { rects: node.getClientRects().length, visibility: style.visibility, display: style.display };
+        }))), { message: `${storyId} expected visible text ${JSON.stringify(text)}: ${await matches.count()} match(es), none visible` })
+        .toBe(true);
+    }
     const unconsumedConsoleErrors = [...consoleErrors];
     const missingConsoleErrors = [];
     for (const expected of scenario.expectedConsoleErrors) {

@@ -140,7 +140,10 @@ async function runAxe(page) {
       });
     };
     const proveSvgText = (node) => {
-      const element = node.element;
+      // `element` is only populated when axe serializes a result, so resolve
+      // the node from the selector axe reported instead.
+      const selector = Array.isArray(node.target) ? node.target[node.target.length - 1] : node.target;
+      const element = typeof selector === "string" ? document.querySelector(selector) : null;
       if (!(element instanceof SVGElement) || !element.textContent?.trim()) return false;
       // Scope: our own chart axis tick labels only. They are plain text drawn
       // from a known token over the chart surface, so their pair is genuinely

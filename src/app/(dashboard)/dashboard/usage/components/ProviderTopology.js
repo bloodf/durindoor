@@ -6,7 +6,10 @@ import {
   ReactFlow,
   Handle,
   Position,
-  Controls,
+  Panel,
+  ControlButton,
+  useReactFlow,
+  useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
@@ -147,6 +150,50 @@ function buildLayout(providers, activeSet, lastSet, errorSet, activityByProvider
   return { nodes, edges };
 }
 
+/** Framing used by every fit-view call, so the button matches auto-fit. */
+const FIT_OPTS = { padding: 0.2, duration: 200 };
+
+/**
+ * Viewport controls composed from React Flow's own primitives.
+ *
+ * The library's `Controls` hardcodes an `aria-label` onto `Panel`'s bare
+ * `div` and drops any `role` we pass, because it destructures a fixed prop
+ * list with no rest spread. ARIA prohibits a name on a generic element, so
+ * the label is silently dropped and the group announces nothing. Panel does
+ * forward `...rest`, so composing one level up lets the group carry a role
+ * that can legitimately hold the name.
+ *
+ * `group` rather than `toolbar`: a toolbar promises roving-tabindex arrow-key
+ * navigation, which these buttons do not implement.
+ */
+function ViewportControls() {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+  // Mirror the library's own disabled behaviour at the zoom limits, so a
+  // button that cannot do anything is not offered as though it can.
+  const { minZoomReached, maxZoomReached } = useStore((s) => ({
+    minZoomReached: s.transform[2] <= s.minZoom,
+    maxZoomReached: s.transform[2] >= s.maxZoom,
+  }));
+  return (
+    <Panel
+      position="bottom-left"
+      role="group"
+      aria-label="React Flow controls"
+      className="react-flow__controls react-flow-controls-custom vertical [&_.react-flow__controls-button]:!size-11"
+    >
+      <ControlButton onClick={() => zoomIn()} className="react-flow__controls-zoomin" title="zoom in" aria-label="zoom in" disabled={maxZoomReached}>
+        <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">add</span>
+      </ControlButton>
+      <ControlButton onClick={() => zoomOut()} className="react-flow__controls-zoomout" title="zoom out" aria-label="zoom out" disabled={minZoomReached}>
+        <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">remove</span>
+      </ControlButton>
+      <ControlButton onClick={() => fitView(FIT_OPTS)} className="react-flow__controls-fitview" title="fit view" aria-label="fit view">
+        <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">fit_screen</span>
+      </ControlButton>
+    </Panel>
+  );
+}
+
 export default function ProviderTopology({ providers = [], activeRequests = [], lastProvider = "", errorProvider = "" }) {
   const activeKey = useMemo(() => activeRequests.map((r) => r.provider?.toLowerCase()).filter(Boolean).sort().join(","), [activeRequests]);
   const lastKey = lastProvider?.toLowerCase() || "";
@@ -161,17 +208,16 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   const providersKey = useMemo(() => providers.map((p) => p.provider).sort().join(","), [providers]);
   const rfInstance = useRef(null);
   const containerRef = useRef(null);
-  const fitOpts = { padding: 0.2, duration: 200 };
   const onInit = useCallback((instance) => {
     rfInstance.current = instance;
-    setTimeout(() => instance.fitView(fitOpts), 50);
+    setTimeout(() => instance.fitView(FIT_OPTS), 50);
   }, []);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      if (rfInstance.current) rfInstance.current.fitView(fitOpts);
+      if (rfInstance.current) rfInstance.current.fitView(FIT_OPTS);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -179,7 +225,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
 
   useEffect(() => {
     if (rfInstance.current) {
-      const id = setTimeout(() => rfInstance.current.fitView(fitOpts), 50);
+      const id = setTimeout(() => rfInstance.current.fitView(FIT_OPTS), 50);
       return () => clearTimeout(id);
     }
   }, [nodes.length]);
@@ -195,7 +241,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
           edges={edges}
           nodeTypes={nodeTypes}
           fitView
-          fitViewOptions={fitOpts}
+          fitViewOptions={FIT_OPTS}
           minZoom={0.1}
           maxZoom={2}
           onInit={onInit}
@@ -211,7 +257,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
           edgesFocusable={false}
           nodesFocusable={false}
         >
-          <Controls showInteractive={false} className="react-flow-controls-custom [&_.react-flow__controls-button]:!size-11" />
+          <ViewportControls />
         </ReactFlow>
       )}
     </div>

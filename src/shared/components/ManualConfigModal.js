@@ -36,7 +36,11 @@ export default function ManualConfigModal({ isOpen, onClose, title = "Manual Con
                 {copiedIndex === index ? "Copied!" : "Copy"}
               </Button>
             </div>
-            <pre tabIndex={0} aria-label={`${config.filename} contents`} className="max-h-60 overflow-auto rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-3 font-mono text-xs text-dd-text whitespace-pre-wrap break-all">{config.content}</pre>
+            {/* `pre` exposes no implicit role, so ARIA prohibits a name on it
+                and assistive tech drops the label. `region` legitimately
+                accepts one, and the block is independently scrollable, so it
+                is focusable for keyboard users too. */}
+            <pre role="region" tabIndex={0} aria-label={`${config.filename} contents`} className="max-h-60 overflow-auto rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-3 font-mono text-xs text-dd-text whitespace-pre-wrap break-all outline-none focus-visible:shadow-dd-focus">{config.content}</pre>
           </section>
         ))}
       </div>

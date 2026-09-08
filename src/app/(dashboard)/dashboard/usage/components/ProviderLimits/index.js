@@ -465,6 +465,9 @@ export default function ProviderLimits() {
   const [bulkToggling, setBulkToggling] = useState(false);
   const [page, setPage] = useState(initialFilterState.page);
   const [pageSize, setPageSize] = useState(initialFilterState.pageSize);
+  const [customPageSizeModeState, setCustomPageSizeMode] = useState(
+    !ACCOUNT_PAGE_SIZE_OPTIONS.includes(initialFilterState.pageSize)
+  );
   const [customPageSizeInput, setCustomPageSizeInput] = useState(
     String(initialFilterState.pageSize)
   );
@@ -1302,9 +1305,10 @@ export default function ProviderLimits() {
   );
   const connectionsPageSummary = getConnectionsPaginationSummary(pagination);
   const isCustomPageSize = !ACCOUNT_PAGE_SIZE_OPTIONS.includes(pageSize);
+  const customPageSizeMode = customPageSizeModeState || isCustomPageSize;
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex flex-wrap items-center gap-1.5">
           <Select
             aria-label="Filter quota providers"
@@ -1365,7 +1369,7 @@ export default function ProviderLimits() {
       {expiringFirst ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">Expiring-first currently reorders accounts inside current page. Cross-page ordering still follows backend pagination.</div> : null}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-busy={connectionsLoading || undefined}>
-        {connectionsLoading ? <Card><div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading provider limits...</div></Card> : hasVisibleConnections ? sortedConnections.map((conn) => {
+        {connectionsLoading ? <Card className="md:col-span-2"><div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading provider limits...</div></Card> : hasVisibleConnections ? sortedConnections.map((conn) => {
           const quota = quotaData[conn.id];
           const isLoading = loading[conn.id];
           const error = errors[conn.id];
@@ -1410,11 +1414,15 @@ export default function ProviderLimits() {
           <div className="ms-auto flex flex-wrap items-center gap-2">
             <Select
               aria-label="Accounts per page"
-              value={isCustomPageSize ? "custom" : String(pageSize)}
-              onChange={(nextValue) => { if (nextValue !== "custom") updatePageSize(nextValue); }}
+              value={customPageSizeMode ? "custom" : String(pageSize)}
+              onChange={(nextValue) => {
+                if (nextValue === "custom") { setCustomPageSizeMode(true); return; }
+                setCustomPageSizeMode(false);
+                updatePageSize(nextValue);
+              }}
               options={[...ACCOUNT_PAGE_SIZE_OPTIONS.map((option) => ({ value: String(option), label: `${option} / page` })), { value: "custom", label: "Custom" }]}
             />
-            <Input
+            {customPageSizeMode ? <Input
               type="number"
               min="1"
               max={ACCOUNT_PAGE_SIZE_MAX}
@@ -1425,7 +1433,7 @@ export default function ProviderLimits() {
               onKeyDown={(event) => { if (event.key === "Enter") updatePageSize(customPageSizeInput); }}
               aria-label="Custom accounts per page"
               className="w-24"
-            />
+            /> : null}
           </div>
           <Pagination
             page={pagination.page}

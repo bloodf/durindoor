@@ -60,4 +60,11 @@ export function bootstrapNodejsRuntime() {
   void ensureHeadroomProxy().catch((error) => {
     console.log(`[headroom] proxy autostart skipped: ${error?.message || error}`);
   });
+
+  // Hourly sweep of old local data; a no-op until the operator enables it.
+  void import("@/lib/dataRetention/scheduler.js")
+    .then(({ startDataRetentionScheduler }) => startDataRetentionScheduler())
+    .catch((error) => {
+      console.log(`[data-retention] scheduler not started: ${error?.message || error}`);
+    });
 }

@@ -347,51 +347,8 @@ export const __test__ = {
   canAccessManagementApi,
 };
 
-/**
- * Cookie that selects which dashboard a reader sees.
- *
- * The rewrite moved every page onto the new design in place, so the previous
- * interface only survives as a copy under `/legacy-ui`. A cookie rather than
- * client state because the choice has to be known before the server renders
- * the route.
- */
-export const UI_VERSION_COOKIE = "durindoor-ui-version";
-
-/**
- * Serve `/dashboard/*` from the old dashboard unless the reader has opted
- * into the new one. The redesign is not official yet, so the interface
- * people already know stays the default and the new one is what you switch
- * to in order to try it. Making it official means changing the comparison
- * below so an absent preference serves the new tree; there is no flag.
- */
-function dashboardResponse(request) {
-  if (request.cookies.get(UI_VERSION_COOKIE)?.value === "new") return NextResponse.next();
-  // Already on the rewritten path (the dev server re-runs the proxy after a
-  // rewrite): serve it as-is instead of rewriting a second time.
-  if (request.nextUrl.pathname.startsWith("/legacy-ui")) return NextResponse.next();
-  const url = request.nextUrl.clone();
-  url.pathname = `/legacy-ui${url.pathname}`;
-  return NextResponse.rewrite(url);
-}
-
 export async function proxy(request) {
-  const { pathname: requestPath } = request.nextUrl;
-
-  // `/legacy-ui` is an internal rewrite target, not a public address. Dashboard
-  // pages under it are mapped back to their canonical path and go through the
-  // same auth checks below before being served, so the preview tree cannot be
-  // reached without passing them. Redirecting instead would loop in dev, where
-  // the proxy runs again on the rewritten URL. Anything else under `/legacy-ui`
-  // is sent to its canonical address.
-  const legacyPath = requestPath === "/legacy-ui" || requestPath.startsWith("/legacy-ui/")
-    ? requestPath.slice("/legacy-ui".length) || "/dashboard"
-    : null;
-  if (legacyPath !== null && !legacyPath.startsWith("/dashboard")) {
-    const url = request.nextUrl.clone();
-    url.pathname = legacyPath;
-    return NextResponse.redirect(url);
-  }
-  const pathname = legacyPath ?? requestPath;
+  const { pathname } = request.nextUrl;
 
   // /api/mcp/control is a management MCP endpoint: it must always carry
   // either the local CLI token, a configured API key, or a valid dashboard
@@ -521,13 +478,13 @@ export async function proxy(request) {
     // Serve the pre-rewrite dashboard when the reader has opted into it.
     // The rewrite happens only after the auth checks below have passed, so
     // the preview cannot become a way around them.
-    if (!requireLogin) return dashboardResponse(request);
+    if (!requireLogin) return NextResponse.next();
 
     // Verify JWT token
     const token = request.cookies.get("auth_token")?.value;
     if (token) {
       if (await verifyDashboardAuthToken(token)) {
-        return dashboardResponse(request);
+        return NextResponse.next();
       } else {
         return NextResponse.redirect(new URL("/login", request.url));
       }

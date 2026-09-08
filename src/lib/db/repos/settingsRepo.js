@@ -48,6 +48,9 @@ const DEFAULT_SETTINGS = {
   enableObservability: true,
   enableProxyTimeline: false,
   proxyTimelineRetentionDays: 1,
+  /** Automatic cleanup of usage, request details, timeline and quota history older than N days. */
+  dataRetentionEnabled: false,
+  dataRetentionDays: 30,
   observabilityMaxRecords: 1000,
   observabilityBatchSize: 20,
   observabilityFlushIntervalMs: 5000,

@@ -54,14 +54,7 @@ export function scanSource(source, sourcePath = "fixture.jsx") {
   });
   return { candidates: [...candidates].sort(), unknownWrappers: [...unknownWrappers].sort(), parseError: null };
 }
-// `src/legacy` is a frozen copy of the pre-rewrite dashboard, kept only so
-// readers can compare it with the redesign before it becomes the default. It
-// ships unchanged and is deleted when the preview retires, so it is not new
-// surface that needs Durin DS story coverage. The mounted routes under
-// `src/app/legacy-ui` stay in scope: they are live code, and they are thin
-// re-export wrappers with nothing to cover.
-const FROZEN_LEGACY = new Set(["src/legacy"]);
-function discover(root) { const result = []; const visit = (dir) => readdirSync(dir, { withFileTypes: true }).forEach((entry) => { const absolute = path.join(dir, entry.name); const relative = path.relative(root, absolute).replaceAll("\\", "/"); if (FROZEN_LEGACY.has(relative)) return; if (entry.isDirectory()) visit(absolute); else if (SOURCE_EXT.test(entry.name) && !TEST_FILE.test(entry.name) && !entry.name.includes(".stories.")) result.push(relative); }); visit(path.join(root, "src")); return result; }
+function discover(root) { const result = []; const visit = (dir) => readdirSync(dir, { withFileTypes: true }).forEach((entry) => { const absolute = path.join(dir, entry.name); const relative = path.relative(root, absolute).replaceAll("\\", "/"); if (entry.isDirectory()) visit(absolute); else if (SOURCE_EXT.test(entry.name) && !TEST_FILE.test(entry.name) && !entry.name.includes(".stories.")) result.push(relative); }); visit(path.join(root, "src")); return result; }
 function digestFile(file) { return new Promise((resolve, reject) => { const digest = createHash("sha256"); const stream = createReadStream(file); stream.on("data", (chunk) => digest.update(chunk)); stream.on("end", () => resolve(digest.digest("hex"))); stream.on("error", reject); }); }
 function readEvidence(dir, errors) {
   if (!dir || !existsSync(dir)) return new Map();

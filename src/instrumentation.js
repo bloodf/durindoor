@@ -1,50 +1,32 @@
 // Next.js startup hook. Runs once per server start in every deployment shape
 // (systemd, Docker, `npm start`, dev), which is why the Headroom proxy is
 // revived from here rather than from host-specific service wiring.
-
-/**
- * Recreate the DurinDoor-managed Headroom proxy when the gateway boots.
- *
- * The proxy is a child of the gateway, so a systemd restart reaps it with the
- * rest of the cgroup (`detached: true` does not escape one) and a container
- * restart drops it entirely. Without this the proxy stays down for the rest of
- * the gateway's uptime and compression fails open silently.
- *
- * Deliberately narrow: it never installs Headroom and never enables it. It only
- * revives a proxy the operator already turned on, so opting in stays an explicit
- * action through Auto-configure.
- */
-export async function ensureHeadroomProxy() {
-  const { getSettings } = await import("@/lib/db/repos/settingsRepo.js");
-  const settings = await getSettings();
-  if (!settings?.headroomEnabled) return;
-
-  const { DEFAULT_HEADROOM_URL, isLoopbackHeadroomUrl } = await import("@/lib/headroom/detect.js");
-  const url = settings.headroomUrl || DEFAULT_HEADROOM_URL;
-  // A remote proxy belongs to whoever operates it; we only manage our own.
-  if (!isLoopbackHeadroomUrl(url)) return;
-
-  const { startHeadroomProxy, getManagedPid } = await import("@/lib/headroom/process.js");
-  if (getManagedPid()) return;
-
-  const port = Number.parseInt(new URL(url).port, 10) || 8787;
-  const { pid } = await startHeadroomProxy({ port });
-  console.log(`[headroom] proxy autostarted on ${url} (pid ${pid})`);
-}
+//
+// IMPORTANT — keep this file edge-safe. Next.js compiles instrumentation.js
+// for every runtime, and `src/proxy.js` (the Next 16 middleware convention)
+// guarantees the edge runtime always has one. Webpack follows every
+// `await import(...)` it can parse, even inside runtime `if` guards, so any
+// Node-only module (`os`, `fs`, `child_process`, db/driver, provider
+// registry, ...) imported here lands in the edge bundle and fails the build
+// with "Module not found" / UnhandledSchemeError (dev server 500s).
+//
+// The only safe pattern: reference Node-only code through a dynamic import
+// nested inside `if (process.env.NEXT_RUNTIME === "nodejs")`. Next defines
+// NEXT_RUNTIME as a compile-time literal per bundle, so the edge compiler
+// constant-folds the branch away and never sees the import. All Node-only
+// boot logic lives in ./instrumentation.node.js — do not import it (or any
+// other module) statically from this file.
 
 export function register() {
-  // Rename process to distinguish 9router from generic next-server
-  if (process.title.startsWith('next-server')) {
-    process.title = process.title.replace('next-server', '9router');
+  // Compile-time guard, not just a runtime one: in the edge bundle this
+  // becomes `if ("edge" === "nodejs")` and the whole block is tree-shaken.
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    // register() stays synchronous and never blocks on the proxy startup
+    // probe; a compression proxy must never keep the gateway from starting.
+    void import("./instrumentation.node.js")
+      .then(({ bootstrapNodejsRuntime }) => bootstrapNodejsRuntime())
+      .catch((error) => {
+        console.log(`[headroom] bootstrap skipped: ${error?.message || error}`);
+      });
   }
-
-  // Node-only: the edge runtime cannot spawn processes or reach the database.
-  if (process.env.NEXT_RUNTIME && process.env.NEXT_RUNTIME !== "nodejs") return;
-
-  // Not awaited on purpose. startHeadroomProxy holds an 8s startup probe, and
-  // blocking `register()` on it would add that delay to every gateway boot.
-  // Fail-open: a compression proxy must never keep the gateway from starting.
-  void ensureHeadroomProxy().catch((error) => {
-    console.log(`[headroom] proxy autostart skipped: ${error?.message || error}`);
-  });
 }

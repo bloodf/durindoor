@@ -1,11 +1,9 @@
 /**
  * Durin DS — Button.
  *
- * Gold (`dd-accent`) is the only interactive accent and appears only on
- * `variant="primary"`; `variant="danger"` red is semantic-destructive only,
- * never decorative. Every color class resolves through `var(--dd-*)`, so the
- * button follows the Storybook "Theme" toggle (dark "Moria stone" / light
- * "Parchment") with no per-theme code.
+ * Primary actions use emerald and danger is reserved for destructive actions.
+ * Colors resolve only through Durin DS tokens so every theme keeps its
+ * intended contrast.
  *
  * All class names are full literal strings on purpose: Tailwind v4 scans
  * source text, and interpolated class fragments would generate no CSS.
@@ -16,12 +14,14 @@ const VARIANTS = {
   secondary:
     "bg-dd-surface-2 border border-dd-border text-dd-text hover:bg-dd-surface-3",
   ghost: "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text",
-  danger: "bg-dd-danger text-dd-on-danger hover:brightness-110",
+  danger:
+    "bg-dd-danger-action text-dd-on-danger hover:bg-dd-danger-action-hover",
 };
 
+/* Content remains dense while every interactive box is at least 44px square. */
 const SIZES = {
-  md: "h-9 px-3.5 text-[13px] font-medium",
-  sm: "h-7 px-2.5 text-xs font-medium",
+  md: "min-h-11 min-w-11 px-3.5 text-[13px] font-medium",
+  sm: "min-h-11 min-w-11 px-2.5 text-[13px] font-medium",
 };
 
 /**
@@ -45,8 +45,8 @@ function ButtonIcon({ name, spin = false }) {
 
 /**
  * @param {object} props
- * @param {"primary"|"secondary"|"ghost"|"danger"} [props.variant] Visual style; "primary" is the single gold accent action, "danger" is destructive only.
- * @param {"sm"|"md"} [props.size] md = 36px tall, sm = 28px tall.
+ * @param {"primary"|"secondary"|"ghost"|"danger"} [props.variant] Visual style; primary uses emerald and danger is destructive only.
+ * @param {"sm"|"md"} [props.size] Both sizes keep a 44px pointer target; sm only reduces horizontal padding.
  * @param {string} [props.icon] Material Symbols ligature name, rendered before the label.
  * @param {string} [props.iconTrailing] Material Symbols ligature name, rendered after the label.
  * @param {boolean} [props.loading] Replaces the leading icon with a spinner and disables the button.
@@ -61,9 +61,9 @@ export default function Button({
   iconTrailing,
   loading = false,
   disabled = false,
+  type = "button",
   children,
   className = "",
-  type = "button",
   ...rest
 }) {
   const classes = [
@@ -77,11 +77,11 @@ export default function Button({
 
   return (
     <button
+      {...rest}
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={classes}
-      {...rest}
     >
       {loading ? (
         <ButtonIcon name="progress_activity" spin />

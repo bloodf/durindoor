@@ -27,6 +27,9 @@ vi.mock("next/server", () => {
   MockNextResponse.next = vi.fn(() => mocks.nextResponse);
   MockNextResponse.json = mocks.jsonResponse;
   MockNextResponse.redirect = vi.fn((url) => ({ status: 307, url }));
+  // The dashboard preview rewrites `/dashboard/*` onto the legacy tree, so
+  // the mock has to report the rewritten target for it to be assertable.
+  MockNextResponse.rewrite = vi.fn((url) => ({ rewritten: String(url?.pathname ?? url), search: url?.search ?? "" }));
   return { NextResponse: MockNextResponse };
 });
 
@@ -51,8 +54,16 @@ const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
 function request(pathname, headers = {}, method = "GET") {
   const normalizedHeaders = new Headers(headers);
+  const url = new URL(`http://localhost${pathname}`);
   return {
-    nextUrl: { pathname, searchParams: new URL(`http://localhost${pathname}`).searchParams },
+    // `clone()` is what the legacy-dashboard rewrite mutates, so the mock has
+    // to hand back an independent object rather than the same reference.
+    nextUrl: {
+      pathname: url.pathname,
+      search: url.search,
+      searchParams: url.searchParams,
+      clone() { return { pathname: this.pathname, search: this.search, searchParams: this.searchParams }; },
+    },
     headers: normalizedHeaders,
     method,
     cookies: { get: vi.fn(() => undefined) },
@@ -827,5 +838,68 @@ describe("dashboard guard helpers", () => {
       "google-key",
       "query-key",
     ]);
+  });
+});
+
+describe("dashboard version preview routing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Open dashboard: isolates the routing decision from the auth decision.
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+  });
+
+  const withCookie = (pathname, value) => {
+    const req = request(pathname);
+    req.cookies.get = vi.fn((name) => (name === "durindoor-ui-version" && value ? { value } : undefined));
+    return req;
+  };
+
+  it("serves the previous dashboard until a reader opts in", async () => {
+    // The rewrite is not official yet, so no stated preference means the
+    // interface people already know.
+    const result = await proxy(withCookie("/dashboard/profile"));
+    expect(result.rewritten).toBe("/legacy-ui/dashboard/profile");
+  });
+
+  it("serves the new dashboard once opted in", async () => {
+    const result = await proxy(withCookie("/dashboard/profile", "new"));
+    expect(result).toBe(mocks.nextResponse);
+  });
+
+  it("treats an unrecognised preference as not opted in", async () => {
+    // A stale or hand-edited cookie must not land the reader somewhere
+    // undefined; anything but "new" means the current dashboard.
+    const result = await proxy(withCookie("/dashboard/usage", "banana"));
+    expect(result.rewritten).toBe("/legacy-ui/dashboard/usage");
+  });
+
+  it("keeps the query string when rewriting", async () => {
+    // Usage and timeline pages carry their filters in the URL, so dropping
+    // the query would silently reset what the reader was looking at.
+    const result = await proxy(withCookie("/dashboard/usage?range=7d"));
+    expect(result.rewritten).toBe("/legacy-ui/dashboard/usage");
+    expect(result.search).toBe("?range=7d");
+  });
+
+  it("rewrites only after a login-required dashboard accepts the session", async () => {
+    // The preview must not become a way around auth: with login required,
+    // the rewrite happens for a valid session and never for a missing one.
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const authed = withCookie("/dashboard/profile");
+    authed.cookies.get = vi.fn((name) => (name === "auth_token" ? { value: "valid-jwt" } : undefined));
+    expect((await proxy(authed)).rewritten).toBe("/legacy-ui/dashboard/profile");
+
+    const anonymous = request("/dashboard/profile");
+    const result = await proxy(anonymous);
+    expect(result.status).toBe(307);
+    expect(String(result.url)).toContain("/login");
+  });
+
+  it("sends a direct legacy URL back to the canonical path", async () => {
+    // `/legacy-ui` is an internal rewrite target; one address per page.
+    const result = await proxy(request("/legacy-ui/dashboard/profile"));
+    expect(result.status).toBe(307);
+    expect(String(result.url.pathname)).toBe("/dashboard/profile");
   });
 });

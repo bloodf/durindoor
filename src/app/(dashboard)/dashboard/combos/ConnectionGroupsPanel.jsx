@@ -175,7 +175,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
         </Button>
       </div>
 
-      {error ? <p className="text-xs text-dd-danger">{error}</p> : null}
+      {error ? <p role="alert" className="text-xs text-dd-danger">{error}</p> : null}
 
       <DataTable
         columns={columns}
@@ -206,8 +206,9 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
           <p className="mb-2 text-xs font-medium text-dd-muted">
             Assign a connection to &ldquo;{assigningGroup.name}&rdquo;
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Select
+              aria-label={`Assign connection to ${assigningGroup.name}`}
               options={unassignedOptions}
               value=""
               onChange={async (id) => {

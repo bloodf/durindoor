@@ -1,13 +1,12 @@
-"use client";
+import DsTooltip from "@/shared/ui/components/Tooltip.jsx";
 
-/** Inline tooltip, Claude Code CLI style */
+/** Inline help tooltip preserving its existing `text` API. */
 export default function Tooltip({ text }) {
   return (
-    <span className="relative group inline-flex items-center">
-      <span className="material-symbols-outlined text-[14px] text-text-muted cursor-help">help</span>
-      <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 z-50 w-64 rounded bg-gray-900 dark:bg-gray-800 text-white text-xs px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-        {text}
-      </span>
-    </span>
+    <DsTooltip content={text} side="right">
+      <button type="button" className="inline-flex size-11 items-center justify-center rounded-dd text-dd-muted outline-none focus-visible:shadow-dd-focus" aria-label="More information">
+        <span className="material-symbols-outlined text-[16px]" aria-hidden="true">help</span>
+      </button>
+    </DsTooltip>
   );
 }

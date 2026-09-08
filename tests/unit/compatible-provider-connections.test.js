@@ -69,9 +69,9 @@ function expectCompatibleConnection(connection, node, { apiType } = {}) {
   }
 }
 
-// Cold first case: Next route + models + six DB migrations take ~7.4s under Node 20.20.2.
-// Vitest default testTimeout is 5s ("Test timed out in 5000ms" on clean full-suite runs).
-// Later cases reuse warm modules (~200ms). Timeout only on the first it (15s), not suite-wide.
+// Cold first case imports Next route, models, and initializes a fresh 17-migration DB.
+// This host takes over 15s; later cases reuse warm modules (~200ms).
+// Timeout only first behavior test, leaving the rest at Vitest's default.
 describe("compatible provider connections API", () => {
   let cleanup = () => {};
 
@@ -119,7 +119,7 @@ describe("compatible provider connections API", () => {
         nodeName: ctx.node.name,
       },
     });
-  }, 15000);
+  }, 30000);
 
   it("creates a no-auth connection for a free provider without an API key", async () => {
     const ctx = await setupTestContext({

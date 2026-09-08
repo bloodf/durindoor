@@ -3,20 +3,20 @@
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { useTheme } from "@/shared/hooks/useTheme";
+import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import ChangelogModal from "./ChangelogModal";
-import { ConfirmModal } from "./Modal";
-
 function MenuItem({ icon, label, onClick, trailing, danger }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors ${
+      className={`flex min-h-11 w-full items-center gap-3 rounded-dd px-4 py-2 text-[13px] outline-none transition-colors focus-visible:shadow-dd-focus ${
         danger
-          ? "text-red-500 hover:bg-red-500/10"
-          : "text-text-main hover:bg-black/5 dark:hover:bg-white/5"
+          ? "text-dd-danger hover:bg-dd-danger/10"
+          : "text-dd-text hover:bg-dd-surface-2"
       }`}
     >
-      <span className={`material-symbols-outlined text-[20px] ${danger ? "" : "text-text-muted"}`}>
+      <span aria-hidden="true" className={`material-symbols-outlined text-[20px] ${danger ? "" : "text-dd-muted"}`}>
         {icon}
       </span>
       <span className="flex-1 text-left">{label}</span>
@@ -70,52 +70,36 @@ export default function HeaderMenu({ onLogout }) {
     <>
       <div className="relative" ref={menuRef}>
         <button
+          type="button"
           onClick={() => setIsOpen((v) => !v)}
-          className="flex items-center justify-center p-2 rounded-lg text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+          className="flex min-h-11 min-w-11 items-center justify-center rounded-dd text-dd-muted outline-none transition-colors hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+          aria-label="Open application menu"
+          aria-expanded={isOpen}
           title="Menu"
         >
-          <span className="material-symbols-outlined">grid_view</span>
+          <span aria-hidden="true" className="material-symbols-outlined">grid_view</span>
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 top-full mt-2 w-60 bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden py-1">
-            <MenuItem
-              icon="history"
-              label="Change Log"
-              onClick={() => { close(); setChangelogOpen(true); }}
-            />
-            <MenuItem
-              icon={isDark ? "light_mode" : "dark_mode"}
-              label="Theme"
-              onClick={() => { toggleTheme(); close(); }}
-            />
-            <MenuItem
-              icon="power_settings_new"
-              label="Shutdown"
-              danger
-              onClick={() => { close(); setShutdownOpen(true); }}
-            />
-            <MenuItem
-              icon="logout"
-              label="Logout"
-              danger
-              onClick={() => { close(); onLogout(); }}
-            />
+          <div className="absolute end-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface py-1 shadow-dd-elevated">
+            <MenuItem icon="history" label="Change Log" onClick={() => { close(); setChangelogOpen(true); }} />
+            <MenuItem icon={isDark ? "light_mode" : "dark_mode"} label="Theme" onClick={() => { toggleTheme(); close(); }} />
+            <MenuItem icon="power_settings_new" label="Shutdown" danger onClick={() => { close(); setShutdownOpen(true); }} />
+            <MenuItem icon="logout" label="Logout" danger onClick={() => { close(); onLogout(); }} />
           </div>
         )}
       </div>
 
       <ChangelogModal isOpen={changelogOpen} onClose={() => setChangelogOpen(false)} />
-      <ConfirmModal
-        isOpen={shutdownOpen}
-        onClose={() => setShutdownOpen(false)}
-        onConfirm={handleShutdown}
+      <ConfirmDialog
+        open={shutdownOpen}
         title="Close Proxy"
         message="Are you sure you want to close the proxy server?"
-        confirmText="Close"
-        cancelText="Cancel"
-        variant="danger"
-        loading={isShuttingDown}
+        confirmLabel={isShuttingDown ? "Closing…" : "Close"}
+        tone="danger"
+        pending={isShuttingDown}
+        onConfirm={handleShutdown}
+        onCancel={() => setShutdownOpen(false)}
       />
     </>
   );

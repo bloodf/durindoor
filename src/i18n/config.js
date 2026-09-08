@@ -37,6 +37,15 @@ export const LOCALES = [
 export const DEFAULT_LOCALE = "en";
 export const LOCALE_COOKIE = "locale";
 
+/**
+ * Resolve text direction for normalized supported locales.
+ * Invalid and left-to-right locales use the platform default direction.
+ */
+export function getLocaleDirection(locale) {
+  const normalized = normalizeLocale(locale);
+  return ["ar", "he", "fa", "ur"].includes(normalized) ? "rtl" : "ltr";
+}
+
 export const LOCALE_NAMES = {
   en: "English",
   vi: "Tiếng Việt",

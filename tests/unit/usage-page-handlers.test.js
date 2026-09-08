@@ -44,7 +44,7 @@ describe("usage page handleReset (CR-D-2)", () => {
 
   it("RequestLogger accepts resetNonce and refetches logs on change", () => {
     expect(loggerSrc).toMatch(/function RequestLogger\(\{ resetNonce = 0 \} = \{\}\)/);
-    expect(loggerSrc).toMatch(/fetchLogs\(\);\s*\}, \[resetNonce\]\);/);
+    expect(loggerSrc).toMatch(/fetchLogs\(\);(?:\s|\/\/[^\n]*)*\}, \[resetNonce\]\);/);
   });
 
   it("RequestDetailsTab accepts resetNonce and refetches details on change", () => {

@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Card, Badge, Toggle } from "@/shared/components";
-import ProviderIcon from "@/shared/components/ProviderIcon";
+import { Card } from "@/shared/ui/components/Card.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import Toggle from "@/shared/ui/components/Toggle.jsx";
+import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 function getEffectiveStatus(conn) {
@@ -22,70 +24,46 @@ export function MediaProviderCard({ provider, kind, connections, isCustom, onTog
   const total = providerConns.length;
   const allDisabled = total > 0 && providerConns.every((c) => c.isActive === false);
 
-  const handleToggleClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onToggle) onToggle(provider.id, allDisabled);
-  };
-
   const renderStatus = () => {
-    if (isNoAuth) return <Badge variant="success" size="sm">Ready</Badge>;
-    if (allDisabled) return <Badge variant="default" size="sm">Disabled</Badge>;
-    if (total === 0) return <span className="text-xs text-text-muted">No connections</span>;
+    if (isNoAuth) return <Badge tone="success" size="sm">Ready</Badge>;
+    if (allDisabled) return <Badge tone="neutral" size="sm">Disabled</Badge>;
+    if (total === 0) return <span className="text-xs text-dd-muted">No connections</span>;
     return (
       <>
-        {connected > 0 && <Badge variant="success" size="sm" dot>{connected} Connected</Badge>}
-        {error > 0 && <Badge variant="error" size="sm" dot>{error} Error</Badge>}
-        {connected === 0 && error === 0 && <Badge variant="default" size="sm">{total} Added</Badge>}
+        {connected > 0 && <Badge tone="success" size="sm" icon="check_circle">{connected} Connected</Badge>}
+        {error > 0 && <Badge tone="danger" size="sm" icon="error">{error} Error</Badge>}
+        {connected === 0 && error === 0 && <Badge tone="neutral" size="sm">{total} Added</Badge>}
       </>
     );
   };
 
   return (
-    <Link href={`/dashboard/media-providers/${kind}/${provider.id}`} className="group">
-      <Card
-        padding="xs"
-        className={`h-full hover:bg-black/[0.01] dark:hover:bg-white/[0.01] transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}
-      >
-        <div className="flex min-w-0 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div
-              className="size-8 rounded-lg flex items-center justify-center shrink-0"
-              style={{ backgroundColor: `${provider.color?.length > 7 ? provider.color : (provider.color ?? "#888") + "15"}` }}
-            >
-              <ProviderIcon
-                src={`/providers/${provider.id}.png`}
-                alt={provider.name}
-                size={30}
-                className="object-contain rounded-lg max-w-[30px] max-h-[30px]"
-                fallbackText={provider.textIcon || provider.id.slice(0, 2).toUpperCase()}
-                fallbackColor={provider.color}
-              />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-semibold text-sm">{provider.name}</h3>
-              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                {isCustom && <Badge variant="default" size="sm">Custom</Badge>}
-                {renderStatus()}
-              </div>
+    <Card hover className={`h-full p-4 ${allDisabled ? "opacity-50" : ""}`}>
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <Link
+          href={`/dashboard/media-providers/${kind}/${provider.id}`}
+          className="flex min-h-11 min-w-11 flex-1 items-center gap-3 rounded-dd outline-none focus-visible:shadow-dd-focus"
+          aria-label={`Open ${provider.name}`}
+        >
+          <ProviderLogo provider={provider.id} fallbackText={provider.textIcon} size={32} className="shrink-0" />
+          <div className="min-w-0">
+            <h3 className="truncate text-[13px] font-semibold text-dd-text">{provider.name}</h3>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {isCustom && <Badge tone="neutral" size="sm">Custom</Badge>}
+              {renderStatus()}
             </div>
           </div>
-          {total > 0 && (
-            <div
-              className="shrink-0 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
-              onClick={handleToggleClick}
-            >
-              <Toggle
-                size="sm"
-                checked={!allDisabled}
-                onChange={() => {}}
-                title={allDisabled ? "Enable provider" : "Disable provider"}
-              />
-            </div>
-          )}
-        </div>
-      </Card>
-    </Link>
+        </Link>
+        {total > 0 && (
+          <Toggle
+            size="sm"
+            checked={!allDisabled}
+            onChange={() => onToggle && onToggle(provider.id, allDisabled)}
+            aria-label={allDisabled ? `Enable ${provider.name}` : `Disable ${provider.name}`}
+          />
+        )}
+      </div>
+    </Card>
   );
 }
 

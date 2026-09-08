@@ -5,13 +5,16 @@ import Link from "next/link";
 import { CardSkeleton } from "@/shared/components";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
+import PageHeader from "@/shared/ui/components/PageHeader.jsx";
+import IconButton from "@/shared/ui/components/IconButton.jsx";
+import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import { fallbackConnectionModels } from "../connectionModels";
 import {
   ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard,
   HermesToolCard, DefaultToolCard, OpenCodeToolCard, CoworkToolCard,
   CopilotToolCard, ClineToolCard, KiloToolCard, DeepSeekTuiToolCard,
-  JcodeToolCard, GrokBuildToolCard } from
-"../components";
+  JcodeToolCard, GrokBuildToolCard,
+} from "../components";
 import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
@@ -33,20 +36,14 @@ export default function ToolDetailClient({ toolId, machineId }) {
     (async () => {
       try {
         const [provRes, settingsRes, tunnelRes, keysRes] = await Promise.all([
-        fetch("/api/providers"),
-        fetch("/api/settings"),
-        fetch("/api/tunnel/status"),
-        fetch("/api/keys")]
-        );
+          fetch("/api/providers"),
+          fetch("/api/settings"),
+          fetch("/api/tunnel/status"),
+          fetch("/api/keys"),
+        ]);
         if (!mounted) return;
-        if (provRes.ok) {
-          const data = await provRes.json();
-          setConnections(data.connections || []);
-        }
-        if (settingsRes.ok) {
-          const data = await settingsRes.json();
-          setCloudEnabled(data.cloudEnabled || false);
-        }
+        if (provRes.ok) { const data = await provRes.json(); setConnections(data.connections || []); }
+        if (settingsRes.ok) { const data = await settingsRes.json(); setCloudEnabled(data.cloudEnabled || false); }
         if (tunnelRes.ok) {
           const data = await tunnelRes.json();
           setTunnelEnabled(!!(data.tunnel?.enabled || data.tunnel?.settingsEnabled));
@@ -54,17 +51,14 @@ export default function ToolDetailClient({ toolId, machineId }) {
           setTailscaleEnabled(!!(data.tailscale?.enabled || data.tailscale?.settingsEnabled));
           setTailscaleUrl(data.tailscale?.tunnelUrl || "");
         }
-        if (keysRes.ok) {
-          const data = await keysRes.json();
-          setApiKeys(data.keys || []);
-        }
+        if (keysRes.ok) { const data = await keysRes.json(); setApiKeys(data.keys || []); }
       } catch (error) {
         console.log("Error loading tool data:", error);
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-    return () => {mounted = false;};
+    return () => { mounted = false; };
   }, []);
 
   const getActiveProviders = () => connections.filter((c) => c.isActive !== false);
@@ -76,9 +70,9 @@ export default function ToolDetailClient({ toolId, machineId }) {
     activeProviders.forEach((conn) => {
       const alias = PROVIDER_ID_TO_ALIAS[conn.provider] || conn.provider;
       const providerModels = getModelsByProviderId(conn.provider);
-      const modelList = providerModels.length > 0 ?
-      providerModels.map((m) => ({ id: m.id, prefix: alias })) :
-      fallbackConnectionModels(conn).map((m) => ({ id: m.id, prefix: conn.providerSpecificData?.prefix || alias }));
+      const modelList = providerModels.length > 0
+        ? providerModels.map((m) => ({ id: m.id, prefix: alias }))
+        : fallbackConnectionModels(conn).map((m) => ({ id: m.id, prefix: conn.providerSpecificData?.prefix || alias }));
       modelList.forEach(({ id, prefix }) => {
         const modelValue = `${prefix}/${id}`;
         if (!seenModels.has(modelValue)) {
@@ -116,65 +110,47 @@ export default function ToolDetailClient({ toolId, machineId }) {
       tunnelEnabled,
       tunnelPublicUrl,
       tailscaleEnabled,
-      tailscaleUrl
+      tailscaleUrl,
     };
 
     switch (toolId) {
-      case "claude":
-        return <ClaudeToolCard {...commonProps} activeProviders={getActiveProviders()} modelMappings={modelMappings[toolId] || {}} onModelMappingChange={(a, t) => handleModelMappingChange(toolId, a, t)} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "codex":
-        return <CodexToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "opencode":
-        return <OpenCodeToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "cowork":
-        return <CoworkToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} cloudUrl={CLOUD_URL} tunnelEnabled={tunnelEnabled} tunnelPublicUrl={tunnelPublicUrl} tailscaleEnabled={tailscaleEnabled} tailscaleUrl={tailscaleUrl} />;
-      case "droid":
-        return <DroidToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "openclaw":
-        return <OpenClawToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "hermes":
-        return <HermesToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "copilot":
-        return <CopilotToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "cline":
-        return <ClineToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "kilo":
-        return <KiloToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "deepseek-tui":
-        return <DeepSeekTuiToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "jcode":
-        return <JcodeToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "grok-build":
-        return <GrokBuildToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      default:
-        return <DefaultToolCard toolId={toolId} {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} cloudUrl={CLOUD_URL} />;
+      case "claude": return <ClaudeToolCard {...commonProps} activeProviders={getActiveProviders()} modelMappings={modelMappings[toolId] || {}} onModelMappingChange={(a, t) => handleModelMappingChange(toolId, a, t)} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
+      case "codex": return <CodexToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
+      case "opencode": return <OpenCodeToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
+      case "cowork": return <CoworkToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} cloudUrl={CLOUD_URL} tunnelEnabled={tunnelEnabled} tunnelPublicUrl={tunnelPublicUrl} tailscaleEnabled={tailscaleEnabled} tailscaleUrl={tailscaleUrl} />;
+      case "droid": return <DroidToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
+      case "openclaw": return <OpenClawToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
+      case "hermes": return <HermesToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
+      case "copilot": return <CopilotToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
+      case "cline": return <ClineToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
+      case "kilo": return <KiloToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
+      case "deepseek-tui": return <DeepSeekTuiToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
+      case "jcode": return <JcodeToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
+      case "grok-build": return <GrokBuildToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
+      default: return <DefaultToolCard toolId={toolId} {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} cloudUrl={CLOUD_URL} />;
     }
   };
 
-  // Guard removed/unknown tools (e.g. disabled Cowork) to avoid crash on direct URL.
   if (!tool) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:px-0">
-        <Link href="/dashboard/cli-tools" className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary w-fit">
-          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 text-[13px]">
+        <Link href="/dashboard/cli-tools" className="inline-flex min-h-11 w-fit items-center gap-1 rounded-dd px-2 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
+          <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_back</span>
           Back to CLI Tools
         </Link>
-        <p className="text-sm text-text-muted">Tool not found or disabled.</p>
-      </div>);
-
+        <EmptyState icon="search_off" title="Tool not found" message="Tool not found or disabled." />
+      </div>
+    );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:px-0">
-      <Link href="/dashboard/cli-tools" className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary w-fit">
-        <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 text-[13px]">
+      <Link href="/dashboard/cli-tools" className="inline-flex min-h-11 w-fit items-center gap-1 rounded-dd px-2 text-sm text-dd-muted outline-none hover:text-dd-text focus-visible:shadow-dd-focus">
+        <span className="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_back</span>
         Back to CLI Tools
       </Link>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-text-main sm:text-2xl">{tool.name}</h1>
-        <p className="text-sm text-text-muted">{tool.description}</p>
-      </div>
+      <PageHeader icon={tool.icon || "terminal"} title={tool.name} subtitle={tool.description} />
       {loading ? <CardSkeleton /> : renderToolCard()}
-    </div>);
-
+    </div>
+  );
 }

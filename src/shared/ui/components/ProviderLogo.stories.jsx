@@ -35,12 +35,33 @@ export function Grid() {
 
 export function AliasesAndFallback() {
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-wrap items-center gap-4">
       <ProviderLogo provider="cc" size={32} />
       <ProviderLogo provider="cx" size={32} />
       <ProviderLogo provider="ollama" size={32} />
+      <ProviderLogo provider="kilo" size={32} />
       <ProviderLogo provider="totally-unknown-provider" size={32} />
-      <span className="text-xs text-dd-muted">cc → claude, cx → codex, ollama → ollama-local, unknown → letter tile</span>
+      <span className="text-xs text-dd-muted">cc → claude, cx → codex, ollama → ollama-local, kilo → kilocode, unknown → letter tile</span>
+    </div>
+  );
+}
+
+export function CaseInsensitive() {
+  return (
+    <div className="flex items-center gap-4">
+      <ProviderLogo provider="Claude" size={32} />
+      <ProviderLogo provider="CODEX" size={32} />
+      <ProviderLogo provider="Xai" size={32} />
+    </div>
+  );
+}
+
+export function Missing() {
+  return (
+    <div className="flex items-center gap-4">
+      <ProviderLogo provider="" size={32} />
+      <ProviderLogo provider="???" size={32} />
+      <ProviderLogo provider="brand-new-tool" size={32} />
     </div>
   );
 }

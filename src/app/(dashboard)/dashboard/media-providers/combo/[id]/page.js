@@ -3,8 +3,15 @@
 import { useParams, notFound, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, Button, Input, Toggle, ModelSelectModal } from "@/shared/components";
-import ProviderIcon from "@/shared/components/ProviderIcon";
+import { Card } from "@/shared/ui/components/Card.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import IconButton from "@/shared/ui/components/IconButton.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Toggle from "@/shared/ui/components/Toggle.jsx";
+import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
+import EmptyState from "@/shared/ui/components/EmptyState.jsx";
+import { ModelSelectModal } from "@/shared/components";
+import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
 import { AI_PROVIDERS, MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { filterActiveConnections } from "@/shared/utils/connectionStatus";
 
@@ -63,6 +70,9 @@ export default function ComboDetailPage() {
   const [apiKey, setApiKey] = useState("");
   const [connections, setConnections] = useState([]);
   const [modelAliases, setModelAliases] = useState({});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   const fetchAll = async () => {
     try {
@@ -99,13 +109,23 @@ export default function ComboDetailPage() {
   };
 
   const saveCombo = async (patch) => {
-    const res = await fetch(`/api/combos/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch)
-    });
-    if (!res.ok) {const err = await res.json();alert(err.error || "Failed to save");return false;}
-    return true;
+    try {
+      const res = await fetch(`/api/combos/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setSaveError(err?.error || "Failed to save");
+        return false;
+      }
+      setSaveError("");
+      return true;
+    } catch (err) {
+      setSaveError(err.message || "Failed to save");
+      return false;
+    }
   };
 
   const handleSaveName = async () => {
@@ -161,11 +181,20 @@ export default function ComboDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Delete combo "${combo.name}"?`)) return;
-    const res = await fetch(`/api/combos/${id}`, { method: "DELETE" });
-    if (res.ok) router.push(getListingHref(combo.kind));
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/combos/${id}`, { method: "DELETE" });
+      if (res.ok) router.push(getListingHref(combo.kind));
+      else {
+        const error = await res.json().catch(() => ({}));
+        setDeleteError(error?.error || "Failed to delete combo");
+      }
+    } catch (error) {
+      setDeleteError(error.message || "Failed to delete combo");
+    } finally {
+      setShowDeleteConfirm(false);
+    }
   };
-
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
@@ -225,7 +254,7 @@ export default function ComboDetailPage() {
     return out;
   }
 
-  if (loading) return <div className="text-text-muted text-sm">Loading...</div>;
+  if (loading) return <div className="py-12 text-center text-sm text-dd-muted">Loading...</div>;
   if (!combo) return notFound();
 
   const kindLabel = KIND_LABELS[combo.kind] || MEDIA_PROVIDER_KINDS.find((k) => k.id === combo.kind)?.label || "Combo";
@@ -237,168 +266,117 @@ export default function ComboDetailPage() {
   const backHref = getListingHref(combo.kind);
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Header */}
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      {deleteError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{deleteError}</p>}
+      {saveError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{saveError}</p>}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link href={backHref} className="text-text-muted hover:text-primary">
-            <span className="material-symbols-outlined">arrow_back</span>
-          </Link>
-          <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <span className="material-symbols-outlined text-primary">layers</span>
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-text-muted">{kindLabel} Combo</p>
-            <code className="text-lg font-semibold font-mono">{combo.name}</code>
-          </div>
+        <div className="flex min-w-0 items-center gap-3">
+          <Link href={backHref} aria-label={`Back to ${kindLabel} providers`} className="flex min-h-11 min-w-11 items-center justify-center rounded-dd text-dd-muted outline-none hover:text-dd-accent focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined">arrow_back</span></Link>
+          <span aria-hidden="true" className="flex size-11 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent"><span aria-hidden="true" className="material-symbols-outlined">layers</span></span>
+          <div className="min-w-0"><p className="text-xs text-dd-muted">{kindLabel} Combo</p><code className="block truncate text-lg font-semibold text-dd-text">{combo.name}</code></div>
         </div>
-        <Button variant="outline" icon="delete" onClick={handleDelete} className="text-red-500 border-red-200 hover:bg-red-50">
-          Delete
-        </Button>
+        <Button variant="danger" icon="delete" onClick={() => setShowDeleteConfirm(true)}>Delete</Button>
       </div>
 
-      {/* Settings Card */}
       <Card>
-        <h2 className="text-lg font-semibold mb-3">Settings</h2>
+        <h2 className="mb-3 text-lg font-semibold text-dd-text">Settings</h2>
         <div className="flex flex-col gap-4">
           <div>
             <Input label="Combo Name" value={name} onChange={(e) => {setName(e.target.value);validateName(e.target.value);}} onBlur={handleSaveName} error={nameError} />
-            <p className="text-[10px] text-text-muted mt-0.5">Only letters, numbers, -, _ and .</p>
+            <p className="mt-1 text-[11px] text-dd-subtle">Only letters, numbers, -, _ and .</p>
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Round Robin</p>
-              <p className="text-xs text-text-muted">Rotate providers across requests instead of strict fallback order.</p>
+              <p className="text-[13px] font-medium text-dd-text">Round Robin</p>
+              <p className="text-xs text-dd-muted">Rotate providers across requests instead of strict fallback order.</p>
             </div>
-            <Toggle checked={roundRobin} onChange={handleToggleRoundRobin} />
+            <Toggle aria-label="Round Robin" checked={roundRobin} onChange={handleToggleRoundRobin} />
           </div>
         </div>
       </Card>
 
-      {/* Providers Card */}
       <Card>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Providers</h2>
-            <p className="text-xs text-text-muted">Tried in order (top-down) or rotated when round-robin is on.</p>
+            <h2 className="text-lg font-semibold text-dd-text">Providers</h2>
+            <p className="text-xs text-dd-muted">Tried in order (top-down) or rotated when round-robin is on.</p>
           </div>
-          <Button size="sm" icon="add" onClick={() => setShowPicker(true)}>Add Provider</Button>
+          <Button size="sm" variant="primary" icon="add" onClick={() => setShowPicker(true)}>Add Provider</Button>
         </div>
-        {providers.length === 0 ?
-        <div className="text-center py-6 border border-dashed border-border rounded-lg text-text-muted text-sm">
-            No providers yet.
-          </div> :
-
-        <div className="flex flex-col gap-2">
+        {providers.length === 0 ? (
+          <EmptyState icon="layers" title="No providers yet" message="Add a provider to build this combo." />
+        ) : (
+          <div className="flex flex-col gap-2">
             {providers.map((entry, idx) => {
-            const { providerId, model } = parseModelEntry(entry);
-            const p = AI_PROVIDERS[providerId];
-            return (
-              <div key={`${entry}-${idx}`} className="flex items-center gap-3 p-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.02]">
-                  <span className="text-xs text-text-muted w-5 text-center">{idx + 1}</span>
-                  <ProviderIcon
-                  src={`/providers/${providerId}.png`}
-                  alt={p?.name || providerId}
-                  size={24}
-                  className="object-contain rounded shrink-0"
-                  fallbackText={p?.textIcon || providerId.slice(0, 2).toUpperCase()}
-                  fallbackColor={p?.color} />
-                
+              const { providerId, model } = parseModelEntry(entry);
+              const p = AI_PROVIDERS[providerId];
+              return (
+                <div key={`${entry}-${idx}`} className="flex items-center gap-3 rounded-dd bg-dd-surface-2 p-2">
+                  <span className="w-5 shrink-0 text-center text-xs text-dd-muted">{idx + 1}</span>
+                  <ProviderLogo provider={providerId} size={24} className="shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium truncate">{p?.name || providerId}</div>
-                    {model && <code className="text-[10px] text-text-muted font-mono truncate block">{model}</code>}
+                    <div className="truncate text-[13px] font-medium text-dd-text">{p?.name || providerId}</div>
+                    {model && <code className="block truncate text-[11px] text-dd-muted">{model}</code>}
                   </div>
                   <div className="flex items-center gap-0.5">
-                    <button onClick={() => handleMove(idx, -1)} disabled={idx === 0} className={`p-1 rounded ${idx === 0 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-black/5"}`} title="Move up">
-                      <span className="material-symbols-outlined text-[16px]">arrow_upward</span>
-                    </button>
-                    <button onClick={() => handleMove(idx, 1)} disabled={idx === providers.length - 1} className={`p-1 rounded ${idx === providers.length - 1 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-black/5"}`} title="Move down">
-                      <span className="material-symbols-outlined text-[16px]">arrow_downward</span>
-                    </button>
-                    <button onClick={() => handleRemoveProvider(idx)} className="p-1 rounded text-text-muted hover:text-red-500 hover:bg-red-500/10" title="Remove">
-                      <span className="material-symbols-outlined text-[16px]">close</span>
-                    </button>
+                    <IconButton size="sm" icon="arrow_upward" label="Move up" onClick={() => handleMove(idx, -1)} disabled={idx === 0} />
+                    <IconButton size="sm" icon="arrow_downward" label="Move down" onClick={() => handleMove(idx, 1)} disabled={idx === providers.length - 1} />
+                    <IconButton size="sm" icon="close" label="Remove provider" onClick={() => handleRemoveProvider(idx)} />
                   </div>
-                </div>);
-
-          })}
+                </div>
+              );
+            })}
           </div>
-        }
+        )}
       </Card>
 
-      {/* Test Example Card */}
-      {combo.kind && examplePath &&
-      <Card>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
-            <h2 className="text-lg font-semibold">Test Example</h2>
-            <Button size="sm" icon="play_arrow" onClick={handleTest} disabled={testing || providers.length === 0}>
+      {combo.kind && examplePath && (
+        <Card>
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold text-dd-text">Test Example</h2>
+            <Button size="sm" variant="primary" icon="play_arrow" onClick={handleTest} disabled={testing || providers.length === 0}>
               {testing ? "Running..." : "Run"}
             </Button>
           </div>
-          <label className="mb-3 block text-xs text-text-muted">
-            API key secret
-            <input
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            autoComplete="off"
-            placeholder="Paste a saved API key secret"
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-text-main focus:border-primary focus:outline-none" />
-          
-          </label>
-          <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">
-            {curlExample}
-          </pre>
-          {testError &&
-        <p className="mt-3 text-xs text-red-500 break-words">{testError}</p>
-        }
-          {testResult &&
-        <div className="mt-3 flex flex-col gap-3">
-              {testResult.latencyMs != null &&
-          <span className="text-[11px] text-text-muted">⚡ {testResult.latencyMs}ms</span>
-          }
-              {testResult.imageUrl &&
-          <div>
-                  <div className="flex items-center justify-end mb-1.5">
-                    <a href={testResult.imageUrl} download="image.png" className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
-                      <span className="material-symbols-outlined text-[14px]">download</span>
-                      Download
+          <Input type="password" label="API key secret" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" placeholder="Paste a saved API key secret" className="font-mono" />
+          <pre tabIndex={0} aria-label="API request example" className="mt-3 overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{curlExample}</pre>
+          {testError && <p role="alert" className="mt-3 break-words text-xs text-dd-danger">{testError}</p>}
+          {testResult && (
+            <div className="mt-3 flex flex-col gap-3">
+              {testResult.latencyMs != null && <span className="text-[11px] text-dd-muted">⚡ {testResult.latencyMs}ms</span>}
+              {testResult.imageUrl && (
+                <div>
+                  <div className="mb-1.5 flex items-center justify-end">
+                    <a href={testResult.imageUrl} download="image.png" className="inline-flex items-center gap-1 text-xs text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
+                      <span aria-hidden="true" className="material-symbols-outlined text-[14px]">download</span>Download
                     </a>
                   </div>
-                  <img src={testResult.imageUrl} alt="Generated" className="max-w-full rounded-lg border border-border" />
+                  <img src={testResult.imageUrl} alt="Generated" className="max-w-full rounded-dd border border-dd-border" />
                 </div>
-          }
-              {testResult.audioUrl &&
-          <div>
-                  <div className="flex items-center justify-end mb-1.5">
-                    <a href={testResult.audioUrl} download="speech.mp3" className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
-                      <span className="material-symbols-outlined text-[14px]">download</span>
-                      Download
+              )}
+              {testResult.audioUrl && (
+                <div>
+                  <div className="mb-1.5 flex items-center justify-end">
+                    <a href={testResult.audioUrl} download="speech.mp3" className="inline-flex items-center gap-1 text-xs text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
+                      <span aria-hidden="true" className="material-symbols-outlined text-[14px]">download</span>Download
                     </a>
                   </div>
                   <audio controls src={testResult.audioUrl} className="w-full" />
                 </div>
-          }
-              {testResult.json &&
-          <pre className="text-xs font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-auto max-h-[300px] whitespace-pre-wrap break-all">
-                  {testResult.json}
-                </pre>
-          }
+              )}
+              {testResult.json && <pre tabIndex={0} aria-label="API response output" className="max-h-[300px] overflow-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{testResult.json}</pre>}
             </div>
-        }
+          )}
         </Card>
-      }
+      )}
 
-      {/* Usage Logs Card */}
       <Card>
-        <h2 className="text-lg font-semibold mb-3">Usage Logs</h2>
-        {logs.length === 0 ?
-        <p className="text-xs text-text-muted italic">No usage yet.</p> :
-
-        <pre className="text-[11px] font-mono bg-black/[0.03] dark:bg-white/[0.03] p-3 rounded-lg overflow-auto max-h-[400px] whitespace-pre-wrap">
-            {logs.join("\n")}
-          </pre>
-        }
+        <h2 className="mb-3 text-lg font-semibold text-dd-text">Usage Logs</h2>
+        {logs.length === 0 ? (
+          <p className="text-xs italic text-dd-muted">No usage yet.</p>
+        ) : (
+          <pre tabIndex={0} aria-label="Connection logs" className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded-dd bg-dd-surface-2 p-3 text-[11px] text-dd-text" role="region">{logs.join("\n")}</pre>
+        )}
       </Card>
 
       <ModelSelectModal
@@ -412,6 +390,16 @@ export default function ComboDetailPage() {
         kindFilter={combo.kind}
         addedModelValues={providers}
         closeOnSelect={false} />
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title={`Delete combo "${combo.name}"?`}
+        message="This removes the combo and cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        tone="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
       
     </div>);
 

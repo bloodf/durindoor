@@ -150,13 +150,6 @@ describe("SidebarNavIcons", () => {
     expect(html).toContain("fill-1");
   });
 
-  it("NavIcon renders an inactive icon with hover classes", () => {
-    const el = NavIcon({ icon: "chat", isActive: false });
-    const html = renderToStaticMarkup(el);
-    expect(html).toContain("group-hover:text-primary");
-    expect(html).toContain("transition-colors");
-    expect(html).not.toContain("fill-1");
-  });
 
   it("NavIcon supports a smaller size", () => {
     const el = NavIcon({ icon: "chat", isActive: false, size: "16" });

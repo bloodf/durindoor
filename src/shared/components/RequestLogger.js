@@ -1,17 +1,63 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import Card from "./Card";
-import Pagination from "./Pagination";
+import { useMemo, useState, useEffect } from "react";
+import DataTable from "@/shared/ui/components/DataTable.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+import Toggle from "@/shared/ui/components/Toggle.jsx";
 import { usePagination } from "@/shared/hooks/usePagination";
+import { isString } from "@/shared/utils/typeChecks";
+
+const STATUS_TONES = {
+  OK: "success",
+  PENDING: "info",
+  FAILED: "danger",
+};
+
+const STATUS_ICON = {
+  success: "check_circle",
+  info: "progress_activity",
+  danger: "error",
+};
+const STATUS_TONE_CLASS = {
+  success: "bg-dd-success/10 text-dd-success border-dd-success/20",
+  info: "bg-dd-info/10 text-dd-info border-dd-info/20",
+  danger: "bg-dd-danger/10 text-dd-danger border-dd-danger/20",
+};
+
+const LOG_COLUMN_DEFS = [
+  { key: "datetime", label: "DateTime", align: "left" },
+  { key: "model", label: "Model", align: "left" },
+  { key: "provider", label: "Provider", align: "left" },
+  { key: "account", label: "Account", align: "left" },
+  { key: "in", label: "In", align: "right" },
+  { key: "out", label: "Out", align: "right" },
+  { key: "status", label: "Status", align: "left" },
+];
+
+function parseLogParts(log) {
+  const parts = isString(log) ? log.split(" | ") : [];
+  if (parts.length < 7) return null;
+  const status = parts[6];
+  const tone = status.includes("OK")
+    ? STATUS_TONES.OK
+    : status.includes("FAILED")
+    ? STATUS_TONES.FAILED
+    : status.includes("PENDING")
+    ? STATUS_TONES.PENDING
+    : "neutral";
+  return { datetime: parts[0], model: parts[1], provider: parts[2], account: parts[3], in: parts[4], out: parts[5], status, tone };
+}
+
 
 export default function RequestLogger({ resetNonce = 0 } = {}) {
   const [logs, setLogs] = useState([]);
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
     fetchLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetNonce]);
 
   useEffect(() => {
@@ -22,6 +68,7 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
       }, 3000);
     }
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh]);
 
   const fetchLogs = async (showLoading = true) => {
@@ -31,15 +78,21 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
       if (res.ok) {
         const data = await res.json();
         setLogs(data);
+        setError(null);
+      } else {
+        setError("Failed to load request logs.");
       }
     } catch (error) {
       console.error("Failed to fetch logs:", error);
+      setError("Failed to load request logs.");
     } finally {
       if (showLoading) setLoading(false);
     }
   };
 
-  const validLogs = useMemo(() => logs.filter((log) => log.split(" | ").length >= 7), [logs]);
+  const validLogs = useMemo(() => logs.filter((log) => isString(log) && log.split(" | ").length >= 7), [logs]);
+
+  const parsedRows = useMemo(() => validLogs.map((log) => parseLogParts(log)).filter(Boolean), [validLogs]);
 
   const {
     pageItems,
@@ -50,92 +103,55 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
     totalItems,
     totalPages,
   } = usePagination({
-    items: validLogs,
+    items: parsedRows,
     pageSize: 20,
     resetKey: resetNonce,
   });
 
+  const columns = LOG_COLUMN_DEFS.map((column) => ({
+    ...column,
+    key: column.key,
+    mono: column.key === "in" || column.key === "out",
+    rowHeader: column.key === "datetime",
+    render: (row) => {
+      if (column.key === "provider") return <span className="inline-flex items-center rounded-dd border border-dd-border bg-dd-surface-2 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-dd-muted">{row.provider}</span>;
+      if (column.key === "in") return <span className="text-dd-accent">{row.in}</span>;
+      if (column.key === "out") return <span className="text-dd-accent-2">{row.out}</span>;
+      if (column.key === "datetime") return <span className="text-dd-muted">{row.datetime}</span>;
+      if (column.key === "model") return <span className="font-medium text-dd-text">{row.model}</span>;
+      if (column.key === "account") return <span className="block max-w-[150px] truncate" title={row.account}>{row.account}</span>;
+      if (column.key === "status") return <span className={["inline-flex items-center gap-1 rounded-dd border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", STATUS_TONE_CLASS[row.tone] || "border-dd-border bg-dd-surface-2 text-dd-muted", row.tone === "info" ? "animate-pulse" : ""].join(" ")}><span aria-hidden="true" className="material-symbols-outlined text-[12px] leading-none">{STATUS_ICON[row.tone] || "circle"}</span><span className="sr-only">Status: </span>{row.status}</span>;
+      return row[column.key];
+    },
+  }));
+  const summaryText = Number.isFinite(totalItems) ? `${totalItems.toLocaleString()} log entries` : null;
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Request Logs</h2>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-text-muted flex items-center gap-2 cursor-pointer">
-            <span>Auto Refresh (3s)</span>
-            <div
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${autoRefresh ? "bg-primary" : "bg-bg-subtle border border-border"
-                }`}
-            >
-              <span
-                className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${autoRefresh ? "translate-x-5" : "translate-x-1"
-                  }`}
-              />
-            </div>
-          </label>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold text-dd-text">Request Logs</h2>
+        <Toggle
+          aria-label="Auto refresh every 3 seconds"
+          checked={autoRefresh}
+          onChange={setAutoRefresh}
+          size="sm"
+          label="Auto Refresh (3s)"
+          description="Polls the request history database every 3 seconds while enabled."
+        />
       </div>
 
-      <Card className="overflow-hidden bg-black/5 dark:bg-black/20">
-        <div className="p-0 overflow-x-auto max-h-[600px] overflow-y-auto font-mono text-xs">
-          {loading && logs.length === 0 ? (
-            <div className="p-8 text-center text-text-muted">Loading logs...</div>
-          ) : validLogs.length === 0 ? (
-            <div className="p-8 text-center text-text-muted">No logs recorded yet.</div>
-          ) : (
-            <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead className="sticky top-0 bg-bg-subtle border-b border-border z-10">
-                <tr>
-                  <th className="px-3 py-2 border-r border-border">DateTime</th>
-                  <th className="px-3 py-2 border-r border-border">Model</th>
-                  <th className="px-3 py-2 border-r border-border">Provider</th>
-                  <th className="px-3 py-2 border-r border-border">Account</th>
-                  <th className="px-3 py-2 border-r border-border">In</th>
-                  <th className="px-3 py-2 border-r border-border">Out</th>
-                  <th className="px-3 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {pageItems.map((log, i) => {
-                  const parts = log.split(" | ");
-
-                  const status = parts[6];
-                  const isPending = status.includes("PENDING");
-                  const isFailed = status.includes("FAILED");
-                  const isSuccess = status.includes("OK");
-
-                  return (
-                    <tr key={(page - 1) * pageSize + i} className={`hover:bg-primary/5 transition-colors ${isPending ? 'bg-primary/5' : ''}`}>
-                      <td className="px-3 py-1.5 border-r border-border text-text-muted">{parts[0]}</td>
-                      <td className="px-3 py-1.5 border-r border-border font-medium">{parts[1]}</td>
-                      <td className="px-3 py-1.5 border-r border-border">
-                        <span className="px-1.5 py-0.5 rounded bg-bg-subtle border border-border text-[10px] uppercase font-bold">
-                          {parts[2]}
-                        </span>
-                      </td>
-                      <td className="px-3 py-1.5 border-r border-border truncate max-w-[150px]" title={parts[3]}>{parts[3]}</td>
-                      <td className="px-3 py-1.5 border-r border-border text-right text-primary">{parts[4]}</td>
-                      <td className="px-3 py-1.5 border-r border-border text-right text-success">{parts[5]}</td>
-                      <td className={`px-3 py-1.5 font-bold ${isSuccess ? 'text-success' :
-                          isFailed ? 'text-error' :
-                            'text-primary animate-pulse'
-                        }`}>
-                        {status}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </Card>
-      {totalPages > 1 && (
-        <Pagination currentPage={page} pageSize={pageSize} totalItems={totalItems} onPageChange={setPage} onPageSizeChange={setPageSize} />
-      )}
-      <div className="text-[10px] text-text-muted italic">
-        Logs are loaded from the request history database.
-      </div>
+      {error ? <div role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger">{error}</div> : null}
+      <DataTable
+        columns={columns}
+        rows={pageItems}
+        keyFn={(row, index) => `${(page - 1) * pageSize + index}-${row.datetime}-${row.status}`}
+        caption="Request logs streamed from the request history database."
+        density="compact"
+        loading={loading && parsedRows.length === 0}
+        filterBar={<Select aria-label="Logs per page" size="sm" value={pageSize === parsedRows.length && parsedRows.length > 20 ? "all" : pageSize} onChange={(value) => setPageSize(value === "all" ? parsedRows.length || 20 : Number(value))} options={[10, 25, 50, 100, "all"].map((value) => ({ value, label: value === "all" ? "All rows" : `${value} rows` }))} className="w-40" />}
+        pagination={totalPages > 1 ? { page, pageCount: totalPages, total: totalItems, onPage: setPage, rowsLabel: summaryText } : undefined}
+      />
+      <p className="text-[11px] italic text-dd-muted">Logs are loaded from the request history database.</p>
     </div>
   );
 }

@@ -1,10 +1,12 @@
+import React, { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
+
 import Button from "./Button";
 
 /**
- * Button covers the four action variants (gold `primary` is the only accent
- * fill, `danger` is semantic-destructive only), both densities, icon
- * adornments, and the loading/disabled states. Backgrounds come from the
- * "Theme" toolbar — stories never set their own.
+ * Button covers primary, secondary, ghost, and destructive danger actions.
+ * Every variant stays 44px square or larger while label text remains dense.
+ * Backgrounds come from the "Theme" toolbar — stories never set their own.
  */
 const meta = {
   title: "Durin DS/Actions/Button",
@@ -53,12 +55,46 @@ export const WithTrailingIcon = {
   },
 };
 
+
+export const LongLabelWithIcon = {
+  args: {
+    variant: "secondary",
+    icon: "vpn_key",
+    children: "Generate a replacement production access key",
+  },
+};
 export const Small = {
   args: { size: "sm", variant: "secondary", icon: "edit", children: "Rename" },
 };
 
 export const Loading = {
   args: { variant: "primary", loading: true, children: "Saving…" },
+};
+
+function KeyboardDemo() {
+  const [saved, setSaved] = useState(false);
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <Button variant="primary" onClick={() => setSaved(true)}>
+        Save keyboard changes
+      </Button>
+      <output aria-live="polite">{saved ? "Saved" : "Unsaved"}</output>
+    </div>
+  );
+}
+
+export const KeyboardActivation = {
+  render: () => <KeyboardDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole("button", { name: "Save keyboard changes" });
+
+    button.focus();
+    await expect(button).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    await expect(canvas.getByText("Saved")).toBeInTheDocument();
+  },
 };
 
 export const Disabled = {

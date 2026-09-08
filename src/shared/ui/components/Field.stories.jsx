@@ -58,6 +58,7 @@ export const CheckboxGroup = {
     return (
       <div className="w-72">
         <Field
+          group
           label="Notifications"
           hint="Choose which events reach this channel."
           className="gap-2"
@@ -132,13 +133,13 @@ export const ExampleForm = {
         <div className="flex items-center justify-end gap-2 border-t border-dd-border-subtle pt-4">
           <button
             type="button"
-            className="h-9 rounded-dd px-3.5 text-[13px] font-medium text-dd-muted outline-none transition-colors hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+            className="min-h-11 min-w-11 rounded-dd px-3.5 text-[13px] font-medium text-dd-muted outline-none transition-colors hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="h-9 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus"
+            className="min-h-11 min-w-11 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus"
           >
             Save connection
           </button>

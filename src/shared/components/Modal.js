@@ -1,9 +1,21 @@
 "use client";
 
-import { useEffect } from "react";
-import { cn } from "@/shared/utils/cn";
-import Button from "./Button";
-import Tooltip from "./Tooltip";
+import DSModal from "@/shared/ui/components/Modal.jsx";
+
+/**
+ * Legacy modal API composed over authoritative Durin DS Modal. The foundation
+ * owns native-dialog focus/return, scroll lock, Escape/backdrop dismissal,
+ * and surface sizing; its size map includes legacy xl and Main is adding full.
+ * `showTrafficLights` remains accepted for caller compatibility; DS renders
+ * one accessible close control instead of decorative traffic lights.
+ * `className` forwards to DS `surfaceClassName` (targets the inner surface,
+ * not the outer dialog).
+ */
+const CONFIRM_TONES = {
+  danger: "bg-dd-danger text-dd-on-danger hover:opacity-90",
+  success: "bg-dd-success text-dd-on-accent hover:opacity-90",
+  primary: "bg-dd-accent text-dd-on-accent hover:bg-dd-accent-hover",
+};
 
 export default function Modal({
   isOpen,
@@ -13,102 +25,27 @@ export default function Modal({
   footer,
   size = "md",
   closeOnOverlay = true,
-  showTrafficLights = true,
+  showTrafficLights: _showTrafficLights = true,
   className,
+  closeOnEscape = true,
+  pending = false,
+  initialFocus,
 }) {
-  const sizes = {
-    sm: "max-w-sm",
-    md: "max-w-md",
-    lg: "max-w-lg",
-    xl: "max-w-xl",
-    full: "max-w-4xl",
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => { document.body.style.overflow = ""; };
-  }, [isOpen]);
-
-  useEffect(() => {
-    const handleEscape = (e) => {
-      if (e.key === "Escape" && isOpen) onClose();
-    };
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Overlay */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px] fade-in"
-        onClick={closeOnOverlay ? onClose : undefined}
-      />
-
-      {/* Modal content */}
-      <div
-        className={cn(
-          "relative w-full bg-surface",
-          "border border-border-subtle",
-          "rounded-[14px] shadow-[var(--shadow-elev)]",
-          "fade-in",
-          sizes[size],
-          className
-        )}
-      >
-        {/* Header */}
-        {(title || showTrafficLights) && (
-          <div className="flex items-center justify-between p-2 border-b border-border-subtle">
-            <div className="flex items-center">
-              {/* Traffic lights — desktop only */}
-              {showTrafficLights && (
-                <div className="hidden md:flex items-center gap-2 mr-4 ml-2">
-                  <Tooltip text="Close" position="top" color="#FF5F56">
-                    <button
-                      onClick={onClose}
-                      aria-label="Close"
-                      title="Close"
-                      className="w-4 h-4 rounded-full bg-[#FF5F56] hover:brightness-90 transition-all cursor-pointer flex items-center justify-center group/dot"
-                    >
-                      <span className="text-[9px] font-bold text-white opacity-0 group-hover/dot:opacity-100 transition-opacity leading-none">✕</span>
-                    </button>
-                  </Tooltip>
-                  <div className="w-4 h-4 rounded-full bg-[#3a3a3a]/20 dark:bg-white/15 cursor-not-allowed" />
-                  <div className="w-4 h-4 rounded-full bg-[#3a3a3a]/20 dark:bg-white/15 cursor-not-allowed" />
-                </div>
-              )}
-              {title && (
-                <h2 className="text-lg font-semibold text-text-main">{title}</h2>
-              )}
-            </div>
-            {/* X button — mobile only */}
-            <button
-              onClick={onClose}
-              aria-label="Close"
-              className="md:hidden p-1.5 rounded-[10px] text-text-muted hover:bg-surface-2 hover:text-text-main transition-colors"
-            >
-              <span className="material-symbols-outlined text-[20px]">close</span>
-            </button>
-          </div>
-        )}
-
-        {/* Body */}
-        <div className="p-6 max-h-[calc(85vh-100px)] overflow-y-auto custom-scrollbar">{children}</div>
-
-        {/* Footer */}
-        {footer && (
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-border-subtle">
-            {footer}
-          </div>
-        )}
-      </div>
-    </div>
+    <DSModal
+      open={isOpen}
+      onClose={onClose}
+      title={title}
+      footer={footer}
+      size={size}
+      closeOnOverlay={closeOnOverlay}
+      closeOnEscape={closeOnEscape}
+      pending={pending}
+      initialFocus={initialFocus}
+      surfaceClassName={className}
+    >
+      {children}
+    </DSModal>
   );
 }
 
@@ -129,18 +66,19 @@ export function ConfirmModal({
       onClose={onClose}
       title={title}
       size="sm"
+      pending={loading}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={loading}>
+          <button type="button" onClick={onClose} disabled={loading} className="min-h-11 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus disabled:pointer-events-none disabled:opacity-50">
             {cancelText}
-          </Button>
-          <Button variant={variant} onClick={onConfirm} loading={loading}>
-            {confirmText}
-          </Button>
+          </button>
+          <button type="button" onClick={onConfirm} disabled={loading} className={`min-h-11 rounded-dd px-3.5 text-[13px] font-medium outline-none transition-colors focus-visible:shadow-dd-focus disabled:pointer-events-none disabled:opacity-50 ${CONFIRM_TONES[variant] ?? CONFIRM_TONES.danger}`}>
+            {loading ? <span aria-hidden="true" className="material-symbols-outlined animate-spin text-[18px] leading-none align-middle">progress_activity</span> : null} {confirmText}
+          </button>
         </>
       }
     >
-      <p className="text-text-muted">{message}</p>
+      <p className="text-[13px] leading-relaxed text-dd-muted">{message}</p>
     </Modal>
   );
 }

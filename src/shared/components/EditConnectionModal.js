@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import Modal from "@/shared/components/Modal";
-import Input from "@/shared/components/Input";
-import Button from "@/shared/components/Button";
-import Badge from "@/shared/components/Badge";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import Field from "@/shared/ui/components/Field.jsx";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
-import Toggle from "@/shared/components/Toggle";
-import Select from "@/shared/components/Select";
+import Toggle from "@/shared/ui/components/Toggle.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import {
   buildGooglePseProviderSpecificData,
@@ -231,163 +232,22 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   if (!connection) return null;
 
   return (
-    <Modal isOpen={isOpen} title="Edit Connection" onClose={onClose}>
-      <div className="flex flex-col gap-4">
-        <Input
-          label="Name"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder={isOAuth ? "Account name" : "Production Key"} />
-        
-        {isOAuth && connection.email &&
-        <div className="bg-sidebar/50 p-3 rounded-lg">
-            <p className="text-sm text-text-muted mb-1">Email</p>
-            <p className="font-medium">{connection.email}</p>
-          </div>
-        }
-        <Input
-          label="Priority"
-          type="number"
-          value={formData.priority}
-          onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value, 10) || 1 })} />
-        
-
-        {!isOAuth &&
-        <>
-            <div className="flex gap-2">
-              <Input
-              label="API Key"
-              type="password"
-              value={formData.apiKey}
-              onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-              placeholder="Enter new API key"
-              hint="Leave blank to keep the current API key."
-              className="flex-1" />
-            
-              <div className="pt-6">
-                <Button onClick={handleValidate} disabled={!formData.apiKey || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim() || validating || saving} variant="secondary">
-                  {validating ? "Checking..." : "Check"}
-                </Button>
-              </div>
-            </div>
-            {validationResult &&
-          <Badge variant={validationResult === "success" ? "success" : "error"}>
-                {validationResult === "success" ? "Valid" : "Invalid"}
-              </Badge>
-          }
-          </>
-        }
-
-        {isGooglePse &&
-        <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
-            <h3 className="font-semibold mb-3 text-sm">Google Programmable Search</h3>
-            <Input
-            label="Search Engine ID (cx)"
-            value={googlePseData.cx}
-            onChange={(e) => setGooglePseData({ cx: e.target.value })}
-            placeholder="012345678901234567890:abcdefg"
-            hint="Required for Google Programmable Search requests." />
-          
-          </div>
-        }
-
-        {isAzure &&
-        <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
-            <h3 className="font-semibold mb-3 text-sm">Azure OpenAI Configuration</h3>
-            <div className="flex flex-col gap-3">
-              <Input
-              label="Azure Endpoint"
-              value={azureData.azureEndpoint}
-              onChange={(e) => setAzureData({ ...azureData, azureEndpoint: e.target.value })}
-              placeholder="https://your-resource.openai.azure.com"
-              hint="Your Azure OpenAI resource endpoint URL" />
-            
-              <Input
-              label="Deployment Name"
-              value={azureData.deployment}
-              onChange={(e) => setAzureData({ ...azureData, deployment: e.target.value })}
-              placeholder="gpt-4"
-              hint="The deployment name in your Azure resource" />
-            
-              <Input
-              label="API Version"
-              value={azureData.apiVersion}
-              onChange={(e) => setAzureData({ ...azureData, apiVersion: e.target.value })}
-              placeholder="2024-10-01-preview"
-              hint="Azure OpenAI API version to use" />
-            
-              <Input
-              label="Organization"
-              value={azureData.organization}
-              onChange={(e) => setAzureData({ ...azureData, organization: e.target.value })}
-              placeholder="Organization ID"
-              hint="Required for billing" />
-            
-            </div>
-          </div>
-        }
-        {isCodexOAuth &&
-        <Select
-          label="OAuth fingerprint mode"
-          value={codexFingerprintMode}
-          onChange={(e) => setCodexFingerprintMode(e.target.value)}
-          options={[
-          { value: "off", label: "Off — preserve client identity" },
-          { value: "device", label: "Device — stable installation" },
-          { value: "session", label: "Session — stable account session (recommended)" },
-          { value: "full", label: "Full — stable account thread" }]
-          } />
-
-        }
-
-        {providerRegions &&
-        <Select
-          label="Region"
-          value={region}
-          onChange={(e) => setRegion(e.target.value)}
-          options={providerRegions.map((r) => ({ value: r.id, label: r.label }))} />
-
-        }
-
-        {isResponsesConnection &&
-        <Toggle
-          checked={formData.openaiStoreEnabled === true}
-          onChange={(openaiStoreEnabled) => setFormData({ ...formData, openaiStoreEnabled })}
-          label="OpenAI Responses store"
-          description="Allow this connection to retain Responses API state for continuation." />
-
-        }
-
-        {requiresAccountId &&
-        <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
-            <h3 className="font-semibold mb-3 text-sm">{accountIdProviderLabel}</h3>
-            <Input
-            label="Account ID"
-            value={cloudflareData.accountId}
-            onChange={(e) => setCloudflareData({ ...cloudflareData, accountId: e.target.value })}
-            placeholder={connection?.provider === "snowflake" ? "org-account" : "abc123def456..."}
-            hint={connection?.provider === "snowflake" ? "Your Snowflake account identifier (e.g. org-account)" : "Find your Account ID in the right sidebar of dash.cloudflare.com"} />
-          
-          </div>
-        }
-
-        {!isCompatible && !isAzure && !requiresAccountId &&
-        <div className="flex items-center gap-3">
-            <Button onClick={handleTest} variant="secondary" disabled={testing}>
-              {testing ? "Testing..." : "Test Connection"}
-            </Button>
-            {testResult &&
-          <Badge variant={testResult === "success" ? "success" : "error"}>
-                {testResult === "success" ? "Valid" : "Failed"}
-              </Badge>
-          }
-          </div>
-        }
-
-        <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim()}>{saving ? "Saving..." : "Save"}</Button>
-          <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
-        </div>
+    <Modal open={isOpen} title="Edit Connection" subtitle="Update connection settings and validate new credentials before saving." onClose={onClose} size="md" footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={handleSubmit} loading={saving} disabled={!hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim()}>Save</Button></>}>
+      <div className="flex flex-col gap-5">
+        <Input label="Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder={isOAuth ? "Account name" : "Production Key"} />
+        {isOAuth && connection.email ? <section aria-label="Connected account" className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><p className="text-xs text-dd-muted">Email</p><p className="mt-1 text-[13px] font-medium text-dd-text">{connection.email}</p></section> : null}
+        <Input label="Priority" type="number" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value, 10) || 1 })} />
+        {!isOAuth ? <>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><Input label="API Key" type="password" value={formData.apiKey} onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })} placeholder="Enter new API key" hint="Leave blank to keep current API key." /></div><Button variant="secondary" icon="fact_check" onClick={handleValidate} loading={validating} disabled={!formData.apiKey || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim() || saving}>Check</Button></div>
+          {validationResult ? <Badge tone={validationResult === "success" ? "success" : "danger"}>{validationResult === "success" ? "Valid" : "Invalid"}</Badge> : null}
+        </> : null}
+        {isGooglePse ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">Google Programmable Search</h3><Input label="Search Engine ID (cx)" value={googlePseData.cx} onChange={(e) => setGooglePseData({ cx: e.target.value })} placeholder="012345678901234567890:abcdefg" hint="Required for Google Programmable Search requests." /></section> : null}
+        {isAzure ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">Azure OpenAI Configuration</h3><div className="flex flex-col gap-3"><Input label="Azure Endpoint" value={azureData.azureEndpoint} onChange={(e) => setAzureData({ ...azureData, azureEndpoint: e.target.value })} placeholder="https://your-resource.openai.azure.com" hint="Your Azure OpenAI resource endpoint URL" /><Input label="Deployment Name" value={azureData.deployment} onChange={(e) => setAzureData({ ...azureData, deployment: e.target.value })} placeholder="gpt-4" hint="Deployment name in Azure resource" /><Input label="API Version" value={azureData.apiVersion} onChange={(e) => setAzureData({ ...azureData, apiVersion: e.target.value })} placeholder="2024-10-01-preview" hint="Azure OpenAI API version to use" /><Input label="Organization" value={azureData.organization} onChange={(e) => setAzureData({ ...azureData, organization: e.target.value })} placeholder="Organization ID" hint="Required for billing" /></div></section> : null}
+        {isCodexOAuth ? <Field label="OAuth fingerprint mode"><Select value={codexFingerprintMode} onChange={setCodexFingerprintMode} options={[{ value: "off", label: "Off — preserve client identity" }, { value: "device", label: "Device — stable installation" }, { value: "session", label: "Session — stable account session (recommended)" }, { value: "full", label: "Full — stable account thread" }]} aria-label="OAuth fingerprint mode" /></Field> : null}
+        {providerRegions ? <Field label="Region"><Select value={region} onChange={setRegion} options={providerRegions.map((r) => ({ value: r.id, label: r.label }))} aria-label="Region" /></Field> : null}
+        {isResponsesConnection ? <Toggle checked={formData.openaiStoreEnabled === true} onChange={(openaiStoreEnabled) => setFormData({ ...formData, openaiStoreEnabled })} label="OpenAI Responses store" description="Allow this connection to retain Responses API state for continuation." /> : null}
+        {requiresAccountId ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">{accountIdProviderLabel}</h3><Input label="Account ID" value={cloudflareData.accountId} onChange={(e) => setCloudflareData({ accountId: e.target.value })} placeholder={connection?.provider === "snowflake" ? "org-account" : "abc123def456..."} hint={connection?.provider === "snowflake" ? "Snowflake account identifier, for example org-account" : "Find Account ID in right sidebar of dash.cloudflare.com"} /></section> : null}
+        {!isCompatible && !isAzure && !requiresAccountId ? <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" icon="network_check" onClick={handleTest} loading={testing}>Test Connection</Button>{testResult ? <Badge tone={testResult === "success" ? "success" : "danger"}>{testResult === "success" ? "Valid" : "Failed"}</Badge> : null}</div> : null}
       </div>
     </Modal>);
 

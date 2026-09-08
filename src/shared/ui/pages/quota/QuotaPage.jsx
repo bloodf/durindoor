@@ -29,10 +29,11 @@ const PROGRESS_TONES = {
   danger: "bg-dd-danger",
 };
 
-function ProgressBar({ percent, tone }) {
+function ProgressBar({ label, percent, tone }) {
   return (
     <div
       role="progressbar"
+      aria-label={`${label} quota remaining`}
       aria-valuenow={percent}
       aria-valuemin={0}
       aria-valuemax={100}
@@ -67,7 +68,7 @@ function QuotaRow({ quota }) {
           {remainingPercent}%
         </Badge>
       </div>
-      <ProgressBar percent={remainingPercent} tone={tone} />
+      <ProgressBar label={quota.name} percent={remainingPercent} tone={tone} />
       <div className="flex items-center justify-between text-xs text-dd-subtle">
         <span>Resets {quota.expires}</span>
       </div>

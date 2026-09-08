@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card } from "@/shared/components";
+import { Card } from "@/shared/ui/components/Card.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import IconButton from "@/shared/ui/components/IconButton.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+import { Chip } from "@/shared/ui/components/Chip.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
 import { AI_PROVIDERS, getProviderAlias } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -230,338 +236,157 @@ export function TtsExampleCard({ providerId }) {
   return (
     <>
       <Card>
-        <h2 className="text-lg font-semibold mb-4">Example</h2>
-
-        <div className="flex flex-col gap-2.5">
-          {/* Endpoint + API Key as read-only text */}
+        <h2 className="mb-4 text-lg font-semibold text-dd-text">Example</h2>
+        <div className="flex flex-col gap-3">
           <Row label="Endpoint">
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              <span className="w-full min-w-0 flex-1 px-3 py-1.5 text-sm font-mono text-text-main bg-sidebar rounded-lg truncate">
-                {endpoint}/v1/audio/speech
-              </span>
-              {tunnelEndpoint && (
-                <button
-                  onClick={() => setUseTunnel((v) => !v)}
-                  title={useTunnel ? "Using tunnel" : "Using local"}
-                  className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
-                    useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
-                  Tunnel
-                </button>
-              )}
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="min-w-0 flex-1"><Input aria-label="Endpoint" value={`${endpoint}/v1/audio/speech`} readOnly className="font-mono" /></div>
+              {tunnelEndpoint && <Button size="sm" variant={useTunnel ? "primary" : "secondary"} icon="wifi_tethering" onClick={() => setUseTunnel((v) => !v)}>{useTunnel ? "Tunnel" : "Local"}</Button>}
             </div>
           </Row>
-          <Row label="API Key">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              autoComplete="off"
-              placeholder="Paste a saved API key secret"
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
-            />
-          </Row>
+          <Row label="API Key"><Input aria-label="API Key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" placeholder="Paste a saved API key secret" className="font-mono" /></Row>
 
-          {/* Model selector — prefer PROVIDER_MODELS[kind=tts], else providerModels via modelKey */}
-          {config.hasModelSelector && (config.modelKey || getModelsByProviderId(providerId).some(m => getModelKind(m) === "tts")) && (
-            <Row label="Model">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              >
-                {(() => {
-                  const ttsModels = getModelsByProviderId(providerId).filter(m => getModelKind(m) === "tts");
-                  return (ttsModels.length ? ttsModels : getModelsByProviderId(config.modelKey) || []).map((m) => (
-                    <option key={m.id} value={m.id}>{m.name || m.id}</option>
-                  ));
-                })()}
-              </select>
-            </Row>
-          )}
+          {config.hasModelSelector && (config.modelKey || getModelsByProviderId(providerId).some((m) => getModelKind(m) === "tts")) && (() => {
+            const ttsModels = getModelsByProviderId(providerId).filter((m) => getModelKind(m) === "tts");
+            const list = ttsModels.length ? ttsModels : getModelsByProviderId(config.modelKey) || [];
+            return <Row label="Model"><Select aria-label="Model" value={selectedModel} onChange={setSelectedModel} options={list.map((m) => ({ value: m.id, label: m.name || m.id }))} /></Row>;
+          })()}
 
-          {/* Language hint dropdown (Gemini) — sends body.language to guide pronunciation */}
           {config.hasLanguageHint && (
             <Row label="Language">
-              <select
-                value={languageHint}
-                onChange={(e) => setLanguageHint(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              >
-                <option value="">Auto-detect</option>
-                {GOOGLE_TTS_LANGUAGES.map((l) => (
-                  <option key={l.id} value={l.name}>{l.name}</option>
-                ))}
-              </select>
+              <Select aria-label="Language" value={languageHint} onChange={setLanguageHint} options={[{ value: "", label: "Auto-detect" }, ...GOOGLE_TTS_LANGUAGES.map((l) => ({ value: l.name, label: l.name }))]} />
             </Row>
           )}
 
-          {/* Language row + Browse button (edge-tts, local-device, elevenlabs) */}
           {config.hasBrowseButton && (
             <Row label="Language">
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                <button
-                  onClick={openModal}
-                  className="w-full min-w-0 flex-1 px-3 py-1.5 text-sm border border-border rounded-lg bg-background font-mono truncate text-left hover:border-primary/40 transition-colors"
-                >
-                  {selectedLang
-                    ? <span className="text-text-main">{languages.find((l) => l.code === selectedLang)?.name || selectedLang}</span>
-                    : <span className="text-text-muted">No language selected</span>}
-                </button>
-                <button
-                  onClick={openModal}
-                  className="flex w-full items-center justify-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-border text-text-muted hover:text-primary hover:border-primary/40 transition-colors sm:w-auto sm:shrink-0"
-                >
-                  <span className="material-symbols-outlined text-[14px]">language</span>
-                  Select language
-                </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button size="md" variant="secondary" onClick={openModal} className="flex-1 justify-start font-mono">
+                  {selectedLang ? <span className="text-dd-text">{languages.find((l) => l.code === selectedLang)?.name || selectedLang}</span> : <span className="text-dd-muted">No language selected</span>}
+                </Button>
+                <Button size="md" variant="secondary" icon="language" onClick={openModal} className="shrink-0">Select language</Button>
               </div>
             </Row>
           )}
 
-          {/* Voice chips — shown after language picked (edge-tts, local-device) or always (OpenAI/ElevenLabs) */}
           {countryVoices.length > 0 && (
             <Row label="Voice">
               <div className="flex flex-wrap gap-1.5">
                 {countryVoices.map((v) => (
-                  <button
+                  <Chip
                     key={v.id}
+                    selected={selectedVoice === v.id}
+                    label={`${v.name}${v.gender ? ` · ${v.gender[0].toUpperCase()}` : ""}${v.free_users_allowed === true ? " · Free" : v.free_users_allowed === false ? " · Paid" : ""}`}
                     onClick={() => {
                       setSelectedVoice(v.id);
                       setSelectedVoiceName(v.name);
                       if (config.hasVoiceIdInput) setVoiceId(v.id);
                     }}
-                    className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                      selectedVoice === v.id
-                        ? "bg-primary/15 border-primary/40 text-primary font-medium"
-                        : "border-border text-text-muted hover:text-primary hover:border-primary/40"
-                    }`}
-                  >
-                    {v.name}{v.gender ? ` · ${v.gender[0].toUpperCase()}` : ""}
-                    {v.free_users_allowed === true && (
-                      <span className="ml-1.5 px-1 py-0.5 text-[9px] font-semibold rounded bg-green-500/15 text-green-600 border border-green-500/20">Free</span>
-                    )}
-                    {v.free_users_allowed === false && (
-                      <span className="ml-1.5 px-1 py-0.5 text-[9px] font-semibold rounded bg-amber-500/15 text-amber-600 border border-amber-500/20">Paid</span>
-                    )}
-                  </button>
+                  />
                 ))}
               </div>
             </Row>
           )}
 
-          {/* Voice ID input (ElevenLabs) — manual entry or auto-fill from chip */}
           {config.hasVoiceIdInput && (
             <Row label="Voice ID">
-              <div className="flex flex-col gap-1">
-                <div className="relative">
-                  <input
-                    value={voiceId}
-                    onChange={(e) => {
-                      setVoiceId(e.target.value);
-                      setSelectedVoice(e.target.value);
-                    }}
-                    placeholder="e.g. CwhRBWXzGAHq8TQ4Fs17"
-                    className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary font-mono"
-                  />
-                  {voiceId && (
-                    <button
-                      type="button"
-                      onClick={() => { setVoiceId(""); setSelectedVoice(""); }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">close</span>
-                    </button>
-                  )}
-                </div>
+              <div className="relative">
+                <Input aria-label="Voice ID" value={voiceId} onChange={(e) => { setVoiceId(e.target.value); setSelectedVoice(e.target.value); }} placeholder="e.g. CwhRBWXzGAHq8TQ4Fs17" className="pe-12 font-mono" />
+                {voiceId && <IconButton icon="close" label="Clear voice id" size="sm" onClick={() => { setVoiceId(""); setSelectedVoice(""); }} className="absolute end-0 top-1/2 -translate-y-1/2" />}
               </div>
             </Row>
           )}
 
-          {/* Google TTS: Language dropdown */}
           {config.hasLanguageDropdown && (
             <Row label="Language">
-              <select
+              <Select
+                aria-label="Language"
                 value={selectedVoice}
-                onChange={(e) => {
-                  const m = getModelsByProviderId(providerId).filter((m) => getModelKind(m) === "tts").find((m) => m.id === e.target.value);
-                  setSelectedVoice(e.target.value);
-                  setSelectedVoiceName(m?.name || e.target.value);
+                onChange={(value) => {
+                  const match = getModelsByProviderId(providerId).filter((m) => getModelKind(m) === "tts").find((m) => m.id === value);
+                  setSelectedVoice(value);
+                  setSelectedVoiceName(match?.name || value);
                 }}
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              >
-                {getModelsByProviderId(providerId).filter((m) => getModelKind(m) === "tts").map((m) => (
-                  <option key={m.id} value={m.id}>{m.name || m.id}</option>
-                ))}
-              </select>
+                options={getModelsByProviderId(providerId).filter((m) => getModelKind(m) === "tts").map((m) => ({ value: m.id, label: m.name || m.id }))}
+              />
             </Row>
           )}
 
-          {/* Input */}
           <Row label="Input">
             <div className="relative">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                className="w-full px-3 py-1.5 pr-7 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              />
-              {input && (
-                <button
-                  type="button"
-                  onClick={() => setInput("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-primary transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[14px]">close</span>
-                </button>
-              )}
+              <Input aria-label="Input" value={input} onChange={(e) => setInput(e.target.value)} className="pe-12" />
+              {input && <IconButton icon="close" label="Clear input" size="sm" onClick={() => setInput("")} className="absolute end-0 top-1/2 -translate-y-1/2" />}
             </div>
           </Row>
 
-          {/* Output Format */}
           <Row label="Output Format">
-            <select
-              value={responseFormat}
-              onChange={(e) => setResponseFormat(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-            >
-              <option value="mp3">MP3 (Binary)</option>
-              <option value="json">JSON (Base64)</option>
-            </select>
+            <Select aria-label="Output Format" value={responseFormat} onChange={setResponseFormat} options={[{ value: "mp3", label: "MP3 (Binary)" }, { value: "json", label: "JSON (Base64)" }]} />
           </Row>
 
-          {/* Curl + Run */}
           <div className="mt-1">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-1.5">
-              <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Request</span>
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                <button
-                  onClick={() => copyCurl(curlSnippet)}
-                  className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[14px]">{copiedCurl ? "check" : "content_copy"}</span>
-                  {copiedCurl ? "Copied" : "Copy"}
-                </button>
-                <button
-                  onClick={handleRun}
-                  disabled={running || !input.trim() || !modelFull}
-                  className="flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="material-symbols-outlined text-[14px]" style={running ? { animation: "spin 1s linear infinite" } : undefined}>
-                    play_arrow
-                  </span>
-                  {running ? "Generating..." : "Run"}
-                </button>
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Request</span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" icon={copiedCurl ? "check" : "content_copy"} onClick={() => copyCurl(curlSnippet)}>{copiedCurl ? "Copied" : "Copy"}</Button>
+                <Button size="sm" variant="primary" icon="play_arrow" loading={running} onClick={handleRun} disabled={!input.trim() || !modelFull}>{running ? "Generating..." : "Run"}</Button>
               </div>
             </div>
-            <pre className="bg-sidebar rounded-lg px-3 py-2.5 text-xs font-mono text-text-main overflow-x-auto whitespace-pre-wrap break-all">{curlSnippet}</pre>
+            <pre tabIndex={0} aria-label="Request example" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{curlSnippet}</pre>
           </div>
 
-          {error && <p className="text-xs text-red-500 break-words">{error}</p>}
+          {error && <p role="alert" className="break-words text-xs text-dd-danger">{error}</p>}
 
-          {/* Audio player */}
           {audioUrl ? (
             <div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-1.5">
-                <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-                  Response {latency && <span className="font-normal normal-case">&#9889; {latency}ms</span>}
-                </span>
-                <a href={audioUrl} download="speech.mp3" className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary transition-colors">
-                  <span className="material-symbols-outlined text-[14px]">download</span>
-                  Download
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response {latency && <span className="font-normal normal-case">⚡ {latency}ms</span>}</span>
+                <a href={audioUrl} download="speech.mp3" className="inline-flex items-center gap-1 text-xs text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
+                  <span aria-hidden="true" className="material-symbols-outlined text-[14px]">download</span>Download
                 </a>
               </div>
               <audio controls src={audioUrl} className="w-full" />
-              
-              {/* JSON Response (if format is json) */}
               {jsonResponse && (
                 <div className="mt-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">JSON Response</span>
+                  <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">JSON Response</span>
                   </div>
-                  <pre className="bg-sidebar rounded-lg px-3 py-2.5 text-xs font-mono text-text-main overflow-x-auto whitespace-pre-wrap break-all">
-                    {JSON.stringify({
-                      format: jsonResponse.format,
-                      audio: jsonResponse.audio ? `${jsonResponse.audio.substring(0, 100)}...` : ""
-                    }, null, 2)}
-                  </pre>
+                  <pre tabIndex={0} aria-label="JSON response output" className="overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{JSON.stringify({ format: jsonResponse.format, audio: jsonResponse.audio ? `${jsonResponse.audio.substring(0, 100)}...` : "" }, null, 2)}</pre>
                 </div>
               )}
             </div>
           ) : (
             <div>
-            <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Response</span>
-            <pre className="mt-1.5 bg-sidebar rounded-lg px-3 py-2.5 text-xs font-mono text-text-main overflow-x-auto whitespace-pre-wrap break-all opacity-50">{DEFAULT_TTS_RESPONSE_EXAMPLE}</pre>
-          </div>
+              <span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response</span>
+              <pre tabIndex={0} aria-label="Example response output" className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" role="region">{DEFAULT_TTS_RESPONSE_EXAMPLE}</pre>
+            </div>
           )}
         </div>
       </Card>
 
-      {/* Country Picker Modal */}
-      {modalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
-          style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}
-          onClick={() => setModalOpen(false)}
-        >
-          <div
-            className="border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[80vh]"
-            style={{ backgroundColor: "var(--color-bg)", isolation: "isolate" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0 rounded-t-xl">
-              <h3 className="text-sm font-semibold">Select Language</h3>
-              <button onClick={() => setModalOpen(false)} className="text-text-muted hover:text-primary transition-colors">
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Select Language" size="md">
+        <div className="flex flex-col gap-3">
+          <Input aria-label="Search language" autoFocus value={modalSearch} onChange={(e) => setModalSearch(e.target.value)} placeholder="Search language..." />
+          {modalError && <p role="alert" className="break-words text-xs text-dd-danger">{modalError}</p>}
+          {modalLoading ? (
+            <p className="px-2 py-3 text-xs text-dd-muted">Loading...</p>
+          ) : (
+            <div tabIndex={0} aria-label="Available languages" className="flex max-h-[55vh] flex-col gap-1 overflow-y-auto" role="region">
+              {filteredLanguages.map((c) => (
+                <button
+                  key={c.code}
+                  onClick={() => handlePickLanguage(c)}
+                  aria-pressed={selectedLang === c.code}
+                  className={`flex w-full items-center justify-between rounded-dd px-3 py-2 text-start text-[13px] outline-none transition-colors hover:bg-dd-surface-2 focus-visible:shadow-dd-focus ${selectedLang === c.code ? "bg-dd-accent-soft text-dd-accent" : "text-dd-text"}`}
+                >
+                  <span>{c.name}</span>
+                  <span className="flex shrink-0 items-center gap-2 text-xs text-dd-muted">{c.voices.length} voices{selectedLang === c.code && <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-dd-accent">check</span>}</span>
+                </button>
+              ))}
+              {filteredLanguages.length === 0 && <p className="px-2 py-3 text-xs text-dd-muted">No languages found.</p>}
             </div>
-
-            {/* Search */}
-            <div className="px-4 py-2.5 border-b border-border shrink-0">
-              <input
-                autoFocus
-                value={modalSearch}
-                onChange={(e) => setModalSearch(e.target.value)}
-                placeholder="Search language..."
-                className="w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            {/* Language list */}
-            <div className="overflow-y-auto flex-1 p-2">
-              {modalError && <p className="text-xs text-red-500 px-2 py-1">{modalError}</p>}
-              {modalLoading ? (
-                <p className="text-xs text-text-muted px-2 py-3">Loading...</p>
-              ) : (
-                <div className="flex flex-col gap-0.5">
-                  {filteredLanguages.map((c) => (
-                    <button
-                      key={c.code}
-                      onClick={() => handlePickLanguage(c)}
-                      className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-left hover:bg-sidebar transition-colors ${
-                        selectedLang === c.code ? "bg-primary/10 text-primary" : ""
-                      }`}
-                    >
-                      <span className="text-sm">{c.name}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs text-text-muted">{c.voices.length} voices</span>
-                        {selectedLang === c.code && (
-                          <span className="material-symbols-outlined text-[16px] text-primary">check</span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                  {filteredLanguages.length === 0 && (
-                    <p className="text-xs text-text-muted px-2 py-3">No languages found.</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </Modal>
     </>
   );
 }

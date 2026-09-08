@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Modal } from "@/shared/components";
+import PropTypes from "prop-types";
+import Button from "@/shared/ui/components/Button.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { translate } from "@/i18n/runtime";
 import { isFunction, isObject } from "../../../../../shared/utils/typeChecks.js";
 
@@ -79,39 +82,39 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
   const failedItems = result?.results?.filter((item) => !item.ok) || [];
 
   return (
-    <Modal isOpen={isOpen} title={translate("Bulk Add Grok CLI Accounts")} onClose={handleClose}>
+    <Modal open={isOpen} title={translate("Bulk Add Grok CLI Accounts")} onClose={handleClose}>
       <div className="flex flex-col gap-4">
-        <p className="text-xs text-text-muted">
+        <p className="text-[13px] text-dd-muted">
           {translate("Paste one Grok CLI credential object, an array, or an object containing accounts. Snake-case and camelCase token keys are accepted.")}
         </p>
-        <textarea
-          className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[240px] focus:outline-none focus:ring-1 focus:ring-primary"
+        <Textarea
+          label={translate("Grok CLI accounts JSON")}
           placeholder={PLACEHOLDER}
           value={jsonText}
           onChange={(event) => setJsonText(event.target.value)}
           disabled={submitting}
-          aria-label={translate("Grok CLI accounts JSON")}
+          className="min-h-[240px] font-mono"
         />
-        {error && <p className="text-xs text-red-500 break-words">{error}</p>}
-        {result && (
+        {error ? <p className="text-xs text-dd-danger break-words" role="alert">{error}</p> : null}
+        {result ? (
           <div className="flex flex-col gap-2">
-            <p className={`text-sm font-medium ${result.failed ? "text-yellow-400" : "text-green-400"}`}>
+            <p className={`text-sm font-medium ${result.failed ? "text-dd-warning" : "text-dd-success"}`}>
               {result.success} {translate("added")}{result.failed ? `, ${result.failed} ${translate("failed")}` : ""}
             </p>
-            {failedItems.length > 0 && (
-              <ul className="rounded border border-accent/20 bg-sidebar/50 p-2 text-xs font-mono max-h-40 overflow-y-auto">
+            {failedItems.length > 0 ? (
+              <ul tabIndex={0} aria-label="Failed Grok CLI imports" className="max-h-40 overflow-y-auto rounded-dd border border-dd-border bg-dd-surface-2 p-2 font-mono text-xs" role="region">
                 {failedItems.map((item) => (
-                  <li key={item.index} className="text-red-400">[{item.index}] {item.error}</li>
+                  <li key={item.index} className="text-dd-danger">[{item.index}] {item.error}</li>
                 ))}
               </ul>
-            )}
+            ) : null}
           </div>
-        )}
+        ) : null}
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={submitting || !jsonText.trim()}>
+          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={submitting} disabled={submitting || !jsonText.trim()}>
             {submitting ? translate("Importing...") : translate("Import All")}
           </Button>
-          <Button onClick={handleClose} variant="ghost" fullWidth disabled={submitting}>
+          <Button onClick={handleClose} variant="ghost" className="w-full" disabled={submitting}>
             {translate("Close")}
           </Button>
         </div>
@@ -119,3 +122,9 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
     </Modal>
   );
 }
+
+BulkImportGrokCliModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSuccess: PropTypes.func,
+};

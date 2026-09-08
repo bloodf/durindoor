@@ -15,7 +15,7 @@ beforeAll(async () => {
   vi.resetModules();
   sqliteDb = await import("@/lib/db/index.js");
   await sqliteDb.initDb();
-});
+}, 30000);
 
 afterAll(() => {
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });

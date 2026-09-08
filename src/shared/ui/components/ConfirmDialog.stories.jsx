@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
 import ConfirmDialog from "./ConfirmDialog";
 
 /**
@@ -10,10 +11,10 @@ import ConfirmDialog from "./ConfirmDialog";
  */
 
 const TRIGGER_CLASS =
-  "h-9 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus";
+  "min-h-11 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus";
 
 const DANGER_TRIGGER_CLASS =
-  "h-9 rounded-dd bg-dd-danger px-3.5 text-[13px] font-medium text-dd-on-danger outline-none transition-colors hover:opacity-90 focus-visible:shadow-dd-focus";
+  "min-h-11 rounded-dd bg-dd-danger px-3.5 text-[13px] font-medium text-dd-on-danger outline-none transition-colors hover:opacity-90 focus-visible:shadow-dd-focus";
 
 function ConfirmDemo({ triggerClass, resultIdle, ...dialogProps }) {
   const [open, setOpen] = useState(false);
@@ -59,6 +60,17 @@ export const Danger = {
       confirmLabel="Delete"
     />
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Delete combo engineer" }));
+    const dialog = within(document.body);
+    const dialogEl = await dialog.findByRole("dialog", { name: "Delete combo engineer?" });
+    await Promise.all(dialogEl.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
+    await expect(dialogEl).toBeVisible();
+    await expect(dialog.getByText("This removes the engineer from every combo that references it and cannot be undone. Existing routes will fall back to the next engineer in the chain.")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Delete" })).toBeVisible();
+  },
 };
 
 export const Primary = {
@@ -73,4 +85,15 @@ export const Primary = {
       confirmLabel="Regenerate"
     />
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Regenerate gateway key" }));
+    const dialog = within(document.body);
+    const dialogEl = await dialog.findByRole("dialog", { name: "Regenerate gateway key?" });
+    await Promise.all(dialogEl.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
+    await expect(dialogEl).toBeVisible();
+    await expect(dialog.getByText("The old key stops working immediately. Any CLI tool still configured with it will need the new key.")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Regenerate" })).toBeVisible();
+  },
 };

@@ -8,61 +8,64 @@ import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
 
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onEdit, onTest, testStatus, deleteStatus, isTesting, checkbox }) {
   const borderColor = deleteStatus === "deleting"
-    ? "border-orange-500/40"
+    ? "border-dd-warning/40"
     : testStatus === "ok"
-    ? "border-green-500/40"
+    ? "border-dd-success/40"
     : testStatus === "error"
-    ? "border-red-500/40"
+    ? "border-dd-danger/40"
     : testStatus === "testing"
-    ? "border-blue-500/40"
-    : "border-border";
+    ? "border-dd-info/40"
+    : "border-dd-border";
 
-  const iconColor = deleteStatus === "deleting"
-    ? "#f97316"
+  const iconClass = deleteStatus === "deleting"
+    ? "text-dd-warning"
     : testStatus === "ok"
-    ? "#22c55e"
+    ? "text-dd-success"
     : testStatus === "error"
-    ? "#ef4444"
-    : undefined;
+    ? "text-dd-danger"
+    : "text-dd-muted";
 
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg border ${borderColor} hover:bg-sidebar/50`}>
+    <div className={`flex items-center gap-3 p-3 rounded-lg border ${borderColor} hover:bg-dd-surface-2/50`}>
       {checkbox}
       <span
-        className="material-symbols-outlined text-base text-text-muted"
-        style={iconColor ? { color: iconColor } : undefined}
+        className={`material-symbols-outlined text-base ${iconClass}`}
       >
         {deleteStatus === "deleting" ? "delete" : testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{modelId}</p>
         <div className="flex items-center gap-1 mt-1">
-          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
+          <code className="text-xs text-dd-muted font-mono bg-dd-surface-2 px-1.5 py-0.5 rounded">{fullModel}</code>
           <div className="relative group/btn">
             <button
+              type="button"
+              aria-label={copied === `model-${modelId}` ? `${modelId} copied` : `Copy ${modelId}`}
               onClick={() => onCopy(fullModel, `model-${modelId}`)}
-              className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary"
+              className="-m-2 inline-flex size-11 items-center justify-center rounded text-dd-muted hover:bg-dd-surface-2 hover:text-dd-accent"
             >
-              <span className="material-symbols-outlined text-sm">
+              <span aria-hidden="true" className="material-symbols-outlined text-sm">
                 {copied === `model-${modelId}` ? "check" : "content_copy"}
               </span>
             </button>
-            <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+            <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-dd-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
               {copied === `model-${modelId}` ? "Copied!" : "Copy"}
             </span>
           </div>
           {onTest && (
             <div className="relative group/btn">
               <button
+                type="button"
+                aria-label={isTesting ? `Testing ${modelId}` : `Test ${modelId}`}
                 onClick={onTest}
                 disabled={isTesting}
-                className="p-0.5 hover:bg-sidebar rounded text-text-muted hover:text-primary transition-colors"
+                className="-m-2 inline-flex size-11 items-center justify-center rounded text-dd-muted hover:bg-dd-surface-2 hover:text-dd-accent transition-colors"
               >
-                <span className="material-symbols-outlined text-sm" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
+                <span aria-hidden="true" className={`material-symbols-outlined text-sm ${isTesting ? "animate-spin motion-reduce:animate-none" : ""}`}>
                   {isTesting ? "progress_activity" : "science"}
                 </span>
               </button>
-              <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+              <span className="pointer-events-none absolute top-5 left-1/2 -translate-x-1/2 text-[10px] text-dd-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
                 {isTesting ? "Testing..." : "Test"}
               </span>
             </div>
@@ -72,19 +75,20 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
       {onEdit && (
         <button
           type="button"
+          aria-label={`Edit ${modelId} capabilities`}
           onClick={onEdit}
-          className="p-1 hover:bg-surface-hover rounded text-text-muted"
-          title="Edit capabilities"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded hover:bg-dd-surface-2 text-dd-muted"
         >
-          <span className="material-symbols-outlined text-sm">edit</span>
+          <span aria-hidden="true" className="material-symbols-outlined text-sm">edit</span>
         </button>
       )}
       <button
+        type="button"
+        aria-label={`Remove ${modelId}`}
         onClick={onDeleteAlias}
-        className="p-1 hover:bg-red-50 rounded text-red-500"
-        title="Remove model"
+        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded hover:bg-dd-danger/10 text-dd-danger"
       >
-        <span className="material-symbols-outlined text-sm">delete</span>
+        <span aria-hidden="true" className="material-symbols-outlined text-sm">delete</span>
       </button>
     </div>
   );
@@ -360,13 +364,13 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-text-muted">
+      <p className="text-sm text-dd-muted">
         Add {isAnthropic ? "Anthropic" : "OpenAI"}-compatible models manually or import them from the /models endpoint.
       </p>
 
       <div className="flex items-end gap-2 flex-wrap">
         <div className="flex-1 min-w-[240px]">
-          <label htmlFor="new-compatible-model-input" className="text-xs text-text-muted mb-1 block">Model ID</label>
+          <label htmlFor="new-compatible-model-input" className="text-xs text-dd-muted mb-1 block">Model ID</label>
           <input
             id="new-compatible-model-input"
             type="text"
@@ -374,7 +378,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
             onChange={(e) => setNewModel(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
             placeholder={isAnthropic ? "claude-3-opus-20240229" : "gpt-4o"}
-            className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+            className="min-h-11 w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent"
           />
         </div>
         <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>
@@ -386,7 +390,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       </div>
 
       {!canImport && (
-        <p className="text-xs text-text-muted">
+        <p className="text-xs text-dd-muted">
           Add a connection to enable importing models.
         </p>
       )}
@@ -394,21 +398,22 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       {allModels.length > 0 && (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
+            <label className="flex min-h-11 items-center gap-1.5 text-xs text-dd-muted cursor-pointer">
               <input
                 type="checkbox"
+                aria-label="Select all models"
                 checked={allSelected}
                 onChange={toggleAll}
-                className="size-4 rounded border-black/20 dark:border-white/20"
+                className="size-4 rounded border-dd-border"
               />
               {allSelected ? "Unselect all" : "Select all"}
             </label>
           </div>
 
           {selectedIds.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-              <span className="material-symbols-outlined text-[18px] text-primary">checklist</span>
-              <span className="text-xs font-medium text-primary">{selectedIds.length} selected</span>
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dd-accent/30 bg-dd-accent-soft px-3 py-2">
+              <span className="material-symbols-outlined text-[18px] text-dd-accent">checklist</span>
+              <span className="text-xs font-medium text-dd-accent">{selectedIds.length} selected</span>
               <div className="ml-auto flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="secondary" icon="delete" onClick={handleBulkDelete} disabled={bulkDeleting}>
                   Delete Selected ({selectedIds.length})
@@ -446,12 +451,15 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
                 deleteStatus={deleteStatus[id]}
                 isTesting={testingModelId === id}
                 checkbox={
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(id)}
-                    onChange={() => toggleItem(id)}
-                    className="size-4 shrink-0 rounded border-black/20 dark:border-white/20"
-                  />
+                  <label className="inline-flex min-h-11 min-w-11 items-center justify-center rounded">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${id}`}
+                      checked={selectedIds.includes(id)}
+                      onChange={() => toggleItem(id)}
+                      className="size-4 shrink-0 rounded border-dd-border"
+                    />
+                  </label>
                 }
               />
             ))}

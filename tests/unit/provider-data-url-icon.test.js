@@ -25,7 +25,11 @@ const view = vi.hoisted(() => {
 
 vi.mock("react", () => view.react);
 vi.mock("prop-types", () => ({ default: { bool: { isRequired: null }, func: { isRequired: null }, string: { isRequired: null }, shape: () => ({ isRequired: null }) } }));
-vi.mock("@/shared/components", () => ({ Button: "Button", Badge: "Badge", Input: "Input", Modal: "Modal", Select: "Select" }));
+vi.mock("@/shared/ui/components/Button.jsx", () => ({ default: "Button" }));
+vi.mock("@/shared/ui/components/Badge.jsx", () => ({ Badge: "Badge" }));
+vi.mock("@/shared/ui/components/Input.jsx", () => ({ default: "Input" }));
+vi.mock("@/shared/ui/components/Modal.jsx", () => ({ default: "Modal" }));
+vi.mock("@/shared/ui/components/Select.jsx", () => ({ default: "Select" }));
 
 vi.mock("next/server", () => ({
   NextResponse: { json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }) },
@@ -165,7 +169,7 @@ describe("EditCompatibleNodeModal rejected save", () => {
       expect(url).toBe(`/api/provider-nodes/${nodeId}`);
       expect(JSON.parse(init.body)).toEqual(expect.objectContaining({ iconUrl: "javascript:alert(1)" }));
       expect(walk(tree, (element) => element.props?.role === "alert")[0].props.children[1].props.children).toBe("Invalid icon URL");
-      expect(tree.props.isOpen).toBe(true);
+      expect(tree.props.open).toBe(true);
       expect(onClose).not.toHaveBeenCalled();
       expect(onSuccess).not.toHaveBeenCalled();
     } finally {

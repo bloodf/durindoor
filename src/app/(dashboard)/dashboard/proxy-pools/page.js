@@ -1,13 +1,24 @@
 "use client";
-
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Toggle from "@/shared/ui/components/Toggle.jsx";
+import Checkbox from "@/shared/ui/components/Checkbox.jsx";
+import Textarea from "@/shared/ui/components/Textarea.jsx";
+import PageHeader from "@/shared/ui/components/PageHeader.jsx";
+import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
+import EmptyState from "@/shared/ui/components/EmptyState.jsx";
+import IconButton from "@/shared/ui/components/IconButton.jsx";
 import { useNotificationStore } from "@/store/notificationStore";
 
-function getStatusVariant(status) {
+
+function getStatusTone(status) {
   if (status === "active") return "success";
-  if (status === "error") return "error";
-  return "default";
+  if (status === "error") return "danger";
+  return "neutral";
 }
 
 function formatDateTime(value) {
@@ -51,6 +62,7 @@ export default function ProxyPoolsPage() {
   const [confirmState, setConfirmState] = useState(null);
   const [showDeleteDeadModal, setShowDeleteDeadModal] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState(new Set());
+  const [confirmPending, setConfirmPending] = useState(false);
   const relayMenuRef = useRef(null);
   const notify = useNotificationStore();
 
@@ -101,10 +113,10 @@ export default function ProxyPoolsPage() {
   };
 
   const closeFormModal = () => {
+    if (saving) return;
     setShowFormModal(false);
     resetForm();
   };
-
   const handleSave = async () => {
     const payload = {
       name: formData.name.trim(),
@@ -127,7 +139,8 @@ export default function ProxyPoolsPage() {
 
       if (res.ok) {
         await fetchProxyPools();
-        closeFormModal();
+        setShowFormModal(false);
+        resetForm();
         notify.success(editingProxyPool ? "Proxy pool updated" : "Proxy pool created");
       } else {
         const data = await res.json();
@@ -144,8 +157,8 @@ export default function ProxyPoolsPage() {
     setConfirmState({
       title: "Delete Proxy Pool",
       message: `Delete proxy pool "${proxyPool.name}"?`,
+      confirmLabel: "Delete proxy pool",
       onConfirm: async () => {
-        setConfirmState(null);
         try {
           const res = await fetch(`/api/proxy-pools/${proxyPool.id}`, { method: "DELETE" });
           if (res.ok) {
@@ -153,18 +166,14 @@ export default function ProxyPoolsPage() {
             notify.success("Proxy pool deleted");
             return;
           }
-
           const data = await res.json();
-          if (res.status === 409) {
-            notify.warning(`Cannot delete: ${data.boundConnectionCount || 0} connection(s) are still using this pool.`);
-          } else {
-            notify.error(data.error || "Failed to delete proxy pool");
-          }
+          if (res.status === 409) notify.warning(`Cannot delete: ${data.boundConnectionCount || 0} connection(s) are still using this pool.`);
+          else notify.error(data.error || "Failed to delete proxy pool");
         } catch (error) {
           console.log("Error deleting proxy pool:", error);
           notify.error("Failed to delete proxy pool");
         }
-      }
+      },
     });
   };
 
@@ -245,8 +254,8 @@ export default function ProxyPoolsPage() {
     setConfirmState({
       title: "Delete Proxy Pools",
       message: `Delete ${selectedIds.length} proxy pool(s)?`,
+      confirmLabel: "Delete proxy pools",
       onConfirm: async () => {
-        setConfirmState(null);
         setBulkBusy(true);
         try {
           let ok = 0; let blocked = 0; let failed = 0;
@@ -264,7 +273,7 @@ export default function ProxyPoolsPage() {
         } finally {
           setBulkBusy(false);
         }
-      }
+      },
     });
   };
 
@@ -306,8 +315,8 @@ export default function ProxyPoolsPage() {
       setConfirmState({
         title: "Disable Dead Proxies",
         message: `Alive: ${alive}, Dead: ${deadIds.length}.\n\nDisable ${deadIds.length} dead proxies?`,
+        confirmLabel: "Disable dead proxies",
         onConfirm: async () => {
-          setConfirmState(null);
           setBulkBusy(true);
           try {
             for (const id of deadIds) {
@@ -324,7 +333,7 @@ export default function ProxyPoolsPage() {
           } finally {
             setBulkBusy(false);
           }
-        }
+        },
       });
     } else {
       notify.success(`Health check done. Alive: ${alive}, Dead: ${deadIds.length}`);
@@ -378,7 +387,7 @@ export default function ProxyPoolsPage() {
       const data = await res.json();
       if (res.ok) {
         await fetchProxyPools();
-        closeVercelModal();
+        setShowVercelModal(false);
         notify.success(`Deployed: ${data.deployUrl}`);
       } else {
         notify.error(data.error || "Deploy failed");
@@ -403,7 +412,7 @@ export default function ProxyPoolsPage() {
       const data = await res.json();
       if (res.ok) {
         await fetchProxyPools();
-        closeCloudflareModal();
+        setShowCloudflareModal(false);
         notify.success(`Deployed: ${data.deployUrl}`);
       } else {
         notify.error(data.error || "Deploy failed");
@@ -549,569 +558,23 @@ export default function ProxyPoolsPage() {
     [proxyPools]
   );
 
-  if (loading) {
-    return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:gap-6 sm:px-0">
-        <CardSkeleton />
-        <CardSkeleton />
-      </div>
-    );
-  }
+  if (loading) return <div className="mx-auto max-w-5xl space-y-4"><div className="h-24 animate-pulse rounded-dd-lg bg-dd-surface-2" /><div className="h-72 animate-pulse rounded-dd-lg bg-dd-surface-2" /></div>;
 
-  return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:gap-6 sm:px-0">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold sm:text-2xl">Proxy Pools</h1>
-        </div>
-
-        <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
-          <div className="relative" ref={relayMenuRef}>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="rocket_launch"
-              onClick={() => setShowRelayMenu(!showRelayMenu)}
-            >
-              Deploy Relay
-              <span className="material-symbols-outlined ml-1 text-[18px]">
-                {showRelayMenu ? "expand_less" : "expand_more"}
-              </span>
-            </Button>
-
-            {showRelayMenu && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-xl border border-black/10 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-zinc-900 sm:left-auto sm:right-0">
-                <button
-                  onClick={() => {
-                    openCloudflareModal();
-                    setShowRelayMenu(false);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-                >
-                  <span className="material-symbols-outlined text-[20px] text-orange-500">cloud</span>
-                  Cloudflare Relay
-                </button>
-                <button
-                  onClick={() => {
-                    openVercelModal();
-                    setShowRelayMenu(false);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-                >
-                  <span className="material-symbols-outlined text-[20px] text-blue-500">cloud_upload</span>
-                  Vercel Relay
-                </button>
-              </div>
-            )}
-          </div>
-
-          <Button size="sm" variant="secondary" icon="upload" onClick={openBatchImportModal}>
-            Batch Import
-          </Button>
-          <Button size="sm" icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>
-        </div>
-      </div>
-
-      <Card>
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {proxyPools.length > 0 && (
-            <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleSelectAll}
-                className="size-4 rounded border-black/20 dark:border-white/20"
-              />
-              {allSelected ? "Unselect all" : "Select all"}
-            </label>
-          )}
-          <Badge variant="default">Total: {proxyPools.length}</Badge>
-          <Badge variant="success">Active: {activeCount}</Badge>
-          {deadProxiesList.length > 0 && (
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="delete"
-              onClick={() => {
-                setPendingDeleteIds(new Set(deadProxiesList.map((p) => p.id)));
-                setShowDeleteDeadModal(true);
-              }}
-              disabled={bulkBusy || healthChecking}
-            >
-              Delete Dead Proxies ({deadProxiesList.length})
-            </Button>
-          )}
-        </div>
-
-        {(selectedIds.length > 0 || healthChecking) && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-            <span className="material-symbols-outlined text-[18px] text-primary">checklist</span>
-            <span className="text-xs font-medium text-primary">
-              {selectedIds.length > 0 ? `${selectedIds.length} selected` : "All pools"}
-            </span>
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                icon={healthChecking ? "progress_activity" : "health_and_safety"}
-                onClick={handleHealthCheck}
-                disabled={healthChecking || bulkBusy || proxyPools.length === 0}
-              >
-                {healthChecking ? `Checking ${healthProgress.current}/${healthProgress.total}` : "Health Check"}
-              </Button>
-              {selectedIds.length > 0 && (
-                <>
-                  <Button size="sm" variant="secondary" icon="toggle_on" onClick={() => bulkSetActive(true)} disabled={bulkBusy || healthChecking}>
-                    Activate
-                  </Button>
-                  <Button size="sm" variant="secondary" icon="toggle_off" onClick={() => bulkSetActive(false)} disabled={bulkBusy || healthChecking}>
-                    Deactivate
-                  </Button>
-                  <Button size="sm" variant="secondary" icon="delete" onClick={bulkDelete} disabled={bulkBusy || healthChecking}>
-                    Delete
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={clearSelection} disabled={bulkBusy || healthChecking}>
-                    Clear
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {proxyPools.length === 0 ? (
-          <div className="text-center py-10">
-            <p className="text-text-main font-medium mb-1">No proxy pool entries yet</p>
-            <p className="text-sm text-text-muted mb-4">
-              Create a proxy pool entry, then assign it to connections.
-            </p>
-            <Button icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>
-          </div>
-        ) : (
-          <div className="flex flex-col divide-y divide-black/[0.04] dark:divide-white/[0.05]">
-            {proxyPools.map((pool) => (
-              <div key={pool.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(pool.id)}
-                    onChange={() => toggleSelect(pool.id)}
-                    className="mt-1 size-4 shrink-0 rounded border-black/20 dark:border-white/20"
-                  />
-                  <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="min-w-0 max-w-full truncate text-sm font-medium sm:max-w-[18rem]">{pool.name}</p>
-                    <Badge variant={getStatusVariant(pool.testStatus)} size="sm" dot>
-                      {pool.testStatus || "unknown"}
-                    </Badge>
-                    <Badge variant={pool.isActive ? "success" : "default"} size="sm">
-                      {pool.isActive ? "active" : "inactive"}
-                    </Badge>
-                    {pool.type === "vercel" && (
-                      <Badge variant="default" size="sm">vercel relay</Badge>
-                    )}
-                    {pool.type === "cloudflare" && (
-                      <Badge variant="default" size="sm">cloudflare relay</Badge>
-                    )}
-                    <Badge variant="default" size="sm">
-                      {pool.boundConnectionCount || 0} bound
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-text-muted truncate mt-1">{pool.proxyUrl}</p>
-                  {pool.noProxy ? (
-                    <p className="text-xs text-text-muted truncate">No proxy: {pool.noProxy}</p>
-                  ) : null}
-                  <p className="text-[11px] text-text-muted mt-1">
-                    Last tested: {formatDateTime(pool.lastTestedAt)}
-                    {pool.lastError ? ` · ${pool.lastError}` : ""}
-                  </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-1">
-                  <Toggle
-                    size="sm"
-                    checked={pool.isActive === true}
-                    onChange={() => handleToggleActive(pool)}
-                    title={pool.isActive ? "Disable" : "Enable"}
-                  />
-                  <button
-                    onClick={() => handleTest(pool.id)}
-                    className="p-2 rounded hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary"
-                    title="Test proxy"
-                    disabled={testingId === pool.id}
-                  >
-                    <span
-                      className="material-symbols-outlined text-[18px]"
-                      style={testingId === pool.id ? { animation: "spin 1s linear infinite" } : undefined}
-                    >
-                      {testingId === pool.id ? "progress_activity" : "science"}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => openEditModal(pool)}
-                    className="p-2 rounded hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary"
-                    title="Edit"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">edit</span>
-                  </button>
-                  <button
-                    onClick={() => handleDelete(pool)}
-                    className="p-2 rounded hover:bg-red-500/10 text-red-500"
-                    title="Delete"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      <Modal
-        isOpen={showBatchImportModal}
-        title="Batch Import Proxies"
-        onClose={closeBatchImportModal}
-      >
-        <div className="flex flex-col gap-4">
-          <div>
-            <label className="text-sm font-medium text-text-main mb-1 block">Paste Proxy List (One per line)</label>
-            <textarea
-              value={batchImportText}
-              onChange={(e) => setBatchImportText(e.target.value)}
-              placeholder={"http://user:pass@127.0.0.1:7897\n127.0.0.1:7897:user:pass\n127.0.0.1:7897"}
-              className="w-full min-h-[180px] py-2 px-3 text-sm text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all"
-            />
-            <p className="text-xs text-text-muted mt-1">
-              Supported formats: protocol://user:pass@host:port, host:port:user:pass, host:port
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Button fullWidth onClick={handleBatchImport} disabled={!batchImportText.trim() || importing}>
-              {importing ? "Importing..." : "Import"}
-            </Button>
-            <Button fullWidth variant="ghost" onClick={closeBatchImportModal} disabled={importing}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={showVercelModal}
-        title="Deploy Vercel Relay"
-        onClose={closeVercelModal}
-      >
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg bg-blue-500/5 border border-blue-500/10 p-3 flex flex-col gap-1.5">
-            <p className="text-sm text-text-main font-medium">What is Vercel Relay?</p>
-            <p className="text-xs text-text-muted">
-              Deploys an edge relay function to Vercel. All AI provider requests will be forwarded through Vercel&apos;s edge network, masking your real IP from providers.
-            </p>
-            <ul className="text-xs text-text-muted list-disc pl-4 space-y-0.5">
-              <li>Your IP is replaced by Vercel&apos;s dynamic edge IPs (hundreds of IPs across 20+ global regions)</li>
-              <li>Vercel serves millions of apps — providers can&apos;t block Vercel IPs without affecting legitimate traffic</li>
-              <li>Free tier: 100GB bandwidth/month, 500K edge invocations</li>
-              <li>Deploy multiple relays on different accounts for more IP diversity</li>
-            </ul>
-          </div>
-          <Input
-            label="Vercel API Token"
-            value={vercelForm.vercelToken}
-            onChange={(e) => setVercelForm((prev) => ({ ...prev, vercelToken: e.target.value }))}
-            placeholder="your-vercel-api-token"
-            hint={<>Token is used once for deployment and not stored. <a href="https://vercel.com/account/tokens" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Get token →</a></>}
-            type="password"
-          />
-          <Input
-            label="Project Name"
-            value={vercelForm.projectName}
-            onChange={(e) => setVercelForm((prev) => ({ ...prev, projectName: e.target.value }))}
-            placeholder="my-relay"
-            hint="Unique name for your Vercel project. Leave empty for auto-generated name."
-          />
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Button
-              fullWidth
-              onClick={handleVercelDeploy}
-              disabled={!vercelForm.vercelToken.trim() || deploying}
-            >
-              {deploying ? "Deploying... (may take ~1 min)" : "Deploy"}
-            </Button>
-            <Button fullWidth variant="ghost" onClick={closeVercelModal} disabled={deploying}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={showCloudflareModal}
-        title="Deploy Cloudflare Relay"
-        onClose={closeCloudflareModal}
-      >
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg bg-orange-500/5 border border-orange-500/10 p-3 flex flex-col gap-1.5">
-            <p className="text-sm text-text-main font-medium">What is Cloudflare Relay?</p>
-            <p className="text-xs text-text-muted">
-              Deploys a Cloudflare Worker as a proxy relay. All AI provider requests will be forwarded through Cloudflare&apos;s global edge network.
-            </p>
-            <ul className="text-xs text-text-muted list-disc pl-4 space-y-0.5">
-              <li>High performance global routing and IP masking via Cloudflare Workers</li>
-              <li>Free tier: 100,000 requests per day</li>
-              <li>Requires Cloudflare Account ID and a Workers API Token (Edit Workers permission)</li>
-            </ul>
-            <div className="mt-2 pt-2 border-t border-orange-500/10 text-xs text-text-muted">
-              <p className="font-medium text-text-main mb-1">How to generate your API Token:</p>
-              <ol className="list-decimal pl-4 space-y-0.5">
-                <li>Go to <b>My Profile</b> → <b>API Tokens</b> → <b>Create Token</b></li>
-                <li>Scroll down to <b>Custom Token</b> and click <b>Get started</b></li>
-                <li>Under <b>Permissions</b>: Account | Workers Scripts | Edit</li>
-                <li>Under <b>Account Resources</b>: Include | Account | <i>Your Account Name</i></li>
-                <li>Click <b>Continue to summary</b> → <b>Create Token</b></li>
-              </ol>
-            </div>
-          </div>
-          <Input
-            label="Account ID"
-            value={cloudflareForm.accountId}
-            onChange={(e) => setCloudflareForm((prev) => ({ ...prev, accountId: e.target.value }))}
-            placeholder="your-cloudflare-account-id"
-            hint={<>Found on the right side of the Cloudflare dashboard overview page.</>}
-          />
-          <Input
-            label="API Token"
-            value={cloudflareForm.apiToken}
-            onChange={(e) => setCloudflareForm((prev) => ({ ...prev, apiToken: e.target.value }))}
-            placeholder="your-cloudflare-api-token"
-            hint={<>Requires &quot;Workers Scripts: Edit&quot; permission. <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Get token →</a></>}
-            type="password"
-          />
-          <Input
-            label="Worker Name"
-            value={cloudflareForm.projectName}
-            onChange={(e) => setCloudflareForm((prev) => ({ ...prev, projectName: e.target.value }))}
-            placeholder="my-relay"
-            hint="Unique name for your Cloudflare Worker. Leave empty for auto-generated name."
-          />
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Button
-              fullWidth
-              onClick={handleCloudflareDeploy}
-              disabled={!cloudflareForm.accountId.trim() || !cloudflareForm.apiToken.trim() || deploying}
-            >
-              {deploying ? "Deploying..." : "Deploy Worker"}
-            </Button>
-            <Button fullWidth variant="ghost" onClick={closeCloudflareModal} disabled={deploying}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={showFormModal}
-        title={editingProxyPool ? "Edit Proxy Pool" : "Add Proxy Pool"}
-        onClose={closeFormModal}
-      >
-        <div className="flex flex-col gap-4">
-          <Input
-            label="Name"
-            value={formData.name}
-            onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-            placeholder="Office Proxy"
-          />
-          <Input
-            label="Proxy URL"
-            value={formData.proxyUrl}
-            onChange={(e) => setFormData((prev) => ({ ...prev, proxyUrl: e.target.value }))}
-            placeholder="http://127.0.0.1:7897"
-          />
-          <Input
-            label="No Proxy"
-            value={formData.noProxy}
-            onChange={(e) => setFormData((prev) => ({ ...prev, noProxy: e.target.value }))}
-            placeholder="localhost,127.0.0.1,.internal"
-            hint="Comma-separated hosts/domains to bypass proxy"
-          />
-
-          <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-medium text-sm">Active</p>
-              <p className="text-xs text-text-muted">Inactive pools are ignored by runtime resolution.</p>
-            </div>
-            <Toggle
-              checked={formData.isActive === true}
-              onChange={() => setFormData((prev) => ({ ...prev, isActive: !prev.isActive }))}
-              disabled={saving}
-            />
-          </div>
-
-          <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-medium text-sm">Strict Proxy</p>
-              <p className="text-xs text-text-muted">Fail request if proxy is unreachable instead of falling back to direct.</p>
-            </div>
-            <Toggle
-              checked={formData.strictProxy === true}
-              onChange={() => setFormData((prev) => ({ ...prev, strictProxy: !prev.strictProxy }))}
-              disabled={saving}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Button
-              fullWidth
-              onClick={handleSave}
-              disabled={!formData.name.trim() || !formData.proxyUrl.trim() || saving}
-            >
-              {saving ? "Saving..." : "Save"}
-            </Button>
-            <Button fullWidth variant="ghost" onClick={closeFormModal} disabled={saving}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={showDeleteDeadModal}
-        title="Delete Dead Proxies"
-        onClose={() => setShowDeleteDeadModal(false)}
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-text-muted">
-            The following proxies failed their last test. Remove any you want
-            to keep, then confirm deletion.
-          </p>
-          <div className="flex max-h-64 flex-col divide-y divide-black/[0.04] overflow-y-auto rounded-lg border border-border/50 dark:divide-white/[0.05]">
-            {deadProxiesList.length === 0 ? (
-              <p className="p-4 text-sm text-text-muted text-center">
-                No dead proxies found.
-              </p>
-            ) : (
-              deadProxiesList.map((proxy) => {
-                const removed = !pendingDeleteIds.has(proxy.id);
-                return (
-                  <div
-                    key={proxy.id}
-                    className={`flex items-center justify-between gap-3 px-4 py-3 ${
-                      removed ? "opacity-40" : ""
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-medium truncate ${removed ? "line-through" : ""}`}>
-                        {proxy.name}
-                      </p>
-                      <p className="text-xs text-text-muted truncate font-mono">
-                        {proxy.proxyUrl}
-                      </p>
-                      {proxy.lastError && !removed && (
-                        <p className="text-xs text-red-500 truncate mt-0.5">
-                          {proxy.lastError}
-                        </p>
-                      )}
-                    </div>
-                    {!removed && (
-                      <button
-                        onClick={() =>
-                          setPendingDeleteIds((prev) => {
-                            const next = new Set(prev);
-                            next.delete(proxy.id);
-                            return next;
-                          })
-                        }
-                        className="shrink-0 rounded p-1 text-text-muted hover:bg-red-500/10 hover:text-red-500 transition-colors"
-                        title="Remove from deletion list"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">close</span>
-                      </button>
-                    )}
-                    {removed && (
-                      <button
-                        onClick={() =>
-                          setPendingDeleteIds((prev) => {
-                            const next = new Set(prev);
-                            next.add(proxy.id);
-                            return next;
-                          })
-                        }
-                        className="shrink-0 rounded p-1 text-text-muted hover:bg-primary/10 hover:text-primary transition-colors"
-                        title="Add back to deletion list"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">undo</span>
-                      </button>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-text-muted">
-              {deadProxiesList.length - pendingDeleteIds.size} removed ·{" "}
-              {pendingDeleteIds.size} to delete
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => setShowDeleteDeadModal(false)}
-                disabled={bulkBusy}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                icon="delete"
-                onClick={async () => {
-                  setBulkBusy(true);
-                  try {
-                    let ok = 0;
-                    let blocked = 0;
-                    let failed = 0;
-                    for (const id of pendingDeleteIds) {
-                      try {
-                        const res = await fetch(`/api/proxy-pools/${id}`, {
-                          method: "DELETE",
-                        });
-                        if (res.ok) ok += 1;
-                        else if (res.status === 409) blocked += 1;
-                        else failed += 1;
-                      } catch {
-                        failed += 1;
-                      }
-                    }
-                    await fetchProxyPools();
-                    clearSelection();
-                    setShowDeleteDeadModal(false);
-                    notify.success(
-                      `Deleted ${ok}${blocked ? `, ${blocked} bound` : ""}${failed ? `, ${failed} failed` : ""}`
-                    );
-                  } finally {
-                    setBulkBusy(false);
-                  }
-                }}
-                disabled={pendingDeleteIds.size === 0 || bulkBusy}
-              >
-                {bulkBusy
-                  ? "Deleting..."
-                  : `Delete ${pendingDeleteIds.size} Dead Prox${pendingDeleteIds.size === 1 ? "y" : "ies"}`}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Confirm Modal */}
-      <ConfirmModal
-        isOpen={!!confirmState}
-        onClose={() => setConfirmState(null)}
-        onConfirm={confirmState?.onConfirm}
-        title={confirmState?.title || "Confirm"}
-        message={confirmState?.message}
-        variant="danger"
-      />
-    </div>
-  );
+  const modalFooter = (onCancel, onSubmit, submitLabel, disabled, pending, pendingLabel = submitLabel) => <><Button variant="secondary" onClick={onCancel} disabled={pending}>Cancel</Button><Button variant="primary" onClick={onSubmit} disabled={disabled} loading={pending}>{pending ? pendingLabel : submitLabel}</Button></>;
+  return <div className="mx-auto max-w-5xl space-y-4">
+    <PageHeader icon="dns" title="Proxy Pools" subtitle="Manage outbound proxy routes and relay deployments" actions={<><Button variant="secondary" icon="upload" onClick={openBatchImportModal}>Batch import</Button><Button variant="primary" icon="add" onClick={openCreateModal}>Add proxy pool</Button></>} />
+    <Card padding={false}><CardHeader icon="route" title="Configured pools" subtitle={`${proxyPools.length} total · ${activeCount} active`} actions={<div className="relative" ref={relayMenuRef}><Button variant="secondary" icon="rocket_launch" iconTrailing="expand_more" aria-expanded={showRelayMenu} onClick={() => setShowRelayMenu((open) => !open)}>Deploy relay</Button>{showRelayMenu ? <div className="absolute end-0 z-50 mt-1 w-52 rounded-dd border border-dd-border bg-dd-surface p-1 shadow-dd-elevated"><Button variant="ghost" className="w-full justify-start" icon="cloud" onClick={() => { openCloudflareModal(); setShowRelayMenu(false); }}>Cloudflare relay</Button><Button variant="ghost" className="w-full justify-start" icon="cloud_upload" onClick={() => { openVercelModal(); setShowRelayMenu(false); }}>Vercel relay</Button></div> : null}</div>} />
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2"><Checkbox label={allSelected ? "Unselect all" : "Select all"} checked={allSelected} onChange={toggleSelectAll} /><Badge tone="neutral">Total {proxyPools.length}</Badge><Badge tone="success">Active {activeCount}</Badge><Button variant="secondary" icon="health_and_safety" loading={healthChecking} onClick={handleHealthCheck} disabled={healthChecking || bulkBusy || !proxyPools.length}>{healthChecking ? `Checking ${healthProgress.current}/${healthProgress.total}` : "Health check"}</Button>{deadProxiesList.length ? <Button variant="danger" icon="delete" onClick={() => { setPendingDeleteIds(new Set(deadProxiesList.map((pool) => pool.id))); setShowDeleteDeadModal(true); }} disabled={bulkBusy || healthChecking}>Delete dead ({deadProxiesList.length})</Button> : null}</div>
+        {selectedIds.length ? <div className="flex flex-wrap items-center gap-2 rounded-dd border border-dd-accent bg-dd-accent-soft p-3"><span className="material-symbols-outlined text-dd-accent" aria-hidden="true">checklist</span><span className="text-[13px] font-medium text-dd-accent">{`${selectedIds.length} selected`}</span><div className="ms-auto flex flex-wrap gap-2"><Button variant="secondary" icon="toggle_on" onClick={() => bulkSetActive(true)} disabled={bulkBusy || healthChecking}>Activate</Button><Button variant="secondary" icon="toggle_off" onClick={() => bulkSetActive(false)} disabled={bulkBusy || healthChecking}>Deactivate</Button><Button variant="danger" icon="delete" onClick={bulkDelete} disabled={bulkBusy || healthChecking}>Delete</Button><Button variant="ghost" onClick={clearSelection}>Clear</Button></div></div> : null}
+        {!proxyPools.length ? <EmptyState icon="dns" title="No proxy pool entries yet" message="Create a proxy pool entry, then assign it to connections." action={{ label: "Add proxy pool", icon: "add", onClick: openCreateModal }} /> : <div className="divide-y divide-dd-border-subtle rounded-dd-lg border border-dd-border">{proxyPools.map((pool) => <article key={pool.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><Checkbox label={`Select ${pool.name}`} checked={selectedIds.includes(pool.id)} onChange={() => toggleSelect(pool.id)} className="shrink-0" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-[13px] font-semibold text-dd-text">{pool.name}</h2><Badge tone={getStatusTone(pool.testStatus)}>{pool.testStatus || "unknown"}</Badge><Badge tone={pool.isActive ? "success" : "neutral"}>{pool.isActive ? "active" : "inactive"}</Badge>{pool.type ? <Badge tone="neutral">{pool.type} relay</Badge> : null}<Badge tone="neutral">{pool.boundConnectionCount || 0} bound</Badge></div><p className="mt-1 truncate font-mono text-xs text-dd-muted">{pool.proxyUrl}</p>{pool.noProxy ? <p className="truncate text-xs text-dd-subtle">No proxy: {pool.noProxy}</p> : null}<p className="mt-1 text-xs text-dd-subtle">Last tested: {formatDateTime(pool.lastTestedAt)}{pool.lastError ? ` · ${pool.lastError}` : ""}</p></div><div className="flex items-center gap-1"><Toggle size="sm" checked={pool.isActive === true} onChange={() => handleToggleActive(pool)} aria-label={pool.isActive ? `Disable ${pool.name}` : `Enable ${pool.name}`} /><IconButton icon={testingId === pool.id ? "progress_activity" : "science"} label={`Test ${pool.name}`} disabled={testingId === pool.id} onClick={() => handleTest(pool.id)} /><IconButton icon="edit" label={`Edit ${pool.name}`} onClick={() => openEditModal(pool)} /><IconButton icon="delete" label={`Delete ${pool.name}`} onClick={() => handleDelete(pool)} /></div></article>)}</div>}
+      </CardContent>
+    </Card>
+    <Modal open={showBatchImportModal} onClose={closeBatchImportModal} pending={importing} title="Batch import proxies" footer={modalFooter(closeBatchImportModal, handleBatchImport, "Import", !batchImportText.trim() || importing, importing)}><Textarea label="Paste proxy list, one per line" value={batchImportText} onChange={(event) => setBatchImportText(event.target.value)} placeholder={"http://user:pass@127.0.0.1:7897\n127.0.0.1:7897:user:pass\n127.0.0.1:7897"} hint="Supported: protocol://user:pass@host:port, host:port:user:pass, host:port." /></Modal>
+    <Modal open={showVercelModal} onClose={closeVercelModal} pending={deploying} title="Deploy Vercel relay" footer={modalFooter(closeVercelModal, handleVercelDeploy, "Deploy", !vercelForm.vercelToken.trim() || deploying, deploying)}><div className="space-y-4"><div className="rounded-dd border border-dd-info/40 bg-dd-info/10 p-3 text-[13px] text-dd-text">Deploys an edge relay function to Vercel. Requests route through Vercel&apos;s edge network; deployment token is used once and not stored.</div><Input label="Vercel API token" type="password" value={vercelForm.vercelToken} onChange={(event) => setVercelForm((form) => ({ ...form, vercelToken: event.target.value }))} /><Input label="Project name" value={vercelForm.projectName} onChange={(event) => setVercelForm((form) => ({ ...form, projectName: event.target.value }))} hint="Leave empty for an auto-generated name." /></div></Modal>
+    <Modal open={showCloudflareModal} onClose={closeCloudflareModal} pending={deploying} title="Deploy Cloudflare relay" footer={modalFooter(closeCloudflareModal, handleCloudflareDeploy, "Deploy worker", !cloudflareForm.accountId.trim() || !cloudflareForm.apiToken.trim() || deploying, deploying)}><div className="space-y-4"><div className="rounded-dd border border-dd-info/40 bg-dd-info/10 p-3 text-[13px] text-dd-text">Deploys a Cloudflare Worker relay. Requires Account ID and a Workers API token with Edit permission.</div><Input label="Account ID" value={cloudflareForm.accountId} onChange={(event) => setCloudflareForm((form) => ({ ...form, accountId: event.target.value }))} /><Input label="API token" type="password" value={cloudflareForm.apiToken} onChange={(event) => setCloudflareForm((form) => ({ ...form, apiToken: event.target.value }))} /><Input label="Worker name" value={cloudflareForm.projectName} onChange={(event) => setCloudflareForm((form) => ({ ...form, projectName: event.target.value }))} /></div></Modal>
+    <Modal open={showFormModal} onClose={closeFormModal} pending={saving} title={editingProxyPool ? "Edit proxy pool" : "Add proxy pool"} footer={modalFooter(closeFormModal, handleSave, "Save", !formData.name.trim() || !formData.proxyUrl.trim() || saving, saving, "Creating…")}><div className="space-y-4"><Input label="Name" value={formData.name} onChange={(event) => setFormData((form) => ({ ...form, name: event.target.value }))} /><Input label="Proxy URL" value={formData.proxyUrl} onChange={(event) => setFormData((form) => ({ ...form, proxyUrl: event.target.value }))} /><Input label="No proxy" value={formData.noProxy} onChange={(event) => setFormData((form) => ({ ...form, noProxy: event.target.value }))} hint="Comma-separated hosts/domains to bypass proxy." /><Toggle label="Active" description="Inactive pools are ignored by runtime resolution." checked={formData.isActive} onChange={(isActive) => setFormData((form) => ({ ...form, isActive }))} disabled={saving} /><Toggle label="Strict proxy" description="Fail when proxy is unreachable instead of falling back to direct." checked={formData.strictProxy} onChange={(strictProxy) => setFormData((form) => ({ ...form, strictProxy }))} disabled={saving} /></div></Modal>
+    <Modal open={showDeleteDeadModal} onClose={() => { if (!bulkBusy) setShowDeleteDeadModal(false); }} pending={bulkBusy} title="Delete dead proxies" footer={modalFooter(() => setShowDeleteDeadModal(false), async () => { setBulkBusy(true); try { let ok = 0; let blocked = 0; let failed = 0; for (const id of pendingDeleteIds) { try { const res = await fetch(`/api/proxy-pools/${id}`, { method: "DELETE" }); if (res.ok) ok += 1; else if (res.status === 409) blocked += 1; else failed += 1; } catch { failed += 1; } } await fetchProxyPools(); clearSelection(); setShowDeleteDeadModal(false); notify.success(`Deleted ${ok}${blocked ? `, ${blocked} bound` : ""}${failed ? `, ${failed} failed` : ""}`); } finally { setBulkBusy(false); } }, `Delete ${pendingDeleteIds.size}`, !pendingDeleteIds.size || bulkBusy, bulkBusy)}><div className="space-y-2"><p className="text-[13px] text-dd-muted">Remove any proxy to keep before deleting selected failures.</p>{deadProxiesList.map((proxy) => { const selected = pendingDeleteIds.has(proxy.id); return <div key={proxy.id} className="flex items-center justify-between gap-3 rounded-dd border border-dd-border-subtle p-3"><div className="min-w-0"><p className={selected ? "truncate text-[13px] font-medium text-dd-text" : "truncate text-[13px] text-dd-subtle line-through"}>{proxy.name}</p><p className="truncate font-mono text-xs text-dd-muted">{proxy.proxyUrl}</p></div><IconButton icon={selected ? "close" : "undo"} label={selected ? `Keep ${proxy.name}` : `Delete ${proxy.name}`} disabled={bulkBusy} onClick={() => setPendingDeleteIds((ids) => { const next = new Set(ids); if (selected) next.delete(proxy.id); else next.add(proxy.id); return next; })} /></div>; })}</div></Modal>
+    <ConfirmDialog open={!!confirmState} title={confirmState?.title || "Confirm"} message={confirmState?.message} confirmLabel={confirmState?.confirmLabel || "Confirm"} pendingLabel="Deleting…" tone={confirmState?.tone || "danger"} pending={confirmPending} onConfirm={async () => { setConfirmPending(true); try { await confirmState?.onConfirm?.(); setConfirmState(null); } finally { setConfirmPending(false); } }} onCancel={() => { if (!confirmPending) setConfirmState(null); }} />
+  </div>;
 }

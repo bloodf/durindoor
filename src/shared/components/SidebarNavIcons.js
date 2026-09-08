@@ -99,10 +99,11 @@ export function NavIcon({ icon, isActive, size = "18" }) {
   return createElement(
     "span",
     {
+      "aria-hidden": true,
       className: cn(
         "material-symbols-outlined",
         size === "16" ? "text-[16px]" : "text-[18px]",
-        isActive ? "fill-1" : "group-hover:text-primary transition-colors"
+        isActive ? "fill-1" : "group-hover:text-dd-accent transition-colors"
       ),
     },
     icon

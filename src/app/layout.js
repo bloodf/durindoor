@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import localFont from "next/font/local";
 import "material-symbols/outlined.css";
 import "@/shared/ui/tokens.css";
@@ -7,6 +8,7 @@ import "@/lib/network/initOutboundProxy"; // Auto-initialize outbound proxy env
 import "@/shared/services/bootstrap"; // Auto-run initializeApp (watchdog, auto-resume tunnel)
 import { initConsoleLogCapture } from "@/lib/consoleLogBuffer";
 import { RuntimeI18nProvider } from "@/i18n/RuntimeI18nProvider";
+import { DEFAULT_LOCALE, LOCALE_COOKIE, getLocaleDirection, normalizeLocale } from "@/i18n/config";
 
 // Hook console immediately at module load time (server-side only, runs once)
 initConsoleLogCapture();
@@ -38,9 +40,12 @@ export const viewport = {
   themeColor: "#0a0a0a",
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const cookieStore = await cookies();
+  const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE)?.value || DEFAULT_LOCALE);
+  const direction = getLocaleDirection(locale);
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} dir={direction} suppressHydrationWarning>
       <head>
         {/* Blocking pre-paint bootstrap reads Zustand's {state:{theme}} envelope.
             A same-origin file stays CSP-authorizable via script-src 'self' without unsafe-inline. */}

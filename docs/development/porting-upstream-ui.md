@@ -60,6 +60,9 @@ interpolate; never ship hex.
     `dd-tnum`. PageHeader title `text-xl font-semibold tracking-tight`.
     Default `Button size="md"` (`h-9`). `sm` (`h-7`) only in dense
     toolbars and table rows.
+11. **Keep live adapters and prop fidelity.** Retain caller's existing hooks,
+    query adapters, and callback behavior. Never make a lossy call-site DS
+    prop replacement before prerequisite primitive parity exists.
 
 ## 3. Before / after patterns
 
@@ -94,8 +97,8 @@ import Button from "@/shared/ui/components/Button.jsx";
 />
 ```
 
-Notes: `PageHeader` handles the wrapping/right-alignment. The icon tile
-is gold-tinted (`bg-dd-accent-soft text-dd-accent`).
+Notes: `PageHeader` handles wrapping/right-alignment. Its icon tile is
+emerald-tinted (`bg-dd-accent-soft text-dd-accent`).
 
 ### 3.2 Table with pagination
 
@@ -120,25 +123,16 @@ Upstream-style:
 </div>
 ```
 
-Durin DS (the pattern in
-`src/shared/ui/components/DataTable.stories.jsx:149-181` and
-`src/shared/ui/pages/timeline/TimelinePage.jsx:286-377`):
+Durin DS (schematic; reuse caller's actual existing hook/result and callback
+names — names below are illustrative only):
 
 ```jsx
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 
-const [page, setPage] = useState(1);
-const [rowsPerPage, setRowsPerPage] = useState(25);
-const pageCount = rowsPerPage === "all" ? 1 : Math.max(1, Math.ceil(rows.length / rowsPerPage));
-const currentPage = Math.min(page, pageCount);
-const visibleRows = useMemo(
-  () => (rowsPerPage === "all" ? rows : rows.slice((currentPage - 1) * rowsPerPage, (currentPage - 1) * rowsPerPage + rowsPerPage)),
-  [currentPage, rows, rowsPerPage],
-);
-// Compute first/last as explicit "all" / empty branches so rowsLabel
-// never interpolates `NaN` (number * "all") or a 1..0 range on empty rows.
-const firstVisibleRow = rows.length === 0 ? 0 : rowsPerPage === "all" ? 1 : (currentPage - 1) * rowsPerPage + 1;
-const lastVisibleRow = rowsPerPage === "all" ? rows.length : Math.min(currentPage * rowsPerPage, rows.length);
+// Keep upstream query hooks, server pagination metadata, and server-returned
+// rows intact. `DataTable` renders `rows`; do not introduce client slicing.
+// `rows`, `page`, `pageCount`, `total`, `rowsPerPage`, `onPage`, and
+// `onRowsPerPageChange` are caller-owned existing values/callbacks.
 
 const columns = [
   { key: "name", label: "Name" },
@@ -147,26 +141,26 @@ const columns = [
 
 <DataTable
   columns={columns}
-  rows={visibleRows}
+  rows={rows}
   keyFn={(row) => row.id}
   density="compact"
   filterBar={/* Select / Input / RangeSelector, size="sm" */}
   emptyState={{ icon: "inbox", title: "No rows", message: "Nothing here yet." }}
   pagination={{
-    page: currentPage,
+    page,
     pageCount,
-    total: rows.length,
-    rowsLabel: `Showing ${firstVisibleRow} to ${lastVisibleRow} of ${rows.length} results`,
-    onPage: setPage,
+    total,
+    rowsLabel: `Showing server page ${page} of ${pageCount} (${total} results)`,
+    onPage,
     rowsPerPage,
-    onRowsPerPageChange: (value) => { setRowsPerPage(value); setPage(1); },
+    onRowsPerPageChange,
   }}
 />
 ```
 
-`Pagination` owns prev/next chevrons, current page as a gold square, and
-the rows-per-page select. The parent owns slicing and resets `page` to 1
-on `onRowsPerPageChange`.
+`Pagination` owns prev/next chevrons, current page as an emerald square, and
+the rows-per-page select. Preserve existing fetch hooks, live adapters, server
+totals, and callback behavior; do not reset or reshape them for DS.
 
 ### 3.3 Modal confirm
 
@@ -222,15 +216,12 @@ is fixed at `sm`.
       `PromptDialog` / `ConfirmDialog`.
 - [ ] Replace every native `<select>` with `Select`. The only allowed
       exception is the rows-per-page control that `Pagination` renders
-      internally (`src/shared/ui/components/Pagination.jsx:14,97`):
+      internally (`src/shared/ui/components/Pagination.jsx:14,98`):
       call `Pagination` (or `DataTable`'s `pagination` prop) and never
       write your own `<select>` for rows-per-page.
-- [ ] Replace every color/size literal with `*-dd-*` token utilities. No
-      hex. No raw Tailwind palette utilities.
-- [ ] Replace every `window.prompt` / `window.confirm` with
-      `PromptDialog` / `ConfirmDialog`.
-- [ ] Replace every native `<select>` with `Select`. (Pagination rows-per-page
-      is the one exception — leave it alone.)
+- [ ] Retain live adapters, caller hooks, and existing callback behavior.
+      Never make a lossy DS prop replacement before prerequisite primitive
+      parity exists.
 - [ ] Replace every hand-rolled table + prev/next pager with
       `DataTable` + `pagination` prop on `DataTable`. Rows-per-page options
       `[10, 25, 50, 100, "all"]`.
@@ -248,53 +239,41 @@ is fixed at `sm`.
 - [ ] New shared component? Add it under `src/shared/ui/components/<Name>.jsx`
       with a `*.stories.jsx` next to it (one CSF3 story per meaningful
       prop axis). Do not put it under `src/shared/components/`.
-- [ ] Did not touch `src/app/globals.css`.
+- [ ] Did not touch `src/app/globals.css`; it is read-only in every phase.
 - [ ] Did not introduce a hex value.
 - [ ] Did not grow `tests/__baseline__/known-fails.txt`.
-- [ ] `npm run storybook:build` exits 0.
-- [ ] `npx eslint src/shared/ui` (and `npx eslint src` when app-side
-      files changed) exits 0.
-- [ ] `cd tests && npm run test:ci` exits 0; `tests/__baseline__/known-fails.txt`
-      diff is empty.
-- [ ] Visual check (when a DS component changed): `npm run storybook`,
-      toggle the Theme toolbar (sun/moon, top of the canvas), confirm
-      light + dark both render correctly.
+- [ ] Orchestrator ran required gates, formatter, and browser checks after
+      worker edits; workers do not run them.
+- [ ] Visual proof includes Storybook's actual iframe under classic JSX
+      runtime and affected app surface, in both palettes, including AAA
+      contrast where applicable. A successful Storybook build alone is not
+      proof.
+- [ ] Human approved full diff before push or PR.
 ```
 
-## 5. Verification gate
+## 5. Verification and review ownership
 
-Run before pushing; a port is not ready until all four pass:
+Workers edit only. They do not run gates, formatters, builds, linters, tests,
+or browser checks. The orchestrator runs every required gate and formatter
+after worker edits, then obtains actual browser proof.
 
-```bash
-# 1. Storybook build must succeed (catches broken prop signatures,
-#    missing imports, and the classic-JSX-runtime regression).
-npm run storybook:build
+Storybook build is necessary but does not prove classic JSX runtime or
+accessibility. Browser proof must open Storybook's rendered iframe and affected
+app surface, verify both palettes, and verify AAA contrast where applicable.
 
-# 2. ESLint. Scope to the directory you actually touched:
-npx eslint src/shared/ui                # DS-only port
-npx eslint src                         # app-side port
-npm run lint                            # full repo gate (includes anti-slop)
+Human reviews and approves the complete diff before any push or PR.
 
-# 3. Test suite must not grow the curated failure list.
-cd tests && npm run test:ci
-git diff tests/__baseline__/known-fails.txt   # must be empty
-
-# 4. Visual check when a DS component changed.
-npm run storybook                       # http://localhost:6006
-# Toggle the Theme toolbar (sun/moon, top of canvas) and confirm the
-# changed surface flips cleanly in both palettes.
-```
-
-If GitHub Actions minutes are exhausted, paste the local command output
-(fenced `bash` block per command, with exit codes) into the PR body. See
-[`AGENTS.md` §6.4](../../AGENTS.md#64-ci-gates).
+If GitHub Actions minutes are exhausted, the orchestrator pastes local command
+output (fenced `bash` block per command, with exit codes) into the PR body.
+See [`AGENTS.md` §6.4](../../AGENTS.md#64-ci-gates).
 
 ## 6. When to add a new DS component
 
 A new pattern is a new DS component if the **same JSX+classes** show up
-in three or more page mocks or app pages. The 25 existing primitives are
-in [`durin-ds.md` §"Component inventory"](./durin-ds.md#component-inventory);
-add a 26th only if the gap is real and the pattern survives two ports.
+in three or more page mocks or app pages. The 27 existing primitives are in
+[`durin-ds.md` §"Component inventory"](./durin-ds.md#component-inventory).
+Add a component only when prerequisite primitive parity exists and pattern
+survives two ports; do not replace DS props lossily to force a migration.
 
 Steps:
 
@@ -302,9 +281,10 @@ Steps:
    class names (Tailwind v4 source scan).
 2. `src/shared/ui/components/<Name>.stories.jsx` — one CSF3 story per
    meaningful prop axis. Title `Durin DS/<Group>/<Component>`.
-3. Storybook run: `npm run storybook`, toggle Theme, eyeball both
-   palettes.
-4. Replace the duplicated JSX in each call site.
+3. Replace duplicated JSX only after prerequisite primitive parity; retain
+   live adapters and upstream behavior.
+4. Orchestrator verifies Storybook iframe and app surface under classic JSX
+   runtime, both palettes, and AAA contrast where applicable.
 
 ## 7. Pitfalls (verified against source)
 

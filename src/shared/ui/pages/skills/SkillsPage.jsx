@@ -196,7 +196,7 @@ function SkillRow({ skill, isEntry }) {
                 href={skill.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-7 items-center gap-1 rounded-dd border border-dd-border bg-dd-surface-2 px-2.5 text-xs font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
+                className="inline-flex min-h-11 min-w-11 items-center gap-1 rounded-dd border border-dd-border bg-dd-surface-2 px-2.5 text-xs font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
                 aria-label={`Open ${skill.name} skill in a new tab`}
               >
                 <span

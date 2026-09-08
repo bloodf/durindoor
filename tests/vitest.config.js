@@ -40,6 +40,16 @@ export default defineConfig({
     ],
     // Allow many it.concurrent cases (real provider smoke runs ~50 providers in parallel)
     maxConcurrency: 60,
+    // Cap concurrent vitest workers. Vitest defaults to (cpus-1) forked
+    // workers (16-CPU host -> 15 here); at that concurrency SQLite/PGlite
+    // lock contention across the ~2789 suites (worst offender:
+    // quota-reservation-concurrency, which itself fans out 100 concurrent
+    // SQLite writer threads) produces intermittent hook timeouts and
+    // literal `database is locked` errors, making the gate non-
+    // deterministic — a different subset fails each run on the same tree.
+    // Do not remove this cap without re-proving determinism at the
+    // unbounded default; see history for the reproduction.
+    maxWorkers: 4,
     // Full-suite runs contend on shared SQLite fixtures; observed worst-case
     // per-test wall time under contention is ~9.4s, which flakes against the
     // Vitest 5s default. Set an explicit ceiling with headroom so slow-but-real

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import PromptDialog from "./PromptDialog";
 
 /**
@@ -11,7 +12,7 @@ import PromptDialog from "./PromptDialog";
  */
 
 const TRIGGER_CLASS =
-  "h-9 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus";
+  "min-h-11 min-w-11 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus";
 
 function PromptDemo({ triggerLabel, ...dialogProps }) {
   const [open, setOpen] = useState(false);
@@ -54,6 +55,18 @@ export const Default = {
       placeholder="e.g. ci-runner-01"
     />
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Name gateway key" }));
+    const dialog = within(document.body);
+    await expect(await dialog.findByRole("dialog", { name: "Name this gateway key" })).toBeVisible();
+    const input = dialog.getByLabelText("Gateway key name (optional)");
+    await userEvent.type(input, "ci-runner-01");
+    await expect(input).toHaveValue("ci-runner-01");
+    // The footer arrives with the modal's entrance transition, so assert
+    // through a wait rather than racing the animation on a cold render.
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Save" })).toBeVisible());
+  },
 };
 
 export const WithDefaultValue = {

@@ -123,7 +123,7 @@ function BytesSavedChart({ series, label }) {
           <AreaChart data={series} margin={{ top: 8, right: 8, left: 10, bottom: 0 }}>
             <defs>
               <linearGradient id="tokenSaverBytesFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--dd-accent)" stopOpacity={0.3} />
+                <stop offset="0%" stopColor="var(--dd-accent)" stopOpacity={0.14} />
                 <stop offset="100%" stopColor="var(--dd-accent)" stopOpacity={0.02} />
               </linearGradient>
             </defs>

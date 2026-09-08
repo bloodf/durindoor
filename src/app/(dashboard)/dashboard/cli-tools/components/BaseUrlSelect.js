@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Select from "@/shared/ui/components/Select.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import IconButton from "@/shared/ui/components/IconButton.jsx";
+import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { formatEndpointPresetLabel, readLastCustomUrl, writeLastCustomUrl } from "./cliEndpointPresets";
 import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
@@ -8,176 +12,27 @@ import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
 const STORAGE_KEY = "durindoor.cliToolEndpointPresets";
 const CUSTOM_VALUE = "__custom__";
 const SAVE_VALUE = "__save__";
-
-const ensureV1 = (url) => {
-  const trimmed = (url || "").replace(/\/+$/, "");
-  if (!trimmed) return "";
-  return /\/v1$/.test(trimmed) ? trimmed : `${trimmed}/v1`;
-};
-
-const readSavedPresets = () => {
-  if (!isBrowser()) return [];
-  try {
-    const raw = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]");
-    if (!Array.isArray(raw)) return [];
-    return raw.filter((p) => p?.name && p?.baseUrl);
-  } catch {
-    return [];
-  }
-};
-
-const writeSavedPresets = (presets) => {
-  if (!isBrowser()) return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
-};
-
+const ensureV1 = (url) => { const trimmed = (url || "").replace(/\/+$/, ""); return !trimmed ? "" : /\/v1$/.test(trimmed) ? trimmed : `${trimmed}/v1`; };
+const readSavedPresets = () => { if (!isBrowser()) return []; try { const value = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]"); return Array.isArray(value) ? value.filter((preset) => preset?.name && preset?.baseUrl) : []; } catch { return []; } };
+const writeSavedPresets = (presets) => { if (!isBrowser()) return; try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets)); } catch {} };
 const buildOptions = ({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }) => {
-  const opts = [];
-  const wrap = (url) => withV1 ? ensureV1(url) : (url || "").replace(/\/+$/, "");
-  if (!requiresExternalUrl) {
-    const localUrl = wrap(`http://127.0.0.1:${UPDATER_CONFIG.appPort}`);
-    opts.push({ value: "local", label: localUrl, url: localUrl });
-  }
-  if (tunnelEnabled && tunnelPublicUrl) {
-    const u = wrap(tunnelPublicUrl);
-    opts.push({ value: "tunnel", label: u, url: u });
-  }
-  if (tailscaleEnabled && tailscaleUrl) {
-    const u = wrap(tailscaleUrl);
-    opts.push({ value: "tailscale", label: u, url: u });
-  }
-  if (cloudEnabled && cloudUrl) {
-    const u = wrap(cloudUrl);
-    opts.push({ value: "cloud", label: u, url: u });
-  }
-  savedPresets.forEach((preset) => {
-    opts.push({ value: `saved:${preset.name}`, label: formatEndpointPresetLabel(preset), url: preset.baseUrl, saved: true });
-  });
-  opts.push({ value: CUSTOM_VALUE, label: "Custom URL...", url: "" });
-  return opts;
+  const options = []; const wrap = (url) => withV1 ? ensureV1(url) : (url || "").replace(/\/+$/, "");
+  if (!requiresExternalUrl) options.push({ value: "local", label: "Local (127.0.0.1)", url: wrap(`http://127.0.0.1:${UPDATER_CONFIG.appPort}`) });
+  if (tunnelEnabled && tunnelPublicUrl) options.push({ value: "tunnel", label: "Public tunnel", url: wrap(tunnelPublicUrl) });
+  if (tailscaleEnabled && tailscaleUrl) options.push({ value: "tailscale", label: "Tailscale", url: wrap(tailscaleUrl) });
+  if (cloudEnabled && cloudUrl) options.push({ value: "cloud", label: "Cloud", url: wrap(cloudUrl) });
+  savedPresets.forEach((preset) => options.push({ value: `saved:${preset.name}`, label: formatEndpointPresetLabel(preset), url: preset.baseUrl }));
+  options.push({ value: CUSTOM_VALUE, label: "Custom URL…", url: "" }); return options;
 };
 
-export default function BaseUrlSelect({
-  value,
-  onChange,
-  requiresExternalUrl = false,
-  tunnelEnabled = false,
-  tunnelPublicUrl = "",
-  tailscaleEnabled = false,
-  tailscaleUrl = "",
-  cloudEnabled = false,
-  cloudUrl = "",
-  withV1 = true
-}) {
-  const [savedPresets, setSavedPresets] = useState([]);
-  const [mode, setMode] = useState("");
-  const [customInput, setCustomInput] = useState("");
-  const initializedRef = useRef(false);
-
-  useEffect(() => {
-    setSavedPresets(readSavedPresets());
-  }, []);
-
-  const options = useMemo(
-    () => buildOptions({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }),
-    [requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1]
-  );
-
-  // Always default to first option (127.0.0.1) on mount, ignore persisted value
-  useEffect(() => {
-    if (initializedRef.current) return;
-    if (options.length === 0) return;
-    initializedRef.current = true;
-    const first = options.find((o) => o.value !== CUSTOM_VALUE);
-    if (first) {
-      setMode(first.value);
-      onChange(first.url);
-    } else {
-      setMode(CUSTOM_VALUE);
-    }
-  }, [options, onChange]);
-
-  const handleSelect = (e) => {
-    const next = e.target.value;
-    if (next === SAVE_VALUE) {
-      const trimmed = (value || "").trim();
-      if (!trimmed) return;
-      let defaultName = trimmed;
-      try {defaultName = new URL(trimmed).host;} catch {}
-      const name = window.prompt("Save endpoint as:", defaultName);
-      if (!name?.trim()) return;
-      const savedName = name.trim();
-      const updated = [...savedPresets.filter((p) => p.name !== savedName), { name: savedName, baseUrl: trimmed }].
-      sort((a, b) => a.name.localeCompare(b.name));
-      setSavedPresets(updated);
-      writeSavedPresets(updated);
-      setMode(`saved:${savedName}`);
-      onChange(trimmed);
-      return;
-    }
-    setMode(next);
-    if (next === CUSTOM_VALUE) {
-      const seed = (value || "").trim() || readLastCustomUrl();
-      setCustomInput(seed);
-      if (seed) writeLastCustomUrl(seed);
-      onChange(seed);
-      return;
-    }
-    const opt = options.find((o) => o.value === next);
-    if (opt) onChange(opt.url);
-  };
-
-  const handleCustomInput = (e) => {
-    const v = e.target.value;
-    setCustomInput(v);
-    onChange(v);
-    if (v.trim()) writeLastCustomUrl(v.trim());
-  };
-
-  const handleDeleteSaved = () => {
-    if (!mode.startsWith("saved:")) return;
-    const name = mode.slice(6);
-    const updated = savedPresets.filter((p) => p.name !== name);
-    setSavedPresets(updated);
-    writeSavedPresets(updated);
-    const seed = (value || "").trim() || readLastCustomUrl();
-    setMode(CUSTOM_VALUE);
-    setCustomInput(seed);
-    onChange(seed);
-  };
-
-  const isSaved = mode.startsWith("saved:");
-  const isCustom = mode === CUSTOM_VALUE;
-  const canSave = isCustom && (customInput || "").trim().length > 0;
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
-        <select
-          value={mode}
-          onChange={handleSelect}
-          className="flex-1 min-w-0 px-2 py-2 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5">
-          
-          {options.map((o) =>
-          <option key={o.value} value={o.value}>{o.label}</option>
-          )}
-          {canSave && <option value={SAVE_VALUE}>+ Save current as...</option>}
-        </select>
-        {isSaved &&
-        <button type="button" onClick={handleDeleteSaved} className="p-1 text-text-muted hover:text-red-500 rounded transition-colors shrink-0" title="Delete saved endpoint">
-            <span className="material-symbols-outlined text-[14px]">delete</span>
-          </button>
-        }
-      </div>
-      {isCustom &&
-      <input
-        type="text"
-        value={customInput}
-        onChange={handleCustomInput}
-        placeholder={withV1 ? "https://example.com/v1" : "https://example.com"}
-        className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5" />
-
-      }
-    </div>);
-
+export default function BaseUrlSelect({ value, onChange, requiresExternalUrl = false, tunnelEnabled = false, tunnelPublicUrl = "", tailscaleEnabled = false, tailscaleUrl = "", cloudEnabled = false, cloudUrl = "", withV1 = true }) {
+  const [savedPresets, setSavedPresets] = useState([]); const [mode, setMode] = useState(""); const [customInput, setCustomInput] = useState(""); const [saveOpen, setSaveOpen] = useState(false); const initializedRef = useRef(false);
+  useEffect(() => setSavedPresets(readSavedPresets()), []);
+  const options = useMemo(() => buildOptions({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }), [requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1]);
+  useEffect(() => { if (initializedRef.current || !options.length) return; initializedRef.current = true; const first = options.find((option) => option.value !== CUSTOM_VALUE); if (first) { setMode(first.value); onChange(first.url); } else setMode(CUSTOM_VALUE); }, [options, onChange]);
+  const savePreset = (name) => { const trimmed = (value || "").trim(); const savedName = name.trim(); const updated = [...savedPresets.filter((preset) => preset.name !== savedName), { name: savedName, baseUrl: trimmed }].sort((a, b) => a.name.localeCompare(b.name)); setSavedPresets(updated); writeSavedPresets(updated); setMode(`saved:${savedName}`); onChange(trimmed); setSaveOpen(false); };
+  const handleSelect = (next) => { if (next === SAVE_VALUE) { if ((value || "").trim()) setSaveOpen(true); return; } setMode(next); if (next === CUSTOM_VALUE) { const seed = (value || "").trim() || readLastCustomUrl(); setCustomInput(seed); if (seed) writeLastCustomUrl(seed); onChange(seed); return; } const option = options.find((item) => item.value === next); if (option) onChange(option.url); };
+  const isSaved = mode.startsWith("saved:"); const isCustom = mode === CUSTOM_VALUE; const canSave = isCustom && customInput.trim().length > 0;
+  const selectOptions = [...options, ...(canSave ? [{ value: SAVE_VALUE, label: "+ Save current as…" }] : [])];
+  return <><div className="flex flex-col gap-1.5"><div className="flex items-center gap-2"><Select value={mode} onChange={handleSelect} options={selectOptions} size="sm" aria-label="Endpoint" />{isSaved ? <IconButton icon="delete" label="Delete saved endpoint" size="sm" onClick={() => { const updated = savedPresets.filter((preset) => preset.name !== mode.slice(6)); setSavedPresets(updated); writeSavedPresets(updated); const seed = (value || "").trim() || readLastCustomUrl(); setMode(CUSTOM_VALUE); setCustomInput(seed); onChange(seed); }} /> : null}</div>{isCustom ? <Input size="sm" value={customInput} onChange={(event) => { const next = event.target.value; setCustomInput(next); onChange(next); if (next.trim()) writeLastCustomUrl(next.trim()); }} placeholder={withV1 ? "https://example.com/v1" : "https://example.com"} aria-label="Custom endpoint URL" /> : null}</div><PromptDialog open={saveOpen} title="Save endpoint" label="Endpoint name" defaultValue={(() => { try { return new URL((value || "").trim()).host; } catch { return (value || "").trim(); } })()} submitLabel="Save" onSubmit={savePreset} onCancel={() => setSaveOpen(false)} /></>;
 }

@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
 
 import Checkbox from "./Checkbox.jsx";
 import Field from "./Field.jsx";
 import Input from "./Input.jsx";
+import Modal from "./Modal.jsx";
 import Select from "./Select.jsx";
 import Textarea from "./Textarea.jsx";
 
@@ -22,6 +24,7 @@ const MANY_OPTIONS = Array.from({ length: 18 }, (_, index) => ({
   value: `model-${index + 1}`,
   label: `Model ${index + 1}`,
 }));
+
 
 function ControlledSelect({ options = PROVIDER_OPTIONS, initialValue, ...props }) {
   const [value, setValue] = useState(initialValue);
@@ -85,6 +88,13 @@ export default meta;
 
 export const Default = {
   render: () => <ControlledSelect placeholder="Choose a provider" aria-label="Provider" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("combobox", { name: "Provider" });
+    await userEvent.click(trigger);
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await expect(trigger).toHaveTextContent("OpenAI");
+  },
 };
 
 export const WithLabelAndHint = {
@@ -107,26 +117,82 @@ export const Disabled = {
   render: () => (
     <Select options={PROVIDER_OPTIONS} value="anthropic" disabled aria-label="Provider" />
   ),
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("combobox", { name: "Provider" });
+    await expect(trigger).toBeDisabled();
+  },
 };
 
 export const ManyOptions = {
   render: () => (
     <ControlledSelect options={MANY_OPTIONS} initialValue="model-1" aria-label="Model" />
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("combobox", { name: "Model" });
+    await expect(trigger).toHaveTextContent("Model 1");
+    await userEvent.click(trigger);
+    await userEvent.keyboard("{End}");
+    await expect(trigger).toHaveAttribute("aria-activedescendant", expect.stringContaining("option-17"));
+    await userEvent.keyboard("{Enter}");
+    await expect(trigger).toHaveTextContent("Model 18");
+    await userEvent.click(trigger);
+    await userEvent.keyboard("{End}{Escape}");
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await expect(trigger).toHaveTextContent("Model 18");
+  },
 };
 
 export const WithIconsAndHints = {
   render: () => (
     <ControlledSelect options={MODEL_OPTIONS} initialValue="claude-sonnet" aria-label="Model" />
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("combobox", { name: "Model" });
+    await userEvent.click(trigger);
+    const listbox = await within(document.body).findByRole("listbox", { name: "Model" });
+    for (const option of MODEL_OPTIONS) {
+      await expect(within(listbox).getByRole("option", { name: new RegExp(option.label) })).toBeInTheDocument();
+    }
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  },
 };
-
 export const PlacementTop = {
   render: () => (
     <div className="pt-72">
       <ControlledSelect placement="top" options={MODEL_OPTIONS} aria-label="Model" />
     </div>
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("combobox", { name: "Model" });
+    await userEvent.click(trigger);
+    const listbox = await within(document.body).findByRole("listbox", { name: "Model" });
+    for (const option of MODEL_OPTIONS) {
+      await expect(within(listbox).getByRole("option", { name: new RegExp(option.label) })).toBeInTheDocument();
+    }
+  },
+};
+
+
+export const Empty = {
+  render: () => <Select options={[]} aria-label="Empty provider" />,
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("combobox", { name: "Empty provider" });
+    await userEvent.click(trigger);
+    await expect(within(document.body).getByText("No options")).toBeInTheDocument();
+  },
+};
+
+export const InsideModal = {
+  render: () => <Modal open onClose={() => {}} title="Provider settings"><ControlledSelect options={MODEL_OPTIONS} aria-label="Modal model" /></Modal>,
+  play: async ({ canvasElement }) => {
+    const dialog = await within(document.body).findByRole("dialog", { name: "Provider settings" });
+    const trigger = within(dialog).getByRole("combobox", { name: "Modal model" });
+    await userEvent.click(trigger);
+    await expect(within(dialog).getByRole("listbox")).toBeInTheDocument();
+  },
 };
 
 export const ExampleForm = {

@@ -266,6 +266,15 @@ export async function flushProxyTimelineForTests() {
   if (timer) { clearTimeout(timer); timer = null; }
   await startFlush();
 }
+export async function flushAllProxyTimelineForTests() {
+  while (queue.length || dropped.size || pendingPersist) {
+    const remaining = queue.length + dropped.size + Number(Boolean(pendingPersist));
+    await startFlush();
+    if (queue.length + dropped.size + Number(Boolean(pendingPersist)) >= remaining) {
+      throw new Error("proxy timeline flush made no progress");
+    }
+  }
+}
 export function getQueueLengthForTests() { return queue.length; }
 
 export async function listTraces(filter = {}) {

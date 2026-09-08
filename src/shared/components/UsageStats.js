@@ -7,8 +7,9 @@ import { createLatestRequestGuard, mergeUsageResponse } from "@/shared/utils/req
 import { allocateUsageCost } from "@/shared/utils/usageCostAllocation";
 import { buildUsageProviders } from "@/shared/utils/usageProviders";
 
-import Badge from "./Badge";
-import Card from "./Card";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
 import UsageTable, { fmt, fmtTime } from "@/app/(dashboard)/dashboard/usage/components/UsageTable";
 import { formatCompactToken } from "@/shared/utils/formatCompact";
@@ -93,45 +94,6 @@ function getSingleGroupItem(group) {
   return group.items.length === 1 ? group.items[0] : null;
 }
 
-const MODEL_COLUMNS = [
-{ field: "rawModel", label: "Model" },
-{ field: "provider", label: "Provider" },
-{ field: "requests", label: "Requests", align: "right" },
-{ field: "lastUsed", label: "Last Used", align: "right" }];
-
-
-const ACCOUNT_COLUMNS = [
-// ponytail: Account must be the first (group-key) column, matching MODEL/API_KEY/ENDPOINT.
-// Prior order (Model/Provider/Account/...) misaligned cells by one; PROVIDER col showed model.
-{ field: "accountName", label: "Account" },
-{ field: "rawModel", label: "Model" },
-{ field: "provider", label: "Provider" },
-{ field: "requests", label: "Requests", align: "right" },
-{ field: "lastUsed", label: "Last Used", align: "right" }];
-
-
-const PROVIDER_COLUMNS = [
-// byProvider rows are keyed by provider slug and carry only request/token/cost
-// totals — no rawModel, accountName, or lastUsed. sortData exposes the slug
-// as `item.key`; Requests is the only extra leading column before value cells.
-{ field: "key", label: "Provider" },
-{ field: "requests", label: "Requests", align: "right" }];
-
-
-const API_KEY_COLUMNS = [
-{ field: "keyName", label: "API Key Name" },
-{ field: "rawModel", label: "Model" },
-{ field: "provider", label: "Provider" },
-{ field: "requests", label: "Requests", align: "right" },
-{ field: "lastUsed", label: "Last Used", align: "right" }];
-
-
-const ENDPOINT_COLUMNS = [
-{ field: "endpoint", label: "Endpoint" },
-{ field: "rawModel", label: "Model" },
-{ field: "provider", label: "Provider" },
-{ field: "requests", label: "Requests", align: "right" },
-{ field: "lastUsed", label: "Last Used", align: "right" }];
 
 
 const TABLE_OPTIONS = [
@@ -279,56 +241,42 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   // Compute active table data
   const activeTableConfig = useMemo(() => {
     if (!stats) return null;
+    const providerBadge = (item) => <Badge tone={item.pending > 0 ? "accent" : "neutral"} size="sm">{item.provider || "—"}</Badge>;
+    const neutralProviderBadge = (item) => <Badge tone="neutral" size="sm">{item.provider || "—"}</Badge>;
     switch (tableView) {
       case "model":{
           const pendingMap = stats.pending?.byModel || {};
           return {
-            columns: MODEL_COLUMNS,
             groupedData: groupDataByKey(sortData(stats.byModel, pendingMap, sortBy, sortOrder), "rawModel"),
             storageKey: "usage-stats:expanded-models",
             emptyMessage: "No usage recorded yet.",
-            renderSummaryCells: (group) => {
-              const item = getSingleGroupItem(group);
-              return (
-                <>
-                <td className="px-6 py-3">
-                  {item ? <Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider || "—"}</Badge> : <span className="text-text-muted">—</span>}
-                </td>
-                <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
-                <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              </>);
-
-            },
-            renderDetailCells: (item) =>
-            <>
-              <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.rawModel}</td>
-              <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
-              <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
-            </>
-
+            groupColumns: [
+              { key: "provider", label: "Provider", render: (group) => {
+                const item = getSingleGroupItem(group);
+                return item ? providerBadge(item) : <span className="text-dd-muted">—</span>;
+              } },
+              { key: "requests", label: "Requests", align: "right", render: (group) => fmt(group.summary.requests) },
+              { key: "lastUsed", label: "Last Used", align: "right", render: (group) => <span className="whitespace-nowrap text-dd-muted">{fmtTime(group.summary.lastUsed)}</span> },
+            ],
+            detailColumns: [
+              { key: "rawModel", label: "Model", render: (item) => <span className={`font-medium transition-colors ${item.pending > 0 ? "text-dd-accent" : ""}`}>{item.rawModel}</span> },
+              { key: "provider", label: "Provider", render: (item) => providerBadge(item) },
+              { key: "requests", label: "Requests", align: "right", render: (item) => fmt(item.requests) },
+              { key: "lastUsed", label: "Last Used", align: "right", render: (item) => <span className="whitespace-nowrap text-dd-muted">{fmtTime(item.lastUsed)}</span> },
+            ],
           };
         }
       case "provider":{
-          // byProvider is { slug: { requests, promptTokens, completionTokens, cachedTokens,
-          // reasoningTokens, cacheCreationTokens, cost } } — no rawModel/lastUsed/accountName.
-          // sortData surfaces the slug as item.key; group by it so each provider is one row.
           return {
-            columns: PROVIDER_COLUMNS,
             groupedData: groupDataByKey(sortData(stats.byProvider, {}, sortBy, sortOrder), "key"),
             storageKey: "usage-stats:expanded-providers",
             emptyMessage: "No provider usage recorded yet.",
-            renderSummaryCells: (group) =>
-            <>
-              <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
-            </>,
-
-            renderDetailCells: (item) =>
-            <>
-              <td className="px-6 py-3 font-medium">{item.key}</td>
-              <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
-            </>
-
+            groupColumns: [
+              { key: "requests", label: "Requests", align: "right", render: (group) => fmt(group.summary.requests) },
+            ],
+            detailColumns: [
+              { key: "requests", label: "Requests", align: "right", render: (item) => fmt(item.requests) },
+            ],
           };
         }
       case "account":{
@@ -344,103 +292,92 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             });
           }
           return {
-            columns: ACCOUNT_COLUMNS,
             groupedData: groupDataByKey(sortData(stats.byAccount, pendingMap, sortBy, sortOrder), "accountName"),
             storageKey: "usage-stats:expanded-accounts",
             emptyMessage: "No account-specific usage recorded yet.",
-            renderSummaryCells: (group) => {
-              const item = getSingleGroupItem(group);
-              return (
-                <>
-                <td className="px-6 py-3">{item?.rawModel || <span className="text-text-muted">—</span>}</td>
-                <td className="px-6 py-3">
-                  {item ? <Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider || "—"}</Badge> : <span className="text-text-muted">—</span>}
-                </td>
-                <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
-                <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              </>);
-
-            },
-            renderDetailCells: (item) =>
-            <>
-              <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.accountName || `Account ${item.connectionId?.slice(0, 8)}...`}</td>
-              <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.rawModel}</td>
-              <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
-              <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
-            </>
-
+            groupColumns: [
+              { key: "rawModel", label: "Model", render: (group) => {
+                const item = getSingleGroupItem(group);
+                return item?.rawModel || <span className="text-dd-muted">—</span>;
+              } },
+              { key: "provider", label: "Provider", render: (group) => {
+                const item = getSingleGroupItem(group);
+                return item ? providerBadge(item) : <span className="text-dd-muted">—</span>;
+              } },
+              { key: "requests", label: "Requests", align: "right", render: (group) => fmt(group.summary.requests) },
+              { key: "lastUsed", label: "Last Used", align: "right", render: (group) => <span className="whitespace-nowrap text-dd-muted">{fmtTime(group.summary.lastUsed)}</span> },
+            ],
+            detailColumns: [
+              { key: "accountName", label: "Account", render: (item) => <span className={`font-medium transition-colors ${item.pending > 0 ? "text-dd-accent" : ""}`}>{item.accountName || `Account ${item.connectionId?.slice(0, 8)}...`}</span> },
+              { key: "rawModel", label: "Model", render: (item) => <span className={`font-medium transition-colors ${item.pending > 0 ? "text-dd-accent" : ""}`}>{item.rawModel}</span> },
+              { key: "provider", label: "Provider", render: (item) => providerBadge(item) },
+              { key: "requests", label: "Requests", align: "right", render: (item) => fmt(item.requests) },
+              { key: "lastUsed", label: "Last Used", align: "right", render: (item) => <span className="whitespace-nowrap text-dd-muted">{fmtTime(item.lastUsed)}</span> },
+            ],
           };
         }
       case "apiKey":{
           return {
-            columns: API_KEY_COLUMNS,
             groupedData: groupDataByKey(sortData(stats.byApiKey, {}, sortBy, sortOrder), "keyName"),
             storageKey: "usage-stats:expanded-apikeys",
             emptyMessage: "No API key usage recorded yet.",
-            renderSummaryCells: (group) => {
-              const item = getSingleGroupItem(group);
-              return (
-                <>
-                <td className="px-6 py-3">{item?.rawModel || <span className="text-text-muted">—</span>}</td>
-                <td className="px-6 py-3">
-                  {item ? <Badge variant="neutral" size="sm">{item.provider || "—"}</Badge> : <span className="text-text-muted">—</span>}
-                </td>
-                <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
-                <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              </>);
-
-            },
-            renderDetailCells: (item) =>
-            <>
-              <td className="px-6 py-3 font-medium">{item.keyName}</td>
-              <td className="px-6 py-3">{item.rawModel}</td>
-              <td className="px-6 py-3"><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
-              <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
-            </>
-
+            groupColumns: [
+              { key: "rawModel", label: "Model", render: (group) => {
+                const item = getSingleGroupItem(group);
+                return item?.rawModel || <span className="text-dd-muted">—</span>;
+              } },
+              { key: "provider", label: "Provider", render: (group) => {
+                const item = getSingleGroupItem(group);
+                return item ? neutralProviderBadge(item) : <span className="text-dd-muted">—</span>;
+              } },
+              { key: "requests", label: "Requests", align: "right", render: (group) => fmt(group.summary.requests) },
+              { key: "lastUsed", label: "Last Used", align: "right", render: (group) => <span className="whitespace-nowrap text-dd-muted">{fmtTime(group.summary.lastUsed)}</span> },
+            ],
+            detailColumns: [
+              { key: "keyName", label: "API Key Name", render: (item) => <span className="font-medium">{item.keyName}</span> },
+              { key: "rawModel", label: "Model", render: (item) => item.rawModel },
+              { key: "provider", label: "Provider", render: (item) => neutralProviderBadge(item) },
+              { key: "requests", label: "Requests", align: "right", render: (item) => fmt(item.requests) },
+              { key: "lastUsed", label: "Last Used", align: "right", render: (item) => <span className="whitespace-nowrap text-dd-muted">{fmtTime(item.lastUsed)}</span> },
+            ],
           };
         }
       case "endpoint":
       default:{
           return {
-            columns: ENDPOINT_COLUMNS,
             groupedData: groupDataByKey(sortData(stats.byEndpoint, {}, sortBy, sortOrder), "endpoint"),
             storageKey: "usage-stats:expanded-endpoints",
             emptyMessage: "No endpoint usage recorded yet.",
-            renderSummaryCells: (group) => {
-              const item = getSingleGroupItem(group);
-              return (
-                <>
-                <td className="px-6 py-3">{item?.rawModel || <span className="text-text-muted">—</span>}</td>
-                <td className="px-6 py-3">
-                  {item ? <Badge variant="neutral" size="sm">{item.provider || "—"}</Badge> : <span className="text-text-muted">—</span>}
-                </td>
-                <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
-                <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              </>);
-
-            },
-            renderDetailCells: (item) =>
-            <>
-              <td className="px-6 py-3 font-medium font-mono text-sm">{item.endpoint}</td>
-              <td className="px-6 py-3">{item.rawModel}</td>
-              <td className="px-6 py-3"><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
-              <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
-            </>
-
+            groupColumns: [
+              { key: "rawModel", label: "Model", render: (group) => {
+                const item = getSingleGroupItem(group);
+                return item?.rawModel || <span className="text-dd-muted">—</span>;
+              } },
+              { key: "provider", label: "Provider", render: (group) => {
+                const item = getSingleGroupItem(group);
+                return item ? neutralProviderBadge(item) : <span className="text-dd-muted">—</span>;
+              } },
+              { key: "requests", label: "Requests", align: "right", render: (group) => fmt(group.summary.requests) },
+              { key: "lastUsed", label: "Last Used", align: "right", render: (group) => <span className="whitespace-nowrap text-dd-muted">{fmtTime(group.summary.lastUsed)}</span> },
+            ],
+            detailColumns: [
+              { key: "endpoint", label: "Endpoint", mono: true, render: (item) => <span className="font-mono text-xs">{item.endpoint}</span> },
+              { key: "rawModel", label: "Model", render: (item) => item.rawModel },
+              { key: "provider", label: "Provider", render: (item) => neutralProviderBadge(item) },
+              { key: "requests", label: "Requests", align: "right", render: (item) => fmt(item.requests) },
+              { key: "lastUsed", label: "Last Used", align: "right", render: (item) => <span className="whitespace-nowrap text-dd-muted">{fmtTime(item.lastUsed)}</span> },
+            ],
           };
         }
     }
   }, [stats, tableView, sortBy, sortOrder]);
 
-  if (!stats && !loading) return <div className="text-text-muted">Failed to load usage statistics.</div>;
+  if (!stats && !loading) return <div className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 p-4 text-[13px] text-dd-danger" role="alert">Failed to load usage statistics.</div>;
 
   const spinner =
-  <div className="flex items-center justify-center py-12 text-text-muted">
-      <span className="material-symbols-outlined text-[32px] animate-spin">progress_activity</span>
+  <div className="flex items-center justify-center gap-2 py-12 text-dd-muted" role="status">
+      <span aria-hidden="true" className="material-symbols-outlined text-[32px] animate-spin">progress_activity</span>
+      <span className="text-[13px]">Loading usage statistics</span>
     </div>;
 
 
@@ -449,21 +386,8 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       {/* Period selector (hidden when controlled by parent) */}
       {!hidePeriodSelector &&
       <div className="flex w-full items-center gap-2 sm:w-auto sm:self-end">
-          <div className="flex flex-1 flex-wrap items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex-none">
-            {PERIODS.map((p) =>
-          <button
-            key={p.value}
-            onClick={() => setPeriod(p.value)}
-            disabled={fetching}
-            className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${period === p.value ? "bg-primary text-white shadow-sm" : "text-text-muted hover:bg-bg-hover hover:text-text"}`}>
-            
-                {p.label}
-              </button>
-          )}
-          </div>
-          {fetching &&
-        <span className="material-symbols-outlined text-[16px] text-text-muted animate-spin">progress_activity</span>
-        }
+          <SegmentedControl aria-label="Usage period" options={PERIODS} value={period} onChange={setPeriod} disabled={fetching} size="sm" />
+          {fetching && <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-dd-muted animate-spin">progress_activity</span>}
         </div>
       }
 
@@ -489,52 +413,29 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
            stable but can miss a 24h refresh when one request enters as another
            ages out. */}
       {loading ? spinner : isCustomRange ?
-      <div className="flex h-40 items-center justify-center rounded-lg border border-border bg-surface text-sm text-text-muted">
-          Chart shows preset ranges only — pick a preset to view the graph.
+      <div className="flex h-40 items-center justify-center rounded-dd-lg border border-dd-border bg-dd-surface text-[13px] text-dd-muted">
+          Chart shows preset ranges only — pick a preset to view graph.
         </div> :
       <UsageChart period={period} refreshKey={stats.totalRequests} />}
 
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <select
-            value={tableView}
-            onChange={(e) => setTableView(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
-            style={{ colorScheme: 'auto' }}>
-            
-            {TABLE_OPTIONS.map((opt) =>
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-            )}
-          </select>
-          <div className="grid grid-cols-2 items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex">
-            <button
-              onClick={() => setViewMode("costs")}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "costs" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}>
-              
-              Costs
-            </button>
-            <button
-              onClick={() => setViewMode("tokens")}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "tokens" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}>
-              
-              Tokens
-            </button>
-          </div>
+          <Select aria-label="Usage grouping" options={TABLE_OPTIONS} value={tableView} onChange={setTableView} size="sm" className="sm:w-56" />
+          <SegmentedControl aria-label="Usage value type" options={[{ value: "costs", label: "Costs" }, { value: "tokens", label: "Tokens" }]} value={viewMode} onChange={setViewMode} size="sm" />
         </div>
         {loading ? spinner : activeTableConfig &&
         <UsageTable
           title=""
-          columns={activeTableConfig.columns}
           groupedData={activeTableConfig.groupedData}
+          groupColumns={activeTableConfig.groupColumns}
+          detailColumns={activeTableConfig.detailColumns}
           tableType={tableView}
           sortBy={sortBy}
           sortOrder={sortOrder}
           onToggleSort={toggleSort}
-          viewMode={viewMode}
+          valueMode={viewMode}
           storageKey={activeTableConfig.storageKey}
-          renderSummaryCells={activeTableConfig.renderSummaryCells}
-          renderDetailCells={activeTableConfig.renderDetailCells}
           emptyMessage={activeTableConfig.emptyMessage} />
 
         }

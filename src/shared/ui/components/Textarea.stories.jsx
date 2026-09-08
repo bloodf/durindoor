@@ -17,7 +17,7 @@ const meta = {
 export default meta;
 
 export const Default = {
-  render: () => <Textarea placeholder="Add deployment notes…" aria-label="Deployment notes" />,
+  render: () => <Textarea label="Deployment notes" placeholder="Add deployment notes…" aria-label="Deployment notes" />,
 };
 
 export const WithHint = {

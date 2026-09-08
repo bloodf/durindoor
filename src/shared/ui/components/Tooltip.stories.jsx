@@ -1,16 +1,8 @@
+import { expect, userEvent, within } from "storybook/test";
 import Tooltip from "./Tooltip";
 
-/**
- * Durin DS/Overlays — Tooltip stories.
- *
- * Pure CSS visibility: hover the trigger or tab to it (focus-within shows
- * the bubble for keyboard users). Triggers are real buttons so focus works
- * without extra tabIndex. All four sides are covered individually, then
- * together in `AllSides` for a single visual sweep.
- */
-
 const BUTTON_CLASS =
-  "h-9 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus";
+  "min-h-11 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus";
 
 function TooltipDemo({ side, content }) {
   return (
@@ -32,27 +24,100 @@ export default meta;
 
 export const Top = {
   render: () => <TooltipDemo side="top" content="Moria stone above" />,
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "top" });
+    await userEvent.hover(trigger);
+    const bubble = await within(document.body).findByRole("tooltip");
+    await Promise.all(bubble.getAnimations().map(({ finished }) => finished.catch(() => {})));
+    await expect(bubble).toHaveTextContent("Moria stone above");
+  },
 };
 
 export const Bottom = {
   render: () => <TooltipDemo side="bottom" content="Parchment below" />,
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "bottom" });
+    await userEvent.hover(trigger);
+    const bubble = await within(document.body).findByRole("tooltip");
+    await Promise.all(bubble.getAnimations().map(({ finished }) => finished.catch(() => {})));
+    await expect(bubble).toHaveTextContent("Parchment below");
+  },
 };
 
 export const Left = {
   render: () => <TooltipDemo side="left" content="West gate" />,
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "left" });
+    await userEvent.hover(trigger);
+    const bubble = await within(document.body).findByRole("tooltip");
+    await Promise.all(bubble.getAnimations().map(({ finished }) => finished.catch(() => {})));
+    await expect(bubble).toHaveTextContent("West gate");
+  },
 };
 
 export const Right = {
   render: () => <TooltipDemo side="right" content="East gate" />,
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "right" });
+    await userEvent.hover(trigger);
+    const bubble = await within(document.body).findByRole("tooltip");
+    await Promise.all(bubble.getAnimations().map(({ finished }) => finished.catch(() => {})));
+    await expect(bubble).toHaveTextContent("East gate");
+  },
 };
 
-export const AllSides = {
+export const LongText = {
   render: () => (
-    <div className="grid grid-cols-2 gap-x-16 gap-y-16">
-      <TooltipDemo side="top" content="Tooltip on top" />
-      <TooltipDemo side="bottom" content="Tooltip on bottom" />
-      <TooltipDemo side="left" content="Tooltip on the left" />
-      <TooltipDemo side="right" content="Tooltip on the right" />
+    <TooltipDemo
+      side="top"
+      content="Long descriptions wrap within viewport instead of escaping small screens or narrow rails."
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "top" });
+    await userEvent.hover(trigger);
+    const bubble = await within(document.body).findByRole("tooltip");
+    await Promise.all(bubble.getAnimations().map(({ finished }) => finished.catch(() => {})));
+    await expect(bubble).toHaveTextContent("Long descriptions wrap within viewport instead of escaping small screens or narrow rails.");
+  },
+};
+
+export const CollapsedParent = {
+  render: () => (
+    <div className="w-14 overflow-hidden border border-dd-border p-1">
+      <Tooltip content="Visible beyond collapsed rail" side="right">
+        <button type="button" aria-label="Collapsed navigation" className={BUTTON_CLASS}>
+          Nav
+        </button>
+      </Tooltip>
     </div>
   ),
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Collapsed navigation" });
+    await userEvent.hover(trigger);
+    const bubble = await within(document.body).findByRole("tooltip");
+    await Promise.all(bubble.getAnimations().map(({ finished }) => finished.catch(() => {})));
+    await expect(bubble).toHaveTextContent("Visible beyond collapsed rail");
+  },
+};
+
+export const Keyboard = {
+  render: () => <TooltipDemo side="top" content="Keyboard description" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.tab();
+    await expect(canvas.getByRole("button", { name: "top" })).toHaveFocus();
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("Keyboard description");
+    await userEvent.keyboard("{Escape}");
+    await expect(within(document.body).getByRole("tooltip", { hidden: true })).not.toBeVisible();
+  },
+};
+
+export const Touch = {
+  render: () => <TooltipDemo side="bottom" content="Touch description" />,
+  play: async ({ canvasElement }) => {
+    const button = within(canvasElement).getByRole("button", { name: "bottom" });
+    await userEvent.pointer({ target: button, keys: "[TouchA]" });
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("Touch description");
+  },
 };

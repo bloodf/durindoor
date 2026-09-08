@@ -36,25 +36,28 @@
   --dd-border: #E4DCC8;
   --dd-border-subtle: #EEE8D8;
 
-  /* Text */
+  /* Text: every reading role clears 7:1 against every served warm surface. */
   --dd-text: #1C1913;
-  --dd-text-muted: #6B6353;
-  --dd-text-subtle: #9A917D;
+  --dd-text-muted: #4B4438;
+  --dd-text-subtle: #4B4438;
 
   /* Accent — emerald (logo), gold kept as secondary accent */
-  --dd-accent: #059669;
-  --dd-accent-hover: #047857;
-  --dd-accent-soft: rgba(5, 150, 105, 0.12);
+  --dd-accent: #03543B;
+  --dd-accent-hover: #03442F;
+  --dd-accent-soft: rgba(3, 84, 59, 0.12);
   --dd-on-accent: #FFFFFF;
-  --dd-accent-2: #A8851B;
-  --dd-accent-2-hover: #8F7014;
-  --dd-accent-2-soft: rgba(168, 133, 27, 0.12);
+  --dd-accent-2: #7A5B08;
+  --dd-accent-2-hover: #654907;
+  --dd-accent-2-soft: rgba(122, 91, 8, 0.12);
 
-  /* Status */
-  --dd-success: #2E7D32;
-  --dd-warning: #B45309;
-  --dd-danger: #B91C1C;
-  --dd-info: #1D4ED8;
+  /* Status text and destructive action intentionally use separate red roles. */
+  --dd-success: #0B4E21;
+  --dd-warning: #7B3406;
+  --dd-danger: #8B1414;
+  --dd-danger-hover: #7F1010;
+  --dd-danger-action: #AE1A1A;
+  --dd-danger-action-hover: #951515;
+  --dd-info: #1B3A96;
   --dd-on-danger: #FFFFFF;
   --dd-backdrop: rgba(0, 0, 0, 0.6);
 
@@ -62,9 +65,9 @@
   --dd-radius: 8px;
   --dd-radius-lg: 12px;
 
-  /* Focus ring — emerald at 35% alpha */
-  --dd-focus: 0 0 0 3px rgba(5, 150, 105, 0.35);
-
+  /* 2px solid focus perimeter; #03442F changes every served surface by >=3:1. */
+  --dd-focus-ring: #03442F;
+  --dd-focus: 0 0 0 2px var(--dd-surface), 0 0 0 4px var(--dd-focus-ring);
   /* Warm elevated shadow */
   --dd-shadow-elevated:
     0 12px 28px -8px rgba(60, 50, 25, 0.12),
@@ -88,12 +91,12 @@
   --dd-border: #332F29;
   --dd-border-subtle: #26231F;
 
-  /* Text */
+  /* Text: every reading role clears 7:1 against every served Moria surface. */
   --dd-text: #EDE6D8;
-  --dd-text-muted: #A89F8D;
-  --dd-text-subtle: #6E675A;
+  --dd-text-muted: #D7CDBC;
+  --dd-text-subtle: #C9C0AF;
 
-  /* Accent — emerald (logo #10E882), gold kept as secondary accent */
+  /* Accent — emerald (logo), gold kept as secondary accent */
   --dd-accent: #10E882;
   --dd-accent-hover: #3CF09A;
   --dd-accent-soft: rgba(16, 232, 130, 0.14);
@@ -102,17 +105,20 @@
   --dd-accent-2-hover: #E3C15A;
   --dd-accent-2-soft: rgba(212, 175, 55, 0.14);
 
-  /* Status */
-  --dd-success: #4ADE80;
-  --dd-warning: #FBBF24;
-  --dd-danger: #EF4444;
-  --dd-info: #60A5FA;
+  /* Bright status text stays legible; darker action red keeps white labels at >=7:1. */
+  --dd-success: #86E9A5;
+  --dd-warning: #FFE07A;
+  --dd-danger: #FF9B9B;
+  --dd-danger-hover: #FFB1B1;
+  --dd-danger-action: #A32E2E;
+  --dd-danger-action-hover: #8F2525;
+  --dd-info: #8CC4FF;
   --dd-on-danger: #FFFFFF;
   --dd-backdrop: rgba(0, 0, 0, 0.6);
 
-  /* Focus ring — emerald at 35% alpha */
-  --dd-focus: 0 0 0 3px rgba(16, 232, 130, 0.35);
-
+  /* 2px solid focus perimeter; emerald changes every served surface by >=3:1. */
+  --dd-focus-ring: #10E882;
+  --dd-focus: 0 0 0 2px var(--dd-surface), 0 0 0 4px var(--dd-focus-ring);
   /* Warm elevated shadow */
   --dd-shadow-elevated:
     0 12px 28px -8px rgba(0, 0, 0, 0.55),
@@ -155,6 +161,9 @@
   --color-dd-success: var(--dd-success);
   --color-dd-warning: var(--dd-warning);
   --color-dd-danger: var(--dd-danger);
+  --color-dd-danger-hover: var(--dd-danger-hover);
+  --color-dd-danger-action: var(--dd-danger-action);
+  --color-dd-danger-action-hover: var(--dd-danger-action-hover);
   --color-dd-info: var(--dd-info);
   --color-dd-on-danger: var(--dd-on-danger);
   --color-dd-backdrop: var(--dd-backdrop);
@@ -176,4 +185,39 @@
 .dd-tnum {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
+}
+
+/* Monaco paints over a transparent canvas, so bind the editor surface and
+   gutter to opaque DS tokens. Leave `.inputarea` alone: Monaco deliberately
+   sets it `color: transparent; background-color: transparent` because it is
+   the offscreen proxy that receives keystrokes and IME composition, never a
+   surface the reader sees. Painting it opaque made it look like real text to
+   contrast tooling while remaining invisible to people. */
+.dd-monaco-surface .monaco-editor,
+.dd-monaco-surface .monaco-editor .margin {
+  background-color: var(--dd-surface-2) !important;
+}
+
+.dd-monaco-surface .monaco-editor .line-numbers,
+.dd-monaco-surface .monaco-editor .dimmed-line-number {
+  color: var(--dd-text-subtle) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin,
+  .animate-pulse,
+  .fade-in,
+  .slide-in-top,
+  .slide-in-right {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .transition-colors,
+  .transition-opacity,
+  .transition-transform,
+  .transition-all,
+  .transition-\[width\] {
+    transition-duration: 0.01ms !important;
+  }
 }

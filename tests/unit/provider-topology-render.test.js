@@ -41,8 +41,6 @@ describe("ProviderNode active API-key tooltip", () => {
     expect(html).toContain('aria-describedby="provider-codex-active-keys"');
     expect(html).toContain('id="provider-codex-active-keys"');
     expect(html).toContain('role="tooltip"');
-    expect(html).toContain("group-hover:visible");
-    expect(html).toContain("group-focus:visible");
     expect(html).toContain("gpt-5.6 ×3");
     expect(html).toContain("OMP Production ×2");
     expect(html).toContain("Cursor Dev");

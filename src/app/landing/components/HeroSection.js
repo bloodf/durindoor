@@ -1,42 +1,32 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import Button from "@/shared/ui/components/Button.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+
 export default function HeroSection() {
+  const router = useRouter();
   return (
-    <section className="relative pt-32 pb-20 px-6 min-h-[90vh] flex flex-col items-center justify-center overflow-hidden">
-      {/* Glow effect */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-[#f97815]/10 rounded-full blur-[120px] pointer-events-none"></div>
-      
-      <div className="relative z-10 max-w-4xl w-full text-center flex flex-col items-center gap-8">
-        {/* Version badge */}
-        <div className="inline-flex items-center gap-2 rounded-full border border-[#3a2f27] bg-[#23180f]/50 px-3 py-1 text-xs font-medium text-[#f97815]">
-          <span className="flex h-2 w-2 rounded-full bg-[#f97815] animate-pulse"></span>
-          v1.0 is now live
-        </div>
-
-        {/* Main heading */}
-        <h1 className="text-5xl md:text-7xl font-black leading-[1.1] tracking-tight">
-          One Endpoint for <br/>
-          <span className="text-[#f97815]">All AI Providers</span>
+    <section className="relative flex min-h-[90vh] flex-col items-center justify-center overflow-hidden px-6 pb-20 pt-32">
+      <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-0 h-[500px] w-[1000px] -translate-x-1/2 rounded-full bg-dd-accent-soft blur-[120px]" />
+      <div className="relative z-10 flex w-full max-w-4xl flex-col items-center gap-8 text-center bg-dd-surface">
+        <Badge tone="accent" icon="auto_awesome" size="md" className="px-3 py-1"><span className="font-medium">v1.0 is now live</span></Badge>
+        <h1 className="text-5xl font-black leading-[1.05] tracking-tight text-dd-text md:text-7xl">
+          One endpoint for <br />
+          <span className="text-dd-accent">all AI providers</span>
         </h1>
-
-        {/* Description */}
-        <p className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto font-light">
-          AI endpoint proxy with web dashboard - A JavaScript port of CLIProxyAPI. Works seamlessly with Claude Code, OpenAI Codex, Cline, RooCode, and other CLI tools.
+        <p className="mx-auto max-w-2xl text-lg font-light text-dd-muted md:text-xl">
+          AI endpoint proxy with web dashboard — a JavaScript port of CLIProxyAPI. Works with Claude Code, OpenAI Codex, Cline, RooCode, and other CLI tools.
         </p>
-
-        {/* CTA Buttons */}
-        <div className="flex flex-wrap items-center justify-center gap-4 w-full">
-          <button className="h-12 px-8 rounded-lg bg-[#f97815] hover:bg-[#e0650a] text-[#181411] text-base font-bold transition-all shadow-[0_0_15px_rgba(249,120,21,0.4)] flex items-center gap-2">
-            <span className="material-symbols-outlined">rocket_launch</span>
-            Get Started
-          </button>
-          <a 
-            href="https://github.com/bloodf/durindoor" 
-            target="_blank" 
+        <div className="flex w-full flex-wrap items-center justify-center gap-4">
+          <Button variant="primary" size="md" icon="rocket_launch" className="h-12 px-8 text-base" onClick={() => router.push("/dashboard")}>Get started</Button>
+          <a
+            href="https://github.com/bloodf/durindoor"
+            target="_blank"
             rel="noopener noreferrer"
-            className="h-12 px-8 rounded-lg border border-[#3a2f27] bg-[#23180f] hover:bg-[#3a2f27] text-white text-base font-bold transition-all flex items-center gap-2"
+            className="inline-flex h-12 items-center justify-center gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 px-8 text-base font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
           >
-            <span className="material-symbols-outlined">code</span>
+            <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">code</span>
             View on GitHub
           </a>
         </div>
@@ -44,4 +34,3 @@ export default function HeroSection() {
     </section>
   );
 }
-

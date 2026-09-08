@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Button, Modal, Select } from "@/shared/components";
+import Button from "@/shared/ui/components/Button.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { translate } from "@/i18n/runtime";
 import { isFunction, isObject } from "../../../../../shared/utils/typeChecks.js";
 
@@ -14,6 +17,7 @@ const PLACEHOLDER = `[
     "email": "user@example.com"
   }
 ]`;
+
 
 function normalizeToArray(parsed) {
   if (Array.isArray(parsed)) return parsed;
@@ -30,6 +34,12 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [parseError, setParseError] = useState("");
   const [result, setResult] = useState(null);
+  const fingerprintOptions = [
+    { value: "off", label: translate("Off — preserve client identity") },
+    { value: "device", label: translate("Device — stable installation") },
+    { value: "session", label: translate("Session — stable account session (recommended)") },
+    { value: "full", label: translate("Full — stable account thread") },
+  ];
 
   const handleClose = () => {
     if (submitting) return;
@@ -66,7 +76,7 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
       const res = await fetch("/api/oauth/codex/bulk-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accounts, codexFingerprintMode })
+        body: JSON.stringify({ accounts, codexFingerprintMode }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -87,79 +97,79 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
   const failedItems = result?.results?.filter((r) => !r.ok) || [];
 
   return (
-    <Modal isOpen={isOpen} title={translate("Bulk Add Codex Accounts")} onClose={handleClose}>
+    <Modal open={isOpen} title={translate("Bulk Add Codex Accounts")} onClose={handleClose}>
       <div className="flex flex-col gap-4">
-        <p className="text-xs text-text-muted">
+        <p className="text-[13px] text-dd-muted">
           {translate(
-            "Paste an array of codex account JSON objects. Each must include accessToken (and ideally refreshToken, idToken)."
+            "Paste an array of codex account JSON objects. Each must include accessToken (and ideally refreshToken, idToken).",
           )}
         </p>
         <Select
-          label={translate("OAuth fingerprint mode")}
+          options={fingerprintOptions}
           value={codexFingerprintMode}
-          onChange={(event) => setCodexFingerprintMode(event.target.value)}
-          options={[
-          { value: "off", label: translate("Off — preserve client identity") },
-          { value: "device", label: translate("Device — stable installation") },
-          { value: "session", label: translate("Session — stable account session (recommended)") },
-          { value: "full", label: translate("Full — stable account thread") }]
-          }
-          disabled={submitting} />
-        
+          onChange={(value) => setCodexFingerprintMode(value)}
+          disabled={submitting}
+          aria-label={translate("OAuth fingerprint mode")}
+        />
 
-        <textarea
-          className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[240px] focus:outline-none focus:ring-1 focus:ring-primary"
+        <Textarea
+          label={translate("Account JSON")}
           placeholder={PLACEHOLDER}
           value={jsonText}
           onChange={(e) => setJsonText(e.target.value)}
-          disabled={submitting} />
-        
+          disabled={submitting}
+          className="min-h-[240px] font-mono"
+        />
 
-        {parseError &&
-        <p className="text-xs text-red-500 break-words">{parseError}</p>
-        }
+        {parseError ? (
+          <p className="text-xs text-dd-danger break-words" role="alert">
+            {parseError}
+          </p>
+        ) : null}
 
-        {result &&
-        <div className="flex flex-col gap-2">
+        {result ? (
+          <div className="flex flex-col gap-2">
             <div
-            className={`text-sm font-medium ${
-            result.failed > 0 ? "text-yellow-400" : "text-green-400"}`
-            }>
-            
+              className={`text-sm font-medium ${
+                result.failed > 0 ? "text-dd-warning" : "text-dd-success"
+              }`}
+            >
               ✓ {result.success} {translate("added")}
               {result.failed > 0 ? `, ✗ ${result.failed} ${translate("failed")}` : ""}
             </div>
-            {failedItems.length > 0 &&
-          <ul className="rounded border border-accent/20 bg-sidebar/50 p-2 text-xs font-mono max-h-40 overflow-y-auto">
-                {failedItems.map((item) =>
-            <li key={item.index} className="text-red-400">
+            {failedItems.length > 0 ? (
+              <ul tabIndex={0} aria-label="Failed Codex imports" className="max-h-40 overflow-y-auto rounded-dd border border-dd-border bg-dd-surface-2 p-2 font-mono text-xs" role="region">
+                {failedItems.map((item) => (
+                  <li key={item.index} className="text-dd-danger">
                     [{item.index}] {item.error}
                   </li>
-            )}
+                ))}
               </ul>
-          }
+            ) : null}
           </div>
-        }
+        ) : null}
 
         <div className="flex gap-2">
           <Button
+            variant="primary"
             onClick={handleSubmit}
-            fullWidth
-            disabled={submitting || !jsonText.trim()}>
-            
+            className="w-full"
+            loading={submitting}
+            disabled={submitting || !jsonText.trim()}
+          >
             {submitting ? translate("Importing...") : translate("Import All")}
           </Button>
-          <Button onClick={handleClose} variant="ghost" fullWidth disabled={submitting}>
+          <Button variant="ghost" onClick={handleClose} className="w-full" disabled={submitting}>
             {translate("Close")}
           </Button>
         </div>
       </div>
-    </Modal>);
-
+    </Modal>
+  );
 }
 
 BulkImportCodexModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
-  onSuccess: PropTypes.func
+  onSuccess: PropTypes.func,
 };

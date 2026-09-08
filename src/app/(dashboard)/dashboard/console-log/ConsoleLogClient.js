@@ -1,16 +1,21 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button, Input } from "@/shared/components";
+import { Card, CardContent } from "@/shared/ui/components/Card.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+import PageHeader from "@/shared/ui/components/PageHeader.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config";
 import { startConsoleLogTransport } from "./transport";
 
 const LOG_LEVEL_COLORS = {
-  LOG: "text-green-400",
-  INFO: "text-blue-400",
-  WARN: "text-yellow-400",
-  ERROR: "text-red-400",
-  DEBUG: "text-purple-400",
+  LOG: "text-dd-success",
+  INFO: "text-dd-info",
+  WARN: "text-dd-warning",
+  ERROR: "text-dd-danger",
+  DEBUG: "text-dd-accent-2",
 };
 
 // Detect the log level from the first bracketed token, e.g. "[INFO] ...".
@@ -23,7 +28,7 @@ function getLogLevel(line) {
 }
 
 function colorLine(line) {
-  const color = LOG_LEVEL_COLORS[getLogLevel(line)] || "text-green-400";
+  const color = LOG_LEVEL_COLORS[getLogLevel(line)] || "text-dd-text";
   return <span className={color}>{line}</span>;
 }
 
@@ -88,64 +93,20 @@ export default function ConsoleLogClient() {
   );
 
   return (
-    <Card className="flex flex-col overflow-hidden p-0">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-text-muted text-lg">terminal</span>
-          <h2 className="text-sm font-semibold">Console Log</h2>
-          <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-text-muted tabular-nums">
-            {visibleLogs.length}/{logs.length}
-          </span>
-          {paused && (
-            <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-xs font-medium text-yellow-500">Paused</span>
-          )}
+    <div className="space-y-4">
+      <PageHeader icon="terminal" title="Console Log" subtitle="Live server output" actions={<Badge tone={paused ? "warning" : "success"}>{paused ? "Paused" : "Streaming"}</Badge>} />
+      <Card padding={false}>
+        <CardContent className="flex flex-wrap items-center gap-2 border-b border-dd-border-subtle">
+          <Input size="sm" icon="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search logs" aria-label="Search console logs" className="min-w-[13rem] flex-1" />
+          <Select size="sm" value={level} onChange={setLevel} options={["ALL", ...Object.keys(LOG_LEVEL_COLORS)].map((value) => ({ value, label: value }))} aria-label="Filter by log level" />
+          <Button size="sm" variant="ghost" icon={paused ? "play_arrow" : "pause"} aria-pressed={paused} onClick={() => setPaused((value) => !value)}>{paused ? "Resume" : "Pause"}</Button>
+          <Button size="sm" variant="ghost" icon="delete_sweep" onClick={handleClear}>Clear</Button>
+          <span role="status" className="dd-tnum text-xs text-dd-muted" aria-label={`${visibleLogs.length} of ${logs.length} log lines`}>{visibleLogs.length}/{logs.length}</span>
+        </CardContent>
+        <div ref={logRef} role="log" tabIndex={0} aria-label="Console log output" aria-live={paused ? "off" : "polite"} className="h-[calc(100vh-260px)] min-h-80 overflow-y-auto bg-dd-surface-2 py-2">
+          {visibleLogs.length === 0 ? <div className="flex h-full items-center justify-center text-[13px] text-dd-muted">{logs.length === 0 ? "No console logs yet." : "No matching console logs."}</div> : visibleLogs.map((line, index) => <div key={`${index}-${line}`} className="break-words px-3 py-1 font-mono text-xs leading-relaxed hover:bg-dd-surface"><span>{colorLine(line)}</span></div>)}
         </div>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search logs"
-            aria-label="Search console logs"
-            className="max-w-xs"
-          />
-          <select
-            value={level}
-            onChange={(e) => setLevel(e.target.value)}
-            aria-label="Filter by log level"
-            className="rounded border border-border bg-surface-2 px-2 py-1 text-sm"
-          >
-            {["ALL", ...Object.keys(LOG_LEVEL_COLORS)].map((value) => <option key={value}>{value}</option>)}
-          </select>
-          <Button
-            size="sm"
-            variant="outline"
-            icon={paused ? "play_arrow" : "pause"}
-            aria-pressed={paused}
-            onClick={() => setPaused((value) => !value)}
-          >
-            {paused ? "Resume" : "Pause"}
-          </Button>
-          <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>Clear</Button>
-        </div>
-      </div>
-      <div
-        ref={logRef}
-        role="log"
-        aria-live={paused ? "off" : "polite"}
-        className="bg-ink p-4 text-xs font-mono leading-relaxed h-[calc(100vh-220px)] overflow-y-auto"
-      >
-        {visibleLogs.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-text-muted">
-            {logs.length === 0 ? "No console logs yet." : "No matching console logs."}
-          </div>
-        ) : (
-          <div className="space-y-0.5">
-            {visibleLogs.map((line, i) => (
-              <div key={i} className="rounded px-1 hover:bg-white/5">{colorLine(line)}</div>
-            ))}
-          </div>
-        )}
-      </div>
-    </Card>
+      </Card>
+    </div>
   );
 }

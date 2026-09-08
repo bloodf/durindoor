@@ -44,7 +44,6 @@ export function getLocalEmbeddingProviders(models, connections) {
       byProvider.set(providerId, {
         id: providerId,
         name: "Ollama Local",
-        color: "#ffffffff",
         textIcon: "OL"
       });
     }

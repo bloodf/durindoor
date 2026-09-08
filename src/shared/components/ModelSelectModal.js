@@ -2,8 +2,11 @@
 
 import { useState, useMemo, useEffect } from "react";
 import PropTypes from "prop-types";
-import Modal from "./Modal";
-import ProviderIcon from "./ProviderIcon";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
+import { Chip } from "@/shared/ui/components/Chip.jsx";
+import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
@@ -286,7 +289,7 @@ export default function ModelSelectModal({
 
     sortedProviderIds.forEach((providerId) => {
       const alias = getProviderAlias(providerId);
-      const providerInfo = allProviders[providerId] || { name: providerId, color: "#666" };
+      const providerInfo = allProviders[providerId] || { name: providerId };
       const isCustomProvider = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
 
       // For provider-as-model kinds (webSearch/webFetch): emit a single entry where value === providerId
@@ -294,7 +297,6 @@ export default function ModelSelectModal({
         groups[providerId] = {
           name: providerInfo.name,
           alias,
-          color: providerInfo.color,
           models: [{ id: providerId, name: providerInfo.name, value: providerId }]
         };
         return;
@@ -379,7 +381,6 @@ export default function ModelSelectModal({
           groups[providerId] = {
             name: displayName,
             alias: alias,
-            color: providerInfo.color,
             models: combined
           };
         }
@@ -449,7 +450,6 @@ export default function ModelSelectModal({
         groups[providerId] = {
           name: displayName,
           alias: nodePrefix,
-          color: providerInfo.color,
           models: modelsToShow,
           isCustom: true,
           hasModels: mergedModels.length > 0
@@ -505,7 +505,6 @@ export default function ModelSelectModal({
           groups[providerId] = {
             name: providerInfo.name,
             alias: alias,
-            color: providerInfo.color,
             models: allModels
           };
         }
@@ -612,161 +611,43 @@ export default function ModelSelectModal({
 
   return (
     <Modal
-      isOpen={isOpen}
+      open={isOpen}
       onClose={() => {
         onClose();
         setSearchQuery("");
       }}
       title={title}
       size="md"
-      className="p-4!"
-      footer={null}>
-      
-      {/* Info bar */}
-      <div className="flex items-center gap-2 mb-3 px-2.5 py-2 bg-primary/8 border border-primary/20 rounded-lg text-xs text-text-muted">
-        <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: "14px" }}>info</span>
-        <span>Click to add, click again to remove. Changes are saved automatically.</span>
-      </div>
-
-      {/* Search - compact */}
-      <div className="mb-3">
-        <div className="relative">
-          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
-            search
-          </span>
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-surface border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/50" />
-          
+      className="p-0!"
+      footer={null}
+    >
+      <div className="flex flex-col gap-4 px-1">
+        <div role="status" className="flex items-center gap-2 rounded-dd-lg border border-dd-accent/30 bg-dd-accent-soft px-3 py-2 text-xs text-dd-text">
+          <span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-accent">info</span>
+          <span>Click to add, click again to remove. Changes are saved automatically.</span>
         </div>
-      </div>
-
-      {/* Models grouped by provider - compact */}
-      <div className="max-h-[400px] overflow-y-auto space-y-3">
-        {/* Combos section - always first */}
-        {filteredCombos.length > 0 &&
-        <div>
-            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
-              <span className="material-symbols-outlined text-primary text-[14px]">layers</span>
-              <span className="text-xs font-medium text-primary">Combos</span>
-              <span className="text-[10px] text-text-muted">({filteredCombos.length})</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {filteredCombos.map((combo) => {
-              const isSelected = selectedModel === combo.name;
-              return (
-                <button
-                  key={combo.id}
-                  onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}
-                  className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1
-                      ${isSelected ?
-                  "bg-primary text-white border-primary" :
-                  addedModelValues.includes(combo.name) ?
-                  "bg-primary border-primary text-white hover:bg-primary-hover" :
-                  "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"}
-                    `
-                  }>
-                  
-                    {addedModelValues.includes(combo.name) &&
-                  <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
-                  }
-                    {combo.name}
-                    <CapacityBadges caps={getCaps(combo.name)} />
-                  </button>);
-
-            })}
-            </div>
-          </div>
-        }
-
-        {/* Provider models */}
-        {Object.entries(filteredGroups).map(([providerId, group]) =>
-        <div key={providerId}>
-            {/* Provider header */}
-            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5">
-              <ProviderIcon
-              src={`/providers/${providerId}.png`}
-              alt={group.name}
-              size={14}
-              fallbackText={(group.name || providerId).slice(0, 2).toUpperCase()}
-              fallbackColor={group.color} />
-            
-              <span className="text-xs font-medium text-primary">
-                {group.name}
-              </span>
-              <span className="text-[10px] text-text-muted">
-                ({group.models.length})
-              </span>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {group.models.map((model) => {
-              const isSelected = selectedModel === model.value;
-              const isPlaceholder = model.isPlaceholder;
-              return (
-                <button
-                  key={model.value}
-                  onClick={() => handleSelect(model)}
-                  title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined}
-                  className={`
-                      px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer
-                      ${isPlaceholder ?
-                  "border-dashed border-border text-text-muted hover:border-primary/50 hover:text-primary bg-surface italic" :
-                  isSelected ?
-                  "bg-primary text-white border-primary" :
-                  addedModelValues.includes(model.value) ?
-                  "bg-primary border-primary text-white hover:bg-primary-hover" :
-                  "bg-surface border-border text-text-main hover:border-primary/50 hover:bg-primary/5"}
-                    `
-                  }>
-                  
-                    <span className="flex items-center gap-1">
-                      {addedModelValues.includes(model.value) && !isPlaceholder &&
-                    <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
-                    }
-                      {isPlaceholder ?
-                    <>
-                          <span className="material-symbols-outlined text-[11px]">edit</span>
-                          {model.name}
-                        </> :
-                    model.isCustom ?
-                    <>
-                          {model.name}
-                          <span className="text-[9px] opacity-60 font-normal">custom</span>
-                          <CapacityBadges caps={getCaps(model.value)} />
-                        </> :
-                    model.isFetched ?
-                    <>
-                          {model.name}
-                          <span className="text-[9px] opacity-60 font-normal">auto</span>
-                          <CapacityBadges caps={getCaps(model.value)} />
-                        </> :
-
-                    <>
-                          {model.name}
-                          <CapacityBadges caps={getCaps(model.value)} />
-                        </>
-                    }
-                    </span>
-                  </button>);
-
-            })}
-            </div>
-          </div>
-        )}
-
-        {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 &&
-        <div className="text-center py-4 text-text-muted">
-            <span className="material-symbols-outlined text-2xl mb-1 block">
-              search_off
-            </span>
-            <p className="text-xs">No models found</p>
-          </div>
-        }
+        <Input
+          size="sm"
+          icon="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search..."
+          aria-label="Search models"
+        />
+        <div className="max-h-[400px] space-y-3 overflow-y-auto pr-1">
+          {filteredCombos.length > 0 ? <section aria-label="Combos"><header className="sticky top-0 z-10 flex items-center gap-1.5 bg-dd-surface py-1"><span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-accent">layers</span><span className="text-xs font-semibold text-dd-accent">Combos</span><span className="text-[10px] text-dd-muted">({filteredCombos.length})</span></header><div className="mt-2 flex flex-wrap gap-1.5">{filteredCombos.map((combo) => {
+            const isSelected = selectedModel === combo.name;
+            const isAdded = addedModelValues.includes(combo.name);
+            return <Chip key={combo.id} size="sm" icon={isAdded ? "check" : undefined} selected={isSelected || isAdded} onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })} label={<span className="inline-flex items-center gap-1.5">{combo.name}<CapacityBadges caps={getCaps(combo.name)} colorOverride="text-dd-muted" size={12} /></span>} />;
+          })}</div></section> : null}
+          {Object.entries(filteredGroups).map(([providerId, group]) => <section key={providerId} aria-label={group.name}><header className="sticky top-0 z-10 flex items-center gap-1.5 bg-dd-surface py-1"><ProviderLogo provider={providerId} size={14} className="rounded-dd" /><span className="text-xs font-semibold text-dd-accent">{group.name}</span><span className="text-[10px] text-dd-muted">({group.models.length})</span></header><div className="mt-2 flex flex-wrap gap-1.5">{group.models.map((model) => {
+            const isSelected = selectedModel === model.value;
+            const isPlaceholder = model.isPlaceholder;
+            const isAdded = addedModelValues.includes(model.value);
+            return <Chip key={model.value} size="sm" icon={isAdded && !isPlaceholder ? "check" : undefined} selected={isSelected || isAdded} onClick={() => handleSelect(model)} title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined} label={isPlaceholder ? <span className="inline-flex items-center gap-1 italic text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[12px]">edit</span>{model.name}</span> : <span className="inline-flex items-center gap-1">{model.name}{model.isCustom ? <span className="text-xs font-normal text-dd-muted">custom</span> : null}{model.isFetched ? <span className="text-xs font-normal text-dd-muted">auto</span> : null}<CapacityBadges caps={getCaps(model.value)} colorOverride="text-dd-muted" size={12} /></span>} />;
+          })}</div></section>)}
+          {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
+        </div>
       </div>
     </Modal>);
 

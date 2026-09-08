@@ -125,7 +125,7 @@ export default function HeadroomPage({ initialRange = { preset: "7d" } }) {
           <>
             <a
               href="/dashboard/token-saver/settings"
-              className="rounded-dd px-2 py-1 text-[13px] font-medium text-dd-accent outline-none hover:text-dd-accent-hover focus-visible:shadow-dd-focus"
+              className="inline-flex min-h-11 min-w-11 items-center rounded-dd px-2 py-1 text-[13px] font-medium text-dd-accent outline-none hover:text-dd-accent-hover focus-visible:shadow-dd-focus"
             >
               Token Saver settings
             </a>
@@ -177,7 +177,7 @@ export default function HeadroomPage({ initialRange = { preset: "7d" } }) {
             <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
               <defs>
                 <linearGradient id="headroomTokensFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--dd-accent)" stopOpacity={0.28} />
+                  <stop offset="0%" stopColor="var(--dd-accent)" stopOpacity={0.14} />
                   <stop offset="100%" stopColor="var(--dd-accent)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import Button from "./Button";
+import Button from "@/shared/ui/components/Button.jsx";
+import IconButton from "@/shared/ui/components/IconButton.jsx";
+import { Card, CardContent } from "@/shared/ui/components/Card.jsx";
 import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import {
   getUpdaterPhaseLabel,
@@ -11,8 +13,9 @@ import {
   hasExceededStartupBudget,
   isUpdaterFailure,
   isUpdaterStatusCurrent,
-  isUpdaterSuccess } from
-"@/shared/utils/updaterStatus";
+  isUpdaterSuccess,
+} from "@/shared/utils/updaterStatus";
+import { isBrowser } from "../utils/typeChecks.js";
 
 /**
  * One-click update panel (port of decolua/9router #2575).
@@ -25,12 +28,45 @@ import {
  * if the detached updater never comes up or wedges mid-phase, the panel
  * fails over to manual install instead of polling forever.
  */
-import { isBrowser } from "../utils/typeChecks.js";
+
+const PROGRESS_BAR = "h-1.5 w-full overflow-hidden rounded-full bg-dd-surface-2";
+const PROGRESS_FILL = "h-full rounded-full bg-dd-accent transition-all duration-500";
+const META_LINE = "text-xs text-dd-muted";
+const ERROR_BANNER = "mb-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-xs text-dd-danger";
+const MUTED_TOGGLE =
+  "mt-3 flex min-h-11 w-full items-center justify-center rounded-dd text-center text-xs text-dd-muted outline-none transition-colors hover:text-dd-text focus-visible:shadow-dd-focus";
+
+const reloadPage = () => globalThis.location.reload();
+function PanelHeader({ icon, iconTone = "accent", title, subtitle, children }) {
+  const toneClass =
+    iconTone === "warning"
+      ? "bg-dd-warning/15 text-dd-warning"
+      : iconTone === "success"
+      ? "bg-dd-success/15 text-dd-success"
+      : "bg-dd-accent-soft text-dd-accent";
+  return (
+    <div className="mb-4 flex items-center gap-3">
+      <span
+        aria-hidden="true"
+        className={`inline-flex size-11 items-center justify-center rounded-dd ${toneClass}`}
+      >
+        <span className="material-symbols-outlined text-[22px] leading-none">{icon}</span>
+      </span>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-base font-semibold text-dd-text">{title}</h2>
+        <p className={META_LINE}>{subtitle}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function UpdatePanel({
   currentVersion,
   latestVersion,
   installCmd,
-  onClose
+  onClose,
+  onReload = reloadPage,
 }) {
   const [mode, setMode] = useState("auto"); // "auto" | "manual"
   const [phase, setPhase] = useState("idle"); // idle | starting | running | success | failed
@@ -61,17 +97,23 @@ export default function UpdatePanel({
     }
   }, []);
 
-  useEffect(() => () => {
-    cancelledRef.current = true;
-    clearTimers();
-  }, [clearTimers]);
+  useEffect(
+    () => () => {
+      cancelledRef.current = true;
+      clearTimers();
+    },
+    [clearTimers],
+  );
 
-  const failToManual = useCallback((message) => {
-    clearTimers();
-    setError(message);
-    setPhase("failed");
-    setMode("manual");
-  }, [clearTimers]);
+  const failToManual = useCallback(
+    (message) => {
+      clearTimers();
+      setError(message);
+      setPhase("failed");
+      setMode("manual");
+    },
+    [clearTimers],
+  );
 
   const startStatusPoll = useCallback(() => {
     clearTimers();
@@ -93,7 +135,10 @@ export default function UpdatePanel({
         if (cancelledRef.current) return;
 
         // Reject stale status from a prior update run before doing anything terminal.
-        if (statusNotBeforeRef.current && !isUpdaterStatusCurrent(data, statusNotBeforeRef.current)) {
+        if (
+          statusNotBeforeRef.current &&
+          !isUpdaterStatusCurrent(data, statusNotBeforeRef.current)
+        ) {
           return;
         }
 
@@ -111,10 +156,12 @@ export default function UpdatePanel({
                 if (ready.ok) {
                   clearInterval(reloadRef.current);
                   reloadRef.current = null;
-                  globalThis.location.reload();
+                  onReload();
                   return;
                 }
-              } catch {/* server still coming up */}
+              } catch {
+                /* server still coming up */
+              }
             };
             let attempts = 0;
             const maxAttempts = 30; // ~60s at 2s interval, within budget
@@ -139,14 +186,14 @@ export default function UpdatePanel({
           failToManual(data.error || "Install failed");
         }
       } catch {
-
         // Status server not up yet, or transient network blip after parent exit — keep polling (bounded above)
-      }};
+      }
+    };
     // Assign interval BEFORE first poll: a terminal state clears pollRef,
     // so polling first would leak the interval (decolua/9router #2575 race fix).
     pollRef.current = setInterval(poll, UPDATER_CONFIG.statusPollIntervalMs);
     poll();
-  }, [clearTimers, failToManual]);
+  }, [clearTimers, failToManual, onReload]);
 
   const startAutoUpdate = useCallback(async () => {
     setError(null);
@@ -189,7 +236,9 @@ export default function UpdatePanel({
   const handleCopyAndShutdown = async () => {
     try {
       await navigator.clipboard.writeText(installCmd);
-    } catch {/* clipboard blocked */}
+    } catch {
+      /* clipboard blocked */
+    }
     setCopied(true);
     let remaining = UPDATER_CONFIG.shutdownCountdownSec;
     setCountdown(remaining);
@@ -205,208 +254,248 @@ export default function UpdatePanel({
     }, 1000);
   };
 
-  const progress = getUpdaterProgressPercent(status || { phase: phase === "starting" ? "starting" : null });
+  const progress = getUpdaterProgressPercent(
+    status || { phase: phase === "starting" ? "starting" : null },
+  );
   const phaseLabel =
-  phase === "starting" ?
-  "Contacting updater…" :
-  phase === "success" ?
-  "Update complete — reloading when app is ready…" :
-  getUpdaterPhaseLabel(status?.phase, {
-    attempt: status?.attempt,
-    maxRetries: status?.maxRetries
-  });
+    phase === "starting"
+      ? "Contacting updater…"
+      : phase === "success"
+        ? "Update complete — reloading when app is ready…"
+        : getUpdaterPhaseLabel(status?.phase, {
+            attempt: status?.attempt,
+            maxRetries: status?.maxRetries,
+          });
   const logTail = Array.isArray(status?.logTail) ? status.logTail : [];
   const busy = phase === "starting" || phase === "running" || phase === "success";
-  const title = `Update ${APP_CONFIG.name}${latestVersion ? ` to v${latestVersion}` : ""}`;
+  const title = `Update ${APP_CONFIG.name}${latestVersion ? ` to v${latestVersion}` : ""}${currentVersion ? ` (current: v${currentVersion})` : ""}`;
 
   // ── Auto mode (default) ──────────────────────────────────────────────────
   if (mode === "auto") {
     return (
-      <div className="w-full max-w-xl rounded-xl bg-neutral-900/95 border border-white/10 p-6 text-white">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center size-11 rounded-full bg-green-500/20 text-green-400">
-            <span className="material-symbols-outlined text-[24px]">
-              {phase === "success" ? "check_circle" : "system_update"}
-            </span>
+      <Card padding={false} role="region" className="w-full max-w-xl" aria-label={title}>
+        <CardContent>
+          <div role="status" aria-live="polite" className="sr-only">
+            {phase === "idle" ? "Update ready" : phaseLabel}
           </div>
-          <div>
-            <h2 className="text-lg font-semibold">{title}</h2>
-            <p className="text-xs text-white/60">
-              One-click install. The app will stop, update, and restart automatically.
-            </p>
-          </div>
-        </div>
+          <PanelHeader
+            icon={phase === "success" ? "check_circle" : "system_update"}
+            iconTone={phase === "success" ? "success" : "accent"}
+            title={title}
+            subtitle="One-click install. The app will stop, update, and restart automatically."
+          />
 
-        {phase === "idle" &&
-        <>
-            <ul className="text-xs text-white/70 space-y-1.5 list-disc list-inside mb-4">
-              <li>Works with the production <code className="px-1 rounded bg-white/10">{UPDATER_CONFIG.npmPackageName}</code> CLI install</li>
-              <li>Takes about 1–2 minutes (npm global install + restart)</li>
-              <li>You can switch to manual install if auto fails</li>
-            </ul>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button variant="secondary" onClick={onClose} className="sm:w-auto">
-                Cancel
-              </Button>
-              <Button variant="primary" fullWidth onClick={startAutoUpdate}>
-                Update & Restart
-              </Button>
-            </div>
-            <button
-            type="button"
-            onClick={() => setMode("manual")}
-            className="mt-3 w-full text-center text-[11px] text-white/50 hover:text-white/80 transition-colors">
-            
-              Prefer manual install instead?
-            </button>
-          </>
-        }
-
-        {busy &&
-        <>
-            <div className="mb-3">
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="text-white/80">{phaseLabel}</span>
-                <span className="text-white/50 tabular-nums">{progress}%</span>
+          {phase === "idle" ? (
+            <>
+              <ul className="mb-4 list-disc space-y-1.5 pl-5 text-xs text-dd-muted">
+                <li>
+                  Works with the production{" "}
+                  <code className="rounded-dd bg-dd-surface-2 px-1 py-0.5 font-mono text-[11px] text-dd-text">
+                    {UPDATER_CONFIG.npmPackageName}
+                  </code>{" "}
+                  CLI install
+                </li>
+                <li>Takes about 1–2 minutes (npm global install + restart)</li>
+                <li>You can switch to manual install if auto fails</li>
+              </ul>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button variant="ghost" onClick={onClose} className="sm:w-auto">
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={startAutoUpdate} className="w-full" icon="system_update">
+                  Update &amp; Restart
+                </Button>
               </div>
-              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                <div
-                className="h-full bg-green-500 transition-all duration-500"
-                style={{ width: `${Math.min(100, progress)}%` }} />
-              
-              </div>
-            </div>
-
-            {logTail.length > 0 &&
-          <div className="mb-3 max-h-32 overflow-y-auto rounded bg-black/40 px-2 py-1.5 font-mono text-[10px] text-white/60 space-y-0.5">
-                {logTail.map((line, i) =>
-            <div key={`${i}-${line.slice(0, 24)}`} className="truncate">{line}</div>
-            )}
-              </div>
-          }
-
-            {phase === "success" ?
-          <p className="text-xs text-green-400/90 mb-3">
-                Install succeeded. Waiting for the app to come back, then reloading…
-              </p> :
-
-          <p className="text-xs text-white/50 mb-3">
-                Keep this tab open. Do not close the browser until the update finishes.
-              </p>
-          }
-
-            {phase !== "success" &&
-          <button
-            type="button"
-            onClick={() => {
-              clearTimers();
-              setMode("manual");
-              setPhase("failed");
-            }}
-            className="w-full text-center text-[11px] text-white/50 hover:text-white/80 transition-colors">
-            
-                Stuck? Switch to manual install
+              <button
+                type="button"
+                onClick={() => setMode("manual")}
+                className={MUTED_TOGGLE}
+              >
+                Prefer manual install instead?
               </button>
-          }
-          </>
-        }
+            </>
+          ) : null}
 
-        {phase === "failed" && mode === "auto" &&
-        <>
-            <div className="mb-3 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-              {error || "Auto-update failed."}
-            </div>
-            <Button variant="primary" fullWidth onClick={() => setMode("manual")}>
-              Open manual install
-            </Button>
-          </>
-        }
-      </div>);
+          {busy ? (
+            <>
+              <div className="mb-3">
+                <div className="mb-1.5 flex items-center justify-between text-xs">
+                  <span className="text-dd-text">{phaseLabel}</span>
+                  <span className="dd-tnum text-dd-muted">{progress}%</span>
+                </div>
+                <div className={PROGRESS_BAR} role="progressbar" aria-label="Update progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, progress)}>
+                  <div
+                    className={PROGRESS_FILL}
+                    style={{ width: `${Math.min(100, progress)}%` }}
+                  />
+                </div>
+              </div>
 
+              {logTail.length > 0 ? (
+                <div className="mb-3 max-h-32 space-y-0.5 overflow-y-auto rounded-dd bg-dd-bg-alt px-2 py-1.5 font-mono text-[10px] text-dd-muted">
+                  {logTail.map((line, i) => (
+                    <div key={`${i}-${line.slice(0, 24)}`} className="truncate">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {phase === "success" ? (
+                <p className="mb-3 text-xs text-dd-success">
+                  Install succeeded. Waiting for the app to come back, then reloading…
+                </p>
+              ) : (
+                <p className="mb-3 text-xs text-dd-muted">
+                  Keep this tab open. Do not close the browser until the update finishes.
+                </p>
+              )}
+
+              {phase !== "success" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearTimers();
+                    setMode("manual");
+                    setPhase("failed");
+                  }}
+                  className={MUTED_TOGGLE}
+                >
+                  Stuck? Switch to manual install
+                </button>
+              ) : null}
+            </>
+          ) : null}
+
+          {phase === "failed" && mode === "auto" ? (
+            <>
+              <div className={ERROR_BANNER} role="alert">
+                {error || "Auto-update failed."}
+              </div>
+              <Button variant="primary" onClick={() => setMode("manual")} className="w-full">
+                Open manual install
+              </Button>
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+    );
   }
 
   // ── Manual fallback ──────────────────────────────────────────────────────
   const isCountingDown = countdown > 0;
   return (
-    <div className="w-full max-w-xl rounded-xl bg-neutral-900/95 border border-white/10 p-6 text-white">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center size-11 rounded-full bg-amber-500/20 text-amber-400">
-          <span className="material-symbols-outlined text-[24px]">content_copy</span>
+    <Card padding={false} role="region" className="relative w-full max-w-xl" aria-label={`${title} — manual`}>
+        <div role="status" aria-live="polite" className="sr-only">
+          {isDisconnected ? "Server stopped" : isCountingDown ? `Server stops in ${countdown} seconds` : "Manual install ready"}
         </div>
-        <div>
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <p className="text-xs text-white/60">
-            {isDisconnected ?
-            "Server stopped. Paste the command into a terminal to install." :
-            isCountingDown ?
-            `Command copied. Server will stop in ${countdown}s...` :
-            error ?
-            "Auto-update unavailable — install manually." :
-            `Copy the install command, stop the server, then re-run ${UPDATER_CONFIG.npmPackageName}.`}
-          </p>
+      <CardContent>
+        <PanelHeader
+          icon="content_copy"
+          iconTone="warning"
+          title={title}
+          subtitle={
+            isDisconnected
+              ? "Server stopped. Paste the command into a terminal to install."
+              : isCountingDown
+                ? `Command copied. Server will stop in ${countdown}s…`
+                : error
+                  ? "Auto-update unavailable — install manually."
+                  : `Copy the install command, stop the server, then re-run ${UPDATER_CONFIG.npmPackageName}.`
+          }
+        />
+
+        {error ? (
+          <div className="mb-3 rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning" role="alert">
+            {error}
+          </div>
+        ) : null}
+
+        <p className="mb-2 text-sm text-dd-text">Install command:</p>
+        <div className="mb-4 w-full rounded-dd bg-dd-bg-alt px-3 py-2">
+          <code className="break-all font-mono text-xs text-dd-accent-2">{installCmd}</code>
         </div>
-      </div>
 
-      {error &&
-      <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          {error}
-        </div>
-      }
+        <ol className="mb-4 list-decimal space-y-1 pl-5 text-xs text-dd-muted">
+          <li>
+            Click <strong className="font-semibold text-dd-text">Copy &amp; Shutdown</strong> below.
+          </li>
+          <li>Paste the command into your terminal and press Enter.</li>
+          <li>
+            Run{" "}
+            <code className="rounded-dd bg-dd-surface-2 px-1 py-0.5 font-mono text-[11px] text-dd-success">
+              {UPDATER_CONFIG.npmPackageName}
+            </code>{" "}
+            again after install.
+          </li>
+        </ol>
 
-      <p className="text-sm text-white/80 mb-2">Install command:</p>
-      <div className="w-full px-3 py-2 rounded bg-white/5 mb-4">
-        <code className="text-xs font-mono text-amber-400 break-all">{installCmd}</code>
-      </div>
+        {isDisconnected ? (
+          <Button variant="secondary" onClick={onReload} className="w-full" icon="refresh">
+            Reload Page
+          </Button>
+        ) : (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                if (!busy) onClose();
+              }}
+              disabled={isCountingDown}
+              className="sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleCopyAndShutdown}
+              disabled={isCountingDown}
+              className="w-full"
+              icon={copied ? "check" : "content_copy"}
+            >
+              {copied
+                ? "✓ Copied — shutting down…"
+                : isCountingDown
+                  ? `Shutting down in ${countdown}s`
+                  : "Copy & Shutdown"}
+            </Button>
+          </div>
+        )}
 
-      <ol className="text-xs text-white/70 space-y-1 list-decimal list-inside mb-4">
-        <li>Click <strong>Copy & Shutdown</strong> below.</li>
-        <li>Paste the command into your terminal and press Enter.</li>
-        <li>Run <code className="px-1 rounded bg-white/10 text-green-400">{UPDATER_CONFIG.npmPackageName}</code> again after install.</li>
-      </ol>
-
-      {isDisconnected ?
-      <Button variant="secondary" fullWidth onClick={() => globalThis.location.reload()}>
-          Reload Page
-        </Button> :
-
-      <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-          variant="secondary"
+        {!isDisconnected && !isCountingDown ? (
+          <button
+            type="button"
+            onClick={() => {
+              setMode("auto");
+              setPhase("idle");
+              setError(null);
+              setStatus(null);
+            }}
+            className={MUTED_TOGGLE}
+          >
+            Try automatic update instead
+          </button>
+        ) : null}
+      </CardContent>
+      {!isDisconnected ? (
+        <IconButton
+          icon="close"
+          label="Close update panel"
+          variant="ghost"
+          size="sm"
           onClick={() => {
             if (!busy) onClose();
           }}
-          disabled={isCountingDown}
-          className="sm:w-auto">
-          
-            Cancel
-          </Button>
-          <Button variant="primary" fullWidth onClick={handleCopyAndShutdown} disabled={isCountingDown}>
-            {copied ? "✓ Copied — shutting down..." : isCountingDown ? `Shutting down in ${countdown}s` : "Copy & Shutdown"}
-          </Button>
-        </div>
-      }
-
-      {!isDisconnected && !isCountingDown &&
-      <button
-        type="button"
-        onClick={() => {
-          setMode("auto");
-          setPhase("idle");
-          setError(null);
-          setStatus(null);
-        }}
-        className="mt-3 w-full text-center text-[11px] text-white/50 hover:text-white/80 transition-colors">
-        
-          Try automatic update instead
-        </button>
-      }
-    </div>);
-
+          className="absolute right-2 top-2"
+        />
+      ) : null}
+    </Card>
+  );
 }
 
 UpdatePanel.propTypes = {
   currentVersion: PropTypes.string,
   latestVersion: PropTypes.string,
   installCmd: PropTypes.string.isRequired,
-  onClose: PropTypes.func.isRequired
+  onClose: PropTypes.func.isRequired,
 };

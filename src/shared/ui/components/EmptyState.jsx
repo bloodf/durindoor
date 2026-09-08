@@ -12,8 +12,8 @@
  *   `size-12 rounded-dd-lg bg-dd-surface-2 text-dd-muted` tile.
  * @param {React.ReactNode} props.title Short headline (`text-sm font-semibold`).
  * @param {React.ReactNode} [props.message] Muted 13px explanation, max `max-w-sm`.
- * @param {{ label: React.ReactNode, icon?: string, onClick?: () => void }} [props.action]
- *   Optional primary button (`bg-dd-accent text-dd-on-accent`, md density).
+ * @param {{ label: React.ReactNode, icon?: string, href?: string, onClick?: () => void }} [props.action]
+ *   Optional primary action (`bg-dd-accent text-dd-on-accent`, md density); `href` renders a link.
  */
 export default function EmptyState({ icon, title, message, action }) {
   return (
@@ -27,20 +27,38 @@ export default function EmptyState({ icon, title, message, action }) {
         <p className="text-sm font-semibold text-dd-text">{title}</p>
         {message ? <p className="text-[13px] text-dd-muted">{message}</p> : null}
       </div>
-      {action ? (
-        <button
-          type="button"
-          onClick={action.onClick}
-          className="inline-flex h-9 items-center gap-1.5 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus"
-        >
-          {action.icon ? (
-            <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">
-              {action.icon}
-            </span>
-          ) : null}
-          {action.label}
-        </button>
-      ) : null}
+      {action ? (() => {
+        if (action.href) {
+          return (
+            <a
+              href={action.href}
+              onClick={action.onClick}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus"
+            >
+              {action.icon ? (
+                <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">
+                  {action.icon}
+                </span>
+              ) : null}
+              {action.label}
+            </a>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus"
+          >
+            {action.icon ? (
+              <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">
+                {action.icon}
+              </span>
+            ) : null}
+            {action.label}
+          </button>
+        );
+      })() : null}
     </div>
   );
 }

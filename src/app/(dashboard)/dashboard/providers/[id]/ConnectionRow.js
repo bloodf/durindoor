@@ -152,32 +152,34 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
   };
 
   return (
-    <div className={`group flex min-w-0 flex-col gap-3 rounded-lg p-2 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02] sm:flex-row sm:items-center sm:justify-between ${connection.isActive === false ? "opacity-60" : ""}`}>
+    <div className={`group flex min-w-0 flex-col gap-3 rounded-lg p-2 transition-colors hover:bg-dd-surface-2/[0.02] dark:hover:bg-dd-surface-2/[0.02] sm:flex-row sm:items-center sm:justify-between ${connection.isActive === false ? "opacity-60" : ""}`}>
       <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
         {/* Priority arrows */}
         <div className="flex shrink-0 flex-col">
           <button
+            aria-label={`Move ${displayName} up`}
             onClick={onMoveUp}
             disabled={isFirst}
-            className={`p-0.5 rounded ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}
+            className={`flex min-h-11 min-w-11 items-center justify-center rounded ${isFirst ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}
           >
             <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
           </button>
           <button
+            aria-label={`Move ${displayName} down`}
             onClick={onMoveDown}
             disabled={isLast}
-            className={`p-0.5 rounded ${isLast ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}
+            className={`flex min-h-11 min-w-11 items-center justify-center rounded ${isLast ? "text-dd-subtle/30 cursor-not-allowed" : "hover:bg-dd-surface-2 text-dd-muted hover:text-dd-accent"}`}
           >
             <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
           </button>
         </div>
-        <span className="material-symbols-outlined shrink-0 text-base text-text-muted">
+        <span className="material-symbols-outlined shrink-0 text-base text-dd-muted">
           {authIcon}
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{displayName}</p>
           {secondaryDisplayName && (
-            <p className="text-xs text-text-muted truncate">{secondaryDisplayName}</p>
+            <p className="text-xs text-dd-muted truncate">{secondaryDisplayName}</p>
           )}
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
             <Badge variant={getStatusVariant()} size="sm" dot>
@@ -198,13 +200,13 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
             )}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
             {errorDisplay && (
-              <span className="max-w-full truncate text-xs text-red-500 sm:max-w-[300px]" title={`${errorDisplay.reason}${errorDisplay.time ? ` · ${errorDisplay.time}` : ""}`}>
+              <span className="max-w-full truncate text-xs text-dd-danger sm:max-w-[300px]" title={`${errorDisplay.reason}${errorDisplay.time ? ` · ${errorDisplay.time}` : ""}`}>
                 {errorDisplay.reason}{errorDisplay.time ? ` · ${errorDisplay.time}` : ""}
               </span>
             )}
-            <span className="text-xs text-text-muted">#{connection.priority}</span>
+            <span className="text-xs text-dd-muted">#{connection.priority}</span>
             {connection.globalPriority && (
-              <span className="text-xs text-text-muted">Auto: {connection.globalPriority}</span>
+              <span className="text-xs text-dd-muted">Auto: {connection.globalPriority}</span>
             )}
             {getOneByOneLabel() && (
               <Badge variant={getOneByOneVariant()} size="sm">
@@ -214,16 +216,16 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
           </div>
           {hasAnyProxy && (
             <div className="mt-1 flex items-center gap-2 flex-wrap">
-              <span className="max-w-full truncate text-[11px] text-text-muted sm:max-w-[420px]" title={proxyDisplayText}>
+              <span className="max-w-full truncate text-[11px] text-dd-muted sm:max-w-[420px]" title={proxyDisplayText}>
                 {proxyDisplayText}
               </span>
               {maskedProxyUrl && (
-                <code className="max-w-full truncate rounded bg-black/5 px-1 py-0.5 font-mono text-[10px] text-text-muted dark:bg-white/5 sm:max-w-[260px]">
+                <code className="max-w-full truncate rounded bg-dd-text/5 px-1 py-0.5 font-mono text-[10px] text-dd-muted dark:bg-dd-surface/5 sm:max-w-[260px]">
                   {maskedProxyUrl}
                 </code>
               )}
               {noProxyText && (
-                <span className="max-w-full truncate text-[11px] text-text-muted sm:max-w-[320px]" title={noProxyText}>
+                <span className="max-w-full truncate text-[11px] text-dd-muted sm:max-w-[320px]" title={noProxyText}>
                   no_proxy: {noProxyText}
                 </span>
               )}
@@ -236,7 +238,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
           {providerId && connection.id && (
             <Link
               href={buildTimelineHref({ provider: providerId, connectionId: connection.id })}
-              className="flex w-full flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
+              className="flex w-full flex-col items-center rounded px-2 py-1 text-dd-muted transition-colors hover:bg-dd-surface-2/5 hover:text-dd-accent dark:hover:bg-dd-surface-2/5"
             >
               <span className="material-symbols-outlined text-[18px]">timeline</span>
               <span className="text-[10px] leading-tight">View all</span>
@@ -247,7 +249,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
             <div className="relative" ref={proxyDropdownRef}>
               <button
                 onClick={() => setShowProxyDropdown((v) => !v)}
-                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${hasAnyProxy ? "text-primary" : "text-text-muted hover:text-primary"}`}
+                className={`flex min-h-11 min-w-11 w-full flex-col items-center justify-center rounded px-2 py-1 transition-colors hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${hasAnyProxy ? "text-dd-accent" : "text-dd-muted hover:text-dd-accent"}`}
                 disabled={updatingProxy}
               >
                 <span className="material-symbols-outlined text-[18px]">
@@ -256,10 +258,10 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
                 <span className="text-[10px] leading-tight">Proxy</span>
               </button>
               {showProxyDropdown && (
-                <div className="absolute right-0 top-full z-50 mt-1 max-w-[78vw] min-w-[160px] rounded-lg border border-border bg-bg py-1 shadow-lg">
+                <div className="absolute right-0 top-full z-50 mt-1 max-w-[78vw] min-w-[160px] rounded-lg border border-dd-border bg-dd-bg-alt py-1 shadow-lg">
                   <button
                     onClick={() => handleSelectProxy("__none__")}
-                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${!boundProxyPoolId ? "text-primary font-medium" : "text-text-main"}`}
+                    className={`w-full px-3 py-2.5 text-left text-sm hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${!boundProxyPoolId ? "text-dd-accent font-medium" : "text-dd-text"}`}
                   >
                     None
                   </button>
@@ -267,7 +269,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
                     <button
                       key={pool.id}
                       onClick={() => handleSelectProxy(pool.id)}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${boundProxyPoolId === pool.id ? "text-primary font-medium" : "text-text-main"}`}
+                      className={`w-full px-3 py-2.5 text-left text-sm hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${boundProxyPoolId === pool.id ? "text-dd-accent font-medium" : "text-dd-text"}`}
                     >
                       {pool.name}
                     </button>
@@ -280,7 +282,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
             <Tooltip text={autoPingTooltip}>
               <button
                 onClick={() => autoPing.onToggle(!autoPing.on)}
-                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${autoPing.on ? "text-primary" : "text-text-muted hover:text-primary"}`}
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${autoPing.on ? "text-dd-accent" : "text-dd-muted hover:text-dd-accent"}`}
               >
                 <span className="material-symbols-outlined text-[18px]">bolt</span>
                 <span className="text-[10px] leading-tight">Auto-ping</span>
@@ -288,16 +290,16 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
             </Tooltip>
           )}
           {isReauthRequired && onReconnect && (
-            <button onClick={onReconnect} className="flex flex-col items-center rounded px-2 py-1 text-amber-500 hover:bg-amber-500/10">
+            <button onClick={onReconnect} className="flex flex-col items-center rounded px-2 py-1 text-dd-warning hover:bg-dd-warning/10">
               <span className="material-symbols-outlined text-[18px]">autorenew</span>
               <span className="text-[10px] leading-tight">Reconnect</span>
             </button>
           )}
-          <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5">
+          <button onClick={onEdit} className="flex min-h-11 min-w-11 flex-col items-center justify-center rounded px-2 py-1 text-dd-muted hover:bg-dd-surface-2/5 hover:text-dd-accent dark:hover:bg-dd-surface-2/5">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             <span className="text-[10px] leading-tight">Edit</span>
           </button>
-          <button onClick={onDelete} className="flex flex-col items-center rounded px-2 py-1 text-red-500 hover:bg-red-500/10">
+          <button onClick={onDelete} className="flex flex-col items-center rounded px-2 py-1 text-dd-danger hover:bg-dd-danger/10">
             <span className="material-symbols-outlined text-[18px]">delete</span>
             <span className="text-[10px] leading-tight">Delete</span>
           </button>
@@ -306,6 +308,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
           size="sm"
           checked={connection.isActive ?? true}
           onChange={onToggleActive}
+          ariaLabel={`${connection.isActive ?? true ? "Disable" : "Enable"} ${displayName}`}
           title={(connection.isActive ?? true) ? "Disable connection" : "Enable connection"}
         />
       </div>

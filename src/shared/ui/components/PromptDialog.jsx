@@ -46,12 +46,13 @@ function PromptDialogForm({
       onClose={onCancel}
       title={title}
       size="sm"
+      initialFocus="input"
       footer={
         <>
           <button
             type="button"
             onClick={onCancel}
-            className="h-9 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
+            className="min-h-11 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
           >
             Cancel
           </button>
@@ -59,7 +60,7 @@ function PromptDialogForm({
             type="submit"
             form={formId}
             disabled={!canSubmit}
-            className="h-9 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-11 rounded-dd bg-dd-accent px-3.5 text-[13px] font-medium text-dd-on-accent outline-none transition-colors hover:bg-dd-accent-hover focus-visible:shadow-dd-focus disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitLabel}
           </button>
@@ -77,7 +78,7 @@ function PromptDialogForm({
           value={value}
           placeholder={placeholder}
           onChange={(event) => setValue(event.target.value)}
-          className="h-9 w-full rounded-dd border border-dd-border bg-dd-surface px-3 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus:shadow-dd-focus"
+          className="min-h-11 w-full rounded-dd border border-dd-border bg-dd-surface px-3 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus:shadow-dd-focus"
         />
       </form>
     </Modal>

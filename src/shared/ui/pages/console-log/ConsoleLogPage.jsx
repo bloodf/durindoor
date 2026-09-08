@@ -98,14 +98,14 @@ function LevelFilters({ value, onChange }) {
             aria-pressed={active}
             onClick={() => onChange(filter.value)}
             className={[
-              "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 font-mono text-xs outline-none transition-colors focus-visible:shadow-dd-focus",
+              "inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-full border px-2.5 font-mono text-xs outline-none transition-colors focus-visible:shadow-dd-focus",
               active
                 ? filter.active
                 : "border-dd-border-subtle bg-dd-surface-2 text-dd-muted hover:border-dd-border hover:text-dd-text",
             ].join(" ")}
           >
             <span>{filter.label}</span>
-            <span className="dd-tnum opacity-80">{filter.count}</span>
+            <span className="dd-tnum">{filter.count}</span>
           </button>
         );
       })}
@@ -145,7 +145,6 @@ function Toolbar({ view, onViewChange, query, onQueryChange, level, onLevelChang
           </Button>
           <span
             className="dd-tnum inline-flex h-7 items-center rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 font-mono text-xs text-dd-muted"
-            aria-label={`${count} of ${LOG_BUFFER_TOTAL} lines`}
             title={`${count} of ${LOG_BUFFER_TOTAL} lines in the rolling buffer`}
           >
             {count}/{LOG_BUFFER_TOTAL}
@@ -166,7 +165,7 @@ function LogViewer({ lines }) {
   }
 
   return (
-    <div role="log" aria-label="Server console output" className="h-[640px] overflow-y-auto rounded-dd-lg border border-dd-border bg-dd-surface py-2 font-mono text-xs">
+    <div role="log" tabIndex={0} aria-label="Server console output" className="h-[640px] overflow-y-auto rounded-dd-lg border border-dd-border bg-dd-surface py-2 font-mono text-xs">
       {lines.map((line, index) => (
         <LogLine key={`${line.ts}-${index}`} line={line} alternate={index % 2 === 1} />
       ))}
@@ -183,7 +182,7 @@ function LogVolumeChart() {
           <AreaChart data={LOG_VOLUME} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
             <defs>
               <linearGradient id="consoleVolumeFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--dd-info)" stopOpacity={0.3} />
+                <stop offset="0%" stopColor="var(--dd-info)" stopOpacity={0.14} />
                 <stop offset="100%" stopColor="var(--dd-info)" stopOpacity={0.02} />
               </linearGradient>
             </defs>

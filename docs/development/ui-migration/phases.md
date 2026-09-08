@@ -5,9 +5,32 @@
 
 ## Phase 0 — Foundation adoption
 
-Goal: make the running app consume the Durin DS token layer and repoint
-the existing `src/shared/components/*` primitives' internals to
-`*-dd-*` tokens — **without changing their props or breaking any page**.
+Goal: verify existing Durin DS token load, remediate their contrast in both served themes,
+then retoken the internals of existing `src/shared/components` primitives to
+`*-dd-*` tokens, preserving every exported prop, export shape, and
+page-level import unchanged. Swapping page consumers/imports/JSX to DS
+equivalents is Phase 2 work only — Phase 0 never touches a page file.
+
+Before any page port, keep token/color remediation in
+`src/shared/ui/tokens.css`; component and i18n behavior repairs use their
+explicit G1 ownership. Keep `globals.css` definitions untouched. New
+grid/focus/scrim overlays belong in DS tokens plus their shell-owned surface.
+Preserve emerald/gold semantic roles. Measure normal text at 7:1, large text
+at 4.5:1, and essential controls/graphics at 3:1 in light and dark. Missing
+visible keyboard focus, keyboard traps, unreachable controls, and inaccessible
+dialogs block page ports. Screenshots and axe alone never certify WCAG 2.2 AAA;
+record measured applicable focus-appearance and target-size evidence.
+
+Foundation minimum (must ship with the retoken, before any Phase 2 page
+adoption PR opens): `Select` Arrow/Home/End key navigation, typeahead, and
+visible focus; `Modal`/`Drawer` initial focus, focus trap, focus return,
+background `inert`, topmost-only `Escape` handling, and nesting support;
+`Button`/`IconButton` own real 44×44 target geometry; root layout + i18n own
+`lang`/`dir` RTL support for `ar`, `he`, `fa`, and `ur` through current locale
+cookie, reusing existing locale configuration with no second registry. Each
+requirement needs a small component unit regression
+plus the orchestrator's Playwright keyboard/target-size and desktop/mobile,
+both-theme RTL assertions passing.
 
 ### 0.1 Token-load decision
 
@@ -15,7 +38,7 @@ Two options were on the table. We pick **option A**.
 
 | Option | Mechanism | Verdict |
 | --- | --- | --- |
-| **A — import `tokens.css` from `src/app/layout.js`** | Add `import "@/shared/ui/tokens.css";` to `src/app/layout.js` next to the existing `import "./globals.css";`. Two Tailwind roots compile side by side; the `--dd-*` utilities are generated and resolvable inside the app, and `globals.css` stays untouched so upstream PRs keep merging. | **Picked.** |
+| **A — retain existing `tokens.css` import in `src/app/layout.js`** | `src/app/layout.js` already imports `@/shared/ui/tokens.css` before `./globals.css`, matching Storybook's dual-root order. The `--dd-*` utilities are generated and resolvable inside the app, while `globals.css` stays untouched so upstream PRs keep merging. | **Picked and already shipped. Verify only; do not add or reorder imports.** |
 | B — merge `tokens.css` into `src/app/globals.css` | Fold the `--dd-*` block into `globals.css` so the app has a single Tailwind root. | Rejected. `globals.css` is read-only from a Durin DS PR (`AGENTS.md` §5A, `porting-upstream-ui.md` §1), and merging would force future migrations to re-edit `globals.css` on every token change. |
 
 `tokens.css` is a self-contained Tailwind root
@@ -26,50 +49,60 @@ harmless.
 
 ### 0.2 Tasks
 
-- PR `feat(ui): load durin ds tokens in app layout`
-  - `src/app/layout.js`: add `import "@/shared/ui/tokens.css";` immediately
-    after `import "./globals.css";`.
-  - Verify: `npm run dev`, confirm the Theme toolbar still flips
-    `document.documentElement.classList` and the new `*-dd-*` utilities
-    resolve in the browser dev-tools.
-- PR `feat(ui): repoint shared primitives to dd-* tokens`
-  - For each file in `src/shared/components/` that ships a default
-    export with a `className` literal, replace the legacy class names
-    (`bg-surface`, `text-text-main`, `border-border`, `bg-primary`, …)
-    with the equivalent `*-dd-*` token utility. Keep the same prop
-    surface (do not rename `variant`, `size`, `tone`, `isOpen`, `onClose`,
-    `onConfirm`, etc.).
-  - Critical imports to verify both sides exist before swapping:
-    - `src/shared/components/Modal.js` → keep `isOpen` / `onClose` /
-      `onConfirm`; style change only.
-    - `src/shared/components/Select.js` → already custom; rewrite
-      classes to `*-dd-*`.
-    - `src/shared/components/Pagination.js` → keep prop names.
-    - `src/shared/components/Card.js` → keep `padding="sm|md|lg"`.
-    - `src/shared/components/Button.js` → keep `variant`.
-    - `src/shared/components/Input.js`, `Textarea.js`, `Toggle.js`,
-      `Tooltip.js`, `Badge.js` → keep prop names; rewrite classes.
+- Verify existing Durin DS token loading in `src/app/layout.js`
+  - Confirm the existing `import "@/shared/ui/tokens.css";` remains before
+    `import "./globals.css";`, matching Storybook's dual-root order. This is
+    verification only: do not add, remove, or reorder imports, and do not
+    edit `src/app/globals.css`.
+
+- PR `feat(ui): remediate durin ds token contrast`
+  - Adjust only `src/shared/ui/tokens.css` token mappings to meet the
+    foundation thresholds above in both served themes. No page migration is
+    complete in this PR; no shell adapter or `globals.css` edit is allowed.
+- PR `feat(ui): retoken shared primitive internals to durin ds tokens`
+  - Retoken the internals of existing `src/shared/components/<Name>.js`
+    primitives: replace hard-coded class strings with `*-dd-*` token
+    utilities. Do **not** swap consumer imports or JSX to the DS
+    equivalents in `src/shared/ui/components/<Name>.jsx`, do not change any
+    exported prop name or shape, and do not rename `Modal.js` `isOpen` to
+    DS `Modal`'s `open` — that swap happens only inside the owning page's
+    Phase 2 PR.
+  - Every existing page import of `src/shared/components/<Name>.js`
+    continues to resolve to the same module and prop contract; only the
+    internal class strings change.
+  - Ship the foundation minimum from above alongside the retoken: `Select`
+    Arrow/Home/End/typeahead/focus, `Modal`/`Drawer` focus
+    trap/return/inert/topmost-Escape/nesting, and real 44×44 targets, each
+    covered by a component unit regression plus the orchestrator's
+    Playwright keyboard/target-size assertions.
+  - Do not delete `Sidebar.js`, `Header.js`, `layouts/DashboardLayout.js`, or
+    `ThemeToggle.js`; they remain live runtime adapters.
   - Do **not** touch `src/app/globals.css`.
-  - Do **not** change `src/shared/components/Modal.js`'s `isOpen` → DS
-    `Modal` uses `open`. Component re-pointing keeps the legacy name; the
-    DS-native rename happens in Phase 2 per-page.
 
 ### 0.3 Verification
+
+> Command ownership: workers edit source only. The migration orchestrator
+> runs every gate below and collects evidence before human complete-diff
+> review; do not run these commands as a substitute for orchestrator gating.
 
 ```bash
 npm run storybook:build       # mocks still build
 npm run lint                  # eslint + anti-slop
 cd tests && npm run test:ci   # baseline unchanged
-npm run dev                   # boot, click through every existing page
+npm run dev                   # boot, click through every existing page; recorded full-screenshot and WCAG assessment live in the all-page gauntlet plan
+# Token contrast recorded evidence (foundation PR): measured contrast
+# for every `--dd-*` text/surface pair in both served themes
 ```
 
 ### 0.4 Entry / exit
 
-- **Entry:** none.
-- **Exit:** app launches; all existing pages still render with new
-  tokens; every `src/shared/components/*` file references only
-  `*-dd-*` utilities; no prop-name changes in any of those files;
-  no `src/app/globals.css` edit.
+- **Entry:** all-page gauntlet inventory started.
+- **Exit:** contrast and keyboard-blocker evidence recorded; app launches;
+  existing pages render with new tokens; primitive internals retoken to
+  `*-dd-*` with props, exports, and page imports unchanged; foundation
+  minimum (Select/Modal/Drawer/target-size) proven via unit and
+  orchestrator Playwright gates; no `src/app/globals.css` edit, page
+  cutover, or runtime-adapter deletion.
 
 ## Phase 1 — shell swap
 
@@ -213,9 +246,10 @@ npm run dev   # click every nav link, log in/out, open the mobile menu, toggle c
 
 ## Phase 2 — Page-by-page migration
 
-Goal: convert every route in [`page-map.md`](./page-map.md) to the
-matching Durin DS visual spec, one route (or tightly coupled route
-cluster) per PR. Risk-ordered across four waves.
+Goal: convert every actionable visual surface in [`page-map.md`](./page-map.md)
+to the matching Durin DS visual spec, one route (or tightly coupled route
+cluster) per PR. Redirect rows on the page map are verification only, not
+visual migrations. Risk-ordered across four waves.
 
 ### 2.1 Wave A — leaf / read-only (low risk)
 
@@ -242,77 +276,58 @@ playbook's before/after patterns apply directly.
 
 5. `/dashboard/endpoint` → mock `pages/endpoint/EndpointPage.jsx`. Native
    `<select>` × 2 + per-row inputs. Medium.
-6. `/dashboard/cli-tools` (+ `/dashboard/cli-tools/[toolId]`) → mock
-   `pages/cli-tools/CliToolsPage.jsx`. `window.prompt` × 2 in
-   `EndpointPresetControl.js` and `BaseUrlSelect.js`; native `<select>` × 2
-   in the same files. Medium.
-7. `/dashboard/combos` → mock `pages/combos/CombosPage.jsx`. CRUD + table.
+6. `/dashboard/cli-tools` → mock `pages/cli-tools/CliToolsPage.jsx`.
+   `window.prompt` × 2 in `EndpointPresetControl.js` and `BaseUrlSelect.js`.
    Medium.
-8. `/dashboard/providers` → mock `pages/providers/ProvidersPage.jsx`.
+7. `/dashboard/cli-tools/[toolId]` → no mock. Port from
+   `pages/cli-tools/CliToolsPage.jsx`. Medium.
+8. `/dashboard/combos` → mock `pages/combos/CombosPage.jsx`. CRUD + table.
+   Medium.
+9. `/dashboard/providers` → mock `pages/providers/ProvidersPage.jsx`.
    Cards, toggles, status filters. Medium.
-9. `/dashboard/providers/[id]` → no mock. Port the pattern from
-   `pages/providers/ProvidersPage.jsx`; flag the deviation in the PR
-   body. Medium.
-10. `/dashboard/mcp-gateway` → mock `pages/mcp-gateway/McpGatewayPage.jsx`.
-    `window.prompt` × 1 in `mcp-gateway/page.js:237`. Medium.
-11. `/dashboard/console-log` → mock `pages/console-log/ConsoleLogPage.jsx`.
-    Tabs + log buffer. Medium.
-12. `/dashboard/proxy-pools` → mock `pages/proxy-pools/ProxyPoolsPage.jsx`.
-    Card list. Medium.
-13. `/dashboard/headroom` → mock `pages/headroom/HeadroomPage.jsx`. Read-
-    only metrics + settings toggle. Medium.
+10. `/dashboard/providers/[id]` → no mock. Port the pattern from
+    `pages/providers/ProvidersPage.jsx`; flag deviation in PR body. Medium.
+11. `/dashboard/mcp-gateway` → mock `pages/mcp-gateway/McpGatewayPage.jsx`.
+    Medium.
+12. `/dashboard/console-log` → mock `pages/console-log/ConsoleLogPage.jsx`.
+    Medium.
+13. `/dashboard/proxy-pools` → mock `pages/proxy-pools/ProxyPoolsPage.jsx`.
+    Medium.
+14. `/dashboard/headroom` → mock `pages/headroom/HeadroomPage.jsx`. Medium.
 
 ### 2.3 Wave C — analytics (medium-high risk)
 
 Range filters, charts, multi-table paged views, dual-axis lines.
 
-14. `/dashboard/usage` → mock `pages/usage/UsagePage.jsx`. `RangeSelector`,
-    dual-axis chart, three paged tables. Medium-high.
-15. `/dashboard/timeline` → mock `pages/timeline/TimelinePage.jsx`. Live
-    area chart + filters + `Drawer`. Medium-high.
-16. `/dashboard/timeline/[id]` → no mock. Port from
-    `pages/timeline/TimelinePage.jsx`. Medium-high.
-17. `/dashboard/quota` → mock `pages/quota/QuotaPage.jsx`. Multi-provider
-    cards. Medium.
-18. `/dashboard/token-saver` → mock `pages/token-saver/TokenSaverStatsPage.jsx`.
-    Stats + per-tool breakdown. Medium-high.
-19. `/dashboard/token-saver/settings` → mock
-    `pages/token-saver-settings/SettingsPage.jsx`. Form + toggles.
-    Medium.
-20. `/dashboard/compression-studio` → mock `pages/test-savers/TestSaversPage.jsx`.
-    Diff viewer. Medium.
-21. `/dashboard/headroom` (already in Wave B for the surface; if the
-    headroom config lives elsewhere, flag in PR body).
+15. `/dashboard/usage` → mock `pages/usage/UsagePage.jsx`. Medium-high.
+16. `/dashboard/timeline` → mock `pages/timeline/TimelinePage.jsx`. Medium-high.
+17. `/dashboard/timeline/[id]` → no mock. Port from `pages/timeline/TimelinePage.jsx`. Medium-high.
+18. `/dashboard/quota` → mock `pages/quota/QuotaPage.jsx`. Medium.
+19. `/dashboard/token-saver` → mock `pages/token-saver/TokenSaverStatsPage.jsx`. Medium-high.
+20. `/dashboard/token-saver/settings` → mock `pages/token-saver-settings/SettingsPage.jsx`. Medium.
+21. `/dashboard/compression-studio` → mock `pages/test-savers/TestSaversPage.jsx`. Medium.
+
 
 ### 2.4 Wave D — playground + media providers + remaining (high risk)
 
 Most state, most modals, deepest tables.
 
-22. `/dashboard/playground` → mock `pages/playground/PlaygroundPage.jsx`.
-    Composer, model picker, SSE preview. High.
-23. `/dashboard/profile` → mock `pages/settings/SettingsPage.jsx`. Forms,
-    toggles, theme. Medium.
-24. `/dashboard/media-providers/[kind]` → mock
-    `pages/media-providers/MediaProvidersPage.jsx`. List of providers per
-    kind; mock only covers `embedding`. Other kinds (`tts`, `stt`,
-    `image`, `realtime`) port from the same mock. Medium-high.
-25. `/dashboard/media-providers/[kind]/[id]` → no mock. Port from the
-    `[kind]` mock. High (5 native `<select>` across 4 sub-components).
-26. `/dashboard/media-providers/combo/[id]` → no mock. Port from the
-    `[kind]` mock. High.
-27. `/dashboard/media-providers/web` → no mock. Port from the `[kind]`
-    mock. Medium.
-28. `/dashboard/auto-configure` → no mock. Port from the closest pattern
-    (a settings form). Medium.
-29. `/dashboard/translator` → no mock. Port from the closest pattern (a
-    simple form view). Medium.
-30. `/dashboard/pxpipe` → no mock. Port from the closest pattern. Medium.
-31. `/dashboard/mitm` → no mock. Port from the closest pattern. Medium.
-32. `/dashboard/settings/pricing` (special path
-    `src/app/dashboard/settings/pricing/page.js`) → no mock. Port from
-    `pages/settings/SettingsPage.jsx`. Low.
-33. `/dashboard` (root redirect to `/dashboard/usage`) — no work needed.
-    Skip.
+22. `/dashboard/playground` → mock `pages/playground/PlaygroundPage.jsx`. High.
+23. `/dashboard/profile` → mock `pages/settings/SettingsPage.jsx`. Medium.
+24. `/dashboard/media-providers/[kind]` → mock `pages/media-providers/MediaProvidersPage.jsx`; cover `embedding`, `rerank`, `image`, `imageToText`, `tts`, `stt`, `video`, and `music`; `webSearch`/`webFetch` redirect to `/dashboard/media-providers/web`; no `realtime`. Medium-high.
+25. `/dashboard/media-providers/[kind]/[id]` → no mock; port every supported dynamic branch. High.
+26. `/dashboard/media-providers/combo/[id]` → no mock. High.
+27. `/dashboard/media-providers/web` → no mock. Medium.
+28. `/dashboard/auto-configure` → no mock. Medium.
+29. `/dashboard/translator` → no mock. Medium.
+30. `/dashboard/pxpipe` → no mock. Medium.
+31. `/dashboard/mitm` → no mock. Medium.
+32. `/dashboard/settings/pricing` → no mock. Low.
+33. `/login` → no mock; preserve auth/password/OIDC/rate-limit/change-password states. High.
+34. `/landing` → no mock; public surface. Medium.
+35. `/callback` → no mock; preserve OAuth callback origin/replay protections. High.
+36. `/` redirect to `/dashboard` — verify behavior; not visual migration.
+37. `/dashboard` redirect to `/dashboard/usage` — verify behavior; not visual migration.
 
 ### 2.5 Per-PR verification
 
@@ -330,57 +345,40 @@ git diff tests/__baseline__/known-fails.txt   # empty
 
 ### 2.6 Phase 2 exit
 
-- All 32 page PRs (1-32 above; #33 is a no-op) merged.
-- `page-map.md` status column flips from `pending` to `migrated`.
-- `tests/__baseline__/known-fails.txt` diff empty.
-- All four gate commands green in the latest merge commit.
+- The page map has 37 inventory rows: 35 actionable visual surfaces
+  (32 dashboard rows plus `/login`, `/landing`, `/callback`) and 2 redirect
+  verification rows (`/`, `/dashboard`). Same-client/route clusters may share
+  one PR; route count is not a PR count. Redirects are not visually migrated.
+- No page-map status flips to `migrated` before consumer/render proof and merge.
 
 ## Phase 3 — Cleanup
 
-Goal: remove the replaced primitives, retire the legacy `globals.css`
-tokens, drop the grid overlay, and add the anti-slop / lint guardrails
-that prevent regression.
+Goal: after consumer/render proof, remove only generic primitives with zero
+consumers, move any needed overlay treatment into DS tokens or shell-owned
+surfaces, and add guardrails. `src/app/globals.css` remains untouched.
 
 ### 3.1 Tasks
 
-- PR `chore(ui): delete replaced legacy primitives`
-  - Delete primitives in `src/shared/components/` that Phase 2 has fully
-    replaced by DS equivalents. The retained list (from `index.js`):
-    - Keep: `Avatar`, `HeaderLanguage`, `HeaderMenu`, `LanguageSwitcher`,
-      `UpdatePanel`, `Footer`, `RequestLogger`, `UsageStats`,
-      `ThemeProvider`, `SetupDiagnosticCard`, `chartTooltip`,
-      `ProviderInfoCard`, `NoAuthProxyCard`, `CapacityBadges`,
-      `PricingModal`, `ChangelogModal`, `McpMarketplaceModal`,
-      `ComboFormModal`, `ManualConfigModal`, `ModelSelectModal`,
-      `ImportTokenModal`, `KiroAuthModal`, `KiroOAuthWrapper`,
-      `KiroSocialOAuthModal`, `CursorAuthModal`, `IFlowCookieModal`,
-      `GitLabAuthModal`, `OAuthModal`, `EditConnectionModal`,
-      `AddCustomEmbeddingModal`, `SidebarNavIcons`. (Domain-specific
-      modals; out of DS scope.)
-    - Delete after every consumer migrates: `Button.js`, `Input.js`,
-      `Select.js`, `Card.js`, `Modal.js` (default only — keep
-      `ConfirmModal` until Wave B finishes), `Loading.js`,
-      `Pagination.js`, `Badge.js`, `ProviderIcon.js`, `Toggle.js`,
-      `ThemeToggle.js`, `DateRangePicker.js`, `Tooltip.js`,
-      `Sidebar.js`, `Header.js`, `layouts/DashboardLayout.js`,
-      `SegmentedControl.js`.
-  - Update `src/shared/components/index.js` to drop the deleted exports.
-- PR `chore(ui): retire legacy globals.css tokens`
-  - Remove from `src/app/globals.css` (`:root` and `.dark`):
-    - `--color-brand-50` … `--color-brand-900`
-    - `--color-primary`, `--color-primary-hover`
-    - `--color-gold`, `--color-gold-soft`
-    - The legacy `--color-bg`, `--color-bg-alt`, `--color-surface`,
-      `--color-surface-2`, `--color-surface-3`, `--color-sidebar`
-      scales that map to the coral/green/gold palette.
-  - Keep `globals.css`'s neutral surface tokens that DS does not yet
-    cover; verify no `src/app/**` file still references a deleted var.
-  - Verify `npm run dev` still boots; verify the Theme toggle still
-    flips both palettes.
-- PR `chore(ui): remove grid overlay`
-  - Locate the legacy grid overlay in `globals.css` (or in
-    `DashboardLayout.js`) and remove it. Confirm the dashboard chrome
-    is clean in both themes.
+- PR `chore(ui): remove proven-unused generic primitives`
+  - Before any physical deletion, prove zero live consumers and preserved
+    functionality. Keep all domain widgets and their live imports.
+  - `Sidebar.js`, `Header.js`, `layouts/DashboardLayout.js`, and
+    `ThemeToggle.js` are runtime adapters; retain them unless zero-consumer
+    proof demonstrates a behavior-preserving replacement. Do not schedule
+    their automatic deletion.
+  - Update `src/shared/components/index.js` only for symbols actually
+    deleted after that proof. Do not use reset/clean or any destructive
+    cleanup command.
+  - Eligible candidate list (no automatic deletion): `Button.js`, `Input.js`,
+    `Select.js`, `Card.js`, `Modal.js` (default only — keep `ConfirmModal`
+    until Wave B finishes), `Loading.js`, `Pagination.js`, `Badge.js`,
+    `ProviderIcon.js`, `Toggle.js`, `DateRangePicker.js`, `Tooltip.js`,
+    `SegmentedControl.js`. Each candidate requires its own zero-consumer
+    and preserved-functionality evidence before deletion.
+- PR `chore(ui): move DS-owned overlay treatment`
+  - Add or remove only DS-owned overlay treatment in
+    `src/shared/ui/tokens.css` or its shell-owned rendering surface. Leave
+    legacy `globals.css` definitions untouched.
 - PR `chore(ui): add anti-slop guardrails`
   - Extend `scripts/check-anti-slop.mjs` (or add a sibling check) to
     fail on:
@@ -396,7 +394,7 @@ that prevent regression.
 ### 3.2 Verification
 
 ```bash
-grep -rE "(--color-brand-|--color-primary|--color-gold)" src/app src/shared/components 2>&1 | wc -l   # expect 0
+# `src/app/globals.css` stays untouched; no legacy-token removal check.
 grep -rE "window\.(prompt|confirm)" src/app 2>&1 | wc -l   # expect 0
 grep -rnE "<select" src/app 2>&1 | wc -l                  # expect 0 (Pagination's is in src/shared/ui)
 npm run storybook:build
@@ -407,6 +405,7 @@ git diff tests/__baseline__/known-fails.txt   # empty
 
 ### 3.3 Entry / exit
 
-- **Entry:** Phase 2 fully merged.
-- **Exit:** all cleanup PRs merged; grep counts above all zero;
-  `tests/__baseline__/known-fails.txt` unchanged; gates green.
+- **Entry:** Phase 2 consumer/render proof complete.
+- **Exit:** each deletion has zero-consumer and preserved-functionality proof;
+  legacy `globals.css` remains unchanged; `tests/__baseline__/known-fails.txt`
+  unchanged; gates green.

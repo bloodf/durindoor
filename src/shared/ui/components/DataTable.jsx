@@ -1,39 +1,24 @@
 /**
- * Durin DS — DataTable
- *
- * Token-backed data table with a real `<table>` for semantics and keyboard
- * navigation. Layout: outer `bg-dd-surface border border-dd-border
- * rounded-dd-lg overflow-hidden` card, an optional `filterBar` strip above
- * the grid, an uppercase muted header row on `bg-dd-surface-2`, body rows
- * divided by `border-dd-border-subtle` with a `hover:bg-dd-surface-2`
- * highlight, and an optional `pagination` footer (a Pagination props object).
- *
- * Column conventions: `mono` columns render `font-mono dd-tnum text-xs`;
- * right-aligned numeric columns get `text-right dd-tnum`; `render?(row)`
- * overrides the cell content (use it for soft status badges — see
- * DataTable.stories.jsx). `loading` swaps the body for pulsing skeleton rows
- * (matching `rows.length` when rows are present, else 5) and sets
- * `aria-busy`; when `rows` is empty the `emptyState` props object is rendered
- * via EmptyState inside a single spanning row (a minimal default is used when
- * `emptyState` is omitted).
+ * Accessible table for parent-owned rows. `rows` is never sliced here: pass the
+ * current server/client page and its separately known `pagination.total`.
  *
  * @param {object} props
- * @param {Array<{ key: string, label: React.ReactNode, align?: "left"|"right"|"center",
- *   mono?: boolean, width?: string|number, render?: (row: object) => React.ReactNode }>} props.columns
+ * @param {Array<{key: string, label: React.ReactNode, align?: "left"|"center"|"right", mono?: boolean, width?: string|number, rowHeader?: boolean, sortDirection?: "ascending"|"descending"|"none", onSort?: () => void, render?: (row: object) => React.ReactNode}>} props.columns
  * @param {object[]} [props.rows=[]]
- * @param {(row: object) => React.Key} props.keyFn Row key extractor.
+ * @param {(row: object, index: number) => React.Key} [props.keyFn]
+ * @param {React.ReactNode} [props.caption] Table caption, announced to assistive technology.
+ * @param {string} [props.ariaLabel="Data table"] Accessible name when no caption exists.
  * @param {"comfortable"|"compact"} [props.density="comfortable"]
- *   comfortable = `px-4 py-2.5`, compact = `px-3 py-1.5`.
- * @param {React.ReactNode} [props.filterBar] Rendered in a bar above the table.
- * @param {object} [props.emptyState] EmptyState props, shown when `rows` is empty.
- * @param {boolean} [props.loading=false] Shows skeleton rows instead of data.
- * @param {{ page: number, pageCount: number, total?: number, rowsLabel?: string,
- *   onPage?: (page: number) => void, rowsPerPage?: number|"all",
- *   rowsPerPageOptions?: Array<number|"all">,
- *   onRowsPerPageChange?: (value: number|"all") => void }} [props.pagination]
- *   Pagination props rendered in a footer bar. The parent owns slicing and
- *   resets `page` to 1 when `onRowsPerPageChange` fires.
+ * @param {React.ReactNode} [props.filterBar]
+ * @param {object} [props.emptyState]
+ * @param {boolean} [props.loading=false]
+ * @param {object} [props.pagination] Parent-owned Pagination props.
+ * @param {(row: object) => React.ReactNode} [props.renderExpandedRow]
+ * @param {React.Key[]} [props.expandedRowKeys=[]]
+ * @param {(keys: React.Key[]) => void} [props.onExpandedRowKeysChange]
+ * @param {(row: object) => string} [props.getRowLabel]
  */
+import { isFunction } from "@/shared/utils/typeChecks.js";
 import EmptyState from "./EmptyState";
 import Pagination from "./Pagination";
 
@@ -42,111 +27,84 @@ const DENSITY = {
   compact: "px-3 py-1.5",
 };
 
-const HEADER_ALIGN = {
-  left: "text-left",
-  center: "text-center",
-  right: "text-right",
-};
-
-const CELL_ALIGN = {
-  left: "text-left",
-  center: "text-center",
-  right: "text-right dd-tnum",
-};
+const HEADER_ALIGN = { left: "text-start", center: "text-center", right: "text-end" };
+const CELL_ALIGN = { left: "text-left", center: "text-center", right: "text-right dd-tnum" };
 
 export default function DataTable({
-  columns,
+  columns = [],
   rows = [],
   keyFn,
+  caption,
+  ariaLabel = "Data table",
   density = "comfortable",
   filterBar,
   emptyState,
   loading = false,
   pagination,
+  renderExpandedRow,
+  expandedRowKeys = [],
+  onExpandedRowKeysChange,
+  getRowLabel,
 }) {
   const cellPadding = DENSITY[density] ?? DENSITY.comfortable;
-  const columnCount = Math.max(columns.length, 1);
-  const skeletonRowCount = rows.length > 0 ? rows.length : 5;
+  const hasExpander = isFunction(renderExpandedRow) && isFunction(onExpandedRowKeysChange);
+  const columnCount = Math.max(columns.length + Number(hasExpander), 1);
+  const skeletonRowCount = Math.max(rows.length, 5);
+  const keyFor = (row, index) => keyFn?.(row, index) ?? index;
+  const toggleExpanded = (key) => {
+    if (!onExpandedRowKeysChange) return;
+    onExpandedRowKeysChange(
+      expandedRowKeys.includes(key)
+        ? expandedRowKeys.filter((expandedKey) => expandedKey !== key)
+        : [...expandedRowKeys, key],
+    );
+  };
 
   return (
     <div className="overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface">
-      {filterBar ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-dd-border-subtle px-3 py-2">
-          {filterBar}
-        </div>
-      ) : null}
-      <div className="overflow-x-auto">
-        <table
-          className="w-full border-collapse text-left text-[13px] text-dd-text"
-          aria-busy={loading || undefined}
-        >
+      {filterBar ? <div className="flex flex-wrap items-center gap-2 border-b border-dd-border-subtle px-3 py-2">{filterBar}</div> : null}
+      <div role="region" aria-label={`${caption ?? ariaLabel} rows`} tabIndex={0} className="overflow-x-auto outline-none focus-visible:shadow-dd-focus">
+        <table className="w-full border-collapse text-left text-[13px] text-dd-text" aria-label={caption ? undefined : ariaLabel} aria-busy={loading || undefined}>
+          {caption ? <caption className="sr-only">{caption}</caption> : null}
           <thead className="bg-dd-surface-2 text-[11px] font-medium uppercase tracking-wide text-dd-muted">
             <tr>
-              {columns.map((column) => (
-                <th
-                  key={column.key}
-                  scope="col"
-                  style={column.width ? { width: column.width } : undefined}
-                  className={`${cellPadding} ${HEADER_ALIGN[column.align ?? "left"]} font-medium`}
-                >
-                  {column.label}
-                </th>
-              ))}
+              {hasExpander ? <th scope="col" className={`${cellPadding} w-11`}><span className="sr-only">Expand row</span></th> : null}
+              {columns.map((column) => {
+                const sortable = isFunction(column.onSort);
+                return (
+                  <th key={column.key} scope="col" aria-sort={column.sortDirection} style={column.width ? { width: column.width } : undefined} className={`p-0 ${HEADER_ALIGN[column.align ?? "left"]} font-medium`}>
+                    {sortable ? <button type="button" onClick={column.onSort} className="flex min-h-11 w-full items-center gap-1 rounded-dd px-4 py-2.5 text-start outline-none focus-visible:shadow-dd-focus">{column.label}<span className="sr-only">, sort</span></button> : <span className={cellPadding}>{column.label}</span>}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              Array.from({ length: skeletonRowCount }, (_, rowIndex) => (
-                <tr key={rowIndex} className="border-t border-dd-border-subtle">
-                  {columns.map((column, columnIndex) => (
-                    <td key={column.key} className={cellPadding}>
-                      <div
-                        className="h-3.5 animate-pulse rounded bg-dd-surface-3"
-                        style={{ width: `${45 + ((rowIndex * 23 + columnIndex * 31) % 45)}%` }}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              ))
-            ) : rows.length === 0 ? (
-              <tr className="border-t border-dd-border-subtle">
-                <td colSpan={columnCount}>
-                  <EmptyState
-                    {...(emptyState ?? { icon: "inbox", title: "No data to display" })}
-                  />
-                </td>
+            {loading ? Array.from({ length: skeletonRowCount }, (_, rowIndex) => (
+              <tr key={rowIndex} className="border-t border-dd-border-subtle">
+                {Array.from({ length: columnCount }, (_, columnIndex) => <td key={columnIndex} className={cellPadding}><div className="h-3.5 animate-pulse rounded bg-dd-surface-3" style={{ width: `${45 + ((rowIndex * 23 + columnIndex * 31) % 45)}%` }} /></td>)}
               </tr>
-            ) : (
-              rows.map((row, rowIndex) => (
-                <tr
-                  key={keyFn ? keyFn(row) : rowIndex}
-                  className="border-t border-dd-border-subtle transition-colors hover:bg-dd-surface-2"
-                >
+            )) : rows.length === 0 ? (
+              <tr className="border-t border-dd-border-subtle"><td colSpan={columnCount}><EmptyState {...(emptyState ?? { icon: "inbox", title: "No data to display" })} /></td></tr>
+            ) : rows.map((row, rowIndex) => {
+              const key = keyFor(row, rowIndex);
+              const expanded = expandedRowKeys.includes(key);
+              const rowLabel = getRowLabel?.(row) ?? `row ${rowIndex + 1}`;
+              return [
+                <tr key={key} className="border-t border-dd-border-subtle transition-colors hover:bg-dd-surface-2">
+                  {hasExpander ? <td className={cellPadding}><button type="button" aria-label={`${expanded ? "Collapse" : "Expand"} ${rowLabel}`} aria-expanded={expanded} onClick={() => toggleExpanded(key)} className="flex size-11 items-center justify-center rounded-dd text-dd-muted outline-none hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">{expanded ? "expand_less" : "expand_more"}</span></button></td> : null}
                   {columns.map((column) => {
-                    const cellClassName = [
-                      cellPadding,
-                      CELL_ALIGN[column.align ?? "left"],
-                      column.mono ? "font-mono dd-tnum text-xs" : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
-                    return (
-                      <td key={column.key} className={cellClassName}>
-                        {column.render ? column.render(row) : row[column.key]}
-                      </td>
-                    );
+                    const Cell = column.rowHeader ? "th" : "td";
+                    return <Cell key={column.key} scope={column.rowHeader ? "row" : undefined} className={[cellPadding, CELL_ALIGN[column.align ?? "left"], column.mono ? "font-mono dd-tnum text-xs" : null].filter(Boolean).join(" ")}>{column.render ? column.render(row) : row[column.key]}</Cell>;
                   })}
-                </tr>
-              ))
-            )}
+                </tr>,
+                hasExpander && expanded ? <tr key={`${key}-expanded`} className="border-t border-dd-border-subtle bg-dd-surface-2"><td colSpan={columnCount} className={cellPadding}>{renderExpandedRow(row)}</td></tr> : null,
+              ];
+            })}
           </tbody>
         </table>
       </div>
-      {pagination ? (
-        <div className="border-t border-dd-border-subtle px-3 py-2">
-          <Pagination {...pagination} />
-        </div>
-      ) : null}
+      {pagination ? <div className="border-t border-dd-border-subtle px-3 py-2"><Pagination {...pagination} /></div> : null}
     </div>
   );
 }

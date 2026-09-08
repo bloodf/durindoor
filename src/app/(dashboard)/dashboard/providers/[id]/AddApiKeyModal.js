@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Button, Badge, Input, Modal, Select } from "@/shared/components";
+import Button from "@/shared/ui/components/Button.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+import Field from "@/shared/ui/components/Field.jsx";
+
+import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { parseBulkApiKeyLine, requiresProviderAccountId } from "@/lib/providerAccountIds";
 import {
@@ -230,7 +237,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   if (!provider) return null;
 
   return (
-    <Modal isOpen={isOpen} title={`Add ${providerName || provider} ${credentialLabel}`} onClose={onClose}>
+    <Modal open={isOpen} title={`Add ${providerName || provider} ${credentialLabel}`} onClose={onClose}>
       <div className="flex flex-col gap-4">
         {/* Mode switcher */}
         <div className="flex gap-2">
@@ -240,28 +247,30 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
         {mode === "bulk" &&
         <div className="flex flex-col gap-3">
-            <p className="text-xs text-text-muted">
+            <p className="text-xs text-dd-muted">
               {requiresAccountId ?
-            <>One key per line. Required format: <code>name|apiKey|accountId</code>.</> :
-            <>One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</>
-            }
+              <>One key per line. Required format: <code>name|apiKey|accountId</code>.</> :
+              <>One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</>
+              }
             </p>
-            <textarea
-            className="w-full rounded border border-accent/30 bg-sidebar p-2 text-sm font-mono resize-y min-h-[140px] focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder={bulkPlaceholder}
-            value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)} />
+            <Textarea
+              label="Credentials"
+              className="min-h-[140px] font-mono"
+              placeholder={bulkPlaceholder}
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+            />
           
             {bulkResult &&
-          <div className={`text-sm font-medium ${bulkResult.failed > 0 ? "text-yellow-400" : "text-green-400"}`}>
+          <div className={`text-sm font-medium ${bulkResult.failed > 0 ? "text-dd-warning" : "text-dd-success"}`}>
                 ✓ {bulkResult.success} added{bulkResult.failed > 0 ? `, ✗ ${bulkResult.failed} failed` : ""}
               </div>
           }
             <div className="flex gap-2">
-              <Button onClick={handleBulkSubmit} fullWidth disabled={saving || !bulkText.trim()}>
+              <Button variant="primary" onClick={handleBulkSubmit} className="w-full" disabled={saving || !bulkText.trim()}>
                 {saving ? "Adding..." : "Add All Keys"}
               </Button>
-              <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
+              <Button onClick={onClose} variant="ghost" className="w-full">Cancel</Button>
             </div>
           </div>
         }
@@ -317,32 +326,22 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             data-testid="bailian-qwen-cookie" />
 
           }
-        {isXaiApiKey &&
-          <p className="text-xs text-text-muted">
-            Use a direct xAI API key from console.x.ai. This is separate from Grok Build OAuth.
-          </p>
-          }
-        {isCookie && authHint &&
-          <p className="text-xs text-text-muted">
+        {isXaiApiKey ? <p className="text-xs text-dd-muted">Use a direct xAI API key from console.x.ai. This is separate from Grok Build OAuth.</p> : null}
+        {isCookie && authHint ? (
+          <p className="text-xs text-dd-muted">
             {authHint}
-            {website &&
-            <>
-                {" "}
-                <a href={website} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                  Open {website.replace(/^https?:\/\//, "")}
-                </a>
-              </>
-            }
+            {website ? <> {" "}<a href={website} target="_blank" rel="noopener noreferrer" className="text-dd-accent underline">Open {website.replace(/^https?:\/\//, "")}</a></> : null}
           </p>
-          }
-        {providerRegions &&
-          <Select
-            label="Region"
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            options={providerRegions.map((r) => ({ value: r.id, label: r.label }))} />
-
-          }
+        ) : null}
+        {providerRegions ? (
+          <Field label="Region">
+            <Select
+              aria-label="Region"
+              value={region}
+              onChange={(value) => setRegion(value)}
+              options={providerRegions.map((r) => ({ value: r.id, label: r.label }))} />
+          </Field>
+        ) : null}
         {isCompatible &&
           <Input
             label="Default Model"
@@ -352,25 +351,25 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
           }
         {isOllamaLocal &&
-          <p className="text-xs text-text-muted">
+          <p className="text-xs text-dd-muted">
             Leave blank to use <code>http://localhost:11434</code>. For remote Ollama, enter the full host URL (e.g. <code>http://192.168.1.10:11434</code>).
           </p>
           }
         {validationResult &&
-          <Badge variant={validationResult === "success" ? "success" : "error"}>
+          <Badge tone={validationResult === "success" ? "success" : "danger"}>
             {validationResult === "success" ? "Valid" : "Invalid"}
           </Badge>
           }
         {error &&
-          <p className="text-xs text-red-500 break-words">{error}</p>
+          <p className="text-xs text-dd-danger break-words" role="alert">{error}</p>
           }
         {isCompatible &&
-          <p className="text-xs text-text-muted">
+          <p className="text-xs text-dd-muted">
             Enter the model ID exactly as your compatible endpoint expects it. This model will be saved as the connection default.
           </p>
           }
         {requiresAccountId &&
-          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+          <div className="bg-dd-surface-2/50 p-4 rounded-lg border border-dd-accent/20">
             <h3 className="font-semibold mb-3 text-sm">{accountIdProviderLabel}</h3>
             <Input
               label="Account ID"
@@ -378,16 +377,16 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               onChange={(e) => setAccountIdData({ ...accountIdData, accountId: e.target.value })}
               placeholder={isCloudflareAi ? "abc123def456..." : "snowflake-account-id"} />
             
-            <p className="text-xs text-text-muted mt-2">
+            <p className="text-xs text-dd-muted mt-2">
               {isCloudflareAi ?
-              <>Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">dash.cloudflare.com</a>.</> :
-              <>Use the organization-account identifier shown in <a href="https://app.snowflake.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">Snowsight</a>.</>
+              <>Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-dd-accent underline">dash.cloudflare.com</a>.</> :
+              <>Use the organization-account identifier shown in <a href="https://app.snowflake.com" target="_blank" rel="noopener noreferrer" className="text-dd-accent underline">Snowsight</a>.</>
               }
             </p>
           </div>
           }
         {isAzure &&
-          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+          <div className="bg-dd-surface-2/50 p-4 rounded-lg border border-dd-accent/20">
             <h3 className="font-semibold mb-3 text-sm">Azure OpenAI Configuration</h3>
             <div className="flex flex-col gap-3">
               <Input
@@ -425,32 +424,31 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value) || 1 })} />
           
 
-        <Select
-            label="Proxy Pool"
+        <Field label="Proxy Pool">
+          <Select
+            aria-label="Proxy Pool"
             value={formData.proxyPoolId}
-            onChange={(e) => setFormData({ ...formData, proxyPoolId: e.target.value })}
-            options={[
-            { value: NONE_PROXY_POOL_VALUE, label: "None" },
-            ...(proxyPools || []).map((pool) => ({ value: pool.id, label: pool.name }))]
-            }
+            onChange={(value) => setFormData({ ...formData, proxyPoolId: value })}
+            options={[{ value: NONE_PROXY_POOL_VALUE, label: "None" }, ...(proxyPools || []).map((pool) => ({ value: pool.id, label: pool.name }))]}
             placeholder="None" />
+        </Field>
           
 
         {(proxyPools || []).length === 0 &&
-          <p className="text-xs text-text-muted">
+          <p className="text-xs text-dd-muted">
             No active proxy pools available. Create one in Proxy Pools page first.
           </p>
           }
 
-        <p className="text-xs text-text-muted">
+        <p className="text-xs text-dd-muted">
           Legacy manual proxy fields are still accepted by API for backward compatibility.
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={saving || !isOllamaLocal && (!formData.name || !formData.apiKey) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
+          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || !isOllamaLocal && (!formData.name || !formData.apiKey) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
             {saving ? "Saving..." : "Save"}
           </Button>
-          <Button onClick={onClose} variant="ghost" fullWidth>
+          <Button onClick={onClose} variant="ghost" className="w-full">
             Cancel
           </Button>
         </div>

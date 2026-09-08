@@ -13,10 +13,10 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { createVisiblePoller } from "@/shared/utils/visiblePoller";
 
 const STATUS_CONFIG = {
-  available: { icon: "check_circle", color: "#22c55e", label: "Available" },
-  cooldown: { icon: "schedule", color: "#f59e0b", label: "Cooldown" },
-  unavailable: { icon: "error", color: "#ef4444", label: "Unavailable" },
-  unknown: { icon: "help", color: "#6b7280", label: "Unknown" },
+  available: { icon: "check_circle", iconClass: "text-dd-success", label: "Available" },
+  cooldown: { icon: "schedule", iconClass: "text-dd-warning", label: "Cooldown" },
+  unavailable: { icon: "error", iconClass: "text-dd-danger", label: "Unavailable" },
+  unknown: { icon: "help", iconClass: "text-dd-muted", label: "Unknown" },
 };
 
 export default function ModelAvailabilityBadge() {
@@ -95,53 +95,52 @@ export default function ModelAvailabilityBadge() {
 
   return (
     <div className="relative" ref={ref}>
-      {/* <button
-        onClick={() => setExpanded(!expanded)}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        aria-haspopup="dialog"
+        className={`inline-flex min-h-11 items-center gap-1.5 rounded-dd border px-3 text-xs font-medium outline-none transition-colors focus-visible:shadow-dd-focus ${
           isHealthy
-            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/15"
-            : "bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500/15"
+            ? "border-dd-accent/20 bg-dd-accent-soft text-dd-accent hover:bg-dd-surface-2"
+            : "border-dd-warning/20 bg-dd-warning/10 text-dd-warning hover:bg-dd-surface-2"
         }`}
       >
-        <span className="material-symbols-outlined text-[14px]">
+        <span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">
           {isHealthy ? "verified" : "warning"}
         </span>
-        {isHealthy
-          ? "All models operational"
-          : `${unavailableCount} model${unavailableCount !== 1 ? "s" : ""} with issues`}
-      </button> */}
+        {isHealthy ? "All models operational" : `${unavailableCount} model${unavailableCount !== 1 ? "s" : ""} with issues`}
+      </button>
 
       {expanded && (
-        <div className="absolute top-full right-0 mt-2 w-80 bg-surface border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-bg">
+        <div className="absolute top-full right-0 mt-2 w-80 bg-dd-surface border border-dd-border rounded-dd-lg shadow-dd-elevated z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-dd-border bg-dd-bg-alt">
             <div className="flex items-center gap-2">
-              <span
-                className="material-symbols-outlined text-[16px]"
-                style={{ color: isHealthy ? "#22c55e" : "#f59e0b" }}
-              >
+              <span className={`material-symbols-outlined text-[16px] ${isHealthy ? "text-dd-success" : "text-dd-warning"}`} aria-hidden="true">
                 {isHealthy ? "verified" : "warning"}
               </span>
-              <span className="text-sm font-semibold text-text-main">Model Status</span>
+              <span className="text-sm font-semibold text-dd-text">Model Status</span>
             </div>
             <button
+              type="button"
+              aria-label="Refresh model availability"
               onClick={fetchStatus}
-              className="p-1 rounded-lg hover:bg-surface text-text-muted hover:text-text-main transition-colors"
-              title="Refresh"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-dd-surface text-dd-muted hover:text-dd-text transition-colors"
             >
-              <span className="material-symbols-outlined text-[14px]">refresh</span>
+              <span aria-hidden="true" className="material-symbols-outlined text-[14px]">refresh</span>
             </button>
           </div>
 
-          <div className="px-4 py-3 max-h-60 overflow-y-auto">
+          <div tabIndex={0} aria-label="Model availability details" className="px-4 py-3 max-h-60 overflow-y-auto" role="region">
             {isHealthy ? (
-              <p className="text-sm text-text-muted text-center py-2">
+              <p className="text-sm text-dd-muted text-center py-2">
                 All models are responding normally.
               </p>
             ) : (
               <div className="flex flex-col gap-2.5">
                 {Object.entries(byProvider).map(([provider, provModels]) => (
                   <div key={provider}>
-                    <p className="text-xs font-semibold text-text-main mb-1.5 capitalize">{provider}</p>
+                    <p className="text-xs font-semibold text-dd-text mb-1.5 capitalize">{provider}</p>
                     <div className="flex flex-col gap-1">
                       {provModels.map((m) => {
                         const status = STATUS_CONFIG[m.status] || STATUS_CONFIG.unknown;
@@ -149,16 +148,13 @@ export default function ModelAvailabilityBadge() {
                         return (
                           <div
                             key={`${m.provider}-${m.model}`}
-                            className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-surface/30"
+                            className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-dd-surface/30"
                           >
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <span
-                                className="material-symbols-outlined text-[14px] shrink-0"
-                                style={{ color: status.color }}
-                              >
+                              <span className={`material-symbols-outlined shrink-0 text-[14px] ${status.iconClass}`} aria-hidden="true">
                                 {status.icon}
                               </span>
-                              <span className="font-mono text-xs text-text-main truncate">{m.model}</span>
+                              <span className="font-mono text-xs text-dd-text truncate">{m.model}</span>
                             </div>
                             {m.status === "cooldown" && (
                               <Button

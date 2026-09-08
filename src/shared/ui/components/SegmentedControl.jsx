@@ -18,8 +18,8 @@ import { useRef } from "react";
  */
 
 const SEGMENT_SIZE = {
-  md: "h-7 gap-1.5 px-3 text-[13px]",
-  sm: "h-6 gap-1 px-2.5 text-xs",
+  md: "min-h-11 min-w-11 gap-1.5 px-3 text-[13px]",
+  sm: "min-h-11 min-w-11 gap-1 px-2.5 text-xs",
 };
 
 const NAV_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];

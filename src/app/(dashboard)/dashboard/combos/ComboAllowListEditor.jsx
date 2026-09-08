@@ -87,9 +87,9 @@ export default function ComboAllowListEditor({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus"
+        className="mt-2 inline-flex min-h-11 min-w-11 items-center gap-1 self-start rounded-dd px-1.5 text-[11px] font-medium text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus"
       >
-        <span aria-hidden="true" className="material-symbols-outlined text-[13px] leading-none">
+        <span aria-hidden="true" className="material-symbols-outlined text-[14px] leading-none">
           lock_open
         </span>
         Unrestricted — allow any eligible connection
@@ -109,7 +109,7 @@ export default function ComboAllowListEditor({
           Connection allow-list{allowedConnectionIds.length === 0 ? " (unrestricted)" : ""}
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-1">
         {allowedConnectionIds.map((id) => (
           <Chip
             key={id}
@@ -119,8 +119,9 @@ export default function ComboAllowListEditor({
           />
         ))}
         {groupOptions.length > 0 ? (
-          <div className="min-w-[180px]">
+          <div className="w-full sm:min-w-[180px] sm:w-auto">
             <Select
+              aria-label="Add a group…"
               options={groupOptions}
               value={assignGroupValue}
               onChange={(groupId) => {
@@ -134,8 +135,9 @@ export default function ComboAllowListEditor({
             />
           </div>
         ) : null}
-        <div className="min-w-[180px]">
+        <div className="w-full sm:min-w-[180px] sm:w-auto">
           <Select
+            aria-label="Add connection"
             options={unselected}
             value=""
             onChange={(id) => persist(dedupeConcat(allowedConnectionIds, [id]))}

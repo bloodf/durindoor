@@ -439,7 +439,7 @@ function ApiKeyUsage({ initialExpandedKey, rows }) {
         <p className="mt-0.5 text-xs text-dd-muted">Client credential usage for selected range</p>
       </div>
       <div className="overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface">
-        <div className="overflow-x-auto">
+        <div role="region" aria-label="Usage by API key" tabIndex={0} className="overflow-x-auto">
           <table className="w-full border-collapse text-left text-[13px] text-dd-text">
             <thead className="bg-dd-surface-2 text-[11px] font-medium uppercase tracking-wide text-dd-muted">
               <tr>
@@ -461,7 +461,7 @@ function ApiKeyUsage({ initialExpandedKey, rows }) {
                       <td className="px-3 py-1.5">
                         <button
                           type="button"
-                          className="flex items-center gap-2 text-left text-dd-text"
+                          className="flex min-h-11 min-w-11 items-center gap-2 text-left text-dd-text"
                           aria-expanded={expanded}
                           aria-controls={`api-key-${apiKey.id}-models`}
                           onClick={() => toggleKey(apiKey.id)}
@@ -536,7 +536,7 @@ function ProviderSpend({ rows }) {
     <Card padding={false}>
       <CardHeader icon="dns" title="Usage by provider" subtitle="Estimated for selected range" />
       <CardContent className="px-0 py-0">
-        <div className="overflow-x-auto">
+        <div role="region" aria-label="Usage by provider" tabIndex={0} className="overflow-x-auto">
           <table className="w-full text-left text-xs text-dd-text">
             <thead className="bg-dd-surface-2 text-[11px] uppercase tracking-wide text-dd-muted">
               <tr>

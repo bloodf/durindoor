@@ -48,6 +48,7 @@ export const SidebarCollapsed = {
         onNavigate={() => undefined}
         onToggleCollapse={() => undefined}
       />
+      <p className="mt-2 px-3 text-xs text-dd-muted">Collapsed navigation</p>
     </SidebarFrame>
   ),
 };

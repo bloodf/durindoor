@@ -102,6 +102,8 @@ vi.mock("../../src/sse/utils/requestCorrelation.js", async (importOriginal) => (
   withRequestCorrelation: (fn) => async (request) => fn(request),
   getRequestId: () => "test-req",
 }));
+const { handleChat } = await import("../../src/sse/handlers/chat.js");
+
 
 const originalFetch = globalThis.fetch;
 let restoreProxyFetch = () => {};
@@ -304,7 +306,6 @@ describe("weighted combo dispatch: heavy member chosen first", () => {
     const upstreamFetch = makeFetch();
     globalThis.fetch = upstreamFetch;
     restoreProxyFetch = __setOriginalFetchForTesting(upstreamFetch);
-    const { handleChat } = await import("../../src/sse/handlers/chat.js");
     const req = new Request("http://localhost/v1/chat/completions", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -393,7 +394,6 @@ describe("weighted combo dispatch: falls back to the next member on a retryable 
     const upstreamFetch = makeFetch({ failureOnHeavy: true });
     globalThis.fetch = upstreamFetch;
     restoreProxyFetch = __setOriginalFetchForTesting(upstreamFetch);
-    const { handleChat } = await import("../../src/sse/handlers/chat.js");
     const req = new Request("http://localhost/v1/chat/completions", {
       method: "POST",
       headers: { "content-type": "application/json" },

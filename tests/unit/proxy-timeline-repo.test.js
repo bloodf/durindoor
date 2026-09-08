@@ -16,6 +16,15 @@ async function setSettings(settings) {
     [JSON.stringify(settings)],
   );
 }
+async function flushAllProxyTimelineForTests() {
+  const { getProxyTimelineAdapter } = await import("@/lib/db/proxyTimelineDb.js");
+  const adapter = await getProxyTimelineAdapter();
+  const flush = vi.spyOn(adapter, "flush").mockImplementation(() => {});
+  try {
+    await timeline.flushAllProxyTimelineForTests();
+  } finally { flush.mockRestore(); }
+}
+
 
 beforeEach(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-proxy-timeline-repo-"));
@@ -272,7 +281,11 @@ describe("proxy timeline repository", () => {
     timeline.record({ traceId: "overflow", type: "sse_chunk", direction: "in", summary: "drop me" });
     timeline.record({ traceId: "overflow", type: "error", direction: "in", summary: "keep me" });
     expect(timeline.getQueueLengthForTests()).toBeLessThanOrEqual(10_000);
-    for (let i = 0; i < 205; i++) await timeline.flushProxyTimelineForTests();
+    // Drain until the queue is actually empty rather than guessing a flush
+    // count: 205 serial round trips only finished in time on an idle host,
+    // which made this fail under load for reasons unrelated to the drop
+    // behaviour it checks.
+    await flushAllProxyTimelineForTests();
     const trace = await timeline.getTrace("overflow");
     expect(trace.truncated).toBe(1);
     expect(trace.events.some((event) => event.type === "error" && event.summary === "keep me")).toBe(true);
@@ -310,7 +323,7 @@ describe("proxy timeline repository", () => {
     for (let i = 0; i < 10_000; i++) timeline.record({ traceId: "finished-overflow", type: "sse_chunk", direction: "in" });
     timeline.record({ traceId: "finished-overflow", type: "sse_chunk", direction: "in" });
     timeline.finishTrace("finished-overflow");
-    for (let i = 0; i < 201; i++) await timeline.flushProxyTimelineForTests();
+    await flushAllProxyTimelineForTests();
     const trace = await timeline.getTrace("finished-overflow");
     const seqs = trace.events.map((event) => event.seq);
     expect(trace.events.some((event) => event.direction === "system")).toBe(true);
@@ -327,7 +340,7 @@ describe("proxy timeline repository", () => {
     timeline.record({ traceId: "double-B", type: "sse_chunk", direction: "in" });
     timeline.finishTrace("double-A");
     timeline.finishTrace("double-B");
-    for (let i = 0; i < 402; i++) await timeline.flushProxyTimelineForTests();
+    await flushAllProxyTimelineForTests();
     for (const id of ["double-A", "double-B"]) {
       const trace = await timeline.getTrace(id);
       const seqs = trace.events.map((event) => event.seq);
@@ -343,7 +356,7 @@ describe("proxy timeline repository", () => {
     for (let round = 0; round < 50; round++) for (const id of ids) timeline.record({ traceId: id, type: "sse_chunk", direction: "in" });
     for (const id of ids) timeline.record({ traceId: id, type: "sse_chunk", direction: "in" });
     for (const id of ids) timeline.finishTrace(id);
-    for (let index = 0; index < 500; index++) await timeline.flushProxyTimelineForTests();
+    await flushAllProxyTimelineForTests();
     const lastId = "marker-finish-159";
     const { getProxyTimelineAdapter } = await import("@/lib/db/proxyTimelineDb.js");
     const adapter = await getProxyTimelineAdapter();
@@ -410,7 +423,6 @@ describe("proxy timeline repository", () => {
   });
 
   it("retries persist without replaying the transaction or emitting early", async () => {
-    vi.useFakeTimers();
     const writes = [];
     const unsubscribe = timeline.onTimelineWrite((write) => writes.push(write));
     let flush;
@@ -418,12 +430,12 @@ describe("proxy timeline repository", () => {
     try {
       const { getProxyTimelineAdapter } = await import("@/lib/db/proxyTimelineDb.js");
       const adapter = await getProxyTimelineAdapter();
-      const originalFlush = adapter.flush.bind(adapter);
       const originalRun = adapter.run.bind(adapter);
       flush = vi.spyOn(adapter, "flush")
         .mockRejectedValueOnce(new Error("disk full"))
-        .mockImplementation(originalFlush);
+        .mockImplementation(() => {});
       run = vi.spyOn(adapter, "run").mockImplementation(originalRun);
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
       timeline.startTrace({ id: "persist-fail" });
       timeline.record({ traceId: "persist-fail", type: "request", direction: "in", summary: "one" });

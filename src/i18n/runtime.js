@@ -1,11 +1,12 @@
 "use client";
 
-import { DEFAULT_LOCALE, LOCALE_COOKIE, normalizeLocale } from "./config";
+import { DEFAULT_LOCALE, LOCALE_COOKIE, getLocaleDirection, normalizeLocale } from "./config";
 import { isBrowser, isString, isUndefined } from "../shared/utils/typeChecks.js";
 
 let translationMap = {};
 let currentLocale = DEFAULT_LOCALE;
 let reloadCallbacks = [];
+const textState = new WeakMap();
 
 // Read locale from cookie
 function getLocaleFromCookie() {
@@ -15,6 +16,18 @@ function getLocaleFromCookie() {
   find((c) => c.trim().startsWith(`${LOCALE_COOKIE}=`));
   const value = cookie ? decodeURIComponent(cookie.split("=")[1]) : DEFAULT_LOCALE;
   return normalizeLocale(value);
+}
+
+/**
+ * Keep root document language metadata aligned with runtime translations.
+ * Browser-only callers may pass aliases; normalization keeps DOM attributes valid.
+ */
+export function syncDocumentLocale(locale) {
+  if (isUndefined(globalThis.document)) return;
+
+  const normalized = normalizeLocale(locale);
+  document.documentElement.lang = normalized;
+  document.documentElement.dir = getLocaleDirection(normalized);
 }
 
 // Load translation map
@@ -83,14 +96,12 @@ function processTextNode(node) {
 
   if (skipTags.includes(tagName)) return;
 
-  // Store original text if not already stored
-  if (!node._originalText) {
-    node._originalText = node.nodeValue;
-  }
-
-  // Use original text for translation
-  const original = node._originalText;
+  // React may reuse a Text node for a new label. Only our last translated
+  // value belongs to the old source; an external edit establishes new source.
+  const previous = textState.get(node);
+  const original = previous && node.nodeValue === previous.rendered ? previous.source : node.nodeValue;
   const translated = translate(original);
+  textState.set(node, { source: original, rendered: translated });
 
   // Only update if different to avoid unnecessary DOM mutations
   if (translated !== node.nodeValue) {
@@ -126,6 +137,7 @@ export async function initRuntimeI18n() {
   if (!isBrowser()) return;
 
   currentLocale = getLocaleFromCookie();
+  syncDocumentLocale(currentLocale);
   await loadTranslations(currentLocale);
 
   // Process existing DOM
@@ -134,6 +146,7 @@ export async function initRuntimeI18n() {
   // Watch for new nodes
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
+      if (mutation.type === "characterData") processTextNode(mutation.target);
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType === Node.ELEMENT_NODE) {
           processElement(node);
@@ -146,6 +159,7 @@ export async function initRuntimeI18n() {
 
   observer.observe(document.body, {
     childList: true,
+    characterData: true,
     subtree: true
   });
 }
@@ -153,11 +167,12 @@ export async function initRuntimeI18n() {
 // Reload translations when locale changes
 export async function reloadTranslations() {
   currentLocale = getLocaleFromCookie();
+  syncDocumentLocale(currentLocale);
   await loadTranslations(currentLocale);
 
   // Notify all registered callbacks
   reloadCallbacks.forEach((callback) => callback());
 
-  // Re-process entire DOM (will use stored original text)
+  // Re-process the current source labels, retaining translations only we wrote.
   processElement(document.body);
 }

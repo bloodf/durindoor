@@ -281,7 +281,11 @@ describe("proxy timeline repository", () => {
     timeline.record({ traceId: "overflow", type: "sse_chunk", direction: "in", summary: "drop me" });
     timeline.record({ traceId: "overflow", type: "error", direction: "in", summary: "keep me" });
     expect(timeline.getQueueLengthForTests()).toBeLessThanOrEqual(10_000);
-    for (let i = 0; i < 205; i++) await timeline.flushProxyTimelineForTests();
+    // Drain until the queue is actually empty rather than guessing a flush
+    // count: 205 serial round trips only finished in time on an idle host,
+    // which made this fail under load for reasons unrelated to the drop
+    // behaviour it checks.
+    await flushAllProxyTimelineForTests();
     const trace = await timeline.getTrace("overflow");
     expect(trace.truncated).toBe(1);
     expect(trace.events.some((event) => event.type === "error" && event.summary === "keep me")).toBe(true);

@@ -393,7 +393,7 @@
       "approvedScenarioIds": [],
       "storyScenarios": [],
       "approvedException": {
-        "reason": "Server component: awaits settings/status then renders a single <AutoConfigureClient status={status} /> with no own markup — pure server wrapper that delegates."
+        "reason": "Server component: awaits settings/status then renders a single <AutoConfigureClient status={status} /> with no own markup \u2014 pure server wrapper that delegates."
       },
       "reviewEvidence": null
     },
@@ -411,7 +411,7 @@
       "approvedScenarioIds": [],
       "storyScenarios": [],
       "approvedException": {
-        "reason": "Server component: validates CLI_TOOLS[toolId] (notFound on miss), awaits machineId, renders a single <ToolDetailClient .../> with no own markup — pure server wrapper that delegates."
+        "reason": "Server component: validates CLI_TOOLS[toolId] (notFound on miss), awaits machineId, renders a single <ToolDetailClient .../> with no own markup \u2014 pure server wrapper that delegates."
       },
       "reviewEvidence": null
     },
@@ -2367,7 +2367,7 @@
       "approvedScenarioIds": [],
       "storyScenarios": [],
       "approvedException": {
-        "reason": "Server component: awaits machineId, renders a single <CLIToolsPageClient machineId={machineId} /> with no own markup — pure server wrapper that delegates."
+        "reason": "Server component: awaits machineId, renders a single <CLIToolsPageClient machineId={machineId} /> with no own markup \u2014 pure server wrapper that delegates."
       },
       "reviewEvidence": null
     },
@@ -2396,7 +2396,7 @@
           "id": "production-combos-comboallowlisteditor--unrestricted",
           "storyId": "production-combos-comboallowlisteditor--unrestricted",
           "runtimeArtifactId": "production-combos-comboallowlisteditor--unrestricted",
-          "expectedVisibleText": "Unrestricted — allow any eligible connection",
+          "expectedVisibleText": "Unrestricted \u2014 allow any eligible connection",
           "expectedSha256": "e69cc4c660189ac43fbbda884f2ebb84bf01392312f18dde724ee738816f3d49",
           "axes": [
             "empty",
@@ -3042,7 +3042,7 @@
       "approvedScenarioIds": [],
       "storyScenarios": [],
       "approvedException": {
-        "reason": "Server component: renders a single <ConsoleLogClient /> with no own markup — pure server wrapper that delegates."
+        "reason": "Server component: renders a single <ConsoleLogClient /> with no own markup \u2014 pure server wrapper that delegates."
       },
       "reviewEvidence": null
     },
@@ -3870,7 +3870,7 @@
       "approvedScenarioIds": [],
       "storyScenarios": [],
       "approvedException": {
-        "reason": "Server component: awaits machineId, parses PORT, renders a single <EndpointPageClient .../> with no own markup — pure server wrapper that delegates."
+        "reason": "Server component: awaits machineId, parses PORT, renders a single <EndpointPageClient .../> with no own markup \u2014 pure server wrapper that delegates."
       },
       "reviewEvidence": null
     },
@@ -3941,7 +3941,7 @@
       "approvedScenarioIds": [],
       "storyScenarios": [],
       "approvedException": {
-        "reason": "Server component: renders a single <HeadroomClient /> with no own markup — pure server wrapper that delegates."
+        "reason": "Server component: renders a single <HeadroomClient /> with no own markup \u2014 pure server wrapper that delegates."
       },
       "reviewEvidence": null
     },
@@ -6281,107 +6281,6 @@
       "sourceReviewStatus": "pending-runtime-and-independent-check"
     },
     {
-      "id": "src/shared/components/UiVersionSwitch.js#UiVersionSwitch",
-      "sourcePath": "src/shared/components/UiVersionSwitch.js",
-      "symbol": "UiVersionSwitch",
-      "sourceSha256": "af620228774196def3a4912aad487377baf728b195af29925b92f511aac01a71",
-      "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Private widget: the profile page story renders the dashboard-version switch in the same scenario as its parent.",
-      "reviewStatus": "approved",
-      "reviewedBy": "integration-review",
-      "requiredScenarioIds": [
-        "production-profile-profilepage--default",
-        "production-profile-profilepage--oidc-and-proxy",
-        "production-profile-profilepage--shutdown-confirm",
-        "production-profile-profilepage--database-export-prompt",
-        "production-profile-profilepage--selective-transfer-preview"
-      ],
-      "approvedScenarioIds": [
-        "production-profile-profilepage--default",
-        "production-profile-profilepage--oidc-and-proxy",
-        "production-profile-profilepage--shutdown-confirm",
-        "production-profile-profilepage--database-export-prompt",
-        "production-profile-profilepage--selective-transfer-preview"
-      ],
-      "storyScenarios": [
-        {
-          "id": "production-profile-profilepage--default",
-          "storyId": "production-profile-profilepage--default",
-          "runtimeArtifactId": "production-profile-profilepage--default",
-          "expectedVisibleText": "Settings",
-          "expectedSha256": "a954ad3f21a1aa19a8f411325100e3299ad18b79018c866abb8f39fcb0ee75b0",
-          "axes": [
-            "text"
-          ],
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827"
-          },
-          "proposedSourceEvidence": "Direct story."
-        },
-        {
-          "id": "production-profile-profilepage--oidc-and-proxy",
-          "storyId": "production-profile-profilepage--oidc-and-proxy",
-          "runtimeArtifactId": "production-profile-profilepage--oidc-and-proxy",
-          "expectedVisibleText": "OIDC",
-          "expectedSha256": "a954ad3f21a1aa19a8f411325100e3299ad18b79018c866abb8f39fcb0ee75b0",
-          "axes": [
-            "text"
-          ],
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827"
-          },
-          "proposedSourceEvidence": "Fixture enables OIDC/proxy branch."
-        },
-        {
-          "id": "production-profile-profilepage--shutdown-confirm",
-          "storyId": "production-profile-profilepage--shutdown-confirm",
-          "runtimeArtifactId": "production-profile-profilepage--shutdown-confirm",
-          "expectedVisibleText": "Shutdown",
-          "expectedSha256": "a954ad3f21a1aa19a8f411325100e3299ad18b79018c866abb8f39fcb0ee75b0",
-          "axes": [
-            "controls"
-          ],
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827"
-          },
-          "proposedSourceEvidence": "Play opens confirmation."
-        },
-        {
-          "id": "production-profile-profilepage--database-export-prompt",
-          "storyId": "production-profile-profilepage--database-export-prompt",
-          "runtimeArtifactId": "production-profile-profilepage--database-export-prompt",
-          "expectedVisibleText": "Confirm Password",
-          "expectedSha256": "a954ad3f21a1aa19a8f411325100e3299ad18b79018c866abb8f39fcb0ee75b0",
-          "axes": [
-            "controls"
-          ],
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827"
-          },
-          "proposedSourceEvidence": "Play opens export prompt."
-        },
-        {
-          "id": "production-profile-profilepage--selective-transfer-preview",
-          "storyId": "production-profile-profilepage--selective-transfer-preview",
-          "runtimeArtifactId": "production-profile-profilepage--selective-transfer-preview",
-          "expectedVisibleText": "Selective transfer",
-          "expectedSha256": "a954ad3f21a1aa19a8f411325100e3299ad18b79018c866abb8f39fcb0ee75b0",
-          "axes": [
-            "controls"
-          ],
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "ec278af224c68e3451ff2bf90982b679be18ca9dfbc129049c7a33ffa90fd827"
-          },
-          "proposedSourceEvidence": "Play opens transfer branch."
-        }
-      ],
-      "approvedException": null,
-      "reviewEvidence": null,
-      "sourceReviewFindings": [],
-      "sourceReviewStatus": "pending-runtime-and-independent-check"
-    },
-    {
       "id": "src/app/(dashboard)/dashboard/profile/SelectiveTransferPanel.jsx#SelectiveTransferPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/profile/SelectiveTransferPanel.jsx",
       "symbol": "SelectiveTransferPanel",
@@ -7892,7 +7791,7 @@
           "id": "production-operations-proxypoolspage--delete-pending",
           "storyId": "production-operations-proxypoolspage--delete-pending",
           "runtimeArtifactId": "production-operations-proxypoolspage--delete-pending",
-          "expectedVisibleText": "Deleting…",
+          "expectedVisibleText": "Deleting\u2026",
           "expectedSha256": "17149e9a14a5258b9474abbd7bef4f7d9bc834ceb02069f5ca6915ef90c40b4c",
           "axes": [
             "loading",
@@ -8077,7 +7976,7 @@
           "id": "production-operations-proxypoolspage--create-pending",
           "storyId": "production-operations-proxypoolspage--create-pending",
           "runtimeArtifactId": "production-operations-proxypoolspage--create-pending",
-          "expectedVisibleText": "Creating…",
+          "expectedVisibleText": "Creating\u2026",
           "expectedSha256": "17149e9a14a5258b9474abbd7bef4f7d9bc834ceb02069f5ca6915ef90c40b4c",
           "axes": [
             "loading"
@@ -8091,7 +7990,7 @@
           "id": "production-operations-proxypoolspage--delete-pending",
           "storyId": "production-operations-proxypoolspage--delete-pending",
           "runtimeArtifactId": "production-operations-proxypoolspage--delete-pending",
-          "expectedVisibleText": "Deleting…",
+          "expectedVisibleText": "Deleting\u2026",
           "expectedSha256": "17149e9a14a5258b9474abbd7bef4f7d9bc834ceb02069f5ca6915ef90c40b4c",
           "axes": [
             "loading"
@@ -8259,7 +8158,7 @@
           "id": "production-pxpipe-pxpipeclient--loading",
           "storyId": "production-pxpipe-pxpipeclient--loading",
           "runtimeArtifactId": "production-pxpipe-pxpipeclient--loading",
-          "expectedVisibleText": "Checking…",
+          "expectedVisibleText": "Checking\u2026",
           "expectedSha256": "293861839ed9985e03235028b4f06c1b0156e715bf4e62f20724afdb9bce7519",
           "axes": [
             "loading"
@@ -10869,7 +10768,7 @@
           "id": "production-public-callback--processing",
           "storyId": "production-public-callback--processing",
           "runtimeArtifactId": "production-public-callback--processing",
-          "expectedVisibleText": "Processing…",
+          "expectedVisibleText": "Processing\u2026",
           "expectedSha256": "ca5f728ae36c6c1bb8c148db1744af4c67f45690ebf91c4d81f206285c0617b1",
           "axes": [
             "status:processing",
@@ -10884,7 +10783,7 @@
           "id": "production-public-callback--success",
           "storyId": "production-public-callback--success",
           "runtimeArtifactId": "production-public-callback--success",
-          "expectedVisibleText": "This window will close automatically…",
+          "expectedVisibleText": "This window will close automatically\u2026",
           "expectedSha256": "ca5f728ae36c6c1bb8c148db1744af4c67f45690ebf91c4d81f206285c0617b1",
           "axes": [
             "status:success"
@@ -10957,7 +10856,7 @@
               "status:processing",
               "loading"
             ],
-            "expectedVisibleText": "Processing…",
+            "expectedVisibleText": "Processing\u2026",
             "sourceReason": "Direct CallbackStatusView status=processing.",
             "reachable": true
           },
@@ -10966,7 +10865,7 @@
             "axes": [
               "status:success"
             ],
-            "expectedVisibleText": "This window will close automatically…",
+            "expectedVisibleText": "This window will close automatically\u2026",
             "sourceReason": "Direct status=success final static view.",
             "reachable": true
           },
@@ -11284,7 +11183,7 @@
           "id": "production-public-landing-footer--default",
           "storyId": "production-public-landing-footer--default",
           "runtimeArtifactId": "production-public-landing-footer--default",
-          "expectedVisibleText": "© 2025 DurinDoor. All rights reserved.",
+          "expectedVisibleText": "\u00a9 2025 DurinDoor. All rights reserved.",
           "expectedSha256": "bfc2bc4e01c76ec0f9dcbf3fc200797e96ea7db8c71525d27b68cf195fa3f04b",
           "axes": [
             "footer-links",
@@ -11311,7 +11210,7 @@
               "footer-links",
               "text"
             ],
-            "expectedVisibleText": "© 2025 DurinDoor. All rights reserved.",
+            "expectedVisibleText": "\u00a9 2025 DurinDoor. All rights reserved.",
             "sourceReason": "Direct Footer story.",
             "reachable": true
           }
@@ -12412,7 +12311,7 @@
           "id": "production-shared-surfaces-capacitybadges--empty-or-missing-caps",
           "storyId": "production-shared-surfaces-capacitybadges--empty-or-missing-caps",
           "runtimeArtifactId": "production-shared-surfaces-capacitybadges--empty-or-missing-caps",
-          "expectedVisibleText": "empty object → null (no badges)",
+          "expectedVisibleText": "empty object \u2192 null (no badges)",
           "expectedSha256": "f05eb27d650f8f418a8aa2732218e1dffff414bb776b0e0f7db538360d6e8eca",
           "axes": [
             "empty"
@@ -12426,7 +12325,7 @@
           "id": "production-shared-surfaces-capacitybadges--keyboard-focus-reveals-tooltip",
           "storyId": "production-shared-surfaces-capacitybadges--keyboard-focus-reveals-tooltip",
           "runtimeArtifactId": "production-shared-surfaces-capacitybadges--keyboard-focus-reveals-tooltip",
-          "expectedVisibleText": "Tools — Supports function calling",
+          "expectedVisibleText": "Tools \u2014 Supports function calling",
           "expectedSha256": "f05eb27d650f8f418a8aa2732218e1dffff414bb776b0e0f7db538360d6e8eca",
           "axes": [
             "keyboard",
@@ -13019,7 +12918,7 @@
           "id": "production-shared-kiro-cursorauthmodal--auto-detecting",
           "storyId": "production-shared-kiro-cursorauthmodal--auto-detecting",
           "runtimeArtifactId": "production-shared-kiro-cursorauthmodal--auto-detecting",
-          "expectedVisibleText": "Auto-detecting tokens…",
+          "expectedVisibleText": "Auto-detecting tokens\u2026",
           "expectedSha256": "9cb97d36f63c81e59f520301a0a272fc27da87f58ade84c61617874849cb7be2",
           "axes": [
             "loading"
@@ -14111,7 +14010,7 @@
           "id": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
           "storyId": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
           "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
-          "expectedVisibleText": "Auto-detecting token…",
+          "expectedVisibleText": "Auto-detecting token\u2026",
           "expectedSha256": "5efeb6efc36bbbb686c5f55abdbbebc5f6cec0820b324de4b8b8bd845ed95e72",
           "axes": [
             "open",
@@ -14278,7 +14177,7 @@
           "id": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
           "storyId": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
           "runtimeArtifactId": "production-shared-kiro-kiroauthmodal--import-auto-detecting",
-          "expectedVisibleText": "Auto-detecting token…",
+          "expectedVisibleText": "Auto-detecting token\u2026",
           "expectedSha256": "5efeb6efc36bbbb686c5f55abdbbebc5f6cec0820b324de4b8b8bd845ed95e72",
           "axes": [
             "import",
@@ -14457,7 +14356,7 @@
           "id": "production-shared-kiro-kirosocialoauthmodal--initializing",
           "storyId": "production-shared-kiro-kirosocialoauthmodal--initializing",
           "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--initializing",
-          "expectedVisibleText": "Initializing…",
+          "expectedVisibleText": "Initializing\u2026",
           "expectedSha256": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
           "axes": [
             "open",
@@ -14472,7 +14371,7 @@
           "id": "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
           "storyId": "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
           "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--routing-options-loading",
-          "expectedVisibleText": "Loading routing options…",
+          "expectedVisibleText": "Loading routing options\u2026",
           "expectedSha256": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
           "axes": [
             "open",
@@ -14629,7 +14528,7 @@
           "id": "production-shared-kiro-kirosocialoauthmodal--initializing",
           "storyId": "production-shared-kiro-kirosocialoauthmodal--initializing",
           "runtimeArtifactId": "production-shared-kiro-kirosocialoauthmodal--initializing",
-          "expectedVisibleText": "Initializing…",
+          "expectedVisibleText": "Initializing\u2026",
           "expectedSha256": "03af9d6296b4935d1c5eb5ba0dff05bc03acd5c840833aae19d815c4a181e08f",
           "axes": [
             "loading"
@@ -16998,7 +16897,7 @@
       "approvedException": null,
       "reviewEvidence": null,
       "sourceReviewFindings": [
-        "Manifest scenario sourceHashes are stale (9fba…); row sourceSha256 d928… is current stated source hash."
+        "Manifest scenario sourceHashes are stale (9fba\u2026); row sourceSha256 d928\u2026 is current stated source hash."
       ],
       "sourceReviewStatus": "pending-runtime-and-independent-check"
     },
@@ -17198,7 +17097,7 @@
           "id": "production-shared-analytics-usagestats--custom-range",
           "storyId": "production-shared-analytics-usagestats--custom-range",
           "runtimeArtifactId": "production-shared-analytics-usagestats--custom-range",
-          "expectedVisibleText": "Chart shows preset ranges only — pick a preset to view graph.",
+          "expectedVisibleText": "Chart shows preset ranges only \u2014 pick a preset to view graph.",
           "expectedSha256": "d4480928eb42d79a41d618731b4532b0bfd6293bcac4cdcad04a7817e52ab160",
           "axes": [
             "custom-range"
@@ -17473,7 +17372,7 @@
           "id": "durin-ds-actions-button--loading",
           "storyId": "durin-ds-actions-button--loading",
           "runtimeArtifactId": "durin-ds-actions-button--loading",
-          "expectedVisibleText": "Saving…",
+          "expectedVisibleText": "Saving\u2026",
           "expectedSha256": "b3ee202bca8ea1e9516e6f50ca6c199fddccee4762a6e81bb9d72997db7c4d48",
           "axes": [
             "loading",
@@ -19169,7 +19068,7 @@
               "icon",
               "placeholder"
             ],
-            "expectedVisibleText": "Search providers…",
+            "expectedVisibleText": "Search providers\u2026",
             "sourceReason": "WithIcon directly renders actual Input icon branch.",
             "reachable": true
           },
@@ -19180,7 +19079,7 @@
               "icon",
               "placeholder"
             ],
-            "expectedVisibleText": "Filter models…",
+            "expectedVisibleText": "Filter models\u2026",
             "sourceReason": "Small directly renders actual Input sm branch.",
             "reachable": true
           },
@@ -19979,7 +19878,7 @@
           "id": "durin-ds-data-rangeselector--valid-custom",
           "storyId": "durin-ds-data-rangeselector--valid-custom",
           "runtimeArtifactId": "durin-ds-data-rangeselector--valid-custom",
-          "expectedVisibleText": "May 1 – Aug 30",
+          "expectedVisibleText": "May 1 \u2013 Aug 30",
           "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "custom-selection",
@@ -20073,7 +19972,7 @@
           "id": "durin-ds-data-rangeselector--applied-custom",
           "storyId": "durin-ds-data-rangeselector--applied-custom",
           "runtimeArtifactId": "durin-ds-data-rangeselector--applied-custom",
-          "expectedVisibleText": "2026-05-01 → 2026-08-30",
+          "expectedVisibleText": "2026-05-01 \u2192 2026-08-30",
           "expectedSha256": "d2840c1940c05736fe0fc282142b2bdd432526b562042402d6ce1eab77368dbe",
           "axes": [
             "custom-selection",
@@ -20157,7 +20056,7 @@
               "custom-selection",
               "text"
             ],
-            "expectedVisibleText": "May 1 – Aug 30",
+            "expectedVisibleText": "May 1 \u2013 Aug 30",
             "sourceReason": "ValidCustom directly renders actual RangeSelector committed to custom range.",
             "reachable": true
           },
@@ -21139,7 +21038,7 @@
           "id": "durin-ds-choice-toggle--sizes",
           "storyId": "durin-ds-choice-toggle--sizes",
           "runtimeArtifactId": "durin-ds-choice-toggle--sizes",
-          "expectedVisibleText": "Small (sm) — 30×17px track",
+          "expectedVisibleText": "Small (sm) \u2014 30\u00d717px track",
           "expectedSha256": "813c1cfbcf6d9451df5114aa22e736d64419410a0f83a243cad53795bcd3a6e6",
           "axes": [
             "sizes",
@@ -21219,7 +21118,7 @@
               "label",
               "text"
             ],
-            "expectedVisibleText": "Small (sm) — 30×17px track",
+            "expectedVisibleText": "Small (sm) \u2014 30\u00d717px track",
             "sourceReason": "Sizes directly renders actual Toggle md and sm branches.",
             "reachable": true
           },
@@ -24421,7 +24320,7 @@
           "id": "durin-ds-pages-skills--no-key",
           "storyId": "durin-ds-pages-skills--no-key",
           "runtimeArtifactId": "durin-ds-pages-skills--no-key",
-          "expectedVisibleText": "keyless — works only when Require API key is off",
+          "expectedVisibleText": "keyless \u2014 works only when Require API key is off",
           "expectedSha256": "907710fcfa2e2f07c4fd6a7a58f13ce8c3ca3e24ec622eac1bd9b00f87abb2bb",
           "axes": [
             "warning",

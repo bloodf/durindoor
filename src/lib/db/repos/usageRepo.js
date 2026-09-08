@@ -1247,6 +1247,48 @@ function rebuildDailyKeyInTx(db, dateKey, identitySalt) {
   db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?)`, [dateKey, stringifyJson(day)]);
 }
 
+/**
+ * Delete usage rows, daily rollups and token-saver events recorded before
+ * `cutoffMs`, then rebuild the boundary day and the lifetime counter.
+ * Returns the number of usageHistory rows removed.
+ */
+function pruneUsageBeforeInTx(db, cutoffMs, identitySalt) {
+  const cutoffIso = new Date(cutoffMs).toISOString();
+  const cutoffDate = new Date(cutoffMs);
+  const cutoffKey = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, "0")}-${String(cutoffDate.getDate()).padStart(2, "0")}`;
+  const before = db.get(`SELECT COUNT(*) AS cnt FROM usageHistory WHERE timestamp < ?`, [cutoffIso]);
+
+  // Delete usageHistory entries older than the cutoff (keep recent data within the period)
+  db.run(`DELETE FROM usageHistory WHERE timestamp < ?`, [cutoffIso]);
+
+  // Delete usageDaily entries older than the cutoff
+  db.run(`DELETE FROM usageDaily WHERE dateKey < ?`, [cutoffKey]);
+  // Keep token-saver telemetry consistent with the usage windows it is
+  // reported alongside (Codex P2 on #306).
+  db.run(`DELETE FROM tokenSaverEvents WHERE timestamp < ?`, [cutoffIso]);
+  rebuildDailyKeyInTx(db, cutoffKey, identitySalt);
+
+  // Recalculate totalRequestsLifetime from remaining history
+  const remaining = db.get(`SELECT COUNT(*) AS cnt FROM usageHistory`);
+  db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(remaining.cnt)]);
+  return Number(before?.cnt) || 0;
+}
+
+/** Retention sweep entry point: prune everything recorded before `cutoffMs`. */
+export async function pruneUsageOlderThan(cutoffMs) {
+  const db = await getAdapter();
+  const identitySalt = getOrCreateUsageIdentitySalt(db);
+  let removed = 0;
+  db.transaction(() => {
+    removed = pruneUsageBeforeInTx(db, cutoffMs, identitySalt);
+  });
+  if (removed > 0) {
+    recentRing.items = recentRing.items.filter((item) => !item?.timestamp || item.timestamp >= new Date(cutoffMs).toISOString());
+    statsEmitter.emit("update");
+  }
+  return removed;
+}
+
 export async function resetUsageHistory(period) {
   if (!VALID_RESET_PERIODS.has(period)) {
     throw new Error(`Invalid reset period: ${period}`);
@@ -1263,24 +1305,7 @@ export async function resetUsageHistory(period) {
       db.run(`DELETE FROM tokenSaverEvents`);
       db.run(`DELETE FROM _meta WHERE key = 'totalRequestsLifetime'`);
     } else {
-      const cutoff = Date.now() - RESET_PERIOD_MS[period];
-      const cutoffIso = new Date(cutoff).toISOString();
-      const cutoffDate = new Date(cutoff);
-      const cutoffKey = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, "0")}-${String(cutoffDate.getDate()).padStart(2, "0")}`;
-
-      // Delete usageHistory entries older than the cutoff (keep recent data within the period)
-      db.run(`DELETE FROM usageHistory WHERE timestamp < ?`, [cutoffIso]);
-
-      // Delete usageDaily entries older than the cutoff
-      db.run(`DELETE FROM usageDaily WHERE dateKey < ?`, [cutoffKey]);
-      // Keep token-saver telemetry consistent with the usage windows it is
-      // reported alongside (Codex P2 on #306).
-      db.run(`DELETE FROM tokenSaverEvents WHERE timestamp < ?`, [cutoffIso]);
-      rebuildDailyKeyInTx(db, cutoffKey, identitySalt);
-
-      // Recalculate totalRequestsLifetime from remaining history
-      const remaining = db.get(`SELECT COUNT(*) AS cnt FROM usageHistory`);
-      db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(remaining.cnt)]);
+      pruneUsageBeforeInTx(db, Date.now() - RESET_PERIOD_MS[period], identitySalt);
     }
   });
 

@@ -326,6 +326,14 @@ export async function clearTraces() {
   if (timer) { clearTimeout(timer); timer = null; }
   try { const db = await getProxyTimelineAdapter(); db.run("DELETE FROM events"); db.run("DELETE FROM traces"); } catch {}
 }
+/** Delete traces (and their events) started before `cutoffIso`, whatever the retention setting says. */
+export async function pruneTimelineOlderThan(cutoffIso) {
+  let db;
+  try { db = await getProxyTimelineAdapter(); } catch { return 0; }
+  const before = db.get("SELECT COUNT(*) AS cnt FROM traces WHERE started_at < ?", [cutoffIso]);
+  db.transaction(() => { db.run("DELETE FROM traces WHERE started_at < ?", [cutoffIso]); db.run("DELETE FROM events WHERE trace_id NOT IN (SELECT id FROM traces)"); });
+  return Number(before?.cnt) || 0;
+}
 export async function pruneExpired() {
   try {
     if (!enabled()) return;

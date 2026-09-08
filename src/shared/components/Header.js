@@ -69,6 +69,62 @@ const getPageInfo = (pathname) => {
     }
   }
 
+  if (pathname.includes("/health"))
+    return {
+      title: translate("Provider Health"),
+      description: translate("Reachability of your configured provider connections"),
+      icon: "monitor_heart",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/playground"))
+    return {
+      title: translate("Playground"),
+      description: translate("Chat with any connected model through DurinDoor"),
+      icon: "chat",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/mcp-gateway"))
+    return {
+      title: translate("MCP Gateway"),
+      description: translate("Aggregate upstream MCP servers behind one endpoint"),
+      icon: "hub",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/auto-configure"))
+    return {
+      title: translate("Auto-configure"),
+      description: translate("Point your tools at DurinDoor in one step"),
+      icon: "auto_fix",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/mcp-help"))
+    return {
+      title: translate("MCP Help"),
+      description: translate("How DurinDoor speaks the Model Context Protocol"),
+      icon: "help",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/api-docs"))
+    return {
+      title: translate("API Documentation"),
+      description: translate("OpenAI-compatible endpoints and examples"),
+      icon: "description",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/headroom"))
+    return {
+      title: translate("Headroom"),
+      description: translate("Compression proxy status and settings"),
+      icon: "memory",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/pxpipe"))
+    return {
+      title: translate("PXPIPE"),
+      description: translate("Compression activity and estimated token savings"),
+      icon: "route",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/providers") && !pathname.includes("/media-providers"))
     return {
       title: translate("Providers"),

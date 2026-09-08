@@ -155,6 +155,14 @@ export async function saveRequestDetail(detail) {
   }
 }
 
+/** Delete stored request details recorded before `cutoffIso`; returns the count removed. */
+export async function pruneRequestDetailsOlderThan(cutoffIso) {
+  const db = await getAdapter();
+  const before = db.get(`SELECT COUNT(*) AS cnt FROM requestDetails WHERE timestamp < ?`, [cutoffIso]);
+  db.run(`DELETE FROM requestDetails WHERE timestamp < ?`, [cutoffIso]);
+  return Number(before?.cnt) || 0;
+}
+
 export async function getRequestDetails(filter = {}) {
   const db = await getAdapter();
   const conds = [];

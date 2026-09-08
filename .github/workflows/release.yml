@@ -12,7 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          # Full history: the Vitest gate's ported-ledger test scans commit
+          # subjects (`port(upstream): #N`) across the whole repo history.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

@@ -1,4 +1,4 @@
-# Unreleased
+# 4.0.0
 
 - feat(ui): the Durin DS dashboard is now the only dashboard. The pre-rewrite copy under `src/legacy/`, its `/legacy-ui` route wrappers, the `durindoor-ui-version` cookie and the **Dashboard version** switch are removed; `/dashboard/*` is served directly after the auth checks in `src/dashboardGuard.js`.
 - feat(settings): automatic cleanup of old local data. **Settings -> Observability -> Auto-clean old data** enables an hourly sweep that deletes usage history and daily rollups, token-saver events, request details, proxy-timeline traces and provider quota snapshots older than a chosen window (7, 15, 30, 60, 90 days or a custom 1-3650). **Clean now** runs the same sweep on demand; the last run is shown in place. New settings `dataRetentionEnabled` / `dataRetentionDays`, endpoint `GET/POST /api/data-retention` (POST requires a dashboard session or CLI token).

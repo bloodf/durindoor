@@ -896,10 +896,26 @@ describe("dashboard version preview routing", () => {
     expect(String(result.url)).toContain("/login");
   });
 
-  it("sends a direct legacy URL back to the canonical path", async () => {
-    // `/legacy-ui` is an internal rewrite target; one address per page.
-    const result = await proxy(request("/legacy-ui/dashboard/profile"));
+  it("guards a direct legacy dashboard URL like its canonical path", async () => {
+    // `/legacy-ui/dashboard/*` is the rewrite target and the dev server runs
+    // the proxy again on it, so it must pass the same auth checks and then be
+    // served in place rather than redirected (which would loop).
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    const anonymous = await proxy(request("/legacy-ui/dashboard/profile"));
+    expect(anonymous.status).toBe(307);
+    expect(String(anonymous.url)).toContain("/login");
+
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const authed = withCookie("/legacy-ui/dashboard/profile");
+    authed.cookies.get = vi.fn((name) => (name === "auth_token" ? { value: "valid-jwt" } : undefined));
+    const served = await proxy(authed);
+    expect(served.rewritten).toBeUndefined();
+    expect(served.status).not.toBe(307);
+  });
+
+  it("sends a direct legacy non-dashboard URL back to the canonical path", async () => {
+    const result = await proxy(request("/legacy-ui/login"));
     expect(result.status).toBe(307);
-    expect(String(result.url.pathname)).toBe("/dashboard/profile");
+    expect(String(result.url.pathname)).toBe("/login");
   });
 });

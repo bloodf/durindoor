@@ -366,23 +366,32 @@ export const UI_VERSION_COOKIE = "durindoor-ui-version";
  */
 function dashboardResponse(request) {
   if (request.cookies.get(UI_VERSION_COOKIE)?.value === "new") return NextResponse.next();
+  // Already on the rewritten path (the dev server re-runs the proxy after a
+  // rewrite): serve it as-is instead of rewriting a second time.
+  if (request.nextUrl.pathname.startsWith("/legacy-ui")) return NextResponse.next();
   const url = request.nextUrl.clone();
   url.pathname = `/legacy-ui${url.pathname}`;
   return NextResponse.rewrite(url);
 }
 
 export async function proxy(request) {
-  const { pathname } = request.nextUrl;
+  const { pathname: requestPath } = request.nextUrl;
 
-  // `/legacy-ui` is an internal rewrite target, not a public address. Sending
-  // readers to the canonical path keeps one URL per page and stops the
-  // preview tree from being reachable without passing the dashboard checks
-  // below.
-  if (pathname === "/legacy-ui" || pathname.startsWith("/legacy-ui/")) {
+  // `/legacy-ui` is an internal rewrite target, not a public address. Dashboard
+  // pages under it are mapped back to their canonical path and go through the
+  // same auth checks below before being served, so the preview tree cannot be
+  // reached without passing them. Redirecting instead would loop in dev, where
+  // the proxy runs again on the rewritten URL. Anything else under `/legacy-ui`
+  // is sent to its canonical address.
+  const legacyPath = requestPath === "/legacy-ui" || requestPath.startsWith("/legacy-ui/")
+    ? requestPath.slice("/legacy-ui".length) || "/dashboard"
+    : null;
+  if (legacyPath !== null && !legacyPath.startsWith("/dashboard")) {
     const url = request.nextUrl.clone();
-    url.pathname = pathname.slice("/legacy-ui".length) || "/dashboard";
+    url.pathname = legacyPath;
     return NextResponse.redirect(url);
   }
+  const pathname = legacyPath ?? requestPath;
 
   // /api/mcp/control is a management MCP endpoint: it must always carry
   // either the local CLI token, a configured API key, or a valid dashboard

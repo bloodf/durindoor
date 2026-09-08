@@ -12,6 +12,7 @@ import Select from "@/shared/ui/components/Select.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
+import UiVersionSwitch from "@/shared/components/UiVersionSwitch";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
@@ -735,6 +736,7 @@ export default function ProfilePage() {
 
       <Card padding={false}><CardHeader icon="computer" title="Local Mode" subtitle="Appearance, local data, and backups" /><CardContent className="flex flex-col gap-5">
         <div className="flex flex-col gap-3 border-b border-dd-border-subtle pb-5 sm:flex-row sm:items-center sm:justify-between"><Field group className="flex-1" label="Theme" hint="Choose how DurinDoor looks on this device."><SegmentedControl aria-label="Theme" options={[{value:"light",label:"Light"},{value:"dark",label:"Dark"},{value:"system",label:"System"}]} value={theme} onChange={setTheme} /></Field></div>
+        <div className="border-b border-dd-border-subtle pb-5"><UiVersionSwitch /></div>
         <div className="flex flex-col gap-3 border-b border-dd-border-subtle pb-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[13px] font-medium text-dd-text">Database location</p><p className="break-all font-mono text-xs text-dd-muted">~/.9router/db/data.sqlite (DurinDoor data directory)</p></div><div className="flex flex-wrap gap-2"><Button variant="secondary" icon="download" onClick={() => setDbAuth({ open: true, mode: "export", password: "" })} loading={dbLoading}>Download Backup</Button><Button variant="secondary" icon="upload" onClick={() => importFileRef.current?.click()} disabled={dbLoading}>Import Backup</Button><input ref={importFileRef} tabIndex={-1} aria-label="Import database backup" type="file" accept="application/json,.json" className="sr-only" onChange={handleImportDatabase} /></div></div>
         {dbStatus.message ? <p role="status" className={`text-xs ${statusClass(dbStatus)}`}>{dbStatus.message}</p> : null}<SelectiveTransferPanel />
       </CardContent></Card>

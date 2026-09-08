@@ -1,0 +1,330 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import PropTypes from "prop-types";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/shared/utils/cn";
+import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
+import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
+import UpdatePanel from "./UpdatePanel";
+import {
+  BRAND_LOGO_ALT,
+  BRAND_LOGO_SRC,
+  COMBINED_WEB_ITEM,
+  debugItems,
+  isActivePath,
+  NavIcon,
+  navItems,
+  PROFILE_NAV_ITEM,
+  providersMenu,
+  systemItems,
+  tokenSaverMenu,
+  VISIBLE_MEDIA_KINDS,
+} from "./SidebarNavIcons";
+
+export default function Sidebar({ onClose }) {
+  const pathname = usePathname();
+  const [mediaOpen, setMediaOpen] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [enableTranslator, setEnableTranslator] = useState(false);
+
+  const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
+
+  const isActive = (href, exact = false) => isActivePath(pathname, href, exact);
+
+  const isTokenSaverSectionActive = tokenSaverMenu.children.some((child) =>
+    isActivePath(pathname, child.href, true)
+  );
+  const [userToggled, setUserToggled] = useState(null);
+  const [providersToggled, setProvidersToggled] = useState(null);
+  const tokenSaverOpen = userToggled ?? isTokenSaverSectionActive;
+  const isProvidersSectionActive = providersMenu.children.some((child) =>
+    isActivePath(pathname, child.href, child.exact !== false),
+  );
+  const providersMenuOpen = providersToggled ?? isProvidersSectionActive;
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then(res => res.json())
+      .then(data => { if (data.enableTranslator) setEnableTranslator(true); })
+      .catch(() => {});
+  }, []);
+
+  // Lazy check for new npm version on mount
+  useEffect(() => {
+    fetch("/api/version")
+      .then(res => res.json())
+      .then(data => { if (data.hasUpdate) setUpdateInfo(data); })
+      .catch(() => {});
+  }, []);
+
+  return (
+    <>
+      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
+        {/* Logo */}
+        <div className="px-6 py-4 flex flex-col gap-2">
+          <Link href="/dashboard" className="flex items-center gap-3">
+            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
+              <img
+                src={BRAND_LOGO_SRC}
+                alt={BRAND_LOGO_ALT}
+                width={36}
+                height={36}
+                className="object-contain"
+              />
+            </div>
+            <div className="flex flex-col">
+              <h1 className="text-lg font-semibold tracking-tight text-text-main">
+                {APP_CONFIG.name}
+              </h1>
+              <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
+            </div>
+          </Link>
+          {updateInfo && (
+            <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
+              <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
+                ↑ New version available: v{updateInfo.latestVersion}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsUpdating(true)}
+                  className="px-2 py-1 rounded bg-green-600 hover:bg-green-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                >
+                  Update now
+                </button>
+                <code className="flex-1 text-[10px] text-green-600/80 dark:text-amber-400/70 font-mono truncate" title={INSTALL_CMD}>
+                  {INSTALL_CMD}
+                </code>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onClose}
+              className={cn(
+                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                isActive(item.href, item.exact !== false)
+                  ? "bg-primary/10 text-primary"
+                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+              )}
+            >
+              <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
+              <span className="text-[13px] font-medium">{item.label}</span>
+            </Link>
+          ))}
+
+          {/* Providers collapsible menu */}
+          <button
+            onClick={() => setProvidersToggled((open) => !(open ?? isProvidersSectionActive))}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+              isProvidersSectionActive
+                ? "bg-primary/10 text-primary"
+                : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+            )}
+          >
+            <NavIcon icon={providersMenu.icon} isActive={isProvidersSectionActive} />
+            <span className="text-[13px] font-medium flex-1 text-left">{providersMenu.label}</span>
+            <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: providersMenuOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+              expand_more
+            </span>
+          </button>
+          {providersMenuOpen && (
+            <div className="pl-4">
+              {providersMenu.children.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    isActive(item.href, item.exact !== false)
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  )}
+                >
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} size="16" />
+                  <span className="text-sm">{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {/* Token Saver collapsible menu */}
+          <button
+            onClick={() => setUserToggled((open) => !(open ?? isTokenSaverSectionActive))}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+              isTokenSaverSectionActive
+                ? "bg-primary/10 text-primary"
+                : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+            )}
+          >
+            <NavIcon icon={tokenSaverMenu.icon} isActive={isTokenSaverSectionActive} />
+            <span className="text-[13px] font-medium flex-1 text-left">{tokenSaverMenu.label}</span>
+            <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: tokenSaverOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+              expand_more
+            </span>
+          </button>
+          {tokenSaverOpen && (
+            <div className="pl-4">
+              {tokenSaverMenu.children.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    isActive(item.href, item.exact !== false)
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  )}
+                >
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} size="16" />
+                  <span className="text-sm">{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {/* System section */}
+          <div className="pt-3 mt-2 space-y-0.5">
+            <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
+              System
+            </p>
+
+            {/* Media Providers accordion */}
+            <button
+              onClick={() => setMediaOpen((v) => !v)}
+              className={cn(
+                "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                pathname?.startsWith("/dashboard/media-providers")
+                  ? "bg-primary/10 text-primary"
+                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+              )}
+            >
+              <NavIcon icon="perm_media" isActive={pathname?.startsWith("/dashboard/media-providers") || false} />
+              <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
+              <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+                expand_more
+              </span>
+            </button>
+            {mediaOpen && (
+              <div className="pl-4">
+                {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
+                  <Link
+                    key={kind.id}
+                    href={`/dashboard/media-providers/${kind.id}`}
+                    onClick={onClose}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                      pathname?.startsWith(`/dashboard/media-providers/${kind.id}`)
+                        ? "bg-primary/10 text-primary"
+                        : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                    )}
+                  >
+                    <NavIcon icon={kind.icon} isActive={pathname?.startsWith(`/dashboard/media-providers/${kind.id}`) || false} size="16" />
+                    <span className="text-sm">{kind.label}</span>
+                  </Link>
+                ))}
+                <Link
+                  key={COMBINED_WEB_ITEM.id}
+                  href={COMBINED_WEB_ITEM.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                    pathname?.startsWith(COMBINED_WEB_ITEM.href)
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  )}
+                >
+                  <NavIcon icon={COMBINED_WEB_ITEM.icon} isActive={pathname?.startsWith(COMBINED_WEB_ITEM.href) || false} size="16" />
+                  <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
+                </Link>
+              </div>
+            )}
+
+            {systemItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                  isActive(item.href, item.exact !== false)
+                    ? "bg-primary/10 text-primary"
+                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                )}
+              >
+                <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
+                <span className="text-[13px] font-medium">{item.label}</span>
+              </Link>
+            ))}
+
+            {/* Debug items (inside System section, before Settings) */}
+            {debugItems.map((item) => {
+              const show = item.href !== "/dashboard/translator" || enableTranslator;
+              return show ? (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                    isActive(item.href, true)
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                  )}
+                >
+                  <NavIcon icon={item.icon} isActive={isActive(item.href, true)} />
+                  <span className="text-[13px] font-medium">{item.label}</span>
+                </Link>
+              ) : null;
+            })}
+
+            {/* Settings (profile) stays its own unrelated item */}
+            <Link
+              href={PROFILE_NAV_ITEM.href}
+              onClick={onClose}
+              className={cn(
+                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                isActive(PROFILE_NAV_ITEM.href, true)
+                  ? "bg-primary/10 text-primary"
+                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+              )}
+            >
+              <NavIcon icon={PROFILE_NAV_ITEM.icon} isActive={isActive(PROFILE_NAV_ITEM.href, true)} />
+              <span className="text-[13px] font-medium">{PROFILE_NAV_ITEM.label}</span>
+            </Link>
+          </div>
+        </nav>
+
+      </aside>
+
+      {/* Updating Overlay: one-click auto update with manual fallback (decolua/9router #2575) */}
+      {isUpdating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+          <UpdatePanel
+            currentVersion={updateInfo?.currentVersion || APP_CONFIG.version}
+            latestVersion={updateInfo?.latestVersion}
+            installCmd={INSTALL_CMD}
+            onClose={() => setIsUpdating(false)}
+          />
+        </div>
+      )}
+
+    </>
+  );
+}
+
+Sidebar.propTypes = {
+  onClose: PropTypes.func,
+};

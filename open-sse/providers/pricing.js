@@ -325,6 +325,12 @@ export const PROVIDER_PRICING = {
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 }
   },
+  // TokenRouter — free-tier model only. Upstream decolua/9router@6efb9790 adds
+  // z-ai/glm-5.3-free at 0 pricing. The fuller TokenRouter rate table arrives
+  // with the earlier upstream pricing commit (41588bea), not yet ported.
+  tokenrouter: {
+    "z-ai/glm-5.3-free": { input: 0, output: 0, cached: 0, reasoning: 0 },
+  },
 
   // Fireworks AI — OpenAI-compatible, reasoning/cache_creation not separately
   // charged (completion_tokens already includes reasoning tokens; setting

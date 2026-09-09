@@ -570,7 +570,7 @@ export class DefaultExecutor extends BaseExecutor {
     // provider keeps its own header path — registry CLAUDE_API_HEADERS plus the
     // claudeOverlay live-header merge — so this block only covers
     // anthropic-compatible-* nodes.)
-    const isClaudeModel = typeof model === "string" && /^claude-/.test(model);
+    const isClaudeModel = isString(model) && /^claude-/.test(model);
     if (model && this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel) {
       headers["Anthropic-Beta"] = selectAnthropicBeta(model);
     }

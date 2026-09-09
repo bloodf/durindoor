@@ -85,7 +85,7 @@ export default function ProfilePage() {
   // hostname so remote deployments stop claiming "Local Mode".
   const [isRemoteHost, setIsRemoteHost] = useState(false);
   useEffect(() => {
-    if (typeof window !== "undefined")
+    if (isBrowser())
       setIsRemoteHost(!["localhost", "127.0.0.1", "::1"].includes(window.location.hostname));
   }, []);
 

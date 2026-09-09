@@ -5,6 +5,7 @@ import DataTable from "@/shared/ui/components/DataTable.jsx";
 import Pagination from "@/shared/ui/components/Pagination.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import { formatResetTime, getRemainingPercentage } from "./utils";
+import { MERGE_MODE } from "./grouping";
 import { isFunction } from "../../../../../../shared/utils/typeChecks.js";
 
 const PAGE_SIZE = 10;
@@ -43,7 +44,7 @@ function sortQuotas(quotas, sortMode) {
   return quotas;
 }
 
-/** Token-backed quota table: DS DataTable + Pagination, preserving sort/hide/compact contract. */
+/** Token-backed quota table: DS DataTable + Pagination, preserving sort/hide/compact contract. Renders frameless — the parent provider card is the surface, so no nested bordered panel. Merged rows (`mergeMode` from grouping.js) label their aggregation honestly instead of showing fabricated absolutes. */
 export default function QuotaTable({ quotas = [], compact = false, sortMode = "default", showSortLabel = false, onHideQuota = null }) {
   const [page, setPage] = useState(1);
 
@@ -75,15 +76,20 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
       label: "Remaining",
       render: (quota) => {
         const tone = toneFor(quota.remaining);
+        const isMerged = quota.mergeMode === MERGE_MODE.ABSOLUTE || quota.mergeMode === MERGE_MODE.PERCENTAGE;
+        const absoluteLabel = quota.mergeMode === MERGE_MODE.PERCENTAGE
+          ? `min across ${quota.accountCount} accounts`
+          : `${quota.used.toLocaleString()} / ${quota.total > 0 ? quota.total.toLocaleString() : "∞"}`;
         return (
           <div className="flex flex-col gap-1">
             <div className={`${compact ? "h-1" : "h-1.5"} overflow-hidden rounded-dd ${tone.surface}`} role="progressbar" aria-label={`${quota.name} remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={quota.remaining}>
               <div className={`h-full rounded-dd ${tone.bar} transition-[width] motion-reduce:transition-none`} style={{ width: `${Math.min(quota.remaining, 100)}%` }} />
             </div>
             <div className={`flex items-center justify-between ${compact ? "text-[10px]" : "text-xs"} text-dd-muted`}>
-              <span className="dd-tnum">{quota.used.toLocaleString()} / {quota.total > 0 ? quota.total.toLocaleString() : "∞"}</span>
+              <span className="dd-tnum">{absoluteLabel}</span>
               <span className={`dd-tnum font-medium ${tone.text}`}>{quota.remaining}%</span>
             </div>
+            {isMerged ? <span className={`${compact ? "text-[10px]" : "text-xs"} italic text-dd-subtle`}>merged across {quota.accountCount} account{quota.accountCount !== 1 ? "s" : ""}</span> : null}
           </div>
         );
       },
@@ -126,7 +132,7 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
         <span>{sortedQuotas.length} quota{sortedQuotas.length !== 1 ? "s" : ""}</span>
         {showSortLabel ? <span className="rounded-dd border border-dd-border bg-dd-surface-2 px-2 py-1 text-[11px] text-dd-muted">Sorted by account remaining</span> : null}
       </div>
-      <DataTable columns={columns} rows={currentPageRows} keyFn={(quota) => `${quota.name}-${quota.index}`} density={density} caption="Provider quotas" />
+      <DataTable columns={columns} rows={currentPageRows} keyFn={(quota) => `${quota.name}-${quota.index}`} density={density} framed={false} caption="Provider quotas" />
       {totalPages > 1 ? (
         <Pagination
           page={page}

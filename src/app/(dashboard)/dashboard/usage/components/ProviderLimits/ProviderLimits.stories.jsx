@@ -27,6 +27,16 @@ const kiro = {
   },
 };
 
+const codexSecondary = {
+  id: "codex-secondary",
+  provider: "codex",
+  name: "Secondary Codex",
+  email: "second@example.com",
+  authType: "oauth",
+  isActive: true,
+  providerSpecificData: { plan: "Pro" },
+};
+
 const connectionPage = (connections, { total = connections.length, page = 1, pageSize = 20, providerOptions = ["codex", "kiro"] } = {}) => ({
   connections,
   providerOptions,
@@ -136,6 +146,33 @@ export const ResetDialog = {
     await expect(await canvas.findByText("owner@example.com")).toBeVisible();
     await userEvent.click(await canvas.findByRole("button", { name: "Use one Codex reset credit. 2 available." }));
     await expect(await within(document.body).findByRole("dialog", { name: "Reset Codex limit?" })).toBeVisible();
+  },
+};
+
+export const GroupedAccounts = {
+  parameters: {
+    storyFixture: fixture({
+      ...settingsRoutes(),
+      "GET /api/proxy-pools": { body: { proxyPools: [] }, status: 200 },
+      "GET /api/providers/client": { body: connectionPage([codex, codexSecondary]), status: 200 },
+      "GET /api/usage/codex-primary": { body: codexQuota, status: 200 },
+      "GET /api/usage/codex-secondary": { body: codexQuota, status: 200 },
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    // The merged toggle persists per provider in localStorage; clear it so the
+    // story always starts from the default per-account view.
+    window.localStorage.removeItem("quotaMergedProviders");
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("2 accounts")).toBeVisible());
+    await expect(canvas.getByText("owner@example.com")).toBeVisible();
+    await expect(canvas.getByText("second@example.com")).toBeVisible();
+    const mergeToggle = canvas.getByRole("switch", { name: "Merge codex quotas across accounts" });
+    // Hydration reads localStorage before play runs, so reset the UI too.
+    if (mergeToggle.getAttribute("aria-checked") === "true") await userEvent.click(mergeToggle);
+    await expect(mergeToggle).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(mergeToggle);
+    await expect(mergeToggle).toHaveAttribute("aria-checked", "true");
   },
 };
 

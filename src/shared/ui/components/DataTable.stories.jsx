@@ -354,3 +354,17 @@ export const Narrow = {
     await expect(scrollRegion.tabIndex).toBe(0);
   },
 };
+
+/** `framed={false}` drops the bordered wrapper for embedding inside another surface (e.g. a Card). */
+export const Frameless = {
+  render: () => (
+    <div className="w-full max-w-7xl rounded-dd-lg border border-dd-border bg-dd-surface p-5">
+      <DataTable caption="Embedded requests" columns={columns.slice(0, 4)} rows={timeline.slice(0, 3)} keyFn={(row) => row.id} density="compact" framed={false} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("table", { name: "Embedded requests" })).toBeInTheDocument();
+    await expect(canvas.getAllByRole("row")).toHaveLength(4);
+  },
+};

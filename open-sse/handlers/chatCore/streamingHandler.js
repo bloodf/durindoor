@@ -43,7 +43,7 @@ function hasOutputTokens(usage) {
  *
  * @returns {{stream: TransformStream, emittedFormat: string}}
  */
-export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat }) {
+export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials }) {
   const isDroidCLI = userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
   // Responses-API providers (e.g. codex) emit Responses SSE → translate into client format
   const isResponsesProvider = PROVIDERS[provider]?.format === FORMATS.OPENAI_RESPONSES;
@@ -52,14 +52,14 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
   if (needsCodexTranslation) {
     const codexTarget = CODEX_SOURCE_TO_TARGET[sourceFormat] || FORMATS.OPENAI;
     return {
-      stream: createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody),
+      stream: createSSETransformStreamWithLogger(FORMATS.OPENAI_RESPONSES, codexTarget, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials),
       emittedFormat: codexTarget
     };
   }
 
   if (needsTranslation(targetFormat, sourceFormat)) {
     return {
-      stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody),
+      stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials),
       emittedFormat: sourceFormat
     };
   }
@@ -74,7 +74,7 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, reqLogger, toolNameMap, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null }) {
+export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, reqLogger, toolNameMap, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null, credentials = null }) {
   const failTimeline = (status) => {
     if (traceId) { try { finishTrace(traceId, { status }); } catch {} }
   };
@@ -136,7 +136,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // `targetFormat` here silently breaks the codex-translation and needsTranslation
   // branches (the provider's format is not what reaches the client in those
   // cases). See upstream PR #3222.
-  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat });
+  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;

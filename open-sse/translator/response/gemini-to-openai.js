@@ -8,6 +8,8 @@ import { encodeDataUri } from "../concerns/image.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
 import { stripAnsiCodes } from "../../utils/streamHelpers.js";
 import { encodeToolCallIdWithSignature } from "../concerns/signatureTransport.js";
+import { storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 // Build chunk meta for current gemini state
 function chunkMeta(state) {
@@ -31,6 +33,12 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   const rawId = upstreamId && !state.seenToolCallIds.has(upstreamId)
     ? upstreamId
     : `${fcName}_${Date.now()}_${toolCallIndex}`;
+  // Persist the provider-issued signature keyed by the raw call id (session-
+  // namespaced) so the request translator can replay it even when the client
+  // did not round-trip the transport id (upstream c08efdbe).
+  if (thoughtSignature) {
+    storeGeminiThoughtSignature(rawId, thoughtSignature, state.sessionId);
+  }
   const id = encodeToolCallIdWithSignature(rawId, thoughtSignature);
   state.seenToolCallIds.add(id);
   if (upstreamId) state.seenToolCallIds.add(upstreamId);
@@ -104,13 +112,21 @@ export function geminiToOpenAIResponse(chunk, state) {
   if (content?.parts) {
     for (const part of content.parts) {
       const hasThoughtSig = part.thoughtSignature || part.thought_signature;
+      if (hasThoughtSig && isString(hasThoughtSig)) {
+        state.pendingThoughtSignature = hasThoughtSig;
+      }
       const isThought = part.thought === true;
-      
+
       // Handle thought signature (thinking mode)
       if (hasThoughtSig) {
         const hasTextContent = part.text !== undefined && part.text !== "";
         const hasFunctionCall = !!part.functionCall;
-        
+
+        // Standalone thoughtSignature part (no text, no functionCall): keep pending for next functionCall
+        if (!hasTextContent && !hasFunctionCall) {
+          continue;
+        }
+
         if (hasTextContent) {
           results.push(buildChunk(
             chunkMeta(state),
@@ -118,9 +134,10 @@ export function geminiToOpenAIResponse(chunk, state) {
             null
           ));
         }
-        
+
         if (hasFunctionCall) {
           results.push(emitFunctionCall(part.functionCall, state, hasThoughtSig));
+          state.pendingThoughtSignature = null;
         }
         continue;
       }
@@ -145,7 +162,9 @@ export function geminiToOpenAIResponse(chunk, state) {
 
       // Function call
       if (part.functionCall) {
-        results.push(emitFunctionCall(part.functionCall, state));
+        const sig = state.pendingThoughtSignature || null;
+        results.push(emitFunctionCall(part.functionCall, state, sig));
+        state.pendingThoughtSignature = null;
       }
 
       // Inline data (images)

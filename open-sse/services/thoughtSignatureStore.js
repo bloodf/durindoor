@@ -1,0 +1,183 @@
+// Persisted Gemini thoughtSignature store for the openai→gemini /
+// antigravity paths (upstream decolua/9router@c08efdbe).
+//
+// In-memory LRU Map (cap 2000, 1h TTL) in front of the shared SQLite `kv`
+// table (scope "gemini_thought_signatures", 7d TTL). Every write lands on two
+// keys: `sessionId:toolCallId` (session namespace) and bare `toolCallId`
+// (fallback), so replay works even when the session id changes across
+// processes. All SQLite access is fail-open.
+//
+// Note: the direct claude↔gemini route uses the sibling module
+// services/geminiThoughtSignatureStore.js (same kv scope, different keying);
+// the two stores coexist until a future consolidation.
+import { makeKv } from "../../src/lib/db/helpers/kvStore.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
+
+const MAX_SIGNATURES = 2000;
+const MAX_PERSISTED_SIGNATURES = 10_000;
+const MEMORY_TTL_MS = 1000 * 60 * 60; // 1 hour
+const PERSISTED_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+const SCOPE = "gemini_thought_signatures";
+
+const signatureKv = makeKv(SCOPE);
+const memorySignatures = new Map();
+let pruneCounter = 0;
+
+function pruneMemoryExpired() {
+  const now = Date.now();
+  for (const [key, value] of memorySignatures.entries()) {
+    if (value.expiresAt <= now) {
+      memorySignatures.delete(key);
+    }
+  }
+
+  while (memorySignatures.size > MAX_SIGNATURES) {
+    const oldestKey = memorySignatures.keys().next().value;
+    if (!oldestKey) break;
+    memorySignatures.delete(oldestKey);
+  }
+}
+
+async function maybePrunePersisted() {
+  pruneCounter++;
+  if (pruneCounter % 100 !== 0) return;
+
+  try {
+    const all = await signatureKv.getAll();
+    const keys = Object.keys(all);
+    const now = Date.now();
+    const expiredKeys = [];
+    const valid = [];
+
+    for (const k of keys) {
+      const entry = all[k];
+      if (!entry || !isString(entry.signature) || (entry.expiresAt && entry.expiresAt <= now)) {
+        expiredKeys.push(k);
+      } else {
+        valid.push({ key: k, createdAt: entry.createdAt || 0 });
+      }
+    }
+
+    for (const k of expiredKeys) {
+      await signatureKv.remove(k).catch(() => {});
+    }
+
+    if (valid.length > MAX_PERSISTED_SIGNATURES) {
+      valid.sort((a, b) => b.createdAt - a.createdAt);
+      const toRemove = valid.slice(MAX_PERSISTED_SIGNATURES);
+      for (const item of toRemove) {
+        await signatureKv.remove(item.key).catch(() => {});
+      }
+    }
+  } catch {
+    // Fail-open
+  }
+}
+
+/**
+ * Store a thought signature for a tool_call_id with optional sessionId namespace (RAM + SQLite async)
+ */
+export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = null) {
+  if (!isString(toolCallId) || !toolCallId) return;
+  if (!isString(signature) || !signature) return;
+
+  const now = Date.now();
+  pruneMemoryExpired();
+
+  const keys = [];
+  if (isString(sessionId) && sessionId) {
+    keys.push(`${sessionId}:${toolCallId}`);
+  }
+  keys.push(toolCallId);
+
+  for (const k of keys) {
+    memorySignatures.set(k, {
+      signature,
+      expiresAt: now + MEMORY_TTL_MS,
+    });
+
+    // Async persist to SQLite kv table without blocking
+    signatureKv.set(k, {
+      signature,
+      createdAt: now,
+      expiresAt: now + PERSISTED_TTL_MS,
+    }).catch(() => {});
+  }
+
+  maybePrunePersisted().catch(() => {});
+}
+
+/**
+ * Retrieve a thought signature by tool_call_id (RAM first, then SQLite fallback)
+ */
+export async function getGeminiThoughtSignature(toolCallId, sessionId = null) {
+  if (!isString(toolCallId) || !toolCallId) return null;
+
+  pruneMemoryExpired();
+
+  if (isString(sessionId) && sessionId) {
+    const sessionKey = `${sessionId}:${toolCallId}`;
+    const sessionEntry = memorySignatures.get(sessionKey);
+    if (sessionEntry && sessionEntry.expiresAt > Date.now()) {
+      return sessionEntry.signature;
+    }
+  }
+
+  const entry = memorySignatures.get(toolCallId);
+  if (entry && entry.expiresAt > Date.now()) {
+    return entry.signature;
+  }
+
+  try {
+    if (isString(sessionId) && sessionId) {
+      const sessionKey = `${sessionId}:${toolCallId}`;
+      const sessionRow = await signatureKv.get(sessionKey);
+      if (sessionRow && isString(sessionRow.signature) && (!sessionRow.expiresAt || sessionRow.expiresAt > Date.now())) {
+        memorySignatures.set(sessionKey, {
+          signature: sessionRow.signature,
+          expiresAt: Date.now() + MEMORY_TTL_MS,
+        });
+        return sessionRow.signature;
+      }
+    }
+
+    const row = await signatureKv.get(toolCallId);
+    if (row && isString(row.signature)) {
+      if (row.expiresAt && row.expiresAt <= Date.now()) {
+        signatureKv.remove(toolCallId).catch(() => {});
+        return null;
+      }
+      memorySignatures.set(toolCallId, {
+        signature: row.signature,
+        expiresAt: Date.now() + MEMORY_TTL_MS,
+      });
+      return row.signature;
+    }
+  } catch {
+    // Fail-open
+  }
+
+  return null;
+}
+
+/**
+ * Synchronous get from RAM cache only (for sync translators)
+ */
+export function getGeminiThoughtSignatureSync(toolCallId, sessionId = null) {
+  if (!isString(toolCallId) || !toolCallId) return null;
+  pruneMemoryExpired();
+
+  if (isString(sessionId) && sessionId) {
+    const sessionKey = `${sessionId}:${toolCallId}`;
+    const sessionEntry = memorySignatures.get(sessionKey);
+    if (sessionEntry && sessionEntry.expiresAt > Date.now()) {
+      return sessionEntry.signature;
+    }
+  }
+
+  const entry = memorySignatures.get(toolCallId);
+  if (entry && entry.expiresAt > Date.now()) {
+    return entry.signature;
+  }
+  return null;
+}

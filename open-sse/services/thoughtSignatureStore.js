@@ -1,3 +1,15 @@
+// Persisted Gemini thoughtSignature store for the openai→gemini /
+// antigravity paths (upstream decolua/9router@c08efdbe).
+//
+// In-memory LRU Map (cap 2000, 1h TTL) in front of the shared SQLite `kv`
+// table (scope "gemini_thought_signatures", 7d TTL). Every write lands on two
+// keys: `sessionId:toolCallId` (session namespace) and bare `toolCallId`
+// (fallback), so replay works even when the session id changes across
+// processes. All SQLite access is fail-open.
+//
+// Note: the direct claude↔gemini route uses the sibling module
+// services/geminiThoughtSignatureStore.js (same kv scope, different keying);
+// the two stores coexist until a future consolidation.
 import { makeKv } from "../../src/lib/db/helpers/kvStore.js";
 
 const MAX_SIGNATURES = 2000;

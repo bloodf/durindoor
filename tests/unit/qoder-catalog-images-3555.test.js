@@ -29,12 +29,16 @@ describe("Qoder catalog refresh (decolua/9router#3555)", () => {
       { id: "lite", name: "Lite" },
       { id: "qmodel_38max", name: "Qwen3.8-Max" },
       { id: "gmodel", name: "GLM-5.3" },
+      { id: "gfmodel", name: "GLM-5.3-Flash" },
+      { id: "qfmodel", name: "Qwen3.8-Flash" },
     ]));
     expect(qoder.models.some(({ id }) => id === "qmodel_preview" || id === "gm51model")).toBe(false);
     expect(QODER_MODEL_MAP).toMatchObject({
       lite: "lite",
       qmodel_38max: "qmodel_38max",
       gmodel: "gmodel",
+      gfmodel: "gfmodel",
+      qfmodel: "qfmodel",
     });
     expect(QODER_MODEL_MAP).not.toHaveProperty("gm51model");
   });
@@ -55,6 +59,22 @@ describe("Qoder catalog refresh (decolua/9router#3555)", () => {
       thinkingCanDisable: false,
       contextWindow: 1000000,
       maxOutput: 131072,
+    });
+    expect(getCapabilitiesForModel("qoder", "gfmodel")).toMatchObject({
+      vision: true,
+      reasoning: true,
+      thinkingFormat: "zai",
+      thinkingCanDisable: false,
+      contextWindow: 1000000,
+      maxOutput: 131072,
+    });
+    expect(getCapabilitiesForModel("qoder", "qfmodel")).toMatchObject({
+      vision: true,
+      reasoning: true,
+      thinkingFormat: "qwen",
+      thinkingCanDisable: false,
+      contextWindow: 1000000,
+      maxOutput: 65536,
     });
     expect(getCapabilitiesForModel("qoder", "kmodel_latest")).toMatchObject({
       vision: true,

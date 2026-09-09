@@ -596,19 +596,24 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   // Index is assigned here (not on done): attributing deltas by stream position
   // merges parallel calls into index 0 whenever upstream emits all addeds
   // before dones — the client then concatenates N JSON payloads into one
-  // tool input and fails validation. The server item id is the correlator.
+  // tool input and fails validation. Both server correlators are recorded:
+  // `item.id` (what deltas carry as `item_id`) and `item.call_id` (what some
+  // providers send as the delta/done key instead). (#3772)
   if (eventType === "response.output_item.added" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
     const item = data.item;
     state.currentToolCallId = item.call_id || fallbackToolCallId();
     state.respToolChatIndex ??= new Map();
-    const key = item.id || data.item_id || state.currentToolCallId;
+    const itemKey = item.id || data.item_id || "";
+    const byItem = itemKey ? state.respToolChatIndex.get(itemKey) : undefined;
+    const byCall = state.respToolChatIndex.get(state.currentToolCallId);
     let idx;
-    if (key && state.respToolChatIndex.has(key)) {
-      idx = state.respToolChatIndex.get(key); // duplicate added (retry) — reuse
+    if (byItem !== undefined || byCall !== undefined) {
+      idx = byItem ?? byCall; // duplicate added (retry) — reuse
     } else {
       idx = state.toolCallIndex++;
-      if (key) state.respToolChatIndex.set(key, idx);
     }
+    if (itemKey) state.respToolChatIndex.set(itemKey, idx);
+    state.respToolChatIndex.set(state.currentToolCallId, idx);
 
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
@@ -625,11 +630,19 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
 
   // Function call arguments delta (standard or custom_tool_call variant).
   // Routed by item_id so interleaved parallel fragments stay on their own call.
+  // Some providers key deltas by `call_id` or by a prefixed `fc_<id>`/`ctc_<id>`
+  // form instead of the item id from output_item.added — try the raw key, the
+  // prefix-stripped key, then the most recent call's correlator before falling
+  // back to stream position. (#3772)
   if (eventType === "response.function_call_arguments.delta" || eventType === "response.custom_tool_call_input.delta") {
     const argsDelta = data.delta || "";
     if (!argsDelta) return null;
 
-    const known = data.item_id ? state.respToolChatIndex?.get(data.item_id) : undefined;
+    const rawItemId = isString(data.item_id) ? data.item_id : "";
+    const strippedItemId = rawItemId.replace(/^(?:fc|ctc)_/, "");
+    const known = (rawItemId ? state.respToolChatIndex?.get(rawItemId) : undefined) ??
+    (strippedItemId !== rawItemId ? state.respToolChatIndex?.get(strippedItemId) : undefined) ??
+    (state.currentToolCallId ? state.respToolChatIndex?.get(state.currentToolCallId) : undefined);
     const idx = known ?? Math.max(0, (state.toolCallIndex || 1) - 1);
     state.respToolArgsEmitted ??= new Set();
     state.respToolArgsEmitted.add(idx);
@@ -643,9 +656,12 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   // Index was assigned at added-time; nothing to advance. Some upstreams send
   // complete arguments only here (no deltas) — emit them once in that case.
   if (eventType === "response.output_item.done" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
-    const key = data.item?.id || data.item_id;
-    const idx = (key && state.respToolChatIndex?.get(key)) ?? Math.max(0, (state.toolCallIndex || 1) - 1);
-    const fullArgs = data.item?.arguments;
+    const doneItem = data.item;
+    const doneKey = doneItem?.id || data.item_id || "";
+    const idx = (doneKey ? state.respToolChatIndex?.get(doneKey) : undefined) ??
+    (doneItem?.call_id ? state.respToolChatIndex?.get(doneItem.call_id) : undefined) ??
+    Math.max(0, (state.toolCallIndex || 1) - 1);
+    const fullArgs = doneItem?.arguments;
     if (isString(fullArgs) && fullArgs) {
       state.respToolArgsEmitted ??= new Set();
       if (!state.respToolArgsEmitted.has(idx)) {

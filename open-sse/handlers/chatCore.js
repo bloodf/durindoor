@@ -8,7 +8,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getModelTargetFormat, getModelSupportedFormats, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage, getClientStatusFromError } from "../utils/error.js";
@@ -460,7 +460,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   const isCompactRequest = requestContext?.compact === true;
   const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
-  const providerRequiresStreaming = !isCompactRequest && PROVIDERS[provider]?.forceStream === true;
+  const providerRequiresStreaming = !isCompactRequest &&
+  (PROVIDERS[provider]?.forceStream === true || getModelForceStream(alias, cleanModel) === true);
   // Image generation models require non-streaming (Google v1internal:generateContent)
   const modelType = getModelType(alias, cleanModel);
   const isImageGenModel = modelType === "imageGen" || /image|imagen|image-generation/i.test(cleanModel);
@@ -1106,6 +1107,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         body: translatedBody,
         stream,
         credentials,
+        providerSessionId: sessionSeed,
+        clientTool,
         signal: providerSignal,
         log,
         proxyOptions,

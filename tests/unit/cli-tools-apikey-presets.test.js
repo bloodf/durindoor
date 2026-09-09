@@ -93,8 +93,30 @@ describe("CLI tool API key presets (upstream c24a8542)", () => {
 
   it("masks saved secrets in labels", () => {
     expect(maskApiKey("")).toBe("");
-    expect(maskApiKey("sk-short")).toBe("sk-s…");
+    expect(maskApiKey("sk-short")).toBe("sk-s…rt");
     expect(maskApiKey("sk-machine-keyId-crc8-long")).toBe("sk-machi…long");
     expect(formatKeyPresetLabel({ name: "Work", key: "sk-machine-keyId-crc8-long" })).toBe("Work (sk-machi…long)");
+  });
+
+  it("gives legacy sk-<8 hex> keys distinct masked default names", () => {
+    // Legacy keys are only 11 chars; the mask must include the tail so two
+    // keys sharing their first hex digit do not collide on the default name.
+    expect(maskApiKey("sk-a1b2c3d4")).toBe("sk-a…d4");
+    expect(maskApiKey("sk-a9f8e7d6")).toBe("sk-a…d6");
+    expect(maskApiKey("sk-a1b2c3d4")).not.toBe(maskApiKey("sk-a9f8e7d6"));
+  });
+
+  it("degrades to a no-op when localStorage.setItem throws", () => {
+    const throwing = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("QuotaExceededError");
+      },
+      removeItem: () => {},
+    };
+    global.window.localStorage = throwing;
+    expect(() => upsertKeyPreset("sk-key", "Name")).not.toThrow();
+    expect(() => deleteKeyPreset("Name")).not.toThrow();
+    expect(readKeyPresets()).toEqual([]);
   });
 });

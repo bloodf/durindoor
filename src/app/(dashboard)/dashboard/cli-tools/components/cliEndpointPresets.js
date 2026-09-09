@@ -37,7 +37,13 @@ function createPresetStore({ storageKey, changeEvent, itemField, normalize = (v)
 
   const write = (items) => {
     if (!isBrowser()) return;
-    window.localStorage.setItem(storageKey, JSON.stringify(items));
+    // Browser policy, sandboxed contexts, or quota limits can make setItem
+    // throw; degrade to a no-op so save/delete never breaks the dialog.
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(items));
+    } catch {
+      return;
+    }
     window.dispatchEvent(new CustomEvent(changeEvent));
   };
 
@@ -83,7 +89,9 @@ export const deleteKeyPreset = apiKeyPresets.remove;
 /** Mask a stored API key for display (never render a full saved secret). */
 export function maskApiKey(apiKey) {
   if (!apiKey) return "";
-  if (apiKey.length <= 12) return `${apiKey.slice(0, 4)}…`;
+  // Legacy sk-<8 hex> keys are only 11 chars; include the tail so two legacy
+  // keys sharing their first hex digit don't collide on the default name.
+  if (apiKey.length <= 12) return `${apiKey.slice(0, 4)}…${apiKey.slice(-2)}`;
   return `${apiKey.slice(0, 8)}…${apiKey.slice(-4)}`;
 }
 

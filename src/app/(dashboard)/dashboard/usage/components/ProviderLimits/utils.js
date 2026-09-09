@@ -534,8 +534,10 @@ hidden)
   hiddenKeys.delete(quotaKey);
   // Antigravity now groups text models under the family keys "gemini" and
   // "claude" (upstream f615a83): toggling a family row supersedes any stale
-  // per-model keys, which are pruned so they cannot linger invisibly.
-  if (provider === "antigravity") {
+  // per-model keys, which are pruned so they cannot linger invisibly. The
+  // Antigravity CLI provider ("agy") shares the same usage handler and
+  // grouped rows, so the prune applies to both provider ids.
+  if (provider === "antigravity" || provider === "agy") {
     if (quotaKey === "gemini") {
       for (const k of hiddenKeys) {
         if (k.startsWith("gemini-") && !k.includes("image")) hiddenKeys.delete(k);
@@ -636,7 +638,7 @@ function buildClaudeExtraUsageQuota(extraUsage) {
 
 /**
  * Parse provider-specific quota structures into normalized array
- * @param {string} provider - Provider name (github, antigravity, codex, kiro, claude)
+ * @param {string} provider - Provider name (github, antigravity, agy, codex, kiro, claude)
  * @param {Object} data - Raw quota data from provider
  * @returns {Array<Object>} Normalized quota objects with { name, used, total, resetAt }
  */
@@ -660,11 +662,16 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "agy": // Antigravity CLI shares the Antigravity usage handler (open-sse/services/usage.js)
       case "antigravity":
         if (data.quotas) {
           const entries = Object.entries(data.quotas);
           const geminiModels = entries.filter(([k]) => k.startsWith("gemini-") && !k.includes("image"));
-          const claudeModels = entries.filter(([k]) => k.startsWith("claude-"));
+          // Image models are excluded from the Claude family for the same
+          // reason as Gemini above: an image row belongs to its own row, and
+          // folding it into the family would also duplicate it (the image
+          // filter below matches any key containing "image").
+          const claudeModels = entries.filter(([k]) => k.startsWith("claude-") && !k.includes("image"));
           const imageModels = entries.filter(([k]) => k.includes("image"));
           const otherModels = entries.filter(([k]) => !k.startsWith("gemini-") && !k.startsWith("claude-") && !k.includes("image"));
 

@@ -200,4 +200,43 @@ describe("provider quota visibility", () => {
       ).toEqual(["weekly sonnet (7d)"]);
     });
   });
+
+  it("applies the same Antigravity grouping and pruning to agy (Antigravity CLI) connections", () => {
+    // open-sse/services/usage.js routes agy through getAntigravityUsage, so the
+    // payload shape is identical; the parser must group it the same way.
+    const quotas = parseQuotaData("agy", data);
+    expect(quotas.map((q) => q.modelKey)).toEqual(["gemini", "claude"]);
+
+    const afterHide = updateQuotaVisibility(
+      {
+        "connection-a": {
+          hidden: ["gemini-3.7-flash-low", "gemini-3.1-flash-image"],
+        },
+      },
+      "connection-a",
+      "agy",
+      "gemini",
+      true,
+    );
+    expect(afterHide["connection-a"].hidden).toEqual(["gemini-3.1-flash-image", "gemini"]);
+
+    const visibility = { agy: { hidden: ["claude"] } };
+    expect(
+      filterQuotasByVisibility("connection-a", quotas, visibility, "agy").map((q) => q.modelKey),
+    ).toEqual(["gemini"]);
+  });
+
+  it("keeps image models out of the Claude family so they are not duplicated", () => {
+    const withClaudeImage = {
+      quotas: {
+        "claude-sonnet-4-6": { used: 5, total: 1000, remainingPercentage: 90 },
+        "claude-image-1": { used: 3, total: 1000, remainingPercentage: 80 },
+      },
+    };
+    const quotas = parseQuotaData("antigravity", withClaudeImage);
+    expect(quotas.map((q) => q.modelKey)).toEqual(["claude", "claude-image-1"]);
+    // The family row reflects only the text model; the image model gets its
+    // own row instead of also feeding the family representative.
+    expect(quotas[0].remainingPercentage).toBe(90);
+  });
 });

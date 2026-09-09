@@ -3,6 +3,11 @@
  * bump derivation, changelog section building, and section extraction.
  */
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   parseVersion,
   computeBump,
@@ -11,6 +16,8 @@ import {
   buildChangelogSection,
   extractSection,
 } from "../../scripts/release-notes.mjs";
+
+const REPO_ROOT = join(fileURLToPath(import.meta.url), "..", "..", "..");
 
 describe("parseVersion", () => {
   it("parses plain and v-prefixed semver strings", () => {
@@ -179,5 +186,47 @@ describe("extractSection", () => {
     const tricky = "# 4.0.0\n\n## Fixes\n\n- note about # 4.0.10\n\n# 4.0.10\n\n- fix: real\n";
     expect(extractSection(tricky, "4.0.10")).toBe("# 4.0.10\n\n- fix: real\n");
     expect(extractSection(tricky, "4.0.1")).toBeNull();
+  });
+});
+
+describe("CLI extract without a git tag", () => {
+  /**
+   * `extract` only reads CHANGELOG.md, so it must work in a checkout with no
+   * reachable v* tag (first release, or recovery after the sole tag was
+   * removed). Regression test for the CLI resolving latestTag() before
+   * dispatching, which made `extract` fail before reading a valid section.
+   */
+  function makeTaglessRepo() {
+    // realpath: macOS tmpdirs live under /var (a symlink to /private/var),
+    // and the CLI's `import.meta.url === process.argv[1]` entry guard is
+    // symlink-resolved — invoking through the symlink would silently no-op.
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "release-notes-")));
+    mkdirSync(join(dir, "scripts"));
+    copyFileSync(join(REPO_ROOT, "scripts", "release-notes.mjs"), join(dir, "scripts", "release-notes.mjs"));
+    writeFileSync(join(dir, "CHANGELOG.md"), "# 4.1.0\n\n## Features\n\n- feat(x): new thing\n");
+    execFileSync("git", ["init", "-q"], { cwd: dir });
+    execFileSync("git", ["add", "-A"], { cwd: dir });
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init"], { cwd: dir });
+    return dir;
+  }
+
+  it("extract succeeds in a repo with no v* tag", () => {
+    const dir = makeTaglessRepo();
+    const out = execFileSync("node", [join(dir, "scripts", "release-notes.mjs"), "extract", "4.1.0"], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+    expect(out.trim()).toBe("# 4.1.0\n\n## Features\n\n- feat(x): new thing");
+  });
+
+  it("next-version still fails loudly without a tag or --from", () => {
+    const dir = makeTaglessRepo();
+    expect(() =>
+      execFileSync("node", [join(dir, "scripts", "release-notes.mjs"), "next-version"], {
+        cwd: dir,
+        encoding: "utf8",
+        stdio: "pipe",
+      }),
+    ).toThrow();
   });
 });

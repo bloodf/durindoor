@@ -32,12 +32,24 @@ Two repository secrets on `bloodf/durindoor`:
   personal access token with **contents: write** on this repository.
 
 `RELEASE_PAT` exists because of a GitHub rule: **events created with
-`GITHUB_TOKEN` do not trigger other workflows.** The Release created by
-`release-tag.yml` must fire the `release: published` trigger of
-`release.yml`; with `GITHUB_TOKEN` the Release would be created but the npm
-publish would silently never run. `release-tag.yml` therefore authenticates
-`gh` with `${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}` and prints a
-loud warning with manual fallback instructions when the PAT is absent.
+`GITHUB_TOKEN` do not trigger other workflows.** Both workflows authenticate
+their writes with `${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}`:
+
+- In `release-prepare.yml` the token drives the release-branch push, PR
+  creation/update, and auto-merge. Without the PAT, `ci.yml`, `test.yml`,
+  and `commitlint.yml` never run on the release PR, the ruleset's required
+  checks can never go green, and auto-merge stalls forever. The workflow
+  prints a loud warning; run the §6.4 checks locally, record them in the
+  PR, and merge with a maintainer account.
+- In `release-tag.yml` the Release created with the PAT fires the
+  `release: published` trigger of `release.yml`; with `GITHUB_TOKEN` the
+  Release would be created but the npm publish would silently never run. A
+  loud warning with manual fallback instructions is printed when the PAT is
+  absent.
+
+One more secret note: the one-time setup scopes are **`contents: write`**
+plus **`pull-requests: write`** for `RELEASE_PAT` (PR creation/update and
+auto-merge live in Release Prepare).
 
 ## Cutting a release
 
@@ -61,6 +73,22 @@ section from `CHANGELOG.md` (`node scripts/release-notes.mjs extract X.Y.Z`),
 and creates the GitHub Release. Publishing that Release fires `release.yml`,
 which runs the full lint/agent-index/build/Vitest gate and then publishes
 the CLI to npm.
+
+**The squash title is part of the contract.** Release Tag fires only when
+the bump commit's first subject line is exactly `chore(release): bump
+version to X.Y.Z` (the ` (#PR)` suffix squash-merge appends is allowed) and
+the version in that subject equals both `package.json` versions at the
+pushed commit. If a maintainer merges manually with a renamed title — or a
+merge/rebase merge produces any other subject — tagging silently does not
+fire. Fallback: **Actions → Release Tag → Run workflow** with
+`version: X.Y.Z`; the manual path pins the checkout to `main`, validates the
+requested version against both manifests, and tags the pinned SHA.
+
+**If main advances while the release PR is open**, the waiting PR's version
+and changelog were computed from the older main and would ship the
+intervening commits without notes. Close the PR and re-dispatch Release
+Prepare: it recomputes everything from the latest main, replaces the stale
+`release/vX.Y.Z` branch (retry policy), and updates or recreates the PR.
 
 ## Editing the release PR before merge
 
@@ -94,14 +122,24 @@ node scripts/release-notes.mjs extract <version>
 ```
 
 All three are pure over git history / `CHANGELOG.md` and are unit-tested in
-`tests/unit/release-notes.test.js`.
+`tests/unit/release-notes.test.js`. `extract` reads `CHANGELOG.md` only — it
+resolves no git baseline, so it works even in a checkout with no reachable
+`v*` tag (first release, or recovery after the sole tag was removed).
+
+Release Prepare also runs the §6.3 pre-push gate itself: after committing
+the bump it installs commitlint and runs `npx commitlint
+--from=origin/main --to=HEAD` plus a title check (`echo "<pr-title>" | npx
+commitlint`) before pushing.
 
 ## Failure and rollback playbook
 
 | Stage | Failure | Recovery |
 | --- | --- | --- |
 | Release Prepare | "No commits since tag" | Nothing to release; no state created. |
+| Release Prepare | Run failed after the branch push (PR create / auto-merge) | Just re-dispatch: the retry policy replaces the stale `release/vX.Y.Z` branch (`--force-with-lease` against the observed SHA) and updates or recreates the PR. |
 | Release Prepare | PR open, CI red | Push fixes to `release/vX.Y.Z`, or close the PR and re-dispatch. |
+| Release Prepare | PR stalled with no checks (RELEASE_PAT absent) | Expected: GITHUB_TOKEN pushes don't trigger CI. Run the §6.4 checks locally, note them in the PR, merge with a maintainer account. |
+| Release Tag | Push ran but no tag created | The merge subject didn't match the contract; re-run Release Tag manually with `version: X.Y.Z`. |
 | Release Tag | Tag already exists | The guard refuses to re-tag; bump the version instead. |
 | After merge, before npm publish | Bad release | `gh release delete vX.Y.Z --repo bloodf/durindoor --yes`, `git push origin :refs/tags/vX.Y.Z`, then revert the bump commit on `main`. |
 | After npm publish | Bad release | npm does not unpublish cleanly — publish a fixed patch version and mark the bad one deprecated (`npm deprecate`). |
@@ -113,8 +151,9 @@ with `GITHUB_TOKEN` but `release.yml` will **not** fire. Either:
 
 ```bash
 # Re-create the release with a maintainer PAT so the publish workflow fires
+# (delete first — the automated run already created it with GITHUB_TOKEN)
 gh release delete vX.Y.Z --repo bloodf/durindoor --yes
-gh release create vX.Y.Z --repo bloodf/durindoor --title vX.Y.Z --target main --notes-file release-notes.md
+gh release create vX.Y.Z --repo bloodf/durindoor --title vX.Y.Z --target <bump-commit-sha> --notes-file release-notes.md
 
 # Or publish the CLI directly (full gate first)
 npm run lint && npm run build && (cd tests && npm run test:ci)

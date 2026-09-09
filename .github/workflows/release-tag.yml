@@ -4,6 +4,18 @@ name: Release Tag
 # (`chore(release): bump version to X.Y.Z`) lands on main. Also dispatchable
 # manually with an explicit version as a re-tag/re-release fallback.
 #
+# SECURITY: workflow_dispatch inputs and push event data are never
+# interpolated into run steps directly — they travel through step-level
+# `env:` and the version is validated as strict semver before use.
+#
+# MERGE SUBJECT CONTRACT: the automatic trigger keys on the bump commit
+# subject, compared EXACTLY (first line = `chore(release): bump version to
+# X.Y.Z`, plus the repository's ` (#PR)` squash suffix) against the version
+# in both package manifests at the pushed commit. If a maintainer merges a
+# release PR manually with a different title, tagging will NOT fire — run
+# **Actions → Release Tag → Run workflow** with `version: X.Y.Z` as the
+# documented fallback (see docs/development/release-process.md).
+#
 # CRITICAL — token choice: events created with GITHUB_TOKEN do NOT trigger
 # other workflows, so `release: published` (release.yml, the npm publisher)
 # only fires when the Release is created with a PAT. Set the RELEASE_PAT
@@ -41,33 +53,66 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Pin the checkout: the pushed bump commit for automatic runs,
+          # main for manual dispatches (never the selector's arbitrary ref).
+          ref: ${{ github.event_name == 'push' && github.event.head_commit.id || 'main' }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20.20.2
 
-      - name: Resolve version
+      - name: Resolve version and target
         id: version
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="$VERSION_INPUT"
           if [ -z "$VERSION" ]; then
             VERSION=$(node -p "require('./package.json').version")
           fi
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Version '$VERSION' is not strict semver X.Y.Z; refusing to tag."
+            exit 1
+          fi
+          # The tag/release target is the exact checked-out revision — the
+          # bump commit on push, the pinned main tip on dispatch — never the
+          # floating branch name.
+          TARGET=$(git rev-parse HEAD)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing version: $VERSION"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: $VERSION at $TARGET"
+
+      - name: Verify version matches both manifests
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ROOT_V=$(node -p "require('./package.json').version")
+          CLI_V=$(node -p "require('./cli/package.json').version")
+          if [ "$ROOT_V" != "$VERSION" ] || [ "$CLI_V" != "$VERSION" ]; then
+            echo "::error::Requested version $VERSION does not match manifests at ${{ steps.version.outputs.target }} (package.json=$ROOT_V, cli/package.json=$CLI_V)."
+            echo "::error::Tag the revision whose manifests carry $VERSION, or fix the version input."
+            exit 1
+          fi
+          echo "Both manifests carry $VERSION at the tagged revision."
 
       - name: Verify version matches the bump commit subject
         if: github.event_name == 'push'
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          SUBJECT="${{ github.event.head_commit.message }}"
-          EXPECTED="chore(release): bump version to ${{ steps.version.outputs.version }}"
-          case "$SUBJECT" in
-            "$EXPECTED"*) echo "Bump commit subject matches version." ;;
-            *)
-              echo "::error::Bump commit subject '$SUBJECT' does not match version $EXPECTED from package.json."
-              exit 1
-              ;;
-          esac
+          VERSION="${{ steps.version.outputs.version }}"
+          EXPECTED="chore(release): bump version to $VERSION"
+          # Compare the first subject line exactly; allow only the repo's
+          # deliberate squash suffix ` (#PR)`.
+          SUBJECT=$(printf '%s\n' "$HEAD_COMMIT_MESSAGE" | head -n1)
+          if [ "$SUBJECT" = "$EXPECTED" ]; then
+            echo "Bump commit subject matches version exactly."
+          elif [[ "$SUBJECT" =~ ^chore\(release\):\ bump\ version\ to\ ([0-9]+\.[0-9]+\.[0-9]+)\ \(#[0-9]+\)$ ]] && [ "${BASH_REMATCH[1]}" = "$VERSION" ]; then
+            echo "Bump commit subject matches version with (#PR) suffix."
+          else
+            echo "::error::Bump commit subject '$SUBJECT' is not exactly '$EXPECTED' (optional ' (#PR)' suffix allowed)."
+            echo "::error::If the release PR was merged with a renamed title, re-run this workflow manually with version: $VERSION."
+            exit 1
+          fi
 
       - name: Guard against re-tagging
         run: |
@@ -78,6 +123,8 @@ jobs:
           fi
 
       - name: Extract release notes
+        # `extract` reads CHANGELOG.md only — no git baseline needed, so it
+        # also works for a first release or after tag recovery.
         run: node scripts/release-notes.mjs extract "${{ steps.version.outputs.version }}" > release-notes.md
 
       - name: Check for RELEASE_PAT
@@ -99,9 +146,13 @@ jobs:
           echo "::warning::RELEASE_PAT is absent. The GitHub Release will be created"
           echo "::warning::with GITHUB_TOKEN, whose events do NOT trigger other"
           echo "::warning::workflows — release.yml (npm publish) will NOT fire."
-          echo "::warning::Manual fallback after this run completes:"
-          echo "::warning::  gh release create v\$VERSION --repo bloodf/durindoor --title v\$VERSION --notes-file release-notes.md --target main   (with a maintainer PAT)"
+          echo "::warning::Manual fallback after this run completes: DELETE the"
+          echo "::warning::release just created, then re-create it with a maintainer PAT"
+          echo "::warning::so the published event fires:"
+          echo "::warning::  gh release delete v\$VERSION --repo bloodf/durindoor --yes"
+          echo "::warning::  gh release create v\$VERSION --repo bloodf/durindoor --title v\$VERSION --notes-file release-notes.md --target \$TARGET_SHA"
           echo "::warning::or publish the CLI manually: npm run cli:publish with NPM_TOKEN."
+          echo "::warning::See docs/development/release-process.md (Manual fallback)."
           echo "::warning::============================================================"
 
       - name: Create tag and GitHub Release
@@ -113,4 +164,4 @@ jobs:
             --repo bloodf/durindoor \
             --title "v$VERSION" \
             --notes-file release-notes.md \
-            --target main
+            --target "${{ steps.version.outputs.target }}"

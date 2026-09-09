@@ -15,6 +15,9 @@
  *   node scripts/release-notes.mjs next-version [--bump auto|patch|minor|major] [--from <tag>]
  *   node scripts/release-notes.mjs notes <version> [--from <tag>]
  *   node scripts/release-notes.mjs extract <version>
+ *
+ * `extract` reads CHANGELOG.md only — it resolves no git baseline, so it works
+ * in checkouts with no reachable v* tag (first release, tag recovery).
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -162,13 +165,13 @@ const BUMPS = ["auto", "patch", "minor", "major"];
 export function main(argv, { stdout = console.log, stderr = console.error } = {}) {
   const [command, ...rest] = argv;
   const { positional, options } = parseArgs(rest);
-  const from = options.from || latestTag();
 
   if (command === "next-version") {
     const bump = options.bump || "auto";
     if (!BUMPS.includes(bump)) {
       throw new Error(`Unknown --bump value "${bump}" (expected one of ${BUMPS.join(", ")}).`);
     }
+    const from = options.from || latestTag();
     const subjects = subjectsSince(from);
     const current = from.replace(/^v/, "");
     const resolved = bump === "auto" ? computeBump(subjects) : bump;
@@ -180,6 +183,7 @@ export function main(argv, { stdout = console.log, stderr = console.error } = {}
     const version = positional[0];
     if (!version) throw new Error("Usage: release-notes.mjs notes <version> [--from <tag>]");
     parseVersion(version); // validates the shape
+    const from = options.from || latestTag();
     stdout(buildChangelogSection(version, subjectsSince(from)));
     return 0;
   }

@@ -14,12 +14,14 @@ describe("codebuddy-cn thinking levels", () => {
     expect(getThinkingLevels("codebuddy-cn", "deepseek-v4-pro")).toEqual(["low", "high", "xhigh"]);
   });
 
-  it("hy3 variants offer low/high; hy4-preview is high-only", () => {
+  it("hy3 offers low/high; hy4-preview is high-only", () => {
     expect(getThinkingLevels("codebuddy-cn", "hy3")).toEqual(["low", "high"]);
-    expect(getThinkingLevels("codebuddy-cn", "hy3-x")).toEqual(["low", "high"]);
-    expect(getThinkingLevels("codebuddy-cn", "hy3-preview")).toEqual(["low", "high"]);
     expect(getThinkingLevels("codebuddy-cn", "hy4-preview")).toEqual(["high"]);
-    expect(getThinkingLevels("codebuddy-cn", "hy4-preview-x")).toEqual(["high"]);
+  });
+
+  it("dropped catalog ids no longer resolve thinking levels", () => {
+    // Removed from the server product-config payload (upstream cec672d9).
+    expect(getThinkingLevels("codebuddy-cn", "hy4-preview-x")).toBeNull();
   });
 
   it("kimi-k3-1 falls through to the broad Kimi K3 max-only rule", () => {

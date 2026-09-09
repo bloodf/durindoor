@@ -108,9 +108,10 @@ function extractModel(url, body) {
 
   try {
     const parsed = JSON.parse(body.toString());
-    if (model === "gemini-3.6-flash-tiered" || model === "gemini-3.7-flash-tiered") {
+    if (model === "gemini-3.6-flash-tiered" || model === "gemini-3.7-flash-tiered" || model === "gemini-3.8-flash-tiered") {
       const level = String(parsed.request?.generationConfig?.thinkingConfig?.thinkingLevel || parsed.generationConfig?.thinkingConfig?.thinkingLevel || "medium").toLowerCase();
-      return `gemini-${model.includes("3.7") ? "3.7" : "3.6"}-flash-${["high", "medium", "low"].includes(level) ? level : "medium"}`;
+      const ver = model.includes("3.8") ? "3.8" : model.includes("3.7") ? "3.7" : "3.6";
+      return `gemini-${ver}-flash-${["high", "medium", "low"].includes(level) ? level : "medium"}`;
     }
     if (model) return model;
     if (parsed.conversationState) return parsed.conversationState.currentMessage?.userInputMessage?.modelId || null;

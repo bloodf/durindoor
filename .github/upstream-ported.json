@@ -94,6 +94,26 @@
     {
       "pr": 3693,
       "why": "ported with #3595; same CHANGELOG entry as #3691"
+    },
+    {
+      "pr": 3728,
+      "why": "Gemini 3.8 Flash support; ported via direct upstream commit 70f15aa50b67cda9238fb695c81dbecd7d5050e6 ('sync(upstream): add Gemini 3.8 Flash support and bump IDE fingerprint to 2.11.0'), no single upstream PR"
+    },
+    {
+      "pr": 3732,
+      "why": "ported with #3728 via upstream direct commit 70f15aa50b67cda9238fb695c81dbecd7d5050e6"
+    },
+    {
+      "pr": 3735,
+      "why": "ported with #3728 via upstream direct commit 70f15aa50b67cda9238fb695c81dbecd7d5050e6"
+    },
+    {
+      "pr": 3736,
+      "why": "ported with #3728 via upstream direct commit 70f15aa50b67cda9238fb695c81dbecd7d5050e6"
+    },
+    {
+      "pr": 3737,
+      "why": "ported with #3728 via upstream direct commit 70f15aa50b67cda9238fb695c81dbecd7d5050e6"
     }
   ],
   "_note_independent": "An independently implemented upstream concern still counts as PORTED for scan purposes: the point of the scan is to surface work NOT yet made in this fork. #3498/#3500/#3501/#3527 were written independently rather than cherry-picked, but their behavior and tests exist here, so re-proposing them would be a false positive.",

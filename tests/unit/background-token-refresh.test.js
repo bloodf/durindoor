@@ -6,6 +6,12 @@
  * chosen and that per-connection failures are swallowed, but never the real
  * refreshOne path. That path (force=true reaching checkAndRefreshToken) is
  * covered by background-token-refresh-integration.test.js.
+ *
+ * The "anti-abuse sequential spacing" block covers the upstream #3813 port:
+ * due connections are refreshed sequentially (not via Promise.allSettled) with
+ * an injected `sleep` between accounts — a long jittered base delay for the
+ * Google-sensitive providers (antigravity, gemini-cli) and a short fixed delay
+ * for everyone else, both overridable via env.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -172,6 +178,107 @@ describe("runBackgroundTokenRefreshTick", () => {
       runBackgroundTokenRefreshTick({ loadConnections, refreshConnection })
     ).resolves.toBeUndefined();
     expect(refreshConnection).not.toHaveBeenCalled();
+  });
+});
+
+describe("anti-abuse sequential spacing (upstream #3813)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("refreshes due connections sequentially with a sleep between accounts, never after the last", async () => {
+    const conns = [
+      conn({ id: "a1", provider: "antigravity" }),
+      conn({ id: "g1", provider: "gemini-cli" }),
+      conn({ id: "n1", provider: "grok-cli" }),
+    ];
+    const order = [];
+    const refreshConnection = vi.fn(async (c) => {
+      order.push(c.id);
+    });
+    const loadConnections = vi.fn(async () => conns);
+    const sleep = vi.fn(async () => {});
+
+    const { runBackgroundTokenRefreshTick } = await import(
+      "../../src/sse/services/backgroundTokenRefresh.js"
+    );
+    await runBackgroundTokenRefreshTick({ loadConnections, refreshConnection, sleep });
+
+    expect(order).toEqual(["a1", "g1", "n1"]);
+    expect(sleep).toHaveBeenCalledTimes(conns.length - 1);
+  });
+
+  it("uses the long jittered Google base delay for sensitive providers and the short fixed delay otherwise", async () => {
+    const conns = [
+      conn({ id: "a1", provider: "antigravity" }),
+      conn({ id: "a2", provider: "antigravity" }),
+      conn({ id: "n1", provider: "grok-cli" }),
+      conn({ id: "n2", provider: "grok-cli" }),
+    ];
+    const refreshConnection = vi.fn(async () => {});
+    const loadConnections = vi.fn(async () => conns);
+    const sleep = vi.fn(async () => {});
+
+    const { runBackgroundTokenRefreshTick } = await import(
+      "../../src/sse/services/backgroundTokenRefresh.js"
+    );
+    await runBackgroundTokenRefreshTick({ loadConnections, refreshConnection, sleep });
+
+    const delays = sleep.mock.calls.map((c) => c[0]);
+    expect(delays).toHaveLength(3);
+    // Delay after a sensitive provider: 12_000 base + jitter in [0, 4000)
+    expect(delays[0]).toBeGreaterThanOrEqual(12_000);
+    expect(delays[0]).toBeLessThan(16_000);
+    expect(delays[1]).toBeGreaterThanOrEqual(12_000);
+    expect(delays[1]).toBeLessThan(16_000);
+    // Delay after a normal provider: exactly 1_500 + 200
+    expect(delays[2]).toBe(1_700);
+  });
+
+  it("honors BG_REFRESH_GOOGLE_DELAY_MS / BG_REFRESH_DELAY_MS overrides", async () => {
+    vi.stubEnv("BG_REFRESH_GOOGLE_DELAY_MS", "30000");
+    vi.stubEnv("BG_REFRESH_DELAY_MS", "500");
+
+    const conns = [
+      conn({ id: "a1", provider: "antigravity" }),
+      conn({ id: "n1", provider: "grok-cli" }),
+      conn({ id: "n2", provider: "grok-cli" }),
+    ];
+    const refreshConnection = vi.fn(async () => {});
+    const loadConnections = vi.fn(async () => conns);
+    const sleep = vi.fn(async () => {});
+
+    const { runBackgroundTokenRefreshTick } = await import(
+      "../../src/sse/services/backgroundTokenRefresh.js"
+    );
+    await runBackgroundTokenRefreshTick({ loadConnections, refreshConnection, sleep });
+
+    const delays = sleep.mock.calls.map((c) => c[0]);
+    expect(delays[0]).toBeGreaterThanOrEqual(30_000);
+    expect(delays[0]).toBeLessThan(34_000);
+    expect(delays[1]).toBe(700);
+  });
+
+  it("does not sleep when only one connection is due", async () => {
+    const refreshConnection = vi.fn(async () => {});
+    const loadConnections = vi.fn(async () => [conn({ id: "a1", provider: "antigravity" })]);
+    const sleep = vi.fn(async () => {});
+
+    const { runBackgroundTokenRefreshTick } = await import(
+      "../../src/sse/services/backgroundTokenRefresh.js"
+    );
+    await runBackgroundTokenRefreshTick({ loadConnections, refreshConnection, sleep });
+
+    expect(refreshConnection).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 });
 

@@ -533,7 +533,7 @@ function ensureObjectType(obj) {
 // Convert prefixItems (tuple validation) to items — Gemini cannot express tuples,
 // and a type:"array" schema without items is rejected with "missing field"
 function convertPrefixItems(obj) {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || !isObject(obj)) return;
 
   if (Array.isArray(obj.prefixItems) && obj.prefixItems.length > 0) {
     const variants = obj.prefixItems.filter(s => s && s.type !== "null");
@@ -546,7 +546,7 @@ function convertPrefixItems(obj) {
   }
 
   for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
+    if (value && isObject(value)) {
       convertPrefixItems(value);
     }
   }
@@ -554,11 +554,11 @@ function convertPrefixItems(obj) {
 
 // Gemini requires items on every type:"array" schema — fill a permissive placeholder
 function ensureArrayItems(obj) {
-  if (!obj || typeof obj !== "object") return;
+  if (!obj || !isObject(obj)) return;
   if (obj.type === "array" && !obj.items) {
     obj.items = { type: "string" };
   }
-  for (const v of Object.values(obj)) if (v && typeof v === "object") ensureArrayItems(v);
+  for (const v of Object.values(obj)) if (v && isObject(v)) ensureArrayItems(v);
 }
 
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively

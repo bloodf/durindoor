@@ -57,7 +57,9 @@ export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabl
     }
     if (next === CUSTOM_VALUE) {
       setCustomMode(true);
-      onChange("");
+      // Only clear when leaving a saved preset — reselecting Custom while an
+      // unsaved key is already typed must not discard the secret.
+      if (mode !== CUSTOM_VALUE) onChange("");
       return;
     }
     setCustomMode(false);
@@ -66,7 +68,11 @@ export default function ApiKeySelect({ value, onChange, apiKeys = [], cloudEnabl
   };
 
   const savePreset = (name) => {
-    upsertKeyPreset((value || "").trim(), name);
+    const trimmed = (value || "").trim();
+    upsertKeyPreset(trimmed, name);
+    // Normalize the controlled value to the stored (trimmed) key so the
+    // exact-match lookup re-selects the new preset after the change event.
+    if (trimmed !== (value || "")) onChange(trimmed);
     setSaveOpen(false);
     setCustomMode(false);
   };

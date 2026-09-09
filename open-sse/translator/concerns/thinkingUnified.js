@@ -165,7 +165,9 @@ function toGeminiThinkingLevel(cfg) {
 
 /**
  * Resolve unified intent to a value accepted by Claude adaptive thinking.
- * Unsupported levels fall back to high; minimal uses the nearest lower level.
+ * Unsupported levels — including the literal "auto" from adaptive intent, which
+ * Anthropic rejects with HTTP 400 — fall back to high; minimal uses the nearest
+ * lower level. (Upstream #3792)
  */
 function toClaudeAdaptiveEffort(cfg, caps, provider) {
   const level = toLevel(cfg);

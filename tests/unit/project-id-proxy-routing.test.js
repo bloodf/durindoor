@@ -50,6 +50,7 @@ describe("project-id proxy routing", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   afterAll(() => {
@@ -95,6 +96,9 @@ describe("project-id proxy routing", () => {
   });
 
   it("discovers a missing project ID through the refreshed credential route", async () => {
+    // Upstream #3813 made post-refresh projectId discovery opt-in (lazy by default);
+    // this test covers the opt-in eager path.
+    vi.stubEnv("EAGER_PROJECT_ID_REFRESH", "true");
     const route = { disableEnvProxy: true, strictProxy: false };
     mocks.proxyAwareFetch.mockResolvedValue(projectResponse("discovered-project"));
 
@@ -112,6 +116,21 @@ describe("project-id proxy routing", () => {
       "connection-direct",
       { projectId: "discovered-project" },
     );
+  });
+
+  it("does not eagerly discover a missing project ID after refresh by default (upstream #3813)", async () => {
+    // Lazy by default: eager multi-account discovery trips Google Cloud anti-abuse
+    // rate limits, so runtime handlers resolve projectId on demand instead.
+    await checkAndRefreshToken("antigravity", {
+      connectionId: "connection-direct",
+      accessToken: "old-access",
+      refreshToken: "refresh-token",
+    }, { disableEnvProxy: true }, { force: true });
+
+    // Give any (unexpectedly scheduled) eager fetch a chance to settle.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
+    expect(mocks.updateProviderConnection).toHaveBeenCalledOnce();
   });
 
   it("uses the exact route for project discovery after refresh", async () => {

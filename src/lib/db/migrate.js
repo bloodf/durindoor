@@ -3,6 +3,7 @@ import path from "node:path";
 import { currentDataFile, currentDbDir, currentLegacyFiles } from "./paths.js";
 import { TABLES, buildCreateTableSql } from "./schema.js";
 import { MIGRATIONS, latestVersion } from "./migrations/index.js";
+import { PG_MIGRATIONS, pgLatestVersion, bootstrapPgMetaTable } from "./migrations/postgres/index.js";
 import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
 import { makeBackupDir, backupFile, backupDbLite, pruneOldBackups } from "./backup.js";
 import { getAppVersion } from "./version.js";
@@ -59,7 +60,16 @@ function isFreshDb(adapter) {
 }
 
 // ─── Versioned migrations runner (skip-version safe) ─────────────────────
+function isPostgres(adapter) {
+  return Boolean(adapter && adapter.capabilities && adapter.capabilities.isPostgres);
+}
+
 function runVersionedMigrations(adapter) {
+  if (isPostgres(adapter)) return runPgVersionedMigrations(adapter);
+  return runSqliteVersionedMigrations(adapter);
+}
+
+function runSqliteVersionedMigrations(adapter) {
   // Bootstrap _meta first so we can read schemaVersion
   adapter.exec(buildCreateTableSql("_meta", TABLES._meta));
 
@@ -80,8 +90,36 @@ function runVersionedMigrations(adapter) {
   return { applied: pending.length, from: current, to: lastApplied };
 }
 
+function runPgVersionedMigrations(adapter) {
+  // The PG migration set has its own _meta bootstrap; create it directly
+  // with PG DDL because `buildCreateTableSql` emits SQLite-specific syntax.
+  bootstrapPgMetaTable(adapter);
+
+  const current = parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0;
+  const target = pgLatestVersion();
+  if (current >= target) return { applied: 0, from: current, to: current };
+
+  const pending = PG_MIGRATIONS.filter((m) => m.version > current);
+  let lastApplied = current;
+  for (const m of pending) {
+    adapter.transaction(() => {
+      m.up(adapter);
+      setMetaSync(adapter, "schemaVersion", m.version);
+    });
+    lastApplied = m.version;
+    console.log(`[DB][migrate] (pg) applied #${m.version} ${m.name}`);
+  }
+  return { applied: pending.length, from: current, to: lastApplied };
+}
+
 // ─── Auto-sync (additive only): add missing tables/columns/indexes ───────
 function syncSchemaFromTables(adapter) {
+  // The PG migration set already creates every table from the
+  // declarative schema in `001-initial.js`. There is no
+  // `PRAGMA table_info` equivalent on PG that we can branch on here
+  // without rewriting the column-diff loop, so we skip the additive
+  // sync on PG — the migration set is the source of truth.
+  if (isPostgres(adapter)) return;
   for (const [tableName, def] of Object.entries(TABLES)) {
     // Create table if absent
     adapter.exec(buildCreateTableSql(tableName, def));

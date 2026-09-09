@@ -59,33 +59,6 @@ export const CLAUDE_CLI_SPOOF_HEADERS = {
   "X-Stainless-Timeout": "600"
 };
 
-// Anthropic beta flags for anthropic-compatible-* nodes fronting Anthropic
-// (port of decolua/9router#3797). Derived from the fork's pinned Claude Code
-// 2.1.258 capture above (CLAUDE_CLI_SPOOF_HEADERS); effort-2025-11-24 is a
-// heavy-agent flag and is only sent for opus/sonnet model ids — cheaper models
-// don't need it. `oauth-2025-04-20` is intentionally excluded here: it is an
-// auth-mode flag appended by the claude usage path, not a request capability.
-const ANTHROPIC_BETA_BASE = [
-  "claude-code-20250219",
-  "interleaved-thinking-2025-05-14",
-  "thinking-token-count-2026-05-13",
-  "context-management-2025-06-27",
-  "prompt-caching-scope-2026-01-05",
-  "mid-conversation-system-2026-04-07",
-  "fallback-credit-2026-06-01"
-];
-const ANTHROPIC_BETA_HEAVY_AGENT = ["effort-2025-11-24"];
-
-/**
- * Select the Anthropic-Beta header value for a model id.
- * Heavy-agent beta flags are gated to opus/sonnet — cheaper models don't need them.
- */
-export function selectAnthropicBeta(model = "") {
-  const flags = [...ANTHROPIC_BETA_BASE];
-  if (/^claude-(opus|sonnet)/.test(model)) flags.push(...ANTHROPIC_BETA_HEAVY_AGENT);
-  return flags.join(",");
-}
-
 // Kimi Code single-source endpoints and documented membership display names.
 export const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1/messages";
 export const KIMI_CODING_OPENAI_URL = "https://api.kimi.com/coding/v1/chat/completions";

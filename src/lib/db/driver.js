@@ -1,7 +1,7 @@
 import { ensureDirs, hardenPermissions, currentDataFile } from "./paths.js";
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
-import { isFunction } from "../../shared/utils/typeChecks.js";if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false, file: null };
+import { isFunction } from "../../shared/utils/typeChecks.js";if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false, file: null, cacheKey: null };
 const state = global._dbAdapter;
 
 function liveDataFile() {
@@ -9,29 +9,37 @@ function liveDataFile() {
 }
 
 
-async function initAdapter() {
+async function initAdapter(engine = "sqlite") {
   ensureDirs();
-  // Order per runtime enforced by the shared openSqliteAdapter:
-  //   Bun:  bun:sqlite → sql.js
-  //   Node: better-sqlite3 → node:sqlite (≥22.5) → sql.js
-  const adapter = await openSqliteAdapter(liveDataFile());
-  const dataFile = liveDataFile();
-  state.file = dataFile;
-  /** Upstream PR #3381: repair DB/WAL/SHM modes only after SQLite creates them. */
-  hardenPermissions();
+  let adapter;
+  if (engine === "postgres") {
+    // Delegate to the PG fallback wrapper, which handles connection,
+    // capability gate, migrations, and the SQLite fallback on failure.
+    const { openActiveAdapter } = await import("./postgresFallback.js");
+    adapter = await openActiveAdapter();
+  } else {
+    // Order per runtime enforced by the shared openSqliteAdapter:
+    //   Bun:  bun:sqlite → sql.js
+    //   Node: better-sqlite3 → node:sqlite (≥22.5) → sql.js
+    adapter = await openSqliteAdapter(liveDataFile());
+    const dataFile = liveDataFile();
+    state.file = dataFile;
+    hardenPermissions();
+  }
   if (!state.logged) {
-    console.log(`[DB] Driver: ${adapter.driver} | file: ${dataFile}`);
+    console.log(`[DB] Driver: ${adapter.driver} | engine: ${engine}`);
     state.logged = true;
   }
-
-  try {
-    const { runMigrationOnce } = await import("./migrate.js");
-    await runMigrationOnce(adapter);
-    return adapter;
-  } catch (error) {
-    try {await adapter.close?.();} catch {}
-    throw error;
+  if (engine === "sqlite") {
+    try {
+      const { runMigrationOnce } = await import("./migrate.js");
+      await runMigrationOnce(adapter);
+    } catch (error) {
+      try { await adapter.close?.(); } catch {}
+      throw error;
+    }
   }
+  return adapter;
 }
 
 /**
@@ -97,8 +105,13 @@ export async function openSqliteAdapter(filePath) {
 export async function getAdapter() {
   // Tests mutate process.env.DATA_DIR between cases without resetting module
   // state; when the path changes, close the cached instance and re-init.
+  // Tests also flip `databaseEngine` between cases; the bootstrap sees
+  // the change and re-inits against the new engine.
+  const settings = await readSettingsForDriver();
   const currentFile = liveDataFile();
-  if (state.instance && state.file && state.file !== currentFile) {
+  const currentEngine = settings ? settings.databaseEngine || "sqlite" : "sqlite";
+  const cacheKey = `${currentEngine}:${currentFile}`;
+  if (state.instance && state.cacheKey && state.cacheKey !== cacheKey) {
     try {
       if (isFunction(state.instance.close)) await state.instance.close();
     } catch {/* best-effort */}
@@ -107,9 +120,10 @@ export async function getAdapter() {
   }
   if (state.instance) return state.instance;
   if (!state.initPromise) {
-    state.initPromise = initAdapter().
+    state.initPromise = initAdapter(currentEngine).
     then((adapter) => {
       state.instance = adapter;
+      state.cacheKey = cacheKey;
       return adapter;
     }).
     catch((error) => {
@@ -121,7 +135,46 @@ export async function getAdapter() {
   return state.initPromise;
 }
 
+/**
+ * Read the settings row just enough to decide which engine to boot.
+ * Lazy-imports the settings repo to avoid a circular import (driver
+ * is imported by repos, which are imported by settingsRepo).
+ */
+async function readSettingsForDriver() {
+  try {
+    const { getSettings } = await import("./repos/settingsRepo.js");
+    return await getSettings();
+  } catch {
+    return null;
+  }
+}
+
 export function getAdapterSync() {
   if (!state.instance) throw new Error("[DB] adapter not initialized — await getAdapter() first");
   return state.instance;
+}
+
+/**
+ * Returns the active engine (sqlite|postgres). The runtime reads this
+ * to decide which `databasePgFeatures` toggles to honor and to surface
+ * the engine in the settings UI.
+ */
+export function getActiveEngine() {
+  if (state.instance && state.instance.capabilities && state.instance.capabilities.isPostgres) {
+    return "postgres";
+  }
+  return "sqlite";
+}
+
+/**
+ * Transfer ownership of an already-open adapter to the driver state.
+ * Used by the cutover pipeline to flip the runtime to PG after the
+ * mirror + verify succeeds. The next `getAdapter()` call returns this
+ * adapter.
+ */
+export function setActiveAdapter(adapter) {
+  if (!adapter) throw new Error("setActiveAdapter: adapter is required");
+  state.instance = adapter;
+  state.initPromise = Promise.resolve(adapter);
+  state.cacheKey = `${getActiveEngine()}:${liveDataFile()}`;
 }

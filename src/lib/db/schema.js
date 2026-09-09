@@ -313,6 +313,28 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_model_capability_overrides_key ON modelCapabilityOverrides(overrideKey)",
     ],
   },
+  // ─── Opt-in PostgreSQL engine: cutover event log ──────────────────
+  // Records every `cutover` / `rollback` / `test` event. The PG side
+  // creates the same table via the parallel migration set; on SQLite
+  // the schema is shared because the column types (`INTEGER`, `TEXT`,
+  // `BOOLEAN` mapped to INTEGER) are compatible.
+  pgCutoverLog: {
+    columns: {
+      id: "INTEGER PRIMARY KEY AUTOINCREMENT",
+      at: "TEXT NOT NULL DEFAULT (datetime('now'))",
+      type: "TEXT NOT NULL",
+      ok: "INTEGER NOT NULL",
+      durationMs: "INTEGER",
+      schemaVersion: "INTEGER",
+      tablesMigrated: "INTEGER",
+      rowsMigrated: "INTEGER",
+      errorCode: "TEXT",
+      errorMessage: "TEXT",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_pgcl_at ON pgCutoverLog(at DESC)",
+    ],
+  },
 };
 
 export function buildCreateTableSql(name, def) {

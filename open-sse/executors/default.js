@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
-import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta } from "../providers/shared.js";
+import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
@@ -526,7 +526,7 @@ export class DefaultExecutor extends BaseExecutor {
     return BEARER;
   }
 
-  buildHeaders(credentials = {}, stream = true, requestContext = null, model = "") {
+  buildHeaders(credentials = {}, stream = true) {
     credentials ||= {};
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
@@ -555,24 +555,6 @@ export class DefaultExecutor extends BaseExecutor {
 
     if (this.provider === "opencode-go") {
       headers["x-opencode-session"] = credentials._openCodeGoSession || openCodeGoSessionHeader(credentials);
-    }
-
-    // anthropic-compatible-* nodes serving a real Claude model sit in front of
-    // Anthropic itself (a rotating multi-account proxy, a corporate gateway),
-    // so the request needs the same beta flags the `claude` provider sends:
-    // without `context-management-2025-06-27` upstream rejects the
-    // `context_management` block Claude Code puts in every request with
-    // "context_management: Extra inputs are not permitted" (HTTP 400), and the
-    // combo silently falls through to the next model. The model id gates this:
-    // a node fronting Kimi or GLM answers on its own ids and never matches, so
-    // gateways that would choke on unknown beta flags are left untouched.
-    // (Port of decolua/9router#3797. Unlike upstream, the fork's `claude`
-    // provider keeps its own header path — registry CLAUDE_API_HEADERS plus the
-    // claudeOverlay live-header merge — so this block only covers
-    // anthropic-compatible-* nodes.)
-    const isClaudeModel = isString(model) && /^claude-/.test(model);
-    if (model && this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel) {
-      headers["Anthropic-Beta"] = selectAnthropicBeta(model);
     }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams

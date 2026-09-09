@@ -467,19 +467,21 @@ describe("getCapabilitiesForModel — simple provider vision/thinking overrides"
 });
 
 describe("getCapabilitiesForModel — codebuddy-cn provider overrides", () => {
-  it("deepseek-v4-pro via codebuddy-cn uses openai thinking format, cannot disable", () => {
+  it("deepseek-v4-pro via codebuddy-cn uses openai thinking format, can disable", () => {
+    // thinkingCanDisable maps to the server's reasoning.canDisableThinking flag
+    // (upstream cec672d9) — NOT the inverse of onlyReasoning.
     const caps = getCapabilitiesForModel("codebuddy-cn", "deepseek-v4-pro");
-    expect(caps.vision).toBe(false);
+    expect(caps.vision).toBe(true);
     expect(caps.reasoning).toBe(true);
     expect(caps.thinkingFormat).toBe("openai");
-    expect(caps.thinkingCanDisable).toBe(false);
+    expect(caps.thinkingCanDisable).toBe(true);
   });
 
-  it("minimax-m2.7 via codebuddy-cn has vision (provider override)", () => {
+  it("minimax-m2.7 dropped from the server list falls through to pattern matching", () => {
     const caps = getCapabilitiesForModel("codebuddy-cn", "minimax-m2.7");
+    // No provider-pinned override anymore (upstream cec672d9); generic minimax pattern wins.
     expect(caps.vision).toBe(true);
-    expect(caps.thinkingFormat).toBe("openai");
-    expect(caps.thinkingCanDisable).toBe(false);
+    expect(caps.thinkingFormat).toBe("minimax");
   });
 
   it("unknown provider falls through to pattern matching", () => {
@@ -489,35 +491,42 @@ describe("getCapabilitiesForModel — codebuddy-cn provider overrides", () => {
   });
 });
 
-describe("getCapabilitiesForModel — codebuddy-cn 2026-08 catalog refresh", () => {
-  it("retired glm-5.0 and glm-4.7 no longer resolve provider entries", () => {
+describe("getCapabilitiesForModel — codebuddy-cn server-config alignment (upstream cec672d9)", () => {
+  it("unpublished glm-5.0 and glm-4.7 keep provider entries (endpoint still answers 200)", () => {
     for (const id of ["glm-5.0", "glm-4.7"]) {
       const caps = getCapabilitiesForModel("codebuddy-cn", id);
-      // Must not report the old provider-pinned 200000/48000 openai entry.
-      expect(caps?.maxOutput === 48000 && caps?.contextWindow === 200000).toBe(false);
+      expect(caps?.maxOutput).toBe(48000);
+      expect(caps?.contextWindow).toBe(200000);
     }
   });
 
-  it("hy3/hy3-x share hy3-preview caps; hy4-preview gets 1M window", () => {
-    for (const id of ["hy3", "hy3-x"]) {
+  it("hy3 keeps the conservative 192K window; hy4-preview gets 1M window", () => {
+    const caps = getCapabilitiesForModel("codebuddy-cn", "hy3");
+    expect(caps.vision).toBe(true);
+    expect(caps.thinkingCanDisable).toBe(false);
+    expect(caps.contextWindow).toBe(192000);
+    expect(getCapabilitiesForModel("codebuddy-cn", "hy4-preview").contextWindow).toBe(1000000);
+  });
+
+  it("dropped paid-tier/promo ids no longer resolve provider entries", () => {
+    // hy3-x / hy4-preview-x removed from the server product-config payload.
+    for (const id of ["hy3-x", "hy4-preview-x"]) {
       const caps = getCapabilitiesForModel("codebuddy-cn", id);
-      expect(caps.vision).toBe(true);
-      expect(caps.thinkingCanDisable).toBe(false);
-      expect(caps.contextWindow).toBe(192000);
-    }
-    for (const id of ["hy4-preview", "hy4-preview-x"]) {
-      expect(getCapabilitiesForModel("codebuddy-cn", id).contextWindow).toBe(1000000);
+      expect(caps?.contextWindow === 192000 || caps?.contextWindow === 1000000).toBe(false);
     }
   });
 
-  it("glm-5.3 gets 1M window; glm-5.3-flash keeps documented 200000 fallback", () => {
+  it("glm-5.3 family gets the server-published 1M window and switchable thinking", () => {
     expect(getCapabilitiesForModel("codebuddy-cn", "glm-5.3").contextWindow).toBe(1000000);
-    expect(getCapabilitiesForModel("codebuddy-cn", "glm-5.3-flash").contextWindow).toBe(200000);
+    const flash = getCapabilitiesForModel("codebuddy-cn", "glm-5.3-flash");
+    expect(flash.contextWindow).toBe(1000000);
+    expect(flash.maxOutput).toBe(32000);
+    expect(flash.thinkingCanDisable).toBe(true);
   });
 
-  it("kimi-k3-1 is vision-capable with 256000 window", () => {
+  it("kimi-k3-1 is vision-capable with the server-published 1000000 window", () => {
     const caps = getCapabilitiesForModel("codebuddy-cn", "kimi-k3-1");
     expect(caps.vision).toBe(true);
-    expect(caps.contextWindow).toBe(256000);
+    expect(caps.contextWindow).toBe(1000000);
   });
 });

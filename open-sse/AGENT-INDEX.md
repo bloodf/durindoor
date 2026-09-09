@@ -45,6 +45,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mmf` | MimoFreeExecutor | `./mimo-free.js` |
 | `ollama-local` | OllamaLocalExecutor | `./ollama-local.js` |
 | `opencode` | OpenCodeExecutor | `./opencode.js` |
+| `opencode-go` | OpenCodeGoExecutor | `./opencode-go.js` |
 | `opencode-zen` | OpenCodeZenExecutor | `./opencode-zen.js` |
 | `perplexity-web` | PerplexityWebExecutor | `./perplexity-web.js` |
 | `pol` | PollinationsExecutor | `./pollinations.js` |

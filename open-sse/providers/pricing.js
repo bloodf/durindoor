@@ -220,6 +220,10 @@ export const MODEL_PRICING = {
   "o4-mini": { input: 1.10, output: 4.40, cached: 0.275, reasoning: 4.40, cache_creation: 1.10 },
 
   // === Gemini ===
+  "gemini-3.8-flash": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
+  "gemini-3.8-flash-high": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
+  "gemini-3.8-flash-medium": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
+  "gemini-3.8-flash-low": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
   "gemini-3-flash-preview": { input: 0.50, output: 3.00, cached: 0.03, reasoning: 4.50, cache_creation: 0.50 },
   "gemini-3-pro-preview": { input: 2.00, output: 12.00, cached: 0.25, reasoning: 18.00, cache_creation: 2.00 },
   "gemini-3.1-pro-low": { input: 2.00, output: 12.00, cached: 0.25, reasoning: 18.00, cache_creation: 2.00 },
@@ -320,6 +324,12 @@ export const PROVIDER_PRICING = {
   // GitHub Copilot (gh) — explicit override, matches canonical gpt-5.3-codex rate
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 }
+  },
+  // TokenRouter — free-tier model only. Upstream decolua/9router@6efb9790 adds
+  // z-ai/glm-5.3-free at 0 pricing. The fuller TokenRouter rate table arrives
+  // with the earlier upstream pricing commit (41588bea), not yet ported.
+  tokenrouter: {
+    "z-ai/glm-5.3-free": { input: 0, output: 0, cached: 0, reasoning: 0 },
   },
 
   // Fireworks AI — OpenAI-compatible, reasoning/cache_creation not separately

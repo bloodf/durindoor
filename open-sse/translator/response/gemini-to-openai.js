@@ -9,6 +9,7 @@ import { toOpenAIFinish } from "../concerns/finishReason.js";
 import { stripAnsiCodes } from "../../utils/streamHelpers.js";
 import { encodeToolCallIdWithSignature } from "../concerns/signatureTransport.js";
 import { storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 // Build chunk meta for current gemini state
 function chunkMeta(state) {
@@ -111,7 +112,7 @@ export function geminiToOpenAIResponse(chunk, state) {
   if (content?.parts) {
     for (const part of content.parts) {
       const hasThoughtSig = part.thoughtSignature || part.thought_signature;
-      if (hasThoughtSig && typeof hasThoughtSig === "string") {
+      if (hasThoughtSig && isString(hasThoughtSig)) {
         state.pendingThoughtSignature = hasThoughtSig;
       }
       const isThought = part.thought === true;

@@ -11,6 +11,7 @@
 // services/geminiThoughtSignatureStore.js (same kv scope, different keying);
 // the two stores coexist until a future consolidation.
 import { makeKv } from "../../src/lib/db/helpers/kvStore.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const MAX_SIGNATURES = 2000;
 const MAX_PERSISTED_SIGNATURES = 10_000;
@@ -50,7 +51,7 @@ async function maybePrunePersisted() {
 
     for (const k of keys) {
       const entry = all[k];
-      if (!entry || typeof entry.signature !== "string" || (entry.expiresAt && entry.expiresAt <= now)) {
+      if (!entry || !isString(entry.signature) || (entry.expiresAt && entry.expiresAt <= now)) {
         expiredKeys.push(k);
       } else {
         valid.push({ key: k, createdAt: entry.createdAt || 0 });
@@ -77,14 +78,14 @@ async function maybePrunePersisted() {
  * Store a thought signature for a tool_call_id with optional sessionId namespace (RAM + SQLite async)
  */
 export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = null) {
-  if (typeof toolCallId !== "string" || !toolCallId) return;
-  if (typeof signature !== "string" || !signature) return;
+  if (!isString(toolCallId) || !toolCallId) return;
+  if (!isString(signature) || !signature) return;
 
   const now = Date.now();
   pruneMemoryExpired();
 
   const keys = [];
-  if (sessionId && typeof sessionId === "string") {
+  if (isString(sessionId) && sessionId) {
     keys.push(`${sessionId}:${toolCallId}`);
   }
   keys.push(toolCallId);
@@ -110,11 +111,11 @@ export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = n
  * Retrieve a thought signature by tool_call_id (RAM first, then SQLite fallback)
  */
 export async function getGeminiThoughtSignature(toolCallId, sessionId = null) {
-  if (typeof toolCallId !== "string" || !toolCallId) return null;
+  if (!isString(toolCallId) || !toolCallId) return null;
 
   pruneMemoryExpired();
 
-  if (sessionId && typeof sessionId === "string") {
+  if (isString(sessionId) && sessionId) {
     const sessionKey = `${sessionId}:${toolCallId}`;
     const sessionEntry = memorySignatures.get(sessionKey);
     if (sessionEntry && sessionEntry.expiresAt > Date.now()) {
@@ -128,10 +129,10 @@ export async function getGeminiThoughtSignature(toolCallId, sessionId = null) {
   }
 
   try {
-    if (sessionId && typeof sessionId === "string") {
+    if (isString(sessionId) && sessionId) {
       const sessionKey = `${sessionId}:${toolCallId}`;
       const sessionRow = await signatureKv.get(sessionKey);
-      if (sessionRow && typeof sessionRow.signature === "string" && (!sessionRow.expiresAt || sessionRow.expiresAt > Date.now())) {
+      if (sessionRow && isString(sessionRow.signature) && (!sessionRow.expiresAt || sessionRow.expiresAt > Date.now())) {
         memorySignatures.set(sessionKey, {
           signature: sessionRow.signature,
           expiresAt: Date.now() + MEMORY_TTL_MS,
@@ -141,7 +142,7 @@ export async function getGeminiThoughtSignature(toolCallId, sessionId = null) {
     }
 
     const row = await signatureKv.get(toolCallId);
-    if (row && typeof row.signature === "string") {
+    if (row && isString(row.signature)) {
       if (row.expiresAt && row.expiresAt <= Date.now()) {
         signatureKv.remove(toolCallId).catch(() => {});
         return null;
@@ -163,10 +164,10 @@ export async function getGeminiThoughtSignature(toolCallId, sessionId = null) {
  * Synchronous get from RAM cache only (for sync translators)
  */
 export function getGeminiThoughtSignatureSync(toolCallId, sessionId = null) {
-  if (typeof toolCallId !== "string" || !toolCallId) return null;
+  if (!isString(toolCallId) || !toolCallId) return null;
   pruneMemoryExpired();
 
-  if (sessionId && typeof sessionId === "string") {
+  if (isString(sessionId) && sessionId) {
     const sessionKey = `${sessionId}:${toolCallId}`;
     const sessionEntry = memorySignatures.get(sessionKey);
     if (sessionEntry && sessionEntry.expiresAt > Date.now()) {

@@ -129,22 +129,30 @@ function needsProjectId(provider) {
 function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
   if (!needsProjectId(provider) || !connectionId || !accessToken) return;
 
-  getProjectIdForConnection(connectionId, accessToken, proxyOptions, null, provider).
-  then((projectId) => {
-    if (!projectId) return;
-    updateProviderCredentials(connectionId, { projectId }).catch((err) => {
-      log.debug("TOKEN_REFRESH", "Failed to persist refreshed projectId", {
+  // Lazy resolution: do not eagerly trigger onboardUser during background token refresh.
+  // Eagerly fetching projectId across multiple accounts simultaneously triggers
+  // Google Cloud anti-abuse / rate limits. Runtime handlers (e.g. chat handler)
+  // lazily call getProjectIdForConnection() on demand.
+  // NOTE(fork divergence): unlike upstream we do NOT invalidateProjectId() here —
+  // port #3452 retains valid provider project IDs across access-token rotation.
+  if (process.env.EAGER_PROJECT_ID_REFRESH === "true") {
+    getProjectIdForConnection(connectionId, accessToken, proxyOptions, null, provider).
+    then((projectId) => {
+      if (!projectId) return;
+      updateProviderCredentials(connectionId, { projectId }).catch((err) => {
+        log.debug("TOKEN_REFRESH", "Failed to persist refreshed projectId", {
+          connectionId,
+          error: err?.message ?? err
+        });
+      });
+    }).
+    catch((err) => {
+      log.debug("TOKEN_REFRESH", "Failed to fetch projectId after token refresh", {
         connectionId,
         error: err?.message ?? err
       });
     });
-  }).
-  catch((err) => {
-    log.debug("TOKEN_REFRESH", "Failed to fetch projectId after token refresh", {
-      connectionId,
-      error: err?.message ?? err
-    });
-  });
+  }
 }
 
 // ─── Local-specific: persist credentials to localDb ──────────────────────────

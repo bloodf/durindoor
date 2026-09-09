@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROVIDER_MODELS, getModelTargetFormat, getModelSupportedFormats } from "../../open-sse/config/providerModels.js";
+import { PROVIDER_MODELS, getModelTargetFormat, getModelSupportedFormats, getModelForceStream } from "../../open-sse/config/providerModels.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { resolveTransport } from "../../open-sse/services/provider.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
@@ -27,6 +27,14 @@ describe("ocg/muse-spark-1.3-contributor catalog", () => {
     expect(entry.targetFormat).toBe("openai-responses");
     expect(getModelSupportedFormats("opencode-go", MODEL)).toEqual(["openai-responses"]);
     expect(getModelTargetFormat("opencode-go", MODEL)).toBe(FORMATS.OPENAI_RESPONSES);
+  });
+
+  it("requires streaming so JSON clients take the SSE-to-JSON path", () => {
+    // The executor always streams Muse Spark upstream; chatCore must treat the
+    // model like a forceStream provider or a stream:false client would route
+    // the Responses SSE into the non-streaming handler and 502.
+    expect(getModelForceStream("opencode-go", MODEL)).toBe(true);
+    expect(getModelForceStream("opencode-go", "kimi-k2.6")).toBe(false);
   });
 
   it("never takes the sourceFormat-matched transport (always translates)", () => {
@@ -118,6 +126,63 @@ describe("OpenCodeGoExecutor routing + sanitization", () => {
     const out = ex.transformRequest(MODEL, body, true, {});
     expect(out.tools.find((t) => t.name === "bare").parameters).toEqual({ type: "object", properties: {} });
     expect(out.tools.find((t) => t.name === "full").parameters).toEqual({ type: "object", properties: { a: { type: "string" } } });
+  });
+
+  it("passes Responses-native custom and namespace tools through intact", () => {
+    const ex = new OpenCodeGoExecutor();
+    const customTool = { type: "custom", name: "apply_patch", description: "p", format: { type: "freeform" } };
+    const namespaceTool = { type: "namespace", name: "ns", tools: [{ type: "function", name: "inner", parameters: { type: "object", properties: {} } }] };
+    const strictFn = { type: "function", name: "read", strict: true, parameters: { type: "object", properties: {} } };
+    const body = {
+      model: MODEL,
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      tools: [customTool, namespaceTool, strictFn, { type: "web_search" }],
+    };
+    const out = ex.transformRequest(MODEL, body, true, {});
+    // Freeform custom tool survives unchanged — not flattened to a function.
+    expect(out.tools.find((t) => t.name === "apply_patch")).toEqual(customTool);
+    // Namespace keeps its subtools.
+    expect(out.tools.find((t) => t.type === "namespace")).toEqual(namespaceTool);
+    // Native function tools keep Responses fields such as `strict`.
+    expect(out.tools.find((t) => t.name === "read").strict).toBe(true);
+    // Hosted nameless tools are still dropped.
+    expect(out.tools.some((t) => t.type === "web_search")).toBe(false);
+  });
+
+  it("strips stored references before stateless dispatch (store:false)", () => {
+    const ex = new OpenCodeGoExecutor();
+    const body = {
+      model: MODEL,
+      previous_response_id: "resp_stored",
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+        "rs_stored_reasoning",
+        { type: "item_reference", id: "fc_stored" },
+        { type: "function_call", id: "fc_1", call_id: "call_1", name: "read", arguments: "{}" },
+        { type: "function_call_output", id: "fco_1", call_id: "call_1", output: "ok" },
+      ],
+    };
+    const out = ex.transformRequest(MODEL, body, true, {});
+    expect(out.store).toBe(false);
+    expect(out.previous_response_id).toBeUndefined();
+    expect(out.input.some((i) => typeof i === "string")).toBe(false);
+    expect(out.input.some((i) => i.type === "item_reference")).toBe(false);
+    const call = out.input.find((i) => i.type === "function_call");
+    expect(call.id).toBeUndefined();
+    expect(call.call_id).toBe("call_1");
+    const callOut = out.input.find((i) => i.type === "function_call_output");
+    expect(callOut.id).toBeUndefined();
+  });
+
+  it("omits stream for compact requests, forces it otherwise", () => {
+    const ex = new OpenCodeGoExecutor();
+    const body = {
+      model: MODEL,
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+    };
+    expect(ex.transformRequest(MODEL, structuredClone(body), false, {}).stream).toBe(true);
+    const compact = ex.transformRequest(MODEL, structuredClone(body), false, {}, { compact: true });
+    expect(compact.stream).toBeUndefined();
   });
 });
 

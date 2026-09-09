@@ -5,6 +5,7 @@ import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import {
   normalizeResponsesInput,
+  normalizeStatelessResponseInput,
   clampResponsesCallId,
   coerceResponsesArguments,
   coerceResponsesOutput,
@@ -19,7 +20,11 @@ import {
  *    are served only by /zen/go/v1/responses, so this executor pins their URL
  *    and normalizes Responses-shaped bodies (tool declarations, call_id
  *    clamping, argument/output coercion, token caps, reasoning) before they go
- *    upstream.
+ *    upstream. Dispatch is stateless (`store: false`), so replay-only stored
+ *    references (item ids, item_reference entries, previous_response_id) are
+ *    stripped before send. The upstream body always streams; the per-model
+ *    `forceStream` registry flag lets chatCore convert the SSE back to JSON
+ *    for non-streaming clients (compact requests stay unary instead).
  *
  * 2. Stable `x-opencode-session` affinity header (upstream #3800). OpenCode Go
  *    rejects requests without a session header. `handleChatCore` forwards the
@@ -76,12 +81,34 @@ function isResponsesModel(model) {
 }
 
 // Flatten Chat Completions tool declarations into the Responses flat shape and
-// drop hosted/nameless tools the /responses endpoint rejects.
+// drop hosted/nameless tools the /responses endpoint rejects. Responses-native
+// non-function declarations (freeform `custom` tools, `namespace` tools) pass
+// through intact — rewriting them as functions would destroy their input format
+// and subtool semantics (mirrors codex.js normalizeCodexTools).
 function normalizeResponsesTools(body) {
   if (!Array.isArray(body.tools)) return;
   const validNames = new Set();
   body.tools = body.tools.filter((tool) => {
     if (!tool || !isObject(tool) || Array.isArray(tool)) return false;
+    const type = isString(tool.type) ? tool.type : "";
+    if (type === "namespace") {
+      if (Array.isArray(tool.tools)) {
+        for (const st of tool.tools) {
+          const n = isString(st?.name) ? st.name.trim().slice(0, MAX_TOOL_NAME_LEN) : "";
+          if (n) validNames.add(n);
+        }
+      }
+      return true;
+    }
+    if (type && type !== "function" && !tool.function) {
+      // Freeform custom tools keep their `format`; other hosted tools
+      // (web_search, mcp, …) are rejected by the /responses endpoint — drop.
+      if (type !== "custom") return false;
+      const n = isString(tool.name) ? tool.name.trim() : "";
+      if (!n) return false;
+      validNames.add(n.slice(0, MAX_TOOL_NAME_LEN));
+      return true;
+    }
     const fn = tool.function && isObject(tool.function) && !Array.isArray(tool.function) ? tool.function : null;
     const rawName = isString(tool.name) ? tool.name : (isString(fn?.name) ? fn.name : "");
     const name = rawName.trim();
@@ -93,11 +120,18 @@ function normalizeResponsesTools(body) {
     // Mirror the request translator: {type:"object"} without properties is rejected
     // by strict Responses backends, so fill in the empty properties map.
     if (parameters.type === "object" && !parameters.properties) parameters = { ...parameters, properties: {} };
+    // Preserve native Responses function fields (e.g. `strict`) while dropping
+    // the Chat Completions nested `function` wrapper.
+    const preserved = { ...tool };
+    delete preserved.function;
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
     tool.name = name.slice(0, MAX_TOOL_NAME_LEN);
     if (description) tool.description = description;
     tool.parameters = parameters;
+    for (const [k, v] of Object.entries(preserved)) {
+      if (!(k in tool)) tool[k] = v;
+    }
     validNames.add(tool.name);
     return true;
   });
@@ -201,8 +235,19 @@ export class OpenCodeGoExecutor extends DefaultExecutor {
       if (!out.reasoning.summary) out.reasoning.summary = "auto";
     }
     delete out.reasoning_effort;
-    out.stream = true;
+    // Muse Spark is served over SSE, so the upstream body always streams;
+    // chatCore routes non-streaming clients through handleForcedSSEToJson via
+    // the per-model `forceStream` registry flag. Compact requests keep the
+    // unary JSON contract instead (mirrors codex.js: the Responses API
+    // accepts streamless requests and returns a single JSON body).
+    if (requestContext?.compact === true) delete out.stream;
+    else out.stream = true;
     out.store = false;
+    // store:false is stateless: strip replay-only stored references the
+    // upstream cannot resolve (stored-id strings, item_reference entries,
+    // ids on call items, previous_response_id) — mirrors codex.js (#1004).
+    out.input = normalizeStatelessResponseInput(out.input);
+    delete out.previous_response_id;
     normalizeResponsesTools(out);
     sanitizeResponsesItems(out);
     return out;

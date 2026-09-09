@@ -123,4 +123,16 @@ describe("profile settings behavior", () => {
       window.happyDOM.setURL("http://localhost/");
     }
   });
+
+  it("treats bracketed IPv6 loopback as local", async () => {
+    window.happyDOM.setURL("http://[::1]:20127/");
+    try {
+      render(h(ProfilePage));
+      await flush();
+      expect(document.body.textContent).toContain("Local Mode - All data stored on your machine");
+      expect(document.body.textContent).not.toContain("Remote Mode");
+    } finally {
+      window.happyDOM.setURL("http://localhost/");
+    }
+  });
 });

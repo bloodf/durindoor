@@ -12,7 +12,7 @@ import { fallbackConnectionModels } from "../connectionModels";
 import {
   ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard,
   HermesToolCard, DefaultToolCard, OpenCodeToolCard, CoworkToolCard,
-  CopilotToolCard, ClineToolCard, KiloToolCard, DeepSeekTuiToolCard,
+  ClineToolCard, KiloToolCard, DeepSeekTuiToolCard,
   JcodeToolCard, GrokBuildToolCard,
 } from "../components";
 import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
@@ -121,7 +121,6 @@ export default function ToolDetailClient({ toolId, machineId }) {
       case "droid": return <DroidToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
       case "openclaw": return <OpenClawToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
       case "hermes": return <HermesToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "copilot": return <CopilotToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
       case "cline": return <ClineToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
       case "kilo": return <KiloToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
       case "deepseek-tui": return <DeepSeekTuiToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;

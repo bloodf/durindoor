@@ -115,6 +115,32 @@ describe("responses parallel tool calls keep their own index", () => {
     const calls = accumulate({}, chunks);
     expect(JSON.parse(calls[0].args)).toEqual(JSON.parse(PAYLOADS[0]));
   });
+
+  // Some Responses providers key argument deltas by `call_id` (or a prefixed
+  // fc_<call_id>/ctc_<call_id> form) instead of the item id from
+  // output_item.added. Both correlators recorded at added-time must resolve.
+  it("deltas keyed by call_id stay on their own parallel call", () => {
+    const events = PAYLOADS.map((_, i) => added(`item_${i}`, `call_${i}`, "read_file"));
+    PAYLOADS.forEach((p, i) => events.push(delta(`call_${i}`, p)));
+    PAYLOADS.forEach((_, i) => events.push(done(`item_${i}`, `call_${i}`, "read_file")));
+    const { chunks } = runStream(events);
+    const calls = accumulate({}, chunks);
+    expect(Object.keys(calls)).toHaveLength(4);
+    PAYLOADS.forEach((p, i) => {
+      expect(JSON.parse(calls[i].args)).toEqual(JSON.parse(p));
+    });
+  });
+
+  it("deltas keyed by prefixed fc_<call_id> stay on their own parallel call", () => {
+    const events = PAYLOADS.map((_, i) => added(null, `call_${i}`, "read_file"));
+    PAYLOADS.forEach((p, i) => events.push(delta(`fc_call_${i}`, p)));
+    const { chunks } = runStream(events);
+    const calls = accumulate({}, chunks);
+    expect(Object.keys(calls)).toHaveLength(4);
+    PAYLOADS.forEach((p, i) => {
+      expect(JSON.parse(calls[i].args)).toEqual(JSON.parse(p));
+    });
+  });
 });
 
 describe("responses → claude end-to-end keeps parallel tool_use blocks separate", () => {

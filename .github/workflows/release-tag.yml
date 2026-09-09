@@ -1,0 +1,116 @@
+name: Release Tag
+
+# Tags vX.Y.Z and creates the GitHub Release after a release PR
+# (`chore(release): bump version to X.Y.Z`) lands on main. Also dispatchable
+# manually with an explicit version as a re-tag/re-release fallback.
+#
+# CRITICAL — token choice: events created with GITHUB_TOKEN do NOT trigger
+# other workflows, so `release: published` (release.yml, the npm publisher)
+# only fires when the Release is created with a PAT. Set the RELEASE_PAT
+# secret (fine-grained PAT, contents:write on this repo) for the fully
+# automated chain. Without it the Release is still created with
+# GITHUB_TOKEN, but release.yml will NOT fire and the CLI must be published
+# manually (see docs/development/release-process.md).
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to tag (e.g. 4.1.0); defaults to package.json version"
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    # Run on manual dispatch, or on a main push whose head commit is a
+    # release version bump produced by the Release Prepare workflow.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'chore(release): bump version to')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.20.2
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: $VERSION"
+
+      - name: Verify version matches the bump commit subject
+        if: github.event_name == 'push'
+        run: |
+          SUBJECT="${{ github.event.head_commit.message }}"
+          EXPECTED="chore(release): bump version to ${{ steps.version.outputs.version }}"
+          case "$SUBJECT" in
+            "$EXPECTED"*) echo "Bump commit subject matches version." ;;
+            *)
+              echo "::error::Bump commit subject '$SUBJECT' does not match version $EXPECTED from package.json."
+              exit 1
+              ;;
+          esac
+
+      - name: Guard against re-tagging
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+            echo "::error::Tag $TAG already exists; refusing to re-tag. Bump the version instead."
+            exit 1
+          fi
+
+      - name: Extract release notes
+        run: node scripts/release-notes.mjs extract "${{ steps.version.outputs.version }}" > release-notes.md
+
+      - name: Check for RELEASE_PAT
+        id: pat
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -n "$RELEASE_PAT" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::RELEASE_PAT secret is not configured."
+          fi
+
+      - name: Warn when GITHUB_TOKEN will suppress the npm publish
+        if: steps.pat.outputs.present == 'false'
+        run: |
+          echo "::warning::============================================================"
+          echo "::warning::RELEASE_PAT is absent. The GitHub Release will be created"
+          echo "::warning::with GITHUB_TOKEN, whose events do NOT trigger other"
+          echo "::warning::workflows — release.yml (npm publish) will NOT fire."
+          echo "::warning::Manual fallback after this run completes:"
+          echo "::warning::  gh release create v\$VERSION --repo bloodf/durindoor --title v\$VERSION --notes-file release-notes.md --target main   (with a maintainer PAT)"
+          echo "::warning::or publish the CLI manually: npm run cli:publish with NPM_TOKEN."
+          echo "::warning::============================================================"
+
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "v$VERSION" \
+            --repo bloodf/durindoor \
+            --title "v$VERSION" \
+            --notes-file release-notes.md \
+            --target main

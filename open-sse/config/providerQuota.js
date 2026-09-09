@@ -84,6 +84,14 @@ export const PROVIDER_QUOTA_CONFIG = deepFreeze({
     oauthUrl: "https://api.anthropic.com/api/oauth/usage",
     settingsUrl: "https://api.anthropic.com/v1/settings",
     orgUsageUrl: "https://api.anthropic.com/v1/organizations/{org_id}/usage",
+    // Exact catalog-model → quota-window aliases for preflight (same convention
+    // as codex above; never inferred from untrusted model IDs). The OAuth
+    // payload reports Fable weekly usage as seven_day_fable_5_1 /
+    // seven_day_fable_5 / bare fable* keys; the normalizer folds all of them
+    // into the canonical model:fable window aliased here.
+    preflightScopes: {
+      models: { "claude-fable-5-1": "model:fable", "claude-fable-5": "model:fable" }
+    },
     runtimeScopes: { cooldown: "model", exhausted: "account" },
     preflightPolicy: PREFLIGHT_POLICY.accountRequests
   },

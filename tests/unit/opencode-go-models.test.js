@@ -299,6 +299,9 @@ describe("OpenCode Go target format preservation", () => {
   it("declares Responses targets for Muse Spark contributor models", () => {
     for (const model of MUSE_SPARK_CONTRIBUTORS) {
       expect(getModelTargetFormat("opencode-go", model)).toBe("openai-responses");
+      // Upstream #3819/#3820: responses-only entries so chatCore translates
+      // instead of matching a sourceFormat transport (never /messages).
+      expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai-responses"]);
     }
   });
 });

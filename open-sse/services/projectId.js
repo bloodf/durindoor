@@ -253,7 +253,10 @@ async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, pr
   const reqBody = { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
   // Same fingerprint scoping as loadCodeAssist above.
   const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
-  const MAX_ATTEMPTS = 5;
+  // Anti-abuse spacing (upstream #3813): fewer attempts and a long, jittered base
+  // delay so multi-account onboard bursts don't trip Google Cloud rate limits.
+  const MAX_ATTEMPTS = Number(process.env.ONBOARD_MAX_ATTEMPTS) || 2;
+  const BASE_RETRY_DELAY_MS = Number(process.env.ONBOARD_RETRY_DELAY_MS) || 12_000;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Bail out immediately if the connection was removed
@@ -296,9 +299,10 @@ async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, pr
         return null;
       }
 
-      // Server not done yet – wait and retry
+      // Server not done yet – wait (long base + jitter) and retry
+      const jitter = Math.floor(Math.random() * 5000);
       console.log(`[ProjectId] Onboard attempt ${attempt}/${MAX_ATTEMPTS}: not done yet, waiting...`);
-      await waitForProjectRetry(2000, externalSignal);
+      await waitForProjectRetry(BASE_RETRY_DELAY_MS + jitter, externalSignal);
 
     } catch (error) {
       clearTimeout(timeoutId);
@@ -313,11 +317,12 @@ async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, pr
         );
         return null;
       }
-      // Continue to next attempt instead of throwing (which would skip remaining retries)
+      // Wait with jitter before retrying
+      const retryJitter = Math.floor(Math.random() * 5000);
       console.warn(
         `[ProjectId] onboardUser attempt ${attempt} failed: ${sanitizeErrorMessage(error?.message || error)}, retrying...`
       );
-      await waitForProjectRetry(2000, externalSignal);
+      await waitForProjectRetry(BASE_RETRY_DELAY_MS + retryJitter, externalSignal);
     } finally {
       clearTimeout(timeoutId);
       externalSignal?.removeEventListener("abort", forwardAbort);

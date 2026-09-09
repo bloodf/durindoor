@@ -325,12 +325,16 @@ const QODER_CAPABILITIES = {
   dmodel: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
   dfmodel: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
   gmodel: { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // GLM-5.3-Flash mirrors the gmodel family limits; vision per the upstream is_vl flag.
+  gfmodel: { vision: true, reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   kmodel_latest: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
   kmodel: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: undefined },
   mmodel: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   qmodel_latest: { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
   qmodel: { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
-  qmodel_38max: { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 }
+  qmodel_38max: { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
+  // Qwen3.8-Flash shares the qmodel family limits.
+  qfmodel: { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 }
 };
 
 /** OpenCode Ox Alpha supports images and an always-on low/high/max effort enum. */
@@ -544,6 +548,7 @@ export const PROVIDER_CAPABILITIES = {
     "muse-spark-1.2-contributor-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "mimo-v2.5-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 }
   },
+
   oc: { "x-preview-f-free": OX_ALPHA_CAPABILITIES },
   "opencode-go": { "ox-alpha-free": OX_ALPHA_CAPABILITIES },
   ocg: { "ox-alpha-free": OX_ALPHA_CAPABILITIES },

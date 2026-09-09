@@ -1,5 +1,6 @@
 import { DefaultExecutor } from "./default.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import {
   normalizeResponsesInput,
   clampResponsesCallId,
@@ -38,15 +39,15 @@ function normalizeResponsesTools(body) {
   if (!Array.isArray(body.tools)) return;
   const validNames = new Set();
   body.tools = body.tools.filter((tool) => {
-    if (!tool || typeof tool !== "object" || Array.isArray(tool)) return false;
-    const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function) ? tool.function : null;
-    const rawName = typeof tool.name === "string" ? tool.name : (typeof fn?.name === "string" ? fn.name : "");
+    if (!tool || !isObject(tool) || Array.isArray(tool)) return false;
+    const fn = tool.function && isObject(tool.function) && !Array.isArray(tool.function) ? tool.function : null;
+    const rawName = isString(tool.name) ? tool.name : (isString(fn?.name) ? fn.name : "");
     const name = rawName.trim();
     if (!name) return false;
-    const description = typeof tool.description === "string" ? tool.description : (typeof fn?.description === "string" ? fn.description : "");
-    let parameters = (tool.parameters && typeof tool.parameters === "object" && !Array.isArray(tool.parameters))
+    const description = isString(tool.description) ? tool.description : (isString(fn?.description) ? fn.description : "");
+    let parameters = (tool.parameters && isObject(tool.parameters) && !Array.isArray(tool.parameters))
       ? tool.parameters
-      : (fn?.parameters && typeof fn.parameters === "object" && !Array.isArray(fn.parameters) ? fn.parameters : { type: "object", properties: {} });
+      : (fn?.parameters && isObject(fn.parameters) && !Array.isArray(fn.parameters) ? fn.parameters : { type: "object", properties: {} });
     // Mirror the request translator: {type:"object"} without properties is rejected
     // by strict Responses backends, so fill in the empty properties map.
     if (parameters.type === "object" && !parameters.properties) parameters = { ...parameters, properties: {} };
@@ -58,9 +59,9 @@ function normalizeResponsesTools(body) {
     validNames.add(tool.name);
     return true;
   });
-  if (body.tool_choice && typeof body.tool_choice === "object" && !Array.isArray(body.tool_choice)) {
+  if (body.tool_choice && isObject(body.tool_choice) && !Array.isArray(body.tool_choice)) {
     if (body.tool_choice.type === "function") {
-      const n = typeof body.tool_choice.name === "string" ? body.tool_choice.name.trim() : "";
+      const n = isString(body.tool_choice.name) ? body.tool_choice.name.trim() : "";
       if (!n || !validNames.has(n)) delete body.tool_choice;
     }
   }
@@ -72,9 +73,9 @@ function normalizeResponsesTools(body) {
 function sanitizeResponsesItems(body) {
   if (!Array.isArray(body.input)) return;
   body.input = body.input.filter((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return true;
+    if (!item || !isObject(item) || Array.isArray(item)) return true;
     if (item.type === "function_call") {
-      if (!item.name || typeof item.name !== "string" || item.name.trim() === "") return false;
+      if (!item.name || !isString(item.name) || item.name.trim() === "") return false;
       item.name = item.name.trim().slice(0, MAX_TOOL_NAME_LEN);
       item.call_id = clampResponsesCallId(item.call_id);
       item.arguments = coerceResponsesArguments(item.arguments);
@@ -118,7 +119,7 @@ export class OpenCodeGoExecutor extends DefaultExecutor {
     if (out.reasoning_effort !== undefined && out.reasoning === undefined) {
       out.reasoning = { effort: out.reasoning_effort, summary: "auto" };
     }
-    if (out.reasoning && typeof out.reasoning === "object" && !Array.isArray(out.reasoning)) {
+    if (out.reasoning && isObject(out.reasoning) && !Array.isArray(out.reasoning)) {
       if (!out.reasoning.summary) out.reasoning.summary = "auto";
     }
     delete out.reasoning_effort;

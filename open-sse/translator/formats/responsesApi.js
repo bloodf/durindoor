@@ -62,7 +62,7 @@ export const MAX_RESPONSES_CALL_ID_LEN = 64;
 let responsesCallIdSeq = 0;
 
 export function clampResponsesCallId(id) {
-  if (typeof id !== "string" || !id) return `call_${Date.now()}_${(responsesCallIdSeq += 1)}`;
+  if (!isString(id) || !id) return `call_${Date.now()}_${(responsesCallIdSeq += 1)}`;
   return id.length > MAX_RESPONSES_CALL_ID_LEN ? id.substring(0, MAX_RESPONSES_CALL_ID_LEN) : id;
 }
 
@@ -71,7 +71,7 @@ export function clampResponsesCallId(id) {
 // double-encoding and tripping upstream InputValidationError.
 export function coerceResponsesArguments(value) {
   if (value === undefined || value === null || value === "") return "{}";
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     try {
       return JSON.stringify(value);
     } catch {
@@ -88,7 +88,7 @@ export function coerceResponsesArguments(value) {
 
 // function_call_output.output must be a string — never null/object.
 export function coerceResponsesOutput(value) {
-  if (typeof value === "string") return value;
+  if (isString(value)) return value;
   if (value === undefined || value === null) return "";
   if (Array.isArray(value)) {
     return value.map((c) => {

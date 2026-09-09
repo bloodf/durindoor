@@ -646,7 +646,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     const key = data.item?.id || data.item_id;
     const idx = (key && state.respToolChatIndex?.get(key)) ?? Math.max(0, (state.toolCallIndex || 1) - 1);
     const fullArgs = data.item?.arguments;
-    if (typeof fullArgs === "string" && fullArgs) {
+    if (isString(fullArgs) && fullArgs) {
       state.respToolArgsEmitted ??= new Set();
       if (!state.respToolArgsEmitted.has(idx)) {
         state.respToolArgsEmitted.add(idx);

@@ -304,11 +304,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
  * than leaking "[object Object]" upstream.
  */
 function extractInstructionsText(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (Array.isArray(content)) {
     return content.map((c) => {
-      if (typeof c?.text === "string") return c.text;
-      if (typeof c?.content === "string") return c.content;
+      if (isString(c?.text)) return c.text;
+      if (isString(c?.content)) return c.content;
       return "";
     }).filter(Boolean).join("\n");
   }
@@ -419,7 +419,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     if (msg.role === ROLE.ASSISTANT && msg.tool_calls) {
       for (const tc of msg.tool_calls) {
         // Skip nameless calls — strict Responses upstreams reject them (#444)
-        const name = typeof tc.function?.name === "string" ? tc.function.name.trim() : "";
+        const name = isString(tc.function?.name) ? tc.function.name.trim() : "";
         if (!name) continue;
         result.input.push({
           type: RESPONSES_ITEM.FUNCTION_CALL,
@@ -450,7 +450,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     result.tools = body.tools.map((tool) => {
       if (tool.type === OPENAI_BLOCK.FUNCTION) {
         // Strict upstreams reject nameless/overlong tool declarations
-        const name = typeof tool.function?.name === "string" ? tool.function.name.trim() : "";
+        const name = isString(tool.function?.name) ? tool.function.name.trim() : "";
         if (!name) return null;
         return {
           type: OPENAI_BLOCK.FUNCTION,

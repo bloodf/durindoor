@@ -1,4 +1,6 @@
 // Codex auto-generates a "-review" variant for each llm model (review quota family)
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+
 export const CODEX_REVIEW_SUFFIX = "-review";
 
 export function withCodexReviewModels(models) {
@@ -25,7 +27,7 @@ export function withCodexReviewModels(models) {
  * still hit. Used by the OpenCode Go executor to pin the /responses endpoint.
  */
 export function isMuseSparkModel(modelId) {
-  if (!modelId || typeof modelId !== "string") return false;
+  if (!isString(modelId) || !modelId) return false;
   const clean = modelId.replace(/\([^()]+\)\s*$/, "").trim();
   const base = clean.includes("/") ? clean.split("/").pop() : clean;
   return /^muse[-_]?spark(?:$|[-_:.\s])/i.test(base);

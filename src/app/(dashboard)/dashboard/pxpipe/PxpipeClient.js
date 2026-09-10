@@ -269,7 +269,7 @@ export default function PxpipeClient({ embedded = false }) {
         <CardContent>
           {events.length ? (
             <>
-              <pre tabIndex={0} aria-label="PXPIPE transform events" className="max-h-64 overflow-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3 font-mono text-xs text-dd-text whitespace-pre-wrap" role="region">
+              <pre tabIndex={0} aria-label="PXPIPE transform events" className="max-h-64 overflow-auto rounded-dd bg-dd-surface-2 p-3 font-mono text-xs text-dd-text whitespace-pre-wrap" role="region">
                 {eventLog.pageItems.map(formatPxpipeEvent).join("\n")}
               </pre>
               {eventLog.totalPages > 1 ? (

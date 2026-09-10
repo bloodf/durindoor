@@ -324,7 +324,7 @@ export function GenericExampleCard({ providerId, kind }) {
         </div>
 
         {(running || progress) && useStreaming && (
-          <div className="flex flex-col gap-2 rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-2 sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex flex-col gap-2 rounded-dd bg-dd-surface-2 px-3 py-2 sm:flex-row sm:items-center sm:gap-3">
             <span aria-hidden="true" className={`material-symbols-outlined text-[16px] text-dd-accent ${running ? "animate-spin" : ""}`}>{running ? "progress_activity" : "check_circle"}</span>
             <span className="text-xs text-dd-muted">{progress?.stage || "starting"}{!running && progress?.bytesReceived ? ` · ${(progress.bytesReceived / 1024).toFixed(1)} KB` : ""}</span>
           </div>

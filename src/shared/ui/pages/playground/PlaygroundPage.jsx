@@ -224,7 +224,7 @@ function ChatMessage({ message, model, streaming = false }) {
           ) : null}
         </p>
         {message.code ? (
-          <pre className="mt-3 overflow-x-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3 font-mono text-xs leading-5 text-dd-text">
+          <pre className="mt-3 overflow-x-auto rounded-dd bg-dd-surface-2 p-3 font-mono text-xs leading-5 text-dd-text">
             <code>{message.code}</code>
           </pre>
         ) : null}

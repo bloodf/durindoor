@@ -58,8 +58,9 @@ interpolate; never ship hex.
    aria-hidden="true">{name}</span>`. Never import a glyph SVG.
 10. **Density defaults.** Body `text-[13px]`, meta `text-xs`, metrics
     `dd-tnum`. PageHeader title `text-xl font-semibold tracking-tight`.
-    Default `Button size="md"` (`h-9`). `sm` (`h-7`) only in dense
-    toolbars and table rows.
+    All controls render at one height, 44px (`min-h-11`); `size="sm"` only
+    shrinks padding/font in dense toolbars — never set a fixed `h-*` on a
+    control.
 11. **Keep live adapters and prop fidelity.** Retain caller's existing hooks,
     query adapters, and callback behavior. Never make a lossy call-site DS
     prop replacement before prerequisite primitive parity exists.

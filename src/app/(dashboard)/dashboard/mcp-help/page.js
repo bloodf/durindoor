@@ -24,7 +24,7 @@ function InlineCode({ children }) {
   return <code className="rounded-dd bg-dd-surface-2 px-1.5 py-0.5 font-mono text-xs text-dd-text">{children}</code>;
 }
 function CodeBlock({ label, children }) {
-  return <div className="flex flex-col gap-1.5"><span className="text-[11px] font-medium uppercase tracking-wide text-dd-subtle">{label}</span><pre tabIndex={0} aria-label={label} className="overflow-x-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-4 font-mono text-xs leading-5 text-dd-text" role="region"><code>{children}</code></pre></div>;
+  return <div className="flex flex-col gap-1.5"><span className="text-[11px] font-medium uppercase tracking-wide text-dd-subtle">{label}</span><pre tabIndex={0} aria-label={label} className="overflow-x-auto rounded-dd bg-dd-surface-2 p-4 font-mono text-xs leading-5 text-dd-text" role="region"><code>{children}</code></pre></div>;
 }
 function DocCard({ icon, title, subtitle, children }) {
   return <Card padding={false}><div className="flex items-center gap-3 border-b border-dd-border-subtle px-5 py-4"><span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent"><span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">{icon}</span></span><h2 className="min-w-0 flex-1 text-sm font-semibold text-dd-text">{title}</h2>{subtitle ? <span className="text-xs text-dd-subtle">{subtitle}</span> : null}</div><CardContent className="flex flex-col gap-3 text-[13px] leading-5 text-dd-muted">{children}</CardContent></Card>;

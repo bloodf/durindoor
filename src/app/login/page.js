@@ -19,7 +19,6 @@ export default function LoginPage() {
   const [mustChange, setMustChange] = useState(false);
   const [passwordChangeProof, setPasswordChangeProof] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [wordmarkFailed, setWordmarkFailed] = useState(false);
   const [nextPath, setNextPath] = useState("/dashboard");
 
   useEffect(() => {
@@ -124,8 +123,6 @@ export default function LoginPage() {
 
   return (
     <LoginView
-      wordmarkFailed={wordmarkFailed}
-      setWordmarkFailed={setWordmarkFailed}
       authMode={authMode}
       oidcConfigured={oidcConfigured}
       oidcLoginLabel={oidcLoginLabel}

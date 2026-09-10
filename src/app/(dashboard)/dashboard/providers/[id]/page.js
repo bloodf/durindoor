@@ -1905,7 +1905,7 @@ export default function ProviderDetailPage() {
 
         <>
               {oneByOneSummary &&
-          <div className="mb-4 rounded-lg border border-dd-border bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted">
+          <div className="mb-4 rounded-dd bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted">
                   <div className="flex flex-wrap items-center gap-3">
                     <span>Total: {oneByOneSummary.total}</span>
                     <span>Completed: {oneByOneSummary.completed}</span>
@@ -1921,7 +1921,7 @@ export default function ProviderDetailPage() {
                 </div>
           }
               {connections.length > 0 &&
-          <div className="mb-3 flex items-center gap-2 border-b border-black/[0.03] pb-2 dark:border-white/[0.03]">
+          <div className="mb-3 flex items-center gap-2 border-b border-dd-border-subtle pb-2">
                   <label className="flex min-h-11 min-w-11 cursor-pointer items-center gap-1.5 text-xs text-dd-muted hover:text-dd-accent">
                     <input
                       type="checkbox"

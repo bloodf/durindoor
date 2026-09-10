@@ -1102,7 +1102,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
               <RowLabel tone={tunnelEnabled || tunnelExternal ? TUNNEL_LABEL_TONE : TUNNEL_LABEL_IDLE}>Tunnel</RowLabel>
               {tunnelExternal && !tunnelEnabled ? (
-                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-dd border border-dd-accent/40 bg-dd-accent-soft px-3 py-1.5 text-[13px] text-dd-accent">
+                <div className="flex min-w-0 flex-1 items-center gap-2 bg-dd-accent-soft px-3 py-1.5 text-[13px] text-dd-accent">
                   <span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">cloud_done</span>
                   <span className="font-medium">External</span>
                   <Input
@@ -1213,7 +1213,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
               <RowLabel tone={tsEnabled || tsExternal ? TS_LABEL_TONE : TS_LABEL_IDLE}>Tailscale</RowLabel>
               {tsExternal?.tunnelUrl && !tsEnabled ? (
-                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-dd border border-dd-accent/40 bg-dd-accent-soft px-3 py-1.5 text-[13px] text-dd-accent">
+                <div className="flex min-w-0 flex-1 items-center gap-2 bg-dd-accent-soft px-3 py-1.5 text-[13px] text-dd-accent">
                   <span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">vpn_lock</span>
                   <span className="font-medium">External</span>
                   <Input
@@ -1314,10 +1314,10 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
             </div>
 
             {tunnelAllUrls.length > 1 ? (
-              <div className="mt-1 flex flex-col gap-1.5 rounded-dd-lg border border-dd-border bg-dd-surface-2/50 p-2">
+              <div className="mt-4 flex flex-col gap-1.5 border-t border-dd-border-subtle pt-3">
                 <p className="px-1 text-xs font-medium text-dd-muted">All Cloudflare endpoints</p>
                 {tunnelAllUrls.map((u) => (
-                  <div key={u} className="flex items-center gap-2 rounded-dd bg-dd-surface px-2 py-1 text-[13px]">
+                  <div key={u} className="flex items-center gap-2 px-2 py-1 text-[13px]">
                     <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[16px] leading-none text-dd-muted">link</span>
                     <Input
                       value={`${u}/v1`}
@@ -1397,7 +1397,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
           }
         />
         <CardContent>
-          <div className="mb-4 flex items-center justify-between rounded-dd-lg border border-dd-border-subtle pb-4">
+          <div className="mb-4 flex items-center justify-between border-b border-dd-border-subtle pb-4">
             <div className="flex flex-col gap-0.5">
               <p className="text-[13px] font-semibold text-dd-text">Require API key</p>
               <p className="text-xs text-dd-muted">Requests without a valid key will be rejected</p>
@@ -1624,7 +1624,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
         onClose={() => setShowEnableTunnelModal(false)}
       >
         <div className="flex flex-col gap-4">
-          <div className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4">
+          <div className="rounded-dd-lg bg-dd-surface-2 p-4">
             <div className="flex items-start gap-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent">
                 <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">cloud_upload</span>

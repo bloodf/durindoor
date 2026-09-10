@@ -488,7 +488,7 @@ function ApiKeyUsage({ initialExpandedKey, rows }) {
                     {expanded ? (
                       <tr id={`api-key-${apiKey.id}-models`} className="border-t border-dd-border-subtle bg-dd-surface-2">
                         <td colSpan={7} className="px-10 py-3">
-                          <div className="overflow-hidden rounded-dd border border-dd-border-subtle bg-dd-surface">
+                          <div className="overflow-hidden rounded-dd bg-dd-surface">
                             <table className="w-full text-left text-xs text-dd-text">
                               <thead className="text-[11px] uppercase tracking-wide text-dd-muted">
                                 <tr>

@@ -66,20 +66,27 @@ background follows the active theme automatically.
 
 ### Surface hierarchy
 
-Three layered surfaces keep the dashboard readable on warm dark and warm
-light palettes:
+Four named rungs form the elevation ladder; each rung sits one step above the
+page canvas, and a matching shadow marks how far a surface lifts off it:
 
 ```
---dd-bg           page canvas (warmest / darkest)
-  --dd-bg-alt     page-level grouping
-    --dd-surface       card / panel
-      --dd-surface-2   inset (table header, ghost-button hover)
-        --dd-surface-3  deeper inset (selected segment, tabs)
+surface-0  --dd-bg           page canvas (warmest / darkest)
+           --dd-bg-alt       page-level grouping (same rung as surface-0)
+surface-1    --dd-surface     card / panel         → shadow-dd-raised (resting lift)
+surface-2      --dd-surface-2   inset (table header, ghost-button hover)
+surface-3        --dd-surface-3  deeper inset (selected segment, tabs)
 ```
 
-Borders (`--dd-border` for structural, `--dd-border-subtle` for insets)
-separate the layers; a soft warm `--dd-shadow-elevated` is reserved for
-popovers (`Select`, `Tooltip`, `Drawer`, `Modal`).
+Rules of the ladder:
+
+- A surface may hold any rung **below** it as an inset; never invert the order
+  (no `bg-dd-surface` card inside a `bg-dd-surface-2` well).
+- `shadow-dd-raised` is the resting lift for surface-1 cards that must read
+  above the page canvas. `shadow-dd-elevated` is reserved for overlays that
+  float above everything (`Select`, `Tooltip`, `Drawer`, `Modal`) — do not
+  spend it on resting content, or the ladder collapses.
+- Borders (`--dd-border` for structural, `--dd-border-subtle` for insets)
+  separate the layers.
 
 ### No nested frames
 
@@ -98,21 +105,63 @@ rows), not from another box.
   `bg-dd-surface-2` + radius only — an inset, not a frame.
 - Alert banners (tinted `bg-dd-*/10`) are the one exception: content that
   must read off the tint may sit on a solid `bg-dd-surface` chip.
+- Accent callouts (tinted `bg-dd-accent-soft` rows) inside a card keep the
+  tint but drop border + radius — they read as banner strips, not cards.
+
+### Themed pages outside the dashboard shell
+
+Standalone pages (`/login`, error pages) use the same tokens end to end:
+`bg-dd-bg` canvas, `Card` for the form surface, `text-dd-*` for all copy, and
+the accent from tokens for primary actions. The pre-paint theme bootstrap
+(`/theme-bootstrap.js`) runs app-wide from the root layout, so `/login` already
+applies the persisted theme before first paint; these pages must never
+hardcode a theme or use a fixed-color asset: brand art that is
+white-on-transparent (the legacy `durindoor-wordmark.png`) is invisible on the
+light "Parchment" surface — render wordmarks as token-colored text instead.
+
+#### Login backdrop ("Doors of Durin")
+
+`/login` renders a full-viewport procedural backdrop — a dark stone wall with
+a glowing emerald door outline — from
+`src/shared/ui/login/durinDoorBackdrop.js`. Conventions:
+
+- **No external assets, no hardcoded colors.** The scene is drawn by a WebGL
+  fragment shader; its palette is parsed at runtime from `--dd-bg`,
+  `--dd-surface-2`, and `--dd-accent` via `getComputedStyle`, and re-read when
+  the theme class on `<html>` flips, so both themes render correctly.
+- **Graceful degradation is the contract.** `resolveBackdropMode` (a pure,
+  unit-tested helper) picks WebGL → Canvas 2D → no canvas work;
+  `startDurinDoorBackdrop` never throws. `prefers-reduced-motion: reduce`
+  renders one static frame instead of starting the `requestAnimationFrame`
+  loop, and the loop pauses while `document.hidden`.
+- **The canvas is decorative.** It is `aria-hidden="true"`,
+  `pointer-events-none`, and sits under the card (`z-10` content above it).
+- Decorative full-page treatments belong in this shader module, not in CSS
+  overlays: full-page tinted overlays (e.g. `bg-dd-accent-soft` washes) remain
+  off-palette on standalone pages.
 
 ### Typography & density
 
-Inter is the system font. Components default to 13px body text (`text-[13px]`)
-on 36px (md) and 28px (sm) control heights. The `.dd-tnum` helper enables
-tabular figures on every metric (`StatCard` value, `Pagination` numbers,
-`KeyValue` mono values, `DataTable` mono columns) so columns and counters do
-not reflow as numbers change.
+Inter is the system font. Components default to 13px body text (`text-[13px]`).
+The `.dd-tnum` helper enables tabular figures on every metric (`StatCard`
+value, `Pagination` numbers, `KeyValue` mono values, `DataTable` mono columns)
+so columns and counters do not reflow as numbers change.
 
-Density scale:
+### One control height
+
+All interactive controls — `Button`, `IconButton`, `Select`, `Input`,
+`SegmentedControl`, `Toggle`, and pill/segmented filter controls — render at a
+single height: **44px (`min-h-11`)**, regardless of `size="sm"`/`md"`. The
+`size` prop now only changes horizontal padding and font size, never height,
+so any mix of controls in one toolbar aligns. Pages must not hand-roll a
+fixed height (`h-7`/`h-8`/`h-9`/`h-10`) on or next to these controls; if a
+hand-rolled control is unavoidable, give it the same `min-h-11`. The one
+intentional exception remains the rows-per-page `<select>` that `Pagination`
+renders internally.
 
 | Token | Height | Use |
 | --- | --- | --- |
-| `sm` | 28px (h-7) | Dense toolbars, table rows |
-| `md` | 36px (h-9) | Default for forms, buttons |
+| `sm` / `md` | 44px (`min-h-11`) | Every interactive control, toolbars included |
 
 ### Iconography
 
@@ -125,8 +174,9 @@ the surrounding text or the `label` prop (`IconButton`).
 ### Focus states
 
 Every interactive primitive uses `outline-none focus-visible:shadow-dd-focus`
-— a 3px emerald ring at 35% alpha that flips with the active theme
-(`rgba(5, 150, 105, 0.35)` light, `rgba(16, 232, 130, 0.35)` dark).
+— a consistent double ring (2px surface offset + 4px solid `--dd-focus-ring`,
+which tracks the accent family: `#03442F` light, `#10E882` dark) that flips
+with the active theme and keeps ≥3:1 against every served surface.
 Inputs add `focus:border-dd-accent`. Disabled controls collapse to
 `opacity-50` and `pointer-events-none`.
 
@@ -156,21 +206,21 @@ follow the active theme.
 | `--dd-border` | `#E4DCC8` | `#332F29` | `border-dd-border` |
 | `--dd-border-subtle` | `#EEE8D8` | `#26231F` | `border-dd-border-subtle` |
 | `--dd-text` | `#1C1913` | `#EDE6D8` | `text-dd-text` |
-| `--dd-text-muted` | `#6B6353` | `#A89F8D` | `text-dd-muted` |
-| `--dd-text-subtle` | `#9A917D` | `#6E675A` | `text-dd-subtle` |
-| `--dd-accent` (emerald) | `#059669` | `#10E882` | `bg-dd-accent`, `text-dd-accent`, `border-dd-accent` |
-| `--dd-accent-hover` | `#047857` | `#3CF09A` | `hover:bg-dd-accent-hover` |
-| `--dd-accent-soft` | `rgba(5,150,105,0.12)` | `rgba(16,232,130,0.14)` | `bg-dd-accent-soft` |
+| `--dd-text-muted` | `#4B4438` | `#D7CDBC` | `text-dd-muted` |
+| `--dd-text-subtle` | `#4B4438` | `#C9C0AF` | `text-dd-subtle` |
+| `--dd-accent` (emerald) | `#03543B` | `#10E882` | `bg-dd-accent`, `text-dd-accent`, `border-dd-accent` |
+| `--dd-accent-hover` | `#03442F` | `#3CF09A` | `hover:bg-dd-accent-hover` |
+| `--dd-accent-soft` | `rgba(3,84,59,0.12)` | `rgba(16,232,130,0.14)` | `bg-dd-accent-soft` |
 | `--dd-on-accent` | `#FFFFFF` | `#032A1A` | `text-dd-on-accent` |
-| `--dd-accent-2` (gold) | `#A8851B` | `#D4AF37` | `bg-dd-accent-2`, `text-dd-accent-2` |
-| `--dd-accent-2-hover` | `#8F7014` | `#E3C15A` | `hover:bg-dd-accent-2-hover` |
-| `--dd-accent-2-soft` | `rgba(168,133,27,0.12)` | `rgba(212,175,55,0.14)` | `bg-dd-accent-2-soft` |
+| `--dd-accent-2` (gold) | `#7A5B08` | `#D4AF37` | `bg-dd-accent-2`, `text-dd-accent-2` |
+| `--dd-accent-2-hover` | `#654907` | `#E3C15A` | `hover:bg-dd-accent-2-hover` |
+| `--dd-accent-2-soft` | `rgba(122,91,8,0.12)` | `rgba(212,175,55,0.14)` | `bg-dd-accent-2-soft` |
 | `--dd-on-danger` | `#FFFFFF` | `#FFFFFF` | `text-dd-on-danger` |
 | `--dd-backdrop` | `rgba(0,0,0,0.6)` | `rgba(0,0,0,0.6)` | `bg-dd-backdrop` |
-| `--dd-success` | `#2E7D32` | `#4ADE80` | `bg-dd-success`, `text-dd-success` |
-| `--dd-warning` | `#B45309` | `#FBBF24` | `bg-dd-warning`, `text-dd-warning` |
-| `--dd-danger` | `#B91C1C` | `#EF4444` | `bg-dd-danger`, `text-dd-danger` |
-| `--dd-info` | `#1D4ED8` | `#60A5FA` | `bg-dd-info`, `text-dd-info` |
+| `--dd-success` | `#0B4E21` | `#86E9A5` | `bg-dd-success`, `text-dd-success` |
+| `--dd-warning` | `#7B3406` | `#FFE07A` | `bg-dd-warning`, `text-dd-warning` |
+| `--dd-danger` | `#8B1414` | `#FF9B9B` | `bg-dd-danger`, `text-dd-danger` |
+| `--dd-info` | `#1B3A96` | `#8CC4FF` | `bg-dd-info`, `text-dd-info` |
 
 > Naming note: the raw properties are `--dd-text-muted` and
 > `--dd-text-subtle`; the generated utilities are `text-dd-muted` and
@@ -191,11 +241,14 @@ follow the active theme.
 | --- | --- | --- |
 | `--dd-radius` | `8px` | `rounded-dd` |
 | `--dd-radius-lg` | `12px` | `rounded-dd-lg` |
-| `--dd-focus` | `0 0 0 3px rgba(emerald, 0.35)` | `shadow-dd-focus` |
-| `--dd-shadow-elevated` | warm multi-stop (theme-dependent) | `shadow-dd-elevated` |
+| `--dd-focus` | `0 0 0 2px var(--dd-surface), 0 0 0 4px var(--dd-focus-ring)` | `shadow-dd-focus` |
+| `--dd-shadow-raised` | resting card lift (theme-dependent) | `shadow-dd-raised` |
+| `--dd-shadow-elevated` | warm multi-stop overlay shadow (theme-dependent) | `shadow-dd-elevated` |
 
-Radii are theme-independent; focus ring and elevated shadow re-tint per
-theme.
+Radii are theme-independent; focus ring, raised, and elevated shadows re-tint
+per theme. `--dd-focus-ring` tracks the accent family (`--dd-accent-hover` in
+light, `--dd-accent` in dark) so the focus treatment is identical on every
+interactive primitive and changes every served surface by ≥3:1.
 
 ### Helper
 
@@ -272,13 +325,19 @@ prefix.
 | --- | --- | --- |
 | `shell/DashboardShell.jsx` | `DashboardShell` — full-viewport shell (Sidebar + Header + scrollable main). | `Durin DS/Shell/FullDashboardShell` |
 | `shell/Header.jsx` | `Header` — persistent top bar with optional page identity (`icon`/`title`/`subtitle`) and `actions`. Includes the light/dark theme toggle, language, and apps menu icon buttons. | `Durin DS/Shell/HeaderBare`, `HeaderWithPageTitle`, `HeaderWithActions` |
-| `shell/Sidebar.jsx` | `Sidebar`, `NAV_GROUPS`, `flattenNav` — collapsible nav grouped by `OBSERVE` / `ROUTE` / `OPTIMIZE` / `MEDIA` / `SYSTEM` / `HELP`. Brand block renders `/icons/icon-512.png`; a bottom-pinned **Collapse** control toggles collapsed/expanded (no close X — collapse is the only way to compress the rail). | `Durin DS/Shell/SidebarDefault`, `SidebarProvidersActive`, `SidebarCollapsed`, `SidebarTokenSaverExpanded` |
+| `shell/Sidebar.jsx` | `Sidebar`, `NAV_GROUPS`, `flattenNav` — collapsible nav grouped by `MONITOR` / `BUILD` / `OPTIMIZE` / `INTEGRATE` / `REFERENCE` (mirrors the production `NAV_SECTIONS` in `src/shared/components/SidebarNavIcons.js`). Brand block renders `/icons/icon-512.png`; a bottom-pinned **Collapse** control toggles collapsed/expanded (no close X — collapse is the only way to compress the rail). | `Durin DS/Shell/SidebarDefault`, `SidebarProvidersActive`, `SidebarCollapsed`, `SidebarTokenSaverExpanded` |
 | `shell/withDashboardShell.jsx` | `withDashboardShell({...})` — Storybook decorator that wraps a page story in `DashboardShell`. | n/a (used by every page story) |
 | `shell/index.js` | Re-exports for `@/shared/ui/shell`. | n/a |
 
 `NAV_GROUPS` is the canonical dashboard navigation. The current order
-(top to bottom) is: OBSERVE → ROUTE → OPTIMIZE → MEDIA → SYSTEM → HELP;
-the `flattenNav` helper exposes every leaf for the command palette.
+(top to bottom) is: MONITOR → BUILD → OPTIMIZE → INTEGRATE → REFERENCE;
+the `flattenNav` helper exposes every leaf for the command palette. The
+production sidebar (`src/shared/components/Sidebar.js` +
+`SidebarNavIcons.js`) renders the same five labeled sections from
+`NAV_SECTIONS`, with Settings (profile) pinned at the bottom of the rail
+outside the sections. In the production rail, accent treatment is
+deliberate: emerald (`bg-dd-accent-soft text-dd-accent`) marks the active
+route only, and every other row stays on muted neutrals until hover.
 
 ## Page mock inventory
 
@@ -380,11 +439,13 @@ The redesigned pages now exercise the full DS primitive set:
 
 | Size | Height | Typical use |
 | --- | --- | --- |
-| `sm` | 28px (`h-7`) | Dense toolbars, table footers |
-| `md` | 36px (`h-9`) | Default for forms, buttons |
+| `sm` | 44px (`min-h-11`) | Dense toolbars, table footers |
+| `md` | 44px (`min-h-11`) | Default for forms, buttons |
 
-Default to `md` everywhere. `sm` only in dense toolbars (`Header`
-actions, `Pagination`, table rows).
+One control height everywhere (44px, `min-h-11`) — see
+["One control height"](#one-control-height). `size` only tunes padding and
+font size; `sm` remains the convention in dense toolbars (`Header` actions,
+`Pagination`, table rows) so text stays compact.
 
 ### Focus and disabled
 

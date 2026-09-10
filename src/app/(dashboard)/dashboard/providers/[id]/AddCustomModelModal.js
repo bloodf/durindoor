@@ -207,7 +207,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
         </button>
 
         {showAdvanced ? (
-          <div className="grid grid-cols-2 gap-3 rounded-dd-lg border border-dd-border bg-dd-surface-2 p-3">
+          <div className="grid grid-cols-2 gap-3 rounded-dd-lg bg-dd-surface-2 p-3">
             <label className="flex flex-col gap-1 text-xs font-medium text-dd-muted">Context window
               <input type="number" min={1} value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} placeholder="tokens" className="min-h-11 w-full rounded-dd border border-dd-border bg-dd-surface px-2 text-[13px] text-dd-text outline-none placeholder:text-dd-subtle focus:border-dd-accent focus-visible:shadow-dd-focus" />
             </label>

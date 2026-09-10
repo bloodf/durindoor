@@ -1,8 +1,31 @@
-// Sidebar navigation icon constants and helper.
+// Sidebar navigation data model, icon constants, and helpers.
 //
-// This module is deliberately JSX-free so unit tests can import the icon
-// mapping and the NavIcon helper without a JSX transformer. Sidebar.js
-// imports the same values and calls NavIcon for rendering in the JSX tree.
+// This module is deliberately JSX-free so unit tests can import the nav
+// structure and the NavIcon helper without a JSX transformer. Sidebar.js
+// renders these sections and calls NavIcon inside the JSX tree.
+//
+// NAV_SECTIONS is the single source of truth for the dashboard information
+// architecture. Every dashboard route appears exactly once, grouped into five
+// labeled SaaS-style sections, top to bottom:
+//
+//   MONITOR    — observe traffic and provider state
+//   BUILD      — configure routing and credentials
+//   OPTIMIZE   — token-saving tooling
+//   INTEGRATE  — connect external clients and media kinds
+//   REFERENCE  — documentation and debugging aids
+//
+// Settings (profile) is not part of NAV_SECTIONS; PROFILE_NAV_ITEM is pinned
+// at the bottom of the rail, above the collapse toggle.
+//
+// Entry shapes:
+//   item  — { type: "item", href, label, icon, exact?, requiresTranslator? }
+//           `exact` defaults to prefix matching; `requiresTranslator` entries
+//           are hidden unless the translator feature flag is enabled.
+//   group — { type: "group", key, label, icon, children: [<item-like>] }
+//           collapsible parent; collapsed rail links to the first child.
+//   media — { type: "media", key, label, icon, basePath }
+//           Media Providers accordion; children are resolved at render time
+//           from MEDIA_PROVIDER_KINDS + COMBINED_WEB_ITEM.
 
 import { createElement } from "react";
 import { cn } from "@/shared/utils/cn";
@@ -29,61 +52,79 @@ export const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon:
 export const BRAND_LOGO_SRC = "/icons/icon-512.png";
 export const BRAND_LOGO_ALT = "";
 
-// Top-level dashboard navigation. Usage is the dashboard home (the root
+// Labeled navigation sections. Usage is the dashboard home (the root
 // /dashboard route redirects to /dashboard/usage).
-export const navItems = [
-  { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
-  { href: "/dashboard/timeline", label: "Timeline", icon: "timeline" },
-  { href: "/dashboard/playground", label: "Playground", icon: "chat" },
-  { href: "/dashboard/combos", label: "Combos", icon: "layers" },
-  { href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub", exact: false },
+export const NAV_SECTIONS = [
+  {
+    key: "monitor",
+    label: "Monitor",
+    entries: [
+      { type: "item", href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
+      { type: "item", href: "/dashboard/timeline", label: "Timeline", icon: "timeline" },
+      { type: "item", href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
+      { type: "item", href: "/dashboard/health", label: "Health", icon: "monitor_heart" },
+      { type: "item", href: "/dashboard/console-log", label: "Console Log", icon: "terminal", exact: true },
+    ],
+  },
+  {
+    key: "build",
+    label: "Build",
+    entries: [
+      { type: "item", href: "/dashboard/playground", label: "Playground", icon: "chat" },
+      { type: "item", href: "/dashboard/combos", label: "Combos", icon: "layers" },
+      // Providers links straight to the configuration grid; Health and Quota
+      // Tracker live under Monitor.
+      { type: "item", href: "/dashboard/providers", label: "Providers", icon: "dns", exact: false },
+      { type: "item", href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
+      { type: "item", href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
+    ],
+  },
+  {
+    key: "optimize",
+    label: "Optimize",
+    entries: [
+      // Token Saver: Statistics renders the overview dashboard; Settings holds
+      // the RTK/Headroom/PXPIPE toggles. Headroom (full-page UI owned by the
+      // HeadroomWebui worker) and Test Savers (compression preview studio) are
+      // sibling entries, not children.
+      {
+        type: "group",
+        key: "token-saver",
+        label: "Token Saver",
+        icon: "savings",
+        children: [
+          { href: "/dashboard/token-saver", label: "Statistics", icon: "bar_chart" },
+          { href: "/dashboard/token-saver/settings", label: "Settings", icon: "settings" },
+        ],
+      },
+      { type: "item", href: "/dashboard/headroom", label: "Headroom", icon: "memory" },
+      { type: "item", href: "/dashboard/compression-studio", label: "Test Savers", icon: "compress" },
+    ],
+  },
+  {
+    key: "integrate",
+    label: "Integrate",
+    entries: [
+      { type: "item", href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub", exact: false },
+      { type: "item", href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", exact: false },
+      { type: "item", href: "/dashboard/skills", label: "Skills", icon: "extension" },
+      { type: "item", href: "/dashboard/auto-configure", label: "Auto-configure", icon: "auto_fix" },
+      { type: "media", key: "media-providers", label: "Media Providers", icon: "perm_media", basePath: "/dashboard/media-providers" },
+    ],
+  },
+  {
+    key: "reference",
+    label: "Reference",
+    entries: [
+      { type: "item", href: "/dashboard/api-docs", label: "API Docs", icon: "description" },
+      { type: "item", href: "/dashboard/mcp-help", label: "MCP Help", icon: "help" },
+      { type: "item", href: "/dashboard/translator", label: "Translator", icon: "translate", exact: true, requiresTranslator: true },
+    ],
+  },
 ];
 
-// Collapsible Providers menu. Configuration is the provider grid; Health and
-// Quota Tracker were promoted from top-level to this group.
-export const providersMenu = {
-  icon: "dns",
-  label: "Providers",
-  children: [
-    { href: "/dashboard/providers", label: "Configuration", icon: "settings", exact: false },
-    { href: "/dashboard/health", label: "Health", icon: "monitor_heart" },
-    { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
-  ],
-};
-
-// Collapsible Token Saver menu. Statistics renders the overview dashboard;
-// Settings holds the RTK/Headroom/PXPIPE toggles; Headroom links to the
-// dedicated full-page UI owned by the HeadroomWebui worker; Test Savers is the
-// compression preview studio.
-export const tokenSaverMenu = {
-  icon: "savings",
-  label: "Token Saver",
-  children: [
-    { href: "/dashboard/token-saver", label: "Statistics", icon: "bar_chart" },
-    { href: "/dashboard/token-saver/settings", label: "Settings", icon: "settings" },
-    { href: "/dashboard/headroom", label: "Headroom", icon: "memory" },
-    { href: "/dashboard/compression-studio", label: "Test Savers", icon: "compress" },
-  ],
-};
-
-export const debugItems = [
-  { href: "/dashboard/console-log", label: "Console Log", icon: "terminal" },
-  { href: "/dashboard/translator", label: "Translator", icon: "translate" },
-];
-
-// Endpoint & Key and CLI Tools moved under System per the V2.1 nav restructure.
-export const systemItems = [
-  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
-  { href: "/dashboard/auto-configure", label: "Auto-configure", icon: "auto_fix" },
-  { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", exact: false },
-  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
-  { href: "/dashboard/skills", label: "Skills", icon: "extension" },
-  { href: "/dashboard/mcp-help", label: "MCP Help", icon: "help" },
-  { href: "/dashboard/api-docs", label: "API Docs", icon: "description" },
-];
-
-// Profile/settings is rendered separately so it stays unrelated to the Token
-// Saver Settings page; it keeps its own icon and label in the System section.
+// Profile/settings is rendered pinned at the bottom of the rail so it stays
+// unrelated to the Token Saver Settings page; it keeps its own icon and label.
 export const PROFILE_NAV_ITEM = { href: "/dashboard/profile", label: "Settings", icon: "settings" };
 
 /**

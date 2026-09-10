@@ -4,7 +4,6 @@ import LoginPage from "./page.js";
 import { LoginView } from "./LoginView.js";
 
 const BASE = {
-  wordmarkFailed: true,
   authMode: "password",
   oidcConfigured: false,
   oidcLoginLabel: "Sign in with OIDC",

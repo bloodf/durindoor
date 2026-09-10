@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
+import { startDurinDoorBackdrop } from "@/shared/ui/login/durinDoorBackdrop.js";
 
 export function LoginView({
   authMode,
@@ -28,9 +30,20 @@ export function LoginView({
   handleSetNewPassword,
   handleOidcLogin,
 }) {
+  const backdropRef = useRef(null);
+
+  // Doors of Durin backdrop: WebGL shader with Canvas 2D fallback, static
+  // frame under prefers-reduced-motion; colors come from the dd-* tokens.
+  useEffect(() => {
+    const canvas = backdropRef.current;
+    if (!canvas) return undefined;
+    const controller = startDurinDoorBackdrop(canvas);
+    return () => controller.destroy();
+  }, []);
+
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-dd-bg p-4">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 [background-image:linear-gradient(to_right,var(--dd-border-subtle)_1px,transparent_1px),linear-gradient(to_bottom,var(--dd-border-subtle)_1px,transparent_1px)] [background-size:48px_48px] opacity-40" />
+      <canvas ref={backdropRef} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-8 text-center">
           {/*

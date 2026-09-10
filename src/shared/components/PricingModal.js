@@ -174,6 +174,7 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
             <EmptyState icon="payments" title="No pricing data available" message="Add a provider to configure model rates." />
           ) : (
             <DataTable
+              framed={false}
               columns={columns}
               rows={rows}
               keyFn={(row) => `${row.provider}:${row.model}`}

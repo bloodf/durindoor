@@ -1531,6 +1531,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
             />
           </Field>
           <DataTable
+            framed={false}
             ariaLabel="Scoped provider accounts for the new key"
             columns={[
               { key: "name", label: "Name" },
@@ -1865,6 +1866,7 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
               />
             </Field>
             <DataTable
+              framed={false}
               ariaLabel="Scoped provider accounts for this key"
               columns={[
                 { key: "name", label: "Name" },

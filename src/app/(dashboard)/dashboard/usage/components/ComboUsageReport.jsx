@@ -68,6 +68,7 @@ export default function ComboUsageReport({ period, customRange, resetNonce }) {
       <CardHeader icon="account_tree" title="Combo connection usage" subtitle={report?.boundary || "Loading attribution boundary…"} />
       <CardContent className="p-0">
         <DataTable
+          framed={false}
           columns={columns}
           rows={visibleRows}
           keyFn={(row) => `${row.comboId}:${row.connectionId || "none"}`}

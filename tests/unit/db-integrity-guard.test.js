@@ -205,4 +205,17 @@ describe("SQLite startup integrity guard", () => {
     }
   });
 
+  it("skips SQLite preflight before a PostgreSQL freshness failure", async () => {
+    const freshnessError = new Error("database disk image is malformed");
+    const adapter = {
+      capabilities: { isPostgres: true },
+      get() { throw freshnessError; },
+      all() { throw new Error("unexpected SQLite PRAGMA on PostgreSQL"); },
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { runMigrationOnce } = await import("@/lib/db/migrate.js");
+
+    await expect(runMigrationOnce(adapter)).rejects.toBe(freshnessError);
+  });
+
 });

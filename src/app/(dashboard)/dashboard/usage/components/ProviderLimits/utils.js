@@ -450,24 +450,44 @@ export function getQuotaVisibilityKey(quota, index) {
 }
 
 /**
+ * Trim hidden quota keys to only those matching currently valid quotas.
+ * Stale or obsolete model keys are dropped. Keys are computed with the same
+ * modelKey / `name::index` scheme that filter/getHiddenQuotaRows use.
+ *
+ * @param {Array<string>} [hidden=[]] - Saved hidden keys
+ * @param {Array<Object>} [quotas=[]] - Normalized quota rows
+ * @returns {Array<string>} Deduplicated hidden keys still present in quotas
+ */
+export function trimHiddenQuotaKeys(hidden = [], quotas = []) {
+  if (!Array.isArray(hidden) || hidden.length === 0) return [];
+  const validKeys = new Set(
+    quotas.map((quota, index) => getQuotaVisibilityKey(quota, index)).filter(Boolean)
+  );
+  return [...new Set(hidden.map((k) => String(k).trim()).filter((k) => validKeys.has(k)))];
+}
+
+/**
  * Resolve hidden quota keys for a connection, falling back to its provider's
- * legacy entry when no connection-specific preference exists.
+ * legacy entry when no connection-specific preference exists. When the current
+ * quota rows are supplied, stale keys that no longer match any row are dropped
+ * (upstream f615a83).
  *
  * @param {string} scopeKey - Connection identifier
  * @param {Object} quotaVisibility - Saved visibility settings
  * @param {string} [legacyScopeKey] - Legacy provider identifier
+ * @param {Array<Object>} [quotas=[]] - Normalized quota rows for trimming
  * @returns {Set<string>} Normalized hidden quota keys
  */
-function getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey) {
+function getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey, quotas = []) {
   const scopedHidden = quotaVisibility?.[scopeKey]?.hidden;
   let hidden;
   if (Array.isArray(scopedHidden)) {
     hidden = scopedHidden.map((item) => String(item).trim()).filter(Boolean);
   } else if (legacyScopeKey && legacyScopeKey !== scopeKey) {
     const legacyHidden = quotaVisibility?.[legacyScopeKey]?.hidden;
-    hidden = Array.isArray(legacyHidden) ?
-    legacyHidden.map((item) => String(item).trim()).filter(Boolean) :
-    [];
+    hidden = Array.isArray(legacyHidden)
+      ? legacyHidden.map((item) => String(item).trim()).filter(Boolean)
+      : [];
   } else {
     hidden = [];
   }
@@ -481,6 +501,9 @@ function getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey) {
       if (name !== key) hidden.push(name);
     }
   }
+  // Prune keys for quotas that no longer exist (after the name-prefix
+  // expansion above so stable Claude names are trimmed against live rows).
+  if (quotas.length > 0) hidden = trimHiddenQuotaKeys(hidden, quotas);
   return new Set(hidden);
 }
 
@@ -509,6 +532,22 @@ hidden)
   );
   if (hidden) hiddenKeys.add(quotaKey);else
   hiddenKeys.delete(quotaKey);
+  // Antigravity now groups text models under the family keys "gemini" and
+  // "claude" (upstream f615a83): toggling a family row supersedes any stale
+  // per-model keys, which are pruned so they cannot linger invisibly. The
+  // Antigravity CLI provider ("agy") shares the same usage handler and
+  // grouped rows, so the prune applies to both provider ids.
+  if (provider === "antigravity" || provider === "agy") {
+    if (quotaKey === "gemini") {
+      for (const k of hiddenKeys) {
+        if (k.startsWith("gemini-") && !k.includes("image")) hiddenKeys.delete(k);
+      }
+    } else if (quotaKey === "claude") {
+      for (const k of hiddenKeys) {
+        if (k.startsWith("claude-")) hiddenKeys.delete(k);
+      }
+    }
+  }
   return {
     ...quotaVisibility,
     [connectionId]: {
@@ -534,7 +573,7 @@ quotaVisibility = {},
 legacyScopeKey)
 {
   if (!Array.isArray(quotas) || quotas.length === 0) return [];
-  const hidden = getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey);
+  const hidden = getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey, quotas);
   if (hidden.size === 0) return quotas;
   return quotas.filter((quota, index) => !hidden.has(getQuotaVisibilityKey(quota, index)));
 }
@@ -555,7 +594,7 @@ quotaVisibility = {},
 legacyScopeKey)
 {
   if (!Array.isArray(quotas) || quotas.length === 0) return [];
-  const hidden = getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey);
+  const hidden = getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey, quotas);
   if (hidden.size === 0) return [];
   return quotas.filter((quota, index) => hidden.has(getQuotaVisibilityKey(quota, index)));
 }
@@ -599,7 +638,7 @@ function buildClaudeExtraUsageQuota(extraUsage) {
 
 /**
  * Parse provider-specific quota structures into normalized array
- * @param {string} provider - Provider name (github, antigravity, codex, kiro, claude)
+ * @param {string} provider - Provider name (github, antigravity, agy, codex, kiro, claude)
  * @param {Object} data - Raw quota data from provider
  * @returns {Array<Object>} Normalized quota objects with { name, used, total, resetAt }
  */
@@ -623,12 +662,62 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "agy": // Antigravity CLI shares the Antigravity usage handler (open-sse/services/usage.js)
       case "antigravity":
         if (data.quotas) {
-          Object.entries(data.quotas).forEach(([modelKey, quota]) => {
+          const entries = Object.entries(data.quotas);
+          const geminiModels = entries.filter(([k]) => k.startsWith("gemini-") && !k.includes("image"));
+          // Image models are excluded from the Claude family for the same
+          // reason as Gemini above: an image row belongs to its own row, and
+          // folding it into the family would also duplicate it (the image
+          // filter below matches any key containing "image").
+          const claudeModels = entries.filter(([k]) => k.startsWith("claude-") && !k.includes("image"));
+          const imageModels = entries.filter(([k]) => k.includes("image"));
+          const otherModels = entries.filter(([k]) => !k.startsWith("gemini-") && !k.startsWith("claude-") && !k.includes("image"));
+
+          if (geminiModels.length > 0) {
+            const rep = geminiModels.reduce((min, cur) =>
+              (cur[1].remainingPercentage ?? 100) < (min[1].remainingPercentage ?? 100) ? cur : min
+            )[1];
+            normalizedQuotas.push({
+              name: "Gemini (Flash / Pro)",
+              modelKey: "gemini",
+              used: rep.used || 0,
+              total: rep.total || 0,
+              resetAt: rep.resetAt || null,
+              remainingPercentage: rep.remainingPercentage,
+            });
+          }
+
+          if (claudeModels.length > 0) {
+            const rep = claudeModels.reduce((min, cur) =>
+              (cur[1].remainingPercentage ?? 100) < (min[1].remainingPercentage ?? 100) ? cur : min
+            )[1];
+            normalizedQuotas.push({
+              name: "Claude (Sonnet / Opus)",
+              modelKey: "claude",
+              used: rep.used || 0,
+              total: rep.total || 0,
+              resetAt: rep.resetAt || null,
+              remainingPercentage: rep.remainingPercentage,
+            });
+          }
+
+          imageModels.forEach(([modelKey, quota]) => {
             normalizedQuotas.push({
               name: quota.displayName || modelKey,
-              modelKey: modelKey, // Keep modelKey for sorting
+              modelKey,
+              used: quota.used || 0,
+              total: quota.total || 0,
+              resetAt: quota.resetAt || null,
+              remainingPercentage: quota.remainingPercentage,
+            });
+          });
+
+          otherModels.forEach(([modelKey, quota]) => {
+            normalizedQuotas.push({
+              name: quota.displayName || modelKey,
+              modelKey,
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
@@ -886,9 +975,16 @@ export function parseQuotaData(provider, data) {
     const orderMap = new Map(modelOrder.map((m, i) => [m.id, i]));
 
     normalizedQuotas.sort((a, b) => {
-      // Use modelKey for antigravity, otherwise use name
-      const keyA = a.modelKey || a.name;
-      const keyB = b.modelKey || b.name;
+      // Use modelKey for antigravity (mapped to family anchor), otherwise use name
+      let keyA = a.modelKey || a.name;
+      let keyB = b.modelKey || b.name;
+      // Fork deviation from upstream f615a83: this catalog has no
+      // "gemini-3.8-flash-high"; anchor the grouped Gemini row at the first
+      // Gemini text model ("gemini-3.7-flash-high") so it sorts with the family.
+      if (keyA === "gemini") keyA = "gemini-3.7-flash-high";
+      if (keyA === "claude") keyA = "claude-sonnet-4-6";
+      if (keyB === "gemini") keyB = "gemini-3.7-flash-high";
+      if (keyB === "claude") keyB = "claude-sonnet-4-6";
       const orderA = orderMap.get(keyA) ?? 999;
       const orderB = orderMap.get(keyB) ?? 999;
       return orderA - orderB;

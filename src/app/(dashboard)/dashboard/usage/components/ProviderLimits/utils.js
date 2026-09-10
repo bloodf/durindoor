@@ -460,16 +460,28 @@ export function getQuotaVisibilityKey(quota, index) {
  */
 function getHiddenQuotaSet(scopeKey, quotaVisibility, legacyScopeKey) {
   const scopedHidden = quotaVisibility?.[scopeKey]?.hidden;
+  let hidden;
   if (Array.isArray(scopedHidden)) {
-    return new Set(scopedHidden.map((item) => String(item).trim()).filter(Boolean));
-  }
-  if (legacyScopeKey && legacyScopeKey !== scopeKey) {
+    hidden = scopedHidden.map((item) => String(item).trim()).filter(Boolean);
+  } else if (legacyScopeKey && legacyScopeKey !== scopeKey) {
     const legacyHidden = quotaVisibility?.[legacyScopeKey]?.hidden;
-    if (Array.isArray(legacyHidden)) {
-      return new Set(legacyHidden.map((item) => String(item).trim()).filter(Boolean));
+    hidden = Array.isArray(legacyHidden) ?
+    legacyHidden.map((item) => String(item).trim()).filter(Boolean) :
+    [];
+  } else {
+    hidden = [];
+  }
+  // Builds before the canonical Claude quota ordering persisted rows as
+  // `<name>::<index>`; the sort reindexes rows, so keep those settings
+  // effective by also matching on the stable name prefix. Claude row names
+  // are unique per connection, so the prefix is unambiguous.
+  if ((legacyScopeKey || scopeKey) === "claude") {
+    for (const key of [...hidden]) {
+      const name = key.replace(/::\d+$/, "");
+      if (name !== key) hidden.push(name);
     }
   }
-  return new Set();
+  return new Set(hidden);
 }
 
 /**
@@ -847,6 +859,25 @@ export function parseQuotaData(provider, data) {
   } catch (error) {
     console.error(`Error parsing quota data for ${provider}:`, error);
     return [];
+  }
+
+  if (provider?.toLowerCase() === "claude") {
+    // Claude row names are unique per connection, so key each row by name
+    // (via modelKey) instead of array index: the canonical sort below would
+    // otherwise move rows and silently invalidate persisted hidden-row keys
+    // of the form `<name>::<index>`.
+    for (const quota of normalizedQuotas) {
+      if (!quota.modelKey && quota.name) quota.modelKey = String(quota.name).trim();
+    }
+    const CLAUDE_QUOTA_ORDER = {
+      "session (5h)": 0,
+      "weekly (7d)": 1,
+      "weekly fable (7d)": 2,
+      "weekly opus (7d)": 3,
+      "weekly sonnet (7d)": 4,
+    };
+    normalizedQuotas.sort((a, b) => (CLAUDE_QUOTA_ORDER[a.name] ?? 99) - (CLAUDE_QUOTA_ORDER[b.name] ?? 99));
+    return normalizedQuotas;
   }
 
   // Sort quotas according to PROVIDER_MODELS order

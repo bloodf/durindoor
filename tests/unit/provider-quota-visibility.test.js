@@ -110,4 +110,41 @@ describe("provider quota visibility", () => {
       ),
     ).toEqual(["claude-opus-4-6-thinking"]);
   });
+
+  describe("claude sorted rows", () => {
+    // API order differs from the canonical sort order imposed by parseQuotaData.
+    const claudeData = {
+      quotas: {
+        "weekly sonnet (7d)": { used: 10, total: 100 },
+        "session (5h)": { used: 1, total: 100 },
+        "weekly (7d)": { used: 2, total: 100 },
+      },
+    };
+
+    it("keys Claude rows by name so sorting cannot invalidate hidden settings", () => {
+      const quotas = parseQuotaData("claude", claudeData);
+      expect(quotas.map((q) => [q.name, q.modelKey])).toEqual([
+        ["session (5h)", "session (5h)"],
+        ["weekly (7d)", "weekly (7d)"],
+        ["weekly sonnet (7d)", "weekly sonnet (7d)"],
+      ]);
+
+      const visibility = updateQuotaVisibility({}, "conn-c", "claude", "weekly sonnet (7d)", true);
+      expect(
+        filterQuotasByVisibility("conn-c", quotas, visibility, "claude").map((q) => q.name),
+      ).toEqual(["session (5h)", "weekly (7d)"]);
+    });
+
+    it("still honors legacy name::index keys persisted before the canonical sort", () => {
+      const quotas = parseQuotaData("claude", claudeData);
+      // Pre-sort builds stored the sonnet row at API-order index 0.
+      const visibility = { claude: { hidden: ["weekly sonnet (7d)::0"] } };
+      expect(
+        filterQuotasByVisibility("conn-c", quotas, visibility, "claude").map((q) => q.name),
+      ).toEqual(["session (5h)", "weekly (7d)"]);
+      expect(
+        getHiddenQuotaRows("conn-c", quotas, visibility, "claude").map((q) => q.name),
+      ).toEqual(["weekly sonnet (7d)"]);
+    });
+  });
 });

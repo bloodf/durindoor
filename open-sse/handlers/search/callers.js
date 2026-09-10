@@ -348,9 +348,33 @@ function buildOllamaRequest(config, params) {
   };
 }
 
+// GLM exposes coding-plan search as an MCP tool on the chat API key.
+function buildGlmSearchRequest(config, params) {
+  return {
+    url: resolveBaseUrl(config, params),
+    init: {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(params.token ? { Authorization: `Bearer ${params.token}` } : null)
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: `dd-${Date.now()}`,
+        method: "tools/call",
+        params: {
+          name: "web_search_prime",
+          arguments: { search_query: params.query, count: params.maxResults }
+        }
+      })
+    }
+  };
+}
+
 // ── Dispatcher ──────────────────────────────────────────────────────────
 
 const BUILDERS = {
+  "glm": buildGlmSearchRequest,
   "serper": buildSerperRequest,
   "brave-search": buildBraveRequest,
   "perplexity": buildPerplexityRequest,

@@ -7,13 +7,14 @@
  *   provider.searchViaChat   → wrap chat-completions (chatSearch.js)
  */
 
-import { buildSearchRequest } from "./callers.js";
+import { buildSearchRequest, getProviderSetting } from "./callers.js";
 import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
 import { resolveCredentialProxyOptions } from "../../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { fetchPublic } from "../../../src/shared/utils/ssrfGuard.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
 const NON_RETRIABLE = new Set([400, 401, 403, 404]);
@@ -97,6 +98,11 @@ async function tryDedicatedProvider({
   };
 
   let url, init;
+  // Trust boundary (#3714 + #3793): a client-supplied provider_options.baseUrl
+  // override is variable input and must stay behind the SSRF guard on every
+  // redirect hop; the providerConfig default is administrator-controlled and
+  // may intentionally target an internal service (e.g. a SearXNG container).
+  const requiresPublicUrl = Boolean(getProviderSetting(params, "baseUrl"));
   try {
     ({ url, init } = buildSearchRequest({ id: provider.id, ...providerConfig }, params));
   } catch (err) {
@@ -112,11 +118,19 @@ async function tryDedicatedProvider({
   log?.info?.("SEARCH", `${provider.id} | "${params.query.slice(0, 80)}" | type=${params.searchType}`);
 
   try {
-    const resp = await proxyAwareFetch(
+    // DurinDoor: route every request through the connection's proxy
+    // (proxyAwareFetch). Client-overridden endpoints additionally go through
+    // fetchPublic, which re-validates every redirect hop target (DNS + literal
+    // SSRF checks); admin-configured endpoints are trusted (#3793) and keep
+    // plain proxy routing.
+    const proxied = (hopUrl, hopInit) => proxyAwareFetch(hopUrl, hopInit, proxyOptions);
+    const resp = requiresPublicUrl ?
+    await fetchPublic(
       url,
       { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal },
-      proxyOptions
-    );
+      { fetchImpl: proxied }
+    ) :
+    await proxied(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
     clearTimeout(timer);
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");

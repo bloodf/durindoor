@@ -45,11 +45,11 @@ vec2 f=fract(g);
 float edge=min(min(f.x,1.-f.x)*7.,min(f.y,1.-f.y)*9.);
 float stone=noise(floor(g)*3.7)*.55+noise(uv*26.)*.2;
 vec3 col=mix(uStone,uMortar,stone*.4);
-col=mix(col,uStone*.65,smoothstep(.5,.0,edge));
+col=mix(col,uStone*.65,(1.-smoothstep(0.,.5,edge)));
 float shimmer=.72+.28*sin(uTime*1.3+p.y*7.+noise(p*4.)*3.);
 float d1=door(p,1.);float d2=door(p,.78);
-col+=uGlow*(exp(-d1*20.)*.30*shimmer+smoothstep(.014,.0,d1)*.85*shimmer);
-col+=uGlow*(exp(-d2*26.)*.16*shimmer+smoothstep(.010,.0,d2)*.45*shimmer);
+col+=uGlow*(exp(-d1*20.)*.30*shimmer+(1.-smoothstep(0.,.014,d1))*.85*shimmer);
+col+=uGlow*(exp(-d2*26.)*.16*shimmer+(1.-smoothstep(0.,.010,d2))*.45*shimmer);
 float rune=step(.985,noise(floor(p*vec2(28.,36.))+floor(uTime*.5)));
 col+=uGlow*rune*exp(-d1*3.)*.25*shimmer;
 col*=1.-.45*dot(p,p);
@@ -111,7 +111,7 @@ export function startDurinDoorBackdrop(canvas) {
   const reduced = isFunction(win?.matchMedia) && win.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let gl = null;
   try { gl = canvas.getContext("webgl2") || canvas.getContext("webgl"); } catch { gl = null; }
-  const ctx2d = gl ? null : canvas.getContext("2d");
+  let ctx2d = gl ? null : canvas.getContext("2d");
   const mode = resolveBackdropMode(Boolean(gl), Boolean(ctx2d), reduced);
   let palette = readBackdropPalette(win?.getComputedStyle(doc.documentElement));
   let raf = 0;
@@ -135,7 +135,13 @@ export function startDurinDoorBackdrop(canvas) {
       gl.enableVertexAttribArray(a);
       gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
       for (const n of ["uRes", "uTime", "uStone", "uMortar", "uGlow"]) uLoc[n] = gl.getUniformLocation(program, n);
-    } else mode.renderer = ctx2d ? "canvas2d" : "none";
+    } else {
+      // WebGL setup failed after a context existed. Per the canvas spec a
+      // canvas that yielded a WebGL context cannot hand out a 2d one, so this
+      // retry is usually null — the inert "none" mode is the real fallback.
+      ctx2d = ctx2d || canvas.getContext("2d");
+      mode.renderer = ctx2d ? "canvas2d" : "none";
+    }
   }
 
   function resize() {
@@ -193,6 +199,19 @@ export function startDurinDoorBackdrop(canvas) {
     palette = readBackdropPalette(win.getComputedStyle(doc.documentElement));
     if (!mode.animated) paint(0);
   };
+  // Static backdrops (reduced motion) must repaint on viewport changes —
+  // without a running rAF loop a resized canvas stays blank or stretched.
+  const onResize = () => { resize(); if (!mode.animated) paint(0); };
+  win.addEventListener("resize", onResize);
+  // React to live reduced-motion preference changes: stop the loop and paint
+  // one static frame on reduce, resume animating on no-preference.
+  const motionQuery = isFunction(win?.matchMedia) ? win.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  const onMotionChange = (event) => {
+    mode.animated = mode.renderer !== "none" && !event.matches;
+    if (raf) { win.cancelAnimationFrame(raf); raf = 0; }
+    if (mode.animated) kick(); else paint(0);
+  };
+  motionQuery?.addEventListener?.("change", onMotionChange);
   const observer = isFunction(win?.MutationObserver)
     ? new win.MutationObserver(onTheme)
     : null;
@@ -205,6 +224,8 @@ export function startDurinDoorBackdrop(canvas) {
       if (raf) win.cancelAnimationFrame(raf);
       raf = 0;
       doc.removeEventListener("visibilitychange", onVisibility);
+      win.removeEventListener("resize", onResize);
+      motionQuery?.removeEventListener?.("change", onMotionChange);
       observer?.disconnect();
     },
   };

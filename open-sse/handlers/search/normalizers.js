@@ -216,7 +216,35 @@ function normalizeOllama(data, _query, _searchType) {
   return { results, totalResults: results.length };
 }
 
+// MCP text may contain web results, news results, or an unwrapped result list.
+function normalizeGlmSearch(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  let payload = data;
+  if (isString(data?.result?.content?.[0]?.text)) {
+    try {
+      payload = JSON.parse(data.result.content[0].text);
+    } catch {
+      payload = {};
+    }
+  }
+  const items = Array.isArray(payload?.results) ? payload.results :
+    Array.isArray(payload?.news) ? payload.news :
+    Array.isArray(payload) ? payload : [];
+  const results = items.map((item, idx) =>
+    makeResult("glm", {
+      title: item.title,
+      url: item.link || item.url,
+      snippet: item.content || "",
+      published_at: item.publish_date || item.published_at || null,
+      favicon_url: item.icon || null,
+      source_type: item.media || null
+    }, idx, now)
+  );
+  return { results, totalResults: results.length };
+}
+
 const NORMALIZERS = {
+  "glm": normalizeGlmSearch,
   "serper": normalizeSerper,
   "brave-search": normalizeBrave,
   "perplexity": normalizePerplexity,

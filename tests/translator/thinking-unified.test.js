@@ -122,6 +122,19 @@ describe("applyThinking per provider format", () => {
     expect(out.thinking).toEqual({ type: "disabled" });
     expect(out.output_config).toBeUndefined();
   });
+  // Ported from upstream decolua/9router#3792: adaptive `thinking` (auto effort) must
+  // never leak the literal "auto" upstream — Anthropic rejects it with HTTP 400.
+  it("claude adaptive thinking maps auto effort to a supported level", () => {
+    const out = apply("claude", "claude-opus-4.7", { thinking: { type: "adaptive" } }, "claude");
+    expect(out.output_config).toEqual({ effort: "high" });
+    expect(out.thinking).toEqual({ type: "adaptive", display: "summarized" });
+  });
+  it("permanently adaptive Claude (Fable 5.1) maps auto effort to high", () => {
+    const out = apply("claude", "claude-fable-5-1", { thinking: { type: "adaptive" } }, "claude");
+    expect(out.output_config).toEqual({ effort: "high" });
+    // DurinDoor always sends the explicit adaptive switch (harmless on Fable 5.1).
+    expect(out.thinking).toEqual({ type: "adaptive", display: "summarized" });
+  });
   it("claude opus-4.8 adaptive → summarized display", () => {
     const out = apply("claude", "claude-opus-4.8", { reasoning_effort: "high" }, "claude");
     expect(out.output_config).toEqual({ effort: "high" });

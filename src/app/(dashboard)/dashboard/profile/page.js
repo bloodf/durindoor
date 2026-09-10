@@ -81,6 +81,17 @@ export default function ProfilePage() {
   const [proxyLoading, setProxyLoading] = useState(false);
   const [proxyTestLoading, setProxyTestLoading] = useState(false);
 
+  // Port of decolua/9router#3801: footer mode label is derived from the page
+  // hostname so remote deployments stop claiming "Local Mode".
+  const [isRemoteHost, setIsRemoteHost] = useState(false);
+  useEffect(() => {
+    if (isBrowser()) {
+      // location.hostname keeps the brackets on IPv6 literals ("[::1]").
+      const host = window.location.hostname.replace(/^\[|\]$/g, "");
+      setIsRemoteHost(!["localhost", "127.0.0.1", "::1"].includes(host));
+    }
+  }, []);
+
   useEffect(() => {
     setLocale(getLocaleFromCookie());
   }, [langOpen]);
@@ -858,7 +869,7 @@ export default function ProfilePage() {
         </div>
       </CardContent></Card>
 
-      <Card padding={false}><CardFooter className="flex-col items-stretch sm:flex-row"><div className="flex flex-wrap gap-2"><Button variant="danger" icon="power_settings_new" onClick={() => setShutdownOpen(true)}>Shutdown</Button><Button variant="secondary" icon="logout" onClick={handleLogout}>Logout</Button></div><div className="sm:ml-auto sm:text-right"><p className="dd-tnum text-xs font-medium text-dd-text">{APP_CONFIG.name} v{APP_CONFIG.version}</p><p className="text-xs text-dd-muted">Local Mode - All data stored on your machine</p></div></CardFooter></Card>
+      <Card padding={false}><CardFooter className="flex-col items-stretch sm:flex-row"><div className="flex flex-wrap gap-2"><Button variant="danger" icon="power_settings_new" onClick={() => setShutdownOpen(true)}>Shutdown</Button><Button variant="secondary" icon="logout" onClick={handleLogout}>Logout</Button></div><div className="sm:ml-auto sm:text-right"><p className="dd-tnum text-xs font-medium text-dd-text">{APP_CONFIG.name} v{APP_CONFIG.version}</p><p className="text-xs text-dd-muted">{isRemoteHost ? "Remote Mode" : "Local Mode - All data stored on your machine"}</p></div></CardFooter></Card>
       <LanguageSwitcher hideTrigger isOpen={langOpen} onClose={(next) => { setLangOpen(false); setLocale(next); }} />
       <ConfirmDialog open={shutdownOpen} pending={isShuttingDown} onCancel={() => setShutdownOpen(false)} onConfirm={handleShutdown} title="Close Proxy" message="Are you sure you want to close the proxy server?" confirmLabel="Close" cancelLabel="Cancel" tone="danger" />
       <Modal open={dbAuth.open} onClose={() => setDbAuth({ open: false, mode: "", password: "" })} title="Confirm Password" size="sm" pending={dbLoading} footer={<><Button variant="secondary" onClick={() => setDbAuth({ open: false, mode: "", password: "" })} disabled={dbLoading}>Cancel</Button><Button variant="primary" onClick={handleDbAuthConfirm} loading={dbLoading} disabled={!dbAuth.password}>Confirm</Button></>}><div className="flex flex-col gap-3"><p className="text-[13px] text-dd-muted">Enter your current password to {dbAuth.mode === "export" ? "export" : "import"} the database.</p><Input type="password" value={dbAuth.password} onChange={(e) => setDbAuth((state) => ({ ...state, password: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter" && dbAuth.password) handleDbAuthConfirm(); }} placeholder="Current password" autoFocus /></div></Modal>

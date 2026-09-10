@@ -118,7 +118,9 @@ export function startDurinDoorBackdrop(canvas) {
   let program = null;
   let uLoc = {};
 
-  if (mode.renderer === "webgl") {
+  // GL setup is a function so `webglcontextrestored` can rebuild every
+  // resource (program, buffer, uniforms) — they are all invalid after loss.
+  function setupGL() {
     const vs = compile(gl, gl.VERTEX_SHADER, VERT);
     const fs = compile(gl, gl.FRAGMENT_SHADER, FRAG);
     program = vs && fs ? gl.createProgram() : null;
@@ -135,13 +137,33 @@ export function startDurinDoorBackdrop(canvas) {
       gl.enableVertexAttribArray(a);
       gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
       for (const n of ["uRes", "uTime", "uStone", "uMortar", "uGlow"]) uLoc[n] = gl.getUniformLocation(program, n);
-    } else {
-      // WebGL setup failed after a context existed. Per the canvas spec a
-      // canvas that yielded a WebGL context cannot hand out a 2d one, so this
-      // retry is usually null — the inert "none" mode is the real fallback.
-      ctx2d = ctx2d || canvas.getContext("2d");
-      mode.renderer = ctx2d ? "canvas2d" : "none";
+      return true;
     }
+    return false;
+  }
+
+  if (mode.renderer === "webgl" && !setupGL()) {
+    // WebGL setup failed after a context existed. Per the canvas spec a
+    // canvas that yielded a WebGL context cannot hand out a 2d one, so this
+    // retry is usually null — the inert "none" mode is the real fallback.
+    ctx2d = ctx2d || canvas.getContext("2d");
+    mode.renderer = ctx2d ? "canvas2d" : "none";
+  }
+
+  // A long-lived login page must survive GPU resets: stop painting into the
+  // lost context, rebuild all GL resources on restore, and repaint.
+  const onContextLost = (event) => {
+    event.preventDefault();
+    program = null;
+    if (raf) { win.cancelAnimationFrame(raf); raf = 0; }
+  };
+  const onContextRestored = () => {
+    if (mode.renderer !== "webgl") return;
+    if (setupGL()) kick();
+  };
+  if (mode.renderer === "webgl") {
+    canvas.addEventListener("webglcontextlost", onContextLost);
+    canvas.addEventListener("webglcontextrestored", onContextRestored);
   }
 
   function resize() {
@@ -226,6 +248,8 @@ export function startDurinDoorBackdrop(canvas) {
       doc.removeEventListener("visibilitychange", onVisibility);
       win.removeEventListener("resize", onResize);
       motionQuery?.removeEventListener?.("change", onMotionChange);
+      canvas.removeEventListener("webglcontextlost", onContextLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
       observer?.disconnect();
     },
   };

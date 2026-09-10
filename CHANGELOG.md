@@ -20,6 +20,7 @@
 ## Upstream ports
 
 - port(upstream): #3820 + #3800 + #3791 - OpenCode Go: muse-spark-1.2 with Responses tool-call fixes, a stable opaque `x-opencode-session` header (caller-supplied headers are never honored), and quota tracking. (#819, #825, #828)
+- port(upstream): #3823 - CodeBuddy preserves legitimate long system prompts; `CODEBUDDY_SYSTEM_PROMPT_MAX_LEN` is retired, while identity-matching replacement remains.
 - sync(upstream): persist and replay Gemini `thoughtSignature` scoped by session namespace, preventing multi-turn tool-call INVALID_ARGUMENT errors. (#821)
 - sync(upstream): Quota Tracker additions — Claude Fable weekly window normalization and Antigravity Gemini/Claude quota family grouping (also covering `agy` CLI connections). (#826, #829)
 - sync(upstream): qoder catalog refresh with capability mapping and image pass-through; codebuddy-cn catalog aligned with the server config; tokenrouter seed streamlined to flagship models with missing provider icons added. (#817, #820, #816)

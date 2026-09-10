@@ -19,8 +19,8 @@
 
 ## Upstream ports
 
+- port(upstream): #3862 - reject SQLite corruption before migration writes.
 - sync(upstream): GLM Coding Plan connections now provide web search through the bundled Z.AI MCP endpoint using the existing API key. (upstream `5a86f6a8d` + `9dbdca0e5`)
-
 - port(upstream): #3820 + #3800 + #3791 - OpenCode Go: muse-spark-1.2 with Responses tool-call fixes, a stable opaque `x-opencode-session` header (caller-supplied headers are never honored), and quota tracking. (#819, #825, #828)
 - port(upstream): #3823 - CodeBuddy preserves legitimate long system prompts; `CODEBUDDY_SYSTEM_PROMPT_MAX_LEN` is retired, while identity-matching replacement remains.
 - sync(upstream): persist and replay Gemini `thoughtSignature` scoped by session namespace, preventing multi-turn tool-call INVALID_ARGUMENT errors. (#821)

@@ -22,7 +22,17 @@ afterEach(() => {
   fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
+  vi.restoreAllMocks();
 });
+
+function migrationArtifacts() {
+  const dbDir = path.join(tempDir, "db");
+  const backupsDir = path.join(dbDir, "backups");
+  return {
+    backups: fs.existsSync(backupsDir) ? fs.readdirSync(backupsDir).sort() : [],
+    marker: fs.existsSync(path.join(dbDir, ".migrated-from-json")),
+  };
+}
 
 function corruptQuotaFetchStatesPrimaryKey(dbFile) {
   const db = new Database(dbFile);
@@ -51,7 +61,96 @@ describe("SQLite startup integrity guard", () => {
     expect(db.all("PRAGMA quick_check")).toEqual([{ quick_check: "ok" }]);
   });
 
-  it("refuses startup when quotaFetchStates primary-key index is corrupt", async () => {
+  it("rejects a failed full integrity check before migration mutates data or artifacts", async () => {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    db.run("INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)", ["sync3862", "sentinel", "preserved"]);
+    db.run("UPDATE _meta SET value = ? WHERE key = 'appVersion'", ["fixture-old-version"]);
+    db.flush?.();
+    const before = migrationArtifacts();
+    const wrapper = {
+      ...db,
+      all(sql, params = []) {
+        if (sql === "PRAGMA quick_check") {
+          return [{ quick_check: "wrong # of entries in index fixture_index" }];
+        }
+        return db.all(sql, params);
+      },
+    };
+    const { IntegrityCheckFailed } = await import("@/lib/db/helpers/integrityCheck.js");
+    const { runMigrationOnce } = await import("@/lib/db/migrate.js");
+
+    await expect(runMigrationOnce(wrapper)).rejects.toBeInstanceOf(IntegrityCheckFailed);
+    expect(db.get("SELECT value FROM _meta WHERE key = 'appVersion'")).toEqual({ value: "fixture-old-version" });
+    expect(db.get("SELECT value FROM kv WHERE scope = ? AND key = ?", ["sync3862", "sentinel"])).toEqual({ value: "preserved" });
+    expect(migrationArtifacts()).toEqual(before);
+  });
+
+  it("rethrows a malformed-image freshness read without mutation and retries the same adapter", async () => {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    db.run("INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)", ["sync3862", "sentinel", "preserved"]);
+    db.run("UPDATE _meta SET value = ? WHERE key = 'appVersion'", ["fixture-old-version"]);
+    db.flush?.();
+    const before = migrationArtifacts();
+    const malformed = new Error("database disk image is malformed");
+    let injectFailure = true;
+    const wrapper = {
+      ...db,
+      get(sql, params = []) {
+        if (injectFailure && sql === "SELECT COUNT(*) as c FROM _meta") throw malformed;
+        return db.get(sql, params);
+      },
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getAppVersion } = await import("@/lib/db/version.js");
+    const { runMigrationOnce } = await import("@/lib/db/migrate.js");
+
+    await expect(runMigrationOnce(wrapper)).rejects.toBe(malformed);
+    expect(db.get("SELECT value FROM _meta WHERE key = 'appVersion'")).toEqual({ value: "fixture-old-version" });
+    expect(db.get("SELECT value FROM kv WHERE scope = ? AND key = ?", ["sync3862", "sentinel"])).toEqual({ value: "preserved" });
+    expect(migrationArtifacts()).toEqual(before);
+
+    injectFailure = false;
+    await expect(runMigrationOnce(wrapper)).resolves.toBeUndefined();
+    expect(db.get("SELECT value FROM _meta WHERE key = 'appVersion'")).toEqual({ value: getAppVersion() });
+  });
+
+  it("retains fresh-database fallback for unrelated _meta read failures", async () => {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const wrapper = {
+      ...db,
+      get(sql, params = []) {
+        if (sql === "SELECT COUNT(*) as c FROM _meta") throw new Error("no such table: _meta");
+        return db.get(sql, params);
+      },
+    };
+    const { getAppVersion } = await import("@/lib/db/version.js");
+    const { runMigrationOnce } = await import("@/lib/db/migrate.js");
+
+    await expect(runMigrationOnce(wrapper)).resolves.toBeUndefined();
+    expect(db.get("SELECT value FROM _meta WHERE key = 'appVersion'")).toEqual({ value: getAppVersion() });
+  });
+
+  it("rethrows corruption errors without the disk-image wording", async () => {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const corrupt = new Error("database file is corrupt");
+    const wrapper = {
+      ...db,
+      get(sql, params = []) {
+        if (sql === "SELECT COUNT(*) as c FROM _meta") throw corrupt;
+        return db.get(sql, params);
+      },
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { runMigrationOnce } = await import("@/lib/db/migrate.js");
+
+    await expect(runMigrationOnce(wrapper)).rejects.toBe(corrupt);
+  });
+
+  it("refuses real index corruption without creating migration artifacts", async () => {
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
     db.run(`
@@ -71,6 +170,7 @@ describe("SQLite startup integrity guard", () => {
 
     const dbFile = path.join(tempDir, "db", "data.sqlite");
     corruptQuotaFetchStatesPrimaryKey(dbFile);
+    const before = migrationArtifacts();
     delete global._dbAdapter;
     vi.resetModules();
 
@@ -78,5 +178,44 @@ describe("SQLite startup integrity guard", () => {
     await expect(restart()).rejects.toThrow(
       "wrong # of entries in index sqlite_autoindex_quotaFetchStates_1",
     );
+    expect(migrationArtifacts()).toEqual(before);
   });
+
+  it("migrates and persists a healthy fresh sql.js database", async () => {
+    const dbFile = path.join(tempDir, "sqljs", "data.sqlite");
+    fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+    const { createSqlJsAdapter } = await import("@/lib/db/adapters/sqljsAdapter.js");
+    const { latestVersion } = await import("@/lib/db/migrations/index.js");
+    const { runMigrationOnce } = await import("@/lib/db/migrate.js");
+    const db = await createSqlJsAdapter(dbFile);
+    try {
+      await runMigrationOnce(db);
+      expect(db.get("SELECT value FROM _meta WHERE key = 'schemaVersion'")).toEqual({ value: String(latestVersion()) });
+      db.run("INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)", ["sync3862", "sentinel", "persisted"]);
+      db.flush();
+    } finally {
+      db.close();
+    }
+
+    const reopened = await createSqlJsAdapter(dbFile);
+    try {
+      expect(reopened.get("SELECT value FROM kv WHERE scope = ? AND key = ?", ["sync3862", "sentinel"])).toEqual({ value: "persisted" });
+    } finally {
+      reopened.close();
+    }
+  });
+
+  it("skips SQLite preflight before a PostgreSQL freshness failure", async () => {
+    const freshnessError = new Error("database disk image is malformed");
+    const adapter = {
+      capabilities: { isPostgres: true },
+      get() { throw freshnessError; },
+      all() { throw new Error("unexpected SQLite PRAGMA on PostgreSQL"); },
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { runMigrationOnce } = await import("@/lib/db/migrate.js");
+
+    await expect(runMigrationOnce(adapter)).rejects.toBe(freshnessError);
+  });
+
 });

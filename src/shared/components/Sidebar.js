@@ -14,14 +14,10 @@ import {
   BRAND_LOGO_ALT,
   BRAND_LOGO_SRC,
   COMBINED_WEB_ITEM,
-  debugItems,
   isActivePath,
   NavIcon,
-  navItems,
+  NAV_SECTIONS,
   PROFILE_NAV_ITEM,
-  providersMenu,
-  systemItems,
-  tokenSaverMenu,
   VISIBLE_MEDIA_KINDS,
 } from "./SidebarNavIcons";
 
@@ -35,32 +31,40 @@ SidebarTooltip.propTypes = {
   children: PropTypes.element.isRequired,
 };
 
+// Shared link chrome for a leaf nav row. Accent marks the active route only;
+// every other row stays on muted neutral until hover.
+function itemClasses(collapsed, active, indent = false) {
+  return cn(
+    collapsed
+      ? "flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group"
+      : indent
+        ? "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group"
+        : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
+    active ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
+  );
+}
+
 export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCollapse }) {
   const pathname = usePathname();
-  const providersGroupId = useId();
-  const tokenSaverGroupId = useId();
-  const mediaGroupId = useId();
-  const [mediaOpen, setMediaOpen] = useState(false);
+  const groupIdBase = useId();
   const collapsed = collapsedProp ?? false;
   const handleToggleCollapse = onToggleCollapse ?? (() => undefined);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [enableTranslator, setEnableTranslator] = useState(false);
+  // Collapsible group overrides, keyed by group entry key. An absent key falls
+  // back to "open when the current route is inside the group".
+  const [groupOverrides, setGroupOverrides] = useState({});
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
 
   const isActive = (href, exact = false) => isActivePath(pathname, href, exact);
 
-  const isTokenSaverSectionActive = tokenSaverMenu.children.some((child) =>
-    isActivePath(pathname, child.href, true)
-  );
-  const [userToggled, setUserToggled] = useState(null);
-  const [providersToggled, setProvidersToggled] = useState(null);
-  const tokenSaverOpen = userToggled ?? isTokenSaverSectionActive;
-  const isProvidersSectionActive = providersMenu.children.some((child) =>
-    isActivePath(pathname, child.href, child.exact !== false),
-  );
-  const providersMenuOpen = providersToggled ?? isProvidersSectionActive;
+  const groupActive = (children) =>
+    children.some((child) => isActivePath(pathname, child.href, child.exact !== false));
+  const isGroupOpen = (key, active) => groupOverrides[key] ?? active;
+  const toggleGroup = (key, active) =>
+    setGroupOverrides((prev) => ({ ...prev, [key]: !(prev[key] ?? active) }));
 
   useEffect(() => {
     fetch("/api/settings")
@@ -77,9 +81,119 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
       .catch(() => {});
   }, []);
 
+  const renderItem = (item, indent = false) => {
+    if (item.requiresTranslator && !enableTranslator) return null;
+    const active = isActive(item.href, item.exact !== false);
+    return (
+      <SidebarTooltip key={item.href} collapsed={collapsed} label={item.label}>
+        <Link
+          href={item.href}
+          onClick={onClose}
+          aria-label={collapsed ? item.label : undefined}
+          aria-current={active ? "page" : undefined}
+          className={itemClasses(collapsed, active, indent)}
+        >
+          <NavIcon icon={item.icon} isActive={active} size={indent ? "16" : "18"} />
+          <span className={indent ? "text-sm" : "sidebar-label text-[13px] font-medium"}>{item.label}</span>
+        </Link>
+      </SidebarTooltip>
+    );
+  };
+
+  const renderGroup = (group) => {
+    const groupId = `${groupIdBase}-${group.key}`;
+    const active = groupActive(group.children);
+    const open = isGroupOpen(group.key, active);
+    return (
+      <div key={group.key}>
+        <SidebarTooltip collapsed={collapsed} label={group.label}>
+          {collapsed ? (
+            <Link
+              href={group.children[0].href}
+              onClick={onClose}
+              aria-label={group.label}
+              className={itemClasses(true, active)}
+            >
+              <NavIcon icon={group.icon} isActive={active} />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => toggleGroup(group.key, active)}
+              aria-expanded={open}
+              aria-controls={groupId}
+              className={cn("w-full", itemClasses(false, active))}
+            >
+              <NavIcon icon={group.icon} isActive={active} />
+              <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{group.label}</span>
+              <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
+            </button>
+          )}
+        </SidebarTooltip>
+        {!collapsed && open && (
+          <div id={groupId} className="pl-4">
+            {group.children.map((child) => renderItem({ type: "item", ...child }, true))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Media Providers accordion: children are the visible media kinds plus the
+  // combined Web Fetch & Search page, resolved from provider constants.
+  const renderMediaGroup = (entry) => {
+    const groupId = `${groupIdBase}-${entry.key}`;
+    const mediaChildren = [
+      ...MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => ({
+        href: `${entry.basePath}/${kind.id}`,
+        label: kind.label,
+        icon: kind.icon,
+      })),
+      { href: COMBINED_WEB_ITEM.href, label: COMBINED_WEB_ITEM.label, icon: COMBINED_WEB_ITEM.icon },
+    ];
+    const active = pathname?.startsWith(entry.basePath) || false;
+    const open = isGroupOpen(entry.key, active);
+    return (
+      <div key={entry.key}>
+        <SidebarTooltip collapsed={collapsed} label={entry.label}>
+          {collapsed ? (
+            <Link href={mediaChildren[0].href} onClick={onClose} aria-label={entry.label} className={itemClasses(true, active)}>
+              <NavIcon icon={entry.icon} isActive={active} />
+            </Link>
+          ) : (
+            <button type="button" onClick={() => toggleGroup(entry.key, active)} aria-expanded={open} aria-controls={groupId} className={cn("w-full", itemClasses(false, active))}>
+              <NavIcon icon={entry.icon} isActive={active} />
+              <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{entry.label}</span>
+              <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
+            </button>
+          )}
+        </SidebarTooltip>
+        {!collapsed && open && (
+          <div id={groupId} className="pl-4">
+            {mediaChildren.map((child) => {
+              const childActive = pathname?.startsWith(child.href) || false;
+              return (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  onClick={onClose}
+                  aria-current={childActive ? "page" : undefined}
+                  className={itemClasses(false, childActive, true)}
+                >
+                  <NavIcon icon={child.icon} isActive={childActive} size="16" />
+                  <span className="text-sm">{child.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
-      <aside className={cn("flex min-h-full flex-col overflow-hidden border-e border-dd-border-subtle bg-dd-surface transition-[width,colors] duration-300 motion-reduce:transition-none", collapsed ? "w-20" : "w-72", collapsed && "[&_.sidebar-label]:hidden [&_.sidebar-brand-copy]:hidden [&_.sidebar-section]:hidden [&_.sidebar-update]:hidden")} aria-label="Dashboard navigation">
+      <aside className={cn("flex min-h-full flex-col overflow-hidden border-e border-dd-border-subtle bg-dd-surface transition-[width,colors] duration-300 motion-reduce:transition-none", collapsed ? "w-20" : "w-72", collapsed && "[&_.sidebar-label]:hidden [&_.sidebar-brand-copy]:hidden [&_.sidebar-section]:hidden [&_.sidebar-update]:hidden [&_.sidebar-section-divider]:block")} aria-label="Dashboard navigation">
         <div className={cn("flex flex-col gap-2 py-4", collapsed ? "items-center px-2" : "px-6")}>
           <Link href="/dashboard" aria-label={collapsed ? APP_CONFIG.name : undefined} className="flex min-h-11 min-w-11 items-center gap-3 rounded-dd outline-none focus-visible:shadow-dd-focus">
             <div className="flex size-9 items-center justify-center rounded-dd bg-dd-surface-3 shadow-dd-elevated">
@@ -118,225 +232,40 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
           )}
         </div>
 
-        {/* Navigation */}
+        {/* Navigation: labeled IA sections from NAV_SECTIONS */}
         <nav className={cn("flex flex-1 flex-col gap-0.5 py-2 overflow-y-auto custom-scrollbar", collapsed ? "px-2" : "px-4")}>
-          {navItems.map((item) => (
-            <SidebarTooltip key={item.href} collapsed={collapsed} label={item.label}>
-              <Link
-                href={item.href}
-                onClick={onClose}
-                aria-label={collapsed ? item.label : undefined}
-                aria-current={isActive(item.href, item.exact !== false) ? "page" : undefined}
-                className={cn(
-                  collapsed ? "flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
-                  isActive(item.href, item.exact !== false)
-                    ? "bg-dd-accent-soft text-dd-accent"
-                    : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
-                )}
-              >
-                <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
-                <span className="sidebar-label text-[13px] font-medium">{item.label}</span>
-              </Link>
-            </SidebarTooltip>
+          {NAV_SECTIONS.map((section, sectionIndex) => (
+            <div key={section.key} role="group" aria-label={section.label} className={cn("flex flex-col gap-0.5", sectionIndex > 0 && "pt-2 mt-1")}>
+              {/* Hairline divider visible only when the rail is collapsed and
+                  section labels are hidden. */}
+              {sectionIndex > 0 && <div aria-hidden="true" className="sidebar-section-divider mx-2 mb-2 hidden border-t border-dd-border-subtle" />}
+              <p className="sidebar-section px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-dd-subtle">
+                {section.label}
+              </p>
+              {section.entries.map((entry) => {
+                if (entry.type === "group") return renderGroup(entry);
+                if (entry.type === "media") return renderMediaGroup(entry);
+                return renderItem(entry);
+              })}
+            </div>
           ))}
-
-          {/* Providers collapsible menu */}
-          <SidebarTooltip collapsed={collapsed} label={providersMenu.label}>
-            {collapsed ? (
-              <Link
-                href={providersMenu.children[0].href}
-                onClick={onClose}
-                aria-label={providersMenu.label}
-                className={cn("flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group", isProvidersSectionActive ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}
-              >
-                <NavIcon icon={providersMenu.icon} isActive={isProvidersSectionActive} />
-              </Link>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setProvidersToggled((open) => !(open ?? isProvidersSectionActive))}
-                aria-expanded={providersMenuOpen}
-                aria-controls={providersGroupId}
-                className={cn("w-full flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group", isProvidersSectionActive ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}
-              >
-                <NavIcon icon={providersMenu.icon} isActive={isProvidersSectionActive} />
-                <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{providersMenu.label}</span>
-                <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: providersMenuOpen ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
-              </button>
-            )}
-          </SidebarTooltip>
-          {!collapsed && providersMenuOpen && (
-            <div id={providersGroupId} className="pl-4">
-              {providersMenu.children.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onClose}
-                  aria-current={isActive(item.href, item.exact !== false) ? "page" : undefined}
-                  className={cn(
-                    collapsed ? "flex min-h-11 items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
-                    isActive(item.href, item.exact !== false)
-                      ? "bg-dd-accent-soft text-dd-accent"
-                      : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
-                  )}
-                >
-                  <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} size="16" />
-                  <span className="text-sm">{item.label}</span>
-                </Link>
-              ))}
-            </div>
-          )}
-
-          <SidebarTooltip collapsed={collapsed} label={tokenSaverMenu.label}>
-            {collapsed ? (
-              <Link href={tokenSaverMenu.children[0].href} onClick={onClose} aria-label={tokenSaverMenu.label} className={cn("flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group", isTokenSaverSectionActive ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}>
-                <NavIcon icon={tokenSaverMenu.icon} isActive={isTokenSaverSectionActive} />
-              </Link>
-            ) : (
-              <button type="button" onClick={() => setUserToggled((open) => !(open ?? isTokenSaverSectionActive))} aria-expanded={tokenSaverOpen} aria-controls={tokenSaverGroupId} className={cn("w-full flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group", isTokenSaverSectionActive ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}>
-                <NavIcon icon={tokenSaverMenu.icon} isActive={isTokenSaverSectionActive} />
-                <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{tokenSaverMenu.label}</span>
-                <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: tokenSaverOpen ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
-              </button>
-            )}
-          </SidebarTooltip>
-          {!collapsed && tokenSaverOpen && (
-            <div id={tokenSaverGroupId} className="pl-4">
-              {tokenSaverMenu.children.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onClose}
-                  aria-current={isActive(item.href, item.exact !== false) ? "page" : undefined}
-                  className={cn(
-                    collapsed ? "flex min-h-11 items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
-                    isActive(item.href, item.exact !== false)
-                      ? "bg-dd-accent-soft text-dd-accent"
-                      : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
-                  )}
-                >
-                  <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} size="16" />
-                  <span className="text-sm">{item.label}</span>
-                </Link>
-              ))}
-            </div>
-          )}
-
-          {/* System section */}
-          <div className="flex flex-col gap-0.5 pt-3 mt-2">
-            <p className="sidebar-label px-4 text-xs font-semibold text-dd-muted uppercase tracking-wider mb-2">
-              System
-            </p>
-
-            {/* Media Providers accordion */}
-          <SidebarTooltip collapsed={collapsed} label="Media Providers">
-            {collapsed ? (
-              <Link href={`/dashboard/media-providers/${VISIBLE_MEDIA_KINDS[0]}`} onClick={onClose} aria-label="Media Providers" className={cn("flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group", pathname?.startsWith("/dashboard/media-providers") ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}>
-                <NavIcon icon="perm_media" isActive={pathname?.startsWith("/dashboard/media-providers") || false} />
-              </Link>
-            ) : (
-              <button type="button" onClick={() => setMediaOpen((v) => !v)} aria-expanded={mediaOpen} aria-controls={mediaGroupId} className={cn("w-full flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group", pathname?.startsWith("/dashboard/media-providers") ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text")}>
-                <NavIcon icon="perm_media" isActive={pathname?.startsWith("/dashboard/media-providers") || false} />
-                <span className="sidebar-label text-[13px] font-medium flex-1 text-left">Media Providers</span>
-                <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
-              </button>
-            )}
-          </SidebarTooltip>
-            {!collapsed && mediaOpen && (
-              <div id={mediaGroupId} className="pl-4">
-                {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
-                  <Link
-                    key={kind.id}
-                    href={`/dashboard/media-providers/${kind.id}`}
-                    onClick={onClose}
-                    aria-current={pathname?.startsWith(`/dashboard/media-providers/${kind.id}`) ? "page" : undefined}
-                    className={cn(
-                      collapsed ? "flex min-h-11 items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
-                      pathname?.startsWith(`/dashboard/media-providers/${kind.id}`)
-                        ? "bg-dd-accent-soft text-dd-accent"
-                        : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
-                    )}
-                  >
-                    <NavIcon icon={kind.icon} isActive={pathname?.startsWith(`/dashboard/media-providers/${kind.id}`) || false} size="16" />
-                    <span className="text-sm">{kind.label}</span>
-                  </Link>
-                ))}
-                <Link
-                  key={COMBINED_WEB_ITEM.id}
-                  href={COMBINED_WEB_ITEM.href}
-                  onClick={onClose}
-                  aria-current={pathname?.startsWith(COMBINED_WEB_ITEM.href) ? "page" : undefined}
-                  className={cn(
-                    collapsed ? "flex min-h-11 items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
-                    pathname?.startsWith(COMBINED_WEB_ITEM.href)
-                      ? "bg-dd-accent-soft text-dd-accent"
-                      : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
-                  )}
-                >
-                  <NavIcon icon={COMBINED_WEB_ITEM.icon} isActive={pathname?.startsWith(COMBINED_WEB_ITEM.href) || false} size="16" />
-                  <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
-                </Link>
-              </div>
-            )}
-
-            {systemItems.map((item) => (
-              <SidebarTooltip key={item.href} collapsed={collapsed} label={item.label}>
-                <Link
-                  href={item.href}
-                  onClick={onClose}
-                  aria-label={collapsed ? item.label : undefined}
-                  aria-current={isActive(item.href, item.exact !== false) ? "page" : undefined}
-                  className={cn(
-                    collapsed ? "flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
-                    isActive(item.href, item.exact !== false) ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
-                  )}
-                >
-                  <NavIcon icon={item.icon} isActive={isActive(item.href, item.exact !== false)} />
-                  <span className="sidebar-label text-[13px] font-medium">{item.label}</span>
-                </Link>
-              </SidebarTooltip>
-            ))}
-
-            {/* Debug items (inside System section, before Settings) */}
-            {debugItems.map((item) => {
-              const show = item.href !== "/dashboard/translator" || enableTranslator;
-              return show ? (
-                <SidebarTooltip key={item.href} collapsed={collapsed} label={item.label}>
-                  <Link
-                    href={item.href}
-                    onClick={onClose}
-                    aria-label={collapsed ? item.label : undefined}
-                    aria-current={isActive(item.href, true) ? "page" : undefined}
-                    className={cn(
-                      collapsed ? "flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
-                      isActive(item.href, true) ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
-                    )}
-                  >
-                    <NavIcon icon={item.icon} isActive={isActive(item.href, true)} />
-                    <span className="sidebar-label text-[13px] font-medium">{item.label}</span>
-                  </Link>
-                </SidebarTooltip>
-              ) : null;
-            })}
-
-            {/* Settings (profile) stays its own unrelated item */}
-            <SidebarTooltip collapsed={collapsed} label={PROFILE_NAV_ITEM.label}>
-              <Link
-                href={PROFILE_NAV_ITEM.href}
-                onClick={onClose}
-                aria-label={collapsed ? PROFILE_NAV_ITEM.label : undefined}
-                aria-current={isActive(PROFILE_NAV_ITEM.href, true) ? "page" : undefined}
-                className={cn(
-                  collapsed ? "flex min-h-11 w-full items-center justify-center rounded-dd px-0 py-1 outline-none transition-all focus-visible:shadow-dd-focus group" : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
-                  isActive(PROFILE_NAV_ITEM.href, true) ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
-                )}
-              >
-                <NavIcon icon={PROFILE_NAV_ITEM.icon} isActive={isActive(PROFILE_NAV_ITEM.href, true)} />
-                <span className="sidebar-label text-[13px] font-medium">{PROFILE_NAV_ITEM.label}</span>
-              </Link>
-            </SidebarTooltip>
-          </div>
         </nav>
+
+        {/* Settings (profile) pinned at the bottom of the rail */}
+        <div className={cn("shrink-0 border-t border-dd-border-subtle", collapsed ? "p-2" : "px-4 py-2")}>
+          <SidebarTooltip collapsed={collapsed} label={PROFILE_NAV_ITEM.label}>
+            <Link
+              href={PROFILE_NAV_ITEM.href}
+              onClick={onClose}
+              aria-label={collapsed ? PROFILE_NAV_ITEM.label : undefined}
+              aria-current={isActive(PROFILE_NAV_ITEM.href, true) ? "page" : undefined}
+              className={itemClasses(collapsed, isActive(PROFILE_NAV_ITEM.href, true))}
+            >
+              <NavIcon icon={PROFILE_NAV_ITEM.icon} isActive={isActive(PROFILE_NAV_ITEM.href, true)} />
+              <span className="sidebar-label text-[13px] font-medium">{PROFILE_NAV_ITEM.label}</span>
+            </Link>
+          </SidebarTooltip>
+        </div>
 
         {onToggleCollapse ? (
           <div className="shrink-0 border-t border-dd-border-subtle p-2">

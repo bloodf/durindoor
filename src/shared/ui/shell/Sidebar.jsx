@@ -2,27 +2,35 @@ import { useState } from "react";
 
 import { StatusDot } from "@/shared/ui/components/StatusDot";
 
-/** Canonical dashboard navigation consumed by shell and page previews. */
+/**
+ * Canonical dashboard navigation consumed by shell and page previews.
+ * Mirrors the production sidebar IA in
+ * `src/shared/components/SidebarNavIcons.js` (NAV_SECTIONS): MONITOR → BUILD →
+ * OPTIMIZE → INTEGRATE → REFERENCE, with Settings pinned at the bottom.
+ */
 export const NAV_GROUPS = [
   {
-    label: "OBSERVE",
+    label: "MONITOR",
     items: [
       { label: "Usage", icon: "monitoring", href: "/dashboard/usage" },
       { label: "Timeline", icon: "timeline", href: "/dashboard/timeline" },
+      { label: "Quota Tracker", icon: "data_usage", href: "/dashboard/quota" },
+      { label: "Health", icon: "monitor_heart", href: "/dashboard/health" },
       { label: "Console Log", icon: "terminal", href: "/dashboard/console-log" },
     ],
   },
   {
-    label: "ROUTE",
+    label: "BUILD",
     items: [
+      { label: "Playground", icon: "chat", href: "/dashboard/playground" },
+      { label: "Combos", icon: "layers", href: "/dashboard/combos" },
       {
         label: "Providers",
         icon: "dns",
         href: "/dashboard/providers",
         status: "healthy",
       },
-      { label: "Combos", icon: "layers", href: "/dashboard/combos" },
-      { label: "MCP Gateway", icon: "hub", href: "/dashboard/mcp-gateway" },
+      { label: "Endpoint & Key", icon: "key", href: "/dashboard/endpoint" },
       { label: "Proxy Pools", icon: "router", href: "/dashboard/proxy-pools" },
     ],
   },
@@ -31,20 +39,28 @@ export const NAV_GROUPS = [
     items: [
       {
         label: "Token Saver",
-        icon: "compress",
+        icon: "savings",
         href: "/dashboard/token-saver",
         children: [
           { label: "Statistics", href: "/dashboard/token-saver" },
           { label: "Settings", href: "/dashboard/token-saver/settings" },
-          { label: "Headroom", href: "/dashboard/headroom" },
-          { label: "Test Savers", href: "/dashboard/compression-studio" },
         ],
       },
+      { label: "Headroom", icon: "memory", href: "/dashboard/headroom" },
+      { label: "Test Savers", icon: "compress", href: "/dashboard/compression-studio" },
     ],
   },
   {
-    label: "MEDIA",
+    label: "INTEGRATE",
     items: [
+      { label: "MCP Gateway", icon: "hub", href: "/dashboard/mcp-gateway" },
+      { label: "CLI Tools", icon: "build", href: "/dashboard/cli-tools" },
+      { label: "Skills", icon: "extension", href: "/dashboard/skills" },
+      {
+        label: "Auto-configure",
+        icon: "auto_fix_high",
+        href: "/dashboard/auto-configure",
+      },
       {
         label: "Embedding",
         icon: "deployed_code",
@@ -73,23 +89,11 @@ export const NAV_GROUPS = [
     ],
   },
   {
-    label: "SYSTEM",
-    items: [
-      { label: "Endpoint & Key", icon: "key", href: "/dashboard/endpoint" },
-      { label: "CLI Tools", icon: "build", href: "/dashboard/cli-tools" },
-      {
-        label: "Auto-configure",
-        icon: "auto_fix_high",
-        href: "/dashboard/auto-configure",
-      },
-      { label: "Skills", icon: "extension", href: "/dashboard/skills" },
-    ],
-  },
-  {
-    label: "HELP",
+    label: "REFERENCE",
     items: [
       { label: "API Docs", icon: "description", href: "/dashboard/api-docs" },
       { label: "MCP Help", icon: "help", href: "/dashboard/mcp-help" },
+      { label: "Translator", icon: "translate", href: "/dashboard/translator" },
     ],
   },
 ];

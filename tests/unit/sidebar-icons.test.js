@@ -2,11 +2,7 @@ import { createElement } from "react";
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  navItems,
-  debugItems,
-  systemItems,
-  tokenSaverMenu,
-  providersMenu,
+  NAV_SECTIONS,
   COMBINED_WEB_ITEM,
   PROFILE_NAV_ITEM,
   BRAND_LOGO_SRC,
@@ -15,92 +11,144 @@ import {
   isActivePath,
 } from "../../src/shared/components/SidebarNavIcons";
 
-describe("SidebarNavIcons", () => {
-  it("maps top nav labels to expected icon glyphs", () => {
-    const map = new Map(navItems.map((i) => [i.label, i.icon]));
+const section = (key) => NAV_SECTIONS.find((s) => s.key === key);
+const itemEntries = (key) => section(key).entries.filter((e) => e.type === "item");
+const itemHrefs = (key) => itemEntries(key).map((e) => e.href);
+const itemLabels = (key) => itemEntries(key).map((e) => e.label);
+const allHrefs = () =>
+  NAV_SECTIONS.flatMap((s) =>
+    s.entries.flatMap((e) => (e.type === "group" ? e.children.map((c) => c.href) : e.type === "item" ? [e.href] : []))
+  );
+
+describe("SidebarNavIcons information architecture", () => {
+  it("orders the five labeled sections MONITOR → BUILD → OPTIMIZE → INTEGRATE → REFERENCE", () => {
+    expect(NAV_SECTIONS.map((s) => s.label)).toEqual([
+      "Monitor",
+      "Build",
+      "Optimize",
+      "Integrate",
+      "Reference",
+    ]);
+  });
+
+  it("groups observability routes under Monitor, lifting Quota Tracker and Health out of Providers", () => {
+    expect(itemHrefs("monitor")).toEqual([
+      "/dashboard/usage",
+      "/dashboard/timeline",
+      "/dashboard/quota",
+      "/dashboard/health",
+      "/dashboard/console-log",
+    ]);
+    expect(itemLabels("monitor")).toEqual([
+      "Usage",
+      "Timeline",
+      "Quota Tracker",
+      "Health",
+      "Console Log",
+    ]);
+    const map = new Map(itemEntries("monitor").map((i) => [i.label, i.icon]));
     expect(map.get("Usage")).toBe("bar_chart");
     expect(map.get("Timeline")).toBe("timeline");
-    expect(map.get("Playground")).toBe("chat");
-    expect(map.get("Combos")).toBe("layers");
-    expect(map.get("MCP Gateway")).toBe("hub");
-    expect(navItems[1].href).toBe("/dashboard/timeline");
+    expect(map.get("Quota Tracker")).toBe("data_usage");
+    expect(map.get("Health")).toBe("monitor_heart");
+    expect(map.get("Console Log")).toBe("terminal");
   });
 
-  it("does not include removed or relocated entries in top nav", () => {
-    const labels = new Set(navItems.map((i) => i.label));
-    expect(labels).not.toContain("Providers");
-    expect(labels).not.toContain("Endpoint & Key");
-    expect(labels).not.toContain("CLI Tools");
-    expect(labels).not.toContain("Token Saver");
-    expect(labels).not.toContain("PXPIPE");
-    expect(labels).not.toContain("Free Providers");
-    // Quota Tracker and Provider Health live only under the Providers menu;
-    // they must not also appear as top-level entries (no duplicate nav rows).
-    expect(labels).not.toContain("Quota Tracker");
-    expect(labels).not.toContain("Provider Health");
-  });
-
-  it("centralizes debug and combined web icon glyphs", () => {
-    expect(debugItems.map((i) => [i.label, i.icon])).toEqual([
-      ["Console Log", "terminal"],
-      ["Translator", "translate"],
+  it("groups routing and credential routes under Build with Providers as a direct link", () => {
+    expect(itemHrefs("build")).toEqual([
+      "/dashboard/playground",
+      "/dashboard/combos",
+      "/dashboard/providers",
+      "/dashboard/endpoint",
+      "/dashboard/proxy-pools",
     ]);
+    expect(itemLabels("build")).toEqual([
+      "Playground",
+      "Combos",
+      "Providers",
+      "Endpoint & Key",
+      "Proxy Pools",
+    ]);
+    // Providers is no longer a collapsible group; it links straight to the
+    // configuration grid and stays highlighted on child pages.
+    expect(section("build").entries.some((e) => e.type === "group")).toBe(false);
+    const providers = itemEntries("build").find((i) => i.href === "/dashboard/providers");
+    expect(providers.exact).toBe(false);
+  });
+
+  it("groups token-saving tooling under Optimize with a collapsible Token Saver pair", () => {
+    const tokenSaver = section("optimize").entries.find((e) => e.type === "group");
+    expect(tokenSaver.label).toBe("Token Saver");
+    expect(tokenSaver.icon).toBe("savings");
+    expect(tokenSaver.children.map((c) => c.label)).toEqual(["Statistics", "Settings"]);
+    expect(tokenSaver.children.map((c) => c.href)).toEqual([
+      "/dashboard/token-saver",
+      "/dashboard/token-saver/settings",
+    ]);
+    // Headroom and Test Savers are siblings, not Token Saver children.
+    expect(itemHrefs("optimize")).toEqual([
+      "/dashboard/headroom",
+      "/dashboard/compression-studio",
+    ]);
+    expect(itemLabels("optimize")).toEqual(["Headroom", "Test Savers"]);
+  });
+
+  it("groups client/media integration routes under Integrate with the media accordion", () => {
+    expect(itemHrefs("integrate")).toEqual([
+      "/dashboard/mcp-gateway",
+      "/dashboard/cli-tools",
+      "/dashboard/skills",
+      "/dashboard/auto-configure",
+    ]);
+    const media = section("integrate").entries.find((e) => e.type === "media");
+    expect(media.label).toBe("Media Providers");
+    expect(media.icon).toBe("perm_media");
+    expect(media.basePath).toBe("/dashboard/media-providers");
+  });
+
+  it("groups docs and debug aids under Reference, with Translator feature-gated", () => {
+    expect(itemLabels("reference")).toEqual(["API Docs", "MCP Help", "Translator"]);
+    expect(itemHrefs("reference")).toEqual([
+      "/dashboard/api-docs",
+      "/dashboard/mcp-help",
+      "/dashboard/translator",
+    ]);
+    const translator = itemEntries("reference").find((i) => i.label === "Translator");
+    expect(translator.requiresTranslator).toBe(true);
+  });
+
+  it("keeps every dashboard route exactly once across sections", () => {
+    const hrefs = allHrefs();
+    expect(new Set(hrefs).size).toBe(hrefs.length);
+    // Spot-check the relocated routes still exist somewhere.
+    for (const href of [
+      "/dashboard/quota",
+      "/dashboard/health",
+      "/dashboard/console-log",
+      "/dashboard/endpoint",
+      "/dashboard/proxy-pools",
+      "/dashboard/mcp-gateway",
+      "/dashboard/api-docs",
+      "/dashboard/mcp-help",
+    ]) {
+      expect(hrefs).toContain(href);
+    }
+  });
+
+  it("centralizes the combined web icon glyph", () => {
     expect(COMBINED_WEB_ITEM).toMatchObject({
       label: "Web Fetch & Search",
       icon: "travel_explore",
     });
   });
 
-  it("moves endpoint, key, and CLI tools into system items", () => {
-    const map = new Map(systemItems.map((i) => [i.label, i.icon]));
-    expect(map.get("Endpoint & Key")).toBe("api");
-    expect(map.get("CLI Tools")).toBe("terminal");
-    expect(map.get("Proxy Pools")).toBe("lan");
-    expect(map.get("Skills")).toBe("extension");
-  });
-
-  it("exposes a collapsible providers menu with configuration, health and quota", () => {
-    expect(providersMenu.label).toBe("Providers");
-    expect(providersMenu.icon).toBe("dns");
-    expect(providersMenu.children.map((c) => c.label)).toEqual([
-      "Configuration",
-      "Health",
-      "Quota Tracker",
-    ]);
-    expect(providersMenu.children.map((c) => c.href)).toEqual([
-      "/dashboard/providers",
-      "/dashboard/health",
-      "/dashboard/quota",
-    ]);
-    const config = providersMenu.children.find((c) => c.href === "/dashboard/providers");
-    expect(config.exact).toBe(false);
-  });
-
-  it("exposes a collapsible token saver menu with statistics, settings and headroom", () => {
-    expect(tokenSaverMenu.label).toBe("Token Saver");
-    expect(tokenSaverMenu.icon).toBe("savings");
-    expect(tokenSaverMenu.children.map((c) => c.label)).toEqual([
-      "Statistics",
-      "Settings",
-      "Headroom",
-      "Test Savers",
-    ]);
-    expect(tokenSaverMenu.children.map((c) => c.href)).toEqual([
-      "/dashboard/token-saver",
-      "/dashboard/token-saver/settings",
-      "/dashboard/headroom",
-      "/dashboard/compression-studio",
-    ]);
-  });
-
-  it("keeps profile settings separate from token saver settings", () => {
+  it("keeps profile settings pinned outside the sections and separate from token saver settings", () => {
     expect(PROFILE_NAV_ITEM).toMatchObject({
       href: "/dashboard/profile",
       label: "Settings",
       icon: "settings",
     });
-    const tokenSaverHrefs = new Set(tokenSaverMenu.children.map((c) => c.href));
-    expect(tokenSaverHrefs).not.toContain(PROFILE_NAV_ITEM.href);
+    expect(allHrefs()).not.toContain(PROFILE_NAV_ITEM.href);
   });
 
   describe("isActivePath", () => {
@@ -131,12 +179,10 @@ describe("SidebarNavIcons", () => {
     });
   });
 
-  it("marks nested top-level nav items as exact: false so children stay highlighted", () => {
-    const providers = navItems.find((i) => i.href === "/dashboard/providers");
-    expect(providers).toBeUndefined();
-    const mcp = navItems.find((i) => i.href === "/dashboard/mcp-gateway");
-    const cli = systemItems.find((i) => i.href === "/dashboard/cli-tools");
-    const usage = navItems.find((i) => i.href === "/dashboard/usage");
+  it("marks nested nav items as exact: false so children stay highlighted", () => {
+    const mcp = itemEntries("integrate").find((i) => i.href === "/dashboard/mcp-gateway");
+    const cli = itemEntries("integrate").find((i) => i.href === "/dashboard/cli-tools");
+    const usage = itemEntries("monitor").find((i) => i.href === "/dashboard/usage");
     expect(mcp.exact).toBe(false);
     expect(cli.exact).toBe(false);
     expect(usage.exact).toBeUndefined();

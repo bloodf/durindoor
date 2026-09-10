@@ -120,7 +120,7 @@ export default function SelectiveTransferPanel() {
           <>
             <div className="grid gap-3 sm:grid-cols-2">
               {[["providers", "Providers"], ["combos", "Combos"]].map(([kind, title]) => (
-                <div key={kind} className="rounded-dd border border-dd-border bg-dd-surface-2 p-3">
+                <div key={kind} className="rounded-dd bg-dd-surface-2 p-3">
                   <p className="mb-2 text-xs font-medium text-dd-muted">{title}</p>
                   {catalog[kind].map((row) => (
                     <Checkbox key={row.id} checked={selection[kind].includes(row.id)} onChange={(checked) => toggle(kind, row.id, checked)} label={row.name} />
@@ -136,7 +136,7 @@ export default function SelectiveTransferPanel() {
               <input ref={fileRef} className="hidden" type="file" accept="application/json,.json" onChange={selectFile} />
             </div>
             {preview ? (
-              <div className="rounded-dd border border-dd-border bg-dd-surface-2 p-3 text-xs text-dd-muted">
+              <div className="rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-muted">
                 <p className="font-medium text-dd-text">Export preview</p>
                 <p>Providers: {preview.providers.join(", ") || "None"}</p>
                 <p>Combos: {preview.combos.join(", ") || "None"}</p>

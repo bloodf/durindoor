@@ -20,7 +20,7 @@ export default function MitmModelMappingRow({
   const reasoningOptions = REASONING_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
 
   return (
-    <div className="rounded-dd border border-dd-border bg-dd-surface-2 p-2.5 transition-colors hover:border-dd-accent/30">
+    <div className="rounded-dd bg-dd-surface-2 p-2.5 transition-colors">
       <div className={`grid grid-cols-1 gap-2 ${showReasoning ? "sm:grid-cols-[9rem_minmax(12rem,1fr)_8rem_auto]" : "sm:grid-cols-[9rem_minmax(12rem,1fr)_auto]"} sm:items-center`}>
         <label htmlFor={`mitm-model-${controlId}`} className="text-xs font-semibold text-dd-text sm:text-right">
           {model.name}

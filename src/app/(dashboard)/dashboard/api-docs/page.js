@@ -82,7 +82,7 @@ export default function ApiDocsPage() {
       </div>
       <CardContent className="space-y-3 text-[13px] leading-5 text-dd-muted">
         <p>Replace <InlineCode>YOUR-HOST</InlineCode> and <InlineCode>YOUR_API_KEY</InlineCode>.</p>
-        <pre tabIndex={0} aria-label="Example request" className="overflow-x-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-4 font-mono text-xs leading-5 text-dd-text" role="region"><code>{CHAT_COMPLETIONS_CURL}</code></pre>
+        <pre tabIndex={0} aria-label="Example request" className="overflow-x-auto rounded-dd bg-dd-surface-2 p-4 font-mono text-xs leading-5 text-dd-text" role="region"><code>{CHAT_COMPLETIONS_CURL}</code></pre>
       </CardContent>
     </Card>
   </div>;

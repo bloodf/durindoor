@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import KeyValue from "@/shared/ui/components/KeyValue.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { isString } from "@/shared/utils/typeChecks.js";
+import { buildConnectionNameMap, connectionDisplayName } from "@/shared/utils/connectionDisplay.js";
 import TimelineDetailSkeleton from "./TimelineDetailSkeleton.jsx";
 
 function groupEvents(events) {
@@ -38,7 +39,7 @@ function EventRow({ event }) {
         {event.summary ? <span className="text-dd-text">{event.summary}</span> : null}
       </div>
       {event.payload != null ? (
-        <pre tabIndex={0} aria-label={`Timeline event #${event.seq} details`} className="mt-1.5 overflow-x-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-2.5 text-xs text-dd-text" role="region">
+        <pre tabIndex={0} aria-label={`Timeline event #${event.seq} details`} className="mt-1.5 overflow-x-auto rounded-dd bg-dd-surface-2 p-2.5 text-xs text-dd-text" role="region">
           {isString(event.payload) ? event.payload : JSON.stringify(event.payload, null, 2)}
         </pre>
       ) : null}
@@ -84,6 +85,16 @@ export default function TimelineDetailPage() {
   const [expanded, setExpanded] = useState({});
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [connectionNames, setConnectionNames] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/providers", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => { if (!cancelled && body) setConnectionNames(buildConnectionNameMap(body.connections)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,7 +158,7 @@ export default function TimelineDetailPage() {
             { label: "Provider", value: trace.provider || "—" },
             { label: "Model", value: trace.model || "—", mono: true },
             { label: "Started", value: trace.started_at || "—", mono: true },
-            { label: "Connection", value: trace.connection_id || "—", mono: true },
+            { label: "Connection", value: connectionDisplayName(trace.connection_id, connectionNames), mono: true },
           ]} />
         </CardContent>
       </Card>

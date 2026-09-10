@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
@@ -8,8 +7,6 @@ import { Badge } from "@/shared/ui/components/Badge.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 
 export function LoginView({
-  wordmarkFailed,
-  setWordmarkFailed = () => {},
   authMode,
   oidcConfigured,
   oidcLoginLabel,
@@ -33,23 +30,21 @@ export function LoginView({
 }) {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-dd-bg p-4">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-dd-accent-soft opacity-50" />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 [background-image:linear-gradient(to_right,var(--dd-border-subtle)_1px,transparent_1px),linear-gradient(to_bottom,var(--dd-border-subtle)_1px,transparent_1px)] [background-size:48px_48px] opacity-40" />
-      <div className="relative z-10 w-full max-w-md bg-dd-bg">
+      <div className="relative z-10 w-full max-w-md">
         <div className="mb-8 text-center">
-          {wordmarkFailed ? (
-            <span className="text-2xl font-semibold text-dd-text">DurinDoor</span>
-          ) : (
-            <Image
-              src="/durindoor-wordmark.png"
-              alt="DurinDoor"
-              width={872}
-              height={354}
-              priority
-              onError={() => setWordmarkFailed(true)}
-              className="mx-auto h-auto w-72 max-w-full"
-            />
-          )}
+          {/*
+            Token-colored serif wordmark (the legacy /durindoor-wordmark.png is
+            white-on-transparent and invisible on the light "Parchment"
+            surface). Colors come from dd-* tokens so both themes render.
+          */}
+          <h1 className="font-serif text-4xl font-semibold tracking-tight text-dd-text">Durin Door</h1>
+          <div aria-hidden="true" className="mx-auto mt-2 flex w-40 items-center gap-2">
+            <span className="h-px flex-1 bg-dd-accent" />
+            <span className="size-2 rotate-45 bg-dd-accent" />
+            <span className="h-px flex-1 bg-dd-accent" />
+          </div>
+          <p className="mt-2 font-serif text-sm italic text-dd-muted">Speak, friend, and enter</p>
           <p className="mt-3 text-[13px] text-dd-muted">
             {authMode === "oidc" && oidcConfigured
               ? "Sign in with your OIDC provider to access the dashboard"

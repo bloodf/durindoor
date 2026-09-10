@@ -763,7 +763,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             </div>
 
             {models.length === 0 ? (
-              <div className="rounded-dd-lg border border-dashed border-dd-border bg-dd-surface-2 px-4 py-5 text-center">
+              <div className="px-4 py-5 text-center">
                 <span aria-hidden="true" className="material-symbols-outlined mb-1 text-xl text-dd-muted">layers</span>
                 <p className="text-xs text-dd-muted">No models added yet</p>
               </div>
@@ -797,7 +797,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
               Add Model
             </Button>
           </section>
-          <fieldset className="rounded-dd-lg border border-dd-border bg-dd-surface-2 p-3">
+          <fieldset className="border-t border-dd-border-subtle pt-3">
             <legend className="px-1 text-sm font-medium text-dd-text">Capability ceiling</legend>
             <p className="mb-2 text-[10px] text-dd-muted">Optional. Only disables derived features or lowers derived limits; blank fields preserve member-derived capabilities.</p>
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">

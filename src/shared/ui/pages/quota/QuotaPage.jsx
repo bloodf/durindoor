@@ -103,7 +103,7 @@ function ProviderCard({ provider }) {
         </div>
       </header>
       {rateLimited ? (
-        <div className="flex items-center justify-between rounded-dd border border-dd-border-subtle bg-dd-bg-alt px-3 py-2">
+        <div className="flex items-center justify-between rounded-dd bg-dd-bg-alt px-3 py-2">
           <div className="flex items-center gap-2">
             <StatusDot tone="danger" pulse />
             <span className="text-[13px] font-medium text-dd-danger">Rate limited</span>

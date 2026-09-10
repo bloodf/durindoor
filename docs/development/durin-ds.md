@@ -98,21 +98,43 @@ rows), not from another box.
   `bg-dd-surface-2` + radius only — an inset, not a frame.
 - Alert banners (tinted `bg-dd-*/10`) are the one exception: content that
   must read off the tint may sit on a solid `bg-dd-surface` chip.
+- Accent callouts (tinted `bg-dd-accent-soft` rows) inside a card keep the
+  tint but drop border + radius — they read as banner strips, not cards.
+
+### Themed pages outside the dashboard shell
+
+Standalone pages (`/login`, error pages) use the same tokens end to end:
+`bg-dd-bg` canvas, `Card` for the form surface, `text-dd-*` for all copy, and
+the accent from tokens for primary actions. The pre-paint theme bootstrap
+(`/theme-bootstrap.js`) runs app-wide, so these pages must never hardcode a
+theme or use a fixed-color asset: brand art that is white-on-transparent (the
+legacy `durindoor-wordmark.png`) is invisible on the light "Parchment"
+surface — render wordmarks as token-colored text instead. Full-page tinted
+overlays (e.g. `bg-dd-accent-soft` washes) are off-palette on standalone
+pages; decoration comes from the hairline grid pattern at low opacity.
 
 ### Typography & density
 
-Inter is the system font. Components default to 13px body text (`text-[13px]`)
-on 36px (md) and 28px (sm) control heights. The `.dd-tnum` helper enables
-tabular figures on every metric (`StatCard` value, `Pagination` numbers,
-`KeyValue` mono values, `DataTable` mono columns) so columns and counters do
-not reflow as numbers change.
+Inter is the system font. Components default to 13px body text (`text-[13px]`).
+The `.dd-tnum` helper enables tabular figures on every metric (`StatCard`
+value, `Pagination` numbers, `KeyValue` mono values, `DataTable` mono columns)
+so columns and counters do not reflow as numbers change.
 
-Density scale:
+### One control height
+
+All interactive controls — `Button`, `IconButton`, `Select`, `Input`,
+`SegmentedControl`, `Toggle`, and pill/segmented filter controls — render at a
+single height: **44px (`min-h-11`)**, regardless of `size="sm"`/`md"`. The
+`size` prop now only changes horizontal padding and font size, never height,
+so any mix of controls in one toolbar aligns. Pages must not hand-roll a
+fixed height (`h-7`/`h-8`/`h-9`/`h-10`) on or next to these controls; if a
+hand-rolled control is unavoidable, give it the same `min-h-11`. The one
+intentional exception remains the rows-per-page `<select>` that `Pagination`
+renders internally.
 
 | Token | Height | Use |
 | --- | --- | --- |
-| `sm` | 28px (h-7) | Dense toolbars, table rows |
-| `md` | 36px (h-9) | Default for forms, buttons |
+| `sm` / `md` | 44px (`min-h-11`) | Every interactive control, toolbars included |
 
 ### Iconography
 
@@ -380,11 +402,13 @@ The redesigned pages now exercise the full DS primitive set:
 
 | Size | Height | Typical use |
 | --- | --- | --- |
-| `sm` | 28px (`h-7`) | Dense toolbars, table footers |
-| `md` | 36px (`h-9`) | Default for forms, buttons |
+| `sm` | 44px (`min-h-11`) | Dense toolbars, table footers |
+| `md` | 44px (`min-h-11`) | Default for forms, buttons |
 
-Default to `md` everywhere. `sm` only in dense toolbars (`Header`
-actions, `Pagination`, table rows).
+One control height everywhere (44px, `min-h-11`) — see
+["One control height"](#one-control-height). `size` only tunes padding and
+font size; `sm` remains the convention in dense toolbars (`Header` actions,
+`Pagination`, table rows) so text stays compact.
 
 ### Focus and disabled
 

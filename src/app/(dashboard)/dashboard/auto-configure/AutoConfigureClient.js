@@ -28,13 +28,13 @@ function ActionEntry({ action }) {
   if (diagnostic) return <SetupDiagnosticCard diagnostic={diagnostic} />;
   if (!isString(action)) return null;
   if (!isCommandAction(action)) return <span className="whitespace-pre-wrap break-words text-xs text-dd-muted">{action}</span>;
-  return <div className="flex flex-wrap items-center gap-2"><code tabIndex={0} aria-label="Configuration command" className="flex min-h-11 max-w-full items-center overflow-x-auto rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 font-mono text-xs text-dd-text" role="region">{action}</code><Button variant="secondary" size="sm" onClick={() => copy(action, action)} icon="content_copy">{copied === action ? "Copied" : "Copy"}</Button></div>;
+  return <div className="flex flex-wrap items-center gap-2"><code tabIndex={0} aria-label="Configuration command" className="flex min-h-11 max-w-full items-center overflow-x-auto rounded-dd bg-dd-surface-2 px-2 font-mono text-xs text-dd-text" role="region">{action}</code><Button variant="secondary" size="sm" onClick={() => copy(action, action)} icon="content_copy">{copied === action ? "Copied" : "Copy"}</Button></div>;
 }
 function ServiceRow({ name, svc, dryRun }) {
   const meta = SERVICE_META[name] || { label: name, icon: "settings" };
   const status = serviceStatus(svc, dryRun);
   const actions = Array.isArray(svc?.actions) ? svc.actions : [];
-  return <div className="flex flex-col gap-2 rounded-dd border border-dd-border-subtle bg-dd-surface-2 p-3">
+  return <div className="flex flex-col gap-2 rounded-dd bg-dd-surface-2 p-3">
     <div className="flex items-center justify-between gap-2"><div className="flex min-w-0 items-center gap-2"><span aria-hidden="true" className="material-symbols-outlined text-[18px] text-dd-subtle">{meta.icon}</span><span className="truncate text-[13px] font-medium text-dd-text">{meta.label}</span></div><Badge tone={STATUS_TONE[status.variant] || "neutral"} size="sm">{status.label}</Badge></div>
     {actions.length ? <ul className="space-y-1"><>{actions.map((action, index) => <li key={index}><ActionEntry action={action} /></li>)}</></ul> : null}
   </div>;

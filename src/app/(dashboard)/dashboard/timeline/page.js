@@ -10,6 +10,7 @@ import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 import { createLiveReloadScheduler } from "./href.js";
+import { buildConnectionNameMap, connectionDisplayName } from "@/shared/utils/connectionDisplay.js";
 import TimelineSkeleton from "./TimelineSkeleton.jsx";
 
 const FILTER_KEYS = ["provider", "model", "connectionId", "apiKeyId", "status", "endpoint", "startDate", "endDate"];
@@ -34,6 +35,7 @@ function TimelineList() {
   const loadAbortRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [captureOn, setCaptureOn] = useState(null);
+  const [connectionNames, setConnectionNames] = useState({});
   const [live, setLive] = useState(false);
   const [error, setError] = useState("");
   const query = useMemo(() => {
@@ -81,8 +83,7 @@ function TimelineList() {
         const settings = await settingsRes.json();
         if (!controller.signal.aborted) setCaptureOn(settings.enableProxyTimeline === true);
       }
-    } catch (err) {
-      if (err?.name !== "AbortError") setError(err?.message || "Failed to load timeline");
+    } catch (err) {      if (err?.name !== "AbortError") setError(err?.message || "Failed to load timeline");
     } finally {
       if (loadAbortRef.current === controller) setLoading(false);
     }
@@ -92,6 +93,15 @@ function TimelineList() {
     load();
     return () => loadAbortRef.current?.abort();
   }, [load]);
+  // Connection ids render as names; fetch the catalog once (fail-open).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/providers", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => { if (!cancelled && body) setConnectionNames(buildConnectionNameMap(body.connections)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     if (!live) return undefined;
     const source = new EventSource(`/api/timeline/stream?${query.toString()}`);
@@ -116,11 +126,11 @@ function TimelineList() {
     { key: "status", label: "Status", render: (trace) => <Badge tone={statusTone(trace.status || "running")} size="sm">{trace.status || "running"}</Badge> },
     { key: "provider", label: "Provider", render: (trace) => trace.provider ? <span className="inline-flex items-center gap-2"><ProviderLogo provider={trace.provider} size={16} /><span>{trace.provider}</span></span> : "—" },
     { key: "model", label: "Model", mono: true, render: (trace) => trace.model || "—" },
-    { key: "connection_id", label: "Connection", mono: true, render: (trace) => trace.connection_id || "—" },
+    { key: "connection_id", label: "Connection", mono: true, render: (trace) => connectionDisplayName(trace.connection_id, connectionNames) },
     { key: "event_count", label: "Events", align: "right", render: (trace) => trace.event_count ?? 0 },
     { key: "fallback_count", label: "Fallbacks", align: "right", render: (trace) => trace.fallback_count ?? 0 },
     { key: "total_ms", label: "ms", align: "right", mono: true, render: (trace) => trace.total_ms ?? "—" },
-  ], []);
+  ], [connectionNames]);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">

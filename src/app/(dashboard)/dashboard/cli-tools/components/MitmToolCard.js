@@ -174,7 +174,7 @@ export default function MitmToolCard({
         {isExpanded ? (
           <div id={`mitm-tool-body-${tool.id}`} className="mt-4 flex flex-col gap-4 border-t border-dd-border-subtle pt-4">
             {mitmHosts.length > 0 ? (
-              <div className="mt-2 rounded-dd border border-dd-border bg-dd-surface-2 px-2 py-1.5">
+              <div className="mt-2 rounded-dd bg-dd-surface-2 px-2 py-1.5">
                 <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-dd-text/80">
                   Edit hosts file manually to add the following entries:
                 </p>

@@ -18,7 +18,7 @@ import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo
 import { getAutoComboCatalog } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
-import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 
@@ -83,9 +83,10 @@ async function handleFetchHandler(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid URL format");
   }
 
-  // SSRF guard: reject internal/private/metadata targets
+  // SSRF guard: reject internal/private/metadata targets, including
+  // hostnames that merely resolve to one (DNS lookup, not just literal checks).
   try {
-    assertPublicUrl(targetUrl);
+    await assertPublicUrlResolved(targetUrl);
   } catch (err) {
     log.warn("FETCH", "Blocked URL", { url: targetUrl });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, err.message);

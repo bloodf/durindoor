@@ -54,7 +54,12 @@ function isFreshDb(adapter) {
   try {
     const row = adapter.get(`SELECT COUNT(*) as c FROM _meta`);
     return !row || row.c === 0;
-  } catch {
+  } catch (err) {
+    const msg = String(err?.message || "").toLowerCase();
+    if (msg.includes("malformed") || msg.includes("corrupt") || msg.includes("disk image")) {
+      console.error(`[DB][CRITICAL] SQLite disk image is malformed: ${err.message}. Aborting to prevent data wipe.`);
+      throw err;
+    }
     return true;
   }
 }
@@ -63,6 +68,7 @@ function isFreshDb(adapter) {
 function isPostgres(adapter) {
   return Boolean(adapter && adapter.capabilities && adapter.capabilities.isPostgres);
 }
+
 
 function runVersionedMigrations(adapter) {
   if (isPostgres(adapter)) return runPgVersionedMigrations(adapter);
@@ -258,6 +264,8 @@ function importLegacyDetails(adapter, data) {
 // ─── Main entry ──────────────────────────────────────────────────────────
 export async function runMigrationOnce(adapter) {
   if (_migratedAdapters.has(adapter)) return;
+  // Check SQLite integrity before any migration, backup, marker, or version mutation.
+  if (!isPostgres(adapter)) runIntegrityCheckOrThrow(adapter);
 
   // Capture freshness BEFORE migrations stamp _meta (otherwise we'd misclassify
   // a brand-new DB as non-fresh once schemaVersion is written).

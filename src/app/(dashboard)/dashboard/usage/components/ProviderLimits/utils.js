@@ -8,8 +8,11 @@ export const QUOTA_CACHE_KEY = "quotaCacheData";
 // below) and the dashboard's displayed countdown resets (ProviderLimits/index.js derives
 // REFRESH_INTERVAL_S from this instead of hardcoding seconds).
 export const REFRESH_INTERVAL_MS = 300000;
-// Claude usage/quota endpoint rate-limits; poll it less often than other providers
-export const CLAUDE_REFRESH_INTERVAL_MS = 600000;
+// Claude usage/quota endpoint rate-limits aggressively; poll it far less often
+// than other providers. The server side (open-sse/services/usage/claude.js)
+// matches this cadence with a 30-minute cache TTL plus an escalating 429
+// cooldown, so most ticks read the cache instead of hitting Anthropic.
+export const CLAUDE_REFRESH_INTERVAL_MS = 1800000;
 export const DEPLETED_QUOTA_THRESHOLD = 5;
 export const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
 export const CONNECTIONS_PAGE_SIZE = 20;

@@ -40,8 +40,9 @@ describe("quota auto-refresh scheduler", () => {
 
     expect(REFRESH_INTERVAL_MS).toBe(300_000);
     expect(onCountdown).toHaveBeenLastCalledWith(300);
-    expect(claudeEvery).toBe(2);
-    expect(claudeEvery * REFRESH_INTERVAL_MS).toBe(600_000);
+    // Claude polls every 6th tick: 30 minutes between upstream quota reads.
+    expect(claudeEvery).toBe(6);
+    expect(claudeEvery * REFRESH_INTERVAL_MS).toBe(1_800_000);
     scheduler.stop();
   });
 

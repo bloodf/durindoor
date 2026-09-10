@@ -160,11 +160,14 @@ export async function writePostgresUrlToSettings(url) {
       }
       next = { [SETTINGS_FIELD]: encryptPostgresUrl(url) };
     }
-    await adapter.transaction(async () => {
-      const row = await adapter.get(`SELECT data FROM settings WHERE id = 1`);
+    // Synchronous callback: the SQLite adapters implement
+    // `transaction(fn)` as better-sqlite3's sync `db.transaction(fn)()`,
+    // which does not await a promise returned by `fn`.
+    await adapter.transaction(() => {
+      const row = adapter.get(`SELECT data FROM settings WHERE id = 1`);
       const current = row ? JSON.parse(row.data) : {};
       const merged = { ...current, ...next };
-      await adapter.run(
+      adapter.run(
         `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
         [JSON.stringify(merged)]
       );

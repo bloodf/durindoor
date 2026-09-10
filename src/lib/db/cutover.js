@@ -37,8 +37,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { runMigrationOnce } from "./migrate.js";
+import { pgLatestVersion } from "./migrations/postgres/index.js";
 import { createPostgresAdapter } from "./adapters/pgAdapter.js";
 import { openSqliteAdapter } from "./driver.js";
+import { currentDataFile } from "./paths.js";
 import { runMirror } from "./dialects/postgres/mirror.js";
 import { getActiveEngine, setActiveAdapter } from "./driver.js";
 import { readSettingsViaTransientSqlite, writeSettingsViaTransientSqlite } from "./postgresFallback.js";
@@ -124,9 +126,9 @@ export async function runCutover({ url, sslmode, includeRequestDetails = false }
     pg = await createPostgresAdapter({ url, sslmode });
     // 3. run the PG migration set
     await runMigrationOnce(pg);
-    schemaVersion = 17; // pinned to the parallel set's latest; updated by the runner
+    schemaVersion = pgLatestVersion(); // the parallel set's latest applied version
     // 4. open a fresh SQLite adapter (read-only-ish) for the mirror source
-    const sqlite = await openSqliteAdapter();
+    const sqlite = await openSqliteAdapter(currentDataFile());
     try {
       const mirrorResult = await runMirror(sqlite, pg, { includeRequestDetails });
       tablesMigrated = mirrorResult.tablesMigrated;
@@ -213,7 +215,7 @@ export async function runRollback({ snapshotPath } = {}) {
   await acquireCutoverLock();
   const t0 = Date.now();
   try {
-    const sqlite = await openSqliteAdapter();
+    const sqlite = await openSqliteAdapter(currentDataFile());
     try {
       // Ensure the snapshot exists; if not, the operator must pick one
       // via `body.snapshotPath` (or the most recent one is auto-picked).
@@ -228,7 +230,7 @@ export async function runRollback({ snapshotPath } = {}) {
       try { await sqlite.close?.(); } catch { /* noop */ }
     }
     // Reopen SQLite as the active adapter and persist the flip.
-    const freshSqlite = await openSqliteAdapter();
+    const freshSqlite = await openSqliteAdapter(currentDataFile());
     setActiveAdapter(freshSqlite);
     await writeSettingsViaTransientSqlite({
       databaseEngine: "sqlite",

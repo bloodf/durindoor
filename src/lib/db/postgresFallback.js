@@ -16,6 +16,7 @@
 // read the `settings` row, then closes it.
 
 import { openSqliteAdapter } from "./driver.js";
+import { currentDataFile } from "./paths.js";
 import { createPostgresAdapter } from "./adapters/pgAdapter.js";
 import { evaluateCapabilities } from "./postgresCapabilityGate.js";
 import { runMigrationOnce } from "./migrate.js";
@@ -38,9 +39,12 @@ export function __setSqliteOnlyForTests(value) {
  * merged settings object (defaults + persisted overrides) or `null` on
  * any failure. The transient adapter is closed before this function
  * returns so it does not hold the file lock.
+ *
+ * Exported for `cutover.js`, which reuses the same transient-read path
+ * when persisting the engine flip after a successful cutover.
  */
-async function readSettingsViaTransientSqlite() {
-  const adapter = await openSqliteAdapter();
+export async function readSettingsViaTransientSqlite() {
+  const adapter = await openSqliteAdapter(currentDataFile());
   try {
     const row = await adapter.get(`SELECT data FROM settings WHERE id = 1`);
     if (!row) return null;
@@ -54,15 +58,24 @@ async function readSettingsViaTransientSqlite() {
  * Persist a partial settings update via a transient SQLite adapter.
  * Atomic CAS write: read, merge, write, all inside a single
  * transaction on the transient connection.
+ *
+ * The callback MUST stay synchronous: the SQLite adapters implement
+ * `transaction(fn)` as better-sqlite3's sync `db.transaction(fn)()`,
+ * which does not await a promise returned by `fn` — an async callback
+ * would still be running (against a closed handle) when the `finally`
+ * below closes the adapter.
+ *
+ * Exported for `cutover.js` (persisting the engine flip / recording
+ * `databaseEngineError` from the cutover and rollback pipelines).
  */
-async function writeSettingsViaTransientSqlite(updates) {
-  const adapter = await openSqliteAdapter();
+export async function writeSettingsViaTransientSqlite(updates) {
+  const adapter = await openSqliteAdapter(currentDataFile());
   try {
-    await adapter.transaction(async () => {
-      const row = await adapter.get(`SELECT data FROM settings WHERE id = 1`);
+    await adapter.transaction(() => {
+      const row = adapter.get(`SELECT data FROM settings WHERE id = 1`);
       const current = row ? parseJson(row.data, {}) : {};
       const next = { ...current, ...updates };
-      await adapter.run(
+      adapter.run(
         `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
         [stringifyJson(next)]
       );
@@ -110,7 +123,7 @@ export async function openActiveAdapter() {
   }
   const engine = settings && settings.databaseEngine === "postgres" ? "postgres" : "sqlite";
   if (engine !== "postgres" || sqliteOnlyOverride) {
-    return openSqliteAdapter();
+    return openSqliteAdapter(currentDataFile());
   }
   const url = await resolvePostgresSecret();
   if (!url) {
@@ -119,7 +132,7 @@ export async function openActiveAdapter() {
         databaseEngineError: "PG engine is on but no connection URL is configured",
       });
     } catch { /* noop */ }
-    return openSqliteAdapter();
+    return openSqliteAdapter(currentDataFile());
   }
   let pg;
   try {
@@ -130,7 +143,7 @@ export async function openActiveAdapter() {
         databaseEngineError: `PG connect failed: ${err.message}`,
       });
     } catch { /* noop */ }
-    return openSqliteAdapter();
+    return openSqliteAdapter(currentDataFile());
   }
   const clusterInfo = await readClusterInfo(pg);
   if (!clusterInfo) {
@@ -140,7 +153,7 @@ export async function openActiveAdapter() {
         databaseEngineError: "PG cluster reachable but version query failed",
       });
     } catch { /* noop */ }
-    return openSqliteAdapter();
+    return openSqliteAdapter(currentDataFile());
   }
   const cap = settings.databasePgVersion || 18;
   const features = settings.databasePgFeatures || {};
@@ -163,7 +176,7 @@ export async function openActiveAdapter() {
         databaseEngineError: `PG migration failed: ${err.message}`,
       });
     } catch { /* noop */ }
-    return openSqliteAdapter();
+    return openSqliteAdapter(currentDataFile());
   }
   // Clear the engine error on a clean boot.
   try {

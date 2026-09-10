@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { ensureDirs, hardenPermissions, currentDataFile } from "./paths.js";
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
@@ -105,30 +106,38 @@ export async function openSqliteAdapter(filePath) {
 export async function getAdapter() {
   // Tests mutate process.env.DATA_DIR between cases without resetting module
   // state; when the path changes, close the cached instance and re-init.
-  // Tests also flip `databaseEngine` between cases; the bootstrap sees
-  // the change and re-inits against the new engine.
-  const settings = await readSettingsForDriver();
+  // Engine flips do NOT re-read the settings row here: the cutover and
+  // rollback pipelines transfer the adapter explicitly via
+  // setActiveAdapter(). The engine is resolved once per (re)initialization
+  // by readEngineViaTransientSqlite() — routing this through
+  // settingsRepo.getSettings() would recurse forever
+  // (getAdapter → getSettings → getAdapter) and hang the process until
+  // the heap is exhausted.
   const currentFile = liveDataFile();
-  const currentEngine = settings ? settings.databaseEngine || "sqlite" : "sqlite";
-  const cacheKey = `${currentEngine}:${currentFile}`;
-  if (state.instance && state.cacheKey && state.cacheKey !== cacheKey) {
+  if (state.instance && state.file && state.file !== currentFile) {
     try {
       if (isFunction(state.instance.close)) await state.instance.close();
     } catch {/* best-effort */}
     state.instance = null;
     state.initPromise = null;
+    state.cacheKey = null;
   }
   if (state.instance) return state.instance;
   if (!state.initPromise) {
-    state.initPromise = initAdapter(currentEngine).
+    state.initPromise = (async () => {
+      const engine = await readEngineViaTransientSqlite();
+      return initAdapter(engine);
+    })().
     then((adapter) => {
       state.instance = adapter;
-      state.cacheKey = cacheKey;
+      state.file = liveDataFile();
+      state.cacheKey = `${getActiveEngine()}:${state.file}`;
       return adapter;
     }).
     catch((error) => {
       state.instance = null;
       state.initPromise = null;
+      state.cacheKey = null;
       throw error;
     });
   }
@@ -136,16 +145,34 @@ export async function getAdapter() {
 }
 
 /**
- * Read the settings row just enough to decide which engine to boot.
- * Lazy-imports the settings repo to avoid a circular import (driver
- * is imported by repos, which are imported by settingsRepo).
+ * Read `settings.databaseEngine` through a throwaway SQLite connection
+ * (opened and closed inside this call) so the driver never depends on
+ * the repos — the repos call back into getAdapter(), which would be a
+ * circular wait. On any failure (missing file, missing settings table
+ * on a fresh pre-migration DB, unreadable row) the default "sqlite"
+ * engine is returned, matching the runtime's SQLite-first contract.
  */
-async function readSettingsForDriver() {
+async function readEngineViaTransientSqlite() {
+  // A missing data file means a fresh, pre-migration install: default
+  // to SQLite without opening anything (the sql.js fallback in the
+  // adapter chain would otherwise create an in-memory DB and persist
+  // an empty file over the path the real boot is about to migrate).
+  if (!fs.existsSync(liveDataFile())) return "sqlite";
+  let adapter;
   try {
-    const { getSettings } = await import("./repos/settingsRepo.js");
-    return await getSettings();
+    adapter = await openSqliteAdapter(liveDataFile());
   } catch {
-    return null;
+    return "sqlite";
+  }
+  try {
+    const row = await adapter.get(`SELECT data FROM settings WHERE id = 1`);
+    if (!row || !row.data) return "sqlite";
+    const parsed = JSON.parse(row.data);
+    return parsed && parsed.databaseEngine === "postgres" ? "postgres" : "sqlite";
+  } catch {
+    return "sqlite";
+  } finally {
+    try { await adapter.close?.(); } catch { /* noop */ }
   }
 }
 
@@ -176,5 +203,7 @@ export function setActiveAdapter(adapter) {
   if (!adapter) throw new Error("setActiveAdapter: adapter is required");
   state.instance = adapter;
   state.initPromise = Promise.resolve(adapter);
-  state.cacheKey = `${getActiveEngine()}:${liveDataFile()}`;
+  state.file = liveDataFile();
+  state.cacheKey = `${getActiveEngine()}:${state.file}`;
 }
+

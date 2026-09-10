@@ -19,6 +19,7 @@
 
 ## Upstream ports
 
+- port(upstream): #3885 - Claude model requests drop rejected top-level `diagnostics` telemetry while preserving nested tool schemas and other model families.
 - port(upstream): #3862 - reject SQLite corruption before migration writes.
 - sync(upstream): GLM Coding Plan connections now provide web search through the bundled Z.AI MCP endpoint using the existing API key. (upstream `5a86f6a8d` + `9dbdca0e5`)
 - port(upstream): #3820 + #3800 + #3791 - OpenCode Go: muse-spark-1.2 with Responses tool-call fixes, a stable opaque `x-opencode-session` header (caller-supplied headers are never honored), and quota tracking. (#819, #825, #828)

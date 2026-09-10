@@ -9,8 +9,11 @@ import { isOpenCodeZenBaseUrl } from "../../providers/shared.js";
 import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const STRIP_RULES = [
-/** All Claude models reject the deprecated temperature parameter upstream with HTTP 400. */
-{ match: /claude/i, drop: ["temperature"] },
+/**
+ * Claude models reject deprecated temperature and Claude Code's top-level
+ * telemetry with `diagnostics: Extra inputs are not permitted`.
+ */
+{ match: /claude/i, drop: ["temperature", "diagnostics"] },
 // GitHub Copilot gpt-5.4: temperature unsupported.
 { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
 // OpenAI GPT-6 Astra supports neither sampling nor top-logprob controls.

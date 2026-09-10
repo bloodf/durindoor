@@ -1,67 +1,69 @@
-// decolua/9router#3342 — CodeBuddy CN must report and independently apply
-// its agent-identity and configurable system-prompt length rules.
+// decolua/9router#3823 — CodeBuddy CN replaces coding-agent identities while
+// preserving legitimate system prompts regardless of their length.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CodeBuddyExecutor } from "../../open-sse/executors/codebuddy-cn.js";
 
-const ENV_KEY = "CODEBUDDY_SYSTEM_PROMPT_MAX_LEN";
 const NEUTRAL_PROMPT = "You are a helpful AI assistant that helps with software engineering tasks.";
 const IDENTITY_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
 const LONG_PROJECT_PROMPT = `Project conventions. ${"Prefer small, focused functions and explicit names. ".repeat(60)}`;
+const SHORT_PROJECT_PROMPT = "Use explicit names and focused functions.";
 
 function transform(body, executor = new CodeBuddyExecutor()) {
   return executor.transformRequest("glm-5.2", body, false, {});
 }
 
-describe("CodeBuddyExecutor system-prompt filter (#3342)", () => {
+describe("CodeBuddyExecutor system-prompt identity filter (#3823)", () => {
   let warn;
 
   beforeEach(() => {
-    delete process.env[ENV_KEY];
     warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    delete process.env[ENV_KEY];
+    vi.unstubAllEnvs();
     warn.mockRestore();
   });
 
-  it("replaces a system prompt above the configured threshold and names the LENGTH rule", () => {
-    process.env[ENV_KEY] = "100";
-
-    const output = transform({ messages: [{ role: "system", content: LONG_PROJECT_PROMPT }] });
-
-    expect(output.messages[0].content).toBe(NEUTRAL_PROMPT);
-    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("LENGTH"));
-    expect(warn.mock.calls[0][0]).toContain(ENV_KEY);
-  });
-
-  it("disables only length matching when the threshold is zero", () => {
-    process.env[ENV_KEY] = "0";
+  it("preserves long legitimate string and typed-block system prompts byte-for-byte", () => {
+    const typedContent = [{ type: "text", text: LONG_PROJECT_PROMPT }];
 
     const output = transform({
       messages: [
         { role: "system", content: LONG_PROJECT_PROMPT },
-        { role: "system", content: IDENTITY_PROMPT },
+        { role: "system", content: typedContent },
       ],
     });
 
+    expect(output.stream).toBe(true);
     expect(output.messages[0].content).toBe(LONG_PROJECT_PROMPT);
-    expect(output.messages[1].content).toBe(NEUTRAL_PROMPT);
-    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("IDENTITY"));
+    expect(output.messages[1].content).toEqual(typedContent);
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it.each(["0x10", "1e3", "+5", "not-a-length"])(
-    "falls back to 2000 for invalid threshold %s",
-    (threshold) => {
-      process.env[ENV_KEY] = threshold;
-      expect(LONG_PROJECT_PROMPT.length).toBeGreaterThan(2000);
+  it("ignores the retired length environment setting", () => {
+    vi.stubEnv("CODEBUDDY_SYSTEM_PROMPT_MAX_LEN", "100");
 
-      const output = transform({ messages: [{ role: "system", content: LONG_PROJECT_PROMPT }] });
+    const output = transform({ messages: [{ role: "system", content: LONG_PROJECT_PROMPT }] });
 
-      expect(output.messages[0].content).toBe(NEUTRAL_PROMPT);
-      expect(warn.mock.calls[0][0]).toContain("2000");
-    },
-  );
+    expect(output.stream).toBe(true);
+    expect(output.messages[0].content).toBe(LONG_PROJECT_PROMPT);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("replaces actual identity markers in string and typed-block system prompts", () => {
+    const output = transform({
+      messages: [
+        { role: "system", content: IDENTITY_PROMPT },
+        { role: "system", content: [{ type: "text", text: IDENTITY_PROMPT }] },
+        { role: "system", content: SHORT_PROJECT_PROMPT },
+      ],
+    });
+
+    expect(output.stream).toBe(true);
+    expect(output.messages[0].content).toBe(NEUTRAL_PROMPT);
+    expect(output.messages[1].content).toEqual([{ type: "text", text: NEUTRAL_PROMPT }]);
+    expect(output.messages[2].content).toBe(SHORT_PROJECT_PROMPT);
+  });
 
   it("never rewrites non-system messages", () => {
     const output = transform({
@@ -91,11 +93,4 @@ describe("CodeBuddyExecutor system-prompt filter (#3342)", () => {
     expect(output.messages[0].content).toBe(NEUTRAL_PROMPT);
   });
 
-  it("preserves typed text-block shape when replacing a prompt", () => {
-    const output = transform({
-      messages: [{ role: "system", content: [{ type: "text", text: IDENTITY_PROMPT }] }],
-    });
-
-    expect(output.messages[0].content).toEqual([{ type: "text", text: NEUTRAL_PROMPT }]);
-  });
 });

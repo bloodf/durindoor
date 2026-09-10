@@ -101,7 +101,61 @@ const DEFAULT_SETTINGS = {
   disabledFreeProviders: [],
   // #10372: opt-in only — fresh installs (or rows missing the persisted
   // key) must not run in debug mode; a persisted `true` is preserved.
-  debugMode: false
+  debugMode: false,
+  // ─── Opt-in PostgreSQL engine (issue: feat/postgres-engine) ──────────
+  // The runtime is SQLite by default. PG is opt-in; when the operator
+  // supplies a connection URL and runs a successful cutover, this flips
+  // to `"postgres"`. The `databaseEngineError` field surfaces the last
+  // boot-time fallback event (string, nullable).
+  databaseEngine: "sqlite",
+  databaseEngineError: null,
+  databaseCutoverAt: null,
+  databaseCutoverSchemaVersion: null,
+  // Cap on which major version the runtime will treat as the floor for
+  // feature adoption. Valid values: 16, 17, 18. The cluster's actual
+  // major version is read at boot; if it is below the cap, the runtime
+  // auto-disables features with `requires > clusterMajor` and records a
+  // warning in `databaseEngineError`.
+  databasePgVersion: 18,
+  // Per-feature toggle map. Each entry is `{ enabled, requires: ">=N" }`.
+  // The runtime computes `effectiveEnabled = enabled && clusterMajor >= N`
+  // and surfaces the effective state on the settings page. See
+  // `src/lib/db/postgresCapabilityGate.js` for the canonical enumeration.
+  databasePgFeatures: {
+    jsonTable:            { enabled: true,  requires: ">=17" },
+    mergeReturning:       { enabled: true,  requires: ">=17" },
+    copyOnError:          { enabled: true,  requires: ">=17" },
+    sslnegotiationDirect: { enabled: true,  requires: ">=17" },
+    incrementalBackup:    { enabled: true,  requires: ">=17" },
+    streamingIo:          { enabled: true,  requires: ">=17" },
+    vacuumMemoryOpt:      { enabled: true,  requires: ">=17" },
+    notNullElimination:   { enabled: true,  requires: ">=17" },
+    inBtreeOpt:           { enabled: true,  requires: ">=17" },
+    parallelGin:          { enabled: true,  requires: ">=17" },
+    aio:                  { enabled: true,  requires: ">=18" },
+    skipScan:             { enabled: true,  requires: ">=18" },
+    logLockWaits:         { enabled: true,  requires: ">=18" },
+    pgUpgradeSwap:        { enabled: true,  requires: ">=18" },
+    plannerStatsPreserved:{ enabled: true,  requires: ">=18" },
+    uuidv7:               { enabled: false, requires: ">=18" },
+    onConflictDoSelect:   { enabled: false, requires: ">=19" },
+    forPortionOf:         { enabled: false, requires: ">=19" },
+    waitForLsn:           { enabled: false, requires: ">=19" },
+    pgPlanAdvice:         { enabled: false, requires: ">=19" },
+    parallelAutovacuum:   { enabled: false, requires: ">=19" },
+    repack:               { enabled: false, requires: ">=19" },
+    onlineChecksumToggle: { enabled: false, requires: ">=19" },
+  },
+  // Redacted connection info for the UI display. The actual URL (with
+  // password) is held in `DATA_DIR/durindoor-secrets.json` (mode 0600)
+  // or in the env var `DURINDOOR_PG_URL`. These fields are only the
+  // non-secret parts.
+  postgresHost: "",
+  postgresPort: 5432,
+  postgresDatabase: "",
+  postgresUser: "",
+  postgresSslmode: "prefer",
+  postgresAuthSource: "settings", // or "env"
 };
 
 function migrateObservabilityKeys(raw) {

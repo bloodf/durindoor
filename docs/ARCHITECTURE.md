@@ -113,6 +113,10 @@ Antigravity's executor rewrites `OpenCode` branding in provider-bound system ins
 
 The primary database is SQLite at `DATA_DIR/db/data.sqlite`. The default `DATA_DIR` remains `~/.9router` or `%APPDATA%\9router` for compatibility. Legacy JSON files may exist during migration and should be treated as migration artifacts unless the running version still reads a specific file.
 
+DurinDoor can also run against a remote PostgreSQL cluster (opt-in, off by default). The PG engine is selected by the `databaseEngine` setting; the cutover pipeline (`src/lib/db/cutover.js`) mirrors every SQLite table to PG in 500-row chunks inside per-table transactions, then flips the runtime to PG. The cutover is reversible: the pipeline snapshots the source SQLite file to `DATA_DIR/db/backups/data.sqlite.postgres-cutover-<ts>.sqlite` before the flip, and the rollback action restores the most recent snapshot.
+
+The PG engine supports PostgreSQL 16, 17, 18, and is forward-compatible with 19. The `databasePgVersion` setting is a cap on the major version; the `databasePgFeatures` map is a per-feature toggle table. The capability gate (`src/lib/db/postgresCapabilityGate.js`) reads the cluster's `server_version_num` at boot and computes the effective enabled-state of every feature. A full operator runbook is in [`docs/operations/postgres.md`](operations/postgres.md); a developer guide for the dialect helper and the generator is in [`docs/development/postgres.md`](development/postgres.md).
+
 ## Security Surfaces
 
 - Dashboard authentication and session cookies.

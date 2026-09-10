@@ -30,7 +30,8 @@
     "storybook:build": "storybook build",
     "test:ui": "playwright test --config playwright.config.mjs",
     "test:storybook": "DURINDOOR_QA_MODE=storybook playwright test --config playwright.config.mjs tests/e2e/storybook.spec.js",
-    "check:storybook-coverage": "node scripts/check-storybook-coverage.mjs --manifest tests/e2e/storybook-surfaces.json --index storybook-static/index.json --mode final"
+    "check:storybook-coverage": "node scripts/check-storybook-coverage.mjs --manifest tests/e2e/storybook-surfaces.json --index storybook-static/index.json --mode final",
+    "check:postgres-migrations": "node scripts/check-postgres-migrations.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1084.0",
@@ -55,6 +56,8 @@
     "node-machine-id": "^1.1.12",
     "open": "^11.0.0",
     "ora": "^9.4.1",
+    "pg": "^8.13.0",
+    "pg-query-stream": "^4.10.0",
     "pxpipe-proxy": "0.9.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -72,6 +75,7 @@
     "better-sqlite3": "^12.11.1"
   },
   "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
+  "comment_pg": "added for the opt-in PostgreSQL engine (see docs/operations/postgres.md); never imported when databaseEngine === 'sqlite'",
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@babel/parser": "7.29.8",

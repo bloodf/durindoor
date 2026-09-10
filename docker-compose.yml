@@ -14,7 +14,102 @@ services:
       PORT: "20128"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
+      # The PG engine is opt-in. To enable it, set DURINDOOR_PG_URL in
+      # .env (or pass the connection string in the dashboard) and run
+      # a cutover from the Settings > Database page. The env var is
+      # read at boot; the dashboard secret is read from
+      # /app/data/durindoor-secrets.json (mode 0600) when the env var
+      # is absent.
+      DURINDOOR_PG_URL: ${DURINDOOR_PG_URL:-}
+      DURINDOOR_PG_SSLMODE: ${DURINDOOR_PG_SSLMODE:-prefer}
+      DURINDOOR_PG_PREFERRED_VERSION: ${DURINDOOR_PG_PREFERRED_VERSION:-18}
+
+  # Optional PostgreSQL 18 cluster for the opt-in PG engine. Started
+  # only when the `postgres18` profile is enabled:
+  #   docker compose --profile postgres18 up
+  # The `durindoor` service can reach it at `postgres18:5432`.
+  postgres18:
+    image: postgres:18
+    container_name: durindoor-postgres18
+    profiles: ["postgres18"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: durindoor
+      POSTGRES_PASSWORD: durindoor
+      POSTGRES_DB: durindoor
+      # PG 18 AIO subsystem; 2-3x sequential-scan speedup on the
+      # cutover mirror.
+      POSTGRES_INITDB_ARGS: "--io-method=worker --io-max-workers=8"
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "log_lock_waits=on"
+    ports:
+      - "5432:5432"
+    volumes:
+      - durindoor-pg18-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U durindoor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optional PG 17 cluster. Same usage as `postgres18` but with
+  # `log_lock_waits=on` and the 17-specific tunables (parallel GIN,
+  # streaming I/O, vacuum memory rewrite, NOT NULL elimination).
+  postgres17:
+    image: postgres:17
+    container_name: durindoor-postgres17
+    profiles: ["postgres17"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: durindoor
+      POSTGRES_PASSWORD: durindoor
+      POSTGRES_DB: durindoor
+    command:
+      - "postgres"
+      - "-c"
+      - "log_lock_waits=on"
+      - "-c"
+      - "wal_level=replica"
+    ports:
+      - "5432:5432"
+    volumes:
+      - durindoor-pg17-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U durindoor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optional PG 16 cluster. Defaults only; no PG-18-specific tunables.
+  postgres16:
+    image: postgres:16
+    container_name: durindoor-postgres16
+    profiles: ["postgres16"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: durindoor
+      POSTGRES_PASSWORD: durindoor
+      POSTGRES_DB: durindoor
+    ports:
+      - "5432:5432"
+    volumes:
+      - durindoor-pg16-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U durindoor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   durindoor-data:
     name: durindoor-data
+  durindoor-pg16-data:
+    name: durindoor-pg16-data
+  durindoor-pg17-data:
+    name: durindoor-pg17-data
+  durindoor-pg18-data:
+    name: durindoor-pg18-data

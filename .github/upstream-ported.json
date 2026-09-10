@@ -88,6 +88,10 @@
       "why": "CHANGELOG 'Ports decolua/9router#3556'; no matching port(upstream) subject"
     },
     {
+      "pr": 3567,
+      "why": "defer_loading cache-breakpoint guard ported with #3687 ('port(upstream): #3687 - avoid cache breakpoints on deferred tools', fork PR #728); behavior identical, upstream #3567 merged the same fix as a separate PR"
+    },
+    {
       "pr": 3691,
       "why": "ported with #3595; CHANGELOG 'Ports the compatibility boundary from open decolua/9router#3595, #3691, and #3693'"
     },
@@ -114,6 +118,14 @@
     {
       "pr": 3737,
       "why": "ported with #3728 via upstream direct commit 70f15aa50b67cda9238fb695c81dbecd7d5050e6"
+    },
+    {
+      "pr": 3793,
+      "why": "search trust boundary (admin-configured private endpoints trusted, client baseUrl overrides guarded) ported together with #3714 in the same fork PR; fork already enforced the distinction at resolveBaseUrl via outboundUrlGuard"
+    },
+    {
+      "pr": 3819,
+      "why": "muse-spark-1.3-contributor + Responses parallel-tool-call item_id keying folded into 'port(upstream): #3820 - muse-spark-1.2 and Responses tool fixes' (fork PR #819); both upstream test files present in tests/unit/"
     }
   ],
   "_note_independent": "An independently implemented upstream concern still counts as PORTED for scan purposes: the point of the scan is to surface work NOT yet made in this fork. #3498/#3500/#3501/#3527 were written independently rather than cherry-picked, but their behavior and tests exist here, so re-proposing them would be a false positive.",

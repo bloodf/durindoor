@@ -49,6 +49,11 @@ const meta = {
 export default meta;
 
 export const Default = {
+  args: {
+    // Storybook seam: the fixture fetch mock answers regardless of the
+    // password header, so any non-empty value unlocks the page.
+    initialPassword: "storybook",
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { name: "Database Settings" })).toBeVisible();

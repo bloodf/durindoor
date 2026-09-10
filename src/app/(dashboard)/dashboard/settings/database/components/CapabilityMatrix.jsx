@@ -63,7 +63,7 @@ export function CapabilityMatrix({ features, effective }) {
                       <span
                         className={
                           enabled
-                            ? "inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-600"
+                            ? "inline-flex items-center gap-1 rounded-full bg-dd-success/10 px-2 py-0.5 text-dd-success"
                             : "inline-flex items-center gap-1 rounded-full bg-dd-muted/10 px-2 py-0.5 text-dd-muted"
                         }
                       >

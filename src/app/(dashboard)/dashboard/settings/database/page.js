@@ -6,11 +6,12 @@ import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import StatCard from "@/shared/ui/components/StatCard.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
+import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
 import { CapabilityMatrix } from "./components/CapabilityMatrix.jsx";
 
 const REFRESH_MS = 5000;
 
-export default function DatabaseSettingsPage() {
+export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [testUrl, setTestUrl] = useState("");
@@ -20,12 +21,26 @@ export default function DatabaseSettingsPage() {
   const [showCutoverConfirm, setShowCutoverConfirm] = useState(false);
   const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
   const [error, setError] = useState(null);
+  // The /api/settings/database/* routes require the dashboard password
+  // via the `x-9r-password` header (same dual-factor contract as the
+  // export/import routes). The password is collected once through a
+  // PromptDialog and held in memory for the session of this page; a 401
+  // clears it and re-opens the dialog. `window.prompt` is forbidden by
+  // the Durin DS contract (AGENTS.md §5A).
+  const [password, setPassword] = useState(initialPassword);
+  const [passwordError, setPasswordError] = useState("");
 
   const refresh = useCallback(async () => {
+    if (!password) return;
     try {
       const res = await fetch("/api/settings/database/engine", {
-        headers: { "x-9r-password": window.prompt("Dashboard password") || "" },
+        headers: { "x-9r-password": password },
       });
+      if (res.status === 401) {
+        setPassword("");
+        setPasswordError("Password rejected — try again.");
+        return;
+      }
       if (!res.ok) {
         setError(`Failed to load (${res.status})`);
         return;
@@ -36,7 +51,7 @@ export default function DatabaseSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [password]);
 
   useEffect(() => {
     refresh();
@@ -52,7 +67,7 @@ export default function DatabaseSettingsPage() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-9r-password": window.prompt("Dashboard password") || "",
+          "x-9r-password": password,
         },
         body: JSON.stringify({ url: testUrl, persist: true }),
       });
@@ -69,7 +84,7 @@ export default function DatabaseSettingsPage() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-9r-password": window.prompt("Dashboard password") || "",
+          "x-9r-password": password,
         },
         body: JSON.stringify({}),
       });
@@ -91,7 +106,7 @@ export default function DatabaseSettingsPage() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-9r-password": window.prompt("Dashboard password") || "",
+          "x-9r-password": password,
         },
         body: JSON.stringify({}),
       });
@@ -104,6 +119,27 @@ export default function DatabaseSettingsPage() {
     } finally {
       setShowRollbackConfirm(false);
     }
+  }
+
+  if (!password) {
+    return (
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-6 sm:px-6">
+        <PageHeader icon="database" title="Database Settings" subtitle="Choose between the local SQLite engine and an opt-in PostgreSQL cluster." />
+        <PromptDialog
+          open
+          title="Dashboard password required"
+          label={passwordError ? `Password — ${passwordError}` : "Password"}
+          placeholder="Dashboard password"
+          inputType="password"
+          submitLabel="Unlock"
+          onSubmit={(value) => {
+            setPasswordError("");
+            setPassword(value);
+          }}
+          onCancel={() => window.history.back()}
+        />
+      </main>
+    );
   }
 
   if (loading) {
@@ -130,7 +166,7 @@ export default function DatabaseSettingsPage() {
       {error ? (
         <Card padding={false}>
           <CardContent>
-            <p className="text-[13px] text-red-500">{error}</p>
+            <p className="text-[13px] text-dd-danger">{error}</p>
           </CardContent>
         </Card>
       ) : null}
@@ -177,7 +213,7 @@ export default function DatabaseSettingsPage() {
             </Button>
           </div>
           {testResult ? (
-            <p className={`mt-2 text-[13px] ${testResult.ok ? "text-emerald-500" : "text-red-500"}`}>
+            <p className={`mt-2 text-[13px] ${testResult.ok ? "text-dd-success" : "text-dd-danger"}`}>
               {testResult.ok
                 ? `Connected in ${testResult.latencyMs}ms (${testResult.serverVersion || "unknown"})`
                 : `Failed: ${testResult.error}`}

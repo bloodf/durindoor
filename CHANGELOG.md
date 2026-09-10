@@ -1,3 +1,21 @@
+# 4.2.0
+
+## Features
+
+- feat(ui): restructure sidebar IA and redesign login with Doors of Durin shader (#839)
+
+## Fixes
+
+- fix(ui): flatten remaining frames, restyle login, normalize control heights (#838)
+
+## Upstream ports
+
+- port(upstream): #3885 - drop rejected Claude diagnostics field
+- port(upstream): #3862 - reject SQLite corruption before migration
+- port(upstream): #3823 - preserve long CodeBuddy system prompts
+- sync(upstream): fold zai-search into the glm provider for web search
+- port(upstream): #3714 - close SSRF guard bypasses in ssrfGuard.js
+
 # 4.1.0
 
 ## Features

@@ -1,6 +1,6 @@
 {
   "name": "durindoor",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "DurinDoor CLI - Start and manage DurinDoor server",
   "bin": {
     "durindoor": "./cli.js"

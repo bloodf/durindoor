@@ -118,7 +118,7 @@ describe("Claude usage", () => {
       expect(second).toEqual({ message: "Rate limited, try again later." });
       expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
 
-      await vi.advanceTimersByTimeAsync(180 * 1000 + 1);
+      await vi.advanceTimersByTimeAsync(15 * 60 * 1000 + 1);
       proxyAwareFetch.mockResolvedValueOnce(jsonResponse(oauthSuccessBody()));
       const afterCooldown = await getClaudeUsage("oauth-token-3", null, "oauth");
       expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
@@ -238,9 +238,13 @@ describe("Claude usage", () => {
 
     const parsed = parseQuotaData("claude", usage);
 
-    expect(parsed).toHaveLength(2);
+    // Upstream e214fb1 injects a 100%-available "weekly fable (7d)" fallback
+    // row whenever a weekly window exists, so stale payloads now surface 3 rows
+    // in canonical Claude quota order.
+    expect(parsed).toHaveLength(3);
     expect(parsed[0]).toMatchObject({ name: "session (5h)", used: 15, total: 100 });
     expect(parsed[1]).toMatchObject({ name: "weekly (7d)", used: 42, total: 100 });
+    expect(parsed[2]).toMatchObject({ name: "weekly fable (7d)", used: 0, total: 100 });
   });
 
   it("registers Claude for both OAuth and API-key usage via registry features", () => {

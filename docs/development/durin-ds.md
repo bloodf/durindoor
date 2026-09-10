@@ -81,6 +81,24 @@ Borders (`--dd-border` for structural, `--dd-border-subtle` for insets)
 separate the layers; a soft warm `--dd-shadow-elevated` is reserved for
 popovers (`Select`, `Tooltip`, `Drawer`, `Modal`).
 
+### No nested frames
+
+A surface that already carries border + radius + background (`Card`,
+`Modal`, `Drawer`, an expanded `DataTable` row) is the **only** frame for
+its contents. Never place a second bordered, rounded panel inside it —
+no "card in a card". Structure inside a frame comes from spacing,
+typography, and hairline dividers (`divide-y` / `border-dd-border-subtle`
+rows), not from another box.
+
+- `DataTable` inside any surrounding surface renders with
+  `framed={false}`; the default `framed={true}` is for tables that are
+  their own top-level surface on the page.
+- Insets that must lift off the parent background (`<pre>`/code blocks,
+  log viewers, grouped form fields) drop the border and use
+  `bg-dd-surface-2` + radius only — an inset, not a frame.
+- Alert banners (tinted `bg-dd-*/10`) are the one exception: content that
+  must read off the tint may sit on a solid `bg-dd-surface` chip.
+
 ### Typography & density
 
 Inter is the system font. Components default to 13px body text (`text-[13px]`)
@@ -210,7 +228,7 @@ prefix.
 
 | Component | File | One-line description | Story |
 | --- | --- | --- | --- |
-| `DataTable` | `components/DataTable.jsx` | Token-backed `<table>` with `filterBar`, `emptyState`, `pagination` slots, density (`comfortable`/`compact`), `mono`/`align` column options, and skeleton `loading` state. Forwards a full `pagination` props object to `Pagination`; it does not own slicing, totals, or page state. Pages keep existing `usePagination` or server-pagination behavior (totals, cursors, callbacks, current-page bounds). Block page migration if existing contract cannot be expressed through DS `pagination`. | `Durin DS/Data/DataTable` |
+| `DataTable` | `components/DataTable.jsx` | Token-backed `<table>` with `filterBar`, `emptyState`, `pagination` slots, density (`comfortable`/`compact`), `mono`/`align` column options, and skeleton `loading` state. `framed={false}` renders the table flat for embedding inside another surface (see "No nested frames"). Forwards a full `pagination` props object to `Pagination`; it does not own slicing, totals, or page state. Pages keep existing `usePagination` or server-pagination behavior (totals, cursors, callbacks, current-page bounds). Block page migration if existing contract cannot be expressed through DS `pagination`. | `Durin DS/Data/DataTable` |
 | `EmptyState` | `components/EmptyState.jsx` | Centered placeholder with neutral icon tile, title, message, optional primary action. | `Durin DS/Data/EmptyState` |
 | `KeyValue` | `components/KeyValue.jsx` | Dense `<dl>` meta row for detail panels; entries separated by hairline dividers; `mono` values use mono stack with `.dd-tnum`. | `Durin DS/Data/KeyValue` |
 | `PageHeader` | `components/PageHeader.jsx` | Top-of-page identity row: emerald icon tile, title, optional subtitle, right-aligned `actions`. Wraps on narrow viewports. | `Durin DS/Data/PageHeader` |

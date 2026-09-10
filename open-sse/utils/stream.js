@@ -106,7 +106,8 @@ export function createSSEStream(options = {}) {
     onCoherentTerminal = null,
     providerBody = null,
     apiKey = null,
-    claudeClassifierCompat = "off"
+    claudeClassifierCompat = "off",
+    credentials = null
   } = options;
 
   let buffer = "";
@@ -150,7 +151,7 @@ export function createSSEStream(options = {}) {
   const omitStreamReasoning = sanitizeMinimaxThinking && shouldOmitStreamReasoning(provider);
 
   const state = mode === STREAM_MODE.TRANSLATE ?
-  { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, signatureNamespace: connectionId, ...(claudeCompat && { claudeCompat: true }) } :
+  { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
   null;
   // Keep a compact completion view while chunks flow. Unlike retained request
   // diagnostics, this sees terminal metadata even when callers cap raw events.
@@ -1342,7 +1343,7 @@ export function createSSEStream(options = {}) {
   return transformStream;
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null, credentials = null) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -1357,7 +1358,8 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     onCoherentTerminal,
     providerBody,
     apiKey,
-    claudeClassifierCompat
+    claudeClassifierCompat,
+    credentials
   });
 }
 

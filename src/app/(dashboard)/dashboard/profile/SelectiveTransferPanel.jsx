@@ -24,6 +24,9 @@ function bundleIds(bundle) {
 }
 
 export default function SelectiveTransferPanel() {
+  // Renders inside the "Local Mode" Card on the profile page: the panel is a
+  // hairline-separated content block, not a second bordered card, so the Card
+  // remains the only frame (Durin DS "no nested frames" rule).
   const [catalog, setCatalog] = useState(null);
   const [selection, setSelection] = useState({ providers: [], combos: [] });
   const [pending, setPending] = useState(null);
@@ -105,7 +108,7 @@ export default function SelectiveTransferPanel() {
   }
 
   return (
-    <section className="mt-4 rounded-dd-lg border border-dd-border bg-dd-surface p-4">
+    <section className="border-t border-dd-border-subtle pt-5">
       <div className="flex flex-col gap-3">
         <div>
           <h3 className="text-[13px] font-semibold text-dd-text">Selective transfer</h3>

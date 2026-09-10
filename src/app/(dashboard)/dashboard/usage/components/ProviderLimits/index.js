@@ -19,6 +19,12 @@ import Tooltip from "@/shared/ui/components/Tooltip.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import QuotaTable from "./QuotaTable";
 import {
+  groupConnectionsByProvider,
+  mergeAccountQuotas,
+  readMergedViewMap,
+  writeMergedViewPreference } from
+"./grouping";
+import {
   parseQuotaData,
   calculatePercentage,
   filterQuotasByVisibility,
@@ -481,6 +487,8 @@ export default function ProviderLimits() {
     eligibleConnections: 0,
     providerFilteredConnections: 0
   });
+  // Per-provider merged/per-account view preference (localStorage-backed).
+  const [mergedProviders, setMergedProviders] = useState({});
 
   const { copied, copy } = useCopyToClipboard();
   const schedulerRef = useRef(null);
@@ -1162,6 +1170,8 @@ export default function ProviderLimits() {
     const key = getQuotaVisibilityKey(quota, quota.visibilityIndex);
     if (!connectionId || !key) return;
 
+    // Family-key pruning for Antigravity ("gemini"/"claude") lives inside
+    // updateQuotaVisibility (utils.js), which each queued mutation applies.
     pendingWrites.current.push((state) =>
     updateQuotaVisibility(state, connectionId, provider, key, true)
     );
@@ -1209,6 +1219,20 @@ export default function ProviderLimits() {
     };
   }, [autoRefresh, hasHydratedAutoRefresh]);
 
+  // Hydrate per-provider merged-view preferences from localStorage (client-only).
+  useEffect(() => {
+    setMergedProviders(readMergedViewMap());
+  }, []);
+
+  const toggleMergedView = useCallback((provider, merged) => {
+    setMergedProviders((prev) => {
+      const next = { ...prev };
+      if (merged) next[provider] = true;else delete next[provider];
+      return next;
+    });
+    writeMergedViewPreference(provider, merged);
+  }, []);
+
   const sortedConnections = useMemo(
     () =>
     sortVisibleConnections(
@@ -1247,6 +1271,12 @@ export default function ProviderLimits() {
     }
     return rows;
   }, [sortedConnections, quotaData, quotaVisibility]);
+
+  // One card per provider; account order inside a group follows the visible sort.
+  const providerGroups = useMemo(
+    () => groupConnectionsByProvider(sortedConnections),
+    [sortedConnections]
+  );
 
   // Connection is depleted when any quota entry hit the threshold
   const isConnectionDepleted = (conn) => {
@@ -1369,42 +1399,81 @@ export default function ProviderLimits() {
       {expiringFirst ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">Expiring-first currently reorders accounts inside current page. Cross-page ordering still follows backend pagination.</div> : null}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-busy={connectionsLoading || undefined}>
-        {connectionsLoading ? <Card className="md:col-span-2"><div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading provider limits...</div></Card> : hasVisibleConnections ? sortedConnections.map((conn) => {
-          const quota = quotaData[conn.id];
-          const isLoading = loading[conn.id];
-          const error = errors[conn.id];
-          const isInactive = conn.isActive === false;
-          const isCodex = conn.provider === "codex";
-          const codexPlan = isCodex ? getCodexPlan(quota, conn) : "";
-          const resetCreditCount = getCodexResetCreditCount(quota);
-          const isResettingLimit = resettingLimitId === conn.id;
-          const rowBusy = deletingId === conn.id || togglingId === conn.id || isResettingLimit;
-          const { visibleQuotas, hiddenQuotaRows } = connectionQuotaRows[conn.id] || { visibleQuotas: [], hiddenQuotaRows: [] };
-          const testStatus = isInactive ? "disabled" : conn.testStatus || "unknown";
-          const testStatusTone = isInactive ? "neutral" : conn.testStatus === "active" || conn.testStatus === "success" ? "success" : conn.testStatus === "error" || conn.testStatus === "expired" || conn.testStatus === "unavailable" ? "danger" : "neutral";
+        {connectionsLoading ? <Card className="md:col-span-2"><div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading provider limits...</div></Card> : hasVisibleConnections ? providerGroups.map((group) => {
+          const isGrouped = group.connections.length > 1;
+          const isMerged = isGrouped && mergedProviders[group.provider] === true;
+          const isCodexGroup = group.provider === "codex";
 
-          return <Card key={conn.id} padding={false} className={isInactive ? "min-w-0 opacity-60" : "min-w-0"}>
-            <CardHeader
-              title={<span className="inline-flex min-w-0 items-center gap-2"><ProviderLogo provider={conn.provider} size={32} /><span className="truncate capitalize">{conn.provider}</span></span>}
-              subtitle={<span className="flex min-w-0 flex-wrap items-center gap-1"><span className="truncate">{getConnectionLabel(conn)}</span>{getConnectionSecondaryLabel(conn) ? <span className="truncate">{getConnectionSecondaryLabel(conn)}</span> : null}</span>}
-              actions={<>
-                {isCodex && codexPlan ? <Badge tone="accent" size="sm" className="capitalize">{codexPlan}</Badge> : null}
-                {isCodex ? <>
-                  <Tooltip content={resetCreditCount > 0 ? `Use one Codex reset credit. Available: ${resetCreditCount}` : "No Codex reset credits available"}><Button variant="secondary" size="sm" icon={isResettingLimit ? "progress_activity" : "restart_alt"} onClick={() => setResetConfirmState({ connection: conn, resetCreditCount })} disabled={resetCreditCount <= 0 || isLoading || rowBusy} className={isResettingLimit ? "[&_span]:animate-spin dd-tnum" : "dd-tnum"} aria-label={resetCreditCount > 0 ? `Use one Codex reset credit. ${resetCreditCount} available.` : "No Codex reset credits available"}>{resetCreditCount}</Button></Tooltip>
-                  <Tooltip content="View Codex reset credit expiry"><IconButton label="View Codex reset credit expiry" icon="schedule" onClick={() => handleViewCodexResetCredits(conn)} disabled={isLoading || rowBusy} /></Tooltip>
-                </> : null}
-                {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && !isInactive ? <Tooltip content={AUTO_PING_TOOLTIPS[conn.provider]}><IconButton label="Toggle auto-ping" icon="bolt" onClick={() => toggleAutoPing(conn.id, conn.provider, autoPingMaps[conn.provider]?.[conn.id] !== true)} className={autoPingMaps[conn.provider]?.[conn.id] === true ? "text-dd-accent" : ""} /></Tooltip> : null}
-                <Tooltip content="Refresh quota"><IconButton label="Refresh quota" icon={isLoading ? "progress_activity" : "refresh"} onClick={() => refreshProvider(conn.id, conn.provider)} disabled={isLoading || rowBusy} className={isLoading ? "[&_span]:animate-spin" : ""} /></Tooltip>
-                <Tooltip content="Edit connection"><IconButton label="Edit connection" icon="edit" onClick={() => { setSelectedConnection(conn); setShowEditModal(true); }} disabled={rowBusy} /></Tooltip>
-                <Tooltip content="Delete connection"><IconButton label="Delete connection" icon="delete" onClick={() => setDeleteConfirmState(conn)} disabled={rowBusy} className="text-dd-danger hover:text-dd-danger" /></Tooltip>
-                <Toggle checked={conn.isActive ?? true} disabled={rowBusy} aria-label={conn.isActive ?? true ? "Disable connection" : "Enable connection"} onChange={(nextActive) => handleToggleConnectionActive(conn.id, nextActive)} />
-              </>}
-            />
-            <CardContent className="space-y-3 p-3">
+          const renderAccountSection = (conn, sectionIndex) => {
+            const quota = quotaData[conn.id];
+            const isLoading = loading[conn.id];
+            const error = errors[conn.id];
+            const isInactive = conn.isActive === false;
+            const isCodex = conn.provider === "codex";
+            const codexPlan = isCodex ? getCodexPlan(quota, conn) : "";
+            const resetCreditCount = getCodexResetCreditCount(quota);
+            const isResettingLimit = resettingLimitId === conn.id;
+            const rowBusy = deletingId === conn.id || togglingId === conn.id || isResettingLimit;
+            const { visibleQuotas, hiddenQuotaRows } = connectionQuotaRows[conn.id] || { visibleQuotas: [], hiddenQuotaRows: [] };
+            const testStatus = isInactive ? "disabled" : conn.testStatus || "unknown";
+            const testStatusTone = isInactive ? "neutral" : conn.testStatus === "active" || conn.testStatus === "success" ? "success" : conn.testStatus === "error" || conn.testStatus === "expired" || conn.testStatus === "unavailable" ? "danger" : "neutral";
+            const secondaryLabel = getConnectionSecondaryLabel(conn);
+
+            return <section key={conn.id} aria-label={getConnectionLabel(conn) || conn.id} className={[sectionIndex > 0 ? "border-t border-dd-border-subtle" : "", isInactive ? "opacity-60" : "", "flex flex-col gap-3 p-3"].filter(Boolean).join(" ")}>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate text-[13px] font-medium text-dd-text">{getConnectionLabel(conn)}</span>
+                  {secondaryLabel ? <span className="truncate text-xs text-dd-muted">{secondaryLabel}</span> : null}
+                </span>
+                <span className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  {isCodex && codexPlan ? <Badge tone="accent" size="sm" className="capitalize">{codexPlan}</Badge> : null}
+                  {isCodex ? <>
+                    <Tooltip content={resetCreditCount > 0 ? `Use one Codex reset credit. Available: ${resetCreditCount}` : "No Codex reset credits available"}><Button variant="secondary" size="sm" icon={isResettingLimit ? "progress_activity" : "restart_alt"} onClick={() => setResetConfirmState({ connection: conn, resetCreditCount })} disabled={resetCreditCount <= 0 || isLoading || rowBusy} className={isResettingLimit ? "[&_span]:animate-spin dd-tnum" : "dd-tnum"} aria-label={resetCreditCount > 0 ? `Use one Codex reset credit. ${resetCreditCount} available.` : "No Codex reset credits available"}>{resetCreditCount}</Button></Tooltip>
+                    <Tooltip content="View Codex reset credit expiry"><IconButton label="View Codex reset credit expiry" icon="schedule" onClick={() => handleViewCodexResetCredits(conn)} disabled={isLoading || rowBusy} /></Tooltip>
+                  </> : null}
+                  {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && !isInactive ? <Tooltip content={AUTO_PING_TOOLTIPS[conn.provider]}><IconButton label="Toggle auto-ping" icon="bolt" onClick={() => toggleAutoPing(conn.id, conn.provider, autoPingMaps[conn.provider]?.[conn.id] !== true)} className={autoPingMaps[conn.provider]?.[conn.id] === true ? "text-dd-accent" : ""} /></Tooltip> : null}
+                  <Tooltip content="Refresh quota"><IconButton label="Refresh quota" icon={isLoading ? "progress_activity" : "refresh"} onClick={() => refreshProvider(conn.id, conn.provider)} disabled={isLoading || rowBusy} className={isLoading ? "[&_span]:animate-spin" : ""} /></Tooltip>
+                  <Tooltip content="Edit connection"><IconButton label="Edit connection" icon="edit" onClick={() => { setSelectedConnection(conn); setShowEditModal(true); }} disabled={rowBusy} /></Tooltip>
+                  <Tooltip content="Delete connection"><IconButton label="Delete connection" icon="delete" onClick={() => setDeleteConfirmState(conn)} disabled={rowBusy} className="text-dd-danger hover:text-dd-danger" /></Tooltip>
+                  <Toggle checked={conn.isActive ?? true} disabled={rowBusy} aria-label={conn.isActive ?? true ? "Disable connection" : "Enable connection"} onChange={(nextActive) => handleToggleConnectionActive(conn.id, nextActive)} />
+                </span>
+              </div>
               {conn.provider === "kiro" ? <div className="flex flex-wrap items-center gap-1"><Badge tone="accent" size="sm">{kiroMethodLabel(conn)}</Badge>{kiroRegion(conn) ? <Badge tone="info" size="sm">{kiroRegion(conn)}</Badge> : null}<Badge tone={testStatusTone} size="sm">{testStatus}</Badge>{conn.providerSpecificData?.profileArn ? <Button variant="ghost" size="sm" icon={copied === conn.id ? "check" : "content_copy"} onClick={() => copy(conn.providerSpecificData.profileArn, conn.id)} title={conn.providerSpecificData.profileArn} className="max-w-full justify-start px-2 font-mono text-[11px]"><span className="truncate">{conn.providerSpecificData.profileArn}</span></Button> : null}</div> : null}
               {isLoading ? <div className="flex justify-center py-5 text-dd-muted"><span role="status" aria-label="Loading quota" className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span></div> : error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger">{error}</div> : quota?.message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info">{quota.message}</div> : <QuotaTable quotas={visibleQuotas} compact sortMode={isCodex ? quotaSortMode : "default"} showSortLabel={isCodex && quotaSortMode !== "default"} onHideQuota={(quotaRow) => handleHideQuota(conn.id, conn.provider, quotaRow)} />}
               {hiddenQuotaRows.length > 0 ? <div className="flex flex-wrap items-center gap-1 border-t border-dd-border-subtle pt-2 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">visibility_off</span><span>Hidden:</span>{hiddenQuotaRows.map((quotaRow) => <Button key={getQuotaVisibilityKey(quotaRow, quotaRow.visibilityIndex)} variant="secondary" size="sm" onClick={() => handleShowQuota(conn.id, conn.provider, quotaRow)} title="Show this quota row">{quotaRow.name}</Button>)}</div> : null}
-            </CardContent>
+            </section>;
+          };
+
+          const mergedQuotas = isMerged ?
+          mergeAccountQuotas(group.connections.map((conn) => ({
+            connectionId: conn.id,
+            quotas: connectionQuotaRows[conn.id]?.visibleQuotas || []
+          }))) :
+          [];
+          const anyAccountLoading = group.connections.some((conn) => loading[conn.id]);
+
+          return <Card key={group.provider || group.connections[0]?.id} padding={false} className="min-w-0">
+            <CardHeader
+              title={<span className="inline-flex min-w-0 items-center gap-2"><ProviderLogo provider={group.provider} size={32} /><span className="truncate capitalize">{group.provider}</span></span>}
+              subtitle={isGrouped ? `${group.connections.length} accounts` : null}
+              actions={isGrouped ? <Tooltip content="Merge identical quotas across accounts"><span className="flex items-center gap-1.5 text-xs text-dd-muted">Merged<Toggle size="sm" checked={isMerged} aria-label={`Merge ${group.provider} quotas across accounts`} onChange={(nextMerged) => toggleMergedView(group.provider, nextMerged)} /></span></Tooltip> : null}
+            />
+            <div className="flex flex-col">
+              {isMerged ? <div className="flex flex-col gap-3 p-3">
+                {group.connections.map((conn) => {
+                  const error = errors[conn.id];
+                  const message = quotaData[conn.id]?.message;
+                  const accountLabel = getConnectionLabel(conn);
+                  const { hiddenQuotaRows } = connectionQuotaRows[conn.id] || { hiddenQuotaRows: [] };
+                  return <div key={conn.id} className="flex flex-col gap-2">
+                    {error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger"><span className="font-medium">{accountLabel}:</span> {error}</div> : message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info"><span className="font-medium">{accountLabel}:</span> {message}</div> : null}
+                    {hiddenQuotaRows.length > 0 ? <div className="flex flex-wrap items-center gap-1 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">visibility_off</span><span>Hidden ({accountLabel}):</span>{hiddenQuotaRows.map((quotaRow) => <Button key={getQuotaVisibilityKey(quotaRow, quotaRow.visibilityIndex)} variant="secondary" size="sm" onClick={() => handleShowQuota(conn.id, conn.provider, quotaRow)} title="Show this quota row">{quotaRow.name}</Button>)}</div> : null}
+                  </div>;
+                })}
+                {anyAccountLoading && mergedQuotas.length === 0 ? <div className="flex justify-center py-5 text-dd-muted"><span role="status" aria-label="Loading quota" className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span></div> : null}
+                {mergedQuotas.length > 0 ? <QuotaTable quotas={mergedQuotas} compact sortMode={isCodexGroup ? quotaSortMode : "default"} showSortLabel={isCodexGroup && quotaSortMode !== "default"} /> : null}
+              </div> : group.connections.map((conn, sectionIndex) => renderAccountSection(conn, sectionIndex))}
+            </div>
           </Card>;
         }) : <div className="md:col-span-2"><Card><EmptyState icon={emptyState.icon} title={emptyState.title} message={emptyState.description} /></Card></div>}
       </div>
@@ -1448,7 +1517,7 @@ export default function ProviderLimits() {
       <ConfirmDialog open={Boolean(resetConfirmState)} onCancel={() => { if (!resettingLimitId) setResetConfirmState(null); }} onConfirm={async () => { const connection = resetConfirmState?.connection; if (!connection) return; await handleResetCodexLimit(connection.id, connection.provider); setResetConfirmState(null); }} title="Reset Codex limit?" message={`Use 1 Codex reset credit for ${getConnectionLabel(resetConfirmState?.connection || {}) || "this account"}. This cannot be undone. Remaining credits: ${resetConfirmState?.resetCreditCount ?? 0}.`} confirmLabel="Reset limit" cancelLabel="Cancel" tone="danger" pending={Boolean(resettingLimitId)} />
       <ConfirmDialog open={Boolean(deleteConfirmState)} onCancel={() => { if (!deletingId) setDeleteConfirmState(null); }} onConfirm={async () => { const connection = deleteConfirmState; if (!connection) return; await handleDeleteConnection(connection.id); setDeleteConfirmState(null); }} title="Delete connection?" message={`Delete ${getConnectionLabel(deleteConfirmState || {}) || "this connection"}? This cannot be undone.`} confirmLabel="Delete connection" cancelLabel="Cancel" tone="danger" pending={Boolean(deletingId)} />
 
-      <Modal open={Boolean(resetCreditsState)} onClose={() => setResetCreditsState(null)} title="Codex Reset Credit Expiry" subtitle={resetCreditsState ? getConnectionLabel(resetCreditsState.connection) : "Codex account"} size="xl" pending={Boolean(resetCreditsState?.loading)}>{resetCreditsState?.loading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading reset credits...</div> : resetCreditsState?.error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-sm text-dd-danger">{resetCreditsState.error}</div> : resetCreditsState?.data?.credits?.length ? <div className="space-y-3"><div className="flex justify-between rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted"><span>{resetCreditsState.data.credits.length} reset credit{resetCreditsState.data.credits.length === 1 ? "" : "s"}</span><span>{resetCreditsState.data.availableCount ?? 0} available</span></div><DataTable ariaLabel="Codex reset credit expiry" density="compact" rows={resetCreditsState.data.credits} keyFn={(credit, index) => `${credit.status}-${credit.expiresAt || index}`} columns={[{ key: "status", label: "Status", render: (credit) => <Badge tone="accent" size="sm">{credit.status || "unknown"}</Badge> }, { key: "grantedAt", label: "Granted at", render: (credit) => formatCreditDate(credit.grantedAt) }, { key: "expiresAt", label: "Expires at", render: (credit) => formatCreditDate(credit.expiresAt) }, { key: "remaining", label: "Remaining", render: (credit) => formatTimeRemaining(credit.expiresAt) }]} /></div> : <EmptyState icon="event_busy" title="No reset credit details returned" />}</Modal>
+      <Modal open={Boolean(resetCreditsState)} onClose={() => setResetCreditsState(null)} title="Codex Reset Credit Expiry" subtitle={resetCreditsState ? getConnectionLabel(resetCreditsState.connection) : "Codex account"} size="xl" pending={Boolean(resetCreditsState?.loading)}>{resetCreditsState?.loading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading reset credits...</div> : resetCreditsState?.error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-sm text-dd-danger">{resetCreditsState.error}</div> : resetCreditsState?.data?.credits?.length ? <div className="space-y-3"><div className="flex justify-between rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted"><span>{resetCreditsState.data.credits.length} reset credit{resetCreditsState.data.credits.length === 1 ? "" : "s"}</span><span>{resetCreditsState.data.availableCount ?? 0} available</span></div><DataTable framed={false} ariaLabel="Codex reset credit expiry" density="compact" rows={resetCreditsState.data.credits} keyFn={(credit, index) => `${credit.status}-${credit.expiresAt || index}`} columns={[{ key: "status", label: "Status", render: (credit) => <Badge tone="accent" size="sm">{credit.status || "unknown"}</Badge> }, { key: "grantedAt", label: "Granted at", render: (credit) => formatCreditDate(credit.grantedAt) }, { key: "expiresAt", label: "Expires at", render: (credit) => formatCreditDate(credit.expiresAt) }, { key: "remaining", label: "Remaining", render: (credit) => formatTimeRemaining(credit.expiresAt) }]} /></div> : <EmptyState icon="event_busy" title="No reset credit details returned" />}</Modal>
 
       <EditConnectionModal isOpen={showEditModal} connection={selectedConnection} proxyPools={proxyPools} onSave={handleUpdateConnection} onClose={() => { setShowEditModal(false); setSelectedConnection(null); }} />
     </div>);

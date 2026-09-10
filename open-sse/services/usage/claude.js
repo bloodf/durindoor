@@ -28,12 +28,23 @@ function buildOAuthUsageHeaders(accessToken) {
 
 // Bounded, token-keyed cache for last-successful OAuth quota responses. On
 // transient failure, cached data keeps existing quota metadata available.
+// The quota windows move slowly (5h/7d resets) and Anthropic rate-limits this
+// endpoint aggressively, so the TTL matches the dashboard's 30-minute Claude
+// poll cadence — auto-refresh ticks normally read the cache instead of
+// hitting upstream (port of the operator request to slow Claude polling).
 const OAUTH_QUOTA_CACHE_MAX = 100;
-const OAUTH_QUOTA_CACHE_TTL_MS = 5 * 60 * 1000;
-const OAUTH_RATE_LIMIT_COOLDOWN_MS = 180 * 1000;
+const OAUTH_QUOTA_CACHE_TTL_MS = 30 * 60 * 1000;
+// Rate-limit cooldown escalates per consecutive 429 (15m → 30m → 1h → 2h cap)
+// so a tripped limit is not re-tripped every few minutes; a successful fetch
+// resets the strike count.
+const OAUTH_RATE_LIMIT_COOLDOWN_BASE_MS = 15 * 60 * 1000;
+const OAUTH_RATE_LIMIT_COOLDOWN_MAX_MS = 2 * 60 * 60 * 1000;
 
 const oauthQuotaCache = new Map();
 const oauthQuotaInFlight = new Map();
+// Rate-limit strikes live outside the cache: cache entries evaporate at the
+// TTL boundary, but a 429 strike count must survive to keep escalating.
+const oauthRateLimits = new Map();
 
 function getOAuthCacheKey(accessToken) {
   return digestMemoryKey("claude-oauth-quota", accessToken);
@@ -42,18 +53,7 @@ function getOAuthCacheKey(accessToken) {
 function getOAuthCacheEntry(key) {
   const entry = oauthQuotaCache.get(key);
   if (!entry) return null;
-  if (
-  Date.now() - entry.cachedAt >= OAUTH_QUOTA_CACHE_TTL_MS &&
-  Date.now() >= entry.rateLimitedUntil)
-  {
-    oauthQuotaCache.delete(key);
-    return null;
-  }
-  if (
-  !isOAuthRateLimited(entry) &&
-  !entry.data?.quotas &&
-  entry.rateLimitedUntil)
-  {
+  if (Date.now() - entry.cachedAt >= OAUTH_QUOTA_CACHE_TTL_MS) {
     oauthQuotaCache.delete(key);
     return null;
   }
@@ -65,16 +65,29 @@ function setOAuthCacheEntry(key, data) {
     const oldest = oauthQuotaCache.keys().next().value;
     oauthQuotaCache.delete(oldest);
   }
-  oauthQuotaCache.set(key, { data, cachedAt: Date.now(), rateLimitedUntil: 0 });
+  // A successful fetch clears the rate-limit strike count.
+  oauthRateLimits.delete(key);
+  oauthQuotaCache.set(key, { data, cachedAt: Date.now() });
 }
 
-function setOAuthRateLimited(key, data) {
-  if (!oauthQuotaCache.has(key)) setOAuthCacheEntry(key, data);
-  oauthQuotaCache.get(key).rateLimitedUntil = Date.now() + OAUTH_RATE_LIMIT_COOLDOWN_MS;
+/** Active cooldown record for a key, or null when a retry is allowed. */
+function getOAuthRateLimit(key) {
+  const rateLimit = oauthRateLimits.get(key);
+  if (!rateLimit) return null;
+  if (Date.now() >= rateLimit.until) return null;
+  return rateLimit;
 }
 
-function isOAuthRateLimited(entry) {
-  return Date.now() < entry.rateLimitedUntil;
+function recordOAuthRateLimit(key) {
+  if (oauthRateLimits.size >= OAUTH_QUOTA_CACHE_MAX && !oauthRateLimits.has(key)) {
+    oauthRateLimits.delete(oauthRateLimits.keys().next().value);
+  }
+  const strikes = (oauthRateLimits.get(key)?.strikes || 0) + 1;
+  const cooldown = Math.min(
+    OAUTH_RATE_LIMIT_COOLDOWN_BASE_MS * 2 ** (strikes - 1),
+    OAUTH_RATE_LIMIT_COOLDOWN_MAX_MS
+  );
+  oauthRateLimits.set(key, { strikes, until: Date.now() + cooldown });
 }
 
 function makeStaleResponse(entry, staleReason) {
@@ -100,10 +113,12 @@ export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oau
 
   const cacheKey = getOAuthCacheKey(accessToken);
   const cached = getOAuthCacheEntry(cacheKey);
-  if (cached && isOAuthRateLimited(cached)) {
-    return Promise.resolve(cached.data?.quotas ?
-    makeStaleResponse(cached, "Rate limited; showing cached quota.") :
-    cached.data);
+  // The 429 cooldown is upstream protection: even a forced refresh honors it.
+  if (getOAuthRateLimit(cacheKey)) {
+    if (cached?.data?.quotas) {
+      return Promise.resolve(makeStaleResponse(cached, "Rate limited; showing cached quota."));
+    }
+    return Promise.resolve(cached?.data || { message: "Rate limited, try again later." });
   }
   if (!options.force && cached) return Promise.resolve(cached.data);
 
@@ -154,12 +169,32 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
         quotas["weekly (7d)"] = createQuotaObject(data.seven_day);
       }
 
-      // Parse model-specific weekly windows (e.g. seven_day_sonnet, seven_day_opus)
+      // Parse model-specific weekly windows (e.g. seven_day_sonnet, seven_day_opus, seven_day_fable)
+      const MODEL_DISPLAY_NAMES = {
+        fable_5_1: "fable",
+        fable_5: "fable",
+      };
+
       for (const [key, value] of Object.entries(data)) {
         if (key.startsWith("seven_day_") && key !== "seven_day" && hasUtilization(value)) {
-          const modelName = key.replace("seven_day_", "");
+          const rawName = key.replace("seven_day_", "");
+          const modelName = MODEL_DISPLAY_NAMES[rawName] || rawName;
           quotas[`weekly ${modelName} (7d)`] = createQuotaObject(value);
+        } else if ((key === "fable" || key === "fable_5" || key === "fable_5_1") && hasUtilization(value)) {
+          quotas["weekly fable (7d)"] = createQuotaObject(value);
         }
+      }
+
+      // Fallback: surface Fable quota row if weekly window exists but Fable was not returned yet
+      if (!quotas["weekly fable (7d)"] && hasUtilization(data.seven_day)) {
+        quotas["weekly fable (7d)"] = {
+          used: 0,
+          total: 100,
+          remaining: 100,
+          remainingPercentage: 100,
+          resetAt: parseResetTime(data.seven_day.resets_at),
+          unlimited: false,
+        };
       }
 
       const result = {
@@ -175,11 +210,10 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
     const body = await parseErrorBody(oauthResponse);
 
     if (status === 429) {
-      const result = cached?.data || { message: "Rate limited, try again later." };
-      setOAuthRateLimited(cacheKey, result);
+      recordOAuthRateLimit(cacheKey);
       return cached ?
       makeStaleResponse(cached, "Rate limited; showing cached quota.") :
-      result;
+      { message: "Rate limited, try again later." };
     }
 
     if (status >= 500 && status < 600) {
@@ -207,6 +241,7 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
 export function __clearOAuthQuotaCacheForTesting() {
   oauthQuotaCache.clear();
   oauthQuotaInFlight.clear();
+  oauthRateLimits.clear();
 }
 
 /**

@@ -51,3 +51,11 @@ export function modelTargetFormat(model) {
 export function modelSupportedFormats(model) {
   return model?.supportedFormats || null;
 }
+
+// Per-model streaming requirement (e.g. opencode-go muse-spark contributor
+// models are served only over Responses SSE). Lets chatCore route JSON clients
+// through handleForcedSSEToJson for these models without force-streaming the
+// provider's other endpoints (mirrors provider-level `forceStream`).
+export function modelForceStream(model) {
+  return model?.forceStream === true;
+}

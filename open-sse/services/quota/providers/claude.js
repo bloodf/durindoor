@@ -46,6 +46,22 @@ function appendClaudeWindow(rows, raw, {
   return true;
 }
 
+// Payload keys that describe the same canonical model-scoped weekly window are
+// folded onto one resource key: Anthropic has used internal codenames
+// (omelette) and versioned keys (fable_5_1 / fable_5) for a single shipped
+// model window. The canonical name is what providerQuota.js preflightScopes
+// aliases map catalog model IDs to.
+const CLAUDE_MODEL_WINDOW_ALIASES = {
+  omelette: "designer",
+  fable_5_1: "fable",
+  fable_5: "fable"
+};
+
+// The Fable weekly window is also reported under bare keys (no seven_day_
+// prefix). Keep this in sync with the usage-service parser in
+// open-sse/services/usage/claude.js.
+const CLAUDE_BARE_MODEL_WINDOW_KEYS = new Set(["fable", "fable_5", "fable_5_1"]);
+
 export function normalizeClaudeQuota(payload, {
   accountId = null,
   plan = "Claude Code",
@@ -57,10 +73,18 @@ export function normalizeClaudeQuota(payload, {
   const rows = [];
   if (!appendClaudeWindow(rows, data.five_hour, { name: "session", accountKey, plan, now, windowSeconds: 5 * 60 * 60 })) return null;
   if (!appendClaudeWindow(rows, data.seven_day, { name: "weekly", accountKey, plan, now, windowSeconds: 7 * 24 * 60 * 60 })) return null;
+  const modelWindows = new Map();
   for (const [key, value] of Object.entries(data)) {
-    if (!key.startsWith("seven_day_") || key === "seven_day") continue;
-    const codename = key.slice("seven_day_".length);
-    const model = codename === "omelette" ? "designer" : codename;
+    let codename = null;
+    if (key.startsWith("seven_day_") && key !== "seven_day") codename = key.slice("seven_day_".length);else
+    if (CLAUDE_BARE_MODEL_WINDOW_KEYS.has(key)) codename = key;
+    if (codename === null) continue;
+    const model = CLAUDE_MODEL_WINDOW_ALIASES[codename] || codename;
+    // The seven_day_ form is canonical; a bare key never overrides it when a
+    // payload carries both shapes for the same window.
+    if (!modelWindows.has(model) || key.startsWith("seven_day_")) modelWindows.set(model, value);
+  }
+  for (const [model, value] of modelWindows) {
     if (!appendClaudeWindow(rows, value, {
       name: "weekly",
       accountKey,

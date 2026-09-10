@@ -115,6 +115,9 @@ const GROUP_ROW_LABEL_TONE = "font-medium text-dd-text";
  *   - `valueMode`        "tokens" | "costs"   drives trailing value columns
  *
  * Each expanded group renders its detail rows inside a nested DS DataTable.
+ * Both tables render frameless (`framed={false}`): the surrounding Card (and
+ * the expanded-row inset surface) is already the frame, so a second bordered
+ * wrapper would produce a nested "card in a card".
  *
  * Sort: `sortBy` + `sortOrder` drive a header button per column. Click
  * callbacks flow through `onToggleSort(tableType, field)`.
@@ -253,6 +256,7 @@ export default function UsageTable({
     ];
     return (
       <DataTable
+        framed={false}
         columns={detailHeaderColumns}
         rows={rows}
         keyFn={(item, index) => {
@@ -309,6 +313,7 @@ export default function UsageTable({
       ) : null}
       <CardContent className="p-0">
         <DataTable
+          framed={false}
           columns={headerColumns}
           rows={summaryRows}
           keyFn={(row) => row.groupKey}

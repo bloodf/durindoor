@@ -1,7 +1,7 @@
 import REGISTRY from "../providers/registry/index.js";
 // PROVIDER_MODELS now built from providers/registry (transport + models co-located)
 import { PROVIDER_MODELS } from "../providers/index.js";
-import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, normalizeModelId } from "../providers/models/schema.js";
+import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, modelForceStream, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
@@ -86,6 +86,14 @@ export function getModelSupportedFormats(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
   return modelSupportedFormats(findModel(models, modelId, aliasOrId));
+}
+
+// Per-model streaming requirement. False keeps the provider-level
+// `forceStream` (or client-negotiated) behavior.
+export function getModelForceStream(aliasOrId, modelId) {
+  const models = PROVIDER_MODELS[aliasOrId];
+  if (!models) return false;
+  return modelForceStream(findModel(models, modelId, aliasOrId));
 }
 
 export function getModelType(aliasOrId, modelId) {

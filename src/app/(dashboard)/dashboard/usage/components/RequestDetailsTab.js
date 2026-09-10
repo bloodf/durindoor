@@ -34,7 +34,7 @@ function PayloadMetadata({ detail }) {
           {PAYLOAD_STAGES.map(({ field, label }) => {
             const metadata = detail?.[field] || {};
             return (
-              <div key={field} className="rounded-dd border border-dd-border bg-dd-surface-2 p-3 text-[13px]">
+              <div key={field} className="rounded-dd bg-dd-surface-2 p-3 text-[13px]">
                 <dt className="font-medium text-dd-text">{label}</dt>
                 <dd className="text-dd-muted">
                   {metadata.present ? `${metadata.type || "payload"}${Number.isSafeInteger(metadata.bytes) ? ` · ${metadata.bytes} bytes` : ""}` : "Not present"}
@@ -302,6 +302,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
 
       <Card padding={false}>
         <DataTable
+          framed={false}
           columns={columns}
           rows={details}
           keyFn={(row) => row.id}

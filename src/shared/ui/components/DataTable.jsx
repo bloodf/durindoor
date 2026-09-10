@@ -9,6 +9,10 @@
  * @param {React.ReactNode} [props.caption] Table caption, announced to assistive technology.
  * @param {string} [props.ariaLabel="Data table"] Accessible name when no caption exists.
  * @param {"comfortable"|"compact"} [props.density="comfortable"]
+ * @param {boolean} [props.framed=true] Bordered/rounded surface wrapper. Pass
+ *   `false` when the table is embedded inside another surface (e.g. a Card) so
+ *   it renders flat — spacing and row dividers carry the structure instead of
+ *   a nested frame.
  * @param {React.ReactNode} [props.filterBar]
  * @param {object} [props.emptyState]
  * @param {boolean} [props.loading=false]
@@ -37,6 +41,7 @@ export default function DataTable({
   caption,
   ariaLabel = "Data table",
   density = "comfortable",
+  framed = true,
   filterBar,
   emptyState,
   loading = false,
@@ -61,12 +66,12 @@ export default function DataTable({
   };
 
   return (
-    <div className="overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface">
+    <div className={framed ? "overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface" : undefined}>
       {filterBar ? <div className="flex flex-wrap items-center gap-2 border-b border-dd-border-subtle px-3 py-2">{filterBar}</div> : null}
       <div role="region" aria-label={`${caption ?? ariaLabel} rows`} tabIndex={0} className="overflow-x-auto outline-none focus-visible:shadow-dd-focus">
         <table className="w-full border-collapse text-left text-[13px] text-dd-text" aria-label={caption ? undefined : ariaLabel} aria-busy={loading || undefined}>
           {caption ? <caption className="sr-only">{caption}</caption> : null}
-          <thead className="bg-dd-surface-2 text-[11px] font-medium uppercase tracking-wide text-dd-muted">
+          <thead className={`${framed ? "bg-dd-surface-2 " : ""}text-[11px] font-medium uppercase tracking-wide text-dd-muted`}>
             <tr>
               {hasExpander ? <th scope="col" className={`${cellPadding} w-11`}><span className="sr-only">Expand row</span></th> : null}
               {columns.map((column) => {

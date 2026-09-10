@@ -25,7 +25,10 @@
    Light theme — "parchment" (default, :root)
    ============================================================ */
 :root {
-  /* Surfaces & backgrounds */
+  /* Surfaces & backgrounds — the elevation ladder:
+     surface-0 = --dd-bg (page canvas), surface-1 = --dd-surface (card/panel),
+     surface-2 = --dd-surface-2 (inset), surface-3 = --dd-surface-3 (deepest inset).
+     --dd-bg-alt is a page-level grouping tint at the surface-0 rung. */
   --dd-bg: #FAF6EC;
   --dd-bg-alt: #F3EEDF;
   --dd-surface: #FFFFFF;
@@ -68,6 +71,13 @@
   /* 2px solid focus perimeter; #03442F changes every served surface by >=3:1. */
   --dd-focus-ring: #03442F;
   --dd-focus: 0 0 0 2px var(--dd-surface), 0 0 0 4px var(--dd-focus-ring);
+  /* Elevation ladder — a shadow per lift above the resting surface.
+     `--dd-shadow-raised` is the resting card/panel lift (surface-1 over
+     surface-0); `--dd-shadow-elevated` stays reserved for overlays that float
+     above everything (Select, Tooltip, Drawer, Modal). */
+  --dd-shadow-raised:
+    0 1px 2px rgba(60, 50, 25, 0.05),
+    0 4px 12px -4px rgba(60, 50, 25, 0.08);
   /* Warm elevated shadow */
   --dd-shadow-elevated:
     0 12px 28px -8px rgba(60, 50, 25, 0.12),
@@ -119,6 +129,10 @@
   /* 2px solid focus perimeter; emerald changes every served surface by >=3:1. */
   --dd-focus-ring: #10E882;
   --dd-focus: 0 0 0 2px var(--dd-surface), 0 0 0 4px var(--dd-focus-ring);
+  /* Resting card lift (surface-1 over surface-0); overlays use elevated. */
+  --dd-shadow-raised:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 4px 12px -4px rgba(0, 0, 0, 0.45);
   /* Warm elevated shadow */
   --dd-shadow-elevated:
     0 12px 28px -8px rgba(0, 0, 0, 0.55),
@@ -174,6 +188,7 @@
 
   /* Shadows */
   --shadow-dd-focus: var(--dd-focus);
+  --shadow-dd-raised: var(--dd-shadow-raised);
   --shadow-dd-elevated: var(--dd-shadow-elevated);
 }
 

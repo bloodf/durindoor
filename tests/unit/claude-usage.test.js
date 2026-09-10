@@ -118,7 +118,7 @@ describe("Claude usage", () => {
       expect(second).toEqual({ message: "Rate limited, try again later." });
       expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
 
-      await vi.advanceTimersByTimeAsync(180 * 1000 + 1);
+      await vi.advanceTimersByTimeAsync(15 * 60 * 1000 + 1);
       proxyAwareFetch.mockResolvedValueOnce(jsonResponse(oauthSuccessBody()));
       const afterCooldown = await getClaudeUsage("oauth-token-3", null, "oauth");
       expect(proxyAwareFetch).toHaveBeenCalledTimes(2);

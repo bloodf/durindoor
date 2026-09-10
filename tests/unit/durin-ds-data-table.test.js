@@ -87,6 +87,26 @@ describe("Durin DS DataTable and Pagination", () => {
     expect(container.textContent).toContain("Alpha detail");
   });
 
+  it("renders frameless when embedded inside another surface", async () => {
+    await act(async () => {
+      root.render(React.createElement(DataTable, { caption: "Embedded rows", columns, rows, keyFn: (row) => row.id, framed: false }));
+    });
+
+    const wrapper = container.firstElementChild;
+    // No nested frame: the bordered/rounded surface wrapper is gone, the
+    // header inset background is dropped, and row hairlines carry structure.
+    expect(wrapper.className).not.toContain("rounded-dd-lg");
+    expect(wrapper.className).not.toContain("border-dd-border");
+    expect(container.querySelector("thead").className).not.toContain("bg-dd-surface-2");
+    expect(container.querySelector("tbody tr").className).toContain("border-dd-border-subtle");
+
+    await act(async () => {
+      root.render(React.createElement(DataTable, { caption: "Framed rows", columns, rows, keyFn: (row) => row.id }));
+    });
+    expect(container.firstElementChild.className).toContain("rounded-dd-lg border border-dd-border bg-dd-surface");
+    expect(container.querySelector("thead").className).toContain("bg-dd-surface-2");
+  });
+
   it("renders safe first-and-last pagination controls", async () => {
     const onPage = vi.fn();
     const onRowsPerPageChange = vi.fn();

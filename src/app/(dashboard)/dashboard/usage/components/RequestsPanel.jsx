@@ -66,7 +66,7 @@ export default function RequestsPanel({ recentRequests = [], activeSessions = []
         <Tabs tabs={[{ value: "recent", label: "Recent requests" }, { value: "sessions", label: "Sessions" }]} value={tab} onChange={setTab} />
       </div>
       <CardContent className="min-h-0 flex-1 overflow-auto p-0">
-        <DataTable columns={columns} rows={rows} keyFn={(row, index) => row.requestId ?? `${row.timestamp ?? row.clientId}-${index}`} density="compact" caption={tab === "recent" ? "Recent requests" : "Active sessions"} emptyState={{ icon: "inbox", title: tab === "recent" ? "No requests yet" : "No active sessions" }} />
+        <DataTable framed={false} columns={columns} rows={rows} keyFn={(row, index) => row.requestId ?? `${row.timestamp ?? row.clientId}-${index}`} density="compact" caption={tab === "recent" ? "Recent requests" : "Active sessions"} emptyState={{ icon: "inbox", title: tab === "recent" ? "No requests yet" : "No active sessions" }} />
       </CardContent>
     </Card>
   );

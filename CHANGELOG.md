@@ -19,6 +19,7 @@
 
 ## Upstream ports
 
+- port(upstream): #3885 - Claude model requests drop rejected top-level `diagnostics` telemetry while preserving nested tool schemas and other model families.
 - port(upstream): #3820 + #3800 + #3791 - OpenCode Go: muse-spark-1.2 with Responses tool-call fixes, a stable opaque `x-opencode-session` header (caller-supplied headers are never honored), and quota tracking. (#819, #825, #828)
 - sync(upstream): persist and replay Gemini `thoughtSignature` scoped by session namespace, preventing multi-turn tool-call INVALID_ARGUMENT errors. (#821)
 - sync(upstream): Quota Tracker additions — Claude Fable weekly window normalization and Antigravity Gemini/Claude quota family grouping (also covering `agy` CLI connections). (#826, #829)

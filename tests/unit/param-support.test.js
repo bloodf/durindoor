@@ -62,6 +62,97 @@ describe("stripUnsupportedParams", () => {
     expect(body).toEqual({ top_p: 1 });
   });
 
+  it("drops top-level Claude Code diagnostics while preserving request content", () => {
+    const messages = [{ role: "user", content: "hi" }];
+    const body = {
+      model: "claude-opus-5",
+      max_tokens: 16,
+      messages,
+      diagnostics: { client: "cli" },
+    };
+
+    stripUnsupportedParams("claude", "claude-opus-5", body);
+
+    expect(body).toEqual({ model: "claude-opus-5", max_tokens: 16, messages });
+  });
+
+  it("drops explicit null diagnostics from Claude models", () => {
+    const body = { diagnostics: null };
+
+    stripUnsupportedParams("anthropic", "claude-sonnet-4-6", body);
+
+    expect(body).not.toHaveProperty("diagnostics");
+  });
+
+  it("preserves diagnostics for a non-Claude OpenAI model", () => {
+    const diagnostics = { client: "cli" };
+    const body = { diagnostics };
+
+    stripUnsupportedParams("openai", "gpt-5", body);
+
+    expect(body.diagnostics).toBe(diagnostics);
+  });
+
+  it("preserves diagnostics for a non-Claude model on Claude transport", () => {
+    const diagnostics = { client: "cli" };
+    const out = new DefaultExecutor("claude").transformRequest(
+      "glm-5.2",
+      { messages: [{ role: "user", content: "hi" }], diagnostics },
+      true,
+      { runtimeTransport: { format: FORMATS.CLAUDE } },
+    );
+
+    expect(out.diagnostics).toBe(diagnostics);
+  });
+
+  it("keeps existing early returns for missing model or body", () => {
+    const body = { diagnostics: { client: "cli" } };
+
+    expect(stripUnsupportedParams("claude", "", body)).toBe(body);
+    expect(body).toHaveProperty("diagnostics");
+    expect(stripUnsupportedParams("claude", "claude-opus-5", null)).toBeNull();
+  });
+
+  it("drops only top-level diagnostics at the native Claude executor boundary", () => {
+    const messages = [{ role: "user", content: "hi" }];
+    const body = {
+      max_tokens: 16,
+      messages,
+      diagnostics: { client: "cli" },
+      tools: [{
+        name: "inspect",
+        description: "Inspect diagnostics",
+        input_schema: {
+          type: "object",
+          properties: { diagnostics: { type: "string" } },
+        },
+      }],
+    };
+
+    const executor = new DefaultExecutor("claude");
+    const credentials = { runtimeTransport: { format: FORMATS.CLAUDE } };
+    const out = executor.transformRequest("claude-opus-5", body, true, credentials);
+    const nullOut = executor.transformRequest(
+      "claude-opus-5",
+      { max_tokens: 16, messages, diagnostics: null },
+      true,
+      credentials,
+    );
+
+    expect(out).not.toHaveProperty("diagnostics");
+    expect(nullOut).not.toHaveProperty("diagnostics");
+    expect(out.messages).toEqual(messages);
+    expect(out.max_tokens).toBe(16);
+    expect(out.tools[0]).toEqual({
+      name: "inspect",
+      description: "Inspect diagnostics",
+      input_schema: {
+        type: "object",
+        properties: { diagnostics: { type: "string" } },
+      },
+    });
+  });
+
   it("preserves temperature for GPT-4o", () => {
     const body = { temperature: 0.7, top_p: 1 };
 

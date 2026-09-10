@@ -117,6 +117,24 @@ describe("OpenCode Go usage", () => {
     expect(result.quotas.Monthly.unlimited).toBe(false);
   });
 
+  // Upstream #3791: a valid key without a Go subscription is a 403
+  // EntitlementError, distinct from invalid auth and from other 403s.
+  it("distinguishes a missing subscription from invalid credentials", async () => {
+    mocks.proxyAwareFetch.mockResolvedValueOnce(
+      jsonResponse({ error: { type: "EntitlementError" } }, 403),
+    );
+    const entitled = await getUsageForProvider({ provider: "opencode-go", apiKey: "sk-without-go" });
+    expect(entitled.message).toMatch(/subscription required/i);
+
+    mocks.proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: { type: "Forbidden" } }, 403));
+    const forbidden = await getUsageForProvider({ provider: "opencode-go", apiKey: "sk-other" });
+    expect(forbidden.message).toMatch(/forbidden/i);
+
+    mocks.proxyAwareFetch.mockResolvedValueOnce(jsonResponse({ error: "unauthorized" }, 401));
+    const rejected = await getUsageForProvider({ provider: "opencode-go", apiKey: "bad" });
+    expect(rejected.message).toMatch(/invalid or expired/i);
+  });
+
   it("accepts an authenticated key whose credits are exhausted in both validators", async () => {
     const { routeResult, connectionResult, routeFetch, connectionFetch } = await validateBoth(SPENT);
 

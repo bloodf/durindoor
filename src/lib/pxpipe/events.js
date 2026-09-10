@@ -82,6 +82,12 @@ export function getPxpipeStats({ timelineDays = 30, recentLimit = 100 } = {}) {
   const events = readPxpipeEvents();
   const now = Date.now();
   const startOfToday = new Date(new Date(now).setHours(0, 0, 0, 0)).getTime();
+  // Timeline buckets are keyed by UTC ISO date (see the event loop below), so
+  // the padding loop must start from the UTC day boundary — a local-midnight
+  // start drifts the keys by the timezone offset and drops same-day events
+  // whenever local and UTC dates differ.
+  const nowUtc = new Date(now);
+  const startOfUtcToday = Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate());
 
   const windows = {
     all: emptyTotals(),
@@ -92,7 +98,7 @@ export function getPxpipeStats({ timelineDays = 30, recentLimit = 100 } = {}) {
   };
   const timeline = new Map();
   for (let i = timelineDays - 1; i >= 0; i--) {
-    const day = new Date(startOfToday - i * DAY_MS);
+    const day = new Date(startOfUtcToday - i * DAY_MS);
     // Padded no-event day: tokensSavedEst is null until an event confirms it.
     timeline.set(day.toISOString().slice(0, 10), {
       date: day.toISOString().slice(0, 10),

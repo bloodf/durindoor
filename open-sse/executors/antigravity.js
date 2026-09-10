@@ -5,13 +5,14 @@ import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX } from "../config/appConstants.js";
 import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
-import { resolveSessionId } from "../utils/sessionManager.js";
+import { resolveSessionId, toNumericSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { cleanJSONSchemaForAntigravity } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { getGeminiThoughtSignatureSync } from "../services/thoughtSignatureStore.js";
 
 /**
  * Preserve common OpenCode casing while rewriting branding at the Antigravity boundary.
@@ -288,6 +289,9 @@ export class AntigravityExecutor extends BaseExecutor {
       };
     }
 
+    const rawSessionId = body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, scope: "antigravity" });
+    const sessionId = toNumericSessionId(rawSessionId) || rawSessionId;
+
     // ─── Standard (non-image) request ───
     // Fix contents for Claude models via Antigravity
     /**
@@ -303,17 +307,31 @@ export class AntigravityExecutor extends BaseExecutor {
       // Strip thought-only parts, keep thoughtSignature on functionCall parts (Gemini 3+ requires it)
       const parts = filterThoughtParts(c.parts);
       // Gemini 3+ rejects functionCall parts without thoughtSignature. Clients (Claude Code, IDE)
-      // don't persist thoughtSignature in their history, so backfill the default signature on any
-      // functionCall part that arrives without one.
-      const needsBackfill = parts?.some((p) => p.functionCall && !p.thoughtSignature) ?? false;
-      if (role !== c.role || parts?.length !== c.parts?.length || needsBackfill) {
+      // don't persist thoughtSignature in their history, so backfill from cache or default signature.
+      // In parallel function calls, only the first call needs a signature; siblings stay unsigned.
+      let firstFunctionCallSeen = false;
+      const modifiedParts = parts?.map(p => {
+        if (!p.functionCall) return p;
+        const callId = p.functionCall.id;
+        const cachedSig = callId ? getGeminiThoughtSignatureSync(callId, sessionId) : null;
+        const callSig = p.thoughtSignature || cachedSig || (!firstFunctionCallSeen ? DEFAULT_THINKING_AG_SIGNATURE : undefined);
+        firstFunctionCallSeen = true;
+        if (callSig) {
+          return { ...p, thoughtSignature: callSig };
+        }
+        if (p.thoughtSignature && !cachedSig) {
+          // Unsigned sibling call
+          const { thoughtSignature: _, ...rest } = p;
+          return rest;
+        }
+        return p;
+      });
+
+      const partsChanged = parts?.length !== c.parts?.length || modifiedParts?.some((p, idx) => p !== c.parts[idx]);
+      if (role !== c.role || partsChanged) {
         return {
           ...c, role,
-          parts: needsBackfill ?
-          parts.map((p) => p.functionCall && !p.thoughtSignature ?
-          { ...p, thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE } :
-          p) :
-          parts
+          parts: modifiedParts || parts,
         };
       }
       return c;
@@ -422,7 +440,7 @@ export class AntigravityExecutor extends BaseExecutor {
       generationConfig,
       ...(contents.length > 0 && { contents }),
       ...(tools && { tools }),
-      sessionId: body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, scope: "antigravity" }),
+      sessionId,
       safetySettings: undefined,
       ...(tools?.length > 0 && { toolConfig: toolConfig || { functionCallingConfig: { mode: "VALIDATED" } } })
 

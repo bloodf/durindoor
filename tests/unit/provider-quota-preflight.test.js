@@ -126,4 +126,56 @@ describe("provider quota preflight", () => {
       quotaFamily: null,
     })).not.toContain("feature:code-review");
   });
+
+  it("aliases Claude Fable catalog models to the canonical model:fable window", () => {
+    expect(buildQuotaResourceKeys({
+      provider: "claude",
+      modelCandidates: ["claude-fable-5-1"],
+    })).toEqual(expect.arrayContaining(["model:claude-fable-5-1", "model:fable"]));
+    expect(buildQuotaResourceKeys({
+      provider: "claude",
+      modelCandidates: ["claude-fable-5"],
+    })).toContain("model:fable");
+    expect(buildQuotaResourceKeys({
+      provider: "claude",
+      modelCandidates: ["claude-sonnet-5"],
+    })).not.toContain("model:fable");
+  });
+
+  it("skips a Claude connection whose Fable weekly window is exhausted", () => {
+    const reset = NOW + 30_000;
+    const claudeRow = (options = {}) => ({
+      ...snapshot({ sourceId: "claude:oauth-usage:v1", ...options }),
+      identity: {
+        connectionId: "conn-1",
+        provider: "claude",
+        accountKey: "scope:connection",
+        resourceKey: options.resourceKey || "scope:account",
+        dimensionKey: options.dimensionKey || "requests:runtime",
+      },
+    });
+    const weekly = claudeRow({ dimensionKey: "requests:weekly" });
+    const fable = claudeRow({ resourceKey: "model:fable", dimensionKey: "requests:weekly", state: "exhausted", resetAt: reset });
+    const resourceKeys = buildQuotaResourceKeys({ provider: "claude", modelCandidates: ["claude-fable-5-1"] });
+
+    const blocked = evaluateProviderQuotaPreflight([weekly, fable], {
+      connectionId: "conn-1",
+      provider: "claude",
+      resourceKeys,
+      now: NOW,
+      refreshSupported: true,
+    });
+    expect(blocked).toMatchObject({ skip: true, reason: "exhausted", retryAt: new Date(reset).toISOString() });
+
+    // A non-Fable model is not blocked by the Fable window.
+    const sonnetKeys = buildQuotaResourceKeys({ provider: "claude", modelCandidates: ["claude-sonnet-5"] });
+    const allowed = evaluateProviderQuotaPreflight([weekly, fable], {
+      connectionId: "conn-1",
+      provider: "claude",
+      resourceKeys: sonnetKeys,
+      now: NOW,
+      refreshSupported: true,
+    });
+    expect(allowed).toMatchObject({ skip: false });
+  });
 });

@@ -1,3 +1,36 @@
+# 4.1.0
+
+## Features
+
+- feat(db): opt-in PostgreSQL engine with a safe SQLite→PG cutover. The default is unchanged (SQLite). A new **Settings → Database** page flips the runtime to a remote PG cluster (PG 16-19) through a strict-order cutover (test → migrate → mirror → snapshot → flip → record) with rollback to the most recent snapshot. Operator runbook in `docs/operations/postgres.md`. (#831)
+- feat(quota): Quota Tracker groups connections by provider — 3 Codex or 2 Claude accounts now render one card with a section per account, plus a per-provider "Merged" toggle (persisted) that aggregates quotas honestly: absolute sums when both sides report totals, "min across N accounts" otherwise. The nested card-in-a-card quota panel is gone. (#832)
+- feat(cli-tools): Copilot setup now points at the VS Code extension guide instead of the MITM flow, and CLI tools support saving and managing custom API key presets. (#824, #827)
+- feat(antigravity,gemini): Gemini 3.8 Flash support with the IDE fingerprint bumped to 2.11.0. (#818)
+- feat(codex): GPT-5.6 Sol, Terra, and Luna image aliases. (#815)
+
+## Fixes
+
+- fix(quota): Claude quota polling slowed end to end — dashboard polls every 30 minutes (was 10), the server cache TTL matches (was 5 minutes), and 429 cooldowns escalate per consecutive strike (15m → 30m → 1h → 2h cap) with forced refreshes covered. Rate-limited Claude cards now serve the cached quota with a stale marker instead of an error. (#835)
+- fix(pxpipe): stats timeline buckets by UTC day; events no longer vanish from the timeline when local and UTC dates differ. (#833)
+- style(ui): nested card-in-card frames flattened across the dashboard (usage tables, request details, modals, combo reports); Durin DS documents the "no nested frames" rule. (#834)
+- port(upstream): #3813 - Google anti-abuse rate limits on multi-account Antigravity refresh are prevented with spaced, jittered credential refreshes. (#814)
+- port(upstream): #3797 - anthropic-compatible nodes fronting Anthropic receive the Claude beta flags so `context_management` blocks are no longer rejected with HTTP 400. (#812)
+- port(upstream): #3792 - adaptive Claude requests without an explicit effort normalize to `output_config.effort: "high"` instead of forwarding the rejected literal `auto`. (#811)
+
+## Upstream ports
+
+- port(upstream): #3820 + #3800 + #3791 - OpenCode Go: muse-spark-1.2 with Responses tool-call fixes, a stable opaque `x-opencode-session` header (caller-supplied headers are never honored), and quota tracking. (#819, #825, #828)
+- sync(upstream): persist and replay Gemini `thoughtSignature` scoped by session namespace, preventing multi-turn tool-call INVALID_ARGUMENT errors. (#821)
+- sync(upstream): Quota Tracker additions — Claude Fable weekly window normalization and Antigravity Gemini/Claude quota family grouping (also covering `agy` CLI connections). (#826, #829)
+- sync(upstream): qoder catalog refresh with capability mapping and image pass-through; codebuddy-cn catalog aligned with the server config; tokenrouter seed streamlined to flagship models with missing provider icons added. (#817, #820, #816)
+- port(upstream): #3801 - dashboard footer mode label detects local vs remote by hostname (including bracketed IPv6 loopback). (#823)
+- sync(upstream): gemini schema sanitizer converts `prefixItems` and ensures array `items`; kiro payloads drop the redundant top-level `systemPrompt`; connection lists scroll with a 500px max height and keyboard-focusable regions; background token-refresh logs are quieter. (#810, #809, #822, #813)
+
+## Maintenance
+
+- ci: automated release pipeline — a "Release Prepare" dispatch derives the next version from Conventional Commits, cuts a release branch with the changelog draft and opens the bump PR; merging it triggers the tag + GitHub Release, which publishes the CLI to npm. Process documented in `docs/development/release-process.md`. (#830)
+
+
 # 4.0.0
 
 - feat(db): opt-in PostgreSQL engine with a safe SQLite→PG cutover. The default is unchanged (SQLite). New `Settings > Database` page (URL: `/dashboard/settings/database`) with an engine toggle, a per-feature capability matrix, a "Test connection" button, a "Cut over to Postgres" action behind a confirmation dialog, and a "Switch back to SQLite" rollback action. Five new management API routes under `/api/settings/database/{engine,test,cutover,rollback,log}`, all behind the existing `requireDatabaseDualAuth` (JWT/CLI + dashboard password). The PG adapter (`src/lib/db/adapters/pgAdapter.js`) implements the same `run/get/all/exec/transaction/close/flush` interface as the four SQLite adapters, with `?` → `$N` placeholder rewriting, `INSERT ... RETURNING id` for `BIGSERIAL` tables, and savepoint-nested transactions. The parallel PG migration set (`src/lib/db/migrations/postgres/00N-*.js`) is generated from the existing 17 SQLite migrations by `scripts/migrate-sqlite-ddl-to-pg.mjs` and gated by `npm run check:postgres-migrations`. The cutover pipeline (`src/lib/db/cutover.js`) runs the strict-order `test → migrate → mirror → snapshot → flip → record` with an in-process `CutoverLock` and per-table row-count verification. The PG secret is held inside the canonical `settings` row at `settings.postgresUrl` (encrypted blob) so a fresh install never needs an env var; the dashboard "Test connection" button with `persist: true` writes the URL there. The env var `DURINDOOR_PG_URL` is honoured as an override when set. The legacy `DATA_DIR/durindoor-secrets.json` file is a read-only fallback for pre-v2 installs. The boot-time wrapper (`src/lib/db/postgresFallback.js`) falls back to SQLite on any PG failure and records the error in the `databaseEngineError` setting. The capability gate (`src/lib/db/postgresCapabilityGate.js`) reads the cluster's `server_version_num` and the per-feature GUCs at boot and computes the effective enabled-state of every entry in `databasePgFeatures`. The `databasePgVersion` setting (one of `16`, `17`, `18`) is a cap on which features the runtime exercises; the per-feature map lets the operator opt out of any individual feature independently of the cap. PG 19-only features are wired up as toggles that default to off. The `requestDetails` table is skipped by default from the mirror (opt in via `includeRequestDetails: true` on the cutover request). See `docs/operations/postgres.md` for the operator runbook and `docs/development/postgres.md` for the developer guide.

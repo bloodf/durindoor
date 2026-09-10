@@ -6,6 +6,7 @@ import { Card } from "@/shared/ui/components/Card.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 
 function getStatusTone(tool, status) {
+  if (tool?.configType === "guide") return "info";
   if (tool.unsupported) return "danger";
   if (!status) return "neutral";
   if (!status.installed) return "neutral";
@@ -14,6 +15,7 @@ function getStatusTone(tool, status) {
 }
 
 function getStatusLabel(tool, status) {
+  if (tool?.configType === "guide") return "Guide";
   if (tool.unsupported) return "Unsupported";
   if (!status) return "Unknown";
   if (!status.installed) return "Not installed";

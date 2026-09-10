@@ -192,6 +192,31 @@ describe("Claude, GitHub, and Cursor quota normalizers", () => {
     expect(JSON.stringify(rows)).not.toContain("org-secret");
   });
 
+  it("folds versioned and bare Fable payload keys into the canonical model:fable window", () => {
+    const rows = normalizeClaudeQuota({
+      seven_day: { utilization: 10, resets_at: RESET },
+      seven_day_fable_5_1: { utilization: 100, resets_at: RESET },
+    }, { now: NOW });
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toMatchObject({ resourceKey: "model:fable", dimensionKey: "requests:weekly", state: "exhausted" });
+
+    // Bare keys are accepted, and the seven_day_ form wins when both appear.
+    const bare = normalizeClaudeQuota({
+      seven_day: { utilization: 10, resets_at: RESET },
+      fable_5: { utilization: 55, resets_at: RESET },
+    }, { now: NOW });
+    expect(bare).toHaveLength(2);
+    expect(bare[1]).toMatchObject({ resourceKey: "model:fable", amounts: { remainingRatio: 0.45 } });
+
+    const both = normalizeClaudeQuota({
+      seven_day: { utilization: 10, resets_at: RESET },
+      fable: { utilization: 20, resets_at: RESET },
+      seven_day_fable_5_1: { utilization: 95, resets_at: RESET },
+    }, { now: NOW });
+    expect(both).toHaveLength(2);
+    expect(both[1]).toMatchObject({ resourceKey: "model:fable", amounts: { remainingRatio: 0.05 } });
+  });
+
   it("rejects present malformed and empty Claude windows as a whole source", () => {
     expect(normalizeClaudeQuota({ five_hour: "invalid" }, { now: NOW })).toBeNull();
     expect(normalizeClaudeQuota({}, { now: NOW })).toBeNull();

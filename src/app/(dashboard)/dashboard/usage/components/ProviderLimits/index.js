@@ -1162,6 +1162,8 @@ export default function ProviderLimits() {
     const key = getQuotaVisibilityKey(quota, quota.visibilityIndex);
     if (!connectionId || !key) return;
 
+    // Family-key pruning for Antigravity ("gemini"/"claude") lives inside
+    // updateQuotaVisibility (utils.js), which each queued mutation applies.
     pendingWrites.current.push((state) =>
     updateQuotaVisibility(state, connectionId, provider, key, true)
     );

@@ -59,6 +59,33 @@ export const CLAUDE_CLI_SPOOF_HEADERS = {
   "X-Stainless-Timeout": "600"
 };
 
+// Anthropic beta flags for anthropic-compatible-* nodes fronting Anthropic
+// (port of decolua/9router#3797). Derived from the fork's pinned Claude Code
+// 2.1.258 capture above (CLAUDE_CLI_SPOOF_HEADERS); effort-2025-11-24 is a
+// heavy-agent flag and is only sent for opus/sonnet model ids — cheaper models
+// don't need it. `oauth-2025-04-20` is intentionally excluded here: it is an
+// auth-mode flag appended by the claude usage path, not a request capability.
+const ANTHROPIC_BETA_BASE = [
+  "claude-code-20250219",
+  "interleaved-thinking-2025-05-14",
+  "thinking-token-count-2026-05-13",
+  "context-management-2025-06-27",
+  "prompt-caching-scope-2026-01-05",
+  "mid-conversation-system-2026-04-07",
+  "fallback-credit-2026-06-01"
+];
+const ANTHROPIC_BETA_HEAVY_AGENT = ["effort-2025-11-24"];
+
+/**
+ * Select the Anthropic-Beta header value for a model id.
+ * Heavy-agent beta flags are gated to opus/sonnet — cheaper models don't need them.
+ */
+export function selectAnthropicBeta(model = "") {
+  const flags = [...ANTHROPIC_BETA_BASE];
+  if (/^claude-(opus|sonnet)/.test(model)) flags.push(...ANTHROPIC_BETA_HEAVY_AGENT);
+  return flags.join(",");
+}
+
 // Kimi Code single-source endpoints and documented membership display names.
 export const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1/messages";
 export const KIMI_CODING_OPENAI_URL = "https://api.kimi.com/coding/v1/chat/completions";
@@ -89,10 +116,11 @@ export function isOpenCodeZenBaseUrl(baseUrl) {
   baseUrl.trim().replace(/\/+$/, "") === OPENCODE_ZEN_BASE_URL;
 }
 
-// Official Antigravity IDE Desktop 2.5.5 fingerprint captured from macOS arm64.
+// Official Antigravity IDE Desktop 2.11.0 fingerprint captured from macOS arm64.
 // Keep this static even when DurinDoor runs on Linux: the provider profile is
 // intentionally matching the IDE client, not the server host.
-export const ANTIGRAVITY_IDE_VERSION = "2.5.5";
+// DurinDoor keeps the PROD cloudcode-pa host (upstream uses the daily host).
+export const ANTIGRAVITY_IDE_VERSION = "2.11.0";
 export const ANTIGRAVITY_IDE_BASE_URL = "https://cloudcode-pa.googleapis.com";
 export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/ide/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
 

@@ -7,7 +7,7 @@ const routes = {
   "GET /api/settings": { body: { cloudEnabled: false, ccFilterNaming: false } },
   "GET /api/tunnel/status": { body: { tunnel: { enabled: false, publicUrl: "" }, tailscale: { enabled: false, tunnelUrl: "" } } },
   "GET /api/keys": { body: { keys: [{ name: "Primary", maskedKey: "sk_••••" }] } },
-  "GET /api/cli-tools/claude-settings": { body: { installed: true, has9Router: true, hasBackup: true, settings: { env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:20128/v1", CLAUDE_CODE_MAX_CONTEXT_TOKENS: "198000" } } } },
+  "GET /api/cli-tools/claude-settings": { body: { installed: true, has9Router: true, hasBackup: true, settings: { env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:20128/v1", CLAUDE_CODE_AUTO_COMPACT_WINDOW: "198000" } } } },
   "GET /api/models/alias": { body: { aliases: {} } },
   "GET /api/cli-tools/antigravity-mitm/alias": { body: { aliases: {} } },
 };
@@ -49,7 +49,7 @@ export const ClaudeLoaded = {
     expect(await body.findByRole("heading", { name: /claude/i })).toBeInTheDocument();
     const endpoint = await body.findByRole("combobox", { name: "Endpoint" });
     await waitFor(() => expect(endpoint).toHaveTextContent("Local (127.0.0.1)"));
-    expect(body.getByText("Context window")).toBeInTheDocument();
+    expect(body.getByText("Auto-compact")).toBeInTheDocument();
     await waitFor(() => expect(body.getAllByRole("combobox").at(-1)).toHaveTextContent("200K"));
   },
 };

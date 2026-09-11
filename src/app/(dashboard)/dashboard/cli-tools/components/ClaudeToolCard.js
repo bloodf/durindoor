@@ -7,6 +7,7 @@ import Button from "@/shared/ui/components/Button";
 import IconButton from "@/shared/ui/components/IconButton";
 import { Badge } from "@/shared/ui/components/Badge";
 import Select from "@/shared/ui/components/Select";
+import Toggle from "@/shared/ui/components/Toggle.jsx";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
@@ -14,15 +15,24 @@ import { matchKnownEndpoint } from "./cliEndpointMatch";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
-// Context window presets. UI shows the round number; the value written is nudged
-// down 2K to stay safely under the upstream hard cap.
+// Auto-compact window presets (CLAUDE_CODE_AUTO_COMPACT_WINDOW, valid 100K–1M).
+// UI shows the round number; the value written is nudged down 2K to stay safely
+// under the upstream hard cap.
 const CONTEXT_OPTIONS = [
   { label: "Default", value: "" },
   { label: "200K", value: "198000" },
   { label: "300K", value: "298000" },
   { label: "500K", value: "498000" },
-  { label: "1M", value: "998000" },
+  { label: "700K", value: "698000" },
 ];
+
+const CONTEXT_MARKER = /(?:\[1m\])+$/i;
+
+/** Return a model ID with exactly the requested Claude Code 1M marker state. */
+export function withContextMarker(value, enabled) {
+  const model = value.replace(CONTEXT_MARKER, "");
+  return enabled ? `${model}[1m]` : model;
+}
 
 export default function ClaudeToolCard({
   tool,
@@ -54,8 +64,17 @@ export default function ClaudeToolCard({
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [ccFilterNaming, setCcFilterNaming] = useState(false);
-  const [maxContextTokens, setMaxContextTokens] = useState("");
+  const [autoCompactWindow, setAutoCompactWindow] = useState("");
+  const [oneMContext, setOneMContext] = useState(false);
   const hasInitializedModels = useRef(false);
+
+  const handleOneMContextToggle = (enabled) => {
+    setOneMContext(enabled);
+    tool.defaultModels.forEach((model) => {
+      const current = modelMappings[model.alias];
+      if (current) onModelMappingChange(model.alias, withContextMarker(current, enabled));
+    });
+  };
 
   const getConfigStatus = () => {
     if (!claudeStatus?.installed) return null;
@@ -72,9 +91,15 @@ export default function ClaudeToolCard({
   }, [initialStatus]);
 
   useEffect(() => {
-    const v = claudeStatus?.settings?.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
-    setMaxContextTokens(v || "");
-  }, [claudeStatus?.settings?.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS]);
+    const value = claudeStatus?.settings?.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+    setAutoCompactWindow(value || "");
+  }, [claudeStatus?.settings?.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW]);
+
+  useEffect(() => {
+    const env = claudeStatus?.settings?.env;
+    if (!env) return;
+    setOneMContext(tool.defaultModels.some((model) => CONTEXT_MARKER.test(env[model.envKey] || "")));
+  }, [claudeStatus?.settings?.env, tool.defaultModels]);
 
   useEffect(() => {
     if (isExpanded && !claudeStatus) {
@@ -167,16 +192,16 @@ export default function ClaudeToolCard({
 
       tool.defaultModels.forEach((model) => {
         const targetModel = modelMappings[model.alias];
-        if (targetModel && model.envKey) env[model.envKey] = targetModel;
+        if (targetModel && model.envKey) env[model.envKey] = targetModel.replace(/^cc\//, "");
       });
-      if (maxContextTokens) {
-        env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = maxContextTokens;
+      if (autoCompactWindow) {
+        env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = autoCompactWindow;
       }
 
       const res = await fetch("/api/cli-tools/claude-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ env, maxContextTokens }),
+        body: JSON.stringify({ env, autoCompactWindow }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -200,7 +225,8 @@ export default function ClaudeToolCard({
       const data = await res.json();
       if (res.ok) {
         setMessage({ type: "success", text: "Settings reset successfully!" });
-        setMaxContextTokens("");
+        setAutoCompactWindow("");
+        setOneMContext(false);
         tool.defaultModels.forEach((model) => onModelMappingChange(model.alias, model.defaultValue || ""));
         setSelectedApiKey("");
       } else {
@@ -230,10 +256,10 @@ export default function ClaudeToolCard({
     const env = { ANTHROPIC_BASE_URL: getEffectiveBaseUrl(), ANTHROPIC_AUTH_TOKEN: keyToUse };
     tool.defaultModels.forEach((model) => {
       const targetModel = modelMappings[model.alias];
-      if (targetModel && model.envKey) env[model.envKey] = targetModel;
+      if (targetModel && model.envKey) env[model.envKey] = targetModel.replace(/^cc\//, "");
     });
-    if (maxContextTokens) {
-      env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = maxContextTokens;
+    if (autoCompactWindow) {
+      env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = autoCompactWindow;
     }
 
     return [
@@ -360,15 +386,32 @@ export default function ClaudeToolCard({
                 ))}
 
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
-                  <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">Context window</span>
+                  <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">Auto-compact</span>
                   <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
                   <Select
                     size="sm"
-                    aria-label="Context window"
-                    value={maxContextTokens}
-                    onChange={setMaxContextTokens}
-                    options={CONTEXT_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+                    aria-label="Auto-compact"
+                    value={autoCompactWindow}
+                    onChange={setAutoCompactWindow}
+                    options={CONTEXT_OPTIONS}
                   />
+                </div>
+
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
+                  <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">1M context</span>
+                  <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
+                  <div className="flex items-center gap-1.5">
+                    <Toggle
+                      size="sm"
+                      checked={oneMContext}
+                      onChange={handleOneMContextToggle}
+                      aria-label="1M context"
+                    />
+                    <span className="text-xs text-dd-muted">Append [1m] to mapped models</span>
+                    <Tooltip text="Claude Code otherwise assumes a 200K window, which clamps auto-compact. Enable only when every mapped model accepts 1M context.">
+                      <button type="button" aria-label="About 1M context" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-dd outline-none focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-dd-muted text-[14px] cursor-help">info</span></button>
+                    </Tooltip>
+                  </div>
                 </div>
 
                 {/* CC Filter Naming */}

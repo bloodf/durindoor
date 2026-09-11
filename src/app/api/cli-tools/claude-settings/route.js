@@ -10,6 +10,25 @@ import { redactSecrets } from "@/shared/utils/secretRedaction";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
+const AUTO_COMPACT_WINDOWS = new Set(["", "198000", "298000", "498000", "698000"]);
+const MODEL_ENV_KEYS = [
+  "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  "ANTHROPIC_DEFAULT_FABLE_MODEL",
+];
+
+/** Validate Claude Code settings controlled by this route before touching disk. */
+function validateClaudeSettingsInput(env, autoCompactWindow) {
+  if (!env || !isObject(env) || Array.isArray(env)) return "Invalid env object";
+  if (!isString(autoCompactWindow) || !AUTO_COMPACT_WINDOWS.has(autoCompactWindow)) {
+    return "Invalid auto-compact window";
+  }
+  if (MODEL_ENV_KEYS.some((key) => env[key] !== undefined && !isString(env[key]))) {
+    return "Invalid model mapping";
+  }
+  return null;
+}
 
 // Get claude settings path based on OS
 const getClaudeSettingsPath = () => {
@@ -86,11 +105,12 @@ export async function GET() {
 // POST - Backup old fields and write new settings
 export async function POST(request) {
   try {
-    const { env, maxContextTokens } = await request.json();
+    const { env, autoCompactWindow = "" } = await request.json();
+    const validationError = validateClaudeSettingsInput(env, autoCompactWindow);
 
-    if (!env || !isObject(env)) {
+    if (validationError) {
       return NextResponse.json(
-        { error: "Invalid env object" },
+        { error: validationError },
         { status: 400 }
       );
     }
@@ -126,12 +146,7 @@ export async function POST(request) {
     // rejected by Anthropic with a 400 (#2642). The bare model id
     // ("claude-opus-4-8") still routes correctly through DurinDoor, so the prefix
     // must not be persisted into Claude Code's settings.
-    for (const key of [
-    "ANTHROPIC_DEFAULT_OPUS_MODEL",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-    "ANTHROPIC_DEFAULT_FABLE_MODEL"])
-    {
+    for (const key of MODEL_ENV_KEYS) {
       if (isString(env[key])) {
         env[key] = env[key].replace(/^cc\//, "");
       }
@@ -147,12 +162,13 @@ export async function POST(request) {
       }
     };
 
-    // CLAUDE_CODE_MAX_CONTEXT_TOKENS — only set when a concrete value is chosen;
-    // "Default" removes the key so Claude Code falls back to the model's window.
-    if (maxContextTokens) {
-      newSettings.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(maxContextTokens);
+    // Claude Code ignores this retired key for recognized models. Always clean
+    // it up while persisting the effective auto-compact threshold.
+    delete newSettings.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
+    if (autoCompactWindow) {
+      newSettings.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = autoCompactWindow;
     } else {
-      delete newSettings.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS;
+      delete newSettings.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
     }
 
     // Write new settings
@@ -175,10 +191,9 @@ export async function POST(request) {
 const RESET_ENV_KEYS = [
 "ANTHROPIC_BASE_URL",
 "ANTHROPIC_AUTH_TOKEN",
-"ANTHROPIC_DEFAULT_OPUS_MODEL",
-"ANTHROPIC_DEFAULT_SONNET_MODEL",
-"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+...MODEL_ENV_KEYS,
 "API_TIMEOUT_MS",
+"CLAUDE_CODE_AUTO_COMPACT_WINDOW",
 "CLAUDE_CODE_MAX_CONTEXT_TOKENS"];
 
 

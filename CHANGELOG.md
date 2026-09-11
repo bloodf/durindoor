@@ -15,6 +15,7 @@
 - port(upstream): #3823 - preserve long CodeBuddy system prompts
 - sync(upstream): fold zai-search into the glm provider for web search
 - port(upstream): #3714 - close SSRF guard bypasses in ssrfGuard.js
+- sync(upstream): Claude Code settings now configure its real auto-compact threshold (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`) instead of the ignored max-context key, and an opt-in **1M context** toggle marks mapped models with `[1m]` while preserving custom mappings. (upstream `17c4cc`)
 
 # 4.1.0
 

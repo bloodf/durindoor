@@ -272,8 +272,13 @@ describe("DB SQLite layer — public API parity", () => {
       lastErrorAt: "2026-08-09T00:00:00.000Z",
       errorCode: 401,
       backoffLevel: 4,
+      rateLimitedUntil: "2099-01-01T00:00:00.000Z",
       "modelLock_gpt-5.6-sol": "2099-01-01T00:00:00.000Z",
+      autoDisabledReason: "permanent_auth_failure",
+      autoDisabledAt: "2026-08-09T00:00:00.000Z",
     });
+
+    const warningAt = "2026-09-06T00:00:00.000Z";
 
     const updated = await sqliteDb.createProviderConnection({
       provider: "codex",
@@ -282,6 +287,8 @@ describe("DB SQLite layer — public API parity", () => {
       refreshToken: "new-refresh",
       email: "reauth@example.test",
       providerSpecificData: { chatgptAccountId: "account-reauth" },
+      lastError: "Connected, but credits are exhausted",
+      lastErrorAt: warningAt,
     });
 
     expect(updated).toMatchObject({
@@ -290,14 +297,156 @@ describe("DB SQLite layer — public API parity", () => {
       accessToken: "new-access",
       refreshToken: "new-refresh",
       testStatus: "active",
+      lastError: "Connected, but credits are exhausted",
+      lastErrorAt: warningAt,
+      errorCode: null,
+      backoffLevel: 0,
+      rateLimitedUntil: null,
+      "modelLock_gpt-5.6-sol": null,
+      autoDisabledReason: null,
+      autoDisabledAt: null,
     });
-    for (const field of [
-      "lastError",
-      "lastErrorAt",
-      "errorCode",
-      "backoffLevel",
-      "modelLock_gpt-5.6-sol",
-    ]) expect(updated).not.toHaveProperty(field);
+  });
+
+  it("providerConnections: successful validation clears stale routing health and preserves credentials", async () => {
+    const connection = await sqliteDb.createProviderConnection({
+      provider: "health-reset-update",
+      authType: "oauth",
+      email: "update@example.test",
+      accessToken: "access-secret",
+      refreshToken: "refresh-secret",
+      idToken: "identity-secret",
+      firecrawlHeaders: JSON.stringify({ Authorization: "header-secret" }),
+    });
+    await sqliteDb.updateProviderConnection(connection.id, {
+      testStatus: "unavailable",
+      lastError: "Access denied",
+      lastErrorAt: "2026-09-05T00:00:00.000Z",
+      errorCode: 403,
+      backoffLevel: 3,
+      rateLimitedUntil: "2099-01-01T00:00:00.000Z",
+      modelLock_modelA: "2099-01-01T00:00:00.000Z",
+      modelLock_modelB: "2099-01-01T00:00:00.000Z",
+    });
+
+    await sqliteDb.updateProviderConnection(connection.id, { testStatus: "active" });
+
+    const persisted = await sqliteDb.getProviderConnectionById(connection.id);
+    expect(persisted).toMatchObject({
+      testStatus: "active",
+      lastError: null,
+      lastErrorAt: null,
+      errorCode: null,
+      backoffLevel: 0,
+      rateLimitedUntil: null,
+      modelLock_modelA: null,
+      modelLock_modelB: null,
+      accessToken: "access-secret",
+      refreshToken: "refresh-secret",
+      idToken: "identity-secret",
+      firecrawlHeaders: JSON.stringify({ Authorization: "header-secret" }),
+    });
+  });
+
+  it("providerConnections: valid OAuth resave clears stale routing health", async () => {
+    const existing = await sqliteDb.createProviderConnection({
+      provider: "health-reset-resave",
+      authType: "oauth",
+      email: "resave@example.test",
+      accessToken: "old-access",
+      refreshToken: "saved-refresh",
+    });
+    await sqliteDb.updateProviderConnection(existing.id, {
+      testStatus: "unavailable",
+      lastError: "Access denied",
+      lastErrorAt: "2026-09-05T00:00:00.000Z",
+      errorCode: 403,
+      backoffLevel: 2,
+      rateLimitedUntil: "2099-01-01T00:00:00.000Z",
+      modelLock_modelA: "2099-01-01T00:00:00.000Z",
+    });
+
+    const resaved = await sqliteDb.createProviderConnection({
+      provider: "health-reset-resave",
+      authType: "oauth",
+      email: "resave@example.test",
+      accessToken: "new-access",
+      refreshToken: null,
+      testStatus: "active",
+    });
+
+    expect(resaved.id).toBe(existing.id);
+    expect(await sqliteDb.getProviderConnectionById(existing.id)).toMatchObject({
+      accessToken: "new-access",
+      refreshToken: "saved-refresh",
+      testStatus: "active",
+      lastError: null,
+      lastErrorAt: null,
+      errorCode: null,
+      backoffLevel: 0,
+      rateLimitedUntil: null,
+      modelLock_modelA: null,
+    });
+  });
+
+  it("providerConnections: active soft warnings survive health reset", async () => {
+    const connection = await sqliteDb.createProviderConnection({
+      provider: "health-reset-warning",
+      authType: "oauth",
+      email: "warning@example.test",
+    });
+    await sqliteDb.updateProviderConnection(connection.id, {
+      testStatus: "unavailable",
+      lastError: "Old failure",
+      lastErrorAt: "2026-09-05T00:00:00.000Z",
+      errorCode: 503,
+      rateLimitedUntil: "2099-01-01T00:00:00.000Z",
+      modelLock_modelA: "2099-01-01T00:00:00.000Z",
+    });
+
+    const warningAt = "2026-09-06T00:00:00.000Z";
+    await sqliteDb.updateProviderConnection(connection.id, {
+      testStatus: "active",
+      lastError: "Connected, but credits are exhausted",
+      lastErrorAt: warningAt,
+    });
+
+    expect(await sqliteDb.getProviderConnectionById(connection.id)).toMatchObject({
+      testStatus: "active",
+      lastError: "Connected, but credits are exhausted",
+      lastErrorAt: warningAt,
+      errorCode: null,
+      backoffLevel: 0,
+      rateLimitedUntil: null,
+      modelLock_modelA: null,
+    });
+  });
+
+  it("providerConnections: non-activation updates preserve routing health", async () => {
+    const connection = await sqliteDb.createProviderConnection({
+      provider: "health-reset-control",
+      authType: "oauth",
+      email: "control@example.test",
+      accessToken: "control-secret",
+    });
+    const staleHealth = {
+      testStatus: "unavailable",
+      lastError: "Still unavailable",
+      lastErrorAt: "2026-09-05T00:00:00.000Z",
+      errorCode: 429,
+      backoffLevel: 5,
+      rateLimitedUntil: "2099-01-01T00:00:00.000Z",
+      modelLock_modelA: "2099-01-01T00:00:00.000Z",
+    };
+    await sqliteDb.updateProviderConnection(connection.id, staleHealth);
+
+    await sqliteDb.updateProviderConnection(connection.id, { name: "Renamed only" });
+
+    expect(await sqliteDb.getProviderConnectionById(connection.id)).toMatchObject({
+      ...staleHealth,
+      name: "Renamed only",
+      accessToken: "control-secret",
+    });
   });
 
 

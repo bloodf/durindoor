@@ -103,7 +103,7 @@ describe("Codex OAuth reauthorization merge", () => {
       id: existing.id, accessToken: "fresh-token", refreshToken: "fresh-rt", isActive: true, testStatus: "active",
     });
     for (const field of ["errorCode", "lastError", "lastErrorAt", "backoffLevel", "modelLock_gpt5", "modelLock___all"]) {
-      expect(result).not.toHaveProperty(field);
+      expect(result[field]).toBeFalsy();
     }
   });
 });

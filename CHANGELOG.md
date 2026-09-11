@@ -13,6 +13,7 @@
 - port(upstream): #3885 - drop rejected Claude diagnostics field
 - port(upstream): #3862 - reject SQLite corruption before migration
 - port(upstream): #3823 - preserve long CodeBuddy system prompts
+- port(upstream): #3830 - successful explicit connection validation and OAuth re-login clear stale model locks, backoff, rate-limit, and failure state immediately while preserving supplied soft warnings and encrypted credentials.
 - sync(upstream): fold zai-search into the glm provider for web search
 - port(upstream): #3714 - close SSRF guard bypasses in ssrfGuard.js
 

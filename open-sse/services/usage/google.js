@@ -304,7 +304,30 @@ export const ANTIGRAVITY_QUOTA_MODELS = [
 
 
 /**
- * Antigravity Usage - Fetch quota from Google Cloud Code API
+ * Antigravity Usage - Fetch quota from Google Cloud Code API.
+ *
+ * Tier handling:
+ * - Paid tiers (`subscriptionInfo.paidTier.id !== "free-tier"`) get BOTH the
+ *   per-model 5h rows (parsed from `fetchAvailableModels`) AND the weekly
+ *   family overlay (from `retrieveUserQuotaSummary`). On paid tiers the
+ *   per-model rows are the primary signal — the weekly row shows the wider
+ *   cap.
+ * - Free-tier (and missing/unknown `paidTier.id`) accounts only get the
+ *   weekly overlay: Google's `fetchAvailableModels` returns misleading
+ *   per-model rows for free-tier (missing `remainingFraction` defaults to 0,
+ *   or reflects the weekly limit instead of a 5h window). Skipping per-model
+ *   parsing avoids showing users fake "0%" bars. The weekly row IS the only
+ *   meaningful quota on free-tier.
+ *
+ * Exhausted-model reconciliation (paid-tier only — free-tier has no
+ * per-model data to reconcile against):
+ * - When every model in a Gemini or Claude & GPT family reports
+ *   `remainingPercentage === 0`, the corresponding weekly row is forced to
+ *   `used = total`, `remainingPercentage = 0`, and inherits the max
+ *   `resetAt` across the exhausted models. This works around an upstream
+ *   bug where free Starter accounts get `remainingFraction: 1` from
+ *   `retrieveUserQuotaSummary` even after the starter quota is depleted and
+ *   every per-model call 429s.
  */
 export async function getAntigravityUsage(accessToken, providerSpecificData, proxyOptions = null) {
   try {
@@ -368,8 +391,15 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     const data = await response.json();
     const quotas = {};
 
-    // Parse model quotas (inspired by vscode-antigravity-cockpit)
-    if (data.models) {
+    // Detect tier: free-tier accounts only have weekly quotas (no separate 5h window).
+    // On free-tier, fetchAvailableModels returns misleading per-model quota info
+    // (missing remainingFraction defaults to 0, or reflects the weekly limit not a 5h window).
+    const paidTierId = subscriptionInfo?.paidTier?.id;
+    const isFreeTier = !paidTierId || paidTierId === "free-tier";
+
+    // Parse model quotas only for paid-tier accounts (inspired by vscode-antigravity-cockpit).
+    // Free-tier accounts skip this — their only meaningful quota is the weekly limit.
+    if (!isFreeTier && data.models) {
       // Filter only recommended/important models (must match PROVIDER_MODELS ag ids)
       const importantModels = ANTIGRAVITY_QUOTA_MODELS;
 
@@ -404,7 +434,51 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
       }
     }
 
-    Object.assign(quotas, weeklyQuotas);
+    // Best-effort weekly quota overlay — never blocks or breaks per-model results.
+    // Wraps the reconciliation + Object.assign together so a reconciliation throw
+    // does not silently drop the weekly rows.
+    try {
+      // Reconcile weekly quota against model family status:
+      // If every model in a family is locked/exhausted (remainingPercentage === 0)
+      // until a future reset time, the weekly limit cannot be 100% available.
+      // On Google's Free Starter tier, retrieveUserQuotaSummary buggily reports
+      // remainingFraction: 1 even after the starter quota is depleted and all models 429.
+      const entries = Object.entries(quotas);
+      const geminiModels = entries.filter(([k]) => k.startsWith("gemini-") && !k.includes("image"));
+      const claudeModels = entries.filter(([k]) => k.startsWith("claude-"));
+
+      if (weeklyQuotas.gemini_weekly && geminiModels.length > 0) {
+        const allGeminiExhausted = geminiModels.every(([, q]) => (q.remainingPercentage ?? 0) === 0);
+        if (allGeminiExhausted && weeklyQuotas.gemini_weekly.remainingPercentage > 0) {
+          const maxResetAt = geminiModels.reduce((max, [, q]) =>
+            !max || (q.resetAt && new Date(q.resetAt) > new Date(max)) ? q.resetAt : max, null
+          );
+          weeklyQuotas.gemini_weekly.used = weeklyQuotas.gemini_weekly.total;
+          weeklyQuotas.gemini_weekly.remainingPercentage = 0;
+          if (maxResetAt) {
+            weeklyQuotas.gemini_weekly.resetAt = maxResetAt;
+          }
+        }
+      }
+
+      if (weeklyQuotas.claude_gpt_weekly && claudeModels.length > 0) {
+        const allClaudeExhausted = claudeModels.every(([, q]) => (q.remainingPercentage ?? 0) === 0);
+        if (allClaudeExhausted && weeklyQuotas.claude_gpt_weekly.remainingPercentage > 0) {
+          const maxResetAt = claudeModels.reduce((max, [, q]) =>
+            !max || (q.resetAt && new Date(q.resetAt) > new Date(max)) ? q.resetAt : max, null
+          );
+          weeklyQuotas.claude_gpt_weekly.used = weeklyQuotas.claude_gpt_weekly.total;
+          weeklyQuotas.claude_gpt_weekly.remainingPercentage = 0;
+          if (maxResetAt) {
+            weeklyQuotas.claude_gpt_weekly.resetAt = maxResetAt;
+          }
+        }
+      }
+
+      Object.assign(quotas, weeklyQuotas);
+    } catch {
+      // Silently ignore — weekly + reconciliation are best-effort
+    }
 
     return {
       plan: subscriptionInfo?.currentTier?.name || "Unknown",

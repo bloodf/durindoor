@@ -15,6 +15,7 @@
 - port(upstream): #3823 - preserve long CodeBuddy system prompts
 - sync(upstream): fold zai-search into the glm provider for web search
 - port(upstream): #3714 - close SSRF guard bypasses in ssrfGuard.js
+- sync(upstream): Codex strips unsupported Unicode-property regex constraints from tool schemas without mutating caller schemas. (upstream `781c18d83746a9b3a9dd7d401ca0ed2c6db1ce69`)
 
 # 4.1.0
 

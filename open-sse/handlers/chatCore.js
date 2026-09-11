@@ -39,7 +39,7 @@ import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.j
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, normalizeOpenRouterToolSchemas } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
@@ -686,8 +686,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   // Claude tool schema requires `type` to be explicitly set; strict gateways (e.g., MiniMax)
   // reject legacy payloads that omit it with HTTP 400. Default to "custom" when missing.
-  if (finalFormat === "claude" && Array.isArray(translatedBody.tools)) {
-    translatedBody.tools = translatedBody.tools.map((tool) => tool.type ? tool : { ...tool, type: "custom" });
+  // Provider-scoped via quirks (shouldDefaultClaudeToolType): only gateways that declare
+  // requireClaudeToolType get the explicit type. Applying it unconditionally breaks
+  // Claude-format endpoints that only accept the legacy typeless tool shape — DeepSeek's
+  // Anthropic-compatible endpoint 400s with "unknown variant `custom`" (#3905).
+  if (shouldDefaultClaudeToolType(provider, finalFormat, translatedBody.tools, PROVIDERS)) {
+    translatedBody.tools = defaultClaudeToolType(translatedBody.tools);
   }
 
   // Token-saver summary parts, printed as one "⚙" line at the end (only active ones)

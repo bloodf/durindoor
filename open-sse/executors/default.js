@@ -11,7 +11,7 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { applyDeepSeekV4ProAlias, injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
-import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
+import { refreshClineToken, refreshCodebuddyToken } from "../services/tokenRefresh.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
@@ -543,9 +543,13 @@ export class DefaultExecutor extends BaseExecutor {
       return headers;
     }
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
-    // Hooks run BEFORE auth so dynamic overlays (claude cached headers) can't clobber the token.
-    for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
+    // Most hooks run before auth so overlays cannot clobber the token. Cline's
+    // hook runs after auth because it normalizes WorkOS JWTs at the wire edge.
+    for (const hook of desc.hooks || []) {
+      if (hook !== "clineHeaders") HEADER_HOOKS[hook]?.(headers, credentials);
+    }
     applyAuth(headers, desc, credentials);
+    if (desc.hooks?.includes("clineHeaders")) HEADER_HOOKS.clineHeaders(headers, credentials);
 
     /** Emit only client-provided session identity, never generated fallback affinity. */
     if (this.provider === "claude" && credentials?._clientSessionId && !credentials._clientSessionIsGenerated) {
@@ -641,8 +645,8 @@ export class DefaultExecutor extends BaseExecutor {
       gemini: () => this.refreshFromGrant(credentials, proxyOptions),
       kiro: () => this.refreshKiro(credentials.refreshToken, proxyOptions),
       "codebuddy-cn": () => refreshCodebuddyToken(credentials.refreshToken, log, proxyOptions),
-      cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
-      clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
+      cline: () => refreshClineToken(credentials.refreshToken, log, proxyOptions),
+      clinepass: () => refreshClineToken(credentials.refreshToken, log, proxyOptions),
       "kimi-coding": () => this.refreshKimiCoding(credentials.refreshToken, proxyOptions),
       kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
     };
@@ -705,23 +709,6 @@ export class DefaultExecutor extends BaseExecutor {
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken || refreshToken, expiresIn: tokens.expiresIn };
   }
 
-  async refreshCline(refreshToken, proxyOptions = null) {
-    const response = await proxyAwareFetch(PROVIDERS.cline.refreshUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ refreshToken, grantType: "refresh_token", clientType: "extension" })
-    }, proxyOptions);
-    if (!response.ok) return null;
-    const payload = await response.json();
-    const data = payload?.data || payload;
-    const expiresAtIso = data?.expiresAt;
-    const expiresIn = expiresAtIso ? Math.max(1, Math.floor((new Date(expiresAtIso).getTime() - Date.now()) / 1000)) : undefined;
-    let accessToken = data?.accessToken;
-    if (accessToken && !accessToken.startsWith("workos:")) {
-      accessToken = `workos:${accessToken}`;
-    }
-    return { accessToken, refreshToken: data?.refreshToken || refreshToken, expiresIn };
-  }
 
   async refreshKimiCoding(refreshToken, proxyOptions = null) {
     const kimiHeaders = buildKimiHeaders();

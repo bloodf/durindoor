@@ -8,7 +8,8 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({
 
 import { resolveClineModels } from "../../open-sse/services/clineModels.js";
 
-const connection = { accessToken: "oauth-token" };
+const oauthToken = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJjbGluZSJ9.signature";
+const connection = { accessToken: oauthToken };
 
 describe("resolveClineModels", () => {
   beforeEach(() => {
@@ -45,7 +46,7 @@ describe("resolveClineModels", () => {
         method: "GET",
         headers: expect.objectContaining({
           Accept: "application/json",
-          Authorization: "Bearer workos:oauth-token",
+          Authorization: `Bearer workos:${oauthToken}`,
         }),
       }),
       proxyOptions,

@@ -14,7 +14,7 @@ export default {
     },
   },
   category: "oauth",
-  authModes: ["oauth", "apikey"],
+  authModes: ["apikey", "oauth"],
   hasOAuth: true,
   transport: {
     baseUrl: "https://api.cline.bot/api/v1/chat/completions",

@@ -7,6 +7,7 @@
 ## Fixes
 
 - fix(ui): flatten remaining frames, restyle login, normalize control heights (#838)
+- sync(upstream): ClinePass API keys now remain opaque on the wire, while Cline WorkOS JWTs receive their required request-time prefix and refresh without rewriting stored token bytes. (upstream `f6e7ca`)
 
 ## Upstream ports
 

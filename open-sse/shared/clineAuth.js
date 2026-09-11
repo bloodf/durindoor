@@ -3,11 +3,14 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const APP_VERSION = pkg.version || "0.0.0";
 
+/** Normalize Cline credentials without rewriting opaque ClinePass API keys. */
 export function getClineAccessToken(token) {
   if (!isString(token)) return "";
   const trimmed = token.trim();
   if (!trimmed) return "";
-  return trimmed.startsWith("workos:") ? trimmed : `workos:${trimmed}`;
+  if (trimmed.toLowerCase().startsWith("workos:")) return trimmed;
+  const isWorkOsJwt = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(trimmed);
+  return isWorkOsJwt ? `workos:${trimmed}` : trimmed;
 }
 
 export function getClineAuthorizationHeader(token) {

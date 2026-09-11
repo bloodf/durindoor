@@ -649,6 +649,33 @@ export async function refreshCopilotToken(githubAccessToken, log, proxyOptions =
   }, log, proxyOptions);
 }
 
+/** Refresh a Cline WorkOS session while keeping stored token bytes provider-native. */
+export async function refreshClineToken(refreshToken, log, proxyOptions = null) {
+  if (!refreshToken) return null;
+  return dedupRefresh("cline", refreshToken, async () => {
+    try {
+      const response = await proxyAwareFetch(PROVIDERS.cline.refreshUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ refreshToken, grantType: "refresh_token", clientType: "extension" })
+      }, proxyOptions);
+      if (!response.ok) return null;
+      const payload = await response.json();
+      const data = payload?.data ?? payload;
+      if (!isString(data?.accessToken) || !data.accessToken) return null;
+      const expiresAt = data?.expiresAt ? new Date(data.expiresAt).getTime() : NaN;
+      return {
+        accessToken: data?.accessToken,
+        refreshToken: data?.refreshToken || refreshToken,
+        expiresIn: Number.isFinite(expiresAt) ? Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)) : undefined
+      };
+    } catch (error) {
+      log?.error?.("TOKEN_REFRESH", "Error refreshing Cline token", { error: safeRefreshError(error) });
+      return null;
+    }
+  }, log, proxyOptions);
+}
+
 // CodeBuddy (Tencent) refresh — POST /v2/plugin/auth/token/refresh with the
 // refresh token carried in the X-Refresh-Token header (not a form body),
 // matching the official CodeBuddy CLI. Response: { code: 0, data: <token> }.

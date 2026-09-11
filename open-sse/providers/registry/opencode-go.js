@@ -34,28 +34,38 @@ export default {
     { format: "claude", baseUrl: "https://opencode.ai/zen/go/v1/messages", auth: { combined: true, header: "x-api-key", scheme: "raw", anthropicVersion: true } },
     { format: "openai-responses", baseUrl: "https://opencode.ai/zen/go/v1/responses", auth: { combined: true, header: "Authorization", scheme: "bearer" } },
   ],
+  /** Model endpoint support follows https://opencode.ai/docs/go/. */
   models: [
+    { id: "deepseek-flash", name: "DeepSeek V4.1 Flash", supportedFormats: ["openai"] },
+    { id: "glm-5.3-flash", name: "GLM 5.3 Flash (Vision)", supportedFormats: ["openai"] },
+    { id: "glm-5.3", name: "GLM 5.3", supportedFormats: ["openai"] },
     { id: "glm-5.2", name: "GLM 5.2" },
     { id: "glm-5.1", name: "GLM 5.1", supportedFormats: ["openai"] },
     { id: "kimi-k2.7-code", name: "Kimi K2.7 Code", supportedFormats: ["openai"] },
     { id: "kimi-k2.6", name: "Kimi K2.6", supportedFormats: ["openai"] },
+    { id: "kimi-k3", name: "Kimi K3", supportedFormats: ["openai"] },
     { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", supportedFormats: ["openai"] },
     { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", supportedFormats: ["openai"] },
     { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision Exp", supportedFormats: ["openai", "claude", "openai-responses"] },
+    { id: "longcat-2.0", name: "LongCat 2.0", supportedFormats: ["openai"] },
     { id: "mimo-v2.5", name: "MiMo V2.5", supportedFormats: ["openai"] },
     { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro", supportedFormats: ["openai"] },
-    // Muse Spark is served by /zen/go/v1/responses only (upstream #3819/#3820) —
-    // responses-only entry forces chatCore past sourceFormat-matched transports
-    // into translation (see chatCore guard). forceStream keeps JSON clients on
-    // the SSE→JSON path because the executor always streams upstream.
+    // Responses-only entries force chatCore past sourceFormat-matched transports
+    // into translation. forceStream keeps JSON clients on the SSE→JSON path.
+    { id: "grok-4.6", name: "Grok 4.6", targetFormat: "openai-responses", supportedFormats: ["openai-responses"], forceStream: true },
+    { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", targetFormat: "openai-responses", supportedFormats: ["openai-responses"], forceStream: true },
     { id: "muse-spark-1.2-contributor", name: "Muse Spark 1.2 Contributor", targetFormat: "openai-responses", supportedFormats: ["openai-responses"], forceStream: true },
     { id: "muse-spark-1.3-contributor", name: "Muse Spark 1.3 Contributor", targetFormat: "openai-responses", supportedFormats: ["openai-responses"], forceStream: true },
     { id: "minimax-m3", name: "MiniMax M3", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
     { id: "minimax-m2.7", name: "MiniMax M2.7", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
     { id: "minimax-m2.5", name: "MiniMax M2.5", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
+    { id: "qwen3.8-max", name: "Qwen 3.8 Max", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
+    { id: "qwen3.8-flash", name: "Qwen 3.8 Flash", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
     { id: "qwen3.7-max", name: "Qwen 3.7 Max", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
     { id: "qwen3.7-plus", name: "Qwen 3.7 Plus", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
     { id: "qwen3.6-plus", name: "Qwen 3.6 Plus", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
+    { id: "hy4-preview", name: "Hy4 Preview", supportedFormats: ["openai"] },
+    { id: "hy3", name: "Hy3", supportedFormats: ["openai"] },
     { id: "ox-alpha-free", name: "Ox Alpha Free", supportedFormats: ["openai"] },
   ],
   features: {

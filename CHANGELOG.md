@@ -15,6 +15,7 @@
 - port(upstream): #3823 - preserve long CodeBuddy system prompts
 - sync(upstream): fold zai-search into the glm provider for web search
 - port(upstream): #3714 - close SSRF guard bypasses in ssrfGuard.js
+- sync(upstream): OpenCode Go adds GLM 5.3, Kimi K3, DeepSeek V4.1 Flash, LongCat 2.0, Qwen 3.8, Hy4/Hy3, Grok 4.6, and GPT 5.6 Luna; DeepSeek V4.1 Flash appears first, while Grok/Luna retain native Responses routing. (upstream `eee3515e5` + `c71264112`)
 
 # 4.1.0
 

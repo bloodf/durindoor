@@ -12,11 +12,15 @@ const OPENAI_URL = "https://opencode.ai/zen/go/v1/chat/completions";
 const CLAUDE_URL = "https://opencode.ai/zen/go/v1/messages";
 const RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
 
-const CHAT_ONLY = ["glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro"];
+const CHAT_ONLY = [
+  "glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro",
+  "glm-5.3-flash", "glm-5.3", "kimi-k3", "deepseek-flash", "longcat-2.0", "hy4-preview", "hy3",
+];
 const MODEL_WITHOUT_FORMATS = "glm-5.2";
 const RESPONSES_CAPABLE = ["deepseek-v4-pro", "deepseek-v4-flash"];
-const CLAUDE_CAPABLE = ["minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"];
-const MUSE_SPARK_CONTRIBUTORS = ["muse-spark-1.2-contributor", "muse-spark-1.3-contributor"];
+const RESPONSES_ONLY = ["grok-4.6", "gpt-5.6-luna", "muse-spark-1.2-contributor", "muse-spark-1.3-contributor"];
+const CLAUDE_CAPABLE = ["minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.8-max", "qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"];
+const MUSE_SPARK_CONTRIBUTORS = RESPONSES_ONLY.slice(2);
 const VISION_CAPABLE = "deepseek-v4-flash-vision-exp";
 const OX_ALPHA = "ox-alpha-free";
 
@@ -25,14 +29,11 @@ describe("OpenCode Go model catalog", () => {
     const ids = (PROVIDER_MODELS["opencode-go"] || []).map((model) => model.id);
 
     expect(ids).toEqual([
-      MODEL_WITHOUT_FORMATS,
-      ...CHAT_ONLY.slice(0, 3),
-      ...RESPONSES_CAPABLE,
-      VISION_CAPABLE,
-      ...CHAT_ONLY.slice(3),
-      ...MUSE_SPARK_CONTRIBUTORS,
-      ...CLAUDE_CAPABLE,
-      OX_ALPHA,
+      "deepseek-flash",
+      "glm-5.3-flash", "glm-5.3", MODEL_WITHOUT_FORMATS, "glm-5.1",
+      "kimi-k2.7-code", "kimi-k2.6", "kimi-k3",
+      ...RESPONSES_CAPABLE, VISION_CAPABLE, "longcat-2.0", "mimo-v2.5", "mimo-v2.5-pro",
+      ...RESPONSES_ONLY, ...CLAUDE_CAPABLE, "hy4-preview", "hy3", OX_ALPHA,
     ]);
   });
 });
@@ -76,6 +77,13 @@ describe("OpenCode Go per-model supportedFormats", () => {
   it("resolves Muse Spark contributor thinking suffixes to their Responses rows", () => {
     for (const model of MUSE_SPARK_CONTRIBUTORS) {
       expect(getModelTargetFormat("opencode-go", `${model}(high)`)).toBe("openai-responses");
+    }
+  });
+
+  it("declares native Responses targets for Responses-only models", () => {
+    for (const model of RESPONSES_ONLY) {
+      expect(getModelTargetFormat("opencode-go", model)).toBe("openai-responses");
+      expect(getModelSupportedFormats("opencode-go", model)).toEqual(["openai-responses"]);
     }
   });
 });
@@ -241,6 +249,21 @@ describe("OpenCode Go per-model transport selection", () => {
       expect(runtimeTransport?.format).toBe("claude");
       expect(runtimeTransport?.baseUrl).toBe(CLAUDE_URL);
       expect(targetFormat).toBe("claude");
+    }
+  });
+
+  it("routes Responses-only models through their native endpoint", () => {
+    for (const model of RESPONSES_ONLY) {
+      const { runtimeTransport, targetFormat } = resolveRequestTransport({
+        provider: "opencode-go",
+        alias: "opencode-go",
+        model,
+        sourceFormat: "claude",
+        credentials: API_KEY,
+      });
+      expect(runtimeTransport?.format).toBe("openai-responses");
+      expect(runtimeTransport?.baseUrl).toBe(RESPONSES_URL);
+      expect(targetFormat).toBe("openai-responses");
     }
   });
 

@@ -1,5 +1,5 @@
-// codebuddy-cn catalog/capabilities alignment with the copilot.tencent.com
-// server product-config payload (upstream direct commit cec672d9d922).
+// CodeBuddy CN catalog/capabilities alignment with copilot.tencent.com
+// product-config payloads (upstream cec672d9d922 + 807553e24662).
 // thinkingCanDisable maps to the server's reasoning.canDisableThinking flag —
 // it is NOT the inverse of onlyReasoning.
 import { describe, it, expect } from "vitest";
@@ -9,9 +9,9 @@ import codebuddyCn from "../../open-sse/providers/registry/codebuddy-cn.js";
 import glm from "../../open-sse/providers/registry/glm.js";
 import glmCn from "../../open-sse/providers/registry/glm-cn.js";
 
-describe("codebuddy-cn server-config alignment (upstream cec672d9)", () => {
+describe("codebuddy-cn server-config alignment", () => {
   it("glm-5.3 family and deepseek-v4 family can disable thinking", () => {
-    for (const id of ["glm-5.3", "glm-5.3-flash", "deepseek-v4-pro", "deepseek-v4-flash"]) {
+    for (const id of ["glm-5.3", "glm-5.3-flash", "deepseek-v4-pro", "deepseek-v4.1-flash"]) {
       expect(getCapabilitiesForModel("codebuddy-cn", id)).toMatchObject({
         reasoning: true,
         thinkingCanDisable: true,
@@ -45,14 +45,22 @@ describe("codebuddy-cn server-config alignment (upstream cec672d9)", () => {
       "hy3-x",
       "hy4-preview-x",
       "deepseek-v3-2-volc",
+      "deepseek-v4-flash",
     ]) {
       expect(ids).not.toContain(dropped);
     }
     expect(ids).toEqual(expect.arrayContaining([
       "glm-5.2", "glm-5.1", "glm-5v-turbo", "minimax-m3", "kimi-k2.7", "kimi-k2.6",
       "hy3", "hy4-preview", "glm-5.3", "glm-5.3-flash", "kimi-k3-1",
-      "deepseek-v4-pro", "deepseek-v4-flash",
+      "deepseek-v4-pro", "deepseek-v4.1-flash",
     ]));
+  });
+
+  it("uses the server limits for deepseek-v4.1-flash", () => {
+    expect(getCapabilitiesForModel("codebuddy-cn", "deepseek-v4.1-flash")).toMatchObject({
+      contextWindow: 1000000,
+      maxOutput: 128000,
+    });
   });
 
   it("glm-5.2 publishes its server-declared high/xhigh effort set", () => {

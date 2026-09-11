@@ -14,6 +14,7 @@
 - port(upstream): #3862 - reject SQLite corruption before migration
 - port(upstream): #3823 - preserve long CodeBuddy system prompts
 - sync(upstream): fold zai-search into the glm provider for web search
+- sync(upstream): CodeBuddy CN replaces retired `deepseek-v4-flash` with `deepseek-v4.1-flash` and its 128k output limit. (upstream `807553e24662`)
 - port(upstream): #3714 - close SSRF guard bypasses in ssrfGuard.js
 
 # 4.1.0

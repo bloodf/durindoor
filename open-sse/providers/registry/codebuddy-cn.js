@@ -57,8 +57,8 @@ export default {
     // list is the contract. Drop log: glm-5.0 / glm-4.7 and hy4-preview-x
     // (endpoint returns 11102 "model service info not found"), plus
     // glm-5.0-turbo / minimax-m2.7 / kimi-k2.5 / hy3-preview /
-    // deepseek-v3-2-volc (absent from the server list, though still answering
-    // 200) and hy3-x (paid tier, not used here).
+    // deepseek-v3-2-volc and deepseek-v4-flash (absent from the server list,
+    // though still answering 200), plus hy3-x (paid tier, not used here).
     // "-x" suffix = paid tier of the same model (free id rides the promo quota).
     { id: "hy3", name: "Hy3" },
     { id: "hy4-preview", name: "Hy4-Preview" },
@@ -66,7 +66,7 @@ export default {
     { id: "glm-5.3-flash", name: "GLM-5.3-Flash" },
     { id: "kimi-k3-1", name: "Kimi-K3" },
     { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" },
-    { id: "deepseek-v4-flash", name: "DeepSeek-V4-Flash" },
+    { id: "deepseek-v4.1-flash", name: "DeepSeek-V4.1-Flash" },
   ],
   oauth: {
     baseUrl: "https://copilot.tencent.com",

@@ -2,6 +2,9 @@ import { platform, arch } from "os";
 import { PROVIDERS, PROVIDER_OAUTH } from "./providers.js";
 import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 
+// === Codex CLI === derive from registry codex.transport
+export const CODEX_CLI_VERSION = PROVIDERS["codex"]?.cliVersion;
+
 // === Gemini CLI === derive từ registry gemini-cli.transport
 import { isUndefined } from "../../src/shared/utils/typeChecks.js";
 export const GEMINI_CLI_VERSION = PROVIDERS["gemini-cli"]?.cliVersion;

@@ -10,6 +10,7 @@
 
 ## Upstream ports
 
+- sync(upstream): Codex adds GPT Image 2.5, Flare, and Sunburst aliases and aligns image, discovery, and connection-test identity headers on CLI 0.154.0 (`832a34659`, `a7047a07d`).
 - port(upstream): #3885 - drop rejected Claude diagnostics field
 - port(upstream): #3862 - reject SQLite corruption before migration
 - port(upstream): #3823 - preserve long CodeBuddy system prompts

@@ -1,19 +1,35 @@
 // Codex (ChatGPT Plus/Pro) image generation via Responses API + SSE
 import { randomUUID } from "node:crypto";
+import { CODEX_CLI_VERSION } from "../../config/appConstants.js";
 import { nowSec } from "./_base.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { resolveCodexAccountId } from "../../shared/codexAccountId.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CODEX_RESPONSES_URL = PROVIDERS["codex"].baseUrl;
-const CODEX_USER_AGENT = "codex_cli_rs/0.136.0";
-const CODEX_VERSION = "0.136.0";
+const CODEX_USER_AGENT = `codex_cli_rs/${CODEX_CLI_VERSION}`;
 const CODEX_ORIGINATOR = "codex_cli_rs";
 const CODEX_MODEL_SUFFIX = "-image";
 const CODEX_REF_DETAIL = "high";
+const CODEX_IMAGES_MAIN_MODEL = "gpt-5.5";
+const CODEX_TOOL_IMAGE_MODELS = new Set([
+  "gpt-image-1.5",
+  "gpt-image-2",
+  "gpt-image-2.5",
+  "gpt-image-2.5-flare",
+  "gpt-image-2.5-sunburst",
+]);
 
 function stripImageSuffix(model) {
   return model.endsWith(CODEX_MODEL_SUFFIX) ? model.slice(0, -CODEX_MODEL_SUFFIX.length) : model;
+}
+
+/** Resolve public image identity into the Responses model and image tool model expected by Codex. */
+function resolveCodexImageModels(model) {
+  if (CODEX_TOOL_IMAGE_MODELS.has(model)) {
+    return { responsesModel: CODEX_IMAGES_MAIN_MODEL, toolModel: model };
+  }
+  return { responsesModel: stripImageSuffix(model), toolModel: null };
 }
 
 function toDataUrl(input) {
@@ -145,7 +161,7 @@ export default {
       "originator": CODEX_ORIGINATOR,
       "session_id": randomUUID(),
       "user-agent": CODEX_USER_AGENT,
-      "version": CODEX_VERSION,
+      "version": CODEX_CLI_VERSION,
       "x-client-request-id": randomUUID()
     };
     if (accountId) headers["chatgpt-account-id"] = accountId;
@@ -157,21 +173,26 @@ export default {
     const single = toDataUrl(body.image);
     if (single) refs.push(single);
     const detail = body.image_detail || CODEX_REF_DETAIL;
+    const { responsesModel, toolModel } = resolveCodexImageModels(model);
     const imgTool = { type: "image_generation", output_format: (body.output_format || "png").toLowerCase() };
+    if (toolModel) {
+      imgTool.action = refs.length > 0 ? "edit" : "generate";
+      imgTool.model = toolModel;
+    }
     if (body.size && body.size !== "") imgTool.size = body.size;
     if (body.quality && body.quality !== "") imgTool.quality = body.quality;
     if (body.background && body.background !== "") imgTool.background = body.background;
     return {
-      model: stripImageSuffix(model),
+      model: responsesModel,
       instructions: "",
       input: [{ type: "message", role: "user", content: buildContent(body.prompt, refs, detail) }],
       tools: [imgTool],
-      tool_choice: "auto",
+      tool_choice: toolModel ? { type: "image_generation" } : "auto",
       parallel_tool_calls: false,
       prompt_cache_key: randomUUID(),
       stream: true,
       store: false,
-      reasoning: null
+      reasoning: toolModel ? { effort: "medium", summary: "auto" } : null
     };
   },
   // Custom: codex parses SSE → either pipe to client or collect b64

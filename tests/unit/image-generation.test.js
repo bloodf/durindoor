@@ -11,6 +11,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
+import { CODEX_CLI_VERSION } from "../../open-sse/config/appConstants.js";
+import { getModelType, getModelUpstreamId } from "../../open-sse/config/providerModels.js";
+import { getModelInfoCore } from "../../open-sse/services/model.js";
+import codexRegistry from "../../open-sse/providers/registry/codex.js";
+import openaiRegistry from "../../open-sse/providers/registry/openai.js";
 
 const originalFetch = global.fetch;
 
@@ -515,7 +520,7 @@ describe("handleImageGenerationCore", () => {
         headers: expect.objectContaining({
           authorization: "Bearer codex-token",
           "chatgpt-account-id": "account-123",
-          version: "0.136.0",
+          version: CODEX_CLI_VERSION,
         }),
       })
     );
@@ -529,6 +534,73 @@ describe("handleImageGenerationCore", () => {
 
     const responseBody = await result.response.json();
     expect(responseBody.data[0].b64_json).toBe("base64codeximage");
+  });
+
+  it.each(["gpt-image-1.5", "gpt-image-2", "gpt-image-2.5", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst"])(
+    "dispatches Codex %s through its image tool identity",
+    async (model) => {
+      global.fetch.mockResolvedValueOnce(
+        new Response(
+          [
+            "event: response.output_item.done",
+            'data: {"item":{"type":"image_generation_call","result":"base64codeximage"}}',
+            "",
+            "",
+          ].join("\n"),
+          { status: 200, headers: { "Content-Type": "text/event-stream" } }
+        )
+      );
+
+      const modelInfo = await getModelInfoCore(`cx/${model}`);
+      expect(modelInfo).toEqual({ provider: "codex", model });
+      expect(getModelType("cx", model)).toBe("image");
+
+      const result = await handleImageGenerationCore({
+        body: { prompt: "Restyle this image", image: "cmVmZXJlbmNl", output_format: "png" },
+        modelInfo,
+        credentials: { accessToken: "codex-token" },
+        log: null,
+      });
+
+      expect(result.success).toBe(true);
+      const [url, options] = global.fetch.mock.calls[0];
+      expect(url).toBe("https://chatgpt.com/backend-api/codex/responses");
+      expect(options.headers).toMatchObject({
+        "user-agent": `codex_cli_rs/${CODEX_CLI_VERSION}`,
+        version: CODEX_CLI_VERSION,
+      });
+      expect(JSON.parse(options.body)).toMatchObject({
+        model: "gpt-5.5",
+        tools: [{ type: "image_generation", output_format: "png", action: "edit", model }],
+        tool_choice: { type: "image_generation" },
+        reasoning: { effort: "medium", summary: "auto" },
+      });
+    }
+  );
+
+  it("resolves official image aliases to each provider's upstream endpoint and model", async () => {
+    expect(CODEX_CLI_VERSION).toBe(codexRegistry.transport.cliVersion);
+    expect(codexRegistry.transport.headers["User-Agent"]).toBe(`codex_cli_rs/${CODEX_CLI_VERSION}`);
+    expect(codexRegistry.transport.baseUrl).toBe("https://chatgpt.com/backend-api/codex/responses");
+    expect(openaiRegistry.imageConfig.baseUrl).toBe("https://api.openai.com/v1/images/generations");
+
+    for (const model of ["gpt-image-2.5", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst"]) {
+      expect(getModelUpstreamId("cx", model)).toBe(model);
+      expect(getModelUpstreamId("openai", model)).toBe(model);
+      global.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ created: 1, data: [{ b64_json: "image" }] })));
+
+      const result = await handleImageGenerationCore({
+        body: { prompt: "A mountain" },
+        modelInfo: { provider: "openai", model },
+        credentials: { apiKey: "openai-key" },
+        log: null,
+      });
+
+      expect(result.success).toBe(true);
+      const [url, options] = global.fetch.mock.calls.at(-1);
+      expect(url).toBe("https://api.openai.com/v1/images/generations");
+      expect(JSON.parse(options.body).model).toBe(model);
+    }
   });
 
   it("generates image with Cloudflare Workers AI JSON response", async () => {

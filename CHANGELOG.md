@@ -10,9 +10,11 @@
 
 ## Upstream ports
 
+- port(upstream): #3847 - Claude Fable quota rows now reflect provider-reported `weekly_scoped` windows from `limits[]`; accounts without that window no longer show synthetic 100% capacity, while legitimate legacy weekly windows remain visible.
 - port(upstream): #3885 - drop rejected Claude diagnostics field
 - port(upstream): #3862 - reject SQLite corruption before migration
 - port(upstream): #3823 - preserve long CodeBuddy system prompts
+- port(upstream): #3830 - successful explicit connection validation and OAuth re-login clear stale model locks, backoff, rate-limit, and failure state immediately while preserving supplied soft warnings and encrypted credentials.
 - sync(upstream): fold zai-search into the glm provider for web search
 - port(upstream): #3714 - close SSRF guard bypasses in ssrfGuard.js
 - sync(upstream): Codex strips unsupported Unicode-property regex constraints from tool schemas without mutating caller schemas. (upstream `781c18d83746a9b3a9dd7d401ca0ed2c6db1ce69`)

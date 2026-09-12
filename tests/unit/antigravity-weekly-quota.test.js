@@ -121,7 +121,7 @@ describe("getAntigravityUsage weekly merge", () => {
         return { ok: true, status: 200, json: async () => ({}), text: async () => "{}" };
       }
       if (url.includes(":loadCodeAssist")) {
-        return { ok: true, status: 200, json: async () => ({ cloudaicompanionProject: "project-1", currentTier: { name: "Pro" } }), text: async () => "{}" };
+        return { ok: true, status: 200, json: async () => ({ cloudaicompanionProject: "project-1", currentTier: { name: "Pro" }, paidTier: { id: "g1-pro-tier", name: "Google AI Pro" } }), text: async () => "{}" };
       }
       if (url.includes("retrieveUserQuotaSummary")) {
         return summary;
@@ -183,7 +183,7 @@ describe("getAntigravityUsage weekly merge", () => {
         return { ok: true, status: 200, json: async () => ({}), text: async () => "{}" };
       }
       if (url.includes(":loadCodeAssist")) {
-        return { ok: true, status: 200, json: async () => ({ currentTier: { name: "Free" } }), text: async () => "{}" };
+        return { ok: true, status: 200, json: async () => ({ currentTier: { name: "Free" }, paidTier: { id: "g1-pro-tier", name: "Google AI Pro" } }), text: async () => "{}" };
       }
       if (url.includes("retrieveUserQuotaSummary")) {
         throw new Error("must not be called without project");
@@ -206,7 +206,7 @@ describe("getAntigravityUsage weekly merge", () => {
         return { ok: true, status: 200, json: async () => ({}), text: async () => "{}" };
       }
       if (url.includes(":loadCodeAssist")) {
-        return { ok: true, status: 200, json: async () => ({ currentTier: { name: "Pro" } }), text: async () => "{}" };
+        return { ok: true, status: 200, json: async () => ({ currentTier: { name: "Pro" }, paidTier: { id: "g1-pro-tier", name: "Google AI Pro" } }), text: async () => "{}" };
       }
       if (url.includes("retrieveUserQuotaSummary")) {
         return summaryResponse([
@@ -231,5 +231,164 @@ describe("getAntigravityUsage weekly merge", () => {
     expect(summaryCall, "summary RPC called even when load payload lacks project").toBeDefined();
     expect(JSON.parse(summaryCall[1].body)).toEqual({ project: "stored-project-9" });
     expect(result.quotas.gemini_weekly?.remainingPercentage).toBe(50);
+  });
+});
+
+// Port of upstream #3892 — tier gating + exhausted-model reconciliation.
+// Free-tier accounts only get the weekly overlay; on paid tiers, when every
+// per-model row in a family is exhausted (remainingPercentage === 0), the
+// matching weekly row is forced to 0 to work around Google's
+// remainingFraction:1 bug for free Starter accounts.
+describe("getAntigravityUsage tier gating and weekly reconciliation", () => {
+  const GEMINI_5H_RESET = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+  const WEEKLY_RESET = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+
+  function makeMock({ subscription, perModel, weeklyGroups }) {
+    return async (url) => {
+      if (typeof url !== "string") {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => "{}" };
+      }
+      if (url.includes(":loadCodeAssist")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            cloudaicompanionProject: "project-1",
+            currentTier: { name: "Pro" },
+            ...subscription
+          }),
+          text: async () => "{}",
+        };
+      }
+      if (url.includes("retrieveUserQuotaSummary")) {
+        return summaryResponse(weeklyGroups);
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ models: perModel }),
+        text: async () => "{}",
+      };
+    };
+  }
+
+  beforeEach(() => proxyAwareFetch.mockReset());
+
+  it("skips per-model parsing on free-tier accounts (paidTier.id === 'free-tier')", async () => {
+    proxyAwareFetch.mockImplementation(
+      makeMock({
+        subscription: { paidTier: { id: "free-tier", name: "Free" } },
+        perModel: {
+          "gemini-3-flash": { quotaInfo: { remainingFraction: 0.4, resetTime: GEMINI_5H_RESET } },
+          "gemini-3.5-flash-low": { quotaInfo: { remainingFraction: 0.9, resetTime: GEMINI_5H_RESET } },
+        },
+        weeklyGroups: [
+          {
+            displayName: "Gemini Models",
+            buckets: [{ bucketId: "gemini-weekly", displayName: "Weekly Quota", remainingFraction: 0.6, resetTime: WEEKLY_RESET }],
+          },
+        ],
+      })
+    );
+
+    const result = await getAntigravityUsage("token-free-tier", {});
+
+    // Per-model rows must be absent on free-tier — those rows are misleading
+    // (they reflect the weekly limit, not a 5h window).
+    expect(result.quotas["gemini-3-flash"]).toBeUndefined();
+    expect(result.quotas["gemini-3.5-flash-low"]).toBeUndefined();
+    // The weekly row IS the only meaningful quota on free-tier.
+    expect(result.quotas.gemini_weekly).toMatchObject({
+      remainingPercentage: 60,
+      resetAt: WEEKLY_RESET,
+      displayName: "Gemini Weekly",
+    });
+  });
+
+  it("treats missing paidTier as free-tier and skips per-model parsing", async () => {
+    proxyAwareFetch.mockImplementation(
+      makeMock({
+        // No `paidTier` at all — same heuristic as upstream.
+        subscription: {},
+        perModel: {
+          "gemini-3-flash": { quotaInfo: { remainingFraction: 0.4, resetTime: GEMINI_5H_RESET } },
+        },
+        weeklyGroups: [
+          {
+            displayName: "Gemini Models",
+            buckets: [{ bucketId: "gemini-weekly", displayName: "Weekly Quota", remainingFraction: 0.8, resetTime: WEEKLY_RESET }],
+          },
+        ],
+      })
+    );
+
+    const result = await getAntigravityUsage("token-no-paid-tier", {});
+
+    expect(result.quotas["gemini-3-flash"]).toBeUndefined();
+    expect(result.quotas.gemini_weekly?.remainingPercentage).toBe(80);
+  });
+
+  it("applies weekly reconciliation when every Gemini model reports 0% (upstream bug)", async () => {
+    proxyAwareFetch.mockImplementation(
+      makeMock({
+        subscription: { paidTier: { id: "g1-pro-tier", name: "Google AI Pro" } },
+        // Every important Gemini model is locked out at 5h.
+        perModel: {
+          "gemini-3.8-flash-high": { quotaInfo: { remainingFraction: 0, resetTime: GEMINI_5H_RESET } },
+          "gemini-3.8-flash-medium": { quotaInfo: { remainingFraction: 0, resetTime: GEMINI_5H_RESET } },
+          "gemini-3.8-flash-low": { quotaInfo: { remainingFraction: 0, resetTime: GEMINI_5H_RESET } },
+          "gemini-3.5-flash-low": { quotaInfo: { remainingFraction: 0, resetTime: GEMINI_5H_RESET } },
+        },
+        // retrieveUserQuotaSummary buggily reports remainingFraction:1 for free Starter.
+        weeklyGroups: [
+          {
+            displayName: "Gemini Models",
+            buckets: [{ bucketId: "gemini-weekly", displayName: "Weekly Quota", remainingFraction: 1, resetTime: WEEKLY_RESET }],
+          },
+        ],
+      })
+    );
+
+    const result = await getAntigravityUsage("token-reconcile", {});
+
+    // Reconciliation overrode the weekly row.
+    expect(result.quotas.gemini_weekly).toMatchObject({
+      remainingPercentage: 0,
+      used: 1000,
+    });
+    // Inherited the per-model resetAt (the only sane answer when every model
+    // is locked until a future time).
+    expect(result.quotas.gemini_weekly.resetAt).toBe(GEMINI_5H_RESET);
+  });
+
+  it("leaves weekly quota untouched on paid tier when not all family models are exhausted", async () => {
+    proxyAwareFetch.mockImplementation(
+      makeMock({
+        subscription: { paidTier: { id: "g1-pro-tier", name: "Google AI Pro" } },
+        // Only one Gemini model is at 0% — family is NOT fully exhausted.
+        perModel: {
+          "gemini-3.8-flash-high": { quotaInfo: { remainingFraction: 0, resetTime: GEMINI_5H_RESET } },
+          "gemini-3.8-flash-medium": { quotaInfo: { remainingFraction: 0.5, resetTime: GEMINI_5H_RESET } },
+          "gemini-3.8-flash-low": { quotaInfo: { remainingFraction: 0, resetTime: GEMINI_5H_RESET } },
+        },
+        weeklyGroups: [
+          {
+            displayName: "Gemini Models",
+            buckets: [{ bucketId: "gemini-weekly", displayName: "Weekly Quota", remainingFraction: 0.5, resetTime: WEEKLY_RESET }],
+          },
+        ],
+      })
+    );
+
+    const result = await getAntigravityUsage("token-partial", {});
+
+    // Per-model rows still parsed on paid tier.
+    expect(result.quotas["gemini-3.8-flash-high"]).toMatchObject({ remainingPercentage: 0 });
+    expect(result.quotas["gemini-3.8-flash-medium"]).toMatchObject({ remainingPercentage: 50 });
+    // Weekly row stays as the upstream reported it (50% / WEEKLY_RESET) — no override.
+    expect(result.quotas.gemini_weekly).toMatchObject({
+      remainingPercentage: 50,
+      resetAt: WEEKLY_RESET,
+    });
   });
 });

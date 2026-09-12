@@ -76,7 +76,13 @@ try {
   proxyMock.impl = async (url) => {
     const u = String(url);
     if (u.includes(":loadCodeAssist")) {
-      return new Response(JSON.stringify({ cloudaicompanionProject: "p1", currentTier: { name: "Pro" } }), { status: 200 });
+      // `currentTier` labels the plan for display; `paidTier.id` controls whether
+      // Antigravity exposes paid-account per-model quota rows.
+      return new Response(JSON.stringify({
+        cloudaicompanionProject: "p1",
+        currentTier: { name: "Pro" },
+        paidTier: { id: "g1-pro-tier", name: "Google AI Pro" },
+      }), { status: 200 });
     }
     if (u.includes("googleapis.com")) {
       return new Response(JSON.stringify({

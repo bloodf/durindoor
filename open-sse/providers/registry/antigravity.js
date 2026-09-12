@@ -37,6 +37,15 @@ export default {
     },
     usage: {
       quotaApiUrl: "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+      /**
+       * Weekly-quota RPC used by the Antigravity weekly-overlay path. Same
+       * hardcoded value as the inline `WEEKLY_QUOTA_URL` constant in
+       * `open-sse/services/usage/google.js`; the inline constant stays as the
+       * fallback so existing call sites keep working without a base-URL
+       * refactor. Future base-URL templating can flip this without touching
+       * google.js.
+       */
+      quotaSummaryApiUrl: "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
       loadProjectApiUrl: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
       tokenUrl: "https://oauth2.googleapis.com/token",
     },

@@ -44,9 +44,71 @@ function markLastCacheableBlock(msg) {
   return false;
 }
 
+/** Wrap a client-supplied single content block without changing its data. */
+function normalizeMessageContent(msg) {
+  const content = msg?.content;
+  if (isObject(content) && content !== null && !Array.isArray(content)) {
+    msg.content = [content];
+  }
+  return msg;
+}
+
+/** Count request-wide Anthropic cache breakpoints. */
+function countCacheControlBlocks(body) {
+  let count = 0;
+  if (Array.isArray(body?.system)) for (const block of body.system) if (block?.cache_control) count++;
+  if (Array.isArray(body?.tools)) for (const tool of body.tools) if (tool?.cache_control) count++;
+  if (Array.isArray(body?.messages)) {
+    for (const message of body.messages) {
+      if (!Array.isArray(message?.content)) continue;
+      for (const block of message.content) if (block?.cache_control) count++;
+    }
+  }
+  return count;
+}
+
+/** Keep head anchors, then the newest remaining markers, within Anthropic's four-marker limit. */
+function capCacheControlBlocks(body) {
+  const systemAnchor = Array.isArray(body?.system) ? body.system.at(-1) : null;
+  const tools = Array.isArray(body?.tools) ? body.tools : [];
+  const toolAnchor = tools[lastCacheableToolIndex(tools)];
+  const marked = [];
+  if (Array.isArray(body?.system)) for (const block of body.system) if (block?.cache_control) marked.push(block);
+  for (const tool of tools) if (tool?.cache_control) marked.push(tool);
+  if (Array.isArray(body?.messages)) {
+    for (const message of body.messages) {
+      if (!Array.isArray(message?.content)) continue;
+      for (const block of message.content) if (block?.cache_control) marked.push(block);
+    }
+  }
+  const isHeadAnchor = (block) => block === systemAnchor || block === toolAnchor;
+  const headAnchors = marked.filter(isHeadAnchor);
+  const remaining = marked.filter((block) => !isHeadAnchor(block));
+  const keep = Math.max(0, 4 - headAnchors.length);
+  for (const block of remaining.slice(0, Math.max(0, remaining.length - keep))) delete block.cache_control;
+}
 // Re-anchor cache breakpoints on a Claude passthrough body after transformations.
 export function anchorClaudeCache(body) {
   if (!body || !isObject(body)) return body;
+  if (Array.isArray(body.messages)) {
+    for (const msg of body.messages) {
+      delete msg.cache_control;
+      if (isString(msg.content)) {
+        msg.content = msg.content ? [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }] : [];
+      }
+      normalizeMessageContent(msg);
+      if (!Array.isArray(msg.content)) continue;
+      for (const block of msg.content) {
+        if (block?.type === CLAUDE_BLOCK.THINKING || block?.type === CLAUDE_BLOCK.REDACTED_THINKING) {
+          delete block.cache_control;
+        }
+      }
+    }
+  }
+  // defer_loading and cache_control are mutually exclusive in Anthropic's API.
+  if (Array.isArray(body.tools)) {
+    for (const tool of body.tools) if (tool?.defer_loading === true) delete tool.cache_control;
+  }
 
   if (Array.isArray(body.system)) {
     const last = body.system.length - 1;
@@ -64,15 +126,16 @@ export function anchorClaudeCache(body) {
       delete tool.cache_control;
     });
   }
-
+  // Preserve re-anchored system/tool precedence and newest valid client markers
+  // when the request already fills Anthropic's four-breakpoint budget.
+  if (countCacheControlBlocks(body) >= 4) {
+    capCacheControlBlocks(body);
+    return body;
+  }
   if (Array.isArray(body.messages)) {
     let anchored = null;
     for (let i = body.messages.length - 1; i >= 0; i--) {
       const msg = body.messages[i];
-      delete msg.cache_control;
-      if (isString(msg.content)) {
-        msg.content = msg.content ? [{ type: CLAUDE_BLOCK.TEXT, text: msg.content }] : [];
-      }
       if (!Array.isArray(msg.content)) continue;
       for (const block of msg.content) {if (block && isObject(block)) delete block.cache_control;}
       if (anchored || msg.role !== ROLE.ASSISTANT) continue;
@@ -90,6 +153,18 @@ export function anchorClaudeCache(body) {
 
 // Check if message has valid non-empty content
 export function hasValidContent(msg) {
+  if (isObject(msg.content) && msg.content !== null && !Array.isArray(msg.content)) {
+    const block = msg.content;
+    return !!(block.type === CLAUDE_BLOCK.TEXT && block.text?.trim() ||
+    block.type === CLAUDE_BLOCK.TOOL_USE ||
+    block.type === CLAUDE_BLOCK.TOOL_RESULT ||
+    block.type === CLAUDE_BLOCK.SERVER_TOOL_USE && !hasForeignClaudeServerToolId(block) ||
+    block.type === CLAUDE_BLOCK.WEB_SEARCH_TOOL_RESULT ||
+    block.type === CLAUDE_BLOCK.IMAGE ||
+    block.type === CLAUDE_BLOCK.DOCUMENT ||
+    block.type === CLAUDE_BLOCK.THINKING ||
+    block.type === CLAUDE_BLOCK.REDACTED_THINKING);
+  }
   if (isString(msg.content) && msg.content.trim()) return true;
   if (Array.isArray(msg.content)) {
     return msg.content.some((block) =>
@@ -345,6 +420,12 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
     if (Object.keys(body.output_config).length === 0) delete body.output_config;
   }
 
+  // Normalize non-standard single-block content before system folding and all
+  // block-oriented validation so no meaningful turn is discarded.
+  if (Array.isArray(body.messages)) {
+    for (const msg of body.messages) normalizeMessageContent(msg);
+  }
+
   if (Array.isArray(body.messages)) {
     const messages = [];
     const buffered = [];
@@ -502,6 +583,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     // Pass 1: remove cache_control + filter empty messages
     for (let i = 0; i < len; i++) {
       const msg = body.messages[i];
+      normalizeMessageContent(msg);
 
       // Remove cache_control from content blocks
       if (Array.isArray(msg.content)) {

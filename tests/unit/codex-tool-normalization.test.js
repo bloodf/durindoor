@@ -118,6 +118,118 @@ describe("CodexExecutor tool normalization", () => {
     ]);
   });
 
+  it("strips unsupported patterns across schema maps without touching schema data", () => {
+    const unsupported = "^[^\\p{Cc}\\P{Letter}]+$";
+    const literal = "^\\\\p{Cc}$";
+    const sourceParameters = {
+      type: "object",
+      properties: {
+        pattern: { type: "string", pattern: unsupported },
+        literal: { type: "string", pattern: literal },
+      },
+      patternProperties: {
+        "^pattern$": { type: "string", pattern: unsupported },
+      },
+      $defs: {
+        pattern: { type: "string", pattern: unsupported },
+      },
+      definitions: {
+        nested: { allOf: [{ type: "string", pattern: unsupported }] },
+      },
+      dependentSchemas: {
+        trigger: { properties: { value: { type: "string", pattern: unsupported } } },
+      },
+      enum: [{ pattern: unsupported }],
+      const: { pattern: unsupported },
+      default: { pattern: unsupported },
+      examples: [{ pattern: unsupported }],
+      "x-annotation": { pattern: unsupported },
+    };
+
+    const tools = normalizeTools([{
+      type: "function",
+      function: { name: "schema_probe", parameters: sourceParameters },
+    }]);
+    const parameters = tools[0].parameters;
+
+    expect(parameters.properties.pattern.pattern).toBeUndefined();
+    expect(parameters.properties.literal.pattern).toBe(literal);
+    expect(parameters.patternProperties["^pattern$"].pattern).toBeUndefined();
+    expect(parameters.$defs.pattern.pattern).toBeUndefined();
+    expect(parameters.definitions.nested.allOf[0].pattern).toBeUndefined();
+    expect(parameters.dependentSchemas.trigger.properties.value.pattern).toBeUndefined();
+    expect(parameters.enum).toEqual([{ pattern: unsupported }]);
+    expect(parameters.const).toEqual({ pattern: unsupported });
+    expect(parameters.default).toEqual({ pattern: unsupported });
+    expect(parameters.examples).toEqual([{ pattern: unsupported }]);
+    expect(parameters["x-annotation"]).toEqual({ pattern: unsupported });
+    expect(sourceParameters.properties.pattern.pattern).toBe(unsupported);
+    expect(sourceParameters.patternProperties["^pattern$"].pattern).toBe(unsupported);
+  });
+
+  it("sanitizes nested draft07 dependencies and additionalItems schemas", () => {
+    const unsupported = "^\\p{Letter}+$";
+    const requiredDependencies = ["billing_address"];
+    const parameters = {
+      type: "object",
+      dependencies: {
+        credit_card: requiredDependencies,
+        aliases: {
+          type: "array",
+          items: [{ type: "string" }],
+          additionalItems: { type: "string", pattern: unsupported },
+        },
+      },
+    };
+
+    const tools = normalizeTools([{ type: "function", name: "draft07_probe", parameters }]);
+    const normalized = tools[0].parameters;
+    expect(normalized).not.toBe(parameters);
+    expect(normalized.dependencies).not.toBe(parameters.dependencies);
+    expect(normalized.dependencies.aliases).not.toBe(parameters.dependencies.aliases);
+
+    expect(normalized.dependencies.credit_card).toBe(requiredDependencies);
+    expect(normalized.dependencies.credit_card).toEqual(["billing_address"]);
+    expect(normalized.dependencies.aliases.additionalItems.pattern).toBeUndefined();
+    expect(normalized.dependencies.aliases.additionalItems.type).toBe("string");
+    expect(parameters.dependencies.aliases.additionalItems.pattern).toBe(unsupported);
+  });
+
+  it("preserves schema identity when Codex has nothing to strip", () => {
+    const parameters = {
+      type: "object",
+      properties: {
+        simple: { type: "string", pattern: "^[A-Z]+$" },
+        literal: { type: "string", pattern: "^\\\\P{Letter}$" },
+      },
+    };
+
+    const tools = normalizeTools([{ type: "function", name: "probe", parameters }]);
+
+    expect(tools[0].parameters).toBe(parameters);
+  });
+
+  it("sanitizes namespace subtool parameters without mutating caller schemas", () => {
+    const parameters = {
+      type: "object",
+      properties: { name: { type: "string", pattern: "^\\p{Cc}+$" } },
+    };
+    const namespace = {
+      type: "namespace",
+      name: "agent",
+      tools: [{ type: "function", name: "Artifact", parameters }],
+    };
+    const originalNamespace = structuredClone(namespace);
+    const tools = normalizeTools([namespace]);
+
+    expect(tools[0].tools[0].parameters.properties.name.pattern).toBeUndefined();
+    expect(tools[0]).not.toBe(namespace);
+    expect(tools[0].tools).not.toBe(namespace.tools);
+    expect(namespace.tools[0].parameters).toBe(parameters);
+    expect(namespace).toEqual(originalNamespace);
+    expect(parameters.properties.name.pattern).toBe("^\\p{Cc}+$");
+  });
+
   it("preserves custom freeform tools with format payloads", () => {
     const tools = normalizeTools([
       {

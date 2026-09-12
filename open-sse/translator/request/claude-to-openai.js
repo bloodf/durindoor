@@ -4,7 +4,7 @@ import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function stripAnthropicBillingHeader(text) {
   if (!isString(text)) return "";
@@ -184,6 +184,10 @@ function describeOmittedMedia(mediaType) {
 
 // Convert single Claude message - returns single message or array of messages
 function convertClaudeMessage(msg) {
+  // Tolerate clients that send one content block without the surrounding array.
+  if (isObject(msg.content) && msg.content !== null && !Array.isArray(msg.content)) {
+    msg.content = [msg.content];
+  }
   // Mid-conversation system message -> user (per Anthropic placement rules)
   if (msg.role === ROLE.SYSTEM) {
     const text = systemReminderText(msg.content);

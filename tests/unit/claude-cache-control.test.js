@@ -57,10 +57,10 @@ describe("Claude passthrough cache-control anchoring", () => {
     expect(body.tools[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
-  it("unconditionally strips cache_control from every message block before anchoring", () => {
-    // Defends against ad-hoc cache_control clients may leave mid-history; the
-    // anchor sweep must remove all of it so the prefix gets exactly one fresh
-    // breakpoint, even on non-cache-eligible blocks like images.
+  it("strips every message marker before adding a fresh anchor below the spent-budget threshold", () => {
+    // Below four request-wide markers, the anchor sweep removes stale client
+    // offsets so the prefix gets exactly one fresh breakpoint, including when
+    // the newest cacheable assistant block is an image.
     const body = {
       messages: [
         { role: "user", content: [{ type: "text", text: "u1", cache_control: { type: "ephemeral" } }] },

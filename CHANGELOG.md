@@ -15,6 +15,7 @@
 - port(upstream): #3823 - preserve long CodeBuddy system prompts
 - sync(upstream): fold zai-search into the glm provider for web search
 - port(upstream): #3714 - close SSRF guard bypasses in ssrfGuard.js
+- sync(upstream): Claude cache re-anchoring preserves system/tool precedence while enforcing Anthropic's four-marker request budget; single-object text and tool content survives passthrough and registered translation. (upstream `8a81085a7`)
 
 # 4.1.0
 

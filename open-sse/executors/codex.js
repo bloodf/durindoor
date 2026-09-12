@@ -17,6 +17,7 @@ import {
 "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+import { stripCodexUnsupportedPatterns } from "../utils/codexToolSchema.js";
 import {
   applyCodexClientIdentityHeaders,
   applyCodexClientMetadata,
@@ -366,27 +367,38 @@ function normalizeCodexAssistantHistory(body) {
 function normalizeCodexTools(body) {
   if (!Array.isArray(body.tools)) return;
   const validNames = new Set();
-  body.tools = body.tools.filter((tool) => {
-    if (!tool || !isObject(tool) || Array.isArray(tool)) return false;
+  const tools = [];
+  for (let tool of body.tools) {
+    if (!tool || !isObject(tool) || Array.isArray(tool)) continue;
     const type = isString(tool.type) ? tool.type : "";
     if (type === "namespace") {
       if (Array.isArray(tool.tools)) {
-        for (const st of tool.tools) {
-          const n = isString(st?.name) ? st.name.trim().slice(0, 128) : "";
-          if (n) validNames.add(n);
+        let subtools = tool.tools;
+        for (let index = 0; index < tool.tools.length; index++) {
+          const subtool = tool.tools[index];
+          const name = isString(subtool?.name) ? subtool.name.trim().slice(0, 128) : "";
+          if (name) validNames.add(name);
+          if (!subtool?.parameters || !isObject(subtool.parameters) || Array.isArray(subtool.parameters)) continue;
+          const parameters = stripCodexUnsupportedPatterns(subtool.parameters);
+          if (parameters === subtool.parameters) continue;
+          if (subtools === tool.tools) subtools = tool.tools.slice();
+          subtools[index] = { ...subtool, parameters };
         }
+        if (subtools !== tool.tools) tool = { ...tool, tools: subtools };
       }
-      return true;
+      tools.push(tool);
+      continue;
     }
     if (type !== "function") {
-      if (CODEX_PASSTHROUGH_TOOL_TYPES.has(type)) return true;
-      if (!type || tool.function || isString(tool.name)) return false;
-      return CODEX_HOSTED_TOOL_TYPES.has(type);
+      if (CODEX_PASSTHROUGH_TOOL_TYPES.has(type) || CODEX_HOSTED_TOOL_TYPES.has(type) && !tool.function && !isString(tool.name)) {
+        tools.push(tool);
+      }
+      continue;
     }
     const fn = tool.function && isObject(tool.function) && !Array.isArray(tool.function) ? tool.function : null;
     const rawName = isString(tool.name) ? tool.name : isString(fn?.name) ? fn.name : "";
     const name = rawName.trim();
-    if (!name) return false;
+    if (!name) continue;
     const description = isString(tool.description) ? tool.description : isString(fn?.description) ? fn.description : "";
     const parameters = tool.parameters && isObject(tool.parameters) && !Array.isArray(tool.parameters) ?
     tool.parameters :
@@ -395,10 +407,11 @@ function normalizeCodexTools(body) {
     tool.type = "function";
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
-    tool.parameters = parameters;
+    tool.parameters = stripCodexUnsupportedPatterns(parameters);
     validNames.add(name);
-    return true;
-  });
+    tools.push(tool);
+  }
+  body.tools = tools;
   // Drop tool_choice if it references an unknown function name
   if (body.tool_choice && isObject(body.tool_choice) && !Array.isArray(body.tool_choice)) {
     if (body.tool_choice.type === "function") {

@@ -1,5 +1,8 @@
 /**
- * Claude usage handler
+ * Claude usage handler.
+ *
+ * OAuth quota rows represent only windows reported by Anthropic. Model-scoped
+ * weekly windows come from `limits[]`; absence never implies unused capacity.
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
@@ -8,7 +11,7 @@ import { U, parseResetTime } from "./shared.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
 
 // Claude API config (urls from registry, apiVersion is header logic kept here)
-import { isNumber, isObject } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_CONFIG = {
   oauthUsageUrl: U("claude").oauthUrl,
   usageUrl: U("claude").orgUrl,
@@ -169,32 +172,35 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
         quotas["weekly (7d)"] = createQuotaObject(data.seven_day);
       }
 
-      // Parse model-specific weekly windows (e.g. seven_day_sonnet, seven_day_opus, seven_day_fable)
-      const MODEL_DISPLAY_NAMES = {
+      // Retain provider-reported legacy model windows while Anthropic migrates
+      // model-scoped weekly limits to limits[].
+      const modelDisplayNames = {
         fable_5_1: "fable",
-        fable_5: "fable",
+        fable_5: "fable"
       };
 
       for (const [key, value] of Object.entries(data)) {
         if (key.startsWith("seven_day_") && key !== "seven_day" && hasUtilization(value)) {
           const rawName = key.replace("seven_day_", "");
-          const modelName = MODEL_DISPLAY_NAMES[rawName] || rawName;
+          const modelName = modelDisplayNames[rawName] || rawName;
           quotas[`weekly ${modelName} (7d)`] = createQuotaObject(value);
-        } else if ((key === "fable" || key === "fable_5" || key === "fable_5_1") && hasUtilization(value)) {
-          quotas["weekly fable (7d)"] = createQuotaObject(value);
         }
       }
 
-      // Fallback: surface Fable quota row if weekly window exists but Fable was not returned yet
-      if (!quotas["weekly fable (7d)"] && hasUtilization(data.seven_day)) {
-        quotas["weekly fable (7d)"] = {
-          used: 0,
-          total: 100,
-          remaining: 100,
-          remainingPercentage: 100,
-          resetAt: parseResetTime(data.seven_day.resets_at),
-          unlimited: false,
-        };
+      // Current model-scoped windows (including Fable) are reported as
+      // { kind: "weekly_scoped", percent, resets_at, scope.model.display_name }.
+      if (Array.isArray(data.limits)) {
+        for (const limit of data.limits) {
+          if (limit?.kind !== "weekly_scoped") continue;
+          const displayName = limit?.scope?.model?.display_name;
+          if (!isString(displayName) || !displayName.trim()) continue;
+          if (!isNumber(limit.percent) || !Number.isFinite(limit.percent)) continue;
+          const modelName = displayName.trim().toLowerCase();
+          quotas[`weekly ${modelName} (7d)`] = createQuotaObject({
+            utilization: Math.max(0, Math.min(100, limit.percent)),
+            resets_at: limit.resets_at
+          });
+        }
       }
 
       const result = {

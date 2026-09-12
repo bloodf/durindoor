@@ -10,6 +10,7 @@
 
 ## Upstream ports
 
+- port(upstream): #3847 - Claude Fable quota rows now reflect provider-reported `weekly_scoped` windows from `limits[]`; accounts without that window no longer show synthetic 100% capacity, while legitimate legacy weekly windows remain visible.
 - port(upstream): #3885 - drop rejected Claude diagnostics field
 - port(upstream): #3862 - reject SQLite corruption before migration
 - port(upstream): #3823 - preserve long CodeBuddy system prompts

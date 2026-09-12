@@ -250,9 +250,10 @@ function makeCrossFormatOptions(provider, model) {
   };
 }
 
-function makeNativeClaudeOptions() {
+// Provider parameter is intentional: Claude-format gateways differ on whether tool.type is required.
+function makeNativeClaudeOptions(provider = "claude", model = "claude-sonnet-4.5") {
   const body = {
-    model: "claude-sonnet-4.5",
+    model,
     system: "You are concise.",
     max_tokens: 1024,
     messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
@@ -260,14 +261,14 @@ function makeNativeClaudeOptions() {
 
   return {
     body,
-    modelInfo: { provider: "claude", model: "claude-sonnet-4.5" },
+    modelInfo: { provider, model },
     credentials: { accessToken: "token-test", providerSpecificData: {} },
     clientRawRequest: {
       endpoint: "/v1/messages",
       body,
       headers: { accept: "application/json", "user-agent": "claude-cli/2.1.0" },
     },
-    connectionId: "test-claude-connection",
+    connectionId: `test-${provider}-connection`,
     log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 }
@@ -486,12 +487,15 @@ describe("forceStream provider config", () => {
   });
 
   it.each([
-    ["missing", undefined],
-    ["null", null],
-    ["empty", ""],
-  ])("defaults a %s Claude tool type to custom", async (_label, type) => {
+    ["minimax", "missing", undefined],
+    ["minimax", "null", null],
+    ["minimax", "empty", ""],
+    ["minimax-cn", "missing", undefined],
+    ["minimax-cn", "null", null],
+    ["minimax-cn", "empty", ""],
+  ])("defaults a %s gateway's %s Claude tool type to custom", async (provider, _label, type) => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
-    const options = makeNativeClaudeOptions();
+    const options = makeNativeClaudeOptions(provider, "MiniMax-M2.5");
     const tool = { name: "lookup", input_schema: { type: "object" } };
     if (type !== undefined) tool.type = type;
     options.body.tools = [tool];
@@ -500,19 +504,46 @@ describe("forceStream provider config", () => {
 
     await handleChatCore(options);
 
-    expect(executeMock.mock.calls[0][0].body.tools[0]).toMatchObject({ name: "lookup", type: "custom" });
+    expect(executeMock.mock.calls[0][0].body.tools).toEqual([
+      { name: "lookup", input_schema: { type: "object" }, type: "custom" },
+    ]);
   });
 
-  it("preserves a truthy Claude tool object by reference", async () => {
+  it.each(["claude", "deepseek"])("preserves typeless Claude tools for undeclared %s gateways", async (provider) => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
-    const options = makeNativeClaudeOptions();
-    options.body.tools = [{ name: "computer", type: "computer_use", display_width: 1024 }];
+    const options = makeNativeClaudeOptions(provider, provider === "deepseek" ? "deepseek-chat" : "claude-sonnet-4.5");
+    options.body.tools = [
+      { name: "missing", input_schema: { type: "object" } },
+      { name: "null", input_schema: { type: "object" }, type: null },
+      { name: "empty", input_schema: { type: "object" }, type: "" },
+    ];
     options.clientRawRequest.body = options.body;
     isNativePassthroughMock.mockReturnValue(true);
+
     await handleChatCore(options);
 
-    const normalizedTools = dedupeToolsMock.mock.calls[0][0];
-    expect(executeMock.mock.calls[0][0].body.tools[0]).toBe(normalizedTools[0]);
+    expect(executeMock.mock.calls[0][0].body.tools).toEqual([
+      { name: "missing", input_schema: { type: "object" } },
+      { name: "null", input_schema: { type: "object" }, type: null },
+      { name: "empty", input_schema: { type: "object" }, type: "" },
+    ]);
+  });
+
+  it.each([
+    ["minimax", "MiniMax-M2.5"],
+    ["deepseek", "deepseek-chat"],
+  ])("preserves explicit Claude tool types for %s", async (provider, model) => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const options = makeNativeClaudeOptions(provider, model);
+    options.body.tools = [{ name: "computer", type: "computer_20250124", display_width: 1024 }];
+    options.clientRawRequest.body = options.body;
+    isNativePassthroughMock.mockReturnValue(true);
+
+    await handleChatCore(options);
+
+    expect(executeMock.mock.calls[0][0].body.tools).toEqual([
+      { name: "computer", type: "computer_20250124", display_width: 1024 },
+    ]);
   });
 
   it("does not inject stream into native Gemini CLI passthrough bodies", async () => {

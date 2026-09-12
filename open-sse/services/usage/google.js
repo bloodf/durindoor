@@ -391,9 +391,12 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     const data = await response.json();
     const quotas = {};
 
-    // Detect tier: free-tier accounts only have weekly quotas (no separate 5h window).
-    // On free-tier, fetchAvailableModels returns misleading per-model quota info
-    // (missing remainingFraction defaults to 0, or reflects the weekly limit not a 5h window).
+    // `currentTier` is the display label only; upstream's `paidTier.id` is the
+    // entitlement signal. Missing paidTier must remain free/unknown rather than
+    // inferring paid access from a Pro-looking currentTier name.
+    // Free-tier accounts only have weekly quotas (no separate 5h window).
+    // Their fetchAvailableModels quota info is misleading: missing
+    // remainingFraction defaults to 0, or reflects the weekly limit instead.
     const paidTierId = subscriptionInfo?.paidTier?.id;
     const isFreeTier = !paidTierId || paidTierId === "free-tier";
 

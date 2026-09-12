@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
 import { CLAUDE_BLOCK, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { FORMATS } from "../formats.js";
 
 // Tool call helper functions for translator
 
@@ -795,4 +796,50 @@ export function normalizeNvidiaToolCallIds(body) {
     }
   }
   return body;
+}
+
+/**
+ * Set `type: "custom"` on every Claude-format tool entry that omits one. The
+ * Claude tool schema accepts a `type` field and strict gateways (e.g., MiniMax)
+ * reject legacy payloads that omit it with HTTP 400.
+ *
+ * @param {Array<object>} tools - Tool definitions from a Claude-format body.
+ * @returns {Array<object>} Tools with `type: "custom"` filled in where missing.
+ */
+export function defaultClaudeToolType(tools) {
+  return tools.map(tool => tool?.type ? tool : { ...tool, type: "custom" });
+}
+
+/**
+ * Whether Claude-format tools need explicit `type` defaulting before dispatch.
+ *
+ * Only gateways that declare the `requireClaudeToolType` quirk (MiniMax,
+ * MiniMax-CN) reject typeless tools. Applying the default globally breaks
+ * Claude-format endpoints that only accept the legacy typeless tool shape —
+ * DeepSeek's Anthropic-compatible endpoint answers HTTP 400
+ * "unknown variant `custom`" and every Claude Code request routed there fails
+ * (#3905).
+ *
+ * Contract for `quirks.requireClaudeToolType`:
+ *   - Truthy   → this helper returns `true`; `defaultClaudeToolType` runs and
+ *               fills in `type: "custom"` for typeless tools.
+ *   - Falsy /  → this helper returns `false`; the body keeps whatever the
+ *     absent     upstream client sent (legacy typeless shape stays intact for
+ *               endpoints that only accept it).
+ *
+ * This is the scoped replacement for the prior unconditional behavior
+ * (any Claude-format body received `type: "custom"` regardless of provider).
+ *
+ * @param {string} provider - Provider id used to look up `PROVIDERS`.
+ * @param {string} finalFormat - Resolved upstream format (compared against `FORMATS.CLAUDE`).
+ * @param {Array<object>} tools - Tool definitions carried by the request body.
+ * @param {object} PROVIDERS - Provider registry map (id → provider definition).
+ * @returns {boolean} `true` when the provider explicitly opts in via the quirk.
+ */
+export function shouldDefaultClaudeToolType(provider, finalFormat, tools, PROVIDERS) {
+  return (
+    finalFormat === FORMATS.CLAUDE
+    && Array.isArray(tools)
+    && PROVIDERS?.[provider]?.quirks?.requireClaudeToolType === true
+  );
 }

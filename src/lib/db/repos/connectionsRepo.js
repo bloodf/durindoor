@@ -32,6 +32,44 @@ const OPTIONAL_FIELDS = [
 "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
 "consecutiveUseCount", "idToken", "lastRefreshAt"];
 
+const MODEL_LOCK_PREFIX = "modelLock_";
+
+/**
+ * Normalize an explicitly successful connection check into a fresh routing
+ * lifecycle. Persist caller-supplied soft warnings, but clear stale failures,
+ * rate limits, backoff, and every model-specific routing lock.
+ */
+function resetHealthStateOnActivation(existing, patch) {
+  if (patch?.testStatus !== "active") return patch;
+
+  const normalized = {
+    ...patch,
+    testStatus: "active",
+    lastError: Object.hasOwn(patch, "lastError") ? patch.lastError : null,
+    lastErrorAt: Object.hasOwn(patch, "lastErrorAt") ? patch.lastErrorAt : null,
+    errorCode: null,
+    rateLimitedUntil: null,
+    backoffLevel: 0
+  };
+
+  for (const key of Object.keys(existing || {})) {
+    if (key.startsWith(MODEL_LOCK_PREFIX)) normalized[key] = null;
+  }
+
+  return normalized;
+}
+
+function mergeProviderConnectionWithHealthReset(existing, patch) {
+  const normalized = resetHealthStateOnActivation(existing, patch);
+  const merged = mergeProviderConnection(existing, normalized);
+  if (normalized?.testStatus === "active") {
+    merged.testStatus = "active";
+    merged.lastError = normalized.lastError;
+    merged.lastErrorAt = normalized.lastErrorAt;
+  }
+  return merged;
+}
+
 
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
@@ -141,18 +179,16 @@ function deriveConnectionName(data, fallbackName) {
   return fallbackName;
 }
 
-// A returning Codex OAuth identity clears the quarantine state left by a
-// permanent token invalidation. Built on mergeProviderConnection so the
-// standard semantics still apply -- null/empty tokens never erase stored
-// ones, and providerSpecificData deep-merges (dropping it would lose
-// chatgptAccountId and break later dedup).
+// A returning Codex OAuth identity starts the same fresh active lifecycle as
+// every successful explicit validation. Null/empty tokens remain protected and
+// providerSpecificData remains deep-merged by the shared merge helper.
 function mergeCodexReauthorization(existing, data, now) {
-  const merged = { ...mergeProviderConnection(existing, data), updatedAt: now, isActive: true, testStatus: "active" };
-  for (const field of ["lastError", "lastErrorAt", "errorCode", "backoffLevel"]) delete merged[field];
-  for (const field of Object.keys(merged)) {
-    if (field.startsWith("modelLock_")) delete merged[field];
-  }
-  return merged;
+  const merged = mergeProviderConnectionWithHealthReset(existing, {
+    ...data,
+    isActive: true,
+    testStatus: "active"
+  });
+  return { ...merged, updatedAt: now };
 }
 
 export async function getProviderConnections(filter = {}) {
@@ -269,7 +305,7 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
       }
       const merged = data.provider === "codex" && data.authType === "oauth" && data.accessToken ?
       mergeCodexReauthorization(existing, data, now) :
-      { ...mergeProviderConnection(existing, data), updatedAt: now };
+      { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: now };
       upsert(db, merged);
       result = merged;
       return;
@@ -349,7 +385,7 @@ export async function updateProviderConnection(id, data, {
       error.code = "PROVIDER_IDENTITY_IMMUTABLE";
       throw error;
     }
-    const merged = { ...mergeProviderConnection(existing, data), updatedAt: new Date().toISOString() };
+    const merged = { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: new Date().toISOString() };
     upsert(db, merged);
     if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
@@ -358,7 +394,6 @@ export async function updateProviderConnection(id, data, {
   return result;
 }
 
-const MODEL_LOCK_PREFIX = "modelLock_";
 const MODEL_STATE_VERSION_PREFIX = "modelStateObserved_";
 
 function boundedModelScope(provider, model, options) {

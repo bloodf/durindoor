@@ -1,3 +1,15 @@
+# 4.2.1
+
+## Upstream ports
+
+- port(upstream): 8a81085 - cap Claude cache markers and preserve object content
+- port(upstream): 781c18d - sanitize unsupported Codex Unicode schema patterns
+- port(upstream): #3847 - parse provider reported Fable weekly limits
+- port(upstream): #3830 - clear stale routing locks after successful activation
+- port(upstream): #3892 - free-tier and exhausted-model reconciliation for Antigravity
+- port(upstream): #3905 - scope Claude tool type defaulting to gateways
+
+
 # 4.2.0
 
 ## Features

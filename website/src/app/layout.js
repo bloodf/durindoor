@@ -1,6 +1,6 @@
 import "material-symbols/outlined.css";
-import "@/shared/ui/tokens.css";
-import "@/app/globals.css";
+import "@site/styles/shared/tokens.css";
+import "@site/styles/shared/globals.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
 
 export const metadata = { title: "DurinDoor", description: "Speak, friend, and enter. One guarded gateway for every AI provider." };

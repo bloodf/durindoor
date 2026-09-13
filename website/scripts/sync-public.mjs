@@ -41,3 +41,25 @@ for (const [source, target] of ENTRIES) {
   await copy(join(appPublic, source), join(sitePublic, target), target);
 }
 await copy(join(siteRoot, "node_modules", "monaco-editor", "min", "vs"), join(sitePublic, "monaco", "vs"), "monaco/vs");
+
+// Tailwind resolves `@import "tailwindcss"` relative to the CSS file, so the
+// shared stylesheets must live under website/ to find website/node_modules on
+// Vercel (the repo root is never installed there). Copy them and repoint
+// `source()` at the repo src/ while also scanning website/src for utilities.
+import { readFile, writeFile } from "node:fs/promises";
+
+const STYLES = [
+  ["src/shared/ui/tokens.css", "tokens.css"],
+  ["src/app/globals.css", "globals.css"],
+];
+const stylesDir = join(siteRoot, "src", "styles", "shared");
+await mkdir(stylesDir, { recursive: true });
+for (const [source, target] of STYLES) {
+  const css = await readFile(join(siteRoot, "..", source), "utf8");
+  const rewritten = css.replace(
+    /@import "tailwindcss" source\("[^"]*"\);/,
+    '@import "tailwindcss" source("../../../../src");\n@source "../../";',
+  );
+  await writeFile(join(stylesDir, target), rewritten);
+  console.log(`[sync-public] styles/shared/${target}`);
+}

@@ -17,3 +17,6 @@ public/theme-bootstrap.js
 public/favicon.svg
 public/favicon.ico
 public/durindoor-wordmark.png
+
+# Shared stylesheets copied by scripts/sync-public.mjs
+src/styles/shared/

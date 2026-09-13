@@ -3,7 +3,8 @@
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "motion/react";
 import Icon from "../ui/Icon.jsx";
-import { Magnetic, SectionHeader } from "../ui/primitives.jsx";
+import { CopyButton, Magnetic, SectionHeader } from "../ui/primitives.jsx";
+import { DEMO_PASSWORD } from "../content.js";
 
 const NAV = ["Endpoint", "Providers", "Combos", "Usage", "Quota", "MCP gateway", "CLI tools"];
 const STATS = [
@@ -96,6 +97,11 @@ export default function DemoTeaser() {
             <Icon name="play" size={16} />
             Open the live demo
           </Magnetic>
+          <div className="demo-password" role="group" aria-label="Demo password">
+            <span>Demo password</span>
+            <code>{DEMO_PASSWORD}</code>
+            <CopyButton text={DEMO_PASSWORD} />
+          </div>
           <p className="demo-note">Mocked data. Nothing leaves your browser.</p>
         </div>
       </div>

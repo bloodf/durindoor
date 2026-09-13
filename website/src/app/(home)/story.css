@@ -1,0 +1,653 @@
+/* Story sections, part one: ThreeUI stages, service kinds, fallback tiers, providers constellation. */
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- ThreeUI stage ---------- */
+.three-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.three-stage-fallback,
+.three-stage-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.three-stage-canvas {
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.three-stage.is-shown .three-stage-canvas {
+  opacity: 1;
+}
+
+/* ThreeUI paints a near-black ground; let our section surface show through the edges. */
+.three-stage .threeui-background {
+  background: transparent;
+}
+
+.three-stage.is-stream .three-stage-fallback {
+  background: radial-gradient(60% 40% at 50% 30%, rgba(16, 232, 130, 0.12), transparent 70%);
+}
+
+.three-stage.is-laser .three-stage-fallback {
+  background: radial-gradient(40% 45% at 50% 50%, rgba(212, 175, 55, 0.18), transparent 70%);
+}
+
+.three-stage.is-horizon .three-stage-fallback {
+  background: radial-gradient(80% 35% at 50% 100%, rgba(16, 232, 130, 0.35), transparent 70%);
+}
+
+.three-stage.is-bell .three-stage-fallback {
+  background:
+    radial-gradient(45% 55% at 50% 50%, rgba(80, 150, 130, 0.22), transparent 70%),
+    radial-gradient(30% 30% at 50% 55%, rgba(212, 175, 55, 0.12), transparent 70%),
+    #08100f;
+}
+
+/* ---------- Service kinds ---------- */
+.section-kinds {
+  overflow: hidden;
+}
+
+.kinds-dawn {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 320px;
+  pointer-events: none;
+  background: radial-gradient(60% 100% at 50% 0%, rgba(16, 232, 130, 0.1), transparent 70%);
+}
+
+.kinds-total {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin: -24px auto clamp(32px, 5vw, 56px);
+  text-align: left;
+}
+
+.kinds-total-n {
+  font-family: var(--home-display);
+  font-size: clamp(56px, 9vw, 104px);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--home-gold);
+  text-shadow: 0 0 40px rgba(212, 175, 55, 0.35);
+}
+
+.kinds-total-label {
+  display: grid;
+  gap: 4px;
+  max-width: 280px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.kinds-total-label small {
+  color: var(--home-muted);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.kinds-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.kind-inner {
+  --mx: 50%;
+  --my: 0%;
+  position: relative;
+  display: grid;
+  gap: 8px;
+  height: 100%;
+  padding: 22px 22px 20px;
+  border: 1px solid var(--home-line);
+  border-radius: var(--home-radius);
+  background: var(--home-card);
+  overflow: hidden;
+  isolation: isolate;
+  transition: border-color 0.3s, transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.kind-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  background: radial-gradient(300px circle at var(--mx) var(--my), rgba(16, 232, 130, 0.14), transparent 50%);
+  transition: opacity 0.35s;
+}
+
+.kind-inner:hover {
+  transform: translateY(-3px);
+  border-color: var(--home-line-strong);
+}
+
+.kind-inner:hover::before {
+  opacity: 1;
+}
+
+.kind-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.kind-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(16, 232, 130, 0.25);
+  background: rgba(16, 232, 130, 0.08);
+  color: var(--home-emerald);
+}
+
+.kind-count {
+  color: var(--home-gold);
+  font: 600 13px var(--home-mono);
+}
+
+.kind-count span:last-child {
+  color: var(--home-muted);
+  font-weight: 400;
+}
+
+.kind-inner h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.kind-route {
+  color: var(--home-muted);
+  font: 13px var(--home-mono);
+  overflow-wrap: anywhere;
+}
+
+.kind-bar {
+  display: block;
+  height: 3px;
+  margin-top: 10px;
+  border-radius: 3px;
+  background: var(--home-line);
+  overflow: hidden;
+}
+
+.kind-bar span {
+  display: block;
+  height: 100%;
+  width: calc(var(--share) * 100%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--home-emerald-deep), var(--home-emerald), var(--home-gold));
+  transform-origin: 0 50%;
+  animation: bar-grow 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i) * 70ms + 300ms);
+  animation-timeline: view();
+  animation-range: entry 10% cover 35%;
+}
+
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.kinds-note {
+  margin-top: 20px !important;
+  color: var(--home-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .kinds-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .kinds-grid {
+    grid-template-columns: 1fr;
+  }
+  .kinds-total {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+/* ---------- Flow backdrop ---------- */
+.section-flow {
+  overflow: hidden;
+}
+
+.flow-streams {
+  opacity: 0.55;
+  -webkit-mask: radial-gradient(70% 45% at 50% 22%, #000 20%, transparent 75%);
+  mask: radial-gradient(70% 45% at 50% 22%, #000 20%, transparent 75%);
+}
+
+.section-flow > .container {
+  position: relative;
+}
+
+/* ---------- Fallback tiers ---------- */
+.fallback {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(28px, 5vw, 64px);
+  align-items: start;
+  margin-top: clamp(64px, 9vw, 120px);
+}
+
+.fallback-title {
+  margin: 14px 0 12px !important;
+  font-family: var(--home-display);
+  font-size: clamp(26px, 3.4vw, 38px);
+  font-weight: 600;
+  line-height: 1.12;
+}
+
+.fallback-lead {
+  color: var(--home-muted);
+}
+
+.fallback-log {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px !important;
+  padding: 10px 14px;
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  background: var(--home-stone);
+  font: 13px var(--home-mono);
+  color: #d9d2c3;
+  white-space: pre-wrap;
+  min-height: 42px;
+}
+
+.fallback-log-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10e882;
+  box-shadow: 0 0 10px #10e882;
+  animation: pulse-dot 1.3s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.tiers {
+  position: relative;
+  display: grid;
+  gap: 14px;
+}
+
+.tier {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 18px 20px;
+  border: 1px solid var(--home-line);
+  border-radius: 18px;
+  background: var(--home-card);
+  transition: border-color 0.4s, box-shadow 0.4s, transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s;
+}
+
+.tier.is-active {
+  transform: translateX(-6px);
+}
+
+.tier.is-trying {
+  border-color: rgba(212, 175, 55, 0.6);
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.25), 0 18px 50px -24px rgba(212, 175, 55, 0.6);
+}
+
+.tier.is-failed {
+  border-color: rgba(255, 138, 122, 0.45);
+  opacity: 0.72;
+}
+
+.tier.is-served {
+  border-color: rgba(16, 232, 130, 0.6);
+  box-shadow: 0 0 0 1px rgba(16, 232, 130, 0.25), 0 18px 60px -24px rgba(16, 232, 130, 0.7);
+}
+
+.tier-head {
+  display: flex;
+  justify-content: space-between;
+  font: 600 12px var(--home-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tier-rank {
+  color: var(--home-gold);
+}
+
+.tier-status {
+  color: var(--home-muted);
+}
+
+.tier.is-trying .tier-status {
+  color: var(--home-gold);
+}
+
+.tier.is-failed .tier-status {
+  color: var(--home-danger);
+}
+
+.tier.is-served .tier-status {
+  color: var(--home-emerald);
+}
+
+.tier-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tier-name h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.tier p {
+  color: var(--home-muted);
+  font-size: 14.5px;
+}
+
+.tier code {
+  color: var(--home-emerald);
+  font: 13px var(--home-mono);
+}
+
+.tier-link {
+  position: absolute;
+  left: 34px;
+  bottom: -15px;
+  width: 2px;
+  height: 16px;
+  background: linear-gradient(180deg, var(--home-gold), transparent);
+}
+
+.logo-chip.is-small {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+
+.logo-chip.is-small img {
+  width: 22px;
+  height: 22px;
+}
+
+.sticky-rr {
+  margin-top: 22px;
+  padding: 16px 18px;
+  border: 1px dashed rgba(212, 175, 55, 0.35);
+  border-radius: 16px;
+}
+
+.sticky-rr-title {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 12px !important;
+  font-weight: 600;
+}
+
+.sticky-rr-title span {
+  color: var(--home-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.sticky-rr-accounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sticky-rr-accounts li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid var(--home-line);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--home-muted);
+  transition: color 0.3s, border-color 0.3s, background 0.3s;
+}
+
+.sticky-rr-accounts li.is-current {
+  color: var(--home-text);
+  border-color: rgba(16, 232, 130, 0.5);
+  background: rgba(16, 232, 130, 0.08);
+}
+
+.sticky-rr-pips {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.sticky-rr-pips i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--home-line-strong);
+  transition: background 0.25s, box-shadow 0.25s;
+}
+
+.sticky-rr-pips i.is-on {
+  background: #10e882;
+  box-shadow: 0 0 8px rgba(16, 232, 130, 0.8);
+}
+
+@media (max-width: 900px) {
+  .fallback {
+    grid-template-columns: 1fr;
+  }
+  .tier.is-active {
+    transform: none;
+  }
+}
+
+/* ---------- Providers constellation ---------- */
+.section-constellation {
+  overflow: hidden;
+}
+
+.constellation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: clamp(24px, 5vw, 64px);
+  align-items: center;
+}
+
+.constellation-copy .section-header {
+  margin-bottom: 28px;
+}
+
+.section-header.is-start {
+  justify-items: start;
+}
+
+.section-header.is-start .eyebrow::before {
+  display: none;
+}
+
+.constellation-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.constellation-facts div {
+  padding: 14px 16px;
+  border: 1px solid var(--home-line);
+  border-radius: 14px;
+  background: var(--home-card);
+}
+
+.constellation-facts dt {
+  color: var(--home-gold);
+  font: 600 11px var(--home-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.constellation-facts dd {
+  margin-top: 4px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.constellation-stage {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(closest-side, #0b1410, #040705);
+  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.18), 0 40px 120px -40px rgba(16, 232, 130, 0.35);
+}
+
+.constellation-stage .three-stage {
+  opacity: 0.9;
+}
+
+.constellation-sky {
+  position: absolute;
+  inset: 0;
+  container-type: inline-size;
+}
+
+.orbit {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  animation: orbit-spin var(--duration) linear infinite;
+}
+
+.orbit::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--radius) * 2);
+  height: calc(var(--radius) * 2);
+  border: 1px dashed rgba(212, 175, 55, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.orbit.is-reverse {
+  animation-direction: reverse;
+}
+
+.orbit-item {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: rotate(var(--angle)) translateX(var(--radius)) rotate(calc(var(--angle) * -1));
+}
+
+.orbit-logo {
+  display: grid;
+  place-items: center;
+  width: clamp(30px, 8cqw, 46px);
+  height: clamp(30px, 8cqw, 46px);
+  margin: calc(clamp(30px, 8cqw, 46px) / -2) 0 0 calc(clamp(30px, 8cqw, 46px) / -2);
+  border-radius: 12px;
+  background: #f3eedf;
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.35), 0 8px 24px -8px rgba(0, 0, 0, 0.8);
+  animation: orbit-spin var(--duration) linear infinite reverse;
+}
+
+.orbit.is-reverse .orbit-logo {
+  animation-direction: normal;
+}
+
+.orbit-logo img {
+  width: 66%;
+  height: 66%;
+  object-fit: contain;
+}
+
+.constellation-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--home-display);
+  font-size: clamp(11px, 2.4cqw, 15px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #ede6d8;
+  background: radial-gradient(closest-side, rgba(4, 7, 5, 0.9), rgba(4, 7, 5, 0));
+}
+
+@keyframes orbit-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@media (max-width: 900px) {
+  .constellation-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .constellation-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit,
+  .orbit-logo,
+  .fallback-log-dot {
+    animation: none;
+  }
+  .kind-bar span {
+    animation: none;
+  }
+}

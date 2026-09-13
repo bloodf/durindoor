@@ -52,6 +52,8 @@ export function ScrollProgress() {
 
 const NAV_LINKS = [
   { href: "#how", label: "How it works" },
+  { href: "#providers", label: "Providers" },
+  { href: "#savers", label: "Token savers" },
   { href: "#features", label: "Features" },
   { href: "#quick-start", label: "Quick start" },
   { href: "#demo", label: "Demo" },

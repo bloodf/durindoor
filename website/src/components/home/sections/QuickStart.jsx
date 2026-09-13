@@ -1,4 +1,5 @@
 import { CopyButton, Reveal, SectionHeader } from "../ui/primitives.jsx";
+import DeployTabs from "./DeployTabs.jsx";
 
 const CURL = `curl http://localhost:20128/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \\
@@ -29,7 +30,7 @@ const STEPS = [
   {
     n: "I",
     title: "Install the CLI",
-    body: "Node.js 20 or newer. One global package, no accounts.",
+    body: "Node.js 20.20.2 and npm 10.8.2. One global package, no accounts.",
     code: (
       <Code label="shell" copy="npm install -g durindoor">
         <span className="c-dim">$ </span>
@@ -100,6 +101,9 @@ export default function QuickStart() {
             <div><dt>API key</dt><dd><code>your DurinDoor API key</code></dd></div>
             <div><dt>Model</dt><dd><code>model ID, alias, or combo</code></dd></div>
           </dl>
+        </Reveal>
+        <Reveal>
+          <DeployTabs />
         </Reveal>
       </div>
     </section>

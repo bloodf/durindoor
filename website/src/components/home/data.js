@@ -90,43 +90,39 @@ export const RESOLUTIONS = [
   },
 ];
 
+// Bento order: each row of the 4-column grid adds up to four cells.
+// Claims map to README.md, docs/ARCHITECTURE.md, docs/providers/cheap.md and docs/guides/usage.md.
 export const FEATURES = [
   {
-    icon: "plug",
-    title: "One local endpoint",
-    body: "Configure tools once against http://localhost:20128/v1 instead of wiring each app to a different provider.",
-    wide: true,
-  },
-  {
-    icon: "key",
-    title: "Reusable provider connections",
-    body: "Add an OAuth login, API key, cookie, or compatible endpoint once. Every tool shares it.",
-    wide: true,
-  },
-  {
     icon: "layers",
-    title: "Account & combo fallback",
-    body: "Chain connections for resilience, or stack models behind one stable name that retries the next option.",
+    title: "Combos",
+    body: "Stack models behind one stable name. A failed member falls through to the next, so tools never change their config.",
+    wide: true,
   },
   {
     icon: "swap",
-    title: "Format translation",
-    body: "Send OpenAI-shaped requests; DurinDoor speaks Claude, Gemini, Kiro, Cursor, Ollama, Vertex and more upstream.",
+    title: "Format translator",
+    body: "Send OpenAI-shaped requests; Claude, Gemini, Kiro, Cursor, Ollama and Vertex formats are handled upstream.",
   },
   {
-    icon: "chart",
-    title: "Usage visibility",
-    body: "Provider, model, tokens, cost estimate, latency and fallback outcome for every request.",
+    icon: "users",
+    title: "Multi-account",
+    body: "Several connections per provider. Locked or expired accounts are skipped and OAuth tokens refresh.",
   },
   {
-    icon: "shield",
-    title: "Self-hosted state",
-    body: "Storage, credentials and logs live in your DATA_DIR. You decide where it runs and who can reach it.",
+    icon: "tunnel",
+    title: "Tunnels",
+    body: "Reach your gateway from another network over HTTPS. Keep dashboard auth on, turn it off when unused.",
   },
   {
-    icon: "spark",
-    title: "Token saver",
-    body: "Opt-in prompt compression before upstream dispatch. Fail-open by design, so requests never break.",
+    icon: "route",
+    title: "Proxy pools",
+    body: "Route upstream traffic through configured proxies for regional routing or egress control.",
+  },
+  {
+    icon: "mask",
+    title: "MITM bridge",
+    body: "Optional local interception for supported IDE traffic, behind explicit setup and trust changes.",
   },
   {
     icon: "hub",
@@ -134,13 +130,19 @@ export const FEATURES = [
     body: "Expose multiple MCP servers behind managed keys and routes from the same dashboard.",
   },
   {
-    icon: "gauge",
-    title: "Quota tracking",
-    body: "Provider limits and reset windows side by side, so you know which account still has room.",
+    icon: "dash",
+    title: "One dashboard",
+    body: "Providers, API keys, combos, usage, request logs, endpoint setup, CLI tools, tunnels, MITM and MCP in one browser UI.",
+    wide: true,
   },
   {
     icon: "wand",
-    title: "CLI tool auto-config",
-    body: "Point Claude Code, Codex, Cursor, Cline and friends at DurinDoor without hand-editing config files.",
+    title: "CLI tool setup",
+    body: "Copy ready integration settings for Claude Code, Codex, Cursor, Cline and more.",
+  },
+  {
+    icon: "shield",
+    title: "Self-hosted state",
+    body: "Storage, credentials and logs live in your DATA_DIR. You decide who can reach it.",
   },
 ];

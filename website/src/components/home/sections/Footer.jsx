@@ -2,7 +2,7 @@ import Link from "next/link";
 import Icon, { GitHubMark } from "../ui/Icon.jsx";
 import { BrandMark } from "../ui/chrome.jsx";
 import { DOCS_URL, GITHUB_URL, NPM_URL } from "../data.js";
-import { Magnetic, Reveal, RuneDivider } from "../ui/primitives.jsx";
+import { RuneDivider } from "../ui/primitives.jsx";
 
 const LINKS = [
   { href: GITHUB_URL, label: "GitHub", icon: <GitHubMark size={16} /> },
@@ -15,23 +15,6 @@ export default function Footer() {
   return (
     <footer className="site-footer">
       <div className="container">
-        <Reveal className="footer-cta">
-          <RuneDivider />
-          <h2 className="footer-title">
-            The door is open. <span className="ithildin">Say the word.</span>
-          </h2>
-          <div className="footer-actions">
-            <Magnetic internal href="/dashboard" className="btn btn-primary btn-large">
-              Open the live demo
-              <Icon name="arrow" size={18} />
-            </Magnetic>
-            <Magnetic href={GITHUB_URL} target="_blank" rel="noreferrer" className="btn btn-ghost btn-large">
-              <GitHubMark size={18} />
-              View source
-            </Magnetic>
-          </div>
-        </Reveal>
-
         <div className="footer-bottom">
           <div className="footer-brand">
             <Link href="/" className="nav-brand" aria-label="DurinDoor home">

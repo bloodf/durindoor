@@ -1,11 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import { animate, motion, useInView, useReducedMotion } from "motion/react";
 import Icon from "./Icon.jsx";
 
 const MotionLink = motion.create(Link);
+
+// Counts from `from` to `to` the first time it scrolls into view. Server markup
+// and reduced-motion users get the final value, so the number is never wrong.
+export function CountUp({ to, from = 0, duration = 1.6, format = (n) => Math.round(n).toLocaleString("en-US"), className = "" }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "0px 0px -10% 0px" });
+  const reduce = useReducedMotion();
+  const [value, setValue] = useState(to);
+
+  useEffect(() => {
+    if (!inView || reduce) return undefined;
+    const controls = animate(from, to, { duration, ease: [0.16, 1, 0.3, 1], onUpdate: setValue });
+    return () => controls.stop();
+  }, [inView, reduce, from, to, duration]);
+
+  useEffect(() => {
+    if (!reduce) setValue(from);
+    // Only reset once on mount; the animation above takes it from here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <span ref={ref} className={className}>
+      {format(value)}
+    </span>
+  );
+}
 
 // Fade-and-rise on first view. The page-level MotionConfig drops the movement
 // for reduced-motion users; only the opacity fade remains.

@@ -4,7 +4,7 @@ Public site for DurinDoor, deployed on Vercel. One Next.js app, two surfaces:
 
 | Path | What it is |
 | --- | --- |
-| `/` | Single-page animated homepage: WebGL Durin's Door hero, how-it-works flow, features, quick start, live demo teaser. |
+| `/` | Single-page animated homepage: WebGL Durin's Door hero, service kinds, request flow with fallback tiers, providers constellation, token savers, quota ledger, features, comparison, quick start, live demo, final CTA. |
 | `/dashboard/*`, `/login` | The real dashboard UI running against a fully mocked, browser-local backend. Every page of the production dashboard is reachable; adds, edits and deletes persist in `localStorage`. |
 
 ## How the demo reuses the real dashboard
@@ -24,6 +24,28 @@ and log once with `console.debug`. Nothing under `../src` is modified.
 Static assets the shared UI expects (fonts, provider logos, icons, i18n
 literals, Monaco) are copied from `../public` and `node_modules` by
 `scripts/sync-public.mjs` on `predev` and `prebuild`; the copies are gitignored.
+
+## Homepage
+
+Sections live in `src/components/home/{hero,flow,sections}`; copy and figures are in
+`src/components/home/data.js` and `content.js`, each number commented with the file
+it was derived from. The token savers panel runs the real `open-sse/rtk` `find`
+filter at build time, so its byte counts are genuine output.
+
+Decorative backgrounds use native-canvas components from
+[ThreeUI Community](https://threeui.com) (`@designcodeio/threeui`, MIT):
+`StreamConvergenceBackground` (flow), `LaserCollection` (providers, token savers),
+`EmeraldHorizonBackground` (quota), `BellFieldBackground` and `LumenCta` (final CTA).
+`src/components/home/threeui/ThreeStage.jsx` code-splits each one, mounts it only
+near the viewport, skips it for reduced motion or missing WebGL (a CSS fallback is
+always painted), and the components pause themselves off-screen. The iframe-based
+"Neuform" effects are avoided because they load third-party CDNs.
+`next.config.mjs` aliases ThreeUI's pinned `three128` to the app's `three` so the
+page ships one Three.js instance.
+
+The site is dark by default; with a light theme preference the daylight sections
+switch to parchment (`src/app/(home)/light.css`) while the hero, code blocks and
+WebGL bands stay dark.
 
 ## Commands
 
@@ -45,5 +67,4 @@ absolute base for Open Graph URLs.
 
 - Browser OAuth flows and the MCP "Connect" button open a second tab before completing.
 - "Open Headroom Dashboard" links to `/api/headroom/proxy/dashboard`, which has no mock route.
-- Request headers are invisible to the mock handlers, so password prompts accept anything.
-- Landing hero shaders and effects are hand-written; ThreeUI components can be dropped in with `npx @designcodeio/threeui-cli add <id>` once signed in.
+- The demo login only checks a single fixed password (`melon`); it does not model rate limiting, lockouts, or the real password-change flow.

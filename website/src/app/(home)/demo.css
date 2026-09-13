@@ -280,29 +280,6 @@
     #030504;
 }
 
-.footer-cta {
-  display: grid;
-  justify-items: center;
-  gap: 26px;
-  text-align: center;
-  margin-bottom: clamp(60px, 9vw, 100px);
-}
-
-.footer-title {
-  font-family: var(--home-display);
-  font-size: clamp(30px, 5.4vw, 62px);
-  font-weight: 700;
-  line-height: 1.1;
-  text-wrap: balance;
-}
-
-.footer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 14px;
-}
-
 .footer-bottom {
   display: flex;
   flex-wrap: wrap;

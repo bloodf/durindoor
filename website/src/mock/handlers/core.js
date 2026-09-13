@@ -1,6 +1,7 @@
 // Session, version and locale endpoints used by the dashboard shell and /login.
 import { DEMO_VERSION, OPERATOR } from "../fixtures/world.js";
 import { reply } from "../http.js";
+import { DEMO_PASSWORD } from "../demoPassword.js";
 
 const SESSION = "session";
 
@@ -22,13 +23,16 @@ function authStatus(authenticated) {
 }
 
 export default function registerCore(router, { store }) {
-  store.define(SESSION, { authenticated: true });
+  store.define(SESSION, { authenticated: false });
   store.define("locale", { locale: "en" });
 
-  router.get("/api/auth/status", () => authStatus(store.get(SESSION).authenticated !== false));
-  router.post("/api/auth/login", () => {
+  router.get("/api/auth/status", () => authStatus(store.get(SESSION).authenticated === true));
+  router.post("/api/auth/login", ({ body }) => {
+    if (body?.password !== DEMO_PASSWORD) {
+      return reply({ error: "Invalid password" }, { status: 401 });
+    }
     store.set(SESSION, { authenticated: true });
-    return { success: true };
+    return { success: true, mustChangePassword: false };
   });
   router.post("/api/auth/logout", () => {
     store.set(SESSION, { authenticated: false });

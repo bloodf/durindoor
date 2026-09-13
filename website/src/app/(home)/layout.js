@@ -5,6 +5,9 @@ import "./home.css";
 import "./hero.css";
 import "./sections.css";
 import "./demo.css";
+import "./story.css";
+import "./ledger.css";
+import "./light.css";
 
 const inter = localFont({
   src: [
@@ -41,7 +44,7 @@ export const metadata = {
   twitter: { card: "summary_large_image", title: "DurinDoor — Speak, friend, and enter", description },
 };
 
-export const viewport = { themeColor: "#040705", colorScheme: "dark" };
+export const viewport = { themeColor: "#040705", colorScheme: "dark light" };
 
 export default function HomeLayout({ children }) {
   return <div className={`dark dd-home ${inter.variable} ${cinzel.variable}`}>{children}</div>;

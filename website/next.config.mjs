@@ -19,6 +19,9 @@ const nextConfig = {
       "@": join(repoRoot, "src"),
       "open-sse": join(repoRoot, "open-sse"),
       "@site": join(siteRoot, "src"),
+      // @designcodeio/threeui pins its own three@0.128 for a few backgrounds. Point
+      // it at the app's three so the homepage ships one Three.js instance.
+      three128: join(siteRoot, "node_modules", "three"),
     };
     // open-sse/utils/kimchiUserAgent.js polls GitHub on server import; swap in a static stub.
     config.plugins.push(

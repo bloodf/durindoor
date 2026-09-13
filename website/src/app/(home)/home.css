@@ -19,6 +19,9 @@ html:has(.dd-home) body {
   --home-emerald-deep: #03543b;
   --home-forest: #1b5e20;
   --home-gold: var(--dd-accent-2);
+  --home-card: linear-gradient(180deg, rgba(22, 27, 23, 0.9), rgba(12, 15, 13, 0.9));
+  --home-stone: #0b0e0c;
+  --home-danger: #ff8a7a;
   --home-radius: 18px;
   --home-sans: var(--font-home-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
   --home-display: var(--font-home-display), "Cinzel", "Trajan Pro", Georgia, serif;
@@ -242,7 +245,7 @@ html:has(.dd-home) body {
   background: rgba(237, 230, 216, 0.06);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1120px) {
   .nav-links {
     display: none;
   }

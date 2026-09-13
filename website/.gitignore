@@ -1,0 +1,19 @@
+node_modules
+.next
+.next-*
+out
+*.tsbuildinfo
+.vercel
+.env*
+!.env.example
+
+# Copied from ../public and node_modules by scripts/sync-public.mjs
+public/monaco
+public/providers
+public/icons
+public/i18n
+public/fonts
+public/theme-bootstrap.js
+public/favicon.svg
+public/favicon.ico
+public/durindoor-wordmark.png

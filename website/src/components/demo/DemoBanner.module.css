@@ -1,0 +1,104 @@
+/* Plain CSS: Tailwind only scans the dashboard sources in ../src. */
+.pill {
+  position: fixed;
+  inset-block-end: 1rem;
+  inset-inline-start: 1rem;
+  z-index: 90;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.375rem 0.375rem 0.375rem 0.75rem;
+  border: 1px solid var(--dd-border);
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--dd-surface) 94%, transparent);
+  color: var(--dd-text-muted);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  box-shadow: var(--dd-shadow-raised);
+  backdrop-filter: blur(6px);
+}
+
+.strong {
+  font-weight: 600;
+  color: var(--dd-text);
+}
+
+.icon {
+  font-size: 16px;
+  color: var(--dd-accent);
+}
+
+.action,
+.link,
+.close,
+.reopen {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  outline: none;
+  text-decoration: none;
+}
+
+.action,
+.link {
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+
+.action {
+  color: var(--dd-accent);
+}
+
+.link {
+  color: var(--dd-text);
+}
+
+.action:hover {
+  background: var(--dd-accent-soft);
+}
+
+.link:hover {
+  background: var(--dd-surface-2);
+}
+
+.close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  color: var(--dd-text-subtle);
+}
+
+.close:hover {
+  color: var(--dd-text);
+}
+
+.reopen {
+  position: fixed;
+  inset-block-end: 1rem;
+  inset-inline-start: 1rem;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--dd-border);
+  border-radius: 9999px;
+  background: var(--dd-surface);
+  color: var(--dd-accent);
+  box-shadow: var(--dd-shadow-raised);
+}
+
+.action:focus-visible,
+.link:focus-visible,
+.close:focus-visible,
+.reopen:focus-visible {
+  box-shadow: var(--dd-focus);
+}

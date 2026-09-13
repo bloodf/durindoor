@@ -29,3 +29,6 @@ tsconfig.json
 .next/cache/
 .next/standalone/data/
 
+
+# Public website (Vercel), not part of the npm package
+website/

@@ -1,0 +1,389 @@
+/* Homepage base: palette, layout primitives, nav, buttons.
+   The wrapper carries `.dark`, so Durin DS `--dd-*` tokens resolve to Moria stone. */
+
+html:has(.dd-home),
+html:has(.dd-home) body {
+  background: #040705;
+}
+
+.dd-home {
+  --home-bg: #040705;
+  --home-bg-2: #070b09;
+  --home-panel: rgba(20, 24, 21, 0.72);
+  --home-panel-solid: #121613;
+  --home-line: rgba(237, 230, 216, 0.08);
+  --home-line-strong: rgba(237, 230, 216, 0.16);
+  --home-text: var(--dd-text);
+  --home-muted: #b8b1a2;
+  --home-emerald: var(--dd-accent);
+  --home-emerald-deep: #03543b;
+  --home-forest: #1b5e20;
+  --home-gold: var(--dd-accent-2);
+  --home-radius: 18px;
+  --home-sans: var(--font-home-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --home-display: var(--font-home-display), "Cinzel", "Trajan Pro", Georgia, serif;
+  --home-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  min-height: 100vh;
+  background: var(--home-bg);
+  color: var(--home-text);
+  font-family: var(--home-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dd-home *,
+.dd-home *::before,
+.dd-home *::after {
+  box-sizing: border-box;
+}
+
+.dd-home a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.dd-home h1,
+.dd-home h2,
+.dd-home h3,
+.dd-home p,
+.dd-home ul,
+.dd-home ol,
+.dd-home dl,
+.dd-home dd {
+  margin: 0;
+  padding: 0;
+}
+
+.dd-home ul,
+.dd-home ol {
+  list-style: none;
+}
+
+.dd-home :focus-visible {
+  outline: 2px solid var(--home-emerald);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+.dd-home ::selection {
+  background: rgba(16, 232, 130, 0.3);
+  color: #fff;
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-inline: clamp(16px, 4vw, 40px);
+}
+
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -60px;
+  z-index: 100;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--home-emerald);
+  color: #032a1a !important;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.25s, border-color 0.25s, box-shadow 0.35s, color 0.25s;
+  will-change: transform;
+}
+
+.btn-small {
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+.btn-large {
+  padding: 15px 26px;
+  font-size: 16px;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, #2ff59b 0%, #10e882 45%, #0bbf6a 100%);
+  color: #032a1a !important;
+  box-shadow: 0 0 0 1px rgba(16, 232, 130, 0.5), 0 10px 40px -8px rgba(16, 232, 130, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 0 1px rgba(16, 232, 130, 0.8), 0 14px 60px -6px rgba(16, 232, 130, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.btn-ghost {
+  background: rgba(237, 230, 216, 0.04);
+  border-color: var(--home-line-strong);
+  color: var(--home-text);
+}
+
+.btn-ghost:hover {
+  border-color: rgba(212, 175, 55, 0.6);
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--home-line-strong);
+  background: rgba(237, 230, 216, 0.05);
+  color: var(--home-muted);
+  font: 500 12px/1 var(--home-sans);
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.copy-btn:hover {
+  color: var(--home-emerald);
+  border-color: rgba(16, 232, 130, 0.5);
+  background: rgba(16, 232, 130, 0.08);
+}
+
+/* ---------- Nav ---------- */
+.site-nav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  transition: background 0.35s, border-color 0.35s, backdrop-filter 0.35s;
+  border-bottom: 1px solid transparent;
+}
+
+.site-nav.is-scrolled {
+  background: rgba(4, 7, 5, 0.66);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom-color: var(--home-line);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  max-width: 1200px;
+  height: 64px;
+  margin: 0 auto;
+  padding-inline: clamp(16px, 4vw, 40px);
+}
+
+.nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--home-display);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+}
+
+.nav-links {
+  display: flex;
+  gap: 4px;
+  margin-left: auto !important;
+}
+
+.nav-links a {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: var(--home-muted);
+  font-size: 14px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.nav-links a:hover {
+  color: var(--home-text);
+  background: rgba(237, 230, 216, 0.06);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  color: var(--home-muted);
+  transition: color 0.2s, background 0.2s;
+}
+
+.nav-icon:hover {
+  color: var(--home-text);
+  background: rgba(237, 230, 216, 0.06);
+}
+
+@media (max-width: 860px) {
+  .nav-links {
+    display: none;
+  }
+  .nav-actions {
+    margin-left: auto;
+  }
+}
+
+/* ---------- Ambient chrome ---------- */
+.scroll-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 2px;
+  z-index: 60;
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, var(--home-emerald-deep), var(--home-emerald), var(--home-gold));
+}
+
+.cursor-glow {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: 520px;
+  height: 520px;
+  margin: -260px 0 0 -260px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle, rgba(16, 232, 130, 0.07), rgba(16, 232, 130, 0) 62%);
+  transition: opacity 0.6s;
+  mix-blend-mode: screen;
+}
+
+/* ---------- Section scaffolding ---------- */
+.section {
+  position: relative;
+  z-index: 2;
+  padding-block: clamp(80px, 12vw, 150px);
+}
+
+.section-header {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+  margin-bottom: clamp(40px, 6vw, 72px);
+}
+
+.section-header.is-center {
+  margin-inline: auto;
+  text-align: center;
+  justify-items: center;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--home-gold);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.eyebrow::before,
+.eyebrow::after {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.section-title {
+  font-family: var(--home-display);
+  font-weight: 600;
+  font-size: clamp(30px, 5vw, 56px);
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.section-lead {
+  max-width: 620px;
+  color: var(--home-muted);
+  font-size: clamp(16px, 1.6vw, 19px);
+  text-wrap: pretty;
+}
+
+.rune-divider {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding-inline: 16px;
+  color: var(--home-gold);
+  opacity: 0.75;
+}
+
+.rune-divider svg {
+  flex: none;
+  filter: drop-shadow(0 0 6px rgba(212, 175, 55, 0.45));
+}
+
+.rune-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.55), transparent);
+}
+
+.rune-divider.is-small {
+  max-width: 320px;
+  opacity: 0.45;
+  margin-block: 40px 16px;
+}
+
+.ithildin {
+  background: linear-gradient(100deg, #10e882 0%, #b9ffd9 30%, #d4af37 52%, #10e882 75%, #b9ffd9 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ithildin-sheen 7s linear infinite;
+  filter: drop-shadow(0 0 22px rgba(16, 232, 130, 0.35));
+}
+
+@keyframes ithildin-sheen {
+  to {
+    background-position: -250% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ithildin {
+    animation: none;
+  }
+  .cursor-glow {
+    display: none;
+  }
+}

@@ -4,6 +4,10 @@
 
 - fix(website): the demo login page now shows the accepted demo password in a persistent notice above the form, with a copy button. It was previously only legible in small text inside the dismissible demo banner, so visitors could not tell how to sign in.
 
+## Upstream ports
+
+- port(upstream): #3947 - keep Anthropic-only tool types for DeepSeek. DeepSeek's Anthropic-compatible endpoint accepts only the built-in `web_search_*` tools and answered HTTP 400 "unknown variant custom" for client-defined ones, while the generic filter also discarded the `web_search_*` tools it does accept. A provider can now declare `transport.quirks.claudeSupportedToolTypes` to whitelist the tool `type` values its upstream honours; whitelisted tools keep their `type`, everything else is dropped as before.
+
 # 4.3.0
 
 ## Features

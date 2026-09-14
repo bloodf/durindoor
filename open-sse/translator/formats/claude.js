@@ -687,10 +687,22 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // 3. Tools: filter built-in tools for non-Anthropic providers, then handle cache_control
   if (body.tools && Array.isArray(body.tools)) {
     // Strip built-in tools (e.g. web_search_20250305) and normalize to Anthropic-native shape
-    // (drop `type` field, fold `function.{name,description,parameters}`) for non-Anthropic providers
+    // (drop `type` field, fold `function.{name,description,parameters}`) for non-Anthropic providers.
+    //
+    // A provider may declare `quirks.claudeSupportedToolTypes` to whitelist the
+    // Anthropic tool `type` values its upstream actually accepts. Whitelisted
+    // tools survive the filter AND keep their `type`, because the upstream needs
+    // it to route built-ins. Without the quirk the prior behaviour holds: drop
+    // every non-function tool and strip `type`.
+    const supportedToolTypes = PROVIDERS[provider]?.quirks?.claudeSupportedToolTypes;
+    const hasToolTypeWhitelist = Array.isArray(supportedToolTypes);
     if (provider !== "claude") {
       body.tools = body.tools.
-      filter((tool) => !tool.type || tool.type === "function").
+      filter((tool) => {
+        const type = tool?.type;
+        if (!type || type === "function") return true;
+        return hasToolTypeWhitelist && supportedToolTypes.includes(type);
+      }).
       map((tool) => {
         if (tool.function) {
           return {
@@ -699,6 +711,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
             input_schema: tool.function.parameters
           };
         }
+        if (hasToolTypeWhitelist && tool.type) return tool;
         const { type, ...rest } = tool;
         return rest;
       });

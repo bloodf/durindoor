@@ -75,6 +75,9 @@ export default defineConfig({
       { find: /^open-sse\//, replacement: resolve(__dirname, "../open-sse") + "/" },
       { find: "open-sse", replacement: resolve(__dirname, "../open-sse") },
       { find: "jsonc-parser", replacement: resolve(__dirname, "node_modules/jsonc-parser/lib/umd/main.js") },
+      // Mirrors website/next.config.mjs, so website components under test
+      // resolve their own sources the same way the app builds them.
+      { find: /^@site\//, replacement: resolve(__dirname, "../website/src") + "/" },
       { find: /^@\//, replacement: resolve(__dirname, "../src") + "/" },
     ],
   },

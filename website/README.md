@@ -30,6 +30,12 @@ leaves its siblings untouched, and survives a reload. API key scopes, selective
 data transfer and proxy pool bindings all read the stored connections, so an
 account you add or delete shows up in each of those surfaces.
 
+Signing in needs the demo password, so the login page shows it in a persistent
+notice above the form with a copy button, and the homepage teaser repeats it
+next to the demo link. Both read `src/mock/demoPassword.js` — the same module
+the mocked login checks — so the displayed value cannot drift from the accepted
+one.
+
 Static assets the shared UI expects (fonts, provider logos, icons, i18n
 literals, Monaco) are copied from `../public` and `node_modules` by
 `scripts/sync-public.mjs` on `predev` and `prebuild`; the copies are gitignored.

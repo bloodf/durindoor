@@ -1,3 +1,10 @@
+# 4.3.0
+
+## Features
+
+- feat(website): public site with localized homepage and mocked dashboard demo
+
+
 # Unreleased
 
 ## Features

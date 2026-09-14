@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import PlaygroundPageClient from "../../src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js";
 
 vi.mock("open-sse/index.js", () => ({}), { virtual: true });
 
@@ -7,12 +10,11 @@ const { getConnectionOptions, getModelReasoningOptions, groupModelsByProvider, n
 );
 
 describe("ui-production-playground", () => {
-  it("preserves the public helpers surface so sibling lanes stay compatible", () => {
-    expect(typeof getConnectionOptions).toBe("function");
-    expect(typeof getModelReasoningOptions).toBe("function");
-    expect(typeof groupModelsByProvider).toBe("function");
-    expect(typeof normalizeReasoningEffort).toBe("function");
-    expect(typeof paginateSessions).toBe("function");
+  it("does not offer an interactive model picker before hydration and catalog loading", () => {
+    const html = renderToStaticMarkup(createElement(PlaygroundPageClient));
+    const trigger = html.match(/<button\b[^>]*role="combobox"[^>]*>/)?.[0];
+    expect(trigger).toBeDefined();
+    expect(trigger).toMatch(/\sdisabled(?:=""|\s|>)/);
   });
 
   it("keeps connection options stable: auto first, then per-connection label", () => {

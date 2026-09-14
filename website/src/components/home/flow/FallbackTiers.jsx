@@ -1,5 +1,7 @@
 "use client";
 
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import { useEffect, useRef, useState } from "react";
 import { useInView, useReducedMotion } from "motion/react";
 import { FALLBACK_TIERS, STICKY_LIMIT } from "../content.js";
@@ -27,6 +29,7 @@ function useTicker(active, ms) {
 }
 
 function Tiers({ frame }) {
+  const { t } = useHomeLocale();
   return (
     <ol className="tiers">
       {FALLBACK_TIERS.map((tier, i) => {
@@ -34,16 +37,16 @@ function Tiers({ frame }) {
         return (
           <li key={tier.name} className={`tier is-${state} ${frame.active === i ? "is-active" : ""}`}>
             <div className="tier-head">
-              <span className="tier-rank">{tier.tier}</span>
-              <span className="tier-status">{STATUS_TEXT[state]}</span>
+              <span className="tier-rank">{t(tier.tier)}</span>
+              <span className="tier-status">{state === "idle" || state === "trying" ? t(STATUS_TEXT[state]) : STATUS_TEXT[state]}</span>
             </div>
             <div className="tier-name">
               <span className="logo-chip is-small">
                 <img src={tier.logo} alt="" width="22" height="22" loading="lazy" />
               </span>
-              <h3>{tier.name}</h3>
+              <h3>{t(tier.name)}</h3>
             </div>
-            <p>{tier.body}</p>
+            <p>{t(tier.body)}</p>
             <code>{tier.model}</code>
             {i < FALLBACK_TIERS.length - 1 ? <span className="tier-link" aria-hidden="true" /> : null}
           </li>
@@ -54,18 +57,18 @@ function Tiers({ frame }) {
 }
 
 function StickyRoundRobin({ tick }) {
+  const { t } = useHomeLocale();
   const request = tick % (ACCOUNTS.length * STICKY_LIMIT);
   const account = Math.floor(request / STICKY_LIMIT);
   const uses = (request % STICKY_LIMIT) + 1;
   return (
     <div className="sticky-rr">
-      <p className="sticky-rr-title">
-        Sticky round-robin <span>rotate after {STICKY_LIMIT} uses, or pin a session to one account</span>
+      <p className="sticky-rr-title">{t("Sticky round-robin")}{" "}<span>{t("rotate after {count} uses, or pin a session to one account", { count: STICKY_LIMIT })}</span>
       </p>
       <ul className="sticky-rr-accounts">
         {ACCOUNTS.map((name, i) => (
           <li key={name} className={i === account ? "is-current" : ""}>
-            <span className="sticky-rr-name">{name}</span>
+            <span className="sticky-rr-name">{t(name)}</span>
             <span className="sticky-rr-pips" aria-hidden="true">
               {Array.from({ length: STICKY_LIMIT }, (_, pip) => (
                 <i key={pip} className={i === account && pip < uses ? "is-on" : ""} />
@@ -79,6 +82,7 @@ function StickyRoundRobin({ tick }) {
 }
 
 export default function FallbackTiers() {
+  const { t } = useHomeLocale();
   const ref = useRef(null);
   const inView = useInView(ref, { margin: "-15% 0px" });
   const prefersReduced = useReducedMotion();
@@ -93,15 +97,12 @@ export default function FallbackTiers() {
   return (
     <div className="fallback" ref={ref}>
       <div className="fallback-copy">
-        <p className="eyebrow">Three tiers of fallback</p>
-        <h3 className="fallback-title">When one door is shut, try the next.</h3>
-        <p className="fallback-lead">
-          Put a subscription first, a cheap API second and a free or local model last. A combo keeps one stable model
-          name; when a member fails, DurinDoor retries other accounts for it, then falls through to the next member.
-        </p>
+        <p className="eyebrow">{t("Three tiers of fallback")}</p>
+        <h3 className="fallback-title">{t("When one door is shut, try the next.")}</h3>
+        <p className="fallback-lead">{t("Put a subscription first, a cheap API second and a free or local model last. A combo keeps one stable model name; when a member fails, DurinDoor retries other accounts for it, then falls through to the next member.")}</p>
         <p className="fallback-log" aria-live="off">
           <span className="fallback-log-dot" aria-hidden="true" />
-          <code>{frame.log}</code>
+          <code>{t(frame.log)}</code>
         </p>
         <StickyRoundRobin tick={reduce ? 0 : tick} />
       </div>

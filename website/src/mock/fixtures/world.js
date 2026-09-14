@@ -91,6 +91,63 @@ export const CONNECTIONS = Object.freeze([
     priority: 1, isActive: true, testStatus: "active", alias: "ravenhill", models: ["llama-4-maverick"],
     providerSpecificData: { baseUrl: "https://llm.ravenhill.internal/v1", nodeName: "Ravenhill vLLM", prefix: "ravenhill", apiType: "chat" },
   },
+  // Independent fallback identities; original IDs remain stable for history.
+  {
+    id: "conn-claude-ori", provider: "claude", authType: "oauth", name: "ori@erebor.dev", email: "ori@erebor.dev",
+    priority: 2, isActive: false, testStatus: "active", alias: "cc", models: ["claude-sonnet-5"],
+    providerSpecificData: { subscriptionType: "pro", rateLimitTier: "default_claude_pro" },
+  },
+  {
+    id: "conn-anthropic-research", provider: "anthropic", authType: "apikey", name: "Dale research key", email: null,
+    priority: 2, isActive: false, testStatus: "active", alias: "anthropic", models: ["claude-opus-5"],
+  },
+  {
+    id: "conn-gemini-cli-ori", provider: "gemini-cli", authType: "oauth", name: "ori.gemini@gmail.com", email: "ori.gemini@gmail.com",
+    priority: 2, isActive: false, testStatus: "active", alias: "gc", models: ["gemini-3-flash-preview"],
+    providerSpecificData: { projectId: "dale-gemini-9012", tier: "free-tier" },
+  },
+  {
+    id: "conn-copilot-dwalin", provider: "github", authType: "oauth", name: "dwalin-forge", email: "dwalin@erebor.dev",
+    priority: 2, isActive: false, testStatus: "active", alias: "gh", models: ["gpt-5.4"],
+    providerSpecificData: { githubLogin: "dwalin-forge", githubName: "Dwalin", githubEmail: "dwalin@erebor.dev", githubUserId: 5821931 },
+  },
+  {
+    id: "conn-antigravity-nori", provider: "antigravity", authType: "oauth", name: "nori@erebor.dev", email: "nori@erebor.dev",
+    priority: 2, isActive: false, testStatus: "active", alias: "ag", models: ["gemini-3.8-flash-high"],
+    providerSpecificData: { projectId: "dale-antigravity-42" },
+  },
+  {
+    id: "conn-kiro-gloin", provider: "kiro", authType: "oauth", name: "Gloin (Builder ID)", email: "gloin@erebor.dev",
+    priority: 2, isActive: true, testStatus: "active", alias: "kr", models: ["claude-opus-4.8"],
+    providerSpecificData: { authMethod: "builder-id", region: "eu-west-1" },
+  },
+  {
+    id: "conn-cursor-ori", provider: "cursor", authType: "oauth", name: "ori@erebor.dev", email: "ori@erebor.dev",
+    priority: 2, isActive: true, testStatus: "active", alias: "cu", models: ["claude-4.5-sonnet"],
+    providerSpecificData: { machineId: "demo-machine-ori" },
+  },
+  {
+    id: "conn-groq-build", provider: "groq", authType: "apikey", name: "Groq build workers", email: null,
+    priority: 2, isActive: false, testStatus: "active", alias: "groq", models: ["openai/gpt-oss-120b"],
+  },
+  {
+    id: "conn-openrouter-lab", provider: "openrouter", authType: "apikey", name: "OpenRouter evaluation lab", email: null,
+    priority: 2, isActive: false, testStatus: "active", alias: "openrouter", models: ["deepseek/deepseek-v4-flash"],
+  },
+  {
+    id: "conn-deepseek-lab", provider: "deepseek", authType: "apikey", name: "DeepSeek evaluation balance", email: null,
+    priority: 2, isActive: false, testStatus: "active", alias: "deepseek", models: ["deepseek-v4-pro"],
+  },
+  {
+    id: "conn-ollama-dale", provider: "ollama-local", authType: "apikey", name: "Ollama on Dale workstation", email: null,
+    priority: 2, isActive: false, testStatus: "active", alias: "ollama-local", models: ["qwen3-coder:30b"],
+    providerSpecificData: { baseUrl: "http://dale.erebor.internal:11434" },
+  },
+  {
+    id: "conn-ravenhill-batch", provider: "openai-compatible-ravenhill", authType: "apikey", name: "Ravenhill batch worker", email: null,
+    priority: 2, isActive: false, testStatus: "active", alias: "ravenhill", models: ["llama-4-maverick"],
+    providerSpecificData: { baseUrl: "https://llm.ravenhill.internal/v1", nodeName: "Ravenhill vLLM", prefix: "ravenhill", apiType: "chat" },
+  },
 ]);
 
 export const PROVIDER_NODES = Object.freeze([

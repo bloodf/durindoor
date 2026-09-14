@@ -1,3 +1,4 @@
+import { isFunction } from "@/shared/utils/typeChecks";
 // In-memory collections seeded from fixtures and mirrored to localStorage so
 // edits made in the demo survive reloads. Values are always replaced, never
 // mutated in place.
@@ -37,7 +38,7 @@ export function get(name) {
   }
   if (value === undefined) {
     const seed = seeds.get(name);
-    value = clone(typeof seed === "function" ? seed() : seed);
+    value = clone(isFunction(seed) ? seed() : seed);
   }
   cache.set(name, value);
   return value;

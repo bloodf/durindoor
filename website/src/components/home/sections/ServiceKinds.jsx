@@ -1,5 +1,7 @@
 "use client";
 
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import { REGISTRY_PROVIDER_COUNT, SERVICE_KINDS } from "../content.js";
 import Icon from "../ui/Icon.jsx";
 import { CountUp, Reveal, SectionHeader, spotlight } from "../ui/primitives.jsx";
@@ -11,23 +13,22 @@ const MAX = Math.max(...SERVICE_KINDS.map((kind) => kind.count));
 const share = (count) => Math.max(0.08, Math.log(count + 1) / Math.log(MAX + 1)).toFixed(3);
 
 export default function ServiceKinds() {
+  const { t } = useHomeLocale();
   return (
     <section id="kinds" className="section section-kinds" aria-labelledby="kinds-title">
       <div className="kinds-dawn" aria-hidden="true" />
       <div className="container">
         <SectionHeader
-          eyebrow="One door, every provider"
-          title={<span id="kinds-title">Not just chat. Every kind of model call.</span>}
-          lead="The same key and base URL reach chat, embeddings, speech, images, video and the web. Whatever the modality, it walks through the same door."
+          eyebrow={t("One door, every provider")}
+          title={<span id="kinds-title">{t("Not just chat. Every kind of model call.")}</span>}
+          lead={t("The same key and base URL reach chat, embeddings, speech, images, video and the web. Whatever the modality, it walks through the same door.")}
         />
 
         <Reveal className="kinds-total">
           <span className="kinds-total-n">
             <CountUp to={REGISTRY_PROVIDER_COUNT} className="count" />
           </span>
-          <span className="kinds-total-label">
-            providers in the registry
-            <small>OAuth logins, API keys, web cookies, free tiers and local runtimes</small>
+          <span className="kinds-total-label">{t("providers in the registry")}<small>{t("OAuth logins, API keys, web cookies, free tiers and local runtimes")}</small>
           </span>
         </Reveal>
 
@@ -41,11 +42,11 @@ export default function ServiceKinds() {
                   </span>
                   <span className="kind-count">
                     <CountUp to={kind.count} duration={1.2} className="count" />
-                    <span> providers</span>
+                    <span>{" "}{t("providers")}</span>
                   </span>
                 </div>
-                <h3>{kind.label}</h3>
-                <code className="kind-route">{kind.route}</code>
+                <h3>{t(kind.label)}</h3>
+                <code className="kind-route">{kind.id === "vision" ? t("image input") : kind.route}</code>
                 <span className="kind-bar" aria-hidden="true">
                   <span style={{ "--share": share(kind.count), "--i": String(i) }} />
                 </span>
@@ -53,9 +54,7 @@ export default function ServiceKinds() {
             </Reveal>
           ))}
         </ul>
-        <p className="kinds-note">
-          Provider counts come from the DurinDoor provider registry. Support for each modality depends on the provider.
-        </p>
+        <p className="kinds-note">{t("Provider counts come from the DurinDoor provider registry. Support for each modality depends on the provider.")}</p>
       </div>
     </section>
   );

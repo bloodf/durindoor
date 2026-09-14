@@ -13,6 +13,11 @@
  *   `false` when the table is embedded inside another surface (e.g. a Card) so
  *   it renders flat — spacing and row dividers carry the structure instead of
  *   a nested frame.
+ * The focusable table region owns horizontal overflow. Cells wrap long values
+ * safely so embedding the table never widens the document.
+ * Use only `overflow-wrap:anywhere`: Tailwind emits `break-words` later and
+ * combining them restores the long min-content width in automatic tables.
+ * Positioned screen-reader labels stay anchored inside the scroll region.
  * @param {React.ReactNode} [props.filterBar]
  * @param {object} [props.emptyState]
  * @param {boolean} [props.loading=false]
@@ -33,6 +38,7 @@ const DENSITY = {
 
 const HEADER_ALIGN = { left: "text-start", center: "text-center", right: "text-end" };
 const CELL_ALIGN = { left: "text-left", center: "text-center", right: "text-right dd-tnum" };
+const HEADER_CONTENT_ALIGN = { left: "justify-start", center: "justify-center", right: "justify-end" };
 
 export default function DataTable({
   columns = [],
@@ -66,11 +72,11 @@ export default function DataTable({
   };
 
   return (
-    <div className={framed ? "overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface" : undefined}>
-      {filterBar ? <div className="flex flex-wrap items-center gap-2 border-b border-dd-border-subtle px-3 py-2">{filterBar}</div> : null}
-      <div role="region" aria-label={`${caption ?? ariaLabel} rows`} tabIndex={0} className="overflow-x-auto outline-none focus-visible:shadow-dd-focus">
-        <table className="w-full border-collapse text-left text-[13px] text-dd-text" aria-label={caption ? undefined : ariaLabel} aria-busy={loading || undefined}>
-          {caption ? <caption className="sr-only">{caption}</caption> : null}
+    <div className={`min-w-0 max-w-full ${framed ? "overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface" : ""}`}>
+      {filterBar ? <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-dd-border-subtle px-3 py-2">{filterBar}</div> : null}
+      <div role="region" aria-label={`${caption ?? ariaLabel} rows`} tabIndex={0} className="relative min-w-0 max-w-full overflow-x-auto outline-none focus-visible:shadow-dd-focus">
+        <table className="w-full min-w-full border-collapse text-left text-[13px] text-dd-text" aria-label={caption ? undefined : ariaLabel} aria-busy={loading || undefined}>
+          {caption ? <caption className="sr-only left-0 top-0">{caption}</caption> : null}
           <thead className={`${framed ? "bg-dd-surface-2 " : ""}text-[11px] font-medium uppercase tracking-wide text-dd-muted`}>
             <tr>
               {hasExpander ? <th scope="col" className={`${cellPadding} w-11`}><span className="sr-only">Expand row</span></th> : null}
@@ -78,7 +84,7 @@ export default function DataTable({
                 const sortable = isFunction(column.onSort);
                 return (
                   <th key={column.key} scope="col" aria-sort={column.sortDirection} style={column.width ? { width: column.width } : undefined} className={`p-0 ${HEADER_ALIGN[column.align ?? "left"]} font-medium`}>
-                    {sortable ? <button type="button" onClick={column.onSort} className="flex min-h-11 w-full items-center gap-1 rounded-dd px-4 py-2.5 text-start outline-none focus-visible:shadow-dd-focus">{column.label}<span className="sr-only">, sort</span></button> : <span className={cellPadding}>{column.label}</span>}
+                    {sortable ? <button type="button" onClick={column.onSort} className={`relative flex min-h-11 w-full items-center gap-1 rounded-dd ${cellPadding} ${HEADER_CONTENT_ALIGN[column.align ?? "left"]} ${HEADER_ALIGN[column.align ?? "left"]} outline-none focus-visible:shadow-dd-focus`}>{column.label}<span className="sr-only left-0 top-0">, sort</span></button> : <span className={`block ${cellPadding}`}>{column.label}</span>}
                   </th>
                 );
               })}
@@ -100,10 +106,10 @@ export default function DataTable({
                   {hasExpander ? <td className={cellPadding}><button type="button" aria-label={`${expanded ? "Collapse" : "Expand"} ${rowLabel}`} aria-expanded={expanded} onClick={() => toggleExpanded(key)} className="flex size-11 items-center justify-center rounded-dd text-dd-muted outline-none hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">{expanded ? "expand_less" : "expand_more"}</span></button></td> : null}
                   {columns.map((column) => {
                     const Cell = column.rowHeader ? "th" : "td";
-                    return <Cell key={column.key} scope={column.rowHeader ? "row" : undefined} className={[cellPadding, CELL_ALIGN[column.align ?? "left"], column.mono ? "font-mono dd-tnum text-xs" : null].filter(Boolean).join(" ")}>{column.render ? column.render(row) : row[column.key]}</Cell>;
+                    return <Cell key={column.key} scope={column.rowHeader ? "row" : undefined} className={[cellPadding, "[overflow-wrap:anywhere]", CELL_ALIGN[column.align ?? "left"], column.mono ? "font-mono dd-tnum text-xs" : null].filter(Boolean).join(" ")}>{column.render ? column.render(row) : row[column.key]}</Cell>;
                   })}
                 </tr>,
-                hasExpander && expanded ? <tr key={`${key}-expanded`} className="border-t border-dd-border-subtle bg-dd-surface-2"><td colSpan={columnCount} className={cellPadding}>{renderExpandedRow(row)}</td></tr> : null,
+                hasExpander && expanded ? <tr key={`${key}-expanded`} className="border-t border-dd-border-subtle bg-dd-surface-2"><td colSpan={columnCount} className={`${cellPadding} [overflow-wrap:anywhere]`}>{renderExpandedRow(row)}</td></tr> : null,
               ];
             })}
           </tbody>

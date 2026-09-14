@@ -108,6 +108,18 @@ rows), not from another box.
 - Accent callouts (tinted `bg-dd-accent-soft` rows) inside a card keep the
   tint but drop border + radius — they read as banner strips, not cards.
 
+The legacy `src/shared/components/Card.js` API delegates its outer surface to
+the canonical Durin DS `Card`; it does not maintain a second card implementation.
+Its `Card.Section` helper is an inset content group (`bg-dd-surface-2` + radius)
+without a border, so it must not create a nested frame.
+
+### Shell gutters
+
+Dashboard content uses responsive shell gutters of **16px / 24px / 32px**
+(`p-4 sm:p-6 xl:p-8`) around a centered, full-width `max-w-7xl` content area.
+Pages should not add a competing outer gutter; page-local padding belongs only
+inside that shared content boundary.
+
 ### Themed pages outside the dashboard shell
 
 Standalone pages (`/login`, error pages) use the same tokens end to end:
@@ -281,7 +293,7 @@ prefix.
 
 | Component | File | One-line description | Story |
 | --- | --- | --- | --- |
-| `DataTable` | `components/DataTable.jsx` | Token-backed `<table>` with `filterBar`, `emptyState`, `pagination` slots, density (`comfortable`/`compact`), `mono`/`align` column options, and skeleton `loading` state. `framed={false}` renders the table flat for embedding inside another surface (see "No nested frames"). Forwards a full `pagination` props object to `Pagination`; it does not own slicing, totals, or page state. Pages keep existing `usePagination` or server-pagination behavior (totals, cursors, callbacks, current-page bounds). Block page migration if existing contract cannot be expressed through DS `pagination`. | `Durin DS/Data/DataTable` |
+| `DataTable` | `components/DataTable.jsx` | Token-backed `<table>` with `filterBar`, `emptyState`, `pagination` slots, density (`comfortable`/`compact`), `mono`/`align` column options, and skeleton `loading` state. `framed={false}` renders the table flat for embedding inside another surface (see "No nested frames"). The focusable table region, not the page, owns horizontal scrolling; long cell and expanded-row values wrap instead of widening the document. Header and sortable-header padding follows the selected density, and header content honors each column's alignment. Forwards a full `pagination` props object to `Pagination`; it does not own slicing, totals, or page state. Pages keep existing `usePagination` or server-pagination behavior (totals, cursors, callbacks, current-page bounds). Block page migration if existing contract cannot be expressed through DS `pagination`. | `Durin DS/Data/DataTable` |
 | `EmptyState` | `components/EmptyState.jsx` | Centered placeholder with neutral icon tile, title, message, optional primary action. | `Durin DS/Data/EmptyState` |
 | `KeyValue` | `components/KeyValue.jsx` | Dense `<dl>` meta row for detail panels; entries separated by hairline dividers; `mono` values use mono stack with `.dd-tnum`. | `Durin DS/Data/KeyValue` |
 | `PageHeader` | `components/PageHeader.jsx` | Top-of-page identity row: emerald icon tile, title, optional subtitle, right-aligned `actions`. Wraps on narrow viewports. | `Durin DS/Data/PageHeader` |
@@ -296,7 +308,7 @@ prefix.
 | `Checkbox` | `components/Checkbox.jsx` | Custom 18px box driven by a hidden `<input type="checkbox" class="peer sr-only">`. Emerald fill + `check` ligature when checked; `peer-aria-invalid:` turns the box red. | `Durin DS/Forms/Checkbox` |
 | `Field` | `components/Field.jsx` | Label + control + hint/error wrapper; injects `aria-invalid` / `aria-describedby` into a single child. Error line has `role="alert"`. | `Durin DS/Forms/Field` |
 | `Input` | `components/Input.jsx` | Text input with optional leading icon; auto-wraps in `Field` when `label`/`hint`/`error` is set. `sm`/`md`. | `Durin DS/Forms/Input` |
-| `Select` | `components/Select.jsx` | Custom dropdown (NOT native `<select>`) so the face and overlay follow DS tokens. Listbox semantics; `placement="top"` for footer toolbars. | `Durin DS/Forms/Select` |
+| `Select` | `components/Select.jsx` | Custom dropdown (NOT native `<select>`) so the face and overlay follow DS tokens. Listbox semantics with Arrow/Home/End, typeahead, Enter/Space selection, and Escape focus return; `placement="top"` supports footer toolbars. `fullWidth` defaults to `true` for forms; compact toolbars opt into `fullWidth={false}` so the control sizes to its content without forcing a full row. | `Durin DS/Forms/Select` |
 | `Textarea` | `components/Textarea.jsx` | Multi-line text input; same API as `Input` minus the leading icon. `min-h-[96px]`, vertically resizable. | `Durin DS/Forms/Textarea` |
 
 ### Overlays
@@ -314,7 +326,7 @@ prefix.
 | Component | File | One-line description | Story |
 | --- | --- | --- | --- |
 | `Badge` | `components/Badge.jsx` | Small pill for metadata and semantic status. `accent`/`success`/`warning`/`danger`/`info`/`neutral` tones; `sm`/`md` sizes; optional leading icon. | `Durin DS/Surfaces/Badge` |
-| `Card` | `components/Card.jsx` | Bordered `rounded-dd-lg` shell with optional `CardHeader` / `CardContent` / `CardFooter` for structured layouts. | `Durin DS/Surfaces/Card` |
+| `Card` | `components/Card.jsx` | Bordered `rounded-dd-lg` shell with one padding contract: `true`/omitted = `md` (20px), `false`/`"none"` = 0, and named `"xs"`/`"sm"`/`"md"`/`"lg"` = 12/16/20/24px. Compound cards use `padding={false}` while `CardHeader`, `CardContent`, and `CardFooter` own aligned spacing. The legacy shared Card delegates its outer surface to this component. | `Durin DS/Surfaces/Card` |
 | `Chip` | `components/Chip.jsx` | Compact tag for models/providers/filters. Supports `icon`, `onClick`, `onRemove`; selected state uses emerald border + `accent-soft` background. | `Durin DS/Surfaces/Chip` |
 | `ProviderLogo` | `components/ProviderLogo.jsx` | Real provider logo from `public/providers/<id>.svg\|png` with an alias map (`cc` → `claude`, `cx` → `codex`, `ollama` → `ollama-local`, …) and a token-styled letter-tile fallback when no asset exists. Props: `provider` (id or alias, case-insensitive), `size` (px box, default 28), `className`. | `Durin DS/Surfaces/ProviderLogo` |
 | `StatusDot` | `components/StatusDot.jsx` | 8px dot for provider/connection/job states, optional `pulse` ring for live states, optional muted label. Five tones. | `Durin DS/Surfaces/StatusDot` |
@@ -338,6 +350,18 @@ production sidebar (`src/shared/components/Sidebar.js` +
 outside the sections. In the production rail, accent treatment is
 deliberate: emerald (`bg-dd-accent-soft text-dd-accent`) marks the active
 route only, and every other row stays on muted neutrals until hover.
+
+Settings at `/dashboard/profile` expose five categories through `Tabs`:
+**General**, **Security**, **Routing**, **Network**, and **System & Data**. Each
+category owns one tab panel; switching categories hides unrelated controls
+without changing their saved values.
+
+Provider model-status actions must describe their real scope. **Clear
+provider-wide cooldown** clears the selected model lock across every account
+for that provider that carries it. For any affected connection marked
+`unavailable`, the same operation restores `testStatus` to `active` and clears
+`lastError`, `lastErrorAt`, and `backoffLevel`; it does not imply that a new
+provider health check ran.
 
 ## Page mock inventory
 
@@ -461,8 +485,8 @@ font size; `sm` remains the convention in dense toolbars (`Header` actions,
   is `aria-hidden`.
 - `Tabs`, `SegmentedControl` implement roving tabindex with arrow / Home /
   End navigation.
-- `Select` has listbox semantics but currently lacks Arrow/Home/End keyboard
-  navigation. Fix primitive before page adoption requiring it.
+- `Select` implements listbox keyboard navigation: Arrow/Home/End and typeahead
+  move the active option, Enter/Space selects, and Escape restores trigger focus.
 - `Field` injects `aria-invalid` / `aria-describedby` into single child.
   Error lines carry `role="alert"`.
 - `RangeSelector` custom-date popover uses `role="dialog"`; Escape and

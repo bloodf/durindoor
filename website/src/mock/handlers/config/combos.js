@@ -1,3 +1,4 @@
+import { isString } from "@/shared/utils/typeChecks";
 // /api/combos, /api/combos/:id and /api/models/alias.
 import { badRequest, notFound, reply } from "../../http.js";
 import { seedAliases, seedCombos } from "../../fixtures/configData.js";
@@ -7,7 +8,7 @@ const ALIASES = "config.aliases";
 const VALID_NAME = /^[a-zA-Z0-9_.-]+$/;
 
 function stringList(value) {
-  return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.length > 0) : [];
+  return Array.isArray(value) ? value.filter((item) => isString(item) && item.length > 0) : [];
 }
 
 // Keep existing weights for surviving members unless explicit members are sent.
@@ -33,7 +34,7 @@ export default function register(router, { store }) {
   router.get("/api/combos", () => ({ combos: store.list(COMBOS) }));
 
   router.post("/api/combos", ({ body = {} }) => {
-    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const name = isString(body.name) ? body.name.trim() : "";
     const error = nameError(store, name);
     if (error) return badRequest(error);
     const models = stringList(body.models);

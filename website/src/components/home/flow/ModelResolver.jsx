@@ -1,5 +1,7 @@
 "use client";
 
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import { useEffect, useRef, useState } from "react";
 import { useInView, useReducedMotion } from "motion/react";
 import { RESOLUTIONS } from "../data.js";
@@ -10,6 +12,7 @@ const HOLD_MS = 2600;
 
 // Terminal that types a model string and prints how DurinDoor resolves it.
 export default function ModelResolver() {
+  const { t } = useHomeLocale();
   const ref = useRef(null);
   const inView = useInView(ref, { margin: "-20% 0px" });
   const reduce = useReducedMotion();
@@ -57,9 +60,9 @@ export default function ModelResolver() {
     <div className="terminal" ref={ref}>
       <div className="terminal-bar">
         <span className="dots" aria-hidden="true"><i /><i /><i /></span>
-        <span className="terminal-title">model resolution</span>
+        <span className="terminal-title">{t("model resolution")}</span>
       </div>
-      <div className="terminal-tabs" role="tablist" aria-label="Model string shapes">
+      <div className="terminal-tabs" role="tablist" aria-label={t("Model string shapes")}>
         {RESOLUTIONS.map((r, i) => (
           <button
             key={r.kind}
@@ -69,11 +72,11 @@ export default function ModelResolver() {
             className={`terminal-tab ${i === index ? "is-active" : ""}`}
             onClick={() => select(i)}
           >
-            {r.kind}
+            {t(r.kind)}
           </button>
         ))}
       </div>
-      <div className="terminal-body" role="tabpanel" aria-label={`${current.kind}: ${current.input}`}>
+      <div className="terminal-body" role="tabpanel" aria-label={`${t(current.kind)}: ${current.input}`}>
         <p className="terminal-line">
           <span className="t-prompt">&quot;model&quot;:</span>{" "}
           <span className="t-string">&quot;{current.input.slice(0, typed)}</span>
@@ -83,7 +86,7 @@ export default function ModelResolver() {
         <ul className="terminal-output">
           {current.lines.map((line, i) => (
             <li key={line.text} className={`t-${line.tone} ${i < shown ? "is-shown" : ""}`}>
-              {line.text}
+              {t(line.text)}
             </li>
           ))}
         </ul>

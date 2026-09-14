@@ -104,8 +104,6 @@ export function buildPolicyCatalog() {
   return [...catalog.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-// Connections bound to each pool (connection.providerSpecificData.proxyPoolId).
-export const POOL_BINDINGS = Object.freeze({ "pool-erebor": 2, "pool-dale": 1 });
 
 export function seedProxyPools() {
   const fromWorld = PROXY_POOLS.map((pool, index) => ({

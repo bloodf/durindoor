@@ -68,10 +68,9 @@ export function seedDisabledModels() {
   return { gh: ["goldeneye-free-auto"], cx: ["gpt-5.1-codex-mini"] };
 }
 
-// Probe outcomes keyed by connection id; anything missing probes healthy.
+// Provider-specific probe limitations; failures and quota state come from the
+// mutable connection, so redemption/reconnection cannot retain a stale failure.
 export const HEALTH_OVERRIDES = {
-  "conn-codex-backup": { state: "degraded", statusCode: 429, latencyMs: 412, error: "Rate limit reached for gpt-5.5 (429)" },
-  "conn-cursor": { state: "down", statusCode: 402, latencyMs: 238, error: "Monthly quota exhausted" },
   "conn-ravenhill": { state: "degraded", statusCode: 200, latencyMs: 1840, error: "Slow response (1840ms)" },
   "conn-firecrawl": { state: "unconfigured", statusCode: null, latencyMs: null, error: "No probe endpoint for this provider" },
 };

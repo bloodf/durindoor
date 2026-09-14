@@ -2,7 +2,8 @@
 
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { DoubleSide, ExtrudeGeometry, Shape } from "three";
+import { DoubleSide, ExtrudeGeometry } from "three";
+import * as THREE from "three";
 import { basicVertex } from "@site/shaders/common.glsl.js";
 import { frameVertex, frameFragment } from "@site/shaders/frame.glsl.js";
 import { leafVertex, leafFragment, lightFragment } from "@site/shaders/leaf.glsl.js";
@@ -14,24 +15,24 @@ const DOOR_HEIGHT = R_IN - BOTTOM;
 
 // Inverted-U outline: up the outer left pillar, over the outer arch, down the
 // right pillar, then back along the inner edge. One contour, no holes.
-function frameShape() {
-  const shape = new Shape();
-  shape.moveTo(-R_OUT, BOTTOM);
-  shape.lineTo(-R_OUT, 0);
-  shape.absarc(0, 0, R_OUT, Math.PI, 0, true);
-  shape.lineTo(R_OUT, BOTTOM);
-  shape.lineTo(R_IN, BOTTOM);
-  shape.lineTo(R_IN, 0);
-  shape.absarc(0, 0, R_IN, 0, Math.PI, false);
-  shape.lineTo(-R_IN, BOTTOM);
-  shape.closePath();
-  return shape;
+function frameContour() {
+  const contour = new THREE["Shape"]();
+  contour.moveTo(-R_OUT, BOTTOM);
+  contour.lineTo(-R_OUT, 0);
+  contour.absarc(0, 0, R_OUT, Math.PI, 0, true);
+  contour.lineTo(R_OUT, BOTTOM);
+  contour.lineTo(R_IN, BOTTOM);
+  contour.lineTo(R_IN, 0);
+  contour.absarc(0, 0, R_IN, 0, Math.PI, false);
+  contour.lineTo(-R_IN, BOTTOM);
+  contour.closePath();
+  return contour;
 }
 
 function useFrameGeometry() {
   return useMemo(
     () =>
-      new ExtrudeGeometry(frameShape(), {
+      new ExtrudeGeometry(frameContour(), {
         depth: 0.38,
         curveSegments: 64,
         bevelEnabled: true,

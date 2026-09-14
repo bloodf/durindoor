@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useEffect, useCallback, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import {
   ReactFlow,
   Handle,
   Position,
-  Controls,
+  Panel,
+  ControlButton,
+  useReactFlow,
+  useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
@@ -23,11 +26,18 @@ const PROVIDER_NODE_ACTIVE = "border-dd-accent shadow-dd-focus";
 const PROVIDER_NODE_IDLE = "border-dd-border";
 export function ProviderNode({ data }) {
   const { label, active, activity = [], tooltipId } = data;
+  // Own keyboard disclosure explicitly: transformed graph nodes must reveal
+  // their description on focus in WebKit as well as on pointer hover.
+  const [focused, setFocused] = useState(false);
   return (
     <div
       className={`group relative ${PROVIDER_NODE_BASE} ${active ? PROVIDER_NODE_ACTIVE : PROVIDER_NODE_IDLE}`}
       style={{ minWidth: 160 }}
       {...getProviderNodeAccessibility(active, tooltipId)}
+      onFocus={() => setFocused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+      }}
     >
       <Handle type="target" position={Position.Top} id="top" className="!bg-transparent !border-0 !w-0 !h-0" />
       <Handle type="target" position={Position.Bottom} id="bottom" className="!bg-transparent !border-0 !w-0 !h-0" />
@@ -42,7 +52,7 @@ export function ProviderNode({ data }) {
         <div
           id={tooltipId}
           role="tooltip"
-          className="pointer-events-none invisible absolute left-1/2 top-full z-50 mt-2 min-w-56 -translate-x-1/2 rounded-dd-lg border border-dd-border bg-dd-surface p-3 text-left text-xs text-dd-text opacity-0 shadow-dd-elevated transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+          className={`pointer-events-none absolute left-1/2 top-full z-50 mt-2 min-w-56 -translate-x-1/2 rounded-dd-lg border border-dd-border bg-dd-surface p-3 text-left text-xs text-dd-text shadow-dd-elevated transition-opacity group-hover:visible group-hover:opacity-100 ${focused ? "visible opacity-100" : "invisible opacity-0"}`}
         >
           <p className="mb-2 font-semibold text-dd-text">{label} active calls</p>
           {activity.map((model) => (
@@ -149,6 +159,33 @@ function buildLayout(providers, activeSet, lastSet, errorSet, activityByProvider
 
 /** Framing used by every fit-view call, so the button matches auto-fit. */
 const FIT_OPTS = { padding: 0.2, duration: 200 };
+/** Controls currently drops unknown props, so use its public primitives for a labeled root. */
+function TopologyControls() {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+  const minZoomReached = useStore((state) => state.transform[2] <= state.minZoom);
+  const maxZoomReached = useStore((state) => state.transform[2] >= state.maxZoom);
+
+  return (
+    <Panel
+      position="bottom-left"
+      role="group"
+      aria-label="Control Panel"
+      className="react-flow__controls vertical react-flow-controls-custom"
+      data-testid="rf__controls"
+    >
+      <ControlButton className="react-flow__controls-zoomin !size-11" onClick={() => zoomIn()} title="Zoom In" aria-label="Zoom In" disabled={maxZoomReached}>
+        <svg aria-hidden="true" viewBox="0 0 32 32"><path d="M32 18.133H18.133V32h-4.266V18.133H0v-4.266h13.867V0h4.266v13.867H32z" /></svg>
+      </ControlButton>
+      <ControlButton className="react-flow__controls-zoomout !size-11" onClick={() => zoomOut()} title="Zoom Out" aria-label="Zoom Out" disabled={minZoomReached}>
+        <svg aria-hidden="true" viewBox="0 0 32 5"><path d="M0 0h32v4.2H0z" /></svg>
+      </ControlButton>
+      <ControlButton className="react-flow__controls-fitview !size-11" onClick={() => fitView(FIT_OPTS)} title="Fit View" aria-label="Fit View">
+        <svg aria-hidden="true" viewBox="0 0 32 30"><path d="M3.692 4.63c0-.53.4-.938.939-.938h5.215V0H4.708C2.13 0 0 2.054 0 4.63v5.216h3.692V4.631zM27.354 0h-5.2v3.692h5.17c.53 0 .984.4.984.939v5.215H32V4.631A4.624 4.624 0 0027.354 0zm.954 24.83c0 .532-.4.94-.939.94h-5.215v3.768h5.215c2.577 0 4.631-2.13 4.631-4.707v-5.139h-3.692v5.139zm-23.677.94c-.531 0-.939-.4-.939-.94v-5.138H0v5.139c0 2.577 2.13 4.707 4.708 4.707h5.138V25.77H4.631z" /></svg>
+      </ControlButton>
+    </Panel>
+  );
+}
+
 
 export default function ProviderTopology({ providers = [], activeRequests = [], lastProvider = "", errorProvider = "" }) {
   const activeKey = useMemo(() => activeRequests.map((r) => r.provider?.toLowerCase()).filter(Boolean).sort().join(","), [activeRequests]);
@@ -166,25 +203,36 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
   const containerRef = useRef(null);
   const onInit = useCallback((instance) => {
     rfInstance.current = instance;
-    setTimeout(() => instance.fitView(FIT_OPTS), 50);
   }, []);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
-      if (rfInstance.current) rfInstance.current.fitView(FIT_OPTS);
+    let frame = null;
+    let width;
+    let height;
+    // ResizeObserver delivers after layout. fitView writes the graph transform,
+    // so defer it out of that delivery cycle and coalesce resize notifications.
+    // ReactFlow's fitView prop owns initialization after node measurement; no
+    // competing initialization timers should outlive a replaced graph.
+    const ro = new ResizeObserver(([entry]) => {
+      const nextWidth = entry.contentRect.width;
+      const nextHeight = entry.contentRect.height;
+      if (nextWidth === width && nextHeight === height) return;
+      width = nextWidth;
+      height = nextHeight;
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        if (width > 0 && height > 0) rfInstance.current?.fitView(FIT_OPTS);
+      });
     });
     ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (rfInstance.current) {
-      const id = setTimeout(() => rfInstance.current.fitView(FIT_OPTS), 50);
-      return () => clearTimeout(id);
-    }
-  }, [nodes.length]);
+    return () => {
+      ro.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [providersKey]);
 
   return (
     <div ref={containerRef} className="h-[320px] w-full min-w-0 rounded-dd-lg border border-dd-border bg-dd-surface [&_.react-flow__edges]:pointer-events-none sm:h-[480px]">
@@ -213,7 +261,7 @@ export default function ProviderTopology({ providers = [], activeRequests = [], 
           edgesFocusable={false}
           nodesFocusable={false}
         >
-          <Controls showInteractive={false} className="react-flow-controls-custom [&_.react-flow__controls-button]:!size-11" />
+          <TopologyControls />
         </ReactFlow>
       )}
     </div>

@@ -1,3 +1,4 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // Per-tool translation between the settings routes' request/response shapes
 // and the stored config. Each adapter mirrors its route in
 // src/app/api/cli-tools/<tool>-settings/route.js:
@@ -36,7 +37,7 @@ function omitKeys(object, predicate) {
 const claude = {
   view: (config) => ({ settings: redactSecrets(config), has9Router: Boolean(config?.env?.ANTHROPIC_BASE_URL), ...paths("claude") }),
   apply: (config, { env, maxContextTokens }) => {
-    if (!env || typeof env !== "object") return fail("Invalid env object");
+    if (!env || !isObject(env)) return fail("Invalid env object");
     const kept = omitKeys(config?.env, (key) => key.startsWith("ANTHROPIC_") || key === "CLAUDE_CODE_MAX_CONTEXT_TOKENS");
     const nextEnv = { ...kept, ...env, ANTHROPIC_BASE_URL: localize(env.ANTHROPIC_BASE_URL || `${LOCAL_BASE}/v1`) };
     const finalEnv = maxContextTokens ? { ...nextEnv, CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(maxContextTokens) } : omitKeys(nextEnv, (key) => key === "CLAUDE_CODE_MAX_CONTEXT_TOKENS");
@@ -74,7 +75,7 @@ const opencode = {
     };
   },
   apply: (config, { baseUrl, apiKey, model, models, activeModel, subagentModel }) => {
-    const list = (Array.isArray(models) ? models : model ? [model] : []).filter((item) => typeof item === "string" && item);
+    const list = (Array.isArray(models) ? models : model ? [model] : []).filter((item) => isString(item) && item);
     if (!baseUrl || list.length === 0) return fail("baseUrl and at least one model are required");
     const existing = config?.provider?.["9router"] || {};
     const modelMap = { ...existing.models };
@@ -115,7 +116,7 @@ const opencode = {
 const droid = {
   view: (config) => ({ settings: redactSecrets(config), has9Router: Boolean(config?.customModels?.some((m) => m.id?.startsWith("custom:9Router"))), ...paths("droid") }),
   apply: (config, { baseUrl, apiKey, model, models, activeModel }) => {
-    const list = (Array.isArray(models) ? models : model ? [model] : []).filter((item) => typeof item === "string" && item);
+    const list = (Array.isArray(models) ? models : model ? [model] : []).filter((item) => isString(item) && item);
     if (!baseUrl || list.length === 0) return fail("baseUrl and at least one model are required");
     const others = (config?.customModels || []).filter((m) => !m.id?.startsWith("custom:9Router"));
     const entries = list.map((id, index) => ({
@@ -142,10 +143,12 @@ const openclaw = {
     const allowlist = omitKeys(config?.agents?.defaults?.models, (key) => key.startsWith("9router/"));
     ids.forEach((id) => { allowlist[`9router/${id}`] = {}; });
     const list = config?.agents?.list?.map((agent) => (agentModels[agent.id] ? { ...agent, model: `9router/${agentModels[agent.id]}` } : agent));
+    const agents = { ...config?.agents, defaults: { ...config?.agents?.defaults, model: { primary: `9router/${model}` }, models: allowlist } };
+    if (list) agents.list = list;
     return {
       config: {
         ...config,
-        agents: { ...config?.agents, defaults: { ...config?.agents?.defaults, model: { primary: `9router/${model}` }, models: allowlist }, ...(list ? { list } : {}) },
+        agents,
         models: { ...config?.models, providers: { ...config?.models?.providers, "9router": { baseUrl: withV1(localize(baseUrl)), apiKey: apiKey || "your_api_key", api: "openai-completions", models: ids.map((id) => ({ id, name: id.split("/").pop() || id })) } } },
       },
     };
@@ -156,16 +159,20 @@ const openclaw = {
 const hermes = {
   view: (config) => ({ settings: { model: config?.model || null }, has9Router: config?.model?.provider === "custom" && isLocal(config?.model?.base_url), ...paths("hermes") }),
   apply: (config, { baseUrl, model }) => {
-    if (typeof baseUrl !== "string" || typeof model !== "string") return fail("baseUrl and model are required");
+    if (!isString(baseUrl) || !isString(model)) return fail("baseUrl and model are required");
     return { config: { ...config, model: { default: model, provider: "custom", base_url: withV1(localize(baseUrl)), api_key: "${OPENAI_API_KEY}" } } };
   },
   reset: (config) => ({ ...config, model: null }),
 };
 
-const coworkEntry = (plugin) => ({
-  name: plugin.name, url: plugin.url, transport: plugin.transport || "http", ...(plugin.oauth ? { oauth: true } : {}),
-  toolPolicy: Object.fromEntries((plugin.toolNames || []).map((tool) => [tool, "allow"])),
-});
+const coworkEntry = (plugin) => {
+  const entry = {
+    name: plugin.name, url: plugin.url, transport: plugin.transport || "http",
+    toolPolicy: Object.fromEntries((plugin.toolNames || []).map((tool) => [tool, "allow"])),
+  };
+  if (plugin.oauth) entry.oauth = true;
+  return entry;
+};
 const STDIO_NAMES = new Set(COWORK_LOCAL_STDIO_PLUGINS.map((plugin) => plugin.name));
 const isBridge = (entry) => STDIO_NAMES.has(entry.name) && String(entry.url).includes("/api/mcp/");
 
@@ -195,7 +202,7 @@ const cowork = {
   },
   apply: (config, { baseUrl, apiKey, models, plugins, localPlugins, customPlugins }) => {
     if (!baseUrl || !apiKey) return fail("baseUrl and apiKey are required");
-    const modelList = (Array.isArray(models) ? models : []).filter((m) => typeof m === "string" && m.trim());
+    const modelList = (Array.isArray(models) ? models : []).filter((m) => isString(m) && m.trim());
     if (!modelList.length) return fail("At least one model is required");
     const remote = (Array.isArray(plugins) ? plugins : COWORK_DEFAULT_PLUGINS).filter((p) => p?.name && p?.url).map(coworkEntry);
     const bridges = (Array.isArray(localPlugins) ? localPlugins : []).filter((name) => STDIO_NAMES.has(name))

@@ -1338,10 +1338,11 @@ export default function ProviderLimits() {
   const customPageSizeMode = customPageSizeModeState || isCustomPageSize;
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
           <Select
             aria-label="Filter quota providers"
+            fullWidth={false}
+            className="w-[8.25rem] max-w-full flex-auto sm:flex-none"
             value={providerFilter}
             onChange={updateProviderFilter}
             options={[
@@ -1355,7 +1356,8 @@ export default function ProviderLimits() {
           />
           <Select
             aria-label="Filter accounts by status"
-            className="min-w-[8rem]"
+            fullWidth={false}
+            className="w-32 max-w-full flex-auto sm:flex-none"
             value={accountFilter}
             onChange={updateAccountFilter}
             options={ACCOUNT_FILTER_OPTIONS}
@@ -1363,25 +1365,24 @@ export default function ProviderLimits() {
           {providerFilter === "codex" ? (
             <Select
               aria-label="Sort Codex quotas by remaining"
-              className="min-w-[10rem]"
+              fullWidth={false}
+              className="w-[9.5rem] max-w-full flex-auto sm:flex-none"
               value={quotaSortMode}
               onChange={updateQuotaSortMode}
               options={QUOTA_SORT_OPTIONS}
             />
           ) : null}
           <Button variant="secondary" size="sm" icon="hourglass_top" onClick={() => updateExpiringFirst(!expiringFirst)} className={expiringFirst ? "ring-1 ring-dd-warning" : ""}>
-            <span className="hidden sm:inline">Expiring first</span>
+            <span>Expiring</span>
           </Button>
           <Button variant="danger" size="sm" icon="block" onClick={handleDisableDepleted} disabled={bulkToggling}>
-            <span className="hidden sm:inline">Turn off Empty</span>
-            <span className="sm:hidden">Off</span>
+            <span>Disable empty</span>
           </Button>
           <Button variant="primary" size="sm" icon="check_circle" onClick={handleEnableAvailable} disabled={bulkToggling}>
-            <span className="hidden sm:inline">Turn on Available</span>
-            <span className="sm:hidden">On</span>
+            <span>Enable available</span>
           </Button>
           <Button variant="secondary" size="sm" icon={autoRefresh ? "toggle_on" : "toggle_off"} onClick={() => setAutoRefresh((prev) => !prev)}>
-            <span className="hidden sm:inline">Auto-refresh</span>
+            <span>Auto</span>
             {autoRefresh ? <span className="text-[10px] text-dd-muted dd-tnum">({countdown}s)</span> : null}
           </Button>
           <IconButton
@@ -1395,7 +1396,6 @@ export default function ProviderLimits() {
             className={refreshingAll ? "[&_span]:animate-spin" : ""}
           />
         </div>
-      </div>
       {expiringFirst ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">Expiring-first currently reorders accounts inside current page. Cross-page ordering still follows backend pagination.</div> : null}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-busy={connectionsLoading || undefined}>

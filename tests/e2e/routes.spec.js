@@ -38,12 +38,86 @@ async function visit(page, qa, url, authenticate = true) {
   return page.goto(`${qa.baseURL}${url}`, { waitUntil: "domcontentloaded" });
 }
 
-async function expectVisible(page, text, locator = "text") {
+async function expectVisible(page, text, locator = "text", headingLevel) {
   if (locator === "label") return expect(page.getByLabel(text, { exact: true })).toBeVisible();
   if (locator === "title") return expect(page.getByTitle(text, { exact: true })).toBeVisible();
+  // Page-title contracts may distinguish an h1 from repeated tool-card headings.
+  if (locator === "heading" && headingLevel) return expect(page.getByRole("heading", { name: text, exact: true, level: headingLevel })).toBeVisible();
   if (["button", "combobox", "group", "img", "region", "heading", "table"].includes(locator)) return expect(page.getByRole(locator, { name: text, exact: true })).toBeVisible();
-  if (typeof text === "string" && text.includes("%d")) return expect(page.getByText(new RegExp(text.replace("%d", "\\d+")), { exact: false }).first()).toBeVisible();
-  return expect(page.getByText(text, { exact: true }).first()).toBeVisible();
+  // Route content must not match a duplicate label in the hidden mobile rail.
+  const main = page.locator("main").first();
+  const surface = await main.count() ? main : page;
+  if (typeof text === "string" && text.includes("%d")) return expect(surface.getByText(new RegExp(text.replace("%d", "\\d+")), { exact: false }).first()).toBeVisible();
+  return expect(surface.getByText(text, { exact: true }).first()).toBeVisible();
+}
+
+function artifactStem(route, variant, url) {
+  const variantName = variant.branch || url || variant.urlFrom || "route";
+  return `${route.id}-${variantName}`.replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "");
+}
+
+/** Text can overlap controls without increasing document.scrollWidth. */
+async function expectSeparatedTitles(page, route, url) {
+  if (!["R12", "R13", "R15", "R21", "R22", "R27"].includes(route.id)) return;
+  await page.evaluate(() => document.fonts.ready);
+  const collisions = await page.evaluate(({ routeId, routeUrl }) => {
+    const textRect = (element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getBoundingClientRect();
+    };
+    const overlaps = (a, b) =>
+      Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+      Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+    const found = [];
+    const header = document.querySelector("header");
+    const title = header && [...header.children].find((element) => element.classList.contains("flex-col"));
+    const actions = header?.lastElementChild;
+    if (title && actions && overlaps(textRect(title), actions.getBoundingClientRect())) {
+      found.push("page title overlaps header actions");
+    }
+    if (routeId === "R12") {
+      for (const heading of document.querySelectorAll('main h2, main [role="heading"][aria-level="2"]')) {
+        const subtitle = heading.closest("div")?.lastElementChild;
+        if (subtitle && subtitle !== heading && overlaps(textRect(heading), textRect(subtitle))) {
+          found.push(`${heading.textContent}: section heading overlaps subtitle`);
+        }
+      }
+    }
+    if (routeUrl === "/dashboard/providers/openai") {
+      const heading = document.querySelector("main h1");
+      if (heading && heading.scrollWidth > heading.clientWidth + 1) found.push("provider identity is squeezed by controls");
+    }
+    return found;
+  }, { routeId: route.id, routeUrl: url });
+  expect(collisions, `${route.id} ${url} titles must remain separate from adjacent controls`).toEqual([]);
+}
+
+async function attachRenderedGeometry(page, qa, testInfo, route, variant, url) {
+  const content = page.getByRole("region", { name: "Page content", exact: true });
+  const main = await content.count() ? content : page.locator("main").first();
+  const geometry = await page.evaluate(() => {
+    const region = document.querySelector('[role="region"][aria-label="Page content"]') || document.querySelector("main") || document.body;
+    const rect = region.getBoundingClientRect();
+    return {
+      viewportWidth: window.innerWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      content: { left: rect.left, right: rect.right, width: rect.width },
+    };
+  });
+  expect(geometry.documentScrollWidth, `${route.id} ${url} must not horizontally overflow`).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+  expect(geometry.content.width, `${route.id} ${url} page-content region must have measurable width`).toBeGreaterThan(0);
+  expect(geometry.content.left, `${route.id} ${url} page-content left edge must stay in viewport`).toBeGreaterThanOrEqual(-1);
+  expect(geometry.content.right, `${route.id} ${url} page-content right edge must stay in viewport`).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+  await expectSeparatedTitles(page, route, url);
+
+  const stem = artifactStem(route, variant, url);
+  const viewportPath = qa.artifactPath(`${stem}-viewport.png`);
+  const contentPath = qa.artifactPath(`${stem}-main.png`);
+  await page.screenshot({ path: viewportPath, animations: "disabled" });
+  await testInfo.attach(`${stem}-viewport`, { path: viewportPath, contentType: "image/png" });
+  await main.screenshot({ path: contentPath, animations: "disabled" });
+  await testInfo.attach(`${stem}-main`, { path: contentPath, contentType: "image/png" });
 }
 
 /** Narrow same-path intercept for POST /api/auth/login; never touches other routes. */
@@ -72,7 +146,7 @@ function defineRouteTest(route, variant) {
   // Login routes carry password interaction, so trace/screenshot/video remain
   // disabled even when their variant has no injected error response.
   const test = route.id === "R36" ? authSensitiveTest : rawTest;
-  test(label, async ({ page, qa }) => {
+  test(label, async ({ page, qa }, testInfo) => {
     const seed = await qa.seed(variant.seedScenario || route.fixture || "baseline");
     const url = resolveVariantUrl(variant, seed);
 
@@ -104,13 +178,21 @@ function defineRouteTest(route, variant) {
         await expect(page.getByRole("button", { name: "Set password", exact: true })).toBeVisible();
         await expect(page.locator("#new-password")).toBeVisible();
       } else {
-        const expected = variant.expectedText ?? resolveExpectedText(variant, seed) ?? route.expectedText;
-        if (!expected) throw new Error(`${route.id} ${url} has no observable assertion in the manifest`);
-        const locator = variant.expectedLocator || route.expectedLocator || (variant.headingLocator ?? route.headingLocator ?? true ? "heading" : "text");
-        await expectVisible(page, expected, locator);
+        if (route.id === "R17") {
+          const tools = page.getByRole("region", { name: "MITM tool configuration", exact: true });
+          await expect(tools.getByRole("button", { name: /^Antigravity Antigravity Server (?:on|off) Intercept Antigravity requests via MITM proxy$/ })).toBeVisible();
+        } else {
+          const expected = variant.expectedText ?? resolveExpectedText(variant, seed) ?? route.expectedText;
+          if (!expected) throw new Error(`${route.id} ${url} has no observable assertion in the manifest`);
+          const locator = variant.expectedLocator || route.expectedLocator || (variant.headingLocator ?? route.headingLocator ?? true ? "heading" : "text");
+          await expectVisible(page, expected, locator, variant.headingLevel ?? route.headingLevel);
+        }
         if (route.id === "R20") {
+          await expect(page.getByRole("tabpanel", { name: "General settings", exact: true })).toBeVisible();
+          await page.getByRole("tab", { name: "Security", exact: true }).click();
           await expect(page.locator("#profile-current-password")).toBeVisible();
           await expect(page.locator("#profile-new-password")).toBeVisible();
+          await page.getByRole("tab", { name: "General", exact: true }).click();
         }
         if (route.id === "R22") {
           await page.getByRole("combobox", { name: "Provider status", exact: true }).click();
@@ -120,6 +202,7 @@ function defineRouteTest(route, variant) {
           await expectVisible(page, secondary, variant.expectedSecondaryLocator || route.expectedSecondaryLocator || "text");
         }
       }
+      if (route.id !== "R36") await attachRenderedGeometry(page, qa, testInfo, route, variant, url);
       await qa.assertNoExternalEffects();
       const isSuppressedNoise = (entry) => {
         if (variant.expectedApiNotFound && entry.url && entry.text.includes("404")) {

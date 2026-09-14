@@ -1,5 +1,5 @@
-// Server component: runs the real RTK `find` filter from open-sse at build time,
-// so the before/after and the byte counts on the page are genuine output.
+// Server-only RTK sample, computed once per module rather than per locale request.
+// Both panes and byte counts come from the real filter, never a fabricated result.
 import { find } from "open-sse/rtk/filters/find.js";
 import TokenSaversView from "./TokenSaversView.jsx";
 
@@ -22,15 +22,17 @@ const RAW = [
 ].join("\n");
 
 const bytes = (text) => new TextEncoder().encode(text).length;
+const COMPRESSED = find(RAW);
+const BEFORE = bytes(RAW);
+const AFTER = bytes(COMPRESSED);
 
 export default function TokenSavers() {
-  const compressed = find(RAW);
   return (
     <TokenSaversView
       raw={RAW}
-      compressed={compressed}
-      before={bytes(RAW)}
-      after={bytes(compressed)}
+      compressed={COMPRESSED}
+      before={BEFORE}
+      after={AFTER}
     />
   );
 }

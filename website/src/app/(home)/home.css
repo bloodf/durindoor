@@ -230,6 +230,33 @@ html:has(.dd-home) body {
   gap: 10px;
 }
 
+/* Long locale names remain readable in the DS listbox without widening the nav. */
+.home-locale {
+  width: 144px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .nav-inner {
+    gap: 10px;
+  }
+  .nav-brand > span,
+  .nav-actions > .nav-icon {
+    display: none;
+  }
+  .home-locale {
+    width: 112px;
+  }
+  .nav-actions {
+    gap: 6px;
+  }
+  .nav-actions .btn-small {
+    padding-inline: 10px;
+    font-size: 12px;
+  }
+}
+
 .nav-icon {
   display: grid;
   place-items: center;
@@ -245,7 +272,7 @@ html:has(.dd-home) body {
   background: rgba(237, 230, 216, 0.06);
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1320px) {
   .nav-links {
     display: none;
   }

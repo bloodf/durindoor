@@ -1,3 +1,4 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // Response descriptors and helpers shared by every mock handler.
 //
 // A handler may return:
@@ -37,7 +38,7 @@ export function textStream(chunks, { intervalMs = 35, contentType = "text/event-
 }
 
 export function isDescriptor(value, kind) {
-  return Boolean(value && typeof value === "object" && value[MOCK] && (!kind || value[MOCK] === kind));
+  return Boolean(value && isObject(value) && value[MOCK] && (!kind || value[MOCK] === kind));
 }
 
 export function wait(ms) {
@@ -49,11 +50,11 @@ export function latency(min = 80, max = 250) {
 }
 
 export function encodeSseEvent(item) {
-  if (item && typeof item === "object" && Object.hasOwn(item, "data") && Object.hasOwn(item, "event")) {
-    const data = typeof item.data === "string" ? item.data : JSON.stringify(item.data);
+  if (item && isObject(item) && Object.hasOwn(item, "data") && Object.hasOwn(item, "event")) {
+    const data = isString(item.data) ? item.data : JSON.stringify(item.data);
     return `event: ${item.event}\ndata: ${data}\n\n`;
   }
-  return `data: ${typeof item === "string" ? item : JSON.stringify(item)}\n\n`;
+  return `data: ${isString(item) ? item : JSON.stringify(item)}\n\n`;
 }
 
 function streamFrom(produce, { contentType, status, headers }) {
@@ -104,5 +105,7 @@ export function toResponse(result) {
       }
     }, { contentType: "text/event-stream", status: 200, headers: {} });
   }
-  return new Response(JSON.stringify(result ?? { success: true }), { status: 200, headers: { "content-type": "application/json" } });
+  // A handler with no result is an implementation error, not a successful write.
+  if (result === undefined) return toResponse(reply({ error: "Demo handler returned no response" }, { status: 500 }));
+  return new Response(JSON.stringify(result), { status: 200, headers: { "content-type": "application/json" } });
 }

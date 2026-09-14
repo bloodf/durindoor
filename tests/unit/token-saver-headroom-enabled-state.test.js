@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ hooks: [], index: 0, effects: [], enabled: false, calls: [] }));
+const state = vi.hoisted(() => ({ hooks: [], index: 0, effects: [], enabled: false, calls: [], pxpipeStatus: null }));
 
 vi.mock("react", async () => {
   const actual = await vi.importActual("react");
@@ -28,7 +28,7 @@ vi.mock("@/i18n/runtime", () => ({ getCurrentLocale: () => "en", onLocaleChange:
 vi.mock("../../src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js", () => ({ default: function TokenSaverOverview() {} }));
 vi.mock("../../src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js", () => ({ default: function PxpipeClient() {} }));
 vi.mock("../../src/app/(dashboard)/dashboard/pxpipe/pxpipeStatus.js", () => ({
-  fetchPxpipeStatus: async () => ({ installed: false, running: false }), getPxpipeStatusView: () => ({ label: "Unavailable" }),
+  fetchPxpipeStatus: async () => state.pxpipeStatus ?? { installed: false, running: false }, getPxpipeStatusView: () => ({ label: "Unavailable" }),
 }));
 
 const { default: TokenSaverClient } = await import("@/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx");
@@ -63,10 +63,14 @@ async function renderWithProxyDown(enabled) {
 function headroomToggle(tree) {
   return walk(tree, (node) => node.type === Toggle && node.props["aria-label"] === "Enable Headroom")[0];
 }
+function minimumCharsInput(tree) {
+  return walk(tree, (node) => node.props?.label === "Minimum chars")[0];
+}
 
 describe("Token Saver Headroom enabled setting", () => {
   beforeEach(() => {
     state.calls = [];
+    state.pxpipeStatus = null;
     vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
       state.calls.push({ url, options });
       if (url === "/api/settings" && options.method === "PATCH") return response({ success: true });
@@ -88,6 +92,68 @@ describe("Token Saver Headroom enabled setting", () => {
     expect(state.calls.at(-1)).toMatchObject({
       url: "/api/settings",
       options: { method: "PATCH", body: JSON.stringify({ headroomEnabled: next, headroomUrl: "http://localhost:8787" }) },
+    });
+  });
+
+  it("waits for saved settings before exposing editable default values", async () => {
+    let resolveSettings;
+    const savedSettings = new Promise((resolve) => { resolveSettings = resolve; });
+    const fetchOther = globalThis.fetch.getMockImplementation();
+    globalThis.fetch.mockImplementation((url, options = {}) =>
+      url === "/api/settings" && !options.method ? savedSettings : fetchOther(url, options));
+    state.index = 0;
+    state.hooks = [];
+    state.effects = [];
+    const initial = TokenSaverClient({ view: "settings" });
+    expect(minimumCharsInput(initial)).toBeUndefined();
+    expect(walk(initial, (node) => node.props?.role === "status")).toHaveLength(1);
+    await drainEffects();
+    state.index = 0;
+    expect(minimumCharsInput(TokenSaverClient({ view: "settings" }))).toBeUndefined();
+
+    resolveSettings(response({ pxpipeMinChars: 31000 }));
+    await drainEffects();
+    state.index = 0;
+    const loaded = TokenSaverClient({ view: "settings" });
+    expect(minimumCharsInput(loaded).props.value).toBe("31000");
+    minimumCharsInput(loaded).props.onChange({ target: { value: "31001" } });
+    minimumCharsInput(loaded).props.onBlur({ currentTarget: { value: "31001" } });
+    expect(state.calls.at(-1).options.body).toBe(JSON.stringify({ pxpipeMinChars: 31001 }));
+  });
+
+  it("preserves an edited minimum when a late status response arrives", async () => {
+    let resolveStatus;
+    state.pxpipeStatus = new Promise((resolve) => { resolveStatus = resolve; });
+    const tree = await renderWithProxyDown(false);
+    minimumCharsInput(tree).props.onChange({ target: { value: "25001" } });
+    resolveStatus({ installed: true, running: true, minChars: 25000 });
+    for (let i = 0; i < 4; i += 1) await Promise.resolve();
+    state.index = 0;
+    const edited = minimumCharsInput(TokenSaverClient({ view: "settings" }));
+    expect(edited.props.value).toBe("25001");
+    edited.props.onBlur({ currentTarget: { value: edited.props.value } });
+    expect(state.calls.at(-1).options.body).toBe(JSON.stringify({ pxpipeMinChars: 25001 }));
+  });
+
+  it("does not expose editable defaults when loading saved settings fails", async () => {
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 500 });
+    const tree = await renderWithProxyDown(false);
+    expect(minimumCharsInput(tree)).toBeUndefined();
+    expect(walk(tree, (node) => node.props?.role === "alert")).toHaveLength(1);
+    expect(globalThis.fetch.mock.calls.some(([, options]) => options?.method === "PATCH")).toBe(false);
+  });
+
+  it("PATCHes the edited minimum chars when blur fires before a rerender", async () => {
+    const tree = await renderWithProxyDown(false);
+    const input = minimumCharsInput(tree);
+    state.calls = [];
+
+    input.props.onChange({ target: { value: "25001" } });
+    input.props.onBlur({ currentTarget: { value: "25001" } });
+
+    expect(state.calls).toContainEqual({
+      url: "/api/settings",
+      options: { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pxpipeMinChars: 25001 }) },
     });
   });
 });

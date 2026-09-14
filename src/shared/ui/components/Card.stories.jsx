@@ -1,10 +1,10 @@
 /**
  * Durin DS — Card stories (group: Surfaces).
  *
- * Covers the standalone shell (padding on/off, hover affordance), the full
- * CardHeader + CardContent + CardFooter composition, and a realistic
- * "provider card" combining Card with StatusDot, Badge and Chip. Stories set
- * no backgrounds — the "Theme" toolbar toggle drives dark/light.
+ * Covers named density, the full CardHeader + CardContent + CardFooter
+ * composition, narrow wrapping with long text/actions, and a realistic
+ * provider card. Stories set no backgrounds — the "Theme" toolbar toggle
+ * drives dark/light.
  */
 import { Card, CardHeader, CardContent, CardFooter } from "./Card.jsx";
 import { Badge } from "./Badge.jsx";
@@ -22,7 +22,7 @@ export default meta;
 /** Controls-driven single card. */
 export const Playground = {
   args: {
-    padding: true,
+    padding: "md",
     hover: false,
   },
   render: (args) => (
@@ -36,10 +36,23 @@ export const Playground = {
   ),
 };
 
-/** padding={false} + header (icon tile, title, subtitle, actions) + content + footer. */
+/** Every named density uses the canonical Card padding scale. */
+export const NamedDensity = {
+  render: () => (
+    <div className="grid w-80 gap-3">
+      {["none", "xs", "sm", "md", "lg"].map((padding) => (
+        <Card key={padding} padding={padding}>
+          <div className="bg-dd-surface-2 text-xs text-dd-muted">padding=&quot;{padding}&quot;</div>
+        </Card>
+      ))}
+    </div>
+  ),
+};
+
+/** Keep the 24rem desktop composition, bounded by the centered canvas on mobile. */
 export const Composed = {
   render: () => (
-    <Card padding={false} className="w-96">
+    <Card padding={false} className="w-96 max-w-full">
       <CardHeader
         icon="key"
         title="API keys"
@@ -83,12 +96,38 @@ export const Composed = {
   ),
 };
 
+/** Long labels and multiple 44px actions wrap within a narrow card. */
+export const NarrowHeaderActions = {
+  render: () => (
+    <Card padding={false} className="w-56">
+      <CardHeader
+        icon="settings"
+        title="A deliberately long provider configuration title"
+        subtitle="Long metadata remains readable without clipping or widening the page."
+        actions={
+          <>
+            <button type="button" className="min-h-11 rounded-dd px-3 text-xs text-dd-accent outline-none focus-visible:shadow-dd-focus">
+              Test connection
+            </button>
+            <button type="button" className="min-h-11 rounded-dd bg-dd-accent px-3 text-xs text-dd-on-accent outline-none focus-visible:shadow-dd-focus">
+              Save changes
+            </button>
+          </>
+        }
+      />
+      <CardContent>
+        <p className="text-[13px] text-dd-text">https://provider.example.com/a/very/long/unbroken/configuration/path</p>
+      </CardContent>
+    </Card>
+  ),
+};
+
 /** `hover` raises the border on pointer-over — for linked/clickable cards. */
 export const Hoverable = {
   render: () => (
-    <div className="flex gap-4">
+    <div className="flex w-[35rem] max-w-full flex-wrap gap-4">
       {["OpenAI", "Anthropic", "Gemini"].map((name) => (
-        <Card key={name} hover className="w-44 cursor-pointer">
+        <Card key={name} hover className="w-44 max-w-full cursor-pointer">
           <div className="flex flex-col gap-1">
             <span className="text-sm font-semibold text-dd-text">{name}</span>
             <span className="text-xs text-dd-muted">Hover me</span>
@@ -102,7 +141,7 @@ export const Hoverable = {
 /** Realistic composition: icon tile + name + live StatusDot + Badge/Chip rows + metric footer. */
 export const ProviderCard = {
   render: () => (
-    <Card padding={false} hover className="w-96">
+    <Card padding={false} hover className="w-96 max-w-full">
       <CardHeader
         icon="database"
         title="OpenAI"

@@ -129,6 +129,24 @@ describe("UI QA seed boundary", () => {
     freshMain.run("DELETE FROM usageHistory WHERE id=?", [foreignUsage.id]);
   });
 
+  it("seeds Token Saver metrics independently and resets only its own observation", async () => {
+    const { getAdapter } = await import("../../src/lib/db/driver.js");
+    const { recordTokenSaverEvent, getTokenSaverStats } = await import("../../src/lib/db/repos/usageRepo.js");
+    await recordTokenSaverEvent({ rtk: { bytesSaved: 64 } });
+    const sentinel = (await getAdapter()).get("SELECT id FROM tokenSaverEvents ORDER BY id DESC LIMIT 1");
+    try {
+      await seedQa({ dataDir, scenario: "token-saver" });
+      expect(await getTokenSaverStats("all")).toMatchObject({ requestsObserved: 2, rtk: { bytesSaved: 320 } });
+      // Re-seeding must replace, not accumulate, the fixture observation.
+      await seedQa({ dataDir, scenario: "token-saver" });
+      expect(await getTokenSaverStats("all")).toMatchObject({ requestsObserved: 2, rtk: { bytesSaved: 320 } });
+      await resetQa({ dataDir });
+      expect(await getTokenSaverStats("all")).toMatchObject({ requestsObserved: 1, rtk: { bytesSaved: 64 } });
+    } finally {
+      (await getAdapter()).run("DELETE FROM tokenSaverEvents WHERE id = ?", [sentinel.id]);
+    }
+  });
+
   it("emits one parseable prefixed CLI result amid stdout diagnostics", async () => {
     const writes = [];
     const originalWrite = process.stdout.write;

@@ -1,3 +1,7 @@
+"use client";
+
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import { CONSTELLATION, REGISTRY_PROVIDER_COUNT, constellationLogo } from "../content.js";
 import ThreeStage from "../threeui/ThreeStage.jsx";
 import { BrandMark } from "../ui/chrome.jsx";
@@ -29,28 +33,29 @@ function Ring({ ids, radius, duration, reverse }) {
 }
 
 export default function Constellation() {
+  const { t } = useHomeLocale();
   return (
     <section id="providers" className="section section-constellation" aria-labelledby="providers-title">
       <div className="container constellation-layout">
         <div className="constellation-copy">
           <SectionHeader
             align="start"
-            eyebrow="The fellowship"
-            title={<span id="providers-title">Every provider, bound to one ring</span>}
-            lead="Connect OAuth subscriptions, API keys, web cookies, OpenAI- or Anthropic-compatible endpoints and local runtimes. Tools never learn which one answered."
+            eyebrow={t("The fellowship")}
+            title={<span id="providers-title">{t("Every provider, bound to one ring")}</span>}
+            lead={t("Connect OAuth subscriptions, API keys, web cookies, OpenAI- or Anthropic-compatible endpoints and local runtimes. Tools never learn which one answered.")}
           />
           <Reveal as="dl" className="constellation-facts">
             <div>
-              <dt>Registry</dt>
-              <dd>{REGISTRY_PROVIDER_COUNT} providers</dd>
+              <dt>{t("Registry")}</dt>
+              <dd>{REGISTRY_PROVIDER_COUNT}{" "}{t("providers")}</dd>
             </div>
             <div>
-              <dt>Custom nodes</dt>
-              <dd>Any compatible URL</dd>
+              <dt>{t("Custom nodes")}</dt>
+              <dd>{t("Any compatible URL")}</dd>
             </div>
             <div>
-              <dt>Local</dt>
-              <dd>No remote account</dd>
+              <dt>{t("Local")}</dt>
+              <dd>{t("No remote account")}</dd>
             </div>
           </Reveal>
         </div>

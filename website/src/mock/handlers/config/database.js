@@ -1,8 +1,10 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // /api/settings/database (+ engine, test, cutover, rollback, log, selective).
 // The mock cannot see request headers, so the dashboard password prompt is
 // accepted as-is.
 import { badRequest, reply, wait } from "../../http.js";
-import { CONNECTIONS, DEMO_VERSION } from "../../fixtures/world.js";
+import { DEMO_VERSION } from "../../fixtures/world.js";
+import { CONNECTIONS } from "../providers/shared.js";
 import { COMBOS } from "./combos.js";
 import { readSettings, writeSettings } from "./settings.js";
 
@@ -55,8 +57,9 @@ function parsePostgresUrl(raw) {
   }
 }
 
-function providerRows(ids) {
-  return CONNECTIONS.filter((connection) => !ids || ids.includes(connection.id))
+// Export only management fields; credentials and quota simulation state stay local.
+function providerRows(store, ids) {
+  return store.list(CONNECTIONS).filter((connection) => !ids || ids.includes(connection.id))
     .map(({ id, provider, authType, name, priority, isActive }) => ({ id, provider, authType, name, priority, isActive }));
 }
 
@@ -66,7 +69,7 @@ function exportBundle(store, selection) {
     format: BUNDLE_FORMAT,
     version: 1,
     exportedAt: new Date().toISOString(),
-    providerConnections: providerRows(selection?.providers || []),
+    providerConnections: providerRows(store, selection?.providers || []),
     combos: store.list(COMBOS).filter((combo) => (comboIds || []).includes(combo.id)),
   };
 }
@@ -75,13 +78,22 @@ function previewBundle(store, bundle) {
   if (bundle?.format !== BUNDLE_FORMAT || !Array.isArray(bundle.providerConnections) || !Array.isArray(bundle.combos)) {
     throw new Error("Invalid selective transfer bundle");
   }
+  for (const row of bundle.providerConnections) {
+    if (!row || !isString(row.id) || !row.id.trim() || !isString(row.provider) || !row.provider.trim() || !isString(row.name) || !row.name.trim()) {
+      throw new Error("Provider rows require id, provider and name");
+    }
+  }
+  for (const row of bundle.combos) {
+    if (!row || !isString(row.name) || !row.name.trim() || !Array.isArray(row.models) || row.models.some((model) => !isString(model))) {
+      throw new Error("Combo rows require name and models");
+    }
+  }
   const combos = store.list(COMBOS);
   return {
-    providerConnections: bundle.providerConnections.map((row) => ({
-      id: row.id,
-      currentName: row.name,
-      action: CONNECTIONS.some((connection) => connection.id === row.id) ? "update" : "create",
-    })),
+    providerConnections: bundle.providerConnections.map((row) => {
+      const existing = store.find(CONNECTIONS, row.id);
+      return { id: row.id, currentName: existing?.name || row.name, finalName: row.name, action: existing ? "update" : "create" };
+    }),
     combos: bundle.combos.map((row) => {
       const existing = combos.find((combo) => combo.id === row.id || combo.name === row.name);
       return { id: row.id, currentName: existing?.name || row.name, finalName: row.name, action: existing ? "update" : "create" };
@@ -93,6 +105,15 @@ function previewBundle(store, bundle) {
 function applyBundle(store, bundle) {
   previewBundle(store, bundle);
   const now = new Date().toISOString();
+  // Validate the complete bundle before mutating either collection. Patches
+  // retain local credentials/quota snapshots; new rows start without secrets.
+  for (const row of bundle.providerConnections) {
+    const existing = store.find(CONNECTIONS, row.id);
+    const fields = Object.fromEntries(["provider", "authType", "name", "priority", "isActive"].filter((key) => row[key] !== undefined).map((key) => [key, row[key]]));
+    const changes = { ...fields, displayName: row.name, updatedAt: now };
+    if (existing) store.patch(CONNECTIONS, existing.id, changes);
+    else store.insert(CONNECTIONS, { id: row.id, authType: "apikey", priority: 1, isActive: true, providerSpecificData: {}, createdAt: now, ...changes });
+  }
   bundle.combos.forEach((row) => {
     const existing = store.list(COMBOS).find((combo) => combo.id === row.id || combo.name === row.name);
     if (existing) store.patch(COMBOS, existing.id, { models: row.models || existing.models, updatedAt: now });
@@ -105,7 +126,7 @@ function selective(store, body = {}) {
   const { action, selection, bundle, includeSecrets = false, acknowledgeSecretExport = false } = body;
   if (action === "catalog") {
     return {
-      providers: CONNECTIONS.map(({ id, name, provider }) => ({ id, name: name || provider })),
+      providers: store.list(CONNECTIONS).map(({ id, name, provider }) => ({ id, name: name || provider })),
       combos: store.list(COMBOS).map(({ id, name }) => ({ id, name })),
     };
   }
@@ -114,7 +135,7 @@ function selective(store, body = {}) {
   }
   if (action === "export") {
     if (includeSecrets && !acknowledgeSecretExport) throw new Error("Exporting credentials requires acknowledgeSecretExport: true");
-    return { ...exportBundle(store, selection), secretsIncluded: includeSecrets === true };
+    return { ...exportBundle(store, selection), secretsIncluded: false };
   }
   if (action === "apply") return { success: true, imported: applyBundle(store, bundle) };
   throw new Error(`Unknown selective transfer action: ${action || "(missing)"}`);
@@ -130,11 +151,11 @@ export default function register(router, { store }) {
     exportedAt: new Date().toISOString(),
     secretsIncluded: false,
     settings: readSettings(store),
-    providerConnections: providerRows(),
+    providerConnections: providerRows(store),
     combos: store.list(COMBOS),
   }));
   router.post("/api/settings/database", async ({ body }) => {
-    if (!body || typeof body !== "object" || Array.isArray(body)) return badRequest("Invalid backup file");
+    if (!body || !isObject(body) || Array.isArray(body)) return badRequest("Invalid backup file");
     await wait(700);
     return { success: true };
   });
@@ -147,7 +168,7 @@ export default function register(router, { store }) {
   });
 
   router.post("/api/settings/database/test", async ({ body = {} }) => {
-    if (typeof body.url !== "string" || !body.url) return reply({ ok: false, error: "url is required" }, { status: 400 });
+    if (!isString(body.url) || !body.url) return reply({ ok: false, error: "url is required" }, { status: 400 });
     await wait(500);
     const parsed = parsePostgresUrl(body.url);
     if (!parsed) return reply({ ok: false, error: "Connection URL must start with postgres:// or postgresql://", latencyMs: 0 }, { status: 400 });

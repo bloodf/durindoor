@@ -1,3 +1,4 @@
+import { isObject } from "@/shared/utils/typeChecks";
 // /api/settings, /api/settings/auto-configure, /api/settings/proxy-test,
 // /api/settings/require-login, /api/data-retention, /api/users, /api/payments.
 import { badRequest, reply, wait } from "../../http.js";
@@ -54,7 +55,7 @@ function validatePatch(body) {
 }
 
 function patchSettings({ body, store }) {
-  const input = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+  const input = body && isObject(body) && !Array.isArray(body) ? body : {};
   const invalid = validatePatch(input);
   if (invalid) return invalid;
   const { currentPassword, newPassword, oidcClientSecret, ...patch } = input;

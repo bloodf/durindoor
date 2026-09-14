@@ -62,29 +62,16 @@ export const NAV_GROUPS = [
         href: "/dashboard/auto-configure",
       },
       {
-        label: "Embedding",
-        icon: "deployed_code",
+        label: "Media Providers",
+        icon: "perm_media",
         href: "/dashboard/media-providers/embedding",
-      },
-      {
-        label: "Text to Image",
-        icon: "image",
-        href: "/dashboard/media-providers/image",
-      },
-      {
-        label: "Text to Speech",
-        icon: "record_voice_over",
-        href: "/dashboard/media-providers/tts",
-      },
-      {
-        label: "Speech to Text",
-        icon: "mic",
-        href: "/dashboard/media-providers/stt",
-      },
-      {
-        label: "Web Fetch & Search",
-        icon: "travel_explore",
-        href: "/dashboard/media-providers/web",
+        children: [
+          { label: "Embedding", href: "/dashboard/media-providers/embedding" },
+          { label: "Text to Image", href: "/dashboard/media-providers/image" },
+          { label: "Text to Speech", href: "/dashboard/media-providers/tts" },
+          { label: "Speech to Text", href: "/dashboard/media-providers/stt" },
+          { label: "Web Fetch & Search", href: "/dashboard/media-providers/web" },
+        ],
       },
     ],
   },
@@ -135,12 +122,7 @@ export function Sidebar({
   onToggleCollapse,
   className = "",
 }) {
-  const tokenSaver = NAV_GROUPS[2].items[0];
-  const tokenSaverActive = itemIsActive(activePath, tokenSaver);
-  const [tokenSaverOverride, setTokenSaverOverride] = useState(null);
-  const manualTokenSaverExpanded =
-    tokenSaverOverride?.activePath === activePath ? tokenSaverOverride.expanded : null;
-  const tokenSaverExpanded = manualTokenSaverExpanded ?? tokenSaverActive;
+  const [groupOverrides, setGroupOverrides] = useState({});
   function navigate(event, href) {
     if (!onNavigate) return;
     event.preventDefault();
@@ -205,77 +187,74 @@ export function Sidebar({
             {group.items.map((item) => {
               const active = itemIsActive(activePath, item);
               const expandable = Boolean(item.children?.length);
+              const expanded = expandable && (groupOverrides[item.href] ?? active);
 
               return (
                 <div key={item.href}>
                   <div className="relative flex items-center">
-                    {active ? (
+                    {active && (!expandable || collapsed) ? (
                       <span
                         aria-hidden="true"
                         className="absolute inset-y-1 left-0 w-0.5 bg-dd-accent"
                       />
                     ) : null}
-                    <a
-                      href={item.href}
-                      title={collapsed ? item.label : undefined}
-                      aria-current={activePath === item.href ? "page" : undefined}
-                      onClick={(event) => navigate(event, item.href)}
-                      className={
-                        active
-                          ? collapsed
-                            ? "flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-dd bg-dd-accent-soft px-0 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
-                            : "flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-dd bg-dd-accent-soft px-3 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
-                          : collapsed
-                            ? "flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-dd px-0 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
-                            : "flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-dd px-3 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
-                      }
-                    >
-                      <NavIcon name={item.icon} />
-                      <span
-                        className={
-                          collapsed
-                            ? "w-0 overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-150"
-                            : "truncate whitespace-nowrap opacity-100 transition-opacity duration-150"
-                        }
-                      >
-                        {item.label}
-                      </span>
-                      {!collapsed && item.status === "healthy" ? (
-                        <StatusDot
-                          tone="success"
-                          className="ml-auto"
-                          aria-label="Healthy"
-                          title="Healthy"
-                        />
-                      ) : null}
-                    </a>
-                    {!collapsed && expandable ? (
+                    {expandable && !collapsed ? (
                       <button
                         type="button"
-                        aria-label={
-                          tokenSaverExpanded ? "Collapse Token Saver" : "Expand Token Saver"
-                        }
-                        aria-expanded={tokenSaverExpanded}
+                        aria-expanded={expanded}
                         onClick={() =>
-                          setTokenSaverOverride({
-                            activePath,
-                            expanded: !tokenSaverExpanded,
-                          })
+                          setGroupOverrides((current) => ({
+                            ...current,
+                            [item.href]: !expanded,
+                          }))
                         }
-                        className="absolute right-1 inline-flex size-11 items-center justify-center rounded-dd text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                        className={
+                          active
+                            ? "flex min-h-11 min-w-0 flex-1 items-center gap-2.5 border-l-2 border-dd-accent px-[10px] text-[13px] font-medium text-dd-text outline-none hover:bg-dd-surface-2 focus-visible:shadow-dd-focus"
+                            : "flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-dd px-3 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                        }
                       >
-                        <span
-                          aria-hidden="true"
-                          className="material-symbols-outlined text-[17px] leading-none"
-                        >
-                          {tokenSaverExpanded ? "expand_less" : "expand_more"}
+                        <NavIcon name={item.icon} />
+                        <span className="truncate whitespace-nowrap">{item.label}</span>
+                        <span aria-hidden="true" className="material-symbols-outlined ml-auto text-[17px] leading-none">
+                          {expanded ? "expand_less" : "expand_more"}
                         </span>
                       </button>
-                    ) : null}
+                    ) : (
+                      <a
+                        href={item.href}
+                        title={collapsed ? item.label : undefined}
+                        aria-current={!expandable && activePath === item.href ? "page" : undefined}
+                        onClick={(event) => navigate(event, item.href)}
+                        className={
+                          active
+                            ? collapsed
+                              ? "flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-dd bg-dd-accent-soft px-0 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
+                              : "flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-dd bg-dd-accent-soft px-3 text-[13px] font-medium text-dd-accent outline-none focus-visible:shadow-dd-focus"
+                            : collapsed
+                              ? "flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-dd px-0 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                              : "flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-dd px-3 text-[13px] font-medium text-dd-muted outline-none hover:bg-dd-surface-2 hover:text-dd-text focus-visible:shadow-dd-focus"
+                        }
+                      >
+                        <NavIcon name={item.icon} />
+                        <span
+                          className={
+                            collapsed
+                              ? "w-0 overflow-hidden whitespace-nowrap opacity-0 transition-opacity duration-150"
+                              : "truncate whitespace-nowrap opacity-100 transition-opacity duration-150"
+                          }
+                        >
+                          {item.label}
+                        </span>
+                        {!collapsed && item.status === "healthy" ? (
+                          <StatusDot tone="success" className="ml-auto" aria-label="Healthy" title="Healthy" />
+                        ) : null}
+                      </a>
+                    )}
                   </div>
 
-                  {!collapsed && expandable && tokenSaverExpanded ? (
-                    <div className="ml-4 border-l border-dd-border-subtle pl-2">
+                  {!collapsed && expandable && expanded ? (
+                    <div className="ml-4 my-1 flex flex-col gap-1 border-l border-dd-border-subtle pl-2">
                       {item.children.map((child) => {
                         const childActive = activePath === child.href;
                         return (

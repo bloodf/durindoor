@@ -2,6 +2,7 @@
 // creates a connected account. Authorization-code flows deliver their
 // callback over the same BroadcastChannel the real /callback page uses.
 import { badRequest } from "../../http.js";
+import { isObject, isUndefined } from "@/shared/utils/typeChecks";
 import { connectOAuthAccount, sanitizeConnection } from "./shared.js";
 
 const CALLBACK_DELAY_MS = 1800;
@@ -37,7 +38,7 @@ function flowFor(provider, body = {}) {
 }
 
 function broadcastCallback(flow) {
-  if (typeof BroadcastChannel === "undefined") return;
+  if (isUndefined(globalThis.BroadcastChannel)) return;
   setTimeout(() => {
     try {
       const channel = new BroadcastChannel("oauth_callback");
@@ -100,7 +101,7 @@ export default function registerOAuth(router, { store }) {
     },
     "import-token": ({ params, body }) => {
       // Raw JWTs arrive as a JSON string, auth.json files as objects.
-      if (!body || (typeof body === "object" && !Object.keys(body).length)) return badRequest("Token is required");
+      if (!body || (isObject(body) && !Object.keys(body).length)) return badRequest("Token is required");
       return success(connectOAuthAccount(store, params.provider));
     },
   };

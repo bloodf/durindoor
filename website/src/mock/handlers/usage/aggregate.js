@@ -1,3 +1,4 @@
+import { isString } from "@/shared/utils/typeChecks";
 // Folds the usage history into the shapes getUsageStats(), getChartData()
 // and the combos report return (src/lib/db/repos/usageRepo.js).
 import { addLocalCalendarDays, getUsageCalendarCutoff, toLocalDateKey } from "@/lib/usagePeriods.js";
@@ -79,7 +80,7 @@ function dimensionKeys(cell) {
 function lastSeenIndex(store) {
   const index = {};
   for (const event of requestEvents(store)) {
-    for (const key of Object.values(dimensionKeys(event)).filter((value) => typeof value === "string")) {
+    for (const key of Object.values(dimensionKeys(event)).filter((value) => isString(value))) {
       if (!index[key] || event.timestamp > index[key]) index[key] = event.timestamp;
     }
   }

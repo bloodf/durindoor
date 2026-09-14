@@ -19,6 +19,11 @@ function withExtension(path) {
 }
 
 export async function resolve(specifier, context, next) {
+  // Resolve both alias and relative imports through the same static server
+  // replacement as webpack: importing the smoke graph must not poll GitHub.
+  if (specifier.endsWith("/kimchiUserAgent.js") && !specifier.includes("/mock/server/")) {
+    return next(pathToFileURL(join(siteRoot, "src/mock/server/kimchiUserAgent.js")).href, context);
+  }
   const alias = ALIASES.find(([prefix]) => specifier.startsWith(prefix));
   if (alias) return next(pathToFileURL(withExtension(alias[1] + specifier.slice(alias[0].length))).href, context);
   if (specifier.startsWith(".") && context.parentURL?.startsWith("file:")) {

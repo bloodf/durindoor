@@ -2,8 +2,7 @@
 // model catalog, quota snapshots, health and pricing.
 import { seedConnections, seedProviderNodes, seedConnectionGroups } from "../fixtures/providers/connections.js";
 import { seedCustomModels, seedDisabledModels } from "../fixtures/providers/catalog.js";
-import { INITIAL_CODEX_RESET_CREDITS } from "../fixtures/providers/quota.js";
-import { CONNECTIONS, NODES, GROUPS, CUSTOM_MODELS, DISABLED_MODELS, PRICING, RESET_CREDITS } from "./providers/shared.js";
+import { CONNECTIONS, NODES, GROUPS, CUSTOM_MODELS, DISABLED_MODELS, PRICING } from "./providers/shared.js";
 import registerConnections from "./providers/connections.js";
 import registerNodes from "./providers/nodes.js";
 import registerModels from "./providers/models.js";
@@ -18,7 +17,6 @@ export default function register(router, context) {
   store.define(CUSTOM_MODELS, seedCustomModels);
   store.define(DISABLED_MODELS, seedDisabledModels);
   store.define(PRICING, () => ({}));
-  store.define(RESET_CREDITS, () => ({ ...INITIAL_CODEX_RESET_CREDITS }));
 
   [registerConnections, registerNodes, registerModels, registerOAuth, registerQuota].forEach((sub) => sub(router, context));
 }

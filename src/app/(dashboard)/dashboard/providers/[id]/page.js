@@ -1591,7 +1591,7 @@ export default function ProviderDetailPage() {
         >
           View all
         </Link>
-        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-dd-lg bg-dd-surface-2">
             {providerInfo.iconUrl ? (
               <ProviderIcon
@@ -1605,7 +1605,7 @@ export default function ProviderDetailPage() {
               <ProviderLogo provider={providerId} size={48} />
             )}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1 basis-48">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{providerInfo.name}</h1>
               {(providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website) &&
@@ -1624,7 +1624,8 @@ export default function ProviderDetailPage() {
               {connections.length} connection{connections.length === 1 ? "" : "s"}
             </p>
           </div>
-          <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+          {/* Keep controls below the identity when a row cannot fit both. */}
+          <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
             <label htmlFor="provider-rpm-limit" className="hidden text-xs text-dd-muted sm:inline">RPM / account</label>
             <input
               id="provider-rpm-limit"

@@ -45,6 +45,11 @@ function setValue(input, value) {
     input.dispatchEvent(new Event("change", { bubbles: true }));
   });
 }
+async function selectTab(label) {
+  const tab = [...document.querySelectorAll('[role="tab"]')].find((node) => node.textContent.includes(label));
+  await act(async () => tab.click());
+}
+
 
 beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function shimShowModal() {
@@ -73,9 +78,32 @@ afterEach(() => {
 });
 
 describe("profile settings behavior", () => {
+  it("waits for initial settings before opening an editable OIDC draft", async () => {
+    let resolveSettings;
+    globalThis.fetch.mockImplementation((url) => url === "/api/settings"
+      ? new Promise((resolve) => { resolveSettings = resolve; })
+      : Promise.resolve(new Response("{}")));
+    render(h(ProfilePage));
+    await selectTab("Security");
+    const toggle = document.querySelector('[aria-label="Toggle OIDC settings"]');
+    expect(toggle.disabled).toBe(true);
+    await act(async () => {
+      resolveSettings(new Response(JSON.stringify(settings)));
+    });
+    expect(toggle.disabled).toBe(false);
+    await act(async () => toggle.click());
+    const issuer = document.querySelector('input[placeholder="https://auth.example.com/application/o/durindoor/"]');
+    expect(issuer).not.toBeNull();
+    setValue(issuer, "https://draft.example.test");
+    await selectTab("General");
+    await selectTab("Security");
+    expect(issuer.value).toBe("https://draft.example.test");
+  });
+
   it("rejects mismatched passwords before saving", async () => {
     render(h(ProfilePage));
     await flush();
+    await selectTab("Security");
     setValue(document.querySelector("#profile-current-password"), "old-password");
     setValue(document.querySelector("#profile-new-password"), "new-password");
     setValue(document.querySelector("#profile-confirm-password"), "different-password");
@@ -87,6 +115,7 @@ describe("profile settings behavior", () => {
   it("keeps save failure visible for invalid Firecrawl URL without a request", async () => {
     render(h(ProfilePage));
     await flush();
+    await selectTab("Network");
     const input = [...document.querySelectorAll("input")].find((node) => node.getAttribute("placeholder") === "https://api.firecrawl.dev");
     setValue(input, "not-a-url");
     await act(async () => input.closest("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
@@ -97,6 +126,7 @@ describe("profile settings behavior", () => {
   it("dismisses shutdown confirmation without sending shutdown request", async () => {
     render(h(ProfilePage));
     await flush();
+    await selectTab("System & Data");
     await act(async () => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Shutdown")).click());
     const dialog = document.querySelector("dialog[open]");
     expect(dialog?.textContent).toContain("Close Proxy");
@@ -104,6 +134,21 @@ describe("profile settings behavior", () => {
     expect(document.querySelector("dialog[open]")).toBeNull();
     expect(globalThis.fetch).not.toHaveBeenCalledWith("/api/version/shutdown", expect.anything());
   });
+  it("shows one category at a time and retains unsaved form values across switches", async () => {
+    render(h(ProfilePage));
+    await flush();
+    expect(document.querySelector('[role="tab"][aria-selected="true"]').textContent).toContain("General");
+    expect(document.querySelector('[role="tabpanel"][aria-label="General settings"]').hidden).toBe(false);
+    await selectTab("Security");
+    const currentPassword = document.querySelector("#profile-current-password");
+    setValue(currentPassword, "unsaved-password");
+    await selectTab("Routing");
+    expect(document.querySelector('[role="tabpanel"][aria-label="Security settings"]').hidden).toBe(true);
+    expect(document.querySelector('[role="tabpanel"][aria-label="Routing settings"]').hidden).toBe(false);
+    await selectTab("Security");
+    expect(document.querySelector("#profile-current-password").value).toBe("unsaved-password");
+  });
+
 
   it("shows the local-mode footer label on localhost", async () => {
     render(h(ProfilePage));

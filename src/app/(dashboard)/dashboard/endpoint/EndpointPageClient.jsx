@@ -322,9 +322,11 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
   }, [tsInstallLog]);
 
   useEffect(() => {
-    fetchData();
+    // Settings can insert a security warning above Create Key. Keep the initial
+    // skeleton until both layout-bearing loads settle so the first pointer
+    // press cannot lose its target between pointerdown and pointerup.
+    Promise.allSettled([fetchData(), loadSettings()]).then(() => setLoading(false));
     fetchPolicyCatalog();
-    loadSettings();
   }, []);
 
   useEffect(() => {
@@ -515,8 +517,6 @@ export default function APIPageClient({ machineId, localPort = 20128 }) {
     } catch (error) {
       console.log("Error fetching data:", error);
       setLoadError(error.message || "Unable to load API keys");
-    } finally {
-      setLoading(false);
     }
   };
 

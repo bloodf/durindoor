@@ -1,3 +1,4 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // MITM server (Antigravity / Kiro interception), per-tool model aliases, and
 // the Claude Cowork MCP marketplace lookups.
 import { reply, badRequest } from "../../http.js";
@@ -28,10 +29,13 @@ function normalizeMappings(mappings) {
   return Object.fromEntries(
     Object.entries(mappings || {})
       .map(([alias, value]) => {
-        const entry = typeof value === "string" ? { model: value } : value || {};
+        const entry = isString(value) ? { model: value } : value || {};
         const model = String(entry.model || "").trim();
         const effort = REASONING_EFFORTS.has(entry.reasoningEffort) ? entry.reasoningEffort : undefined;
-        return [alias, { ...(model ? { model } : {}), ...(effort ? { reasoningEffort: effort } : {}) }];
+        const normalized = {};
+        if (model) normalized.model = model;
+        if (effort) normalized.reasoningEffort = effort;
+        return [alias, normalized];
       })
       .filter(([alias, entry]) => alias && (entry.model || entry.reasoningEffort)),
   );
@@ -76,7 +80,7 @@ function registerServer(router, store) {
 
   router.put("/api/cli-tools/antigravity-mitm/alias", ({ body = {} }) => {
     const { tool, mappings } = body;
-    if (!tool || !mappings || typeof mappings !== "object" || Array.isArray(mappings)) return badRequest("tool and mappings required");
+    if (!tool || !mappings || !isObject(mappings) || Array.isArray(mappings)) return badRequest("tool and mappings required");
     if (!store.get(STATUS).dnsStatus?.[tool]) {
       return reply({ error: `DNS must be enabled for ${tool} before editing model mappings` }, { status: 403 });
     }
@@ -90,7 +94,7 @@ function registerCoworkRegistry(router) {
   router.get("/api/cli-tools/cowork-mcp-registry", () => ({ cached: true, servers: COWORK_REGISTRY, total: COWORK_REGISTRY.length }));
 
   router.post("/api/cli-tools/cowork-mcp-tools", ({ body = {} }) => {
-    if (!body.url || typeof body.url !== "string") return badRequest("url required");
+    if (!body.url || !isString(body.url)) return badRequest("url required");
     const server = COWORK_REGISTRY.find((item) => item.url === body.url);
     if (server?.oauth) return { requiresAuth: true, tools: [] };
     const tools = COWORK_REGISTRY_TOOLS[body.url] || (server?.toolNames || []).map((name) => ({ name, description: "" }));

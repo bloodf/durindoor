@@ -1,5 +1,6 @@
 // /api/models catalog endpoints, /api/pricing and /api/health/providers.
 import { reply, notFound, badRequest, textStream } from "../../http.js";
+import { isObject } from "@/shared/utils/typeChecks";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
@@ -148,7 +149,7 @@ export default function registerModels(router, { store }) {
   router.get("/api/pricing", () => mergePricing(store.get(PRICING) || {}));
 
   const savePricing = ({ body }) => {
-    if (!body || typeof body !== "object" || Array.isArray(body)) return badRequest("Invalid pricing data format");
+    if (!body || !isObject(body) || Array.isArray(body)) return badRequest("Invalid pricing data format");
     const defaults = getDefaultPricing();
     // Only persist rates that differ from the defaults, like the pricing repo.
     const overrides = Object.fromEntries(Object.entries(body).map(([provider, models]) => [

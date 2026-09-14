@@ -1,3 +1,4 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // Media and retrieval endpoints used by the media-provider example cards:
 // embeddings, rerank, images, audio, video, music, web search and web fetch.
 
@@ -17,7 +18,7 @@ import { onBoth, streamFrames } from "./stream.js";
 
 const now = () => Math.floor(Date.now() / 1000);
 const invalid = (message) => reply({ error: { message, type: "invalid_request_error" } }, { status: 400 });
-const bodyOf = (body) => (body && typeof body === "object" ? body : {});
+const bodyOf = (body) => (body && isObject(body) ? body : {});
 const named = (event, payload) => `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
 
 function embeddings({ body }) {
@@ -40,7 +41,7 @@ function rerank({ body }) {
   if (!request.query || documents.length === 0) return invalid("query and documents are required");
   const results = documents
     .map((document, index) => {
-      const text = typeof document === "string" ? document : document?.text || JSON.stringify(document);
+      const text = isString(document) ? document : document?.text || JSON.stringify(document);
       return { index, relevance_score: relevance(request.query, text), document: { text } };
     })
     .sort((a, b) => b.relevance_score - a.relevance_score)

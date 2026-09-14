@@ -22,7 +22,8 @@ import {
 } from "./SidebarNavIcons";
 
 function SidebarTooltip({ collapsed, label, children }) {
-  return collapsed ? <Tooltip content={label} side="right">{children}</Tooltip> : children;
+  // Stretch Tooltip's inline-flex host even inside a collapsed group block.
+  return collapsed ? <div className="flex min-w-0 flex-col"><Tooltip content={label} side="right">{children}</Tooltip></div> : children;
 }
 
 SidebarTooltip.propTypes = {
@@ -41,6 +42,13 @@ function itemClasses(collapsed, active, indent = false) {
         ? "flex min-h-11 items-center gap-3 px-4 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group"
         : "flex min-h-11 items-center gap-3 px-3 py-1 rounded-dd outline-none transition-all focus-visible:shadow-dd-focus group",
     active ? "bg-dd-accent-soft text-dd-accent" : "text-dd-muted hover:bg-dd-surface-2 hover:text-dd-text"
+  );
+}
+
+function groupClasses(collapsed, active) {
+  return cn(
+    itemClasses(collapsed, collapsed && active),
+    !collapsed && active && "border-s-2 border-dd-accent ps-[10px] text-dd-text"
   );
 }
 
@@ -112,7 +120,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
               href={group.children[0].href}
               onClick={onClose}
               aria-label={group.label}
-              className={itemClasses(true, active)}
+              className={groupClasses(true, active)}
             >
               <NavIcon icon={group.icon} isActive={active} />
             </Link>
@@ -122,7 +130,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
               onClick={() => toggleGroup(group.key, active)}
               aria-expanded={open}
               aria-controls={groupId}
-              className={cn("w-full", itemClasses(false, active))}
+              className={cn("w-full", groupClasses(false, active))}
             >
               <NavIcon icon={group.icon} isActive={active} />
               <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{group.label}</span>
@@ -131,7 +139,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
           )}
         </SidebarTooltip>
         {!collapsed && open && (
-          <div id={groupId} className="pl-4">
+          <div id={groupId} className="ms-4 my-1 flex flex-col gap-1 border-s border-dd-border-subtle ps-2">
             {group.children.map((child) => renderItem({ type: "item", ...child }, true))}
           </div>
         )}
@@ -151,17 +159,18 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
       })),
       { href: COMBINED_WEB_ITEM.href, label: COMBINED_WEB_ITEM.label, icon: COMBINED_WEB_ITEM.icon },
     ];
-    const active = pathname?.startsWith(entry.basePath) || false;
+    // Detail and combo pages belong to the group even without an exact child link.
+    const active = isActivePath(pathname, entry.basePath);
     const open = isGroupOpen(entry.key, active);
     return (
       <div key={entry.key}>
         <SidebarTooltip collapsed={collapsed} label={entry.label}>
           {collapsed ? (
-            <Link href={mediaChildren[0].href} onClick={onClose} aria-label={entry.label} className={itemClasses(true, active)}>
+            <Link href={mediaChildren[0].href} onClick={onClose} aria-label={entry.label} className={groupClasses(true, active)}>
               <NavIcon icon={entry.icon} isActive={active} />
             </Link>
           ) : (
-            <button type="button" onClick={() => toggleGroup(entry.key, active)} aria-expanded={open} aria-controls={groupId} className={cn("w-full", itemClasses(false, active))}>
+            <button type="button" onClick={() => toggleGroup(entry.key, active)} aria-expanded={open} aria-controls={groupId} className={cn("w-full", groupClasses(false, active))}>
               <NavIcon icon={entry.icon} isActive={active} />
               <span className="sidebar-label text-[13px] font-medium flex-1 text-left">{entry.label}</span>
               <span aria-hidden="true" className="sidebar-label material-symbols-outlined text-[14px] transition-transform" style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
@@ -169,7 +178,7 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
           )}
         </SidebarTooltip>
         {!collapsed && open && (
-          <div id={groupId} className="pl-4">
+          <div id={groupId} className="ms-4 my-1 flex flex-col gap-1 border-s border-dd-border-subtle ps-2">
             {mediaChildren.map((child) => {
               const childActive = pathname?.startsWith(child.href) || false;
               return (

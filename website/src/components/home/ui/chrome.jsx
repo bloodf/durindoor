@@ -1,5 +1,7 @@
 "use client";
 
+import { HomeLocaleSelect, useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ReactLenis } from "lenis/react";
@@ -60,6 +62,7 @@ const NAV_LINKS = [
 ];
 
 export function Nav() {
+  const { t } = useHomeLocale();
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -70,26 +73,25 @@ export function Nav() {
 
   return (
     <header className={`site-nav ${scrolled ? "is-scrolled" : ""}`}>
-      <a className="skip-link" href="#main">Skip to content</a>
-      <nav className="nav-inner" aria-label="Primary">
-        <a href="#top" className="nav-brand" aria-label="DurinDoor home">
+      <a className="skip-link" href="#main">{t("Skip to content")}</a>
+      <nav className="nav-inner" aria-label={t("Primary")}>
+        <a href="#top" className="nav-brand" aria-label={t("DurinDoor home")}>
           <BrandMark />
           <span>DurinDoor</span>
         </a>
         <ul className="nav-links">
           {NAV_LINKS.map((link) => (
             <li key={link.href}>
-              <a href={link.href}>{link.label}</a>
+              <a href={link.href}>{t(link.label)}</a>
             </li>
           ))}
         </ul>
         <div className="nav-actions">
-          <a className="nav-icon" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label="DurinDoor on GitHub">
+          <HomeLocaleSelect />
+          <a className="nav-icon" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label={t("DurinDoor on GitHub")}>
             <GitHubMark size={20} />
           </a>
-          <Link className="btn btn-small btn-primary" href="/dashboard">
-            Live demo
-          </Link>
+          <Link className="btn btn-small btn-primary" href="/dashboard">{t("Live demo")}</Link>
         </div>
       </nav>
     </header>

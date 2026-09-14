@@ -1,5 +1,7 @@
 "use client";
 
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "motion/react";
 import Icon from "../ui/Icon.jsx";
@@ -22,28 +24,29 @@ const LOGS = [
 ];
 
 function MockDashboard() {
+  const { t } = useHomeLocale();
   return (
     <div className="mock" aria-hidden="true">
       <aside className="mock-side">
         <div className="mock-brand"><span className="mock-brand-dot" />DurinDoor</div>
         {NAV.map((item, i) => (
-          <div key={item} className={`mock-nav ${i === 3 ? "is-active" : ""}`}>{item}</div>
+          <div key={item} className={`mock-nav ${i === 3 ? "is-active" : ""}`}>{t(item)}</div>
         ))}
       </aside>
       <div className="mock-main">
         <div className="mock-head">
           <div>
-            <p className="mock-kicker">Usage</p>
-            <p className="mock-h">Last 14 days</p>
+            <p className="mock-kicker">{t("Usage")}</p>
+            <p className="mock-h">{t("Last 14 days")}</p>
           </div>
-          <span className="mock-pill">live</span>
+          <span className="mock-pill">{t("live")}</span>
         </div>
         <div className="mock-stats">
           {STATS.map((s) => (
             <div key={s.label} className="mock-stat">
-              <p className="mock-stat-label">{s.label}</p>
+              <p className="mock-stat-label">{t(s.label)}</p>
               <p className="mock-stat-value">{s.value}</p>
-              <p className="mock-stat-delta">{s.delta}</p>
+              <p className="mock-stat-delta">{s.delta === "combo" ? t("combo") : s.delta}</p>
             </div>
           ))}
         </div>
@@ -59,7 +62,7 @@ function MockDashboard() {
               <span className="mock-log-model">{log.model}</span>
               <span className={`mock-log-status ${log.status === "200" ? "is-ok" : "is-warn"}`}>{log.status}</span>
               <span className="mock-log-ms">{log.ms}</span>
-              <span className="mock-log-note">{log.note}</span>
+              <span className="mock-log-note">{t(log.note)}</span>
             </div>
           ))}
         </div>
@@ -69,6 +72,7 @@ function MockDashboard() {
 }
 
 export default function DemoTeaser() {
+  const { t } = useHomeLocale();
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "center center"] });
   const rotateX = useTransform(scrollYProgress, [0, 1], [22, 0]);
@@ -78,9 +82,9 @@ export default function DemoTeaser() {
     <section id="demo" className="section section-demo" aria-labelledby="demo-title">
       <div className="container">
         <SectionHeader
-          eyebrow="Live demo"
-          title={<span id="demo-title">Walk through the dashboard, no install</span>}
-          lead="The demo runs the real DurinDoor interface against mocked data, so you can click every page before you run it yourself."
+          eyebrow={t("Live demo")}
+          title={<span id="demo-title">{t("Walk through the dashboard, no install")}</span>}
+          lead={t("The demo runs the real DurinDoor interface against mocked data, so you can click every page before you run it yourself.")}
         />
         <div className="demo-stage" ref={ref}>
           <motion.div className="window" style={{ rotateX, scale }}>
@@ -94,15 +98,13 @@ export default function DemoTeaser() {
         </div>
         <div className="demo-cta">
           <Magnetic internal href="/dashboard" className="btn btn-primary btn-large">
-            <Icon name="play" size={16} />
-            Open the live demo
-          </Magnetic>
-          <div className="demo-password" role="group" aria-label="Demo password">
-            <span>Demo password</span>
+            <Icon name="play" size={16} />{t("Open the live demo")}</Magnetic>
+          <div className="demo-password" role="group" aria-label={t("Demo password")}>
+            <span>{t("Demo password")}</span>
             <code>{DEMO_PASSWORD}</code>
             <CopyButton text={DEMO_PASSWORD} />
           </div>
-          <p className="demo-note">Mocked data. Nothing leaves your browser.</p>
+          <p className="demo-note">{t("Mocked data. Nothing leaves your browser.")}</p>
         </div>
       </div>
     </section>

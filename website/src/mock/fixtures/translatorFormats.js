@@ -1,3 +1,4 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // Lightweight request translation between the dialects shown on the
 // translator page. It mirrors the shape of open-sse/translator output for the
 // common cases (text, images, tools, system prompts, thinking) without pulling
@@ -28,8 +29,8 @@ export function targetFor(provider) {
 
 /** Same heuristics as open-sse/services/provider.js detectFormat. */
 export function detectFormat(body) {
-  if (!body || typeof body !== "object") return "openai";
-  if (body.input && (Array.isArray(body.input) || typeof body.input === "string") && !body.messages) return "openai-responses";
+  if (!body || !isObject(body)) return "openai";
+  if (body.input && (Array.isArray(body.input) || isString(body.input)) && !body.messages) return "openai-responses";
   if (body.request?.contents && body.userAgent === "antigravity") return "antigravity";
   if (Array.isArray(body.contents)) return "gemini";
   if (body.stream_options || body.response_format || body.n !== undefined || body.user) return "openai";
@@ -104,11 +105,11 @@ function geminiToOpenAI(body) {
 
 function responsesToOpenAI(body) {
   const messages = body.instructions ? [{ role: "system", content: body.instructions }] : [];
-  const items = typeof body.input === "string" ? [{ role: "user", content: body.input }] : body.input || [];
+  const items = isString(body.input) ? [{ role: "user", content: body.input }] : body.input || [];
   for (const item of items) {
     if (item.type === "function_call") messages.push({ role: "assistant", content: null, tool_calls: [{ id: item.call_id, type: "function", function: { name: item.name, arguments: item.arguments } }] });
     else if (item.type === "function_call_output") messages.push({ role: "tool", tool_call_id: item.call_id, content: String(item.output) });
-    else if (item.role) messages.push({ role: item.role === "developer" ? "system" : item.role, content: typeof item.content === "string" ? item.content : joinText(item.content) });
+    else if (item.role) messages.push({ role: item.role === "developer" ? "system" : item.role, content: isString(item.content) ? item.content : joinText(item.content) });
   }
   return {
     model: body.model,
@@ -133,7 +134,7 @@ export function toOpenAI(sourceFormat, body, model) {
 
 const systemOf = (body) => (body.messages || []).filter((message) => message.role === "system").map((message) => joinText(message.content)).join("\n");
 const chatOf = (body) => (body.messages || []).filter((message) => message.role !== "system");
-const textOf = (content) => (typeof content === "string" ? content : joinText(content));
+const textOf = (content) => (isString(content) ? content : joinText(content));
 const toolsOf = (body) => (body.tools || []).map((tool) => tool.function || tool);
 
 function openaiToClaude(body, model) {

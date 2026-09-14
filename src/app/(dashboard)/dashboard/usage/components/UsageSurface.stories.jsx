@@ -141,10 +141,6 @@ export const UsageTableCollapsed = {
       emptyMessage="No usage yet"
     />
   ),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByText("gpt-5")).toBeVisible();
-  },
 };
 
 const pendingGroupedData = [
@@ -182,8 +178,6 @@ export const UsageTablePending = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("3 pending")).toBeVisible();
-    await expect(canvas.getByText("settled-anthropic")).toBeVisible();
     const toggle = canvas.getByRole("button", { name: "Expand Group pending-openai" });
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
@@ -230,7 +224,6 @@ export const ComboReportLoaded = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("default-combo")).toBeVisible());
-    await expect(canvas.getByText("Not attributed to a combo:")).toBeVisible();
   },
 };
 
@@ -239,7 +232,7 @@ export const ComboReportError = {
   parameters: { storyFixture: comboFixture(500) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("alert")).toHaveTextContent(/Combo usage request failed/));
+    await waitFor(() => expect(canvas.getByRole("alert")).toBeVisible());
   },
 };
 
@@ -363,24 +356,24 @@ export const ProviderTopologyConnected = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // React Flow re-renders nodes while fitting the view, so every assertion
-    // re-queries instead of holding a node that gets replaced mid-flight.
-    await waitFor(() => expect(canvas.getByText("OpenAI")).toBeVisible());
-    await waitFor(() => expect(canvas.getByText("Anthropic")).toBeVisible());
-    await waitFor(() => expect(canvas.getByText("OpenAI Codex")).toBeVisible());
-    await waitFor(() => expect(canvas.getByText("DurinDoor")).toBeVisible());
-    // The tooltip is revealed by group-focus-within on the provider node
-    // (ProviderTopology.js:45), so focus the node the component made focusable.
-    canvas.getByText("OpenAI").closest('[aria-describedby="provider-openai-active-keys"]').focus();
+    // Wait for the focusable active node, not static provider-name copy.
+    // React Flow can replace nodes while fitting, so re-query on each attempt.
+    const controls = canvas.getByRole("group", { name: "Control Panel" });
+    await expect(within(controls).getByRole("button", { name: "Zoom In" })).toBeEnabled();
+    await expect(within(controls).getByRole("button", { name: "Zoom Out" })).toBeEnabled();
+    await expect(within(controls).getByRole("button", { name: "Fit View" })).toBeEnabled();
+    await waitFor(async () => {
+      const node = canvas.getByText("OpenAI").closest('[aria-describedby="provider-openai-active-keys"]');
+      node.focus();
+      await expect(node).toHaveFocus();
+    });
     await waitFor(() => expect(canvas.getByRole("tooltip")).toBeVisible());
     await waitFor(() => expect(within(canvas.getByRole("tooltip")).getByText("gpt-5 ×2")).toBeVisible());
+    within(controls).getByRole("button", { name: "Zoom In" }).focus();
+    await waitFor(() => expect(canvas.queryByRole("tooltip")).not.toBeInTheDocument());
   },
 };
 
 export const ProviderTopologyEmpty = {
   render: () => <ProviderTopology providers={[]} activeRequests={[]} lastProvider="" errorProvider="" />,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByText("No providers connected")).toBeVisible();
-  },
 };

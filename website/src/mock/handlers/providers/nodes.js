@@ -1,6 +1,7 @@
 // /api/provider-nodes (compatible + custom embedding nodes) and
 // /api/connection-groups.
 import { reply, notFound, badRequest } from "../../http.js";
+import { isObject } from "@/shared/utils/typeChecks";
 import { CONNECTIONS, GROUPS, NODES } from "./shared.js";
 
 const NODE_PREFIX = {
@@ -91,7 +92,7 @@ export default function registerNodes(router, { store }) {
   });
 
   const validGroupBody = (body, { partial }) => {
-    if (!body || typeof body !== "object") return "Invalid JSON body";
+    if (!body || !isObject(body) || Array.isArray(body)) return "Invalid JSON body";
     if ((!partial || body.name !== undefined) && !GROUP_NAME.test(String(body.name || ""))) {
       return "name must be 1-64 chars of letters, digits, space, dot, dash, underscore";
     }

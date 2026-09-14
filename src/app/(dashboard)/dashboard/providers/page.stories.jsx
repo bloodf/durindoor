@@ -33,11 +33,14 @@ export default meta;
 /** Parent scenario covers ProviderCard, ApiKeyProviderCard, ProviderTestResultsView through real provider inventory and the live status listbox. */
 export const Inventory = {};
 
-/** Status filter uses the DS listbox, drives real getProviderStatus filtering on the page. */
+/** Status listbox exposes All, then keeps each specific status selectable through real page filtering. */
 export const StatusFiltering = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const status = await canvas.findByLabelText("Provider status");
+    await userEvent.click(status);
+    await userEvent.click(await within(document.body).findByRole("option", { name: "All", exact: true }));
+    await expect(status).toHaveTextContent("All");
     await userEvent.click(status);
     await userEvent.click(await within(document.body).findByRole("option", { name: "Not configured" }));
     await expect(status).toHaveTextContent("Not configured");

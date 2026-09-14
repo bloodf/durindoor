@@ -57,7 +57,7 @@ export const SidebarTokenSaverExpanded = {
   render: () => (
     <SidebarFrame>
       <Sidebar
-        activePath="/dashboard/headroom"
+        activePath="/dashboard/token-saver"
         onNavigate={() => undefined}
         onToggleCollapse={() => undefined}
       />

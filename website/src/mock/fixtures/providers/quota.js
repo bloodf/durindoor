@@ -30,7 +30,7 @@ function codexResetCredits(count) {
   return { availableCount: count, credits };
 }
 
-const SNAPSHOTS = {
+const SNAPSHOT_SEEDS = {
   "conn-claude-balin": () => ({
     plan: "Claude Code",
     quotas: {
@@ -111,24 +111,84 @@ const SNAPSHOTS = {
       "Balance (USD)": { used: 0, total: 48.37, remainingPercentage: 100, resetAt: null, unlimited: true },
     },
   }),
+  "conn-claude-ori": () => ({
+    plan: "Pro",
+    quotas: {
+      "session (5h)": claudeWindow(14, 4 * HOUR_MS),
+      "weekly (7d)": claudeWindow(32, 6 * DAY_MS),
+    },
+  }),
+  "conn-gemini-cli-ori": () => ({
+    plan: "Free",
+    quotas: {
+      "gemini-3.1-pro-preview": fractionWindow(0.22, 8 * HOUR_MS),
+      "gemini-3-flash-preview": fractionWindow(0.73, 8 * HOUR_MS),
+    },
+  }),
+  "conn-copilot-dwalin": () => ({
+    plan: "copilot_pro",
+    resetDate: isoAhead(23 * DAY_MS).slice(0, 10),
+    quotas: {
+      chat: { used: 0, total: 0, unlimited: true, resetAt: isoAhead(23 * DAY_MS) },
+      completions: { used: 0, total: 0, unlimited: true, resetAt: isoAhead(23 * DAY_MS) },
+      premium_interactions: { used: 72, total: 300, remaining: 228, unlimited: false, resetAt: isoAhead(23 * DAY_MS) },
+    },
+  }),
+  "conn-antigravity-nori": () => ({
+    plan: "Free",
+    quotas: {
+      "gemini-3.8-flash-high": fractionWindow(0.31, 6 * DAY_MS),
+      "claude-sonnet-4.6": fractionWindow(0.82, 6 * DAY_MS),
+    },
+  }),
+  "conn-kiro-gloin": () => ({
+    plan: "KIRO FREE",
+    quotas: {
+      credit: { used: 12, total: 50, remaining: 38, resetAt: isoAhead(21 * DAY_MS), unlimited: false },
+    },
+  }),
+  "conn-cursor-ori": () => ({
+    plan: "Pro+",
+    quotas: {
+      "Included spend": { used: 14, total: 70, remaining: 56, resetAt: isoAhead(19 * DAY_MS), unlimited: false, unit: "usd" },
+      "Auto mode": percentWindow(18, 19 * DAY_MS),
+      "API usage": percentWindow(20, 19 * DAY_MS),
+    },
+  }),
+  "conn-deepseek-lab": () => ({
+    plan: "DeepSeek",
+    quotas: {
+      "Balance (USD)": { used: 0, total: 8.25, remainingPercentage: 100, resetAt: null, unlimited: true },
+    },
+  }),
 };
 
-export const INITIAL_CODEX_RESET_CREDITS = { "conn-codex-main": 2, "conn-codex-backup": 1 };
+const INITIAL_CODEX_RESET_CREDITS = { "conn-codex-main": 2, "conn-codex-backup": 1 };
 
-/** Quota payload for a connection, or a message the card shows instead. */
-export function quotaSnapshot(connection, creditCount = 0) {
-  const build = SNAPSHOTS[connection.id];
-  if (build) return build(codexResetCredits(creditCount));
-  if (connection.authType === "oauth") {
-    return {
-      plan: connection.provider === "codex" ? "plus" : "Connected",
-      quotas: { session: percentWindow(12, 4 * HOUR_MS), weekly: percentWindow(5, 6 * DAY_MS) },
-      ...(connection.provider === "codex" ? { limitReached: false, resetCredits: codexResetCredits(creditCount) } : null),
-    };
-  }
-  return { message: "Usage not available for this connection" };
-}
+// Dynamic accounts use a provider-specific example, never a universal OAuth
+// quota shape. Providers without a supported usage API show an honest message.
+const PROVIDER_TEMPLATES = {
+  claude: "conn-claude-ori",
+  codex: "conn-codex-main",
+  github: "conn-copilot-dwalin",
+  "gemini-cli": "conn-gemini-cli-ori",
+  antigravity: "conn-antigravity-nori",
+  kiro: "conn-kiro-gloin",
+  cursor: "conn-cursor-ori",
+  deepseek: "conn-deepseek-lab",
+};
 
-export function codexCredits(count) {
-  return codexResetCredits(count);
+/**
+ * demoQuota is stored on the connection so quota windows, credit identities and
+ * cooldown status are committed together and restored together after reload.
+ * Seed factories are used only for new accounts (or older demo storage).
+ */
+export function quotaSnapshot(connection) {
+  if (connection.demoQuota) return connection.demoQuota;
+  const seed = SNAPSHOT_SEEDS[connection.id] || SNAPSHOT_SEEDS[PROVIDER_TEMPLATES[connection.provider]];
+  if (!seed) return { message: "Usage not available for this connection" };
+  const snapshot = seed(codexResetCredits(INITIAL_CODEX_RESET_CREDITS[connection.id] || 0));
+  return connection.provider === "codex"
+    ? { ...snapshot, plan: connection.providerSpecificData?.chatgptPlanType || snapshot.plan }
+    : snapshot;
 }

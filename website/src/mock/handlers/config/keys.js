@@ -1,6 +1,8 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // /api/keys, /api/keys/:id, /api/keys/:id/reveal and /api/keys/policy-catalog.
 import { badRequest, notFound, reply } from "../../http.js";
-import { CONNECTIONS, MACHINE_ID } from "../../fixtures/world.js";
+import { MACHINE_ID } from "../../fixtures/world.js";
+import { CONNECTIONS } from "../providers/shared.js";
 import { buildPolicyCatalog, randomSecret, seedApiKeys } from "../../fixtures/configData.js";
 
 const KEYS = "config.apiKeys";
@@ -12,19 +14,20 @@ function managementView(record) {
   return { ...safe, maskedKey: "sk-••••••••" };
 }
 
-function providerOptions() {
-  return CONNECTIONS.map(({ id, name, provider }) => ({ id, name, provider }));
+// Resolve scopes at request time so account edits and deletions are authoritative.
+function providerOptions(store) {
+  return store.list(CONNECTIONS).map(({ id, name, provider }) => ({ id, name, provider }));
 }
 
-function readScope(body) {
+function readScope(store, body) {
   if (!("providerConnectionIds" in body)) return { value: undefined };
   const ids = body.providerConnectionIds;
-  if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string" || !id.trim())) {
+  if (!Array.isArray(ids) || ids.some((id) => !isString(id) || !id.trim())) {
     return { error: "providerConnectionIds must be an array of provider connection id strings" };
   }
   const trimmed = ids.map((id) => id.trim());
   if (new Set(trimmed).size !== trimmed.length) return { error: "providerConnectionIds must not contain duplicates" };
-  const known = new Set(CONNECTIONS.map((connection) => connection.id));
+  const known = new Set(store.list(CONNECTIONS).map((connection) => connection.id));
   if (trimmed.some((id) => !known.has(id))) return { error: "Provider connection not found" };
   return { value: trimmed };
 }
@@ -56,15 +59,15 @@ export default function register(router, { store }) {
   store.define(KEYS, seedApiKeys);
 
   router.get("/api/keys", () => ({
-    providerConnections: providerOptions(),
+    providerConnections: providerOptions(store),
     keys: store.list(KEYS).map(managementView),
   }));
 
   router.post("/api/keys", ({ body }) => {
-    if (!body || typeof body !== "object" || Array.isArray(body)) return badRequest("Invalid JSON body");
-    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!body || !isObject(body) || Array.isArray(body)) return badRequest("Invalid JSON body");
+    const name = isString(body.name) ? body.name.trim() : "";
     if (!name) return badRequest("Name is required");
-    const scope = readScope(body);
+    const scope = readScope(store, body);
     const limit = readDailyLimit(body.dailyLimitTokens);
     const expiry = readExpiry(body.expiresAt);
     const error = scope.error || limit.error || expiry.error;
@@ -94,18 +97,18 @@ export default function register(router, { store }) {
   });
 
   const update = ({ params, body }) => {
-    if (!body || typeof body !== "object" || Array.isArray(body)) return badRequest("Invalid JSON body");
+    if (!body || !isObject(body) || Array.isArray(body)) return badRequest("Invalid JSON body");
     const existing = store.find(KEYS, params.id);
     if (!existing) return notFound("Key not found");
     const changes = {};
     if ("name" in body) {
-      const name = typeof body.name === "string" ? body.name.trim() : "";
+      const name = isString(body.name) ? body.name.trim() : "";
       if (!name) return badRequest("Name is required");
       changes.name = name;
     }
     if (body.isActive !== undefined) changes.isActive = body.isActive === true;
     if (body.allowedCombos !== undefined) changes.allowedCombos = Array.isArray(body.allowedCombos) ? body.allowedCombos : [];
-    const scope = readScope(body);
+    const scope = readScope(store, body);
     const limit = readDailyLimit(body.dailyLimitTokens);
     const expiry = readExpiry(body.expiresAt);
     const error = scope.error || limit.error || expiry.error;

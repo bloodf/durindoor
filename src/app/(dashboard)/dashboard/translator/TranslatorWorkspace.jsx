@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
+import { loader } from "@monaco-editor/react";
 import { isString } from "../../../../shared/utils/typeChecks.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useTheme } from "@/shared/hooks/useTheme";
@@ -14,7 +15,26 @@ import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import { registerEditorThemes } from "@/shared/ui/editorTheme.js";
 
-const Editor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
+const Editor = dynamic(async () => {
+  // Bundle Monaco and its only required language worker with Next so the
+  // translator remains fully functional when outbound network access is off.
+  globalThis.MonacoEnvironment = {
+    getWorker(_moduleId, label) {
+      return label === "json"
+        ? new Worker(new URL("monaco-editor/esm/vs/language/json/json.worker.js", import.meta.url), { type: "module" })
+        : new Worker(new URL("monaco-editor/esm/vs/editor/editor.worker.js", import.meta.url), { type: "module" });
+    },
+  };
+  const [editorModule, monaco] = await Promise.all([
+    import("@monaco-editor/react"),
+    import("monaco-editor/esm/vs/editor/editor.api.js"),
+  ]);
+  // editor.api excludes language contributions. Register JSON only after its
+  // editor API dependency is initialized, preserving local schema diagnostics.
+  await import("monaco-editor/esm/vs/language/json/monaco.contribution.js");
+  loader.config({ monaco });
+  return editorModule.default;
+}, { ssr: false });
 
 export const STEPS = [
   { id: 1, label: "Client Request", file: "1_req_client.json", lang: "json", desc: "Raw request from client" },

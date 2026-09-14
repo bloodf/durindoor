@@ -1,3 +1,4 @@
+import { isString, isFunction, isBrowser } from "@/shared/utils/typeChecks";
 // Browser-only network boundary for the public demo. Patches fetch and
 // EventSource once so every dashboard API call is answered from the in-memory
 // store instead of a real server. Same-origin page/asset requests still reach
@@ -9,10 +10,10 @@ import { store } from "./store.js";
 import { registerAll } from "./handlers/index.js";
 
 const INSTALLED = Symbol.for("durindoor.demo.network");
-const API_PREFIXES = ["/api/", "/v1/", "/v1beta/"];
+const API_PREFIXES = ["/api", "/v1", "/v1beta"];
 
 function isApiPath(pathname) {
-  return pathname === "/api" || API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  return API_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
 function toUrl(input) {
@@ -24,7 +25,7 @@ function toUrl(input) {
 async function readBody(input, init) {
   const raw = init?.body ?? (input instanceof Request ? await input.clone().text() : undefined);
   if (raw == null) return undefined;
-  if (typeof raw === "string") {
+  if (isString(raw)) {
     try {
       return JSON.parse(raw);
     } catch {
@@ -36,18 +37,13 @@ async function readBody(input, init) {
   return raw;
 }
 
-const warned = new Set();
+// Unknown routes must fail visibly, never masquerade as successful mutations.
 function fallback(method, url) {
-  const key = `${method} ${url.pathname}`;
-  if (!warned.has(key)) {
-    warned.add(key);
-    console.debug(`[demo] no mock for ${key}; returning a generic success payload`);
-  }
-  return method === "GET" ? { success: true, data: [], items: [] } : { success: true };
+  return reply({ error: `Unsupported demo endpoint: ${method} ${url.pathname}` }, { status: 501 });
 }
 
 export function installMockNetwork() {
-  if (typeof window === "undefined" || globalThis[INSTALLED]) return globalThis[INSTALLED];
+  if (!isBrowser() || globalThis[INSTALLED]) return globalThis[INSTALLED];
 
   const router = createRouter();
   const external = [];
@@ -85,8 +81,7 @@ export function installMockNetwork() {
     if (!sameOrigin) {
       const hit = external.find(({ test }) => test(url));
       await latency();
-      const result = hit ? await hit.handler({ method, url, body: await readBody(input, init) }) : {};
-      if (!hit) fallback(method, url);
+      const result = hit ? await hit.handler({ method, url, body: await readBody(input, init) }) : fallback(method, url);
       return toResponse(result);
     }
 
@@ -118,7 +113,7 @@ export function installMockNetwork() {
           configurable: true,
           get: () => handler,
           set: (value) => {
-            const next = typeof value === "function" ? value : null;
+            const next = isFunction(value) ? value : null;
             if (handler && !next) this.removeEventListener(type, listener);
             if (!handler && next) this.addEventListener(type, listener);
             handler = next;
@@ -160,7 +155,7 @@ export function installMockNetwork() {
           this.later(() => this.emit(item), delay);
           delay += 40;
         }
-        if (typeof result.next === "function") {
+        if (isFunction(result.next)) {
           const tick = () => {
             const value = result.next();
             if (value !== undefined) this.emit(value);

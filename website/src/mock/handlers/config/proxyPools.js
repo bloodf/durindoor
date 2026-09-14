@@ -1,11 +1,18 @@
+import { isString } from "@/shared/utils/typeChecks";
 // /api/proxy-pools, /api/proxy-pools/:id, /:id/test and the relay deploy routes.
 import { badRequest, notFound, reply, wait } from "../../http.js";
-import { POOL_BINDINGS, isDeadProxy, seedProxyPools } from "../../fixtures/configData.js";
+import { isDeadProxy, seedProxyPools } from "../../fixtures/configData.js";
+import { CONNECTIONS } from "../providers/shared.js";
 
 const POOLS = "config.proxyPools";
 const TYPES = ["http", "vercel", "cloudflare"];
 
-const text = (value) => (typeof value === "string" ? value.trim() : "");
+const text = (value) => (isString(value) ? value.trim() : "");
+
+// Disabled accounts still own their pool until detached or deleted.
+function bindingCount(store, poolId) {
+  return store.list(CONNECTIONS).filter((connection) => connection.providerSpecificData?.proxyPoolId === poolId).length;
+}
 
 function normalizeCreate(body = {}) {
   const name = text(body.name);
@@ -57,7 +64,12 @@ export default function register(router, { store }) {
     const activeFilter = searchParams.get("isActive");
     const pools = store.list(POOLS).filter((pool) => activeFilter === null || String(pool.isActive) === activeFilter);
     if (searchParams.get("includeUsage") !== "true") return { proxyPools: pools };
-    return { proxyPools: pools.map((pool) => ({ ...pool, boundConnectionCount: POOL_BINDINGS[pool.id] || 0 })) };
+    const counts = new Map();
+    for (const connection of store.list(CONNECTIONS)) {
+      const poolId = connection.providerSpecificData?.proxyPoolId;
+      if (poolId) counts.set(poolId, (counts.get(poolId) || 0) + 1);
+    }
+    return { proxyPools: pools.map((pool) => ({ ...pool, boundConnectionCount: counts.get(pool.id) || 0 })) };
   });
 
   router.post("/api/proxy-pools", ({ body }) => {
@@ -82,7 +94,7 @@ export default function register(router, { store }) {
 
   router.delete("/api/proxy-pools/:id", ({ params }) => {
     if (!store.find(POOLS, params.id)) return notFound("Proxy pool not found");
-    const boundConnectionCount = POOL_BINDINGS[params.id] || 0;
+    const boundConnectionCount = bindingCount(store, params.id);
     if (boundConnectionCount > 0) return reply({ error: "Proxy pool is currently in use", boundConnectionCount }, { status: 409 });
     store.remove(POOLS, params.id);
     return { success: true };

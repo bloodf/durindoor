@@ -1,11 +1,12 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // Canned assistant replies for the playground, translator and example cards.
 // Replies reference the caller's last message and model so the demo feels live.
 
 function partText(part) {
-  if (typeof part === "string") return part;
-  if (!part || typeof part !== "object") return "";
-  if (typeof part.text === "string") return part.text;
-  if (typeof part.content === "string") return part.content;
+  if (isString(part)) return part;
+  if (!part || !isObject(part)) return "";
+  if (isString(part.text)) return part.text;
+  if (isString(part.content)) return part.content;
   if (part.userInputMessage?.content) return part.userInputMessage.content;
   return "";
 }
@@ -17,13 +18,13 @@ function contentText(content) {
 
 /** Last user-authored text from an OpenAI, Claude, Responses, Gemini or Kiro body. */
 export function lastUserText(body) {
-  if (!body || typeof body !== "object") return "";
-  const inner = body.request && typeof body.request === "object" ? body.request : body;
+  if (!body || !isObject(body)) return "";
+  const inner = body.request && isObject(body.request) ? body.request : body;
   if (Array.isArray(inner.messages)) {
     const last = [...inner.messages].reverse().find((message) => message?.role === "user");
     return contentText(last?.content);
   }
-  if (typeof inner.input === "string") return inner.input;
+  if (isString(inner.input)) return inner.input;
   if (Array.isArray(inner.input)) {
     const last = [...inner.input].reverse().find((item) => item?.role === "user" || (item?.type === "message" && item?.role !== "assistant"));
     return contentText(last?.content ?? last);
@@ -33,8 +34,8 @@ export function lastUserText(body) {
     return contentText(last?.parts);
   }
   const kiro = inner.conversationState?.currentMessage?.userInputMessage?.content;
-  if (typeof kiro === "string") return kiro;
-  return typeof inner.prompt === "string" ? inner.prompt : "";
+  if (isString(kiro)) return kiro;
+  return isString(inner.prompt) ? inner.prompt : "";
 }
 
 function quote(text) {

@@ -1,5 +1,5 @@
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import PlaygroundPageClient from "./PlaygroundPageClient";
 
@@ -125,8 +125,9 @@ export const ModelMenuProviderSwitch = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const trigger = await canvas.findByRole("combobox", { expanded: false, name: /^Model / });
+    await waitFor(() => expect(trigger).toBeEnabled());
     await userEvent.click(trigger);
-    await expect(canvas.getByRole("listbox")).toBeVisible();
+    await expect(await canvas.findByRole("listbox")).toBeVisible();
     const claudeOption = await canvas.findByRole("option", { name: "Claude Sonnet 4.5 claude-sonnet-4-5" });
     await userEvent.click(claudeOption);
     await expect(trigger).toHaveAttribute("aria-expanded", "false");

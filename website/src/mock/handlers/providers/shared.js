@@ -4,6 +4,7 @@ import { AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isoAhead, MINUTE_MS } from "../../fixtures/world.js";
 import { EXTRA_MODELS } from "../../fixtures/providers/connections.js";
+import { quotaSnapshot } from "../../fixtures/providers/quota.js";
 
 export const CONNECTIONS = "providers.connections";
 export const NODES = "providers.nodes";
@@ -11,9 +12,9 @@ export const GROUPS = "providers.groups";
 export const CUSTOM_MODELS = "providers.customModels";
 export const DISABLED_MODELS = "providers.disabledModels";
 export const PRICING = "providers.pricing";
-export const RESET_CREDITS = "providers.codexResetCredits";
 
-const SECRET_FIELDS = ["apiKey", "accessToken", "refreshToken", "idToken", "firecrawlHeaders"];
+// demoQuota is browser-only persistence, not part of the production row API.
+const SECRET_FIELDS = ["apiKey", "accessToken", "refreshToken", "idToken", "firecrawlHeaders", "demoQuota"];
 const SECRET_PSD_FIELDS = ["clientSecret", "qwenCloudCookie", "alibabaConsoleCookie", "cookie", "QWEN_CLOUD_COOKIE"];
 const DEMO_EMAILS = ["balin@erebor.dev", "dwalin@erebor.dev", "ori@erebor.dev", "nori@erebor.dev", "gloin@erebor.dev"];
 const AUTO_PING_PROVIDERS = new Set(["claude", "codex"]);
@@ -84,8 +85,9 @@ export function createConnection(store, { provider, authType, name, email = null
     updatedAt: now,
     ...rest,
   };
-  store.insert(CONNECTIONS, connection);
-  return connection;
+  const persisted = { ...connection, demoQuota: quotaSnapshot(connection) };
+  store.insert(CONNECTIONS, persisted);
+  return persisted;
 }
 
 /** Create a connected OAuth account for a provider, or re-activate the one being reconnected. */

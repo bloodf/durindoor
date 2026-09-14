@@ -26,7 +26,10 @@ export function DashboardShell({
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <Header title={title} subtitle={subtitle} icon={icon} actions={actions} />
-        <main tabIndex={0} aria-label="Dashboard content" className="min-h-0 flex-1 overflow-y-auto p-6 lg:p-8">{children}</main>
+        <main tabIndex={0} aria-label="Dashboard content" className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 xl:p-8">
+          {/* Match production: 16/24/32px gutters around a full-width 7xl content area. */}
+          <div className="mx-auto w-full min-w-0 max-w-7xl">{children}</div>
+        </main>
       </div>
     </div>
   );

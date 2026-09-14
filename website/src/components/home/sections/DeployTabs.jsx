@@ -1,5 +1,7 @@
 "use client";
 
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { DEPLOYMENTS } from "../content.js";
@@ -7,6 +9,7 @@ import { CopyButton } from "../ui/primitives.jsx";
 
 // WAI-ARIA tabs: arrow keys, Home and End move between deployment methods.
 export default function DeployTabs() {
+  const { t } = useHomeLocale();
   const [active, setActive] = useState(0);
   const tabs = useRef([]);
   const current = DEPLOYMENTS[active];
@@ -27,8 +30,8 @@ export default function DeployTabs() {
   return (
     <div className="deploy">
       <div className="deploy-head">
-        <p className="connect-title">Other ways through</p>
-        <div className="deploy-tabs" role="tablist" aria-label="Deployment method" onKeyDown={onKeyDown}>
+        <p className="connect-title">{t("Other ways through")}</p>
+        <div className="deploy-tabs" role="tablist" aria-label={t("Deployment method")} onKeyDown={onKeyDown}>
           {DEPLOYMENTS.map((method, i) => (
             <button
               key={method.id}
@@ -45,7 +48,7 @@ export default function DeployTabs() {
               onClick={() => setActive(i)}
             >
               {i === active ? <motion.span layoutId="deploy-pill" className="deploy-pill" /> : null}
-              <span className="deploy-tab-text">{method.label}</span>
+              <span className="deploy-tab-text">{t(method.label)}</span>
             </button>
           ))}
         </div>
@@ -57,7 +60,7 @@ export default function DeployTabs() {
         aria-labelledby={`deploy-tab-${current.id}`}
       >
         <div className="code-bar">
-          <span className="code-label">{current.note}</span>
+          <span className="code-label">{t(current.note)}</span>
           <CopyButton text={current.command} />
         </div>
         <AnimatePresence mode="wait" initial={false}>

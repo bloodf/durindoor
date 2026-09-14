@@ -8,6 +8,7 @@ import Portal from "./Portal.jsx";
 import Beams, { Wall } from "./Beams.jsx";
 import Mist from "./Mist.jsx";
 import Particles from "./Particles.jsx";
+import { isBrowser } from "@/shared/utils/typeChecks.js";
 
 const STATIC_TIME = 14.0;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -123,7 +124,7 @@ export default function Scene({ heroId, still = false, onReady }) {
     }),
     [],
   );
-  const small = typeof window !== "undefined" && window.innerWidth < 720;
+  const small = isBrowser() && window.innerWidth < 720;
 
   return (
     <Canvas

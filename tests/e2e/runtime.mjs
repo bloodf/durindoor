@@ -21,6 +21,7 @@ const PROBE_TARGETS = Object.freeze([
   { label: "fake-positive-control", host: process.env.DURIN_QA_FAKE_UPSTREAM_HOST || "fake-upstream", port: Number(process.env.DURIN_QA_FAKE_UPSTREAM_PORT) || 4100, kind: "control" }
 ]);
 const PROBE_TIMEOUT_MS = 2_000;
+const AUDIT_IO_TIMEOUT_MS = 10_000;
 
 function fail(message) { throw new Error(`[ui-qa] ${message}`); }
 function redactSecrets(text) { return text.replace(/(INITIAL_PASSWORD|JWT_SECRET|token|cookie|password)=([^\s&"']+)/gi, "$1=[redacted]"); }
@@ -153,7 +154,22 @@ export async function startQa({ runDir, workerId, mode }) {
   const seedManifest = { kind: "durindoor-ui-qa", version: 1, runId: path.basename(absoluteRunDir), workerId, createdAt: new Date().toISOString(), dataDir: realDataDir, homeDir: realHomeDir };
   await fs.writeFile(path.join(realDataDir, SEED_MARKER), JSON.stringify(seedManifest), { mode: 0o600 });
 
-  const recordEvent = async (event) => fs.appendFile(auditPath, `${JSON.stringify({ ...event, at: new Date().toISOString() })}\n`, { mode: 0o600 });
+  // Serialize snapshots with complete appends: a concurrent read can see half a JSONL
+  // record. Keep the first I/O failure even after draining the queue so missing
+  // evidence cannot pass a later isolation assertion.
+  let auditChain = Promise.resolve();
+  let auditFailure = null;
+  const enqueueAudit = (operation) => {
+    const signal = AbortSignal.timeout(AUDIT_IO_TIMEOUT_MS);
+    const queued = auditChain.then(() => operation(signal));
+    auditChain = queued.catch((error) => { auditFailure ??= error; });
+    const deadline = new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    return Promise.race([queued, deadline]);
+  };
+  const recordEvent = (event) => {
+    const line = `${JSON.stringify({ ...event, at: new Date().toISOString() })}\n`;
+    return enqueueAudit((signal) => fs.appendFile(auditPath, line, { mode: 0o600, signal }));
+  };
   for (const probe of await auditServerChannels()) await recordEvent(probe);
 
   let password = randomBytes(24).toString("base64url");
@@ -245,7 +261,11 @@ export async function startQa({ runDir, workerId, mode }) {
       await recordEvent(event);
     },
     assertNoExternalEffects: async () => {
-      const events = (await fs.readFile(auditPath, "utf8").catch(() => "")).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+      const read = enqueueAudit((signal) => {
+        if (auditFailure) throw auditFailure;
+        return fs.readFile(auditPath, { encoding: "utf8", signal });
+      });
+      const events = (await read).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
       const byLabel = new Map();
       for (const event of events) { const slot = byLabel.get(event.label) ?? []; slot.push(event); byLabel.set(event.label, slot); }
       const DENY_LABELS = ["deny-public-origin", "deny-instance-metadata", "deny-host-gateway"];
@@ -260,7 +280,17 @@ export async function startQa({ runDir, workerId, mode }) {
         fail(`isolation violated (missingDenies=${missingDenies.join(",") || "none"} missingAllows=${missingAllows.join(",") || "none"} deniedOk=${deniedOk.length} allowedFailures=${allowedFailures.length} external=${external.length})`);
       }
     },
-    stop: async () => { if (stopped) return; await mutationChain; await stopServer(); password = null; jwtSecret = null; stopped = true; }
+    stop: async () => {
+      if (stopped) return;
+      await mutationChain;
+      let failure = null;
+      try { await enqueueAudit(() => Promise.resolve()); }
+      catch (error) { failure = error; }
+      failure ??= auditFailure;
+      try { await stopServer(); }
+      finally { password = null; jwtSecret = null; stopped = true; }
+      if (failure) throw failure;
+    }
   };
 }
 

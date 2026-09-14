@@ -1,3 +1,7 @@
+"use client";
+
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import { CLIENTS, FLOW_PROVIDERS } from "../data.js";
 
 // Client tools → the door → providers. Two static layouts (wide + tall) share
@@ -41,6 +45,7 @@ function Node({ node, labels, prefix }) {
 }
 
 function Door({ door, labels }) {
+  const { t } = useHomeLocale();
   const { x, y } = door;
   return (
     <g className="flow-door" transform={`translate(${x} ${y})`}>
@@ -69,13 +74,11 @@ function Packets({ id, index, tone, reverse = false }) {
 }
 
 function Layout({ layout, className, name }) {
+  const { t } = useHomeLocale();
   const { door } = layout;
   return (
     <svg className={`flow-svg ${className}`} viewBox={layout.viewBox} role="img" aria-labelledby={`${name}-title`}>
-      <title id={`${name}-title`}>
-        Requests from Claude Code, Codex, Cursor and Cline pass through DurinDoor on localhost:20128 and are routed to
-        OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek or Ollama.
-      </title>
+      <title id={`${name}-title`}>{t("Requests from Claude Code, Codex, Cursor and Cline pass through DurinDoor on localhost:20128 and are routed to OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek or Ollama.")}</title>
       <defs>
         <linearGradient id={`${name}-wire`} x1="0" x2="1">
           <stop offset="0" stopColor="#10E882" stopOpacity="0.1" />
@@ -104,10 +107,10 @@ function Layout({ layout, className, name }) {
       })}
       <Door door={door} labels={layout.labels} />
       {layout.clients.map((n) => (
-        <Node key={n.name} node={n} labels={layout.labels} prefix="Client" />
+        <Node key={n.name} node={n} labels={layout.labels} prefix={t("Client")} />
       ))}
       {layout.providers.map((n) => (
-        <Node key={n.name} node={n} labels={layout.labels} prefix="Provider" />
+        <Node key={n.name} node={n} labels={layout.labels} prefix={t("Provider")} />
       ))}
     </svg>
   );

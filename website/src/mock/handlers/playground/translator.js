@@ -1,3 +1,4 @@
+import { isObject } from "@/shared/utils/typeChecks";
 // Translator debug page: load/save captured step files, translate between
 // formats, and replay the target request as a streamed provider response.
 
@@ -24,8 +25,8 @@ const ALLOWED = new Set([
 const fail = (error, status = 400) => reply({ success: false, error }, { status });
 
 function translate({ body }) {
-  const { step, body: payload } = body && typeof body === "object" ? body : {};
-  if (!step || !payload || typeof payload !== "object") return fail("Step and body required");
+  const { step, body: payload } = body && isObject(body) ? body : {};
+  if (!step || !payload || !isObject(payload)) return fail("Step and body required");
   const clientBody = payload.body || payload;
 
   if (step === 1) {
@@ -57,7 +58,7 @@ export default function registerTranslator(router, { store }) {
   });
 
   router.post("/api/translator/save", ({ body }) => {
-    const { file, content } = body && typeof body === "object" ? body : {};
+    const { file, content } = body && isObject(body) ? body : {};
     if (!file || content == null) return fail("File and content required");
     if (!ALLOWED.has(file)) return fail("Invalid file name");
     store.update(FILES, (files) => ({ ...(files || {}), [file]: String(content) }));
@@ -67,7 +68,7 @@ export default function registerTranslator(router, { store }) {
   router.post("/api/translator/translate", translate);
 
   router.post("/api/translator/send", ({ body, signal }) => {
-    const { provider, model, body: target } = body && typeof body === "object" ? body : {};
+    const { provider, model, body: target } = body && isObject(body) ? body : {};
     if (!provider || !model || !target) return fail("provider, model, and body required");
     const prompt = lastUserText(target);
     const frames = streamForFormat(targetFor(provider).format, { model, prompt, text: cannedReply(prompt, model) });

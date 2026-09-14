@@ -1,3 +1,4 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // Chat-style inference endpoints: OpenAI chat completions, Anthropic
 // Messages, OpenAI Responses (+ compact) and Gemini generateContent.
 
@@ -20,11 +21,11 @@ function invalid(message) {
 }
 
 function asObject(body) {
-  return body && typeof body === "object" && !Array.isArray(body) ? body : null;
+  return body && isObject(body) && !Array.isArray(body) ? body : null;
 }
 
 function prepare(body) {
-  const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : "auto";
+  const model = isString(body.model) && body.model.trim() ? body.model.trim() : "auto";
   const prompt = lastUserText(body);
   return { model, prompt, text: cannedReply(prompt, model) };
 }

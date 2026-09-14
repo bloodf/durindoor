@@ -1,5 +1,7 @@
 import localFont from "next/font/local";
 import { Cinzel } from "next/font/google";
+import { cookies } from "next/headers";
+import { homeMetadata, LOCALE_COOKIE, resolveHomeLocale } from "@site/i18n/home.js";
 import "lenis/dist/lenis.css";
 import "./home.css";
 import "./hero.css";
@@ -27,22 +29,14 @@ const cinzel = Cinzel({
   display: "swap",
 });
 
-const description =
-  "One guarded gateway for every AI provider. Add credentials once, point every OpenAI-compatible tool at a single local endpoint.";
-
-export const metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
-  icons: { icon: "/home/favicon.svg" },
-  title: "DurinDoor — Speak, friend, and enter",
-  description,
-  openGraph: {
-    title: "DurinDoor — Speak, friend, and enter",
-    description,
-    type: "website",
-    images: [{ url: "/home/door-poster.webp", width: 1600, height: 679, alt: "Ancient stone door glowing emerald in dark ruins" }],
-  },
-  twitter: { card: "summary_large_image", title: "DurinDoor — Speak, friend, and enter", description },
-};
+export async function generateMetadata() {
+  const locale = resolveHomeLocale((await cookies()).get(LOCALE_COOKIE)?.value);
+  return {
+    ...homeMetadata(locale),
+    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+    icons: { icon: "/home/favicon.svg" },
+  };
+}
 
 export const viewport = { themeColor: "#040705", colorScheme: "dark light" };
 

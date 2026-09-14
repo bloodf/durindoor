@@ -39,6 +39,25 @@ const config = {
           if (!id.startsWith(`${projectRoot}/src/`) || !id.endsWith(".js")) return null;
           return transformWithEsbuild(source, id, { loader: "jsx", jsx: "automatic" });
         },
+      }, {
+        name: "storybook-idle-highlights",
+        enforce: "pre",
+        transform(source, id) {
+          if (!/\/storybook\/dist\/(?:preview\/runtime|csf\/index)\.js$/.test(id)) return null;
+          // Storybook 10 observes every story mutation even with no highlights.
+          // React Flow's measured-node commit then re-registers a BODY resize
+          // observer during resize delivery, producing a WebKit loop error.
+          // Clear prior highlights, but do not watch mutations while idle.
+          // Active highlights retain the upstream observer and cleanup paths.
+          const marker = "elements.set(mapElements(value));\n    let observer = new MutationObserver";
+          if (source.split(marker).length !== 2) {
+            throw new Error(`Review the Storybook idle-highlight workaround after updating ${id}`);
+          }
+          return {
+            code: source.replace(marker, "elements.set(mapElements(value));\n    if (value.length === 0) return;\n    let observer = new MutationObserver"),
+            map: null,
+          };
+        },
       }, providerMetadata, react()],
       optimizeDeps: { esbuildOptions: { loader: { ".js": "jsx" } } },
       build: {

@@ -1,6 +1,7 @@
 // /api/providers: connection CRUD, tests, model discovery, reorder, validation
 // and the paginated quota-eligible client list.
 import { reply, notFound, badRequest } from "../../http.js";
+import { isBoolean } from "@/shared/utils/typeChecks";
 import {
   AI_PROVIDERS, FREE_PROVIDERS, OAUTH_PROVIDERS, USAGE_SUPPORTED_PROVIDERS, USAGE_APIKEY_PROVIDERS, WEB_COOKIE_PROVIDERS,
   isOpenAICompatibleProvider, isAnthropicCompatibleProvider,
@@ -245,7 +246,7 @@ export default function registerConnections(router, { store }) {
   });
 
   router.patch("/api/providers/:id/auto-ping", ({ params, body = {} }) => {
-    if (typeof body.enabled !== "boolean") return badRequest("enabled must be a boolean");
+    if (!isBoolean(body.enabled)) return badRequest("enabled must be a boolean");
     const connection = store.find(CONNECTIONS, params.id);
     if (!connection) return notFound("Connection not found");
     if (!isAutoPingEligible(connection) || (body.enabled && connection.isActive === false)) {

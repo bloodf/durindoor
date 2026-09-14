@@ -35,16 +35,17 @@ function headroomEvents() {
     const applied = rand() > 0.34;
     const tokensBefore = 4000 + Math.floor(rand() * 42000);
     const tokensSaved = applied ? Math.floor(tokensBefore * (0.22 + rand() * 0.24)) : 0;
-    return {
+    const event = {
       ts: new Date(Date.now() - index * 97 * MINUTE_MS - Math.floor(rand() * 40) * MINUTE_MS).toISOString(),
       provider: connection.alias,
       model: pick(rand, connection.models),
       applied,
-      ...(applied ? {} : { reason: pick(rand, HEADROOM_SKIPS) }),
       tokensBefore,
       tokensSaved,
-      compressionMs: 140 + Math.floor(rand() * 260),
     };
+    if (!applied) event.reason = pick(rand, HEADROOM_SKIPS);
+    event.compressionMs = 140 + Math.floor(rand() * 260);
+    return event;
   });
 }
 
@@ -108,14 +109,12 @@ function pxpipeEvents() {
     const reason = applied ? undefined : roll > 0.12 ? "below_threshold" : roll > 0.05 ? "unsupported_model" : "render_failed";
     const tokensBeforeEst = 26000 + Math.floor(rand() * 90000);
     const tokensAfterEst = applied ? Math.floor(tokensBeforeEst * (0.38 + rand() * 0.2)) : tokensBeforeEst;
-    return {
+    const event = {
       id: `pxp-${index}`,
       ts: new Date(Date.now() - index * 5 * 60 * MINUTE_MS - Math.floor(rand() * 90) * MINUTE_MS).toISOString(),
       provider: reason === "unsupported_model" ? "deepseek" : target.provider,
       model: reason === "unsupported_model" ? "deepseek-v4-pro" : target.model,
       applied,
-      ...(reason ? { reason } : {}),
-      ...(reason === "render_failed" ? { detail: "canvas renderer timed out" } : {}),
       tokensBeforeEst,
       tokensAfterEst,
       tokensSavedEst: tokensBeforeEst - tokensAfterEst,
@@ -123,6 +122,9 @@ function pxpipeEvents() {
       imageCount: applied ? 1 + Math.floor(rand() * 5) : 0,
       durationMs: 120 + Math.floor(rand() * 400),
     };
+    if (reason) event.reason = reason;
+    if (reason === "render_failed") event.detail = "canvas renderer timed out";
+    return event;
   });
 }
 

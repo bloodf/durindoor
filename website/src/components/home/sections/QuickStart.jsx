@@ -1,3 +1,7 @@
+"use client";
+
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import { CopyButton, Reveal, SectionHeader } from "../ui/primitives.jsx";
 import DeployTabs from "./DeployTabs.jsx";
 
@@ -72,13 +76,14 @@ const STEPS = [
 ];
 
 export default function QuickStart() {
+  const { t } = useHomeLocale();
   return (
     <section id="quick-start" className="section section-quick" aria-labelledby="quick-title">
       <div className="container">
         <SectionHeader
-          eyebrow="Quick start"
-          title={<span id="quick-title">Three steps to the other side</span>}
-          lead="Install, start, and point any OpenAI-compatible client at one base URL."
+          eyebrow={t("Quick start")}
+          title={<span id="quick-title">{t("Three steps to the other side")}</span>}
+          lead={t("Install, start, and point any OpenAI-compatible client at one base URL.")}
         />
         <ol className="quick-steps">
           {STEPS.map((step, i) => (
@@ -86,8 +91,8 @@ export default function QuickStart() {
               <div className="quick-meta">
                 <span className="quick-n" aria-hidden="true">{step.n}</span>
                 <div>
-                  <h3>{step.title}</h3>
-                  <p>{step.body}</p>
+                  <h3>{t(step.title)}</h3>
+                  <p>{t(step.body)}</p>
                 </div>
               </div>
               {step.code}
@@ -95,11 +100,11 @@ export default function QuickStart() {
           ))}
         </ol>
         <Reveal className="connect-card">
-          <p className="connect-title">Connect your tools</p>
+          <p className="connect-title">{t("Connect your tools")}</p>
           <dl className="connect-grid">
-            <div><dt>Base URL</dt><dd><code>http://localhost:20128/v1</code></dd></div>
-            <div><dt>API key</dt><dd><code>your DurinDoor API key</code></dd></div>
-            <div><dt>Model</dt><dd><code>model ID, alias, or combo</code></dd></div>
+            <div><dt>{t("Base URL")}</dt><dd><code>http://localhost:20128/v1</code></dd></div>
+            <div><dt>{t("API key")}</dt><dd><code>{t("your DurinDoor API key")}</code></dd></div>
+            <div><dt>{t("Model")}</dt><dd><code>{t("model ID, alias, or combo")}</code></dd></div>
           </dl>
         </Reveal>
         <Reveal>

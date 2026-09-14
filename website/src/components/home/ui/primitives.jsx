@@ -1,5 +1,7 @@
 "use client";
 
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { animate, motion, useInView, useReducedMotion } from "motion/react";
@@ -9,7 +11,9 @@ const MotionLink = motion.create(Link);
 
 // Counts from `from` to `to` the first time it scrolls into view. Server markup
 // and reduced-motion users get the final value, so the number is never wrong.
-export function CountUp({ to, from = 0, duration = 1.6, format = (n) => Math.round(n).toLocaleString("en-US"), className = "" }) {
+export function CountUp({ to, from = 0, duration = 1.6, format, className = "" }) {
+  const { locale } = useHomeLocale();
+  const number = format ?? ((n) => Math.round(n).toLocaleString(locale));
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: "0px 0px -10% 0px" });
   const reduce = useReducedMotion();
@@ -29,7 +33,7 @@ export function CountUp({ to, from = 0, duration = 1.6, format = (n) => Math.rou
 
   return (
     <span ref={ref} className={className}>
-      {format(value)}
+      {number(value)}
     </span>
   );
 }
@@ -51,7 +55,9 @@ export function Reveal({ children, delay = 0, y = 24, as = "div", className = ""
   );
 }
 
-export function CopyButton({ text, label = "Copy", className = "" }) {
+export function CopyButton({ text, label, className = "" }) {
+  const { t } = useHomeLocale();
+  const actionLabel = label ?? t("Copy");
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -63,9 +69,9 @@ export function CopyButton({ text, label = "Copy", className = "" }) {
     }
   };
   return (
-    <button type="button" className={`copy-btn ${className}`} onClick={copy} aria-label={copied ? "Copied" : `${label} to clipboard`}>
+    <button type="button" className={`copy-btn ${className}`} onClick={copy} aria-label={copied ? t("Copied") : t("{label} to clipboard", { label: actionLabel })}>
       <Icon name={copied ? "check" : "copy"} size={16} />
-      <span className="copy-btn-text" aria-live="polite">{copied ? "Copied" : label}</span>
+      <span className="copy-btn-text" aria-live="polite">{copied ? t("Copied") : actionLabel}</span>
     </button>
   );
 }

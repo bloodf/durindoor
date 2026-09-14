@@ -73,7 +73,6 @@ async function waitForSentinel(page, route, variant, seed) {
     await page.getByRole("button", { name: "Login", exact: true }).click();
     return expect(page.getByRole("button", { name: "Set password", exact: true })).toBeVisible();
   }
-  if (route.id === "R36") return expectVisible(page, "DurinDoor", "img");
   const expected = resolveExpectedText(route, variant, seed);
   if (!expected) throw new Error(`${route.id} ${variant.url || variant.urlFrom} has no rendered sentinel`);
   const locator = variant.expectedLocator || route.expectedLocator || (variant.headingLocator ?? route.headingLocator ?? true ? "heading" : "text");
@@ -93,7 +92,9 @@ function defineAccessibilityTest(route, variant, routeTest) {
       if (route.id !== "R36") await qa.authenticate(page);
       if (variant.injectLogin429) loginHandler = await installLoginIntercept(page, "rate-limit");
       if (variant.injectForcedPasswordChange) loginHandler = await installLoginIntercept(page, "forced-change");
+      await page.emulateMedia({ reducedMotion: "reduce" });
       const response = await page.goto(`${qa.baseURL}${url}`, { waitUntil: "domcontentloaded" });
+      await page.evaluate(() => document.fonts.ready);
       if (variant.expectedHttpStatus === 404) expect(response?.status(), `${route.id} 404 navigation status`).toBe(404);
       await waitForSentinel(page, route, variant, seed);
       const standards = await new AxeBuilder({ page }).withTags(wcagTags).analyze();

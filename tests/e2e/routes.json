@@ -11,7 +11,8 @@
     "timeline",
     "media",
     "fail",
-    "stream"
+    "stream",
+    "token-saver"
   ],
   "redirects": {
     "R18": {
@@ -80,6 +81,7 @@
       "id": "R03",
       "template": "/dashboard/cli-tools/[toolId]",
       "entry": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/page.js",
+      "headingLevel": 1,
       "variants": [
         {
           "url": "/dashboard/cli-tools/claude",
@@ -191,14 +193,24 @@
         },
         {
           "url": "/dashboard/cli-tools/copilot",
+          "expectedText": "GitHub Copilot",
+          "expectedTextSource": "CLI_TOOLS.copilot.name",
+          "expectedSecondary": [
+            "Install Extension",
+            "Select Model in Copilot Chat"
+          ],
+          "predicate": "CLI_TOOLS.copilot guideSteps"
+        },
+        {
+          "url": "/dashboard/cli-tools/no-such-tool",
           "expectedHttpStatus": 404,
-          "predicate": "MITM-only Copilot is not a CLI detail route; supported navigation is /dashboard/mitm",
+          "predicate": "unknown tool ID is rejected by ToolDetailPage",
           "branch": "unsupported-cli-detail"
         }
       ],
       "expectedText": null,
       "expectedTextNote": "Header is rendered as <h1>{tool.name}</h1>; assertion must be per-variant, not template-level",
-      "expectedTextSource": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js:174",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/cli-tools/[toolId]/ToolDetailClient.js:151 <PageHeader title={tool.name}>",
       "fixture": "baseline",
       "states": [
         "default",
@@ -672,7 +684,6 @@
       ],
       "expectedSecondary": [
         "Antigravity",
-        "GitHub Copilot",
         "Kiro"
       ],
       "headingLocator": false
@@ -735,7 +746,7 @@
       "expectedSecondary": [
         "Language",
         "Model catalog",
-        "Security"
+        "Appearance"
       ],
       "fixture": "baseline",
       "states": [
@@ -1071,15 +1082,16 @@
       "variants": [
         {
           "url": "/dashboard/token-saver",
-          "predicate": "static, renders TokenSaverClient view=overview"
+          "predicate": "token-saver seeds a persisted compression observation; populated overview is independent of prior chat flows"
         }
       ],
       "expectedText": "Token Saver",
       "expectedTextSource": "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js:27 PageHeader title",
       "expectedSecondary": [
-        "No Token Saver events yet"
+        "RTK bytes saved",
+        "PXPIPE Dashboard"
       ],
-      "fixture": "baseline",
+      "fixture": "token-saver",
       "states": [
         "default",
         "empty",
@@ -1249,17 +1261,17 @@
       "variants": [
         {
           "url": "/login",
-          "expectedText": "DurinDoor",
-          "predicate": "loading then password form (wordmark image alt text or fallback span)",
+          "expectedText": "Durin Door",
+          "predicate": "loading then password form with semantic wordmark heading",
           "branch": "default",
-          "expectedLocator": "img"
+          "expectedLocator": "heading"
         },
         {
           "url": "/login?next=/dashboard/quota",
-          "expectedText": "DurinDoor",
-          "predicate": "preserve safe nextPath",
+          "expectedText": "Durin Door",
+          "predicate": "preserve safe nextPath while rendering semantic wordmark heading",
           "branch": "next-redirect",
-          "expectedLocator": "img"
+          "expectedLocator": "heading"
         },
         {
           "url": "/login",
@@ -1285,8 +1297,8 @@
         }
       ],
       "expectedText": null,
-      "expectedTextNote": "Per-variant assertion: DurinDoor wordmark image alt for default/next, Wait Ns button, Set password button",
-      "expectedTextSource": "src/app/login/page.js (DurinDoor wordmark alt, Wait Ns button, Set password button)",
+      "expectedTextNote": "Per-variant assertion: Durin Door wordmark heading for default/next, Wait Ns button, Set password button",
+      "expectedTextSource": "src/app/login/LoginView.js:54 <h1>Durin Door</h1>; branch-specific Wait Ns and Set password buttons",
       "fixture": "baseline",
       "states": [
         "default",

@@ -1,3 +1,4 @@
+import { isString, isObject } from "@/shared/utils/typeChecks";
 // Token savers: Headroom proxy, PXPIPE, the Token Saver aggregate stream and
 // the Compression Studio preview.
 import { reply, sse, badRequest } from "../../http.js";
@@ -161,19 +162,17 @@ const TEXT_TRANSFORMS = {
 };
 
 function transformContent(content, transform) {
-  if (typeof content === "string") return transform(content);
+  if (isString(content)) return transform(content);
   if (!Array.isArray(content)) return content;
-  return content.map((part) => (part?.type === "text" && typeof part.text === "string" ? { ...part, text: transform(part.text) } : part));
+  return content.map((part) => (part?.type === "text" && isString(part.text) ? { ...part, text: transform(part.text) } : part));
 }
 
 function previewEngine(id, payload) {
   const transform = TEXT_TRANSFORMS[id]?.();
   if (!transform) return { status: "unchanged", compressed: false, savingsPercent: 0, fallbackReasons: [], skippedReasons: [], fallbackReason: null, raw: payload };
-  const body = {
-    ...payload,
-    ...(Array.isArray(payload.messages) ? { messages: payload.messages.map((message) => ({ ...message, content: transformContent(message.content, transform) })) } : {}),
-    ...(typeof payload.system === "string" ? { system: transform(payload.system) } : {}),
-  };
+  const body = { ...payload };
+  if (Array.isArray(payload.messages)) body.messages = payload.messages.map((message) => ({ ...message, content: transformContent(message.content, transform) }));
+  if (isString(payload.system)) body.system = transform(payload.system);
   const before = JSON.stringify(payload).length;
   const after = JSON.stringify(body).length;
   const savingsPercent = before > 0 ? Math.max(0, Math.round(((before - after) / before) * 10000) / 100) : 0;
@@ -183,7 +182,7 @@ function previewEngine(id, payload) {
 
 function registerCompression(router) {
   router.post("/api/compression/preview", ({ body }) => {
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    if (!body || !isObject(body) || Array.isArray(body)) {
       return reply({ error: { message: "Invalid JSON body", type: "invalid_request_error" } }, { status: 400 });
     }
     const { engine, ...payload } = body;

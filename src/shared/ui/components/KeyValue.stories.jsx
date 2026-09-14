@@ -27,11 +27,11 @@ export const Playground = {
   },
 };
 
-/** Dense API-key metadata for a detail panel or list footer. */
+/** Preserve the desktop metadata panel width; the bounded preview root lets it shrink and wrap. */
 export const ApiKeyMetadata = {
   args: { items: apiKeyItems },
   render: (args) => (
-    <div className="w-[42rem] max-w-full p-4">
+    <div className="w-[42rem] min-w-0 max-w-full p-4">
       <KeyValue {...args} />
     </div>
   ),

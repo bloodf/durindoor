@@ -1,3 +1,7 @@
+"use client";
+
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
 import { TOOLS } from "../data.js";
 import { SectionHeader } from "../ui/primitives.jsx";
 
@@ -17,17 +21,18 @@ function Track({ items, reverse, renderItem, label }) {
 }
 
 export default function ToolsMarquee() {
+  const { t } = useHomeLocale();
   return (
     <section id="tools" className="section section-tools" aria-labelledby="tools-title">
       <div className="container">
         <SectionHeader
-          eyebrow="Compatible tools"
-          title={<span id="tools-title">If it speaks OpenAI, it walks through</span>}
-          lead="Coding agents, editors and CLIs connect with one base URL and one DurinDoor key."
+          eyebrow={t("Compatible tools")}
+          title={<span id="tools-title">{t("If it speaks OpenAI, it walks through")}</span>}
+          lead={t("Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.")}
         />
       </div>
       <Track
-        label="Compatible tools"
+        label={t("Compatible tools")}
         items={TOOLS}
         renderItem={(tool) => (
           <li key={tool.name} className="tool-chip">

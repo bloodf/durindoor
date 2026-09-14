@@ -56,6 +56,9 @@ function firecrawlReport(settings, dryRun) {
   else actions.push(dryRun ? "would prepare firecrawl custom connection" : "firecrawl custom connection prepared");
   if (!dryRun && needsConnection) actions.push("upserted firecrawl custom connection");
   const settingsChanged = !settings.firecrawlBaseUrl;
+  const updates = {};
+  if (!dryRun && settingsChanged) updates.firecrawlBaseUrl = baseUrl;
+  if (!dryRun && needsConnection) updates.firecrawlConnectionReady = true;
   return {
     changed: !dryRun && (settingsChanged || needsConnection),
     wouldChange: settingsChanged || needsConnection,
@@ -63,7 +66,7 @@ function firecrawlReport(settings, dryRun) {
     running: !settings.firecrawlBaseUrl,
     baseUrl,
     actions,
-    updates: dryRun ? {} : { ...(settingsChanged ? { firecrawlBaseUrl: baseUrl } : {}), ...(needsConnection ? { firecrawlConnectionReady: true } : {}) },
+    updates,
     connection: null,
   };
 }

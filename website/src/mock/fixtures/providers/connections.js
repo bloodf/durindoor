@@ -2,6 +2,7 @@
 // World entries are mapped into the stored connectionsRepo row shape
 // (rowToConn) plus the extra runtime fields the dashboard reads.
 import { CONNECTIONS, PROVIDER_NODES, isoAgo, isoAhead, DAY_MS, HOUR_MS, MINUTE_MS } from "../world.js";
+import { quotaSnapshot } from "./quota.js";
 
 const WORLD_ONLY_FIELDS = ["alias", "models", "usage", "rateLimited", "paused"];
 
@@ -12,7 +13,7 @@ const DETAILS = {
   "conn-claude-balin": {
     createdAgo: 94 * DAY_MS, lastUsedAgo: 2 * MINUTE_MS, consecutiveUseCount: 14,
     expiresAt: isoAhead(5 * HOUR_MS), scope: "user:inference user:profile",
-    providerSpecificData: { subscriptionType: "max", rateLimitTier: "default_claude_max_20x" },
+    providerSpecificData: { subscriptionType: "max", rateLimitTier: "default_claude_max_20x", proxyPoolId: "pool-erebor" },
   },
   "conn-anthropic-team": {
     createdAgo: 61 * DAY_MS, lastUsedAgo: 26 * MINUTE_MS,
@@ -28,7 +29,7 @@ const DETAILS = {
     expiresAt: isoAhead(3 * DAY_MS), backoffLevel: 2,
     rateLimitedUntil: isoAhead(37 * MINUTE_MS),
     locks: { "modelLock_gpt-5.5": isoAhead(37 * MINUTE_MS) },
-    providerSpecificData: { chatgptPlanType: "plus", accountId: "acct_1d77b3a9c2", codexFingerprintMode: "session" },
+    providerSpecificData: { chatgptPlanType: "plus", accountId: "acct_1d77b3a9c2", codexFingerprintMode: "session", proxyPoolId: "pool-dale" },
   },
   "conn-gemini-cli": {
     createdAgo: 55 * DAY_MS, lastUsedAgo: 48 * MINUTE_MS, projectId: "erebor-gemini-4821",
@@ -67,6 +68,14 @@ const EXTRA_CONNECTIONS = [
   { id: "conn-firecrawl", provider: "firecrawl", authType: "apikey", name: "Firecrawl crawler", email: null, priority: 1, isActive: true, testStatus: "active" },
   {
     id: "conn-forge-embed", provider: "custom-embedding-forge", authType: "apikey", name: "Forge embeddings", email: null, priority: 1, isActive: true, testStatus: "active",
+    providerSpecificData: { prefix: "forge-embed", baseUrl: "http://forge.erebor.internal:8080/v1", nodeName: "Forge embeddings" },
+  },
+  { id: "conn-openai-studio", provider: "openai", authType: "apikey", name: "Dale image studio", email: null, priority: 2, isActive: false, testStatus: "active" },
+  { id: "conn-elevenlabs-localization", provider: "elevenlabs", authType: "apikey", name: "Dale localization voices", email: null, priority: 2, isActive: false, testStatus: "active" },
+  { id: "conn-tavily-ci", provider: "tavily", authType: "apikey", name: "Tavily CI research", email: null, priority: 2, isActive: false, testStatus: "active" },
+  { id: "conn-firecrawl-archive", provider: "firecrawl", authType: "apikey", name: "Firecrawl archive worker", email: null, priority: 2, isActive: false, testStatus: "active" },
+  {
+    id: "conn-forge-embed-batch", provider: "custom-embedding-forge", authType: "apikey", name: "Forge batch embeddings", email: null, priority: 2, isActive: false, testStatus: "active",
     providerSpecificData: { prefix: "forge-embed", baseUrl: "http://forge.erebor.internal:8080/v1", nodeName: "Forge embeddings" },
   },
 ];
@@ -109,7 +118,7 @@ export function seedConnections() {
   return [
     ...CONNECTIONS.map((entry) => buildConnection(entry, DETAILS[entry.id])),
     ...EXTRA_CONNECTIONS.map((entry) => buildConnection(entry, EXTRA_DETAILS[entry.id])),
-  ];
+  ].map((connection) => ({ ...connection, demoQuota: quotaSnapshot(connection) }));
 }
 
 export function seedProviderNodes() {

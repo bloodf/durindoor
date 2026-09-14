@@ -199,7 +199,7 @@ function SortableEventsTable() {
   );
 
   return (
-    <div className="w-full max-w-7xl">
+    <div className="w-full min-w-0 max-w-7xl">
       <DataTable caption="Requests sortable by event count" columns={sortableColumns} rows={sortedRows} keyFn={(row) => row.id} density="compact" />
     </div>
   );
@@ -342,9 +342,10 @@ export const ServerOwnedTotal = {
   },
 };
 
+/** Compact density applies identical horizontal padding to sortable headers and body cells. */
 export const Narrow = {
   render: () => (
-    <div className="w-60">
+    <div className="w-60 min-w-0 max-w-full">
       <DataTable caption="Narrow viewport requests" columns={columns} rows={timeline.slice(0, 3)} keyFn={(row) => row.id} density="compact" />
     </div>
   ),
@@ -352,6 +353,36 @@ export const Narrow = {
     const canvas = within(canvasElement);
     const scrollRegion = canvas.getByRole("region", { name: "Narrow viewport requests rows" });
     await expect(scrollRegion.tabIndex).toBe(0);
+    await expect(canvas.getByRole("table")).toBeInTheDocument();
+  },
+};
+
+/** Bound the host, not its overflow: DataTable owns scrolling and long-value wrapping. */
+export const DenseLongValues = {
+  render: () => (
+    <div className="w-80 min-w-0 max-w-full">
+      <DataTable
+        caption="Dense requests with long identifiers"
+        density="compact"
+        columns={[
+          { key: "id", label: "Request ID", rowHeader: true, mono: true, width: "12rem" },
+          { key: "route", label: "Resolved route", mono: true },
+          { key: "events", label: "Events", align: "right", width: "5rem", sortDirection: "descending", onSort: () => {} },
+        ]}
+        rows={[{
+          id: "req_01J8X4P8K2_uninterrupted_identifier_that_must_not_escape_the_cell",
+          route: "provider/region/account/model-with-a-very-long-unbroken-revision-name",
+          events: 14,
+        }]}
+        keyFn={(row) => row.id}
+      />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("rowheader")).toBeInTheDocument();
+    await expect(canvas.getByRole("columnheader", { name: /Events/ })).toHaveAttribute("aria-sort", "descending");
+    await expect(canvas.getByRole("button", { name: /Events/ })).toBeInTheDocument();
   },
 };
 

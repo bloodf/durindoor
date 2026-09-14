@@ -29,7 +29,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
-import { getProviderStatus, getFreeAuthTypes, matchesProviderSearch, OAUTH_AUTH_TYPES, OAUTH_STATUS_AUTH_TYPES } from "./providerFilters";
+import { getProviderStatus, getFreeAuthTypes, matchesProviderSearch, matchesProviderStatus, OAUTH_AUTH_TYPES, OAUTH_STATUS_AUTH_TYPES } from "./providerFilters";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -308,13 +308,17 @@ export default function ProvidersPage() {
   };
 
   const matchStatus = (key, authTypes, noAuth = false) =>
-  getProviderStatus(
-    connections,
-    key,
-    authTypes,
-    noAuth,
-    disabledFreeProviders
-  ) === providerFilter;
+  providerFilter === "all" ||
+  matchesProviderStatus(
+    providerFilter,
+    getProviderStatus(
+      connections,
+      key,
+      authTypes,
+      noAuth,
+      disabledFreeProviders
+    )
+  );
 
   const compatibleProviders = providerNodes.
   filter((node) => node.type === "openai-compatible").
@@ -432,6 +436,7 @@ export default function ProvidersPage() {
           value={providerFilter}
           onChange={(e) => setProviderFilter(e.target.value)}
           options={[
+          { value: "all", label: "All" },
           { value: "active", label: "Active only" },
           { value: "deactivated", label: "Deactivated" },
           { value: "not-configured", label: "Not configured" }]

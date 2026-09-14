@@ -1,3 +1,9 @@
+# Unreleased
+
+## Fixes
+
+- fix(website): the demo login page now shows the accepted demo password in a persistent notice above the form, with a copy button. It was previously only legible in small text inside the dismissible demo banner, so visitors could not tell how to sign in.
+
 # 4.3.0
 
 ## Features

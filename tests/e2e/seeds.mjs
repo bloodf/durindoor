@@ -18,8 +18,8 @@
 // an OAuth credential that could refresh or request external quota data.
 //
 // Scenarios are explicit names ("baseline" | "empty" | "providers" | "key" |
-// "combo" | "timeline" | "media" | "fail" | "stream"); anything else is a hard
-// error so route specs cannot silently consume the wrong fixture.
+// "combo" | "timeline" | "media" | "fail" | "stream" | "token-saver");
+// anything else is a hard error so specs cannot consume the wrong fixture.
 //
 // CLI form (used by H0a in the app container before boot, after DB close):
 //   node tests/e2e/seeds.mjs --data-dir <abs> --scenario <name> [--reset]
@@ -53,6 +53,7 @@ export const SCENARIO_NAMES = Object.freeze([
   "media",
   "fail",
   "stream",
+  "token-saver",
 ]);
 
 const MARKER_KIND = "durindoor-ui-qa";
@@ -270,11 +271,32 @@ async function seedLocalUsage(connection) {
   return row;
 }
 
+/** Persist a tracked observation so R29 never depends on prior chat-flow telemetry. */
+async function seedTokenSaverEvent() {
+  const [{ normalizeTokenSaverEvent }, { toLocalDateKey }] = await Promise.all([
+    import("../../open-sse/rtk/index.js"),
+    import("../../src/lib/usagePeriods.js"),
+  ]);
+  const db = await getAdapter();
+  const now = new Date();
+  const event = normalizeTokenSaverEvent({
+    rtk: { requestsWithHits: 1, hits: 1, bytesBefore: 512, bytesAfter: 256, bytesSaved: 256 },
+  });
+  return db.run(
+    "INSERT INTO tokenSaverEvents(timestamp, dateKey, data) VALUES (?, ?, ?)",
+    [now.toISOString(), toLocalDateKey(now), JSON.stringify(event)],
+  ).lastInsertRowid;
+}
+
 /** Delete only the exact ids a prior seed run created; no LIKE/prefix scans. */
 async function deleteExactIds(ids) {
   const db = await getAdapter();
   let removed = 0;
   db.transaction(() => {
+    if (ids.tokenSaverEventIds?.length) {
+      const placeholders = ids.tokenSaverEventIds.map(() => "?").join(",");
+      removed += db.run(`DELETE FROM tokenSaverEvents WHERE id IN (${placeholders})`, ids.tokenSaverEventIds).changes;
+    }
     if (ids.usageHistoryIds?.length) {
       const placeholders = ids.usageHistoryIds.map(() => "?").join(",");
       removed += db.run(`DELETE FROM usageHistory WHERE id IN (${placeholders})`, ids.usageHistoryIds).changes;
@@ -524,6 +546,7 @@ export async function seedQa(input) {
     const providerNodes = [];
 
     const usageHistory = [];
+    const tokenSaverEventIds = scenario === "token-saver" ? [await seedTokenSaverEvent()] : [];
 
     let openaiCompatibleNode = null;
     if (scenario === "baseline" || scenario === "providers") {
@@ -644,6 +667,7 @@ export async function seedQa(input) {
         traceIds: traces.map((t) => t.id),
         providerNodeIds: providerNodes.map((node) => node.id),
         usageHistoryIds: usageHistory.map((row) => row.id),
+        tokenSaverEventIds,
       },
       priorSettings: { enableProxyTimeline: priorEnableProxyTimeline },
     });

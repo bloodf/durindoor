@@ -18,11 +18,51 @@ const healthyRoutes = {
 const unhealthyRoutes = {
   "GET /api/models/availability": {
     body: {
-      unavailableCount: 2,
+      unavailableCount: 5,
       models: [
-        { provider: "openai", model: "gpt-4o", status: "available" },
-        { provider: "anthropic", model: "claude-3-5-sonnet", status: "cooldown" },
-        { provider: "groq", model: "mixtral-8x7b", status: "unavailable" },
+        {
+          provider: "anthropic",
+          model: "__all",
+          status: "cooldown",
+          until: "2026-09-12T18:30:00.000Z",
+          connectionId: "anthropic-primary",
+          connectionName: "Production account",
+          lastError: "Rate limit reached",
+        },
+        {
+          provider: "anthropic",
+          model: "__all",
+          status: "cooldown",
+          until: "2026-09-12T18:30:00.000Z",
+          connectionId: "anthropic-primary",
+          connectionName: "Production account",
+          lastError: "Rate limit reached",
+        },
+        {
+          provider: "anthropic",
+          model: "__all",
+          status: "unavailable",
+          connectionId: "anthropic-backup",
+          connectionName: "Backup account",
+          lastError: "Authentication failed",
+        },
+        {
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          status: "cooldown",
+          until: "2026-09-12T18:45:00.000Z",
+          connectionId: "anthropic-backup",
+          connectionName: "Backup account",
+          lastError: "Capacity temporarily exhausted",
+        },
+        {
+          provider: "groq",
+          model: "__all",
+          status: "unavailable",
+          connectionId: "groq-team",
+          connectionName: "Team account",
+          lastError: "Authentication failed",
+        },
       ],
     },
   },
@@ -43,7 +83,7 @@ export default meta;
 /** Healthy state: emerald trigger button shows "All models operational" with `aria-expanded=false`. */
 export const Healthy = {};
 
-/** Unhealthy state: amber trigger button, popover lists per-provider cooldowns/unavailable with clear actions. */
+/** Unhealthy state: provider/account groups explain account-wide and model-specific issues without exposing sentinels. */
 export const WithIssuesOpen = {
   parameters: {
     storyFixture: { scenario: "default", pathname: "/dashboard/providers", params: {}, routes: unhealthyRoutes },
@@ -52,7 +92,11 @@ export const WithIssuesOpen = {
     const canvas = within(canvasElement);
     const trigger = await canvas.findByRole("button", { name: /models with issues/i });
     await userEvent.click(trigger);
-    await expect(await canvas.findByText("Model Status")).toBeInTheDocument();
-    await expect(await canvas.findByText("claude-3-5-sonnet")).toBeInTheDocument();
+    const dialog = await canvas.findByRole("dialog", { name: "Model Status" });
+    await expect(within(dialog).getByText("Production account")).toBeInTheDocument();
+    await expect(within(dialog).getByText("Backup account")).toBeInTheDocument();
+    await expect(within(dialog).getByText("All models")).toBeInTheDocument();
+    await expect(within(dialog).getByText("claude-sonnet-4-5")).toBeInTheDocument();
+    await expect(dialog).not.toHaveTextContent("__all");
   },
 };

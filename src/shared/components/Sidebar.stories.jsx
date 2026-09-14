@@ -21,13 +21,14 @@ const meta = {
 };
 export default meta;
 
-/** Covers private provider/token/media groups, translator gate, and update overlay. */
+/** Opening the Token Saver group exposes its routes; the update action opens its dialog. */
 export const GroupsAndUpdate = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Providers" }));
-    await waitFor(() => expect(canvas.getByText("Configuration")).toBeVisible());
-    await userEvent.click(canvas.getByRole("button", { name: "Token Saver" }));
+    const group = canvas.getByRole("button", { name: "Token Saver" });
+    await expect(group).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(group);
+    await expect(group).toHaveAttribute("aria-expanded", "true");
     await waitFor(() => expect(canvas.getByText("Statistics")).toBeVisible());
     await userEvent.click(await canvas.findByRole("button", { name: "Update now" }));
     await waitFor(() => expect(within(document.body).getByRole("dialog", { name: "Update available" })).toBeVisible());
@@ -44,6 +45,29 @@ export const MediaExpanded = {
         "GET /api/version": { body: {} },
       },
     },
+  },
+};
+
+export const TokenSaverActiveHierarchy = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/token-saver",
+      routes: {
+        "GET /api/settings": { body: {} },
+        "GET /api/version": { body: {} },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const parent = canvas.getByRole("button", { name: "Token Saver" });
+    const statistics = canvas.getByRole("link", { name: "Statistics" });
+    await expect(parent).toHaveAttribute("aria-expanded", "true");
+    await expect(parent).not.toHaveAttribute("aria-current");
+    await expect(statistics).toHaveAttribute("aria-current", "page");
+    const optimize = within(canvas.getByRole("group", { name: "Optimize" }));
+    await expect(optimize.getByRole("link", { name: "Settings" })).not.toHaveAttribute("aria-current");
   },
 };
 

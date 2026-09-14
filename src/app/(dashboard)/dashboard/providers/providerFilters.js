@@ -37,6 +37,11 @@ export function getFreeAuthTypes(providerId, provider) {
   return OAUTH_AUTH_TYPES;
 }
 
+/** Match one derived provider status; "all" deliberately preserves every status category. */
+export function matchesProviderStatus(statusFilter, providerStatus) {
+  return statusFilter === "all" || providerStatus === statusFilter;
+}
+
 /**
  * Derive the dashboard status of a provider based on its connection rows and
  * free-provider opt-out setting.

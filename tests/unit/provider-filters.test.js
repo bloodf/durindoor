@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isProviderConfigured,
   getProviderStatus,
+  matchesProviderStatus,
   OAUTH_AUTH_TYPES,
   OAUTH_STATUS_AUTH_TYPES,
 } from "../../src/app/(dashboard)/dashboard/providers/providerFilters.js";
@@ -43,6 +44,17 @@ describe("providerFilters", () => {
       expect(
         isProviderConfigured([{ provider: "openai", authType: "apikey" }], "anthropic"),
       ).toBe(false);
+    });
+  });
+
+  describe("matchesProviderStatus", () => {
+    it("keeps all status categories while specific filters stay restrictive", () => {
+      const statuses = ["active", "deactivated", "not-configured"];
+
+      expect(statuses.filter((status) => matchesProviderStatus("all", status))).toEqual(statuses);
+      expect(statuses.filter((status) => matchesProviderStatus("active", status))).toEqual(["active"]);
+      expect(statuses.filter((status) => matchesProviderStatus("deactivated", status))).toEqual(["deactivated"]);
+      expect(statuses.filter((status) => matchesProviderStatus("not-configured", status))).toEqual(["not-configured"]);
     });
   });
 

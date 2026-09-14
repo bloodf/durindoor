@@ -1,0 +1,168 @@
+/* Light theme. The root layout's theme bootstrap drops `html.dark` for light
+   preference; the homepage then turns its daylight sections to parchment (Durin DS
+   light tokens) while the hero, code, terminals, the constellation disk, the
+   quota ledger and the final CTA stay as dark "stone" islands. */
+
+html:not(.dark):has(.dd-home),
+html:not(.dark):has(.dd-home) body {
+  background: #faf6ec;
+}
+
+html:not(.dark) .dd-home {
+  --home-bg: #faf6ec;
+  --home-bg-2: #f3eedf;
+  --home-panel: rgba(255, 255, 255, 0.72);
+  --home-card: linear-gradient(180deg, #fffdf7, #f5f0e2);
+  --home-line: rgba(28, 25, 19, 0.1);
+  --home-line-strong: rgba(28, 25, 19, 0.2);
+  --home-text: #1c1913;
+  --home-muted: #4b4438;
+  --home-emerald: #03543b;
+  --home-gold: #7a5b08;
+  --home-danger: #8b1414;
+  color-scheme: light;
+}
+
+/* Stone islands keep the dark palette in either theme. */
+html:not(.dark) .dd-home :is(
+    .hero,
+    .site-nav,
+    .terminal,
+    .code-block,
+    .window,
+    .flow-frame,
+    .fallback-log,
+    .saver-pane,
+    .constellation-stage,
+    .section-quota,
+    .section-final,
+    .site-footer
+  ) {
+  --home-bg: #040705;
+  --home-panel: rgba(20, 24, 21, 0.72);
+  --home-card: linear-gradient(180deg, rgba(22, 27, 23, 0.9), rgba(12, 15, 13, 0.9));
+  --home-line: rgba(237, 230, 216, 0.08);
+  --home-line-strong: rgba(237, 230, 216, 0.16);
+  --home-text: #ede6d8;
+  --home-muted: #b8b1a2;
+  --home-emerald: #10e882;
+  --home-gold: #d4af37;
+  --home-danger: #ff8a7a;
+  color: var(--home-text);
+  color-scheme: dark;
+}
+
+html:not(.dark) .dd-home .section-quota {
+  background: #040705;
+}
+
+/* Leaving Moria: the first daylight section fades up out of the hero's night. */
+html:not(.dark) .dd-home .kinds-dawn {
+  height: 260px;
+  background: linear-gradient(180deg, #040705, rgba(4, 7, 5, 0.55) 30%, rgba(250, 246, 236, 0));
+}
+
+html:not(.dark) .dd-home .section-kinds {
+  padding-top: clamp(140px, 16vw, 200px);
+}
+
+/* The WebGL streams are drawn light-on-black; invert them into ink on parchment. */
+html:not(.dark) .dd-home .flow-streams .three-stage-canvas {
+  filter: invert(1) hue-rotate(180deg);
+  mix-blend-mode: multiply;
+}
+
+html:not(.dark) .dd-home .section-flow {
+  background: radial-gradient(70% 50% at 50% 0%, rgba(3, 84, 59, 0.08), transparent 70%), var(--home-bg);
+}
+
+html:not(.dark) .dd-home .feature-inner {
+  background: var(--home-card);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 14px 40px -28px rgba(28, 25, 19, 0.35);
+}
+
+html:not(.dark) .dd-home :is(.kind-inner, .tier, .constellation-facts div, .compare-frame, .connect-card) {
+  box-shadow: 0 14px 40px -30px rgba(28, 25, 19, 0.35);
+}
+
+html:not(.dark) .dd-home .feature-inner::before,
+html:not(.dark) .dd-home .kind-inner::before {
+  background: radial-gradient(320px circle at var(--mx) var(--my), rgba(3, 84, 59, 0.1), transparent 50%);
+}
+
+html:not(.dark) .dd-home :is(.feature-icon, .kind-icon) {
+  border-color: rgba(3, 84, 59, 0.25);
+  background: rgba(3, 84, 59, 0.08);
+}
+
+html:not(.dark) .dd-home .feature-n {
+  color: rgba(122, 91, 8, 0.8);
+}
+
+html:not(.dark) .dd-home .quick-step {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+html:not(.dark) .dd-home .flow-step:hover {
+  background: rgba(28, 25, 19, 0.04);
+}
+
+html:not(.dark) .dd-home .tier.is-served {
+  border-color: rgba(3, 84, 59, 0.55);
+  box-shadow: 0 0 0 1px rgba(3, 84, 59, 0.2), 0 18px 50px -28px rgba(3, 84, 59, 0.5);
+}
+
+html:not(.dark) .dd-home .tier.is-trying {
+  border-color: rgba(122, 91, 8, 0.55);
+  box-shadow: 0 0 0 1px rgba(122, 91, 8, 0.2), 0 18px 50px -28px rgba(122, 91, 8, 0.45);
+}
+
+html:not(.dark) .dd-home .tier.is-failed {
+  border-color: rgba(139, 20, 20, 0.35);
+}
+
+html:not(.dark) .dd-home .sticky-rr-accounts li.is-current {
+  border-color: rgba(3, 84, 59, 0.45);
+  background: rgba(3, 84, 59, 0.07);
+}
+
+html:not(.dark) .dd-home :is(.kinds-total-n, .saver-stat-n) {
+  text-shadow: none;
+}
+
+html:not(.dark) .dd-home .copy-btn {
+  background: rgba(28, 25, 19, 0.04);
+}
+
+html:not(.dark) .dd-home .compare td.is-door {
+  background: linear-gradient(90deg, rgba(3, 84, 59, 0.07), transparent);
+}
+
+html:not(.dark) .dd-home .compare-mark.is-yes {
+  background: rgba(3, 84, 59, 0.12);
+}
+
+html:not(.dark) .dd-home .deploy-tab.is-active {
+  color: #fff;
+}
+
+html:not(.dark) .dd-home .deploy-pill {
+  background: linear-gradient(180deg, #0a6e4d, #03543b);
+}
+
+html:not(.dark) .dd-home .rune-divider svg {
+  filter: none;
+}
+
+html:not(.dark) .dd-home .demo-glow {
+  opacity: 0.5;
+}
+
+html:not(.dark) .dd-home ::selection {
+  background: rgba(3, 84, 59, 0.2);
+  color: #1c1913;
+}
+
+html:not(.dark) .dd-home .flow-frame {
+  background: radial-gradient(40% 60% at 50% 50%, rgba(16, 232, 130, 0.08), transparent 70%), #0b0e0c;
+}

@@ -9,6 +9,8 @@ import { isBrowser } from "../../utils/typeChecks.js";
  * hint?, disabled? }`; `onChange` receives selected value. The trigger keeps
  * forwarded native attributes such as `name`, `aria-invalid`, and
  * `aria-describedby`.
+ * With fullWidth=false, caller width utilities own sizing; an explicit w-auto
+ * would override arbitrary widths in the generated Tailwind cascade.
  *
  * Keyboard: Arrow/Home/End and typeahead move active option; Enter/Space
  * select it; Escape cancels and returns focus to trigger; Tab exits normally.
@@ -24,6 +26,7 @@ export default function Select({
   size = "md",
   disabled = false,
   placement = "bottom",
+  fullWidth = true,
   className,
   ...rest
 }) {
@@ -221,7 +224,7 @@ export default function Select({
   ) : null;
 
   return (
-    <div ref={rootRef} className={className ? `w-full ${className}` : "w-full"}>
+    <div ref={rootRef} className={[fullWidth ? "w-full" : "min-w-0", className].filter(Boolean).join(" ")}>
       <button
         ref={triggerRef}
         type="button"
@@ -237,7 +240,7 @@ export default function Select({
         {...rest}
       >
         {selected ? <span className="flex min-w-0 items-center gap-2">{selected.icon ? <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none text-dd-muted">{selected.icon}</span> : null}<span className="truncate">{selected.label}</span></span> : <span className="truncate text-dd-subtle">{placeholder}</span>}
-        <span aria-hidden="true" className={`material-symbols-outlined shrink-0 text-[18px] leading-none text-dd-muted transition-transform ${open ? "rotate-180" : ""}`}>expand_more</span>
+        <span aria-hidden="true" className={`material-symbols-outlined w-[1em] shrink-0 overflow-hidden text-[18px]! leading-none text-dd-muted transition-transform ${open ? "rotate-180" : ""}`}>expand_more</span>
       </button>
       {portalHost ? createPortal(listbox, portalHost) : null}
     </div>

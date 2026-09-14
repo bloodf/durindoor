@@ -59,6 +59,7 @@ describe("Durin DS Select", () => {
     await dispose(root, container);
   });
 
+
   it("navigates active option then selects with Enter", async () => {
     const onChange = vi.fn();
     const { container, root } = await render(

@@ -184,8 +184,8 @@ export default function Modal({
     backdropPointerRef.current = false;
   };
   const surfaceClass = drawer
-    ? "slide-in-right flex h-full max-w-full flex-col border-s border-dd-border bg-dd-surface shadow-dd-elevated motion-reduce:animate-none"
-    : `fade-in slide-in-top flex max-h-[85vh] w-full flex-col overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface shadow-dd-elevated motion-reduce:animate-none ${SIZES[size] ?? SIZES.md}`;
+    ? "slide-in-right flex h-full min-w-0 max-w-full flex-col border-s border-dd-border bg-dd-surface shadow-dd-elevated motion-reduce:animate-none"
+    : `fade-in slide-in-top flex max-h-[85vh] min-w-0 w-full flex-col overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface shadow-dd-elevated motion-reduce:animate-none ${SIZES[size] ?? SIZES.md}`;
   const dialogClass = drawer
     ? "fixed inset-0 m-0 flex h-full w-full max-w-none items-stretch justify-end overflow-hidden border-0 bg-transparent p-0 backdrop:bg-dd-backdrop backdrop:backdrop-blur-sm rtl:justify-start [&:not([open])]:hidden"
     : "fixed inset-0 m-0 flex h-full w-full max-w-none items-center justify-center overflow-hidden border-0 bg-transparent p-4 backdrop:bg-dd-backdrop backdrop:backdrop-blur-sm [&:not([open])]:hidden";
@@ -207,10 +207,11 @@ export default function Modal({
         style={drawer ? { width } : undefined}
         className={`${surfaceClass} ${surfaceClassName}`}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-dd-border-subtle px-5 py-4">
-          <div className="flex min-w-0 flex-col gap-0.5">
-            {title ? <h2 id={titleId} className="text-base font-semibold text-dd-text">{title}</h2> : null}
-            {subtitle ? <p id={descriptionId} className="text-xs text-dd-muted">{subtitle}</p> : null}
+        {/* Modal content uses 16px padding on narrow screens and the canonical 20px from sm upward. */}
+        <header className="flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-dd-border-subtle px-4 py-4 sm:px-5">
+          <div className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5 break-words">
+            {title ? <h2 id={titleId} className="text-base font-semibold text-dd-text break-words">{title}</h2> : null}
+            {subtitle ? <p id={descriptionId} className="text-xs text-dd-muted break-words">{subtitle}</p> : null}
           </div>
           {showClose ? (
           <button
@@ -224,8 +225,8 @@ export default function Modal({
           </button>
           ) : null}
         </header>
-        <div className="flex-1 overflow-y-auto px-5 py-4 text-[13px] leading-relaxed text-dd-text">{children}</div>
-        {footer ? <footer className="flex items-center justify-end gap-2 border-t border-dd-border-subtle px-5 py-3.5">{footer}</footer> : null}
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-4 text-[13px] leading-relaxed text-dd-text sm:px-5">{children}</div>
+        {footer ? <footer className="flex min-w-0 flex-wrap items-center justify-end gap-2 border-t border-dd-border-subtle px-4 py-3.5 sm:px-5 [&>*]:max-w-full [&>*]:min-w-0 [&>*]:whitespace-normal [&>*]:break-words [&>a]:min-h-11 [&>button]:min-h-11">{footer}</footer> : null}
       </section>
     </dialog>,
     document.body,

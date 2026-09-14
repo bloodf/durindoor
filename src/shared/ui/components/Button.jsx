@@ -27,6 +27,9 @@ const SIZES = {
 /**
  * Leading/trailing glyph. Always aria-hidden — the accessible name comes
  * from the button's visible text (or an aria-label passed via `...rest`).
+ * Reserve one glyph advance while the font loads: fallback ligature text must
+ * not widen the button and move adjacent click targets.
+ * The local size overrides the legacy unlayered 24px icon rule.
  */
 function ButtonIcon({ name, spin = false }) {
   return (
@@ -34,8 +37,8 @@ function ButtonIcon({ name, spin = false }) {
       aria-hidden="true"
       className={
         spin
-          ? "material-symbols-outlined animate-spin text-[18px] leading-none"
-          : "material-symbols-outlined text-[18px] leading-none"
+          ? "material-symbols-outlined w-[1em] shrink-0 overflow-hidden animate-spin text-[18px]! leading-none"
+          : "material-symbols-outlined w-[1em] shrink-0 overflow-hidden text-[18px]! leading-none"
       }
     >
       {name}

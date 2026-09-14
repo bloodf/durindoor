@@ -30,3 +30,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# Public website (Vercel), not part of the image
+website

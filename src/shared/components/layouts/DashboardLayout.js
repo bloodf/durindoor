@@ -122,8 +122,9 @@ export default function DashboardLayout({ children }) {
       </Drawer>
       <main className="flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate">
         <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} />
-        <div tabIndex={0} role="region" aria-label="Page content" className={`flex-1 overflow-y-auto custom-scrollbar outline-none focus-visible:shadow-dd-focus ${pathname === "/dashboard/playground" ? "" : "p-6 lg:p-10"} ${pathname === "/dashboard/playground" ? "flex flex-col overflow-hidden" : ""}`}>
-          <div className={`${pathname === "/dashboard/playground" ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>{children}</div>
+        <div tabIndex={0} role="region" aria-label="Page content" className={`flex-1 overflow-y-auto custom-scrollbar outline-none focus-visible:shadow-dd-focus ${pathname === "/dashboard/playground" ? "flex flex-col overflow-hidden" : "p-4 sm:p-6 xl:p-8"}`}>
+          {/* Dashboard content uses 16/24/32px responsive gutters; Playground remains full bleed. */}
+          <div className={`${pathname === "/dashboard/playground" ? "flex h-full w-full flex-1 flex-col" : "mx-auto w-full min-w-0 max-w-7xl"}`}>{children}</div>
         </div>
       </main>
     </div>

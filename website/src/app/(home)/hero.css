@@ -1,0 +1,293 @@
+/* Hero: sticky WebGL stage with the scroll-driven door opening. */
+
+.hero {
+  position: relative;
+  height: 200svh;
+  z-index: 1;
+}
+
+.hero-sticky {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  min-height: 600px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.hero-stage {
+  position: absolute;
+  inset: 0;
+}
+
+/* CSS fallback: painted first, visible without WebGL, covered by the canvas. */
+.hero-fallback {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 55% at 72% 58%, rgba(16, 232, 130, 0.2), transparent 70%),
+    radial-gradient(40% 40% at 72% 90%, rgba(180, 200, 190, 0.12), transparent 70%),
+    radial-gradient(120% 90% at 50% 0%, #0b120e 0%, #040705 60%);
+}
+
+.hero-fallback-arch {
+  position: absolute;
+  left: 72%;
+  top: 54%;
+  width: min(34vw, 380px);
+  aspect-ratio: 3 / 4.6;
+  transform: translate(-50%, -50%);
+  border: 18px solid #1a1f1b;
+  border-bottom: 0;
+  border-radius: 999px 999px 0 0;
+  box-shadow: inset 0 0 0 2px rgba(16, 232, 130, 0.35), 0 0 80px rgba(16, 232, 130, 0.12);
+  background: linear-gradient(180deg, #0c100d, #070a08);
+}
+
+.hero-fallback-seam {
+  position: absolute;
+  left: 72%;
+  top: 54%;
+  width: 3px;
+  height: min(46vw, 520px);
+  transform: translate(-50%, -48%);
+  background: linear-gradient(180deg, transparent, #b9ffd9 30%, #10e882 70%, transparent);
+  box-shadow: 0 0 24px 6px rgba(16, 232, 130, 0.55);
+}
+
+.hero-canvas {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+
+.hero-canvas.is-ready {
+  opacity: 1;
+}
+
+.hero-canvas canvas {
+  display: block;
+}
+
+.hero-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(4, 7, 5, 0.9) 0%, rgba(4, 7, 5, 0.55) 34%, rgba(4, 7, 5, 0) 58%),
+    linear-gradient(0deg, #040705 0%, rgba(4, 7, 5, 0) 22%);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  justify-items: start;
+  gap: 22px;
+  padding-top: 64px;
+}
+
+.hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px 6px 10px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.07);
+  color: #e9d9a6;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(6px);
+}
+
+.kicker-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--home-emerald);
+  box-shadow: 0 0 12px var(--home-emerald);
+  animation: kicker-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes kicker-pulse {
+  50% {
+    opacity: 0.4;
+    box-shadow: 0 0 2px var(--home-emerald);
+  }
+}
+
+.hero-title {
+  max-width: 11ch;
+  font-family: var(--home-display);
+  font-weight: 700;
+  font-size: clamp(44px, 6.6vw, 100px);
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+  text-shadow: 0 4px 40px rgba(0, 0, 0, 0.6);
+}
+
+.hero-word {
+  display: inline-block;
+  margin-right: 0.22em;
+}
+
+.hero-sub {
+  max-width: 520px;
+  color: #cfc7b7;
+  font-size: clamp(17px, 1.7vw, 20px);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.hero-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.install-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 8px 8px 8px 18px;
+  border: 1px solid var(--home-line-strong);
+  border-radius: 999px;
+  background: rgba(10, 14, 11, 0.7);
+  backdrop-filter: blur(10px);
+  font-family: var(--home-mono);
+  font-size: 14px;
+}
+
+.install-pill code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--home-text);
+}
+
+.install-prompt {
+  color: var(--home-emerald);
+}
+
+.install-pill .copy-btn {
+  border-radius: 999px;
+}
+
+.hero-github {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--home-muted);
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.hero-github:hover {
+  color: var(--home-gold);
+}
+
+.hero-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: radial-gradient(50% 60% at 50% 55%, rgba(185, 255, 217, 0.9), rgba(16, 232, 130, 0.45) 45%, rgba(4, 7, 5, 0) 80%);
+  mix-blend-mode: screen;
+}
+
+.scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  z-index: 3;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  transform: translateX(-50%);
+  color: var(--home-muted);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.scroll-cue-line {
+  width: 1px;
+  height: 42px;
+  background: linear-gradient(180deg, var(--home-emerald), transparent);
+  animation: cue-drop 2s ease-in-out infinite;
+  transform-origin: top;
+}
+
+@keyframes cue-drop {
+  0% {
+    transform: scaleY(0);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero-sticky {
+    align-items: flex-end;
+  }
+  .hero-content {
+    padding-bottom: 88px;
+    gap: 18px;
+  }
+  .hero-shade {
+    background: linear-gradient(0deg, #040705 0%, rgba(4, 7, 5, 0.88) 38%, rgba(4, 7, 5, 0.1) 70%, rgba(4, 7, 5, 0.3) 100%);
+  }
+  .hero-fallback-arch,
+  .hero-fallback-seam {
+    left: 50%;
+    top: 34%;
+  }
+  .hero-fallback-arch {
+    width: 56vw;
+  }
+  .hero-title {
+    max-width: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .hero-ctas {
+    width: 100%;
+  }
+  .hero-ctas .btn,
+  .install-pill {
+    width: 100%;
+  }
+  .install-pill {
+    justify-content: space-between;
+  }
+  .scroll-cue {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero {
+    height: auto;
+  }
+  .kicker-dot,
+  .scroll-cue-line {
+    animation: none;
+  }
+  .hero-flash,
+  .scroll-cue {
+    display: none;
+  }
+}

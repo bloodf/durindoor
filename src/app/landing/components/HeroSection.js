@@ -9,7 +9,7 @@ export default function HeroSection() {
   return (
     <section className="relative flex min-h-[90vh] flex-col items-center justify-center overflow-hidden px-6 pb-20 pt-32">
       <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-0 h-[500px] w-[1000px] -translate-x-1/2 rounded-full bg-dd-accent-soft blur-[120px]" />
-      <div className="relative z-10 flex w-full max-w-4xl flex-col items-center gap-8 text-center bg-dd-surface">
+      <div className="relative z-10 isolate flex w-full max-w-4xl flex-col items-center gap-8 rounded-dd-lg bg-dd-surface px-6 py-10 text-center shadow-dd-elevated sm:px-10 md:py-12">
         <Badge tone="accent" icon="auto_awesome" size="md" className="px-3 py-1"><span className="font-medium">v1.0 is now live</span></Badge>
         <h1 className="text-5xl font-black leading-[1.05] tracking-tight text-dd-text md:text-7xl">
           One endpoint for <br />

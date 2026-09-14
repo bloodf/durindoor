@@ -1,3 +1,9 @@
+# Unreleased
+
+## Features
+
+- feat(website): public site on Vercel with an animated homepage and a mocked demo of the real dashboard. The homepage ships complete English, Portuguese, Spanish, German, Japanese and Chinese catalogs behind the shared `locale` cookie, with document language, title and social metadata resolved server-side. The demo seeds several accounts per provider, each with its own identity, state and provider-shaped quota; reset-credit redemption clears only that account's windows and survives a reload. (#859)
+
 # 4.2.1
 
 ## Upstream ports

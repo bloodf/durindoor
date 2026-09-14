@@ -45,7 +45,7 @@ export function LoginView({
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-dd-bg p-4">
       <canvas ref={backdropRef} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />
       <div className="relative z-10 w-full max-w-md">
-        <div className="mb-8 text-center">
+        <div className="isolate mb-4 rounded-dd-lg bg-dd-surface px-6 py-5 text-center shadow-dd-elevated">
           {/*
             Token-colored serif wordmark (the legacy /durindoor-wordmark.png is
             white-on-transparent and invisible on the light "Parchment"

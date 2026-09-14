@@ -1,0 +1,46 @@
+"use client";
+
+import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
+
+import { TOOLS } from "../data.js";
+import { SectionHeader } from "../ui/primitives.jsx";
+
+// Two CSS marquees in opposite directions. The duplicate track is aria-hidden,
+// and reduced motion stops the animation and lets the row wrap instead.
+function Track({ items, reverse, renderItem, label }) {
+  return (
+    <div className={`marquee ${reverse ? "is-reverse" : ""}`}>
+      <ul className="marquee-track" aria-label={label}>
+        {items.map(renderItem)}
+      </ul>
+      <ul className="marquee-track is-clone" aria-hidden="true">
+        {items.map(renderItem)}
+      </ul>
+    </div>
+  );
+}
+
+export default function ToolsMarquee() {
+  const { t } = useHomeLocale();
+  return (
+    <section id="tools" className="section section-tools" aria-labelledby="tools-title">
+      <div className="container">
+        <SectionHeader
+          eyebrow={t("Compatible tools")}
+          title={<span id="tools-title">{t("If it speaks OpenAI, it walks through")}</span>}
+          lead={t("Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.")}
+        />
+      </div>
+      <Track
+        label={t("Compatible tools")}
+        items={TOOLS}
+        renderItem={(tool) => (
+          <li key={tool.name} className="tool-chip">
+            <span className="logo-chip"><img src={tool.logo} alt="" width="28" height="28" loading="lazy" /></span>
+            <span>{tool.name}</span>
+          </li>
+        )}
+      />
+    </section>
+  );
+}

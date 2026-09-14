@@ -306,7 +306,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   };
 
   return (
-    <header className="shrink-0 flex items-center justify-between gap-3 px-4 lg:px-8 pt-3 pb-2 border-b border-dd-border-subtle bg-dd-surface backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none z-20">
+    <header className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 lg:px-8 pt-3 pb-2 border-b border-dd-border-subtle bg-dd-surface backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none z-20">
       {/* Mobile menu button */}
       <div className="flex items-center gap-3 lg:hidden shrink-0">
         {showMenuButton && (
@@ -321,29 +321,29 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         )}
       </div>
 
-      {/* Page title with breadcrumbs */}
-      <div className="flex flex-col min-w-0 flex-1">
+      {/* Breadcrumbs get their own mobile row; actions retain their hit areas. */}
+      <div className={`flex min-w-0 flex-1 flex-col ${breadcrumbs.length > 0 ? "order-last basis-full lg:order-none lg:basis-auto" : ""}`}>
         {breadcrumbs.length > 0 ? (
-          <div className="flex items-center gap-2">
+          <nav aria-label="Breadcrumb" className="flex min-w-0 flex-wrap items-center gap-2">
             {breadcrumbs.map((crumb, index) => (
               <div
                 key={`${crumb.label}-${crumb.href || "current"}`}
-                className="flex items-center gap-2"
+                className="flex min-w-0 max-w-full items-center gap-2"
               >
                 {index > 0 && (
-                  <span className="material-symbols-outlined text-dd-muted text-base">
+                  <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-dd-muted text-base">
                     chevron_right
                   </span>
                 )}
                 {crumb.href ? (
                   <Link
                     href={crumb.href}
-                    className="text-dd-muted hover:text-dd-accent transition-colors"
+                    className="min-w-0 truncate text-dd-muted hover:text-dd-accent transition-colors"
                   >
                     {crumb.label}
                   </Link>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     {crumb.provider && (
                       <ProviderLogo
                         provider={crumb.provider}
@@ -359,7 +359,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
                 )}
               </div>
             ))}
-          </div>
+          </nav>
         ) : title ? (
           <div>
             <div className="flex items-center gap-2">
@@ -381,6 +381,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         ) : null}
       </div>
 
+        <HeaderSearch />
       {/* Right actions */}
       <div className="flex items-center gap-1 shrink-0">
         {displayName && loginMethod === "OIDC" && (
@@ -392,7 +393,6 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
             </span>
           </div>
         )}
-        <HeaderSearch />
         <ThemeToggle />
         <HeaderLanguage />
         <HeaderMenu onLogout={handleLogout} />
@@ -410,7 +410,7 @@ function HeaderSearch() {
   if (!visible) return null;
 
   return (
-    <div className="relative w-[160px] sm:w-[220px]">
+    <div className="relative order-last w-full lg:order-none lg:w-[220px]">
       <span aria-hidden="true" className="material-symbols-outlined pointer-events-none absolute start-2 top-1/2 -translate-y-1/2 text-[16px] text-dd-muted">
         search
       </span>

@@ -1,0 +1,1 @@
+{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["../src/*"], "@site/*": ["./src/*"], "open-sse/*": ["../open-sse/*"] } } }

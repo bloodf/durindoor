@@ -18,6 +18,8 @@
  *   Optional small trend row; the arrow glyph is derived from `delta.tone`.
  * @param {React.ReactNode} [props.hint] Footnote line (`text-xs text-dd-subtle`).
  */
+import { Card } from "./Card.jsx";
+
 const VALUE_TONE = {
   default: "text-dd-text",
   accent: "text-dd-accent",
@@ -42,27 +44,27 @@ export default function StatCard({ icon, label, value, tone = "default", delta, 
   const deltaIcon = delta ? (DELTA_ICON[delta.tone] ?? "trending_flat") : null;
 
   return (
-    <div className="flex flex-col gap-1 rounded-dd-lg border border-dd-border bg-dd-surface p-4">
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-dd-muted">
+    <Card padding="sm" className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <span className="min-w-0 break-words text-[11px] font-medium uppercase tracking-wide text-dd-muted">
           {label}
         </span>
         {icon ? (
-          <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none text-dd-subtle">
+          <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[18px] leading-none text-dd-subtle">
             {icon}
           </span>
         ) : null}
       </div>
-      <span className={`dd-tnum text-2xl font-semibold ${valueTone}`}>{value}</span>
+      <span className={`dd-tnum min-w-0 break-words text-2xl font-semibold ${valueTone}`}>{value}</span>
       {delta ? (
-        <span className={`inline-flex items-center gap-1 text-xs font-medium ${deltaTone}`}>
-          <span aria-hidden="true" className="material-symbols-outlined text-[14px] leading-none">
+        <span className={`inline-flex min-w-0 flex-wrap items-center gap-1 text-xs font-medium ${deltaTone}`}>
+          <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[14px] leading-none">
             {deltaIcon}
           </span>
-          <span className="dd-tnum">{delta.value}</span>
+          <span className="dd-tnum min-w-0 break-words">{delta.value}</span>
         </span>
       ) : null}
-      {hint ? <span className="text-xs text-dd-subtle">{hint}</span> : null}
-    </div>
+      {hint ? <span className="min-w-0 break-words text-xs text-dd-subtle">{hint}</span> : null}
+    </Card>
   );
 }

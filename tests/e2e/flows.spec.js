@@ -227,29 +227,34 @@ rawTest("R20 token-saver settings round trip uses harmless numeric setting", asy
     await qa.authenticate(page);
     const [settingsResponse] = await Promise.all([
       page.waitForResponse((response) => new URL(response.url()).pathname === "/api/settings" && response.request().method() === "GET" && response.ok()),
-      page.goto(`${qa.baseURL}/dashboard/token-saver/settings`, { waitUntil: "domcontentloaded" }),
+      page.goto(`${qa.baseURL}/dashboard/token-saver/settings`, { waitUntil: "load" }),
     ]);
-    const settingsBody = await settingsResponse.json().catch(() => ({}));
+    const settingsBody = await settingsResponse.json();
     originalValue = String(settingsBody?.pxpipeMinChars ?? 25000);
     await expect(minCharsInput(), "settings input must hydrate to saved value before the test mutates it").toHaveValue(originalValue);
     const next = String(Math.max(1, Number.parseInt(originalValue, 10) + 1));
-    await minCharsInput().fill(next);
+    // Exercise keyboard editing and the same Tab/blur save boundary an operator uses.
+    await minCharsInput().press("ControlOrMeta+A");
+    await minCharsInput().pressSequentially(next);
+    await expect(minCharsInput()).toHaveValue(next);
     await Promise.all([
       page.waitForResponse(isPxpipePatch(Number(next))),
-      minCharsInput().blur()
+      minCharsInput().press("Tab")
     ]);
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.reload({ waitUntil: "load" });
     await expect(minCharsInput(), "token-saver min chars persisted across reload").toHaveValue(next);
+    // Restoration is part of the successful round trip, not cleanup: a failed
+    // save must retain its original error. The fixture reset always runs below.
+    await minCharsInput().press("ControlOrMeta+A");
+    await minCharsInput().pressSequentially(originalValue);
+    await expect(minCharsInput()).toHaveValue(originalValue);
+    await Promise.all([
+      page.waitForResponse(isPxpipePatch(Number(originalValue))),
+      minCharsInput().press("Tab")
+    ]);
+    await page.reload({ waitUntil: "load" });
+    await expect(minCharsInput(), "original value persisted after restoration").toHaveValue(originalValue);
   } finally {
-    if (originalValue !== undefined) {
-      await minCharsInput().fill(originalValue);
-      const [restoreResponse] = await Promise.all([
-        page.waitForResponse(isPxpipePatch(Number(originalValue))),
-        minCharsInput().blur()
-      ]);
-      const restoreBody = JSON.parse(restoreResponse.request().postData() || "{}");
-      expect(restoreBody.pxpipeMinChars, "restore PATCH must include the original pxpipeMinChars").toBe(Number(originalValue));
-    }
     await qa.reset();
   }
   await qa.assertNoExternalEffects();
@@ -316,8 +321,9 @@ rawTest("R19b playground surfaces the upstream error message and an error badge"
     await composer.fill("trigger error");
     await page.getByRole("button", { name: "Send message", exact: true }).click();
     const assistant = page.getByRole("listitem").filter({ hasText: "[429]: Rate limit exceeded" });
-    await expect(assistant).toBeVisible({ timeout: 15_000 });
-    await expect(assistant.getByText("Error", { exact: true })).toBeVisible();
+    await expect(assistant).toContainText(`[${seed.provider}/${seed.model}] [429]: Rate limit exceeded`, { timeout: 15_000 });
+    const errorBadge = assistant.locator("span").filter({ has: page.locator(".material-symbols-outlined") }).filter({ hasText: "Error" });
+    await expect(errorBadge).toContainText("Error");
     await qa.assertNoExternalEffects();
   } finally {
     if (detachMode) await detachMode();

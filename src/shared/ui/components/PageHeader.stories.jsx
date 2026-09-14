@@ -36,3 +36,27 @@ export const WithActions = {
     ),
   },
 };
+
+/** Long identity text and multiple 44px actions wrap without clipping at mobile width. */
+export const NarrowWithLongContent = {
+  render: (args) => (
+    <div className="w-72 min-w-0 max-w-full">
+      <PageHeader {...args} />
+    </div>
+  ),
+  args: {
+    icon: "database",
+    title: "Production provider configuration with uninterrupted-routing-identifier",
+    subtitle: "Credentials, regional routing, and fallback behavior for a-long-unbroken-provider-reference-that-must-wrap",
+    actions: (
+      <>
+        <Button variant="secondary" icon="tune">
+          Configure routing
+        </Button>
+        <Button variant="primary" icon="add">
+          Add provider
+        </Button>
+      </>
+    ),
+  },
+};

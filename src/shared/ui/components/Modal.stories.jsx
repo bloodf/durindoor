@@ -116,3 +116,42 @@ export const Mobile = {
     await waitFor(() => expect(within(dialog).getByText("Responsive modal leaves viewport padding on narrow screens.")).toBeVisible());
   },
 };
+
+function NarrowOverflowDemo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className={TRIGGER_CLASS} onClick={() => setOpen(true)}>Open narrow overflow dialog</button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Review an unusually detailed configuration before continuing"
+        subtitle="Long dialog headings, descriptions, content, and actions stay within the narrow viewport."
+        size="sm"
+        footer={
+          <>
+            <button type="button" className={SECONDARY_CLASS} onClick={() => setOpen(false)}>Return without applying configuration changes</button>
+            <button type="button" className={TRIGGER_CLASS}>Confirm and apply every selected configuration change</button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {LORE.slice(0, 10).map((text) => <p key={text} className="break-words text-dd-muted">{text} Additional details remain readable without widening the document.</p>)}
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+export const NarrowOverflow = {
+  render: () => <NarrowOverflowDemo />,
+  parameters: { viewport: { defaultViewport: "mobile1" } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Open narrow overflow dialog" }));
+    const dialog = await within(document.body).findByRole("dialog", { name: "Review an unusually detailed configuration before continuing" });
+    await Promise.all(dialog.getAnimations({ subtree: true }).map(({ finished }) => finished.catch(() => {})));
+    await expect(dialog).toHaveAttribute("open");
+    await expect(within(dialog).getByRole("button", { name: "Confirm and apply every selected configuration change" })).toBeVisible();
+  },
+};

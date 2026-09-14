@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 
+import Button from "./Button.jsx";
 import Checkbox from "./Checkbox.jsx";
 import Field from "./Field.jsx";
 import Input from "./Input.jsx";
 import Modal from "./Modal.jsx";
+import IconButton from "./IconButton.jsx";
 import Select from "./Select.jsx";
 import Textarea from "./Textarea.jsx";
 
@@ -31,6 +33,22 @@ function ControlledSelect({ options = PROVIDER_OPTIONS, initialValue, ...props }
 
   return <Select {...props} options={options} value={value} onChange={setValue} />;
 }
+function CompactToolbar() {
+  const [provider, setProvider] = useState("anthropic");
+  const [status, setStatus] = useState("all");
+
+  return (
+    <div className="select-toolbar-story flex flex-wrap items-center gap-1.5" style={{ width: "min(61rem, calc(100vw - 2rem))" }}>
+      <Select fullWidth={false} className="w-[8.25rem] max-w-full flex-auto sm:flex-none" aria-label="Filter providers" options={PROVIDER_OPTIONS} value={provider} onChange={setProvider} />
+      <Select fullWidth={false} className="w-32 max-w-full flex-auto sm:flex-none" aria-label="Filter account status" options={[{ value: "all", label: "All accounts" }, { value: "active", label: "Active" }]} value={status} onChange={setStatus} />
+      <Button size="sm" icon="hourglass_top">Expiring</Button>
+      <Button size="sm" variant="danger" icon="block">Disable empty</Button>
+      <Button size="sm" variant="primary" icon="check_circle">Enable available</Button>
+      <Button size="sm" icon="toggle_on">Auto</Button>
+      <IconButton label="Refresh all" icon="refresh" />
+    </div>
+  );
+}
 
 function ExampleFormCard() {
   const [name, setName] = useState("Production provider");
@@ -39,8 +57,8 @@ function ExampleFormCard() {
   const [enabled, setEnabled] = useState(true);
 
   return (
-    <form className="bg-dd-surface border border-dd-border rounded-dd-lg p-5">
-      <div className="flex w-96 flex-col gap-4">
+    <form className="w-[26.625rem] max-w-full bg-dd-surface border border-dd-border rounded-dd-lg p-5">
+      <div className="flex min-w-0 w-full flex-col gap-4">
         <Input
           label="Configuration name"
           value={name}
@@ -75,9 +93,11 @@ const meta = {
   title: "Durin DS/Forms/Select",
   component: Select,
   parameters: { layout: "centered" },
+  // Forms own their desktop width; the default control host must not constrain
+  // a wider composition and make its padding/content escape on mobile.
   decorators: [
-    (Story) => (
-      <div className="w-72">
+    (Story, context) => (
+      <div className={context.name === "Compact Filter Toolbar" || context.name === "Example Form" ? "min-w-0 max-w-full" : "w-72 max-w-full"}>
         <Story />
       </div>
     ),
@@ -194,6 +214,19 @@ export const InsideModal = {
     await expect(within(dialog).getByRole("listbox")).toBeInTheDocument();
   },
 };
+export const CompactFilterToolbar = {
+  render: () => <CompactToolbar />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const controls = [...canvas.getAllByRole("combobox"), ...canvas.getAllByRole("button")];
+    // Compact controls share a desktop row; narrow viewports intentionally wrap.
+    if (canvasElement.ownerDocument.defaultView.innerWidth >= 1024) {
+      // Tooltip wrappers give controls different offsetParents; compare viewport coordinates.
+      await expect(new Set(controls.map((control) => control.getBoundingClientRect().top)).size).toBe(1);
+    }
+  },
+};
+
 
 export const ExampleForm = {
   render: () => <ExampleFormCard />,

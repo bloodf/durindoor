@@ -821,6 +821,7 @@ export default function PlaygroundPageClient() {
                   ref={modelTriggerRef}
                   type="button"
                   role="combobox"
+                  disabled={/* Hydration and model discovery must finish before accepting clicks. */ !isHydrated || loadingData}
                   onClick={() => (modelMenuOpen ? closeModelMenu() : openModelMenu())}
                   onKeyDown={handleModelTriggerKeyDown}
                   aria-haspopup="listbox"

@@ -11,6 +11,16 @@ export const DEFAULT_PASSWORD = "123456";
 /** Basename of the legacy on-disk JWT secret under DATA_DIR. */
 export const JWT_SECRET_FILE_BASENAME = "jwt-secret";
 
+/**
+ * Lifetime of a dashboard session, in seconds.
+ *
+ * Single source of truth for both the signed JWT `exp` claim and the cookie's
+ * `Max-Age`. Without `maxAge` the cookie is a session cookie: the browser keeps
+ * it for the whole browser lifetime, so a token that expired hours ago is still
+ * replayed on every request until the browser is closed.
+ */
+export const SESSION_MAX_AGE_SEC = 24 * 60 * 60;
+
 export function validateDashboardPassword(password) {
   if (!isString(password) || password.length < 6) {
     return "Password must be at least 6 characters";
@@ -168,7 +178,7 @@ export async function createDashboardAuthToken(claims = {}) {
   return new SignJWT(jwtPayload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("24h")
+    .setExpirationTime(`${SESSION_MAX_AGE_SEC}s`)
     .sign(getSecretBytes());
 }
 
@@ -208,7 +218,8 @@ export async function setDashboardAuthCookie(cookieStore, request, claims = {}, 
     httpOnly: true,
     secure: shouldUseSecureCookie(request),
     sameSite: "lax",
-    path: "/"
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SEC
   });
 }
 

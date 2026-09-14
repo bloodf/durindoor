@@ -4,6 +4,10 @@
 
 - fix(website): the demo login page now shows the accepted demo password in a persistent notice above the form, with a copy button. It was previously only legible in small text inside the dismissible demo banner, so visitors could not tell how to sign in.
 
+## Upstream ports
+
+- port(upstream): 628ff1ea - bound the dashboard session cookie lifetime. The `auth_token` cookie carried no `Max-Age`, so browsers kept it as a session cookie for the whole browser lifetime and replayed a long-expired token on every request. Cookie `maxAge` and the JWT `exp` claim now share one `SESSION_MAX_AGE_SEC` (24h) source of truth.
+
 # 4.3.0
 
 ## Features

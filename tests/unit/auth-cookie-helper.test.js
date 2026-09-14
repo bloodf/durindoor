@@ -13,6 +13,8 @@ vi.mock("@/lib/localDb", () => ({
 const {
   setDashboardAuthCookie,
   shouldUseSecureCookie,
+  createDashboardAuthToken,
+  SESSION_MAX_AGE_SEC,
   __resetJwtSecretForTests,
 } = await import("../../src/lib/auth/dashboardSession.js");
 const originalBaseUrl = process.env.BASE_URL;
@@ -52,6 +54,30 @@ describe("setDashboardAuthCookie epoch guard", () => {
     await setDashboardAuthCookie({ set: mocks.cookieSet, delete: mocks.cookieDelete }, request(), { passwordSessionEpoch: "epoch-A" }, "epoch-A");
 
     expect(mocks.cookieSet).toHaveBeenCalledOnce();
+  });
+
+  // Without maxAge the browser keeps a session cookie for its whole lifetime,
+  // so an expired token keeps getting replayed on every request.
+  it("bounds the cookie lifetime to the token lifetime", async () => {
+    mocks.getSettingsSync.mockReturnValue({ passwordSessionEpoch: "epoch-A" });
+
+    await setDashboardAuthCookie({ set: mocks.cookieSet, delete: mocks.cookieDelete }, request(), { passwordSessionEpoch: "epoch-A" }, "epoch-A");
+
+    const [, token, options] = mocks.cookieSet.mock.calls[0];
+    expect(options.maxAge).toBe(SESSION_MAX_AGE_SEC);
+
+    const { exp, iat } = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+    expect(exp - iat).toBe(SESSION_MAX_AGE_SEC);
+  });
+
+  it("signs the token with the same 24h window", async () => {
+    mocks.getSettings.mockResolvedValue({ passwordSessionEpoch: "epoch-A" });
+
+    const token = await createDashboardAuthToken({ passwordSessionEpoch: "epoch-A" });
+    const { exp, iat } = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+
+    expect(SESSION_MAX_AGE_SEC).toBe(24 * 60 * 60);
+    expect(exp - iat).toBe(SESSION_MAX_AGE_SEC);
   });
 });
 

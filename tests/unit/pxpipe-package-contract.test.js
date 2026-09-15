@@ -32,4 +32,23 @@ describe("pxpipe-proxy package contract", () => {
     // silently, because the stage is fail-open.
     expect(typeof mod.transformAnthropicMessages).toBe("function");
   });
+
+  it("returns the documented result shape the rtk stage destructures", async () => {
+    const { transformAnthropicMessages } = await import(libraryEntry());
+
+    // An unsupported model short-circuits before any rendering, so this
+    // exercises the real function deterministically with no image work and no
+    // I/O — while still proving the result shape open-sse/rtk/pxpipe.js reads.
+    const body = new TextEncoder().encode(
+      JSON.stringify({ model: "not-a-pxpipe-model", messages: [{ role: "user", content: "hi" }] }),
+    );
+    const result = await transformAnthropicMessages({ body, model: "not-a-pxpipe-model" });
+
+    expect(result).toMatchObject({ applied: false, reason: "unsupported_model" });
+    // `body` is passed straight back through; the stage substitutes it only
+    // when `applied` is true, so an undefined body here would break fail-open.
+    expect(result.body).toBeInstanceOf(Uint8Array);
+    expect(result.info).toBeDefined();
+    expect(result.cache).toMatchObject({ ownsCacheControl: false });
+  });
 });

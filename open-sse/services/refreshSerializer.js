@@ -95,10 +95,19 @@ export function rotationGroupFor(provider) {
  * queued behind us, the lane is held for a settle gap (getRefreshSpacingMs,
  * default 2000ms, CODEX_REFRESH_SPACING_MS='0' opts out) before release; a
  * lone refresh releases immediately.
+ *
+ * `onLaneAcquired` fires once, immediately before `fn` runs, so a caller can
+ * distinguish "still queued behind siblings" from "my refresh is in flight".
+ * Callers budget their own timeout against the refresh itself; without this
+ * signal a third sibling burns its entire budget waiting its turn and reports
+ * a timeout having never issued a request.
  */
-export async function serializeRefresh(provider, fn) {
+export async function serializeRefresh(provider, fn, { onLaneAcquired = null } = {}) {
   const group = rotationGroupFor(provider);
-  if (!group) return fn();
+  if (!group) {
+    onLaneAcquired?.();
+    return fn();
+  }
 
   const prevTail = groupTail.get(group) ?? Promise.resolve();
   let releaseMine;
@@ -113,6 +122,7 @@ export async function serializeRefresh(provider, fn) {
   await prevTail.catch(() => {});
 
   try {
+    onLaneAcquired?.();
     return await fn();
   } finally {
     // Only pay the settle gap when a sibling is already queued behind us — a

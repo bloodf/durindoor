@@ -3,6 +3,7 @@
 ## Fixes
 
 - fix(website): the demo login page now shows the accepted demo password in a persistent notice above the form, with a copy button. It was previously only legible in small text inside the dismissible demo banner, so visitors could not tell how to sign in.
+- fix(quota): stop charging OAuth rotation-lane queue time against the credential-refresh budget. Providers sharing one rotation group (Codex and `openai` share an Auth0 client_id; Claude shares `anthropic-oauth`) serialize their refreshes to avoid refresh_token family revocation, but the 15s caller budget armed at call time, so it counted the wait for the lane. With three Codex accounts the third exhausted its budget while still queued and the Quota Tracker reported "Credential refresh failed: Provider credential refresh timed out" without a request ever being sent. The budget now arms when the lane is acquired; callers joining an in-flight refresh inherit that clock. A genuinely slow refresh still times out.
 
 ## Upstream ports
 

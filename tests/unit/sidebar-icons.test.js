@@ -60,13 +60,15 @@ describe("SidebarNavIcons information architecture", () => {
       "/dashboard/combos",
       "/dashboard/providers",
       "/dashboard/endpoint",
+      "/dashboard/keys",
       "/dashboard/proxy-pools",
     ]);
     expect(itemLabels("build")).toEqual([
       "Playground",
       "Combos",
       "Providers",
-      "Endpoint & Key",
+      "Endpoint",
+      "API Keys",
       "Proxy Pools",
     ]);
     // Providers is no longer a collapsible group; it links straight to the

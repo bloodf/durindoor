@@ -75,7 +75,8 @@ export const NAV_SECTIONS = [
       // Providers links straight to the configuration grid; Health and Quota
       // Tracker live under Monitor.
       { type: "item", href: "/dashboard/providers", label: "Providers", icon: "dns", exact: false },
-      { type: "item", href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
+      { type: "item", href: "/dashboard/endpoint", label: "Endpoint", icon: "api" },
+      { type: "item", href: "/dashboard/keys", label: "API Keys", icon: "vpn_key" },
       { type: "item", href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
     ],
   },

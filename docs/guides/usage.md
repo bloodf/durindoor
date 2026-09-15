@@ -16,7 +16,8 @@ This guide shows how to use DurinDoor after it is installed and running.
 
 | Area | Purpose |
 | --- | --- |
-| Endpoint | Shows local, tunnel, and API-key setup information. |
+| Endpoint | Shows local, tunnel, Tailscale, and API-authentication setup information. |
+| API Keys | Create, revoke, pause, and scope API keys and their access policies. |
 | Providers | Add OAuth, API key, cookie, and provider-node credentials. |
 | Combos | Create fallback chains exposed as one model name. |
 | Usage | Inspect tokens, costs, request history, and provider topology. |
@@ -63,7 +64,7 @@ of dropping the instruction.
 Use the dashboard to create a DurinDoor API key. Save the key immediately and use it in client tools. The creation confirmation is the only response that shows the complete secret; later lists, details, the dashboard, and the CLI show a masked identifier only.
 
 ```text
-Dashboard -> Endpoint or Settings -> API Keys -> Create Key
+Dashboard -> API Keys -> Create Key
 ```
 
 Use one key per tool or user so keys can be revoked independently.

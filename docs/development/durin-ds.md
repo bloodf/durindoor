@@ -379,7 +379,7 @@ route comes from each story’s `activePath` argument to `withDashboardShell`
 | `Durin DS/Pages/CLI Tools` | `/dashboard/cli-tools` | `pages/cli-tools/CliToolsPage.jsx` |
 | `Durin DS/Pages/Combos` | `/dashboard/combos` | `pages/combos/CombosPage.jsx` |
 | `Durin DS/Pages/Console Log` | `/dashboard/console-log` | `pages/console-log/ConsoleLogPage.jsx` |
-| `Durin DS/Pages/Endpoint & Key` | `/dashboard/endpoint` | `pages/endpoint/EndpointPage.jsx` |
+| `Durin DS/Pages/Endpoint` | `/dashboard/endpoint` | `pages/endpoint/EndpointPage.jsx` |
 | `Durin DS/Pages/Headroom` | `/dashboard/headroom` | `pages/headroom/HeadroomPage.jsx` |
 | `Durin DS/Pages/Health` | `/dashboard/health` | `pages/health/HealthPage.jsx` |
 | `Durin DS/Pages/MCP Gateway` | `/dashboard/mcp-gateway` | `pages/mcp-gateway/McpGatewayPage.jsx` |

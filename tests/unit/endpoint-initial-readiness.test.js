@@ -3,7 +3,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { within } from "@testing-library/dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import EndpointPage from "../../src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx";
+import KeysPage from "../../src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let container;
@@ -32,34 +32,27 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-function installResponses(settings, status, catalog) {
+function installResponses(keys, catalog) {
   vi.stubGlobal("fetch", vi.fn(async (url) => {
     switch (String(url)) {
-      case "/api/keys": return response({ keys: [{ id: "fixture-key", name: "Fictional key", isActive: true, createdAt: "2026-01-01T00:00:00Z", policy: {} }], providerConnections: [] });
+      case "/api/keys": return keys.promise;
       case "/api/combos": return response({ combos: [] });
-      case "/api/settings": return settings.promise;
-      case "/api/tunnel/status": return status.promise;
       case "/api/keys/policy-catalog": return catalog.promise;
       default: throw new Error(`Unexpected endpoint request: ${url}`);
     }
   }));
 }
 
-it("withholds Create Key until settings and status settle, then opens the real dialog without waiting for the optional catalog", async () => {
-  const settings = deferred();
-  const status = deferred();
+it("withholds Create Key until the key list settles, then opens the real dialog without waiting for the optional catalog", async () => {
+  const keys = deferred();
   const catalog = deferred();
-  installResponses(settings, status, catalog);
-  await act(async () => root.render(React.createElement(EndpointPage, { machineId: "fictional-machine" })));
+  installResponses(keys, catalog);
+  await act(async () => root.render(React.createElement(KeysPage)));
   expect(within(container).queryByRole("button", { name: "Create Key", exact: true })).toBeNull();
 
-  await act(async () => settings.resolve(response({ requireLogin: true, hasPassword: false })));
-  expect(within(container).queryByRole("button", { name: "Create Key", exact: true })).toBeNull();
-
-  await act(async () => status.resolve(response({ tunnel: { enabled: false }, tailscale: { enabled: false } })));
+  await act(async () => keys.resolve(response({ keys: [{ id: "fixture-key", name: "Fictional key", isActive: true, createdAt: "2026-01-01T00:00:00Z", policy: {} }], providerConnections: [] })));
   const create = within(container).getByRole("button", { name: "Create Key", exact: true });
   expect(create.disabled).toBe(false);
-  expect(within(container).getByText("Change the default dashboard password before activating the tunnel.")).toBeTruthy();
   await act(async () => create.click());
   const dialog = within(document.body).getByRole("dialog", { name: "Create API Key", exact: true });
   expect(dialog.open).toBe(true);
@@ -67,20 +60,15 @@ it("withholds Create Key until settings and status settle, then opens the real d
   await act(async () => catalog.resolve(response({ models: [] })));
 });
 
-it("settles initial readiness after a settings failure instead of permanently blocking key actions", async () => {
-  const settings = deferred();
-  const status = deferred();
+it("settles initial readiness after a key-list failure and surfaces the error", async () => {
+  const keys = deferred();
   const catalog = deferred();
-  installResponses(settings, status, catalog);
+  installResponses(keys, catalog);
   vi.spyOn(console, "log").mockImplementation(() => {});
-  await act(async () => root.render(React.createElement(EndpointPage, { machineId: "fictional-machine" })));
-  expect(within(container).queryByRole("button", { name: "Create Key", exact: true })).toBeNull();
+  await act(async () => root.render(React.createElement(KeysPage)));
   await act(async () => {
-    status.resolve(response({ tunnel: { enabled: false }, tailscale: { enabled: false } }));
-    settings.reject(new Error("Settings unavailable"));
+    keys.reject(new Error("Key store unavailable"));
     catalog.resolve(response({ models: [] }));
   });
-  const create = within(container).getByRole("button", { name: "Create Key", exact: true });
-  await act(async () => create.click());
-  expect(within(document.body).getByRole("dialog", { name: "Create API Key", exact: true }).open).toBe(true);
+  expect(within(container).getByText("Key store unavailable").getAttribute("role")).toBe("alert");
 });

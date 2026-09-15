@@ -45,7 +45,7 @@ Open the dashboard → Providers. Add at least one connection:
 
 ## 4. Create a DurinDoor API key
 
-Dashboard → Settings or Endpoint → API Keys → Create Key.
+Dashboard → API Keys → Create Key.
 
 Use this key in client tools. New keys have the shape `sk-<machine>-<key>-<crc>`. Older `sk-*` keys remain supported.
 

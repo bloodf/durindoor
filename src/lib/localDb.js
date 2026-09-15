@@ -13,6 +13,9 @@ export {
   createProxyPool, updateProxyPool, deleteProxyPool,
   getApiKeys, getApiKeyById, getApiKeyByKey, getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
   getApiKeyProviderConnectionIds,
+  // API-key groups: organizational labels, never consulted on the request path
+  getApiKeyGroups, getApiKeyGroupById, createApiKeyGroup, updateApiKeyGroup, deleteApiKeyGroup,
+  getGroupIdsForApiKey, getGroupIdsByApiKey, setApiKeyGroups,
   upsertProviderQuotaSnapshot, replaceProviderQuotaSnapshotsForSource,
   recordQuotaFetchFailure, getProviderQuotaSnapshot,
   listProviderQuotaSnapshots, getQuotaFetchState, pruneProviderQuotaSnapshots,

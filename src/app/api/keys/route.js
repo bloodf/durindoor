@@ -4,7 +4,9 @@ import {
   getApiKeys,
   createApiKey,
   getProviderConnections,
-  getApiKeyProviderConnectionIds
+  getApiKeyProviderConnectionIds,
+  getApiKeyGroups,
+  getGroupIdsByApiKey
 } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { isApiKeyExpiryValidationError } from "@/shared/utils/apiKeyExpiry";
@@ -40,14 +42,23 @@ async function buildProviderConnectionScopeMap(keys) {
 
 export async function GET() {
   try {
-    const [keys, totals] = await Promise.all([getApiKeys(), getAllApiKeyUsageTotals()]);
+    // Group membership is fetched once for every key, not per key: a
+    // per-row query would make the list O(keys) round trips.
+    const [keys, totals, groups, groupIdsByKey] = await Promise.all([
+      getApiKeys(),
+      getAllApiKeyUsageTotals(),
+      getApiKeyGroups(),
+      getGroupIdsByApiKey(),
+    ]);
     const totalsById = new Map(totals.map((usage) => [usage.apiKeyId, usage]));
     const { options, scopes } = await buildProviderConnectionScopeMap(keys);
     return NextResponse.json({
       providerConnections: options,
+      groups,
       keys: keys.map((key, index) => ({
         ...toApiKeyManagementView(key),
         providerConnectionIds: scopes[index],
+        groupIds: groupIdsByKey[key.id] || [],
         usage: totalsById.get(key.id) || { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null }
       }))
     });

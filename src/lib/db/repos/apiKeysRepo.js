@@ -71,6 +71,34 @@ function replaceProviderConnectionScopeInTx(db, apiKeyId, connectionIds) {
   }
 }
 
+/**
+ * Replace a key's group membership inside the CALLER's transaction.
+ *
+ * Mirrors replaceProviderConnectionScopeInTx so a key update and its group
+ * assignment commit or roll back together. Doing the membership write in a
+ * separate transaction would leave a window where the scalar edits landed and
+ * the groups did not.
+ */
+function replaceApiKeyGroupsInTx(db, apiKeyId, groupIds) {
+  if (!Array.isArray(groupIds)) throw new TypeError("groupIds must be an array");
+  const ids = groupIds.map((id) => {
+    if (!isString(id) || !id.trim()) throw new TypeError("groupIds entries must be non-empty strings");
+    return id.trim();
+  });
+  const unique = [...new Set(ids)];
+  const existing = new Set(db.all("SELECT id FROM apiKeyGroups").map((row) => row.id));
+  const unknown = unique.filter((id) => !existing.has(id));
+  if (unknown.length) throw new TypeError(`Unknown group id(s): ${unknown.join(", ")}`);
+  db.run("DELETE FROM apiKeyGroupMembers WHERE apiKeyId = ?", [apiKeyId]);
+  const now = new Date().toISOString();
+  for (const groupId of unique) {
+    db.run(
+      "INSERT OR IGNORE INTO apiKeyGroupMembers(groupId, apiKeyId, createdAt) VALUES(?, ?, ?)",
+      [groupId, apiKeyId, now]
+    );
+  }
+}
+
 export async function getApiKeys() {
   const db = await getAdapter();
   const rows = db.all(`SELECT * FROM apiKeys ORDER BY createdAt ASC`);
@@ -143,6 +171,11 @@ export async function updateApiKey(id, data, now = Date.now()) {
     row.policy;
     if (Object.hasOwn(data, "providerConnectionIds")) {
       replaceProviderConnectionScopeInTx(db, id, data.providerConnectionIds);
+    }
+    // Same transaction as the scalar update, so a failure cannot leave the key
+    // edited but its groups unchanged (or vice versa).
+    if (Object.hasOwn(data, "groupIds")) {
+      replaceApiKeyGroupsInTx(db, id, data.groupIds);
     }
     db.run(
       `UPDATE apiKeys SET name = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, policy = ?, expiresAt = ? WHERE id = ?`,

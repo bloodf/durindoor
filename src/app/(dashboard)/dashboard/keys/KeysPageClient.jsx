@@ -10,6 +10,8 @@ import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
+import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
+import { filterApiKeys, groupLabelsForKey } from "./apiKeyFilters";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import Field from "@/shared/ui/components/Field.jsx";
@@ -34,7 +36,7 @@ import {
   formatKeyExpiry,
 } from "../endpoint/apiKeyExpiry";
 
-function ApiKeyRow({ apiKey, onToggle, onReveal, onEdit, onDelete, copied, policyInvalid, policyUsage }) {
+function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onEdit, onDelete, copied, policyInvalid, policyUsage }) {
   const active = apiKey.isActive ?? true;
   const expiry = formatKeyExpiry(apiKey.expiresAt);
   const overflowReached = policyUsage.tokensExceeded || policyUsage.costExceeded;
@@ -53,6 +55,9 @@ function ApiKeyRow({ apiKey, onToggle, onReveal, onEdit, onDelete, copied, polic
               {active ? "Active" : "Paused"}
             </span>
           </Badge>
+          {groupLabels.map((label) => (
+            <Badge key={label} tone="accent" size="sm">{label}</Badge>
+          ))}
         </div>
         <code className="mt-1 block font-mono text-xs text-dd-muted">{apiKey.maskedKey || "***"}</code>
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -165,6 +170,11 @@ export default function KeysPageClient() {
   const [keys, setKeys] = useState([]);
   const [providerConnections, setProviderConnections] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [groups, setGroups] = useState([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState([]);
+  const [search, setSearch] = useState("");
+  const [groupPrompt, setGroupPrompt] = useState(null);
+  const [groupConfirm, setGroupConfirm] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
@@ -176,7 +186,6 @@ export default function KeysPageClient() {
   const [createdKeyExpiresAt, setCreatedKeyExpiresAt] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
-  const [newKeyAllowedCombos, setNewKeyAllowedCombos] = useState([]);
   const [policyCatalog, setPolicyCatalog] = useState([]);
   const [policyCatalogLoading, setPolicyCatalogLoading] = useState(true);
   const [newKeyPolicy, setNewKeyPolicy] = useState(emptyAddKeyPolicy);
@@ -189,6 +198,7 @@ export default function KeysPageClient() {
   const [editKeyStatus, setEditKeyStatus] = useState(null);
   const [editKeyPolicy, setEditKeyPolicy] = useState(emptyAddKeyPolicy);
   const [editKeyProviderConnectionIds, setEditKeyProviderConnectionIds] = useState([]);
+  const [editKeyGroupIds, setEditKeyGroupIds] = useState([]);
   const [editKeyPolicyDirty, setEditKeyPolicyDirty] = useState(false);
   const { copied, copy } = useCopyToClipboard();
 
@@ -208,6 +218,7 @@ export default function KeysPageClient() {
       if (keysRes.ok) {
         setProviderConnections(keysData.providerConnections || []);
         setKeys(keysData.keys || []);
+        setGroups(keysData.groups || []);
       } else {
         setLoadError(keysData.error || `API key request failed (${keysRes.status})`);
       }
@@ -221,6 +232,89 @@ export default function KeysPageClient() {
     }
   };
 
+
+  /**
+   * Re-read groups and key membership from the server after a write was
+   * rejected for naming a group that no longer exists. Returns the set of live
+   * group ids, or null if the refresh itself failed — in which case the caller
+   * leaves the operator's selection alone rather than silently discarding it.
+   */
+  const refreshGroupCatalog = async () => {
+    try {
+      const res = await fetch("/api/keys");
+      if (!res.ok) return null;
+      const data = await res.json();
+      const live = data.groups || [];
+      setGroups(live);
+      setKeys(data.keys || []);
+      const liveIds = new Set(live.map((group) => group.id));
+      setSelectedGroupIds((prev) => prev.filter((id) => liveIds.has(id)));
+      return liveIds;
+    } catch {
+      return null;
+    }
+  };
+
+  const visibleKeys = filterApiKeys(keys, { selectedGroupIds, search });
+
+  const toggleGroupFilter = (groupId) => {
+    setSelectedGroupIds((prev) =>
+      prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
+    );
+  };
+
+  const clearFilters = () => {
+    setSelectedGroupIds([]);
+    setSearch("");
+  };
+
+  const saveGroup = async (name) => {
+    const editing = groupPrompt?.group || null;
+    setGroupPrompt(null);
+    try {
+      const response = await fetch(editing ? `/api/key-groups/${editing.id}` : "/api/key-groups", {
+        method: editing ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setLoadError(data.error || "Failed to save group");
+        return;
+      }
+      setGroups((prev) =>
+        editing
+          ? prev.map((group) => (group.id === data.group.id ? data.group : group))
+          : [...prev, data.group].sort((a, b) => a.name.localeCompare(b.name))
+      );
+    } catch (error) {
+      setLoadError(error.message || "Failed to save group");
+    }
+  };
+
+  const removeGroup = async (group) => {
+    setGroupConfirm(null);
+    try {
+      const response = await fetch(`/api/key-groups/${group.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setLoadError(data.error || "Failed to delete group");
+        return;
+      }
+      setGroups((prev) => prev.filter((entry) => entry.id !== group.id));
+      // Drop the deleted group from the filter and from every key's badges so
+      // the list does not keep filtering on something that no longer exists.
+      setSelectedGroupIds((prev) => prev.filter((id) => id !== group.id));
+      setKeys((prev) =>
+        prev.map((key) => ({
+          ...key,
+          groupIds: (key.groupIds || []).filter((id) => id !== group.id),
+        }))
+      );
+    } catch (error) {
+      setLoadError(error.message || "Failed to delete group");
+    }
+  };
   async function fetchPolicyCatalog() {
     try {
       const response = await fetch("/api/keys/policy-catalog");
@@ -343,9 +437,9 @@ export default function KeysPageClient() {
     handleToggleKey(key.id, checked);
   };
 
-  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt, policyPatch, dailyLimitTokens = null, providerConnectionIds) => {
+  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt, policyPatch, dailyLimitTokens = null, providerConnectionIds, groupIds) => {
     try {
-      const payload = { allowedCombos, expiresAt, dailyLimitTokens, providerConnectionIds };
+      const payload = { allowedCombos, expiresAt, dailyLimitTokens, providerConnectionIds, groupIds };
       if (policyPatch) Object.assign(payload, policyPatch);
       const res = await fetch(`/api/keys/${id}`, {
         method: "PUT",
@@ -358,6 +452,15 @@ export default function KeysPageClient() {
         return true;
       }
       setEditKeyStatus({ type: "error", message: data.error || "Failed to update API key" });
+      // A rejected group id means this tab is holding a group that someone
+      // deleted elsewhere. Nothing was written, but the stale chip is still
+      // selected, so every retry would fail the same way. Re-read the catalog
+      // and drop what no longer exists, leaving the modal open with the
+      // operator's other edits intact.
+      if (res.status === 400 && /group/i.test(data.error || "")) {
+        const live = await refreshGroupCatalog();
+        if (live) setEditKeyGroupIds((prev) => prev.filter((groupId) => live.has(groupId)));
+      }
     } catch (error) {
       console.log("Error updating key details:", error);
       setEditKeyStatus({ type: "error", message: "Failed to update API key" });
@@ -370,6 +473,7 @@ export default function KeysPageClient() {
     setEditKey(key);
     setEditKeyAllowedCombos(Array.isArray(key.allowedCombos) ? [...key.allowedCombos] : []);
     setEditKeyProviderConnectionIds(Array.isArray(key.providerConnectionIds) ? [...key.providerConnectionIds] : []);
+    setEditKeyGroupIds(Array.isArray(key.groupIds) ? [...key.groupIds] : []);
     setEditKeyExpiryPreset(expiry.selection);
     setEditKeyCustomExpiresAt(expiry.customLocalValue);
     setEditKeyDailyLimitTokens(key.dailyLimitTokens == null ? "" : String(key.dailyLimitTokens));
@@ -398,6 +502,7 @@ export default function KeysPageClient() {
     setEditKeyCustomExpiresAt("");
     setEditKeyDailyLimitTokens("");
     setEditKeyProviderConnectionIds([]);
+    setEditKeyGroupIds([]);
     setEditKeyPolicy(emptyApiKeyPolicyDraft());
     setEditKeyPolicyDirty(false);
     setEditKeyStatus(null);
@@ -441,6 +546,45 @@ export default function KeysPageClient() {
           }
         />
         <CardContent>
+          {keys.length > 0 ? (
+            <div className="mb-4 flex flex-col gap-3 border-b border-dd-border-subtle pb-4 sm:flex-row sm:items-end">
+              <Input
+                label="Search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Filter by key name"
+                className="flex-1"
+              />
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <span className="text-xs font-medium text-dd-muted">Groups</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {groups.length === 0 ? (
+                    <span className="text-xs text-dd-muted">No groups yet</span>
+                  ) : (
+                    groups.map((group) => {
+                      const selected = selectedGroupIds.includes(group.id);
+                      return (
+                        <Button
+                          key={group.id}
+                          size="sm"
+                          variant={selected ? "primary" : "secondary"}
+                          aria-pressed={selected}
+                          onClick={() => toggleGroupFilter(group.id)}
+                        >
+                          {group.name}
+                        </Button>
+                      );
+                    })
+                  )}
+                  {selectedGroupIds.length > 0 ? (
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedGroupIds([])}>
+                      Clear
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {keys.length === 0 ? (
             <EmptyState
@@ -449,15 +593,25 @@ export default function KeysPageClient() {
               message="Create your first API key to get started."
               action={{ label: "Create Key", icon: "add", onClick: () => setShowAddModal(true) }}
             />
+          ) : visibleKeys.length === 0 ? (
+            // Distinct from "no keys": the keys exist, the filter hides them.
+            // Showing the full list instead would invite acting on the wrong one.
+            <EmptyState
+              icon="filter_alt_off"
+              title="No keys match"
+              message="No API key matches the current search and group filter."
+              action={{ label: "Clear filters", onClick: clearFilters }}
+            />
           ) : (
             <ul className="flex flex-col">
-              {keys.map((key) => {
+              {visibleKeys.map((key) => {
                 const policyUsage = formatPolicyUsage(key.usage, key.policy);
                 const policyInvalid = !isEditableApiKeyPolicy(key.policy);
                 return (
                   <li key={key.id}>
                     <ApiKeyRow
                       apiKey={key}
+                      groupLabels={groupLabelsForKey(key, groups)}
                       onToggle={requestToggleKey}
                       onReveal={revealAndCopyKey}
                       onEdit={beginEditKey}
@@ -465,6 +619,58 @@ export default function KeysPageClient() {
                       copied={copied}
                       policyInvalid={policyInvalid}
                       policyUsage={policyUsage}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Groups management. Kept beside the keys list rather than on its own
+          page: a group only means something in relation to the keys it labels. */}
+      <Card padding={false}>
+        <CardHeader
+          icon="label"
+          title="Key Groups"
+          subtitle="Organizational labels. Groups never change what a key can access."
+          actions={
+            <Button icon="add" onClick={() => setGroupPrompt({ group: null })}>
+              New Group
+            </Button>
+          }
+        />
+        <CardContent>
+          {groups.length === 0 ? (
+            <EmptyState
+              icon="label"
+              title="No groups yet"
+              message="Create a group to organize API keys by purpose."
+              action={{ label: "New Group", icon: "add", onClick: () => setGroupPrompt({ group: null }) }}
+            />
+          ) : (
+            <ul className="flex flex-col divide-y divide-dd-border-subtle">
+              {groups.map((group) => {
+                const memberCount = keys.filter((key) => (key.groupIds || []).includes(group.id)).length;
+                return (
+                  <li key={group.id} className="flex items-center gap-2 py-2">
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-dd-text">
+                      {group.name}
+                    </span>
+                    <Badge tone="neutral" size="sm">
+                      {memberCount} {memberCount === 1 ? "key" : "keys"}
+                    </Badge>
+                    <IconButton
+                      label={`Rename ${group.name}`}
+                      icon="edit"
+                      onClick={() => setGroupPrompt({ group })}
+                    />
+                    <IconButton
+                      label={`Delete ${group.name}`}
+                      icon="delete"
+                      className="text-dd-danger hover:text-dd-danger"
+                      onClick={() => setGroupConfirm(group)}
                     />
                   </li>
                 );
@@ -699,6 +905,37 @@ export default function KeysPageClient() {
           ) : (
             <p className="text-[13px] text-dd-muted">No combos available.</p>
           )}
+          {groups.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <Field
+                label="Groups"
+                hint="Organizational labels only. Groups never change what this key can access."
+              >
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {groups.map((group) => {
+                    const selected = editKeyGroupIds.includes(group.id);
+                    return (
+                      <Button
+                        key={group.id}
+                        size="sm"
+                        variant={selected ? "primary" : "secondary"}
+                        aria-pressed={selected}
+                        onClick={() =>
+                          setEditKeyGroupIds((prev) =>
+                            prev.includes(group.id)
+                              ? prev.filter((id) => id !== group.id)
+                              : [...prev, group.id]
+                          )
+                        }
+                      >
+                        {group.name}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </Field>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-2">
             <Field
               label="Provider accounts"
@@ -785,7 +1022,7 @@ export default function KeysPageClient() {
                   setEditKeyStatus({ type: "error", message: "Daily limit must be a non-negative whole number" });
                   return;
                 }
-                const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt, policy, parsedLimit, editKeyProviderConnectionIds);
+                const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt, policy, parsedLimit, editKeyProviderConnectionIds, editKeyGroupIds);
                 if (!updated) return;
                 resetEditModal();
               }}
@@ -806,6 +1043,29 @@ export default function KeysPageClient() {
         tone="danger"
         onConfirm={confirmState?.onConfirm}
         onCancel={() => setConfirmState(null)}
+      />
+
+      {/* Group create/rename. PromptDialog, not window.prompt — the Durin DS
+          rules forbid native dialogs in ported app code. */}
+      <PromptDialog
+        open={!!groupPrompt}
+        title={groupPrompt?.group ? "Rename group" : "New group"}
+        label="Group name"
+        placeholder="CI"
+        defaultValue={groupPrompt?.group?.name || ""}
+        submitLabel={groupPrompt?.group ? "Rename" : "Create"}
+        onSubmit={saveGroup}
+        onCancel={() => setGroupPrompt(null)}
+      />
+
+      <ConfirmDialog
+        open={!!groupConfirm}
+        title="Delete group"
+        message={`Delete "${groupConfirm?.name}"? The keys in it are not deleted — they simply lose this label.`}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => removeGroup(groupConfirm)}
+        onCancel={() => setGroupConfirm(null)}
       />
     </div>
   );

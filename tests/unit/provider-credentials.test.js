@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { refreshAndUpdateCredentials } from "../../src/shared/services/providerCredentials.js";
 import { rotationGroupFor } from "../../open-sse/services/refreshSerializer.js";
 import { providerRefreshContext } from "../../src/shared/utils/providerCredentialContext.js";
@@ -38,6 +38,13 @@ function dependencies(executor) {
 }
 
 describe("provider credential refresh service", () => {
+  // Several cases opt out of the sibling settle gap. Restore it centrally so a
+  // failed assertion cannot leak "0" into later tests and mask a spacing
+  // regression.
+  afterEach(() => {
+    delete process.env.CODEX_REFRESH_SPACING_MS;
+  });
+
   it("returns the original connection without a write when refresh is unnecessary", async () => {
     const executor = { needsRefresh: vi.fn(() => false), refreshCredentials: vi.fn() };
     const deps = dependencies(executor);
@@ -562,5 +569,118 @@ describe("provider credential refresh service", () => {
     await expect(claudeRefresh).resolves.toMatchObject({ refreshed: true });
     expect(claudeExecutor.refreshCredentials).toHaveBeenCalledTimes(1);
     expect(codexExecutor.refreshCredentials).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not charge rotation-lane queue time against the caller timeout", async () => {
+    // Two Codex accounts share the openai-auth0 lane. The first holds it while
+    // the second waits its turn. With the budget armed at call time, the queued
+    // sibling times out having never reached the network — the observed
+    // "Credential refresh failed: Provider credential refresh timed out".
+    process.env.CODEX_REFRESH_SPACING_MS = "0";
+    let releaseFirst;
+    const firstExecutor = {
+      needsRefresh: vi.fn(() => true),
+      refreshCredentials: vi.fn(
+        () => new Promise((resolve) => {
+          releaseFirst = () => resolve({ accessToken: "access-first", expiresIn: 60 });
+        }),
+      ),
+    };
+    const secondExecutor = {
+      needsRefresh: vi.fn(() => true),
+      refreshCredentials: vi.fn().mockResolvedValue({ accessToken: "access-second", expiresIn: 60 }),
+    };
+
+    const first = refreshAndUpdateCredentials(
+      connection({ id: "conn-codex-a", provider: "codex" }),
+      false,
+      null,
+      dependencies(firstExecutor),
+    );
+    const second = refreshAndUpdateCredentials(
+      connection({ id: "conn-codex-b", provider: "codex" }),
+      false,
+      null,
+      { ...dependencies(secondExecutor), callerTimeoutMs: 40 },
+    );
+
+    // Hold the lane well past the queued sibling's 40ms budget.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(secondExecutor.refreshCredentials).not.toHaveBeenCalled();
+
+    releaseFirst();
+    await expect(first).resolves.toMatchObject({ refreshed: true });
+    // The queued sibling survives: its budget covers the refresh, not the wait.
+    await expect(second).resolves.toMatchObject({ refreshed: true });
+    expect(secondExecutor.refreshCredentials).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a same-connection joiner inherit the queued owner's lane clock", async () => {
+    // A second quota subscriber for the SAME connection piggybacks on the
+    // in-flight refresh via credentialRefreshInflight. If its budget armed at
+    // call time it would expire while the owner is still queued behind a
+    // sibling, so duplicate requests would time out even after the owner path
+    // was fixed.
+    process.env.CODEX_REFRESH_SPACING_MS = "0";
+    let releaseBlocker;
+    const blockerExecutor = {
+      needsRefresh: vi.fn(() => true),
+      refreshCredentials: vi.fn(
+        () => new Promise((resolve) => {
+          releaseBlocker = () => resolve({ accessToken: "access-blocker", expiresIn: 60 });
+        }),
+      ),
+    };
+    const ownerExecutor = {
+      needsRefresh: vi.fn(() => true),
+      refreshCredentials: vi.fn().mockResolvedValue({ accessToken: "access-owner", expiresIn: 60 }),
+    };
+
+    // Sibling connection takes the shared openai-auth0 lane and holds it.
+    const blocker = refreshAndUpdateCredentials(
+      connection({ id: "conn-codex-blocker", provider: "codex" }),
+      false,
+      null,
+      dependencies(blockerExecutor),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Owner queues behind the blocker; the joiner attaches to the very same
+    // connection while the owner is still waiting its turn.
+    const ownerConnection = connection({ id: "conn-codex-owner", provider: "codex" });
+    const owner = refreshAndUpdateCredentials(ownerConnection, false, null, {
+      ...dependencies(ownerExecutor),
+      callerTimeoutMs: 40,
+    });
+    const joiner = refreshAndUpdateCredentials(ownerConnection, false, null, {
+      ...dependencies(ownerExecutor),
+      callerTimeoutMs: 40,
+    });
+
+    // Hold the lane far past both 40ms budgets.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(ownerExecutor.refreshCredentials).not.toHaveBeenCalled();
+
+    releaseBlocker();
+    await expect(blocker).resolves.toMatchObject({ refreshed: true });
+    await expect(owner).resolves.toMatchObject({ refreshed: true });
+    await expect(joiner).resolves.toMatchObject({ refreshed: true });
+    // The joiner shared the owner's refresh instead of issuing its own.
+    expect(ownerExecutor.refreshCredentials).toHaveBeenCalledTimes(1);
+  });
+
+  it("still enforces the caller timeout once the lane is held", async () => {
+    // Guard against over-correcting: a genuinely slow refresh must still fail.
+    const executor = {
+      needsRefresh: vi.fn(() => true),
+      refreshCredentials: vi.fn(() => new Promise(() => {})),
+    };
+
+    await expect(
+      refreshAndUpdateCredentials(connection({ id: "conn-slow", provider: "github" }), false, null, {
+        ...dependencies(executor),
+        callerTimeoutMs: 30,
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_CREDENTIAL_REFRESH_TIMEOUT" });
   });
 });

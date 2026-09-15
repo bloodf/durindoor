@@ -26,10 +26,19 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const SRC = readFileSync(
+const ENDPOINT_SRC = readFileSync(
   fileURLToPath(
     new URL(
       "../../src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
+const KEYS_SRC = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
       import.meta.url,
     ),
   ),
@@ -39,12 +48,12 @@ const SRC = readFileSync(
 describe("EndpointPageClient regression (2ff1c49b7)", () => {
   it("declares the editKeyPolicy useState binding it references at render/save time", () => {
     // Bug #1: the declaration was accidentally removed.
-    expect(SRC).toMatch(
+    expect(KEYS_SRC).toMatch(
       /const\s+\[\s*editKeyPolicy\s*,\s*setEditKeyPolicy\s*\]\s*=\s*useState\(/,
     );
     // Sanity: the identifiers are actually used (guards against a dead declaration).
-    expect(SRC).toMatch(/draft=\{editKeyPolicy\}/);
-    expect(SRC).toMatch(/setEditKeyPolicy\(/);
+    expect(KEYS_SRC).toMatch(/draft=\{editKeyPolicy\}/);
+    expect(KEYS_SRC).toMatch(/setEditKeyPolicy\(/);
   });
 
   it("passes the Tailscale ever-reachable pair to updateReachable, never the tunnel/undefined setter", () => {
@@ -52,7 +61,7 @@ describe("EndpointPageClient regression (2ff1c49b7)", () => {
     // setTsEverReachable. The buggy forms bound setTunnelEverReachableRef
     // (undefined) or setTunnelEverReachable (wrong tunnel setter).
     const tsCalls = [
-      ...SRC.matchAll(
+      ...ENDPOINT_SRC.matchAll(
         /updateReachable\([^)]*tsEverReachableRef\s*,\s*([A-Za-z0-9_]+)\s*\)/g,
       ),
     ];
@@ -62,6 +71,6 @@ describe("EndpointPageClient regression (2ff1c49b7)", () => {
       expect(m[1]).toBe("setTsEverReachable");
     }
     // The undefined ref identifier must not appear anywhere.
-    expect(SRC).not.toMatch(/setTunnelEverReachableRef/);
+    expect(ENDPOINT_SRC).not.toMatch(/setTunnelEverReachableRef/);
   });
 });

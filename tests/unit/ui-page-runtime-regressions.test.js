@@ -8,7 +8,7 @@ const route = vi.hoisted(() => ({ params: new URLSearchParams() }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => route.params }));
 import CallbackPage from "../../src/app/callback/page.js";
 import ProxyPoolsPage from "../../src/app/(dashboard)/dashboard/proxy-pools/page.js";
-import EndpointPage from "../../src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx";
+import KeysPage from "../../src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let container;
@@ -66,6 +66,6 @@ it("shows a rejected key-list request rather than claiming the collection is emp
     const failed = String(url) === "/api/keys";
     return { ok: !failed, status: failed ? 503 : 200, json: async () => failed ? { error: "Key store unavailable" } : {} };
   }));
-  await act(async () => { root.render(React.createElement(EndpointPage, { machineId: "qa-machine" })); });
+  await act(async () => { root.render(React.createElement(KeysPage)); });
   expect(within(container).getByText("Key store unavailable").getAttribute("role")).toBe("alert");
 });

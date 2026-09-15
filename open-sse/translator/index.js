@@ -1,6 +1,6 @@
 import { FORMATS } from "./formats.js";
 import { ensureToolCallIds, fixMissingToolResponses, salvageOrphanedToolResults } from "./concerns/toolCall.js";
-import { normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
+import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
@@ -226,6 +226,16 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
     const customMaxOutput = resolvedTranslationContext.modelCapabilities?.maxOutput ?? null;
     result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput);
+    /**
+     * Forced tool choice is rejected by every thinking model, so this must run
+     * on the TRANSLATED path too — not just native Claude passthrough. An
+     * OpenAI client sending tool_choice:"required" (OMP, Codex, most agentic
+     * harnesses) is converted to Anthropic's {type:"any"} by
+     * convertOpenAIToolChoice, which is exactly the shape Anthropic refuses
+     * once thinking is on. applyThinking has already run, so body.thinking is
+     * final here.
+     */
+    enforceClaudeToolChoiceThinking(result, resolvedTranslationContext.capabilityModel || model, provider);
   }
 
   // Claude cloaking: rename client tools with _cc suffix (anti-ban)

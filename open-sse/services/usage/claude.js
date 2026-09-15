@@ -37,6 +37,10 @@ function buildOAuthUsageHeaders(accessToken) {
 // hitting upstream (port of the operator request to slow Claude polling).
 const OAUTH_QUOTA_CACHE_MAX = 100;
 const OAUTH_QUOTA_CACHE_TTL_MS = 30 * 60 * 1000;
+// How long an entry is RETAINED for stale fallback after it stops being fresh.
+// Must cover the longest rate-limit cooldown (2h) plus the serve-fresh window,
+// otherwise the cache evaporates mid-cooldown and the dashboard blanks.
+const OAUTH_QUOTA_RETENTION_MS = 3 * 60 * 60 * 1000;
 // Rate-limit cooldown escalates per consecutive 429 (15m → 30m → 1h → 2h cap)
 // so a tripped limit is not re-tripped every few minutes; a successful fetch
 // resets the strike count.
@@ -53,10 +57,33 @@ function getOAuthCacheKey(accessToken) {
   return digestMemoryKey("claude-oauth-quota", accessToken);
 }
 
+/**
+ * Cache entry usable as a FRESH response.
+ *
+ * Past the serve-fresh TTL the entry is kept, not dropped: it is still the
+ * last-known-good quota and remains the only thing worth showing while a 429
+ * cooldown blocks a refetch. `getOAuthFallbackEntry` reads those older rows.
+ */
 function getOAuthCacheEntry(key) {
   const entry = oauthQuotaCache.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.cachedAt >= OAUTH_QUOTA_CACHE_TTL_MS) {
+  if (Date.now() - entry.cachedAt >= OAUTH_QUOTA_CACHE_TTL_MS) return null;
+  return entry;
+}
+
+/**
+ * Cache entry usable as STALE fallback during a rate-limit cooldown.
+ *
+ * The cooldown escalates to 2h while the serve-fresh TTL is 30m, so an entry
+ * that can no longer be served fresh is exactly the entry a rate-limited
+ * dashboard still needs. Retention spans the longest cooldown so the card
+ * keeps showing last-known values instead of blanking to
+ * "Rate limited, try again later." for up to 90 minutes.
+ */
+function getOAuthFallbackEntry(key) {
+  const entry = oauthQuotaCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt >= OAUTH_QUOTA_RETENTION_MS) {
     oauthQuotaCache.delete(key);
     return null;
   }
@@ -118,10 +145,14 @@ export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oau
   const cached = getOAuthCacheEntry(cacheKey);
   // The 429 cooldown is upstream protection: even a forced refresh honors it.
   if (getOAuthRateLimit(cacheKey)) {
-    if (cached?.data?.quotas) {
-      return Promise.resolve(makeStaleResponse(cached, "Rate limited; showing cached quota."));
+    // Fall back to the retained entry, not just the still-fresh one: the
+    // cooldown (up to 2h) outlives the 30m serve-fresh TTL, so the rows the
+    // user needs are usually older than "fresh".
+    const fallback = getOAuthFallbackEntry(cacheKey);
+    if (fallback?.data?.quotas) {
+      return Promise.resolve(makeStaleResponse(fallback, "Rate limited; showing cached quota."));
     }
-    return Promise.resolve(cached?.data || { message: "Rate limited, try again later." });
+    return Promise.resolve(fallback?.data || { message: "Rate limited, try again later." });
   }
   if (!options.force && cached) return Promise.resolve(cached.data);
 
@@ -129,14 +160,14 @@ export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oau
   if (pending) return pending;
 
   let request;
-  request = pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached).finally(() => {
+  request = pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey).finally(() => {
     if (oauthQuotaInFlight.get(cacheKey) === request) oauthQuotaInFlight.delete(cacheKey);
   });
   oauthQuotaInFlight.set(cacheKey, request);
   return request;
 }
 
-async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached) {
+async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey) {
   try {
     const oauthResponse = await proxyAwareFetch(CLAUDE_CONFIG.oauthUsageUrl, {
       method: "GET",
@@ -217,14 +248,18 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, cached)
 
     if (status === 429) {
       recordOAuthRateLimit(cacheKey);
-      return cached ?
-      makeStaleResponse(cached, "Rate limited; showing cached quota.") :
+      // Prefer any retained entry: `cached` only covers the 30m serve-fresh
+      // window, but a 429 arriving after that window still has usable rows.
+      const fallback = getOAuthFallbackEntry(cacheKey);
+      return fallback ?
+      makeStaleResponse(fallback, "Rate limited; showing cached quota.") :
       { message: "Rate limited, try again later." };
     }
 
     if (status >= 500 && status < 600) {
-      if (cached) {
-        return { ...cached.data, stale: true, staleReason: "Claude usage temporarily unavailable; showing cached quota." };
+      const fallback = getOAuthFallbackEntry(cacheKey);
+      if (fallback) {
+        return { ...fallback.data, stale: true, staleReason: "Claude usage temporarily unavailable; showing cached quota." };
       }
       return { message: "Claude usage temporarily unavailable. Try again later." };
     }

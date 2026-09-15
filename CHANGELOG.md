@@ -3,6 +3,7 @@
 ## Features
 
 - feat(providers): add a Local Whisper speech-to-text provider for a self-hosted OpenAI-compatible transcription server (faster-whisper-server, speaches, an OpenVINO/FastAPI wrapper, …). The server needs no key, so the provider is keyless; its host is the operator's, so the base URL is stored per connection and resolved at request time rather than fixed in the registry, matching `ollama-local`. Only the origin of the saved URL is honored — a stored path, query or fragment is discarded so it cannot redirect transcription audio — and the request goes through the standard outbound URL guard, which keeps loopback and LAN reachable while refusing cloud-metadata and link-local targets.
+- feat(skills): copy a ready-to-paste agent instruction that carries the endpoint and API key, not just the skill URL. The page previously copied only a raw GitHub link, so the agent still had to be told where DurinDoor lives and how to authenticate. An endpoint selector lists the local URL plus any enabled tunnel or Tailscale transport — disabled transports are omitted so a copied snippet cannot point somewhere unreachable — and a key selector lists active keys by their masked label. The credential itself is fetched from the dedicated reveal route at the moment of the copy and written straight to the clipboard, never held in page state or rendered, so it cannot leak into a screenshot or a shared screen.
 
 ## Fixes
 

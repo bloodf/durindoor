@@ -61,10 +61,11 @@ describe("MCP Gateway keys page", () => {
   });
 
   it("renders keys and links back to instances without rendering them", async () => {
-    globalThis.fetch = makeFetchMock([
+    const fetch = makeFetchMock([
       noInstances,
       (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ keys: [] })
     ]);
+    globalThis.fetch = fetch;
     await act(async () => {
       root.render(React.createElement(McpGatewayKeysPage, null));
     });
@@ -72,9 +73,28 @@ describe("MCP Gateway keys page", () => {
     expect(container.textContent).toContain("Gateway Keys");
     expect(container.textContent).toContain("New key");
     expect(container.textContent).toContain("No gateway keys yet");
-    // Instances are fetched for the grants picker but never shown as a section.
     expect(container.textContent).not.toContain("No instances yet");
     expect(container.querySelector('a[href="/dashboard/mcp-gateway"]')).not.toBeNull();
+    // Instances back the grants picker only, so nothing is fetched until the
+    // operator opens it: an instances outage must not raise an error toast on
+    // a page whose own list loaded fine.
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/mcp-gateway/instances"))).toBe(false);
+  });
+
+  it("does not notify an instances failure that no visible list depends on", async () => {
+    globalThis.fetch = makeFetchMock([
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") && mockJsonResponse({ error: "upstream down" }, 500),
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ keys: [
+        { id: "k1", name: "Cursor laptop", machineId: null, createdAt: "2026-08-21T10:00:00Z" }
+      ] })
+    ]);
+    notify.mockClear();
+    await act(async () => {
+      root.render(React.createElement(McpGatewayKeysPage, null));
+    });
+    await flush();
+    expect(container.textContent).toContain("Cursor laptop");
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("renders key rows with machine id and creation date metadata", async () => {

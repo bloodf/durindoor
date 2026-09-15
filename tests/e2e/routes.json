@@ -419,7 +419,7 @@
         "error"
       ],
       "actions": [
-        "open-marketplace"
+        "create"
       ]
     },
     {
@@ -443,7 +443,7 @@
         "error"
       ],
       "actions": [
-        "refresh"
+        "create-key"
       ]
     },
     {

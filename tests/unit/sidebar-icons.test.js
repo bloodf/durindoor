@@ -97,7 +97,6 @@ describe("SidebarNavIcons information architecture", () => {
 
   it("groups client/media integration routes under Integrate with the media accordion", () => {
     expect(itemHrefs("integrate")).toEqual([
-      "/dashboard/mcp-gateway",
       "/dashboard/cli-tools",
       "/dashboard/skills",
       "/dashboard/auto-configure",
@@ -182,12 +181,26 @@ describe("SidebarNavIcons information architecture", () => {
   });
 
   it("marks nested nav items as exact: false so children stay highlighted", () => {
-    const mcp = itemEntries("integrate").find((i) => i.href === "/dashboard/mcp-gateway");
     const cli = itemEntries("integrate").find((i) => i.href === "/dashboard/cli-tools");
     const usage = itemEntries("monitor").find((i) => i.href === "/dashboard/usage");
-    expect(mcp.exact).toBe(false);
     expect(cli.exact).toBe(false);
     expect(usage.exact).toBeUndefined();
+  });
+
+  it("splits MCP Gateway into Instances and Keys children", () => {
+    const mcp = section("integrate").entries.find((e) => e.key === "mcp-gateway");
+    expect(mcp.type).toBe("group");
+    expect(mcp.children.map((c) => c.label)).toEqual(["Instances", "Keys"]);
+    expect(mcp.children.map((c) => c.href)).toEqual([
+      "/dashboard/mcp-gateway",
+      "/dashboard/mcp-gateway/keys",
+    ]);
+    // Instances must be exact, or it would also light up on the keys route:
+    // /dashboard/mcp-gateway/keys starts with /dashboard/mcp-gateway.
+    const instances = mcp.children.find((c) => c.label === "Instances");
+    expect(instances.exact).toBe(true);
+    expect(isActivePath("/dashboard/mcp-gateway/keys", instances.href, instances.exact)).toBe(false);
+    expect(isActivePath("/dashboard/mcp-gateway/keys", "/dashboard/mcp-gateway/keys")).toBe(true);
   });
 
   it("NavIcon renders the requested Material Symbol glyph", () => {

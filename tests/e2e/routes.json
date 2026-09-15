@@ -409,10 +409,9 @@
         }
       ],
       "expectedText": "MCP Gateway",
-      "expectedTextSource": "src/app/(dashboard)/dashboard/mcp-gateway/page.js:295 <h1>MCP Gateway</h1>",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx PageHeader title=\"MCP Gateway\"",
       "expectedSecondary": [
-        "No instances yet",
-        "No gateway keys yet"
+        "No instances yet"
       ],
       "fixture": "baseline",
       "states": [
@@ -421,6 +420,30 @@
       ],
       "actions": [
         "open-marketplace"
+      ]
+    },
+    {
+      "id": "R11a",
+      "template": "/dashboard/mcp-gateway/keys",
+      "entry": "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/mcp-gateway/keys",
+          "predicate": "static"
+        }
+      ],
+      "expectedText": "Gateway Keys",
+      "expectedTextSource": "src/app/(dashboard)/dashboard/mcp-gateway/keys/McpGatewayKeysPage.jsx PageHeader title=\"Gateway Keys\"",
+      "expectedSecondary": [
+        "No gateway keys yet"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default",
+        "error"
+      ],
+      "actions": [
+        "refresh"
       ]
     },
     {

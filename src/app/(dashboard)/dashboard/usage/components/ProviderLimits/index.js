@@ -48,6 +48,7 @@ import {
   getQuotaCache,
   setQuotaCache,
   QUOTA_CACHE_KEY,
+  withCachedQuotaFallback,
   REFRESH_INTERVAL_MS,
   CLAUDE_REFRESH_INTERVAL_MS,
   DEPLETED_QUOTA_THRESHOLD,
@@ -821,11 +822,17 @@ export default function ProviderLimits() {
 
       // Parse quota data using provider-specific parser
       const parsedQuotas = parseQuotaData(provider, data);
+      // A rate-limited response with no rows (in-process cache lost to a server
+      // restart) falls back to this connection's saved rows. `staleReason`
+      // carries the reason forward; `message` is cleared so the renderer shows
+      // the table instead of replacing it with a notice.
+      const { quotas, staleReason } = withCachedQuotaFallback(connectionId, parsedQuotas, data);
 
       const quotaEntry = {
-        quotas: parsedQuotas,
+        quotas,
         plan: data.plan || null,
-        message: data.message || null,
+        message: staleReason ? null : data.message || null,
+        staleReason: staleReason || data.staleReason || null,
         raw: data
       };
 
@@ -1439,7 +1446,12 @@ export default function ProviderLimits() {
                 </span>
               </div>
               {conn.provider === "kiro" ? <div className="flex flex-wrap items-center gap-1"><Badge tone="accent" size="sm">{kiroMethodLabel(conn)}</Badge>{kiroRegion(conn) ? <Badge tone="info" size="sm">{kiroRegion(conn)}</Badge> : null}<Badge tone={testStatusTone} size="sm">{testStatus}</Badge>{conn.providerSpecificData?.profileArn ? <Button variant="ghost" size="sm" icon={copied === conn.id ? "check" : "content_copy"} onClick={() => copy(conn.providerSpecificData.profileArn, conn.id)} title={conn.providerSpecificData.profileArn} className="max-w-full justify-start px-2 font-mono text-[11px]"><span className="truncate">{conn.providerSpecificData.profileArn}</span></Button> : null}</div> : null}
-              {isLoading ? <div className="flex justify-center py-5 text-dd-muted"><span role="status" aria-label="Loading quota" className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span></div> : error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger">{error}</div> : quota?.message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info">{quota.message}</div> : <QuotaTable quotas={visibleQuotas} compact sortMode={isCodex ? quotaSortMode : "default"} showSortLabel={isCodex && quotaSortMode !== "default"} onHideQuota={(quotaRow) => handleHideQuota(conn.id, conn.provider, quotaRow)} />}
+              {isLoading ? <div className="flex justify-center py-5 text-dd-muted"><span role="status" aria-label="Loading quota" className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span></div> : error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger">{error}</div> : quota?.message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info">{quota.message}</div> : <>
+                {/* Stale rows still beat no rows, but the reason must be visible
+                    so nobody mistakes cached numbers for live ones. */}
+                {quota?.staleReason ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">{quota.staleReason}</div> : null}
+                <QuotaTable quotas={visibleQuotas} compact sortMode={isCodex ? quotaSortMode : "default"} showSortLabel={isCodex && quotaSortMode !== "default"} onHideQuota={(quotaRow) => handleHideQuota(conn.id, conn.provider, quotaRow)} />
+              </>}
               {hiddenQuotaRows.length > 0 ? <div className="flex flex-wrap items-center gap-1 border-t border-dd-border-subtle pt-2 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">visibility_off</span><span>Hidden:</span>{hiddenQuotaRows.map((quotaRow) => <Button key={getQuotaVisibilityKey(quotaRow, quotaRow.visibilityIndex)} variant="secondary" size="sm" onClick={() => handleShowQuota(conn.id, conn.provider, quotaRow)} title="Show this quota row">{quotaRow.name}</Button>)}</div> : null}
             </section>;
           };

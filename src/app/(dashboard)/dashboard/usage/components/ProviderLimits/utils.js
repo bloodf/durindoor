@@ -335,6 +335,39 @@ export function setQuotaCache(connectionId, quotaEntry) {
 }
 
 /**
+ * Substitute saved rows for a rate-limited response that carries none.
+ *
+ * A server restart empties the in-process Claude quota cache, so a dashboard
+ * opened during an active 429 cooldown receives `{ message: "Rate limited…" }`
+ * with no rows and the card blanks — even though the browser still holds the
+ * last-known values.
+ *
+ * Operates on the POST-parse shape: `setQuotaCache` stores `quotas` as the
+ * ARRAY returned by `parseQuotaData`, not the server's object map. Substitutes
+ * only when the fresh response has no rows, and only from the same
+ * connection's entry, so live data always wins and nothing crosses accounts.
+ *
+ * @param {string} connectionId connection the rows belong to
+ * @param {Array} parsedQuotas rows parsed from the fresh response
+ * @param {Object|null} data raw fresh response
+ * @returns {{quotas: Array, staleReason: string|null}} rows to render
+ */
+export function withCachedQuotaFallback(connectionId, parsedQuotas, data) {
+  const rows = Array.isArray(parsedQuotas) ? parsedQuotas : [];
+  const hasRealRows = rows.some((row) => row && row.name !== "error");
+  const message = isObject(data) && isString(data.message) ? data.message : null;
+  if (hasRealRows || !message) return { quotas: rows, staleReason: null };
+
+  const cachedRows = getQuotaCache()[connectionId]?.quotas;
+  if (!Array.isArray(cachedRows) || cachedRows.length === 0) {
+    return { quotas: rows, staleReason: null };
+  }
+
+  // Keep the reason visible: these numbers are old and the user must know why.
+  return { quotas: cachedRows, staleReason: message };
+}
+
+/**
  * Format ISO date string to countdown format (inspired by vscode-antigravity-cockpit)
  * @param {string|Date} date - ISO date string or Date object
  * @returns {string} Formatted countdown (e.g., "2d 5h 30m", "4h 40m", "15m") or "-"

@@ -107,10 +107,8 @@ describe("endpoint URL visibility", () => {
     });
 
     it("leaves no readonly input holding an endpoint URL", () => {
-      // The only readonly input left on the page is the created-API-key reveal.
       const readonlyInputs = SRC.match(/<Input\b[^>]*\breadOnly\b[^>]*>/gs) || [];
-      expect(readonlyInputs).toHaveLength(1);
-      expect(readonlyInputs[0]).toMatch(/Newly created API key/);
+      expect(readonlyInputs).toHaveLength(0);
     });
   });
 });

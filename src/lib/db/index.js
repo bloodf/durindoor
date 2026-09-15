@@ -274,6 +274,12 @@ export {
 "./repos/apiKeysRepo.js";
 export { getApiKeyProviderConnectionIds, setApiKeyProviderConnectionIds } from
 "./repos/apiKeyProviderConnectionsRepo.js";
+// API-key groups: organizational labels only, never consulted on the request
+// path (see repos/apiKeyGroupsRepo.js).
+export {
+  getApiKeyGroups, getApiKeyGroupById, createApiKeyGroup, updateApiKeyGroup, deleteApiKeyGroup,
+  getGroupIdsForApiKey, getGroupIdsByApiKey, setApiKeyGroups } from
+"./repos/apiKeyGroupsRepo.js";
 export {
   getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync } from
 "./repos/apiKeyUsageTotalsRepo.js";

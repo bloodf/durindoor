@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   getApiKeys: vi.fn(),
   getConsistentMachineId: vi.fn(),
   updateApiKey: vi.fn(),
+  getApiKeyGroups: vi.fn(),
+  getGroupIdsByApiKey: vi.fn(),
+  getGroupIdsForApiKey: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -43,6 +46,9 @@ vi.mock("@/lib/localDb", () => ({
   getApiKeyProviderConnectionIds: mocks.getApiKeyProviderConnectionIds,
   getApiKeys: mocks.getApiKeys,
   updateApiKey: mocks.updateApiKey,
+  getApiKeyGroups: mocks.getApiKeyGroups,
+  getGroupIdsByApiKey: mocks.getGroupIdsByApiKey,
+  getGroupIdsForApiKey: mocks.getGroupIdsForApiKey,
 }));
 
 vi.mock("@/shared/utils/machineId", () => ({
@@ -102,6 +108,9 @@ describe("API keys routes", () => {
     mocks.getProviderNodes.mockResolvedValue([]);
     mocks.getProviderConnections.mockResolvedValue([]);
     mocks.getApiKeyProviderConnectionIds.mockResolvedValue([]);
+    mocks.getApiKeyGroups.mockResolvedValue([]);
+    mocks.getGroupIdsByApiKey.mockResolvedValue({});
+    mocks.getGroupIdsForApiKey.mockResolvedValue([]);
     mocks.getApiKeyUsageTotals.mockResolvedValue({ apiKeyId: storedKey.id, totalTokens: 25, totalCost: 1.5, totalRequests: 2, updatedAt: null });
     mocks.getAllApiKeyUsageTotals.mockResolvedValue([{ apiKeyId: storedKey.id, totalTokens: 25, totalCost: 1.5, totalRequests: 2, updatedAt: null }]);
     mocks.createApiKey.mockImplementation(async (name, machineId, allowedCombos, dailyLimitTokens, expiresAt, options = {}) => ({

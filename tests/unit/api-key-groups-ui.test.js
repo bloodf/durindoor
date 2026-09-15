@@ -194,8 +194,15 @@ describe("API Keys page — groups", () => {
       if (target === "/api/combos") return Promise.resolve(response({ combos: [] }));
       if (target.startsWith("/api/keys/policy-catalog")) return Promise.resolve(response({ models: [] }));
       if (target.startsWith("/api/keys/") && options.method === "PUT") {
-        groupDeleted = true;
-        return Promise.resolve(response({ error: "Group not found" }, 400));
+        const sent = JSON.parse(options.body);
+        // The server rejects only while the request still names the deleted
+        // group. Once the stale id is pruned the same save succeeds, which is
+        // what makes this recovery rather than a nicer error message.
+        if ((sent.groupIds || []).includes("g-ci")) {
+          groupDeleted = true;
+          return Promise.resolve(response({ error: "Group not found" }, 400));
+        }
+        return Promise.resolve(response({ key: { ...baseKeys[0], name: "ci-deploy", groupIds: [] } }));
       }
       return Promise.resolve(response({}));
     });
@@ -209,12 +216,16 @@ describe("API Keys page — groups", () => {
     expect(container.querySelector("dialog")).not.toBeNull();
     expect(container.textContent).toContain("Group not found");
 
-    // The stale chip is gone, so a retry carries a payload the server accepts.
+    // The stale chip is gone, so the retry carries a payload the server takes.
     const refetched = calls.filter((call) => call.url === "/api/keys" && call.method === "GET");
     expect(refetched.length).toBeGreaterThan(1);
 
     await act(async () => save().click());
     const retry = calls.filter((call) => call.method === "PUT").at(-1);
     expect(retry.body.groupIds).toEqual([]);
+
+    // Recovery completes: the second save is accepted and the modal closes.
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(container.textContent).not.toContain("Group not found");
   });
 });

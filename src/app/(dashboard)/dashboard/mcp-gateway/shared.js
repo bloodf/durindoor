@@ -39,10 +39,16 @@ export function stringifyMaybe(value) {
  * `notify` surfaces a failed load, and the collection is emptied rather than
  * left stale: showing instances that a failed refresh can no longer vouch for
  * is how someone grants a key to something that was deleted.
+ *
+ * `eager: false` defers the first load until the caller invokes `reload`. The
+ * keys page uses this for instances: that list backs the grants picker only,
+ * so fetching it on mount makes an unrelated failure raise an error toast on a
+ * page whose own list loaded fine, and revoking a key is exactly when an
+ * operator cannot afford a distracting error about something else.
  */
-export function useGatewayCollection(path, field) {
+export function useGatewayCollection(path, field, { eager = true } = {}) {
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(eager);
   const notify = useNotificationStore((state) => state.addNotification);
 
   const reload = useCallback(async () => {
@@ -65,8 +71,8 @@ export function useGatewayCollection(path, field) {
   }, [path, field, notify]);
 
   useEffect(() => {
-    Promise.resolve().then(reload);
-  }, [reload]);
+    if (eager) Promise.resolve().then(reload);
+  }, [eager, reload]);
 
   return { items, loading, reload, notify };
 }

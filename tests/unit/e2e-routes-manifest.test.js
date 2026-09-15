@@ -39,4 +39,24 @@ describe("e2e route manifest", () => {
     expect(keys.expectedSecondary).toContain("No gateway keys yet");
     expect(keys.expectedText).toBe("Gateway Keys");
   });
+
+  it("names MCP Gateway actions that exist as controls on their page", () => {
+    // R11 kept "open-marketplace" from an older page that had a marketplace
+    // button. The manifest happily described a control nobody can click.
+    const source = (entry) => readFileSync(join(root, entry), "utf8");
+    const pageSource = (route) => {
+      const wrapper = source(route.entry);
+      const imported = wrapper.match(/from "\.\/(\w+\.jsx)"/)?.[1];
+      return imported ? source(join(route.entry, "..", imported)) : wrapper;
+    };
+    const instances = routes.find((route) => route.template === "/dashboard/mcp-gateway");
+    const keys = routes.find((route) => route.template === "/dashboard/mcp-gateway/keys");
+
+    expect(instances.actions).toEqual(["create"]);
+    expect(pageSource(instances)).toContain("New instance");
+    expect(pageSource(instances)).not.toContain("marketplace");
+
+    expect(keys.actions).toEqual(["create-key"]);
+    expect(pageSource(keys)).toContain("New key");
+  });
 });

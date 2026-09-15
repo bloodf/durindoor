@@ -3,6 +3,7 @@
 ## Fixes
 
 - fix(website): the demo login page now shows the accepted demo password in a persistent notice above the form, with a copy button. It was previously only legible in small text inside the dismissible demo banner, so visitors could not tell how to sign in.
+- fix(endpoint): show the complete API endpoint URL instead of a clipped fragment. Local, Cloudflare tunnel, Tailscale and the "All Cloudflare endpoints" rows rendered their URL inside a fixed-width readonly `<input>`, so anything past the field width scrolled out of view with no affordance: `http://localhost:11434/v1` read as `http://localhost:1143` and a tunnel hostname as `https://tim-rpg-phili`. The value was always complete and copyable, but unreadable. Every endpoint row now renders the URL as selectable wrapping text, so the whole URL stays visible down to narrow viewports.
 
 ## Upstream ports
 

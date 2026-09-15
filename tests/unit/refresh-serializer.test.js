@@ -191,4 +191,37 @@ describe("refresh serializer", () => {
     process.env.CODEX_REFRESH_SPACING_MS = "250";
     expect(getRefreshSpacingMs()).toBe(250);
   });
+
+  it("signals lane acquisition only when the refresh actually starts", async () => {
+    process.env.CODEX_REFRESH_SPACING_MS = "0";
+    const order = [];
+    let releaseFirst;
+    const first = serializeRefresh(
+      "codex",
+      () => new Promise((resolve) => { releaseFirst = resolve; }),
+      { onLaneAcquired: () => order.push("first:lane") }
+    );
+    const second = serializeRefresh(
+      "codex",
+      async () => "second",
+      { onLaneAcquired: () => order.push("second:lane") }
+    );
+
+    await flushMicrotasks(5);
+    // The queued sibling must NOT have signalled yet: it is still waiting its
+    // turn, so a caller budget armed on this signal stays unarmed.
+    expect(order).toEqual(["first:lane"]);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(["first:lane", "second:lane"]);
+  });
+
+  it("signals lane acquisition for non-rotating providers", async () => {
+    let signalled = false;
+    await serializeRefresh("github", async () => "ok", {
+      onLaneAcquired: () => { signalled = true; },
+    });
+    expect(signalled).toBe(true);
+  });
 });

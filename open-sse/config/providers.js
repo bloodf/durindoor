@@ -37,6 +37,33 @@ export function resolveOllamaLocalHost(credentials) {
   return (raw || OLLAMA_LOCAL_DEFAULT_HOST).replace(/\/api\/chat\/?$/, "").replace(/\/$/, "");
 }
 
+export const LOCAL_WHISPER_DEFAULT_HOST = "http://127.0.0.1:11500";
+
+/**
+ * Resolve the per-connection base URL for a self-hosted Whisper server.
+ *
+ * The server is user-run, so its host is stored per connection in
+ * `providerSpecificData.baseUrl` (same shape as ollama-local) rather than being
+ * fixed in the registry. Only the origin is honored: a stored path, query or
+ * fragment is discarded so a mis-typed value cannot redirect transcription
+ * audio somewhere unintended. A value that is not a parseable http(s) URL falls
+ * back to the default host.
+ *
+ * @param {Object|null} credentials connection credentials
+ * @returns {string} origin with no trailing slash
+ */
+export function resolveLocalWhisperHost(credentials) {
+  const raw = credentials?.providerSpecificData?.baseUrl?.trim();
+  if (!raw) return LOCAL_WHISPER_DEFAULT_HOST;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return LOCAL_WHISPER_DEFAULT_HOST;
+    return url.origin;
+  } catch {
+    return LOCAL_WHISPER_DEFAULT_HOST;
+  }
+}
+
 // Region URLs single-source from registry xiaomi-tokenplan.transport
 export const XIAOMI_TOKENPLAN_REGIONS = PROVIDERS["xiaomi-tokenplan"]?.regions || {};
 export const XIAOMI_TOKENPLAN_DEFAULT_REGION = PROVIDERS["xiaomi-tokenplan"]?.defaultRegion;

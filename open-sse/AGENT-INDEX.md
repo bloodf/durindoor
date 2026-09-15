@@ -220,6 +220,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `llm7` |  | apikey | `https://api.llm7.io/v1/chat/completions` |
 | `lm-studio` | openai | apikey | `http://localhost:1234/v1` |
 | `local-device` |  | freeTier | `` |
+| `local-whisper` |  | apikey | `` |
 | `longcat` |  | apikey | `https://api.longcat.chat/openai/v1/chat/completions` |
 | `maritalk` |  | apikey | `https://chat.maritaca.ai/api/chat/completions` |
 | `meta-llama` |  | apikey | `https://api.llama.com/compat/v1/chat/completions` |

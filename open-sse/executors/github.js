@@ -20,7 +20,7 @@ import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
 import { estimateInputTokens } from "../utils/usageTracking.js";
 import crypto from "crypto";
-import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export class GithubExecutor extends BaseExecutor {
   constructor() {
@@ -226,6 +226,14 @@ export class GithubExecutor extends BaseExecutor {
     // caller's body. translateRequest then copies only the fields it knows.
     const strippedBody = stripUnsupportedParams("github", model, { ...body });
     const parallelToolCallsDisabled = body.parallel_tool_calls === false;
+    /**
+     * Capture the caller's forced-choice intent from the ORIGINAL OpenAI body:
+     * translateRequest now applies the thinking downgrade, so by the time it
+     * returns the choice already reads as plain "auto" and the single-tool-call
+     * intent is no longer recoverable.
+     */
+    const forcedBeforeDowngrade = body.tool_choice === "required" ||
+      (isObject(body.tool_choice) && body.tool_choice.type === "function");
     const transformedBody = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, model, strippedBody, true, credentials, "github");
     // _toolNameMap is internal bookkeeping (see openai-to-claude.js) — chatCore
     // normally strips it before dispatch and threads it into the response state to
@@ -261,6 +269,7 @@ export class GithubExecutor extends BaseExecutor {
      * the "github" branch KEEPS unvalidated blocks (see normalizeClaudePassthrough),
      * so we force the validating path to strip them for this route.
      */
+    const requestedDisableParallel = transformedBody.tool_choice?.disable_parallel_tool_use;
     /** Preserve the caller's assistant-prefill policy through the native GitHub Messages cleanup pass. */
     normalizeClaudePassthrough(transformedBody, model, "claude", requestContext?.modelCapabilities?.maxOutput ?? null, { rawHeaders: requestContext?.clientHeaders });
 
@@ -278,18 +287,20 @@ export class GithubExecutor extends BaseExecutor {
     }
 
     /**
-     * Thinking/forced-tool-choice guard (Codex #291 P2): Claude's Messages API
-     * rejects extended thinking (enabled/adaptive) together with forced tool
-     * choice (any/tool). Downgrade to auto while preserving the parallel-use
-     * flag; preserve "none" because it disables tools and is compatible.
+     * Thinking/forced-tool-choice guard: Claude's Messages API rejects
+     * thinking together with forced tool choice (any/tool). This used to be
+     * open-coded here, which meant only the GitHub route was protected while
+     * every other Claude-format provider still emitted the rejected shape.
+     * It now lives in enforceClaudeToolChoiceThinking, shared with the
+     * translator, and normalizeClaudePassthrough above already applied it.
+     *
+     * Copilot's Messages route additionally defaults the parallel-use flag ON
+     * through that downgrade: a forced choice implied a single tool call and
+     * "auto" carries no such guarantee. That default is specific to this route
+     * — the shared helper preserves only what the caller actually sent.
      */
-    const thinkingActive = transformedBody.thinking?.type === "enabled" || transformedBody.thinking?.type === "adaptive";
-    if (thinkingActive && transformedBody.tools?.length > 0 && transformedBody.tool_choice) {
-      const { type } = transformedBody.tool_choice;
-      if (type === "any" || type === "tool") {
-        const disableParallel = transformedBody.tool_choice.disable_parallel_tool_use ?? true;
-        transformedBody.tool_choice = { type: "auto", disable_parallel_tool_use: disableParallel };
-      }
+    if (forcedBeforeDowngrade && transformedBody.tool_choice?.type === "auto") {
+      transformedBody.tool_choice.disable_parallel_tool_use = requestedDisableParallel ?? true;
     }
 
     /**

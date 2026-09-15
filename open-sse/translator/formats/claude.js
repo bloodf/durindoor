@@ -400,12 +400,58 @@ function serverToolIdKey(id) {
   return isObject(id) ? "object" : `${runtimeTypeName(id)}:${String(id)}`;
 }
 
+// Anthropic accepts only "auto" and "none" while thinking is on; these two
+// prefill the assistant turn and are rejected.
+const FORCED_TOOL_CHOICE_TYPES = new Set(["any", "tool"]);
+
+/**
+ * Drop a forced tool choice that Anthropic rejects while thinking is on:
+ *
+ *   tool_choice: type "tool" and "any" are not supported for this model.
+ *
+ * A forced choice prefills the assistant turn, which cannot coexist with the
+ * thinking/tool-use response format; only "auto" and "none" are accepted.
+ *
+ * Two ways a request qualifies, and the second is the one that bit us:
+ *
+ * 1. The body asks for thinking — "enabled" (explicit budget) or "adaptive"
+ *    (effort-driven). MUST be evaluated after thinking is finalized, since an
+ *    adaptive request downgraded to "enabled" still conflicts.
+ *
+ * 2. The MODEL always thinks. Fable 5.1 is `thinkingCanDisable: false`, so the
+ *    server reasons regardless of what the body says — a request with no
+ *    `thinking` field at all is still refused. Checking only the body misses
+ *    every OpenAI-format client, because translation emits no thinking key.
+ *
+ * "auto" is weaker than "any" — the model may answer without calling a tool —
+ * but it is the documented substitute, and a soft tool call beats a hard 400.
+ * For a model that cannot stop thinking there is no other option.
+ * `disable_parallel_tool_use` is preserved so a caller that asked for a single
+ * tool call still gets at most one.
+ */
+export function enforceClaudeToolChoiceThinking(body, model = "", provider = "claude") {
+  if (!body || !isObject(body)) return body;
+  if (!FORCED_TOOL_CHOICE_TYPES.has(body.tool_choice?.type)) return body;
+
+  const requested = body.thinking?.type;
+  const bodyThinks = requested === "enabled" || requested === "adaptive";
+  const modelAlwaysThinks = model
+    ? getCapabilitiesForModel(provider, model).thinkingCanDisable === false
+    : false;
+  if (!bodyThinks && !modelAlwaysThinks) return body;
+
+  const { type: _forced, name: _name, ...rest } = body.tool_choice;
+  body.tool_choice = { ...rest, type: "auto" };
+  return body;
+}
+
 // Normalize a native Claude passthrough body to match Anthropic Messages API spec.
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
 // 1. thinking.type "adaptive" → unsupported on Haiku
 // 2. output_config.effort → unsupported on Haiku
 // 3. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
 // 4. server_tool_use blocks carrying foreign IDs → rejected outright
+// 5. forced tool_choice while thinking is on → rejected by every thinking model
 export function normalizeClaudePassthrough(body, model = "", provider = "claude", customMaxOutput = null, options = null) {
   if (!body || !isObject(body)) return body;
 
@@ -419,6 +465,11 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
     delete body.output_config.effort;
     if (Object.keys(body.output_config).length === 0) delete body.output_config;
   }
+
+  // 2b. Forced tool choice conflicts with thinking — either the body's, or a
+  // model that always thinks. Runs after the adaptive downgrade above so it
+  // sees the thinking state actually being sent.
+  enforceClaudeToolChoiceThinking(body, model, provider);
 
   // Normalize non-standard single-block content before system folding and all
   // block-oriented validation so no meaningful turn is discarded.

@@ -79,6 +79,7 @@ vi.mock("../../open-sse/translator/formats/claude.js", () => ({
   prepareClaudeRequest: vi.fn((body) => body),
   normalizeClaudePassthrough: normalizeClaudePassthroughMock,
   anchorClaudeCache: vi.fn(),
+  enforceClaudeToolChoiceThinking: vi.fn((body) => body),
 }));
 
 vi.mock("../../open-sse/utils/toolDeduper.js", () => ({

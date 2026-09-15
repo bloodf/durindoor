@@ -1,9 +1,16 @@
 import { Buffer } from "node:buffer";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { resolveLocalWhisperHost } from "../config/providers.js";
+import { assertOutboundUrlAllowed, guardedProbeFetch, PROVIDER_URL_BLOCKED_MESSAGE } from "../utils/outboundUrlGuard.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
+
+// OpenAI-compatible transcription path appended to a user-supplied origin. The
+// resolver deliberately returns only the origin, so the route stays fixed and a
+// stored path cannot redirect audio somewhere else.
+const STT_TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
 
 /** Builds configured STT auth, including raw Authorization required by AssemblyAI (upstream #3058). */
-import { isString } from "../../src/shared/utils/typeChecks.js";
 function buildAuthHeaders(cfg, token) {
   if (!token) return {};
   switch (cfg.authHeader) {
@@ -152,7 +159,14 @@ async function transcribeOpenAICompatible(cfg, file, model, token, formData) {
     if (k === "file" || k === "model") continue;
     if (v !== null && v !== undefined && v !== "") fd.append(k, v);
   }
-  const res = await fetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd });
+  // A user-supplied host is fetched through the outbound guard so DNS answers
+  // are validated on the socket too: a hostname that passes the static check
+  // can still resolve to a blocked address (DNS rebinding). Registry-fixed
+  // endpoints keep the plain fetch path.
+  const send = cfg.userConfigurableHost ?
+  (url, init) => guardedProbeFetch(url, init) :
+  fetch;
+  const res = await send(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd });
   if (!res.ok) return upstreamError(res);
   const ct = res.headers.get("content-type") || "application/json";
   const txt = await res.text();
@@ -177,8 +191,29 @@ export async function handleSttCore({ provider, model, formData, credentials, st
   const file = formData.get("file");
   if (!file) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
-  const cfg = sttConfig;
+  let cfg = sttConfig;
   if (!cfg) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support STT`);
+
+  // A self-hosted server's host belongs to the user, not the registry. Rebuild
+  // the endpoint against the connection's stored origin so the base URL field
+  // in the connection dialog actually takes effect; the registry value is the
+  // default when nothing is stored.
+  //
+  // The stored value is operator input that reaches fetch() directly, so it goes
+  // through the same outbound guard as every other user-supplied provider URL.
+  // Under the default "block-metadata" policy loopback and LAN stay reachable —
+  // a local Whisper box is the whole point — while cloud-metadata and
+  // link-local targets are refused. transcribeOpenAICompatible additionally
+  // sends through guardedProbeFetch so DNS answers are validated on the socket.
+  if (cfg.userConfigurableHost) {
+    const resolvedBaseUrl = `${resolveLocalWhisperHost(credentials)}${STT_TRANSCRIPTION_PATH}`;
+    try {
+      assertOutboundUrlAllowed(resolvedBaseUrl);
+    } catch (error) {
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message || PROVIDER_URL_BLOCKED_MESSAGE);
+    }
+    cfg = { ...cfg, baseUrl: resolvedBaseUrl };
+  }
 
   const token = cfg.authType === "none" ? null : credentials?.apiKey || credentials?.accessToken;
   if (cfg.authType !== "none" && !token) {

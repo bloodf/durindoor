@@ -84,18 +84,25 @@ export function InstanceEditModal({ initial, onClose, onSave }) {
 }
 export function FormSelect({ label, value, options, onChange }) { return <label className="flex flex-col gap-1.5 text-xs font-medium text-dd-muted">{label}<Select value={value} options={options} onChange={onChange} aria-label={label} /></label>; }
 /**
- * `instancesLoading` is separate from this modal's own grants fetch because
- * the two race: the keys page loads instances when the modal opens, so a fast
- * grants response can arrive while the instance list is still in flight. An
- * empty `allInstances` then means "not here yet", not "none exist", and
- * rendering the empty state would tell the operator to create something that
- * already exists. Saving stays disabled until both settle, so a save cannot
- * commit grants chosen against a list that had not loaded.
+ * `instancesLoading` and `instancesError` are separate from this modal's own
+ * grants fetch because the two race: the keys page loads instances when the
+ * modal opens, so a fast grants response can arrive while the instance list is
+ * still in flight, or after it has failed.
+ *
+ * Both cases leave `allInstances` empty, and neither means "none exist". The
+ * modal therefore distinguishes three states — still loading, failed to load,
+ * genuinely empty — and disables saving for the first two. Saving against a
+ * list that never arrived would replace the key's real grants with an empty
+ * set, silently revoking every instance it could reach.
  */
-export function GrantsModal({ keyId, allInstances, instancesLoading = false, onClose, onSave }) {
-  const [grants, setGrants] = useState(new Set()); const [grantsLoading, setGrantsLoading] = useState(true);
-  useEffect(() => { (async () => { try { const response = await fetch(`/api/mcp-gateway/keys/${keyId}`); const body = await response.json(); setGrants(new Set(Array.isArray(body.grants) ? body.grants : [])); } finally { setGrantsLoading(false); } })(); }, [keyId]);
+export function GrantsModal({ keyId, allInstances, instancesLoading = false, instancesError = null, onRetryInstances, onClose, onSave }) {
+  const [grants, setGrants] = useState(new Set()); const [grantsLoading, setGrantsLoading] = useState(true); const [grantsError, setGrantsError] = useState(null);
+  // A failed grants read is the dangerous one: it leaves the checkbox set
+  // empty, which looks exactly like "this key grants nothing", and saving that
+  // would PUT an empty list and revoke every instance the key could reach.
+  useEffect(() => { let live = true; (async () => { try { const response = await fetch(`/api/mcp-gateway/keys/${keyId}`); const body = await response.json().catch(() => ({})); if (!live) return; if (!response.ok) { setGrantsError(body.error ?? `Failed to load grants (${response.status})`); return; } setGrants(new Set(Array.isArray(body.grants) ? body.grants : [])); } catch (caught) { if (live) setGrantsError(caught instanceof Error ? caught.message : "Failed to load grants"); } finally { if (live) setGrantsLoading(false); } })(); return () => { live = false; }; }, [keyId]);
   const loading = grantsLoading || instancesLoading;
+  const loadError = grantsError || instancesError;
   function toggle(id) { setGrants((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
-  return <Modal open onClose={onClose} title="Manage instance grants" subtitle="Choose which instances this key can access." size="md" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" icon="save" disabled={loading} onClick={async () => { if (await onSave(keyId, [...grants])) onClose(); }}>Save grants</Button></>}>{loading ? <div className="flex items-center gap-2 py-8 text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin motion-reduce:animate-none">progress_activity</span>Loading grants…</div> : allInstances.length === 0 ? <EmptyState icon="dns" title="No instances exist yet" message="Create an instance before assigning grants." /> : <div tabIndex={0} aria-label="Available instances" className="flex max-h-96 flex-col gap-1 overflow-y-auto" role="region">{allInstances.map((instance) => <Checkbox key={instance.id} checked={grants.has(instance.id)} onChange={() => toggle(instance.id)} label={<span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[13px]">{instance.slug}</span><Badge size="sm" tone="neutral">{instance.kind}</Badge></span>} />)}</div>}</Modal>;
+  return <Modal open onClose={onClose} title="Manage instance grants" subtitle="Choose which instances this key can access." size="md" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" icon="save" disabled={loading || Boolean(loadError)} onClick={async () => { if (await onSave(keyId, [...grants])) onClose(); }}>Save grants</Button></>}>{loading ? <div className="flex items-center gap-2 py-8 text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin motion-reduce:animate-none">progress_activity</span>Loading grants…</div> : loadError ? <EmptyState icon="error" title={grantsError ? "Current grants could not be loaded" : "Instances could not be loaded"} message={`${loadError}. Grants cannot be changed until they load, so nothing is saved by mistake.`} action={!grantsError && onRetryInstances ? { label: "Retry", icon: "refresh", onClick: onRetryInstances } : undefined} /> : allInstances.length === 0 ? <EmptyState icon="dns" title="No instances exist yet" message="Create an instance before assigning grants." /> : <div tabIndex={0} aria-label="Available instances" className="flex max-h-96 flex-col gap-1 overflow-y-auto" role="region">{allInstances.map((instance) => <Checkbox key={instance.id} checked={grants.has(instance.id)} onChange={() => toggle(instance.id)} label={<span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[13px]">{instance.slug}</span><Badge size="sm" tone="neutral">{instance.kind}</Badge></span>} />)}</div>}</Modal>;
 }

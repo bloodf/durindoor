@@ -49,21 +49,30 @@ export function stringifyMaybe(value) {
 export function useGatewayCollection(path, field, { eager = true } = {}) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(eager);
+  // An empty list because the load failed is a different fact from an empty
+  // list because there is nothing. Callers that render an empty state need to
+  // tell them apart, or they assert "none exist" on the strength of an outage.
+  const [error, setError] = useState(null);
   const notify = useNotificationStore((state) => state.addNotification);
 
   const reload = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(path);
       const body = res.ok ? await res.json().catch(() => ({})) : {};
       if (!res.ok) {
-        notify({ type: "error", message: body.error ?? `Failed to load ${field} (${res.status})` });
+        const message = body.error ?? `Failed to load ${field} (${res.status})`;
+        notify({ type: "error", message });
+        setError(message);
         setItems([]);
         return;
       }
       setItems(Array.isArray(body[field]) ? body[field] : []);
-    } catch (error) {
-      notify({ type: "error", message: error instanceof Error ? error.message : `Failed to load ${field}` });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : `Failed to load ${field}`;
+      notify({ type: "error", message });
+      setError(message);
       setItems([]);
     } finally {
       setLoading(false);
@@ -74,5 +83,5 @@ export function useGatewayCollection(path, field, { eager = true } = {}) {
     if (eager) Promise.resolve().then(reload);
   }, [eager, reload]);
 
-  return { items, loading, reload, notify };
+  return { items, loading, error, reload, notify };
 }

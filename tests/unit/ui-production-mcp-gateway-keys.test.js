@@ -239,4 +239,90 @@ describe("MCP Gateway keys page", () => {
     expect(document.body.textContent).toContain("jira-acme");
     expect(within(document.body).getByRole("button", { name: "Save grants" }).disabled).toBe(false);
   });
+
+  it("distinguishes a failed instances load from an empty one", async () => {
+    // "No instances exist yet" and "we could not find out" are different
+    // facts. Conflating them invites the operator to save a grant list built
+    // against nothing, silently dropping every grant the key had.
+    globalThis.fetch = makeFetchMock([
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") && mockJsonResponse({ error: "upstream down" }, 500),
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ keys: [
+        { id: "k1", name: "Cursor laptop", machineId: null, createdAt: "2026-08-21T10:00:00Z" }
+      ] }),
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys/k1") && mockJsonResponse({ grants: ["i1"] })
+    ]);
+    await act(async () => {
+      root.render(React.createElement(McpGatewayKeysPage, null));
+    });
+    await flush();
+    await act(async () => {
+      within(container).getByRole("button", { name: "Manage grants" }).click();
+    });
+    await flush();
+
+    expect(document.body.textContent).not.toContain("No instances exist yet");
+    expect(document.body.textContent).toMatch(/could not be loaded/i);
+    // Saving here would replace the key's existing grants with an empty list.
+    expect(within(document.body).getByRole("button", { name: "Save grants" }).disabled).toBe(true);
+  });
+
+  it("recovers the grants picker when a retried instances load succeeds", async () => {
+    let attempt = 0;
+    globalThis.fetch = makeFetchMock([
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") && (
+        (attempt += 1) === 1
+          ? mockJsonResponse({ error: "upstream down" }, 500)
+          : mockJsonResponse({ instances: [
+              { id: "i1", slug: "jira-acme", kind: "http", transport: "http", url: "https://jira.example/mcp", enabled: true }
+            ] })
+      ),
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ keys: [
+        { id: "k1", name: "Cursor laptop", machineId: null, createdAt: "2026-08-21T10:00:00Z" }
+      ] }),
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys/k1") && mockJsonResponse({ grants: [] })
+    ]);
+    await act(async () => {
+      root.render(React.createElement(McpGatewayKeysPage, null));
+    });
+    await flush();
+    await act(async () => {
+      within(container).getByRole("button", { name: "Manage grants" }).click();
+    });
+    await flush();
+
+    await act(async () => {
+      within(document.body).getByRole("button", { name: "Retry" }).click();
+    });
+    await flush();
+    expect(document.body.textContent).toContain("jira-acme");
+    expect(within(document.body).getByRole("button", { name: "Save grants" }).disabled).toBe(false);
+  });
+
+  it("refuses to save when the key's current grants could not be read", async () => {
+    // The most destructive state in this modal. A failed grants GET leaves the
+    // checkbox set empty, which is indistinguishable from "this key grants
+    // nothing" — so an enabled save would PUT an empty list and revoke every
+    // instance the key could actually reach.
+    globalThis.fetch = makeFetchMock([
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") && mockJsonResponse({ instances: [
+        { id: "i1", slug: "jira-acme", kind: "http", transport: "http", url: "https://jira.example/mcp", enabled: true }
+      ] }),
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ keys: [
+        { id: "k1", name: "Cursor laptop", machineId: null, createdAt: "2026-08-21T10:00:00Z" }
+      ] }),
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys/k1") && mockJsonResponse({ error: "grants unavailable" }, 500)
+    ]);
+    await act(async () => {
+      root.render(React.createElement(McpGatewayKeysPage, null));
+    });
+    await flush();
+    await act(async () => {
+      within(container).getByRole("button", { name: "Manage grants" }).click();
+    });
+    await flush();
+
+    // Instances loaded fine, so nothing else would have stopped the save.
+    expect(document.body.textContent).toMatch(/could not be loaded/i);
+    expect(within(document.body).getByRole("button", { name: "Save grants" }).disabled).toBe(true);
+  });
 });

@@ -44,20 +44,34 @@ describe("MCP Gateway production UI", () => {
     container.remove();
     vi.restoreAllMocks();
   });
-  it("renders the page header and New key / New instance actions", async () => {
+  it("renders the instances page header and its actions", async () => {
     globalThis.fetch = makeFetchMock([
-      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") && mockJsonResponse({ instances: [] }),
-      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ keys: [] })
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") && mockJsonResponse({ instances: [] })
     ]);
     await act(async () => {
       root.render(/* @__PURE__ */ React.createElement(McpGatewayPage, null));
     });
     await flush();
     expect(container.textContent).toContain("MCP Gateway");
-    expect(container.textContent).toContain("New key");
     expect(container.textContent).toContain("New instance");
     expect(container.textContent).toContain("No instances yet");
-    expect(container.textContent).toContain("No gateway keys yet");
+    // Keys moved to their own page: this one links there and never renders a
+    // keys section, so a key action cannot reload the instance list.
+    expect(container.textContent).toContain("Gateway keys");
+    expect(container.textContent).not.toContain("No gateway keys yet");
+    expect(container.querySelector('a[href="/dashboard/mcp-gateway/keys"]')).not.toBeNull();
+  });
+
+  it("does not fetch keys at all from the instances page", async () => {
+    const fetch = makeFetchMock([
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") && mockJsonResponse({ instances: [] })
+    ]);
+    globalThis.fetch = fetch;
+    await act(async () => {
+      root.render(/* @__PURE__ */ React.createElement(McpGatewayPage, null));
+    });
+    await flush();
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/mcp-gateway/keys"))).toBe(false);
   });
   it("renders one row per instance with kind, transport, and oauth badges", async () => {
     globalThis.fetch = makeFetchMock([
@@ -90,60 +104,6 @@ describe("MCP Gateway production UI", () => {
     });
     await flush();
     expect(container.textContent).toContain("needs login");
-  });
-  it("renders the gateway keys rows with machine id and creation date metadata", async () => {
-    globalThis.fetch = makeFetchMock([
-      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") && mockJsonResponse({ instances: [] }),
-      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ keys: [
-        { id: "k1", name: "Cursor laptop", machineId: "ab12cd34-1234-5678-9abc-def012345678", createdAt: "2026-08-21T10:00:00Z" },
-        { id: "k2", name: null, machineId: null, createdAt: "2026-09-01T15:30:00Z" }
-      ] })
-    ]);
-    await act(async () => {
-      root.render(/* @__PURE__ */ React.createElement(McpGatewayPage, null));
-    });
-    await flush();
-    expect(container.textContent).toContain("Cursor laptop");
-    expect(container.textContent).toContain("ab12cd34");
-    expect(container.textContent).toContain("Unnamed key");
-  });
-  it("fresh-mounts New key and submits an optional blank name through its footer form", async () => {
-    const fetch = makeFetchMock([
-      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") && mockJsonResponse({ instances: [] }),
-      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ keys: [] }),
-      (method, url) => method === "POST" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ key: { id: "k-new", key: "sk-test" } })
-    ]);
-    globalThis.fetch = fetch;
-    await act(async () => {
-      root.render(/* @__PURE__ */ React.createElement(McpGatewayPage, null));
-    });
-    await flush();
-    const open = within(container.querySelector("header")).getByRole("button", { name: "New key" });
-    await act(async () => {
-      open.click();
-    });
-    const input = document.body.querySelector("input");
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "Discarded");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      document.body.querySelector('button[aria-label="Close"]').click();
-    });
-    await act(async () => {
-      open.click();
-    });
-    const reopenedInput = document.body.querySelector("input");
-    expect(reopenedInput.value).toBe("");
-    const form = reopenedInput.closest("form");
-    const submit = within(document.body).getByRole("button", { name: "Create key" });
-    expect(submit.getAttribute("form")).toBe(form.id);
-    await act(async () => {
-      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    await flush();
-    const call = fetch.mock.calls.find(([url, init]) => init?.method === "POST" && url.endsWith("/api/mcp-gateway/keys"));
-    expect(JSON.parse(call[1].body)).toEqual({ name: null });
   });
   it("renders the error boundary view without suppressing production logging", async () => {
     const reset = vi.fn();

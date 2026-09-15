@@ -16,10 +16,6 @@ const INSTANCES = [
   { id: "jira", slug: "jira-acme", kind: "http", transport: "sse", url: "https://mcp.acme.dev/sse", oauth: false, enabled: true },
   { id: "stale", slug: "legacy", kind: "http", transport: "http", url: "https://legacy.invalid/mcp", oauth: true, oauthStatus: "needs_login", enabled: true },
 ];
-const KEYS = [
-  { id: "k1", name: "Cursor laptop", machineId: "ab12cd34-1234-5678-9abc-def012345678", createdAt: "2026-08-21T10:00:00Z" },
-  { id: "k2", name: "CI gateway", machineId: null, createdAt: "2026-09-01T15:30:00Z" },
-];
 const OK = { status: 200, body: { ok: true } };
 
 /**
@@ -29,26 +25,19 @@ const OK = { status: 200, body: { ok: true } };
  * native `Request` object, mutate per-story state for DELETE/PUT, and return
  * `{ status, body }` descriptors. Keys are exact `METHOD path` strings.
  */
-function defaultFixture({ instances = INSTANCES, keys = KEYS } = {}) {
-  const state = { instances: instances.map((instance) => ({ ...instance })), keys: keys.map((key) => ({ ...key })), grants: new Map([["k1", ["granola", "jira"]], ["k2", []]]) };
+function defaultFixture({ instances = INSTANCES } = {}) {
+  const state = { instances: instances.map((instance) => ({ ...instance })) };
   return {
     scenario: "default",
     pathname: "/dashboard/mcp-gateway",
     params: {},
     routes: {
       "GET /api/mcp-gateway/instances": () => ({ status: 200, body: { instances: state.instances } }),
-      "GET /api/mcp-gateway/keys": () => ({ status: 200, body: { keys: state.keys } }),
       "POST /api/mcp-gateway/instances": async (request) => {
         const body = await request.json();
         const instance = { ...body, id: body.id || "new", enabled: body.enabled ?? true };
         state.instances.push(instance);
         return { status: 200, body: { instance } };
-      },
-      "POST /api/mcp-gateway/keys": async (request) => {
-        const body = await request.json();
-        const key = { id: "k-new", name: body.name, machineId: null, createdAt: "2026-09-06T00:00:00Z" };
-        state.keys.push(key);
-        return { status: 200, body: { key: { ...key, key: "sk-story-created-key" } } };
       },
       "PUT /api/mcp-gateway/instances/granola": async (request) => {
         const body = await request.json();
@@ -72,21 +61,6 @@ function defaultFixture({ instances = INSTANCES, keys = KEYS } = {}) {
       },
       "DELETE /api/mcp-gateway/instances/fs": OK,
       "DELETE /api/mcp-gateway/instances/stale": OK,
-      "GET /api/mcp-gateway/keys/k1": () => ({ status: 200, body: { id: "k1", grants: state.grants.get("k1") ?? [] } }),
-      "PUT /api/mcp-gateway/keys/k1": async (request) => {
-        const body = await request.json();
-        state.grants.set("k1", body.grants ?? []);
-        return OK;
-      },
-      "DELETE /api/mcp-gateway/keys/k1": () => {
-        state.keys = state.keys.filter((key) => key.id !== "k1");
-        return OK;
-      },
-      "GET /api/mcp-gateway/keys/k2": () => ({ status: 200, body: { id: "k2", grants: state.grants.get("k2") ?? [] } }),
-      "PUT /api/mcp-gateway/keys/k2": OK,
-      "DELETE /api/mcp-gateway/keys/k2": OK,
-      "GET /api/mcp-gateway/keys/k1/reveal": () => ({ status: 200, body: { key: "sk-live-revealed" } }),
-      "GET /api/mcp-gateway/keys/k2/reveal": () => ({ status: 200, body: { key: "sk-live-revealed" } }),
       "POST /api/mcp-gateway/instances/granola/test": () => ({ status: 200, body: { ok: true, toolCount: 6, sample: [{ name: "fetch" }, { name: "search" }] } }),
       "POST /api/mcp-gateway/instances/jira/test": () => ({ status: 200, body: { ok: true, toolCount: 6, sample: [{ name: "fetch" }, { name: "search" }] } }),
       "POST /api/mcp-gateway/instances/fs/test": () => ({ status: 200, body: { ok: true, toolCount: 6, sample: [{ name: "fetch" }, { name: "search" }] } }),
@@ -130,39 +104,6 @@ export const DeleteInstance = {
   },
 };
 
-export const DeleteKey = {
-  parameters: { storyFixture: defaultFixture() },
-  render: () => <McpGatewayPage />,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const cursorRow = (await canvas.findByText("Cursor laptop")).closest("article");
-    await userEvent.click(within(cursorRow).getByRole("button", { name: "Delete key" }));
-    const modal = within(await within(document.body).findByRole("dialog", { name: "Delete gateway key?" }));
-    await userEvent.click(modal.getByRole("button", { name: "Delete key" }));
-    await expect(canvas.queryByText("Cursor laptop")).not.toBeInTheDocument();
-  },
-};
-
-export const SaveGrants = {
-  parameters: { storyFixture: defaultFixture() },
-  render: () => <McpGatewayPage />,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const cursorRow = (await canvas.findByText("Cursor laptop")).closest("article");
-    await userEvent.click(within(cursorRow).getByRole("button", { name: "Manage grants" }));
-    const portal = within(document.body);
-    const dialog = within(await portal.findByRole("dialog", { name: "Manage instance grants" }));
-    const jira = await dialog.findByRole("checkbox", { name: /jira-acme/ });
-    await expect(jira).toBeChecked();
-    await userEvent.click(jira);
-    await expect(jira).not.toBeChecked();
-    await userEvent.click(dialog.getByRole("button", { name: "Save grants" }));
-    const updatedRow = (await canvas.findByText("Cursor laptop")).closest("article");
-    await userEvent.click(within(updatedRow).getByRole("button", { name: "Manage grants" }));
-    const updatedDialog = within(await portal.findByRole("dialog", { name: "Manage instance grants" }));
-    await expect(await updatedDialog.findByRole("checkbox", { name: /jira-acme/ })).not.toBeChecked();
-  },
-};
 
 export const OAuthLoginPopupBoundary = {
   parameters: { storyFixture: defaultFixture() },
@@ -175,33 +116,6 @@ export const OAuthLoginPopupBoundary = {
   },
 };
 
-export const NewKeyKeyboard = {
-  parameters: { storyFixture: defaultFixture() },
-  render: () => <McpGatewayPage />,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "New key" }));
-    const dialog = within(document.body);
-    const input = await dialog.findByLabelText("Key name");
-    input.focus();
-    await userEvent.keyboard("{Enter}");
-    await expect(await dialog.findByRole("dialog", { name: "Gateway key created" })).toBeVisible();
-  },
-};
-
-export const NewKeyFreshMount = {
-  parameters: { storyFixture: defaultFixture() },
-  render: () => <McpGatewayPage />,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "New key" }));
-    const dialog = within(document.body);
-    await userEvent.type(await dialog.findByLabelText("Key name"), "Discarded");
-    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
-    await userEvent.click(canvas.getByRole("button", { name: "New key" }));
-    await expect(await dialog.findByLabelText("Key name")).toHaveValue("");
-  },
-};
 
 export const CreateInstance = {
   parameters: { storyFixture: defaultFixture() },
@@ -250,19 +164,6 @@ export const ToggleInstance = {
   },
 };
 
-export const MobileNewKeyKeyboard = {
-  parameters: { storyFixture: defaultFixture(), viewport: { defaultViewport: "mobile1" } },
-  render: () => <McpGatewayPage />,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "New key" }));
-    const dialog = within(document.body);
-    const input = await dialog.findByLabelText("Key name");
-    input.focus();
-    await userEvent.keyboard("{Enter}");
-    await expect(await dialog.findByRole("dialog", { name: "Gateway key created" })).toBeVisible();
-  },
-};
 
 export const ErrorBoundary = {
   render: () => <McpGatewayErrorHarness />,

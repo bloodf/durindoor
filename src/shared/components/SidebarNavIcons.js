@@ -106,7 +106,18 @@ export const NAV_SECTIONS = [
     key: "integrate",
     label: "Integrate",
     entries: [
-      { type: "item", href: "/dashboard/mcp-gateway", label: "MCP Gateway", icon: "hub", exact: false },
+      // Instances and keys are separate pages; the group keeps both one click
+      // away without a second top-level entry competing with MCP Gateway.
+      {
+        type: "group",
+        key: "mcp-gateway",
+        label: "MCP Gateway",
+        icon: "hub",
+        children: [
+          { href: "/dashboard/mcp-gateway", label: "Instances", icon: "dns", exact: true },
+          { href: "/dashboard/mcp-gateway/keys", label: "Keys", icon: "vpn_key" },
+        ],
+      },
       { type: "item", href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal", exact: false },
       { type: "item", href: "/dashboard/skills", label: "Skills", icon: "extension" },
       { type: "item", href: "/dashboard/auto-configure", label: "Auto-configure", icon: "auto_fix" },

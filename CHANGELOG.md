@@ -7,6 +7,7 @@
 ## Upstream ports
 
 - port(upstream): 628ff1ea - bound the dashboard session cookie lifetime. The `auth_token` cookie carried no `Max-Age`, so browsers kept it as a session cookie for the whole browser lifetime and replayed a long-expired token on every request. Cookie `maxAge` and the JWT `exp` claim now share one `SESSION_MAX_AGE_SEC` (24h) source of truth.
+- port(upstream): #3947 - keep Anthropic-only tool types for DeepSeek. DeepSeek's Anthropic-compatible endpoint accepts only the built-in `web_search_*` tools and answered HTTP 400 "unknown variant custom" for client-defined ones, while the generic filter also discarded the `web_search_*` tools it does accept. A provider can now declare `transport.quirks.claudeSupportedToolTypes` to whitelist the tool `type` values its upstream honours; whitelisted tools keep their `type`, everything else is dropped as before.
 
 # 4.3.0
 

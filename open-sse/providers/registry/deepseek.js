@@ -25,6 +25,17 @@ export default {
     reasoningInject: {
       scope: "all",
     },
+    quirks: {
+      // DeepSeek's Anthropic-compatible endpoint accepts ONLY the built-in
+      // web_search_* tools and rejects client-defined ones with HTTP 400
+      //   "tools[0]: unknown variant `custom`, expected `web_search_20250305`
+      //    or `web_search_20260209`".
+      // The whitelist makes prepareClaudeRequest() forward web_search_* with
+      // its `type` intact and drop other non-function tools instead of failing
+      // the whole request. The OpenAI transport is unaffected: it targets
+      // format "openai", so prepareClaudeRequest never runs for it.
+      claudeSupportedToolTypes: ["web_search_20250305", "web_search_20260209"],
+    },
   },
   // Multi-endpoint: pick the transport matching client sourceFormat to skip translation.
   transports: [

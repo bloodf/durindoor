@@ -8,7 +8,8 @@ import {
   getApiKeyUsageTotals,
   getProviderConnections,
   getApiKeyProviderConnectionIds,
-  updateApiKey
+  updateApiKey,
+  getGroupIdsForApiKey
 } from "@/lib/localDb";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
@@ -70,6 +71,10 @@ export async function PUT(request, { params }) {
       const availableIds = (await getProviderConnections()).map((connection) => connection.id);
       updateData.providerConnectionIds = validateProviderConnectionScope(body, availableIds);
     }
+    // Groups travel with the key update so both commit or roll back together
+    // (replaceApiKeyGroupsInTx runs inside updateApiKey's transaction).
+    // Validation lives there too, so an unknown id aborts the whole write.
+    if ("groupIds" in body) updateData.groupIds = body.groupIds;
     const policyInput = await resolveApiKeyPolicyInput(body);
     if (policyInput.present) {
       if (Object.hasOwn(policyInput, "value")) updateData.policy = policyInput.value;
@@ -78,11 +83,12 @@ export async function PUT(request, { params }) {
 
     const updated = await updateApiKey(id, updateData);
     if (!updated) return NextResponse.json({ error: "Key not found" }, { status: 404 });
-    const [usage, providerConnectionIds] = await Promise.all([
+    const [usage, providerConnectionIds, groupIds] = await Promise.all([
       getApiKeyUsageTotals(id),
-      getApiKeyProviderConnectionIds(id)
+      getApiKeyProviderConnectionIds(id),
+      getGroupIdsForApiKey(id)
     ]);
-    return NextResponse.json({ key: { ...toApiKeyManagementView(updated), providerConnectionIds, usage } });
+    return NextResponse.json({ key: { ...toApiKeyManagementView(updated), providerConnectionIds, groupIds, usage } });
   } catch (error) {
     console.log("Error updating key:", error);
     const status = /dailyLimitTokens/.test(error.message) || isApiKeyExpiryValidationError(error) || isApiKeyPolicyInputError(error) || error instanceof TypeError ? 400 : 500;

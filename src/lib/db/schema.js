@@ -2,7 +2,7 @@ import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -101,6 +101,29 @@ export const TABLES = {
       connectionId: "TEXT NOT NULL REFERENCES providerConnections(id) ON DELETE CASCADE",
     },
     primaryKey: "PRIMARY KEY (apiKeyId, connectionId)",
+  },
+  // Organizational grouping for the API Keys page. Groups carry NO authority:
+  // access stays governed by a key's policy, allowedCombos, and
+  // apiKeyProviderConnections rows. Membership is many-to-many so one key can
+  // belong to several groups, and deleting a group never deletes a key.
+  apiKeyGroups: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      name: "TEXT UNIQUE NOT NULL",
+      description: "TEXT",
+      createdAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_akg_name ON apiKeyGroups(name COLLATE NOCASE)"],
+  },
+  apiKeyGroupMembers: {
+    columns: {
+      groupId: "TEXT NOT NULL REFERENCES apiKeyGroups(id) ON DELETE CASCADE",
+      apiKeyId: "TEXT NOT NULL REFERENCES apiKeys(id) ON DELETE CASCADE",
+      createdAt: "TEXT NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (groupId, apiKeyId)",
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_akgm_key ON apiKeyGroupMembers(apiKeyId)"],
   },
   apiKeyUsageTotals: {
     columns: {

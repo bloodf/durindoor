@@ -28,6 +28,9 @@ const MAX_REFRESH_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_REFRESH_CALLER_TIMEOUT_MS = 15_000;
 
 const credentialRefreshInflight = new Map();
+// Lane-acquisition signal per in-flight refresh operation, so callers that
+// join an existing refresh inherit its deferred timeout start.
+const laneSignals = new WeakMap();
 
 function assertRefreshActive(signal, shouldCommit) {
   if (signal?.aborted) throw new DOMException("Provider credential refresh aborted", "AbortError");
@@ -76,10 +79,22 @@ function safeRefreshClock(now) {
   return Number.isFinite(value) && value >= 0 ? value : Date.now();
 }
 
-function callerWait(operation, signal, shouldCommit, timeoutMs) {
+/**
+ * Await `operation` under a caller budget.
+ *
+ * The budget covers the refresh itself, not time spent queued behind sibling
+ * connections in a rotation lane (see open-sse/services/refreshSerializer.js).
+ * When `startSignal` is supplied the timer arms only once that promise settles
+ * — i.e. when the lane is acquired and the network call is about to run.
+ * Without it, the third account in a three-account rotation group exhausts its
+ * entire budget waiting its turn and reports a timeout having never issued a
+ * request.
+ */
+function callerWait(operation, signal, shouldCommit, timeoutMs, startSignal = null) {
   assertRefreshActive(signal, shouldCommit);
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timeoutId = null;
     const finish = (callback, value) => {
       if (settled) return;
       settled = true;
@@ -88,12 +103,17 @@ function callerWait(operation, signal, shouldCommit, timeoutMs) {
       callback(value);
     };
     const onAbort = () => finish(reject, new DOMException("Provider credential refresh aborted", "AbortError"));
-    const timeoutId = setTimeout(() => {
-      const error = new Error("Provider credential refresh timed out");
-      error.name = "TimeoutError";
-      error.code = "PROVIDER_CREDENTIAL_REFRESH_TIMEOUT";
-      finish(reject, error);
-    }, timeoutMs);
+    const armTimeout = () => {
+      if (settled || timeoutId !== null) return;
+      timeoutId = setTimeout(() => {
+        const error = new Error("Provider credential refresh timed out");
+        error.name = "TimeoutError";
+        error.code = "PROVIDER_CREDENTIAL_REFRESH_TIMEOUT";
+        finish(reject, error);
+      }, timeoutMs);
+    };
+    if (startSignal) startSignal.then(armTimeout, armTimeout);
+    else armTimeout();
     signal?.addEventListener("abort", onAbort, { once: true });
     operation.then(
       (result) => {
@@ -280,7 +300,9 @@ proxyOptions = null,
   const expectedRefreshContext = providerRefreshContext(connection);
   const key = refreshKey(connection);
   const shared = credentialRefreshInflight.get(key);
-  if (shared) return callerWait(shared, signal, shouldCommit, callerTimeoutMs);
+  // A joiner inherits the in-flight refresh's lane signal, so it is not
+  // charged for queue time the original caller already spent.
+  if (shared) return callerWait(shared, signal, shouldCommit, callerTimeoutMs, laneSignals.get(shared) ?? null);
 
 
   const executor = getExecutorImpl(connection.provider);
@@ -306,6 +328,13 @@ proxyOptions = null,
   // Once the provider request begins, its result must outlive an individual
   // quota subscriber. OAuth providers can rotate a refresh token even when the
   // caller disconnects; dropping that replacement would brick the connection.
+  // Resolves when the rotation lane is acquired and the network refresh is
+  // about to run. The caller budget arms from that moment, so queue time
+  // behind sibling connections is not charged against it.
+  let signalLaneAcquired;
+  const laneAcquired = new Promise((resolve) => {
+    signalLaneAcquired = resolve;
+  });
   const operation = (async () => {
     // Front 1 (OmniRoute 697946381d): serialize the network refresh across
     // every connection in the same rotation group (Codex + openai share one
@@ -314,8 +343,10 @@ proxyOptions = null,
     // (openai/codex#9648). The per-connection inflight dedup above cannot see
     // cross-connection collisions. Non-rotating providers pass through with no
     // locking.
-    const refreshResult = await serializeRefresh(connection.provider, () =>
-    executor.refreshCredentials(credentials, createRefreshLogger(log), proxyOptions)
+    const refreshResult = await serializeRefresh(
+      connection.provider,
+      () => executor.refreshCredentials(credentials, createRefreshLogger(log), proxyOptions),
+      { onLaneAcquired: signalLaneAcquired }
     );
     if (isUnrecoverableRefreshError(refreshResult)) {
       return reconcileConcurrentRotation(
@@ -437,8 +468,9 @@ proxyOptions = null,
     };
   })();
   credentialRefreshInflight.set(key, operation);
+  laneSignals.set(operation, laneAcquired);
   operation.catch(() => {}).finally(() => {
     if (credentialRefreshInflight.get(key) === operation) credentialRefreshInflight.delete(key);
   });
-  return callerWait(operation, signal, shouldCommit, callerTimeoutMs);
+  return callerWait(operation, signal, shouldCommit, callerTimeoutMs, laneAcquired);
 }

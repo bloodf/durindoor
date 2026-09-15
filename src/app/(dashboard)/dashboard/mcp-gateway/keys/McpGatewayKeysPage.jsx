@@ -30,7 +30,7 @@ export default function McpGatewayKeysPage() {
   // an unrelated instance-endpoint failure raise an error toast on a page
   // whose own list is fine, and revoking a key must not be blocked or
   // distracted by that.
-  const { items: instances, reload: loadInstances } = useGatewayCollection("/api/mcp-gateway/instances", "instances", { eager: false });
+  const { items: instances, loading: instancesLoading, reload: loadInstances } = useGatewayCollection("/api/mcp-gateway/instances", "instances", { eager: false });
   const [editingKey, setEditingKey] = useState(null);
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -71,7 +71,7 @@ export default function McpGatewayKeysPage() {
     <PageHeader icon="vpn_key" title="Gateway Keys" subtitle="API keys harnesses use to talk to this gateway. Each key reaches only the instances it is granted." actions={<><Link href="/dashboard/mcp-gateway" className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-base">hub</span>Instances</Link><Button variant="primary" icon="vpn_key" onClick={() => setKeyPromptOpen(true)}>New key</Button></>} />
     <KeysPanel keys={keys} loading={loading} copied={copied} onCreate={() => setKeyPromptOpen(true)} onEdit={openGrants} onReveal={revealAndCopyKey} onDelete={(id) => setConfirmDelete({ kind: "key", id })} />
     {keyPromptOpen ? <NewKeyDialog onClose={() => setKeyPromptOpen(false)} onCreate={createKey} /> : null}
-    {editingKey ? <GrantsModal keyId={editingKey} allInstances={instances} onClose={() => setEditingKey(null)} onSave={saveGrants} /> : null}
+    {editingKey ? <GrantsModal keyId={editingKey} allInstances={instances} instancesLoading={instancesLoading} onClose={() => setEditingKey(null)} onSave={saveGrants} /> : null}
     {createdKey ? <CreatedKeyDialog createdKey={createdKey} copied={copied} copy={copy} onClose={() => setCreatedKey(null)} /> : null}
     <ConfirmDialog open={confirmDelete?.kind === "key"} title="Delete gateway key?" message="Any harness using this key will lose access immediately." confirmLabel="Delete key" onConfirm={() => deleteKey(confirmDelete.id)} onCancel={() => setConfirmDelete(null)} />
   </main>;

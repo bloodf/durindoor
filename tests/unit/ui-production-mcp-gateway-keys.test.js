@@ -201,4 +201,42 @@ describe("MCP Gateway keys page", () => {
     const call = fetch.mock.calls.find(([url, init]) => init?.method === "PUT" && url.endsWith("/api/mcp-gateway/keys/k1"));
     expect(JSON.parse(call[1].body)).toEqual({ grants: ["i1"] });
   });
+
+  it("waits for a slow instances load instead of claiming none exist", async () => {
+    // Instances are fetched when the modal opens, so they can arrive AFTER the
+    // grants request they race. If the modal treats its own grants fetch as
+    // the only load, it renders "No instances exist yet" over a list that is
+    // merely in flight — telling the operator to go create something that
+    // already exists.
+    let releaseInstances;
+    const instancesArrived = new Promise((resolve) => { releaseInstances = resolve; });
+    globalThis.fetch = makeFetchMock([
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/instances") &&
+        instancesArrived.then(() => mockJsonResponse({ instances: [
+          { id: "i1", slug: "jira-acme", kind: "http", transport: "http", url: "https://jira.example/mcp", enabled: true }
+        ] })),
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys") && mockJsonResponse({ keys: [
+        { id: "k1", name: "Cursor laptop", machineId: null, createdAt: "2026-08-21T10:00:00Z" }
+      ] }),
+      (method, url) => method === "GET" && url.endsWith("/api/mcp-gateway/keys/k1") && mockJsonResponse({ grants: [] })
+    ]);
+    await act(async () => {
+      root.render(React.createElement(McpGatewayKeysPage, null));
+    });
+    await flush();
+    await act(async () => {
+      within(container).getByRole("button", { name: "Manage grants" }).click();
+    });
+    await flush();
+
+    // Grants resolved; instances have not. The modal must not conclude there
+    // are none, and must not let a save commit an empty grant list.
+    expect(document.body.textContent).not.toContain("No instances exist yet");
+    expect(within(document.body).getByRole("button", { name: "Save grants" }).disabled).toBe(true);
+
+    releaseInstances();
+    await flush();
+    expect(document.body.textContent).toContain("jira-acme");
+    expect(within(document.body).getByRole("button", { name: "Save grants" }).disabled).toBe(false);
+  });
 });

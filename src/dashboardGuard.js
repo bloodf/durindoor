@@ -81,6 +81,13 @@ const MANAGEMENT_API_PATHS = [
   "/api/tags",
   "/api/cli-tools",
   "/api/mcp",
+  // Gateway CRUD plus the operator-driven OAuth actions. The protocol surfaces
+  // (`/api/mcp-gateway`, `/sse`, `/message`) keep gateway-key auth, and the
+  // CIMD and callback leaves are answered earlier in proxy(): the callback is
+  // an upstream browser redirect that carries no DurinDoor credential.
+  "/api/mcp-gateway/keys",
+  "/api/mcp-gateway/instances",
+  "/api/mcp-gateway/oauth",
   "/api/translator",
   "/api/tunnel",
 ];
@@ -292,6 +299,11 @@ async function isAuthenticated(request) {
 /**
  * Match exact management leaves as Next resolves them. Decode once so encoded
  * route spellings cannot bypass auth; malformed encoding fails closed.
+ *
+ * Both the exact list and the prefix list are matched on the decoded path: an
+ * encoded separator (for example `/api/mcp%2Dgateway/oauth/i1/authorize`)
+ * resolves to a management route in Next, so matching the raw path would drop
+ * it onto the weaker generic gate.
  */
 function isManagementApi(pathname) {
   let decodedPathname;
@@ -301,17 +313,51 @@ function isManagementApi(pathname) {
     return true;
   }
   if (MANAGEMENT_API_EXACT_PATHS.includes(decodedPathname)) return true;
-  return MANAGEMENT_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return MANAGEMENT_API_PATHS.some((p) => decodedPathname === p || decodedPathname.startsWith(`${p}/`));
+}
+
+/**
+ * Resolve the action of an exact `/api/mcp-gateway/oauth/<id>/<action>` path.
+ *
+ * Returns null for anything else, so a deeper or malformed path (for example
+ * `/api/mcp-gateway/oauth/a/b/callback`, which a suffix test would accept)
+ * falls through to the management gate instead of an auth exemption. Decode
+ * once so encoded spellings cannot bypass auth; malformed encoding fails
+ * closed by returning null.
+ *
+ * @param {string} pathname
+ * @returns {string|null}
+ */
+function gatewayOauthLeaf(pathname) {
+  let decodedPathname;
+  try {
+    decodedPathname = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  const segments = decodedPathname.split("/");
+  // ["", "api", "mcp-gateway", "oauth", <id>, <action>]
+  if (segments.length !== 6) return null;
+  if (segments[1] !== "api" || segments[2] !== "mcp-gateway" || segments[3] !== "oauth") return null;
+  if (!segments[4] || !segments[5]) return null;
+  return segments[5];
 }
 
 /**
  * Management routes (providers, usage, keys, settings, …) must not trust the
  * global requireLogin=false bypass for remote callers. JWT and CLI token always
- * qualify; loopback peers keep open-dashboard usability when login is disabled.
+ * qualify; a valid DurinDoor application API key grants full programmatic
+ * control; loopback peers keep open-dashboard usability when login is disabled.
  */
 async function canAccessManagementApi(request) {
   if (await hasValidCliToken(request)) return true;
   if (await hasValidToken(request)) return true;
+  // Full programmatic control with the application API key — except raw secret
+  // reveal, which stays JWT/CLI-only so a leaked LLM key cannot dump every
+  // other credential. The loopback branch below is unchanged, so an open
+  // dashboard on the host keeps its existing reveal behavior.
+  const isSecretReveal = request.nextUrl.pathname.endsWith("/reveal");
+  if (!isSecretReveal && (await hasValidApiKey(request))) return true;
   if (isLocalRequest(request)) {
     const settings = await loadSettings();
     if (settings && settings.requireLogin === false) return true;
@@ -350,14 +396,19 @@ export const __test__ = {
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
-  // /api/mcp/control is a management MCP endpoint: it must always carry
-  // either the local CLI token, a configured API key, or a valid dashboard
-  // JWT, regardless of the requireLogin setting. This prevents an
-  // unauthenticated remote caller from toggling providers when login is
-  // disabled.
+  // /api/mcp/control is a management MCP endpoint: a remote caller must always
+  // carry the local CLI token, a configured API key, or a valid dashboard JWT,
+  // regardless of the requireLogin setting. This prevents an unauthenticated
+  // remote caller from toggling providers when login is disabled.
   if (pathname === "/api/mcp/control" || pathname.startsWith("/api/mcp/control/")) {
     if (await hasValidCliToken(request) || await hasValidApiKey(request) || await hasValidToken(request)) {
       return NextResponse.next();
+    }
+    // Same-machine agents skip the key exactly when the LLM endpoints do:
+    // requireApiKey off. Remote callers always need a credential.
+    if (isLocalRequest(request)) {
+      const settings = await loadSettings();
+      if (settings && settings.requireApiKey !== true) return NextResponse.next();
     }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -430,12 +481,24 @@ export async function proxy(request) {
     return NextResponse.json({ error: "gateway key required" }, { status: 401 });
   }
 
-  // CIMD client-metadata document is fetched server-to-server by the upstream
-  // OAuth authorization server (no dashboard session), so it must be public.
-  // Only the exact `.../client-metadata` leaf is exempt — authorize/callback/
-  // status stay behind the standard auth below.
-  if (pathname.startsWith("/api/mcp-gateway/oauth/") && pathname.endsWith("/client-metadata")) {
-    return NextResponse.next();
+  // Two gateway OAuth leaves carry no DurinDoor credential and so cannot sit
+  // on the management gate: `client-metadata` is fetched server-to-server by
+  // the upstream authorization server, and `callback` is the upstream browser
+  // redirect, which keeps the dashboard's standard login policy and defends
+  // itself with the server-side `state` it validates. `authorize` and `status`
+  // are operator actions that fall through to the management gate below, so an
+  // API-key client can drive a full OAuth connect flow.
+  //
+  // Match the exact `/api/mcp-gateway/oauth/<id>/<action>` shape on the decoded
+  // path: a suffix test would exempt a deeper path such as
+  // `/api/mcp-gateway/oauth/a/b/callback`. Malformed encoding fails closed.
+  const oauthLeaf = gatewayOauthLeaf(pathname);
+  if (oauthLeaf === "client-metadata") return NextResponse.next();
+  if (oauthLeaf === "callback") {
+    if (await hasValidCliToken(request) || await isAuthenticated(request)) {
+      return NextResponse.next();
+    }
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.

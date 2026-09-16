@@ -14,6 +14,7 @@ import {
   refreshCopilotToken,
   refreshCodebuddyToken,
   refreshGitLabDuoToken,
+  refreshClineToken,
   classifyOAuthRefreshError } from
 "./tokenRefresh/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -33,6 +34,7 @@ export {
   refreshCopilotToken,
   refreshCodebuddyToken,
   refreshGitLabDuoToken,
+  refreshClineToken,
   classifyOAuthRefreshError };
 
 
@@ -166,6 +168,12 @@ const REFRESH_HANDLERS = {
   "grok-cli": (c, log, p) => refreshXaiToken(c.refreshToken, log, p),
   "codebuddy-cn": (c, log, p) => refreshCodebuddyToken(c.refreshToken, log, p),
   "gitlab-duo": (c, log, p) => refreshGitLabDuoToken(c.refreshToken, c, log, p),
+  // Cline and ClinePass share the same WorkOS-backed refresh endpoint. Without
+  // these entries the proactive refresh path fell through to the generic
+  // form-encoded OAuth grant, which api.cline.bot rejects, so expired tokens
+  // were never rotated. Ported from decolua/9router f6e7cabe.
+  cline: (c, log, p) => refreshClineToken(c.refreshToken, log, p),
+  clinepass: (c, log, p) => refreshClineToken(c.refreshToken, log, p),
   vertex: vertexRefreshHandler,
   "vertex-partner": vertexRefreshHandler
 };

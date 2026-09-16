@@ -15,6 +15,37 @@ const mocks = vi.hoisted(() => ({
   isOpenAICompatibleProvider: vi.fn((id) => id.startsWith("openai-compatible-")),
   isAnthropicCompatibleProvider: vi.fn((id) => id.startsWith("anthropic-compatible-")),
   isCustomEmbeddingProvider: vi.fn((id) => id.startsWith("embedding-custom-")),
+  getCombos: vi.fn(),
+  getComboById: vi.fn(),
+  getApiKeys: vi.fn(),
+  getAllApiKeyUsageTotals: vi.fn(),
+  listProviderQuotaSnapshots: vi.fn(),
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+  createComboManaged: vi.fn(),
+  updateComboManaged: vi.fn(),
+  deleteComboManaged: vi.fn(),
+  refreshProviderQuota: vi.fn(),
+}));
+
+vi.mock("@/lib/localDb", () => ({
+  getCombos: mocks.getCombos,
+  getComboById: mocks.getComboById,
+  getApiKeys: mocks.getApiKeys,
+  getAllApiKeyUsageTotals: mocks.getAllApiKeyUsageTotals,
+  listProviderQuotaSnapshots: mocks.listProviderQuotaSnapshots,
+  getSettings: mocks.getSettings,
+  updateSettings: mocks.updateSettings,
+}));
+
+vi.mock("@/lib/combos/comboManagement", () => ({
+  createComboManaged: mocks.createComboManaged,
+  updateComboManaged: mocks.updateComboManaged,
+  deleteComboManaged: mocks.deleteComboManaged,
+}));
+
+vi.mock("@/shared/services/providerQuotaTracker", () => ({
+  refreshProviderQuota: mocks.refreshProviderQuota,
 }));
 
 vi.mock("@/models", () => ({
@@ -72,6 +103,16 @@ describe("mcp-control tools", () => {
       "usage_stats",
       "token_saver_stats",
       "model_list",
+      "list_combos",
+      "get_combo",
+      "create_combo",
+      "update_combo",
+      "delete_combo",
+      "quota_snapshots",
+      "refresh_quota",
+      "list_api_keys",
+      "get_settings",
+      "update_settings",
     ]);
   });
 
@@ -314,5 +355,208 @@ describe("mcp-control tools", () => {
 
     expect(mocks.buildModelsList).toHaveBeenCalledWith(["llm"], {});
     expect(result.models).toEqual([{ id: "gpt-4" }]);
+  });
+
+  it("model_list filters by requested kinds", async () => {
+    mocks.buildModelsList.mockResolvedValue([{ id: "dall-e-3" }]);
+
+    const result = await callTool("model_list", { kinds: ["image", "tts"] });
+
+    expect(mocks.buildModelsList).toHaveBeenCalledWith(["image", "tts"], {});
+    expect(result.models).toEqual([{ id: "dall-e-3" }]);
+  });
+
+  it("model_list rejects an unknown kind", async () => {
+    await expect(callTool("model_list", { kinds: ["telepathy"] }))
+      .rejects.toThrow("Invalid kind: telepathy");
+    expect(mocks.buildModelsList).not.toHaveBeenCalled();
+  });
+
+  it("list_combos returns every combo", async () => {
+    mocks.getCombos.mockResolvedValue([{ id: "cb1", name: "fast" }]);
+
+    const result = await callTool("list_combos", {});
+
+    expect(result.combos).toEqual([{ id: "cb1", name: "fast" }]);
+  });
+
+  it("get_combo rejects an unknown id with 404", async () => {
+    mocks.getComboById.mockResolvedValue(null);
+
+    await expect(callTool("get_combo", { id: "nope" })).rejects.toMatchObject({
+      message: "Combo not found",
+      status: 404,
+    });
+  });
+
+  it("create_combo delegates to the shared combo manager", async () => {
+    mocks.createComboManaged.mockResolvedValue({ id: "cb1", name: "fast" });
+
+    const result = await callTool("create_combo", { name: "fast", models: ["openai/gpt-4"] });
+
+    expect(mocks.createComboManaged).toHaveBeenCalledWith({ name: "fast", models: ["openai/gpt-4"] });
+    expect(result.combo).toEqual({ id: "cb1", name: "fast" });
+  });
+
+  it("create_combo surfaces a validation failure with its status", async () => {
+    const invalid = Object.assign(new Error("Name can only contain letters, numbers, -, _ and ."), { status: 400 });
+    mocks.createComboManaged.mockRejectedValue(invalid);
+
+    await expect(callTool("create_combo", { name: "bad name!" })).rejects.toMatchObject({
+      message: "Name can only contain letters, numbers, -, _ and .",
+      status: 400,
+    });
+  });
+
+  it("create_combo surfaces a duplicate-name failure", async () => {
+    mocks.createComboManaged.mockRejectedValue(
+      Object.assign(new Error("Combo name already exists"), { status: 400 })
+    );
+
+    await expect(callTool("create_combo", { name: "fast" })).rejects.toThrow("Combo name already exists");
+  });
+
+  it("update_combo passes the id separately from the patch", async () => {
+    mocks.updateComboManaged.mockResolvedValue({ id: "cb1", name: "slow" });
+
+    const result = await callTool("update_combo", { id: "cb1", name: "slow" });
+
+    expect(mocks.updateComboManaged).toHaveBeenCalledWith("cb1", { name: "slow" });
+    expect(result.combo.name).toBe("slow");
+  });
+
+  it("delete_combo surfaces a missing combo as 404", async () => {
+    mocks.deleteComboManaged.mockRejectedValue(
+      Object.assign(new Error("Combo not found"), { status: 404 })
+    );
+
+    await expect(callTool("delete_combo", { id: "gone" })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("quota_snapshots requires a provider or connection filter", async () => {
+    await expect(callTool("quota_snapshots", {}))
+      .rejects.toThrow("A connectionId or provider filter is required");
+    expect(mocks.listProviderQuotaSnapshots).not.toHaveBeenCalled();
+  });
+
+  it("quota_snapshots passes its filters through", async () => {
+    mocks.listProviderQuotaSnapshots.mockResolvedValue([{ resource: "messages", remaining: 12 }]);
+
+    const result = await callTool("quota_snapshots", { provider: "claude", includeStale: true });
+
+    expect(mocks.listProviderQuotaSnapshots).toHaveBeenCalledWith({
+      provider: "claude",
+      connectionId: undefined,
+      includeStale: true,
+    });
+    expect(result.snapshots[0].remaining).toBe(12);
+  });
+
+  it("refresh_quota rejects an unknown connection with 404", async () => {
+    mocks.getProviderConnectionById.mockResolvedValue(null);
+
+    await expect(callTool("refresh_quota", { connectionId: "gone" })).rejects.toMatchObject({
+      message: "Connection not found",
+      status: 404,
+    });
+    expect(mocks.refreshProviderQuota).not.toHaveBeenCalled();
+  });
+
+  it("refresh_quota forces a live refresh and re-reads the snapshots", async () => {
+    const connection = { id: "c1", provider: "claude" };
+    mocks.getProviderConnectionById.mockResolvedValue(connection);
+    mocks.refreshProviderQuota.mockResolvedValue({ status: "refreshed" });
+    mocks.listProviderQuotaSnapshots.mockResolvedValue([{ resource: "messages", remaining: 3 }]);
+
+    const result = await callTool("refresh_quota", { connectionId: "c1" });
+
+    expect(mocks.refreshProviderQuota).toHaveBeenCalledWith(connection, { force: true });
+    expect(mocks.listProviderQuotaSnapshots).toHaveBeenCalledWith({
+      connectionId: "c1",
+      provider: "claude",
+      includeStale: true,
+    });
+    expect(result.result).toEqual({ status: "refreshed" });
+    expect(result.snapshots[0].remaining).toBe(3);
+  });
+
+  it("refresh_quota reports an unsupported provider as a caller error", async () => {
+    mocks.getProviderConnectionById.mockResolvedValue({ id: "c1", provider: "openai" });
+    mocks.refreshProviderQuota.mockRejectedValue(new Error("Quota tracking unsupported"));
+
+    await expect(callTool("refresh_quota", { connectionId: "c1" })).rejects.toMatchObject({
+      message: "Quota tracking unsupported",
+      status: 400,
+    });
+  });
+
+  it("list_api_keys never returns the raw secret", async () => {
+    mocks.getApiKeys.mockResolvedValue([
+      { id: "k1", name: "ci", key: "sk-supersecret", isActive: true },
+    ]);
+    mocks.getAllApiKeyUsageTotals.mockResolvedValue([
+      { apiKeyId: "k1", totalTokens: 10, totalCost: 0.1, totalRequests: 2, updatedAt: "2026-01-01" },
+    ]);
+
+    const result = await callTool("list_api_keys", {});
+
+    expect(result.keys).toHaveLength(1);
+    expect(result.keys[0]).not.toHaveProperty("key");
+    expect(JSON.stringify(result)).not.toContain("sk-supersecret");
+    expect(result.keys[0].usage.totalTokens).toBe(10);
+  });
+
+  it("list_api_keys defaults usage for a key with no recorded totals", async () => {
+    mocks.getApiKeys.mockResolvedValue([{ id: "k2", name: "fresh", key: "sk-x" }]);
+    mocks.getAllApiKeyUsageTotals.mockResolvedValue([]);
+
+    const result = await callTool("list_api_keys", {});
+
+    expect(result.keys[0].usage).toEqual({ totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null });
+  });
+
+  it("get_settings withholds secrets", async () => {
+    mocks.getSettings.mockResolvedValue({
+      requireApiKey: true,
+      password: "hashed",
+      passwordSessionEpoch: 4,
+      oidcClientSecret: "oidc-secret",
+      mitmSudoEncrypted: "blob",
+    });
+
+    const result = await callTool("get_settings", {});
+
+    expect(result.settings.requireApiKey).toBe(true);
+    expect(result.settings).not.toHaveProperty("password");
+    expect(result.settings).not.toHaveProperty("passwordSessionEpoch");
+    expect(result.settings).not.toHaveProperty("oidcClientSecret");
+    expect(result.settings).not.toHaveProperty("mitmSudoEncrypted");
+  });
+
+  it("update_settings strips auth-critical and secret keys before writing", async () => {
+    mocks.getSettings.mockResolvedValue({ hidePaidModels: true });
+
+    await callTool("update_settings", {
+      settings: {
+        hidePaidModels: true,
+        requireApiKey: false,
+        requireLogin: false,
+        password: "pwned",
+        claudeAutoPing: true,
+      },
+    });
+
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ hidePaidModels: true });
+  });
+
+  it("update_settings rejects a patch left with nothing to write", async () => {
+    await expect(callTool("update_settings", { settings: { requireApiKey: false } }))
+      .rejects.toThrow("No updatable settings provided");
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("update_settings rejects a non-object payload", async () => {
+    await expect(callTool("update_settings", { settings: ["requireApiKey"] }))
+      .rejects.toThrow("Invalid settings: expected object");
   });
 });

@@ -276,6 +276,62 @@ curl http://localhost:20128/api/health
 
 Health does not require the same provider setup as model routes. Use `/v1/models` and a small chat request for end-to-end validation.
 
+## Management API
+
+Everything the dashboard can configure is also reachable programmatically. The
+management REST surface under `/api/*` accepts the same DurinDoor API key used
+for inference:
+
+```bash
+curl http://localhost:20128/api/combos \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+Route families covered by API-key auth:
+
+| Routes | Purpose |
+| --- | --- |
+| `/api/providers`, `/api/provider-nodes`, `/api/media-providers` | Provider connections and custom nodes |
+| `/api/keys` | API keys, policies, groups, usage totals |
+| `/api/combos`, `/api/connection-groups` | Combo CRUD and connection allowlists |
+| `/api/models`, `/api/pricing`, `/api/tags` | Catalog, pricing, labels |
+| `/api/usage`, `/api/timeline` | Usage statistics and request timeline |
+| `/api/settings` | Settings read and update |
+| `/api/mcp`, `/api/mcp-gateway/instances`, `/api/mcp-gateway/keys`, `/api/mcp-gateway/oauth` | MCP control server, gateway CRUD, gateway OAuth connect flow |
+| `/api/proxy-pools`, `/api/tunnel`, `/api/cli-tools`, `/api/translator`, `/api/oauth`, `/api/cloud` | Networking, tooling, and provider OAuth management |
+
+The three MCP gateway protocol surfaces (`/api/mcp-gateway`,
+`/api/mcp-gateway/sse`, `/api/mcp-gateway/message`) keep gateway-key auth. Two
+OAuth leaves stay off the management gate because neither carries a DurinDoor
+credential: `.../client-metadata`, fetched server-to-server by the upstream
+authorization server, and `.../callback`, the upstream browser redirect, which
+keeps the dashboard login policy it has always had and defends itself with the
+server-side `state` it validates. `.../authorize` and `.../status` are operator
+actions, so an API-key client can run a complete connect flow.
+
+Exclusions — an API key is never sufficient for these, which still require a
+dashboard session (`auth_token` cookie) or the local CLI token
+(`x-9r-cli-token`):
+
+- `GET /api/keys/{id}/reveal` — the raw secret reveal leaf is carved out of
+  API-key auth explicitly.
+- `GET /api/mcp-gateway/keys/{id}/reveal` — refused twice over: the guard's
+  reveal carve-out rejects an API key with `401`, and the route additionally
+  requires a loopback caller, answering `403` to a remote session or CLI
+  caller. No credential reveals a gateway key remotely.
+- `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`,
+  `/api/settings/database`, and the OAuth auto-import routes.
+- Local-only routes (tunnel enable/disable, CLI-tool spawners, headroom
+  process control, password reset).
+- Auth-critical settings keys on `PATCH /api/settings` (`requireLogin`,
+  `requireApiKey`, `authMode`, OIDC fields, outbound-proxy fields,
+  `tunnelDashboardAccess`, `enableObservability`, `exposeComboOnly`) are
+  stripped from an API-key-authenticated patch.
+
+For agent clients, the same capabilities are exposed as MCP tools by the
+control server at `POST /api/mcp/control`. See
+[MCP Gateway](../features/mcp-gateway.md#control-endpoint).
+
 ## Compatibility Notes
 
 - A route existing does not mean every provider supports that route.

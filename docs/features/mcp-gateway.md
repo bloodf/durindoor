@@ -60,7 +60,7 @@ or, for a limited set of Google-style clients:
 x-goog-api-key: <gateway-key>
 ```
 
-or as a query parameter \"key=\". The control endpoint \"/api/mcp/control\" uses dashboard auth, not a gateway key (see below).
+or as a query parameter \"key=\". The control endpoint \"/api/mcp/control\" does not accept a gateway key: it takes a dashboard session, the CLI token, or a DurinDoor API key (see below).
 
 ## OAuth flow
 
@@ -70,6 +70,8 @@ When an instance is registered with \"oauth: true\", the gateway manages the ups
 2. The user authorizes the upstream client.
 3. The upstream redirects to \"/api/mcp-gateway/oauth/:id/callback\" with a code and state. The handler validates the state against the session store, exchanges the code for tokens, and persists the bundle on the instance row.
 4. The dashboard polls \"oauth/:id/status\" to know when the flow is complete.
+
+Auth for these four leaves differs by who calls them. \"authorize\" and \"status\" are operator actions on the management gate, so a dashboard session, the CLI token, or a DurinDoor API key all work — an API-key client can run a complete connect flow. \"client-metadata\" is public, because the upstream authorization server fetches it server-to-server. \"callback\" keeps the dashboard's standard login policy: it is an upstream browser redirect carrying only \"code\" and \"state\", so it has no DurinDoor credential to present, and its CSRF defense is the server-side \"state\" it validates.
 
 After OAuth, the gateway stores the full token bundle on the \"mcpInstances\" row, including \"token_endpoint\", \"client_id\", \"client_secret\", \"resource\", \"scope\", \"expires_at\", and \"fetched_at\" so that refresh can run without a separate configuration lookup. Tokens are scoped to the instance; they are never returned by management APIs.
 
@@ -87,12 +89,15 @@ For OAuth-enabled instances, every upstream request passes through the token lif
 
 \"POST /api/mcp/control\" exposes a lightweight JSON-RPC 2.0 MCP server for managing the running DurinDoor instance. This endpoint is intended for operator and automation clients, not for end callers of the gateway.
 
-The route uses the same dashboard guard as the rest of \"/api/*\". It is exempt from the \"LOCAL_ONLY_PATHS\" branch used by spawn-capable MCP plugin routes, so it can be called from a remote host with either:
+The route uses the same dashboard guard as the rest of \"/api/*\". It is exempt from the \"LOCAL_ONLY_PATHS\" branch used by spawn-capable MCP plugin routes, so it can be called from a remote host with any of:
 
-- a valid dashboard JWT (\"auth_token\" cookie), or
-- the local CLI token (\"x-9r-cli-token\" header).
+- a valid dashboard JWT (\"auth_token\" cookie),
+- the local CLI token (\"x-9r-cli-token\" header), or
+- a DurinDoor API key (\"Authorization: Bearer\", \"x-api-key\", or \"key=\").
 
-Unauthenticated requests receive 401.
+When the \"requireApiKey\" setting is off, loopback callers on the same machine may omit credentials entirely — the same rule the LLM endpoints use. Remote callers always authenticate, regardless of \"requireApiKey\" or \"requireLogin\". Unauthenticated requests receive 401.
+
+The same DurinDoor API key also unlocks the management REST API; see [API Reference → Management API](../reference/api.md#management-api) for the covered route families and the exclusions (secret reveal, shutdown/database routes, auth-critical settings keys).
 
 Protocol methods:
 
@@ -111,7 +116,17 @@ Control tools include:
 | toggle_provider_active | Enable or disable every connection for a provider ID |
 | usage_stats | Aggregate usage statistics for a period |
 | token_saver_stats | Token-saver statistics for a period |
-| model_list | Available models in OpenAI-compatible format |
+| model_list | Available models in OpenAI-compatible format; optional \"kinds\" filter (\"llm\", \"image\", \"tts\", \"embedding\", \"stt\", \"imageToText\", \"rerank\", \"video\") |
+| list_combos | List every configured combo |
+| get_combo | Fetch a single combo by ID |
+| create_combo | Create a combo (name, models, members, kind, capabilities, allowlist) |
+| update_combo | Update a combo; omitted fields keep their stored value |
+| delete_combo | Delete a combo by ID |
+| quota_snapshots | Provider-reported quota/allowance snapshots for a provider or connection |
+| refresh_quota | Force a live quota refresh for one connection and return the new snapshots |
+| list_api_keys | DurinDoor API keys with usage totals; the raw secret is never returned |
+| get_settings | Settings with secrets withheld |
+| update_settings | Update non-secret, non-auth-critical settings |
 
 All JSON-RPC responses are returned with HTTP 200, including JSON-RPC errors. Transport or auth errors still use HTTP 401/403.
 
@@ -121,6 +136,8 @@ All JSON-RPC responses are returned with HTTP 200, including JSON-RPC errors. Tr
 - Key creation and raw-key reveal are restricted to local requests via the dashboard guard.
 - Each key can be granted access to specific MCP instances; the backend also supports per-tool grants.
 - Secrets (\"apiKey\", \"accessToken\", \"refreshToken\", \"idToken\", OAuth cookies, and provider-specific \"clientSecret\") are never returned by \"list_connections\" or \"toggle_connection_active\". The control endpoint reuses the shared client allowlist sanitizer and additionally drops \"connectionProxyUrl\", which may contain embedded credentials.
+- \"list_api_keys\" returns the management view of each DurinDoor API key: the raw credential is stripped before the row leaves the tool, exactly as in \"GET /api/keys\".
+- \"get_settings\" withholds \"password\", \"passwordSessionEpoch\", \"oidcClientSecret\", and \"mitmSudoEncrypted\". \"update_settings\" additionally strips every auth-critical key (\"requireLogin\", \"requireApiKey\", \"authMode\", OIDC, outbound proxy, \"tunnelDashboardAccess\", \"enableObservability\", \"exposeComboOnly\") and the connection-scoped auto-ping keys, because an API-key caller can never satisfy \"canModifySecurityCriticalSettings\". A patch whose keys are all stripped returns 400 rather than silently succeeding.
 - Custom OpenAI/Anthropic-compatible provider IDs are validated against the provider-node registry before \"toggle_provider_active\" applies.
 - Connection toggles mirror the same \"notifyQuotaAutoPingSettingChanged\" side-effects as the dashboard provider routes.
 - OAuth token storage is scoped to the instance row. Management APIs return only the \"needsReauth\" flag, not the token content.

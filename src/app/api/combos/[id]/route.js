@@ -1,31 +1,18 @@
 import { NextResponse } from "next/server";
-import { getComboById, updateCombo, deleteCombo, getComboByName, ComboMemberError, validateConnectionIds, ConnectionGroupValidationError } from "@/lib/localDb";
+import { getComboById } from "@/lib/localDb";
 import { parseJsonBody } from "@/shared/utils/parseJsonBody";
-import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
-import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
-
-const MAX_ALLOWLIST_IDS = 500;
-async function parseAllowedConnectionIds(body) {
-  if (!Object.prototype.hasOwnProperty.call(body, "allowedConnectionIds")) return undefined;
-  if (!Array.isArray(body.allowedConnectionIds) || body.allowedConnectionIds.length > MAX_ALLOWLIST_IDS) {
-    throw new ConnectionGroupValidationError(`allowedConnectionIds must be an array with at most ${MAX_ALLOWLIST_IDS} ids`);
-  }
-  return validateConnectionIds(body.allowedConnectionIds);
-}
-
-// Validate combo name: only a-z, A-Z, 0-9, -, _
-const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
+import { ComboManagementError, deleteComboManaged, updateComboManaged } from "@/lib/combos/comboManagement";
 
 // GET /api/combos/[id] - Get combo by ID
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
     const combo = await getComboById(id);
-    
+
     if (!combo) {
       return NextResponse.json({ error: "Combo not found" }, { status: 404 });
     }
-    
+
     return NextResponse.json(combo);
   } catch (error) {
     console.log("Error fetching combo:", error);
@@ -40,48 +27,11 @@ export async function PUT(request, { params }) {
 
   try {
     const { id } = await params;
-    // Omitted field preserves the stored policy; explicit [] clears it.
-    const body = { ...parsed.body };
-    if (Object.prototype.hasOwnProperty.call(body, "allowedConnectionIds")) {
-      body.allowedConnectionIds = await parseAllowedConnectionIds(body);
-    }
-    // Validate name format if provided
-    if (body.name) {
-      if (!VALID_NAME_REGEX.test(body.name)) {
-        return NextResponse.json({ error: "Name can only contain letters, numbers, -, _ and ." }, { status: 400 });
-      }
-      
-      // Check if name already exists (exclude current combo)
-      const existing = await getComboByName(body.name);
-      if (existing && existing.id !== id) {
-        return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
-      }
-    }
-    
-    if (Object.hasOwn(body, "capabilities")) {
-      const normalizedCapabilities = normalizeComboCapabilities(body.capabilities);
-      if (!normalizedCapabilities.ok) {
-        return NextResponse.json({ error: normalizedCapabilities.error }, { status: 400 });
-      }
-      body.capabilities = normalizedCapabilities.capabilities;
-    }
-
-    // Capture previous name to invalidate rotation state on rename
-    const prev = await getComboById(id);
-    const combo = await updateCombo(id, body);
-    
-    if (!combo) {
-      return NextResponse.json({ error: "Combo not found" }, { status: 404 });
-    }
-
-    // Invalidate rotation + scoring state (models/strategy/name may have changed)
-    if (prev?.name) { resetComboRotation(prev.name); resetComboScoring(prev.name); }
-    if (combo.name && combo.name !== prev?.name) { resetComboRotation(combo.name); resetComboScoring(combo.name); }
-
+    const combo = await updateComboManaged(id, parsed.body);
     return NextResponse.json(combo);
   } catch (error) {
-    if (error instanceof ComboMemberError || error instanceof ConnectionGroupValidationError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof ComboManagementError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.log("Error updating combo:", error);
     return NextResponse.json({ error: "Failed to update combo" }, { status: 500 });
@@ -92,17 +42,11 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
-    const prev = await getComboById(id);
-    const success = await deleteCombo(id);
-    
-    if (!success) {
-      return NextResponse.json({ error: "Combo not found" }, { status: 404 });
-    }
-
-    if (prev?.name) { resetComboRotation(prev.name); resetComboScoring(prev.name); }
-    
-    return NextResponse.json({ success: true });
+    return NextResponse.json(await deleteComboManaged(id));
   } catch (error) {
+    if (error instanceof ComboManagementError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.log("Error deleting combo:", error);
     return NextResponse.json({ error: "Failed to delete combo" }, { status: 500 });
   }

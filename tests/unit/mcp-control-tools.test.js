@@ -533,6 +533,23 @@ describe("mcp-control tools", () => {
     expect(result.settings).not.toHaveProperty("mitmSudoEncrypted");
   });
 
+  it("get_settings redacts proxy credentials but keeps the endpoint readable", async () => {
+    // outboundProxyUrl is operational config an agent legitimately inspects,
+    // but its userinfo is a live credential and the MCP surface authenticates
+    // with an application API key, never an operator session.
+    mocks.getSettings.mockResolvedValue({
+      outboundProxyEnabled: true,
+      outboundProxyUrl: "http://proxyuser:s3cret@proxy.internal:8080",
+    });
+
+    const result = await callTool("get_settings", {});
+
+    expect(result.settings.outboundProxyUrl).not.toContain("s3cret");
+    expect(result.settings.outboundProxyUrl).not.toContain("proxyuser");
+    expect(result.settings.outboundProxyUrl).toContain("proxy.internal:8080");
+    expect(result.settings.outboundProxyEnabled).toBe(true);
+  });
+
   it("update_settings strips auth-critical and secret keys before writing", async () => {
     mocks.getSettings.mockResolvedValue({ hidePaidModels: true });
 

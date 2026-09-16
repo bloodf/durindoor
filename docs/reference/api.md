@@ -319,6 +319,9 @@ dashboard session (`auth_token` cookie) or the local CLI token
   reveal carve-out rejects an API key with `401`, and the route additionally
   requires a loopback caller, answering `403` to a remote session or CLI
   caller. No credential reveals a gateway key remotely.
+- Any request carrying `?reveal=1`, which the gateway key detail route reads
+  to return a raw key. The carve-out matches the query as well as the path, and
+  matches the path **decoded**, so `/api/keys/{id}/%72eveal` is refused too.
 - `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`,
   `/api/settings/database`, and the OAuth auto-import routes.
 - Local-only routes (tunnel enable/disable, CLI-tool spawners, headroom
@@ -327,6 +330,15 @@ dashboard session (`auth_token` cookie) or the local CLI token
   `requireApiKey`, `authMode`, OIDC fields, outbound-proxy fields,
   `tunnelDashboardAccess`, `enableObservability`, `exposeComboOnly`) are
   stripped from an API-key-authenticated patch.
+
+Proxy credentials are redacted, not withheld. `outboundProxyUrl`
+(`GET`/`PATCH /api/settings`, MCP `get_settings`), `proxyPools[].proxyUrl`
+(`GET /api/proxy-pools` and `/api/proxy-pools/{id}`), and
+`providerSpecificData.connectionProxyUrl` (`GET /api/providers` and
+`/api/providers/{id}`) keep their host and port readable but have any
+`user:password@` replaced with `***` unless the caller presents a dashboard
+session or CLI token. An application API key is an inference credential, not an
+operator session.
 
 For agent clients, the same capabilities are exposed as MCP tools by the
 control server at `POST /api/mcp/control`. See

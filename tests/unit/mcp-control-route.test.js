@@ -233,6 +233,31 @@ describe("dashboard guard mcp-control auth", () => {
     expect(mocks.validateApiKey).not.toHaveBeenCalled();
   });
 
+  it("rejects a cross-origin browser POST to loopback mcp-control", async () => {
+    // custom-server.js stamps the trusted-peer header on every request,
+    // including a browser's, so loopback classification alone is not browser
+    // authentication: a page on a hostile origin could otherwise drive these
+    // management tools from the victim's own machine.
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: false });
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "localhost:20128",
+      "x-9r-peer-token": process.env.NINEROUTER_PEER_TOKEN,
+      origin: "https://evil.example.com",
+    }));
+    expect(response.status).toBe(401);
+  });
+
+  it("allows a same-origin dashboard POST to loopback mcp-control", async () => {
+    // The Origin check must reject only a foreign origin, never the app's own.
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: false });
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "localhost:20128",
+      "x-9r-peer-token": process.env.NINEROUTER_PEER_TOKEN,
+      origin: "http://localhost:20128",
+    }));
+    expect(response.status).toBe(200);
+  });
+
   it("rejects loopback mcp-control without a credential when requireApiKey is on", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false, requireApiKey: true });
     const response = await proxy(guardRequest("/api/mcp/control", {

@@ -9,6 +9,7 @@ import {
   CONTROL_PROOF_HEADER,
   verifyControlProof,
 } from "@/mitm/controlProof";
+import { isFunction } from "@/shared/utils/typeChecks.js";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
@@ -166,6 +167,21 @@ function hasExactRequestOrigin(request) {
   }
 }
 
+/**
+ * True when the request carries an Origin that is NOT this server's own.
+ *
+ * The inverse of {@link hasExactRequestOrigin} for the credential-free local
+ * case: a browser always attaches an Origin to a cross-origin POST, while
+ * curl, the CLI, and MCP stdio clients attach none. Treating "absent" as
+ * foreign would lock out exactly the same-machine agents the no-key path
+ * exists to serve; treating "present but mismatched" as safe would leave the
+ * CSRF hole open. An unparsable Origin counts as foreign.
+ */
+function hasForeignRequestOrigin(request) {
+  if (!request.headers.get("origin")) return false;
+  return !hasExactRequestOrigin(request);
+}
+
 // Wrapper proof plus the wrapper-stamped loopback identity distinguish local peers.
 // Browser-origin checks belong at each mutation boundary, not this transport classifier.
 export function isLocalRequest(request) {
@@ -297,6 +313,28 @@ async function isAuthenticated(request) {
 }
 
 /**
+ * Decode a pathname once, the way Next resolves it to a route.
+ *
+ * Every classifier in {@link proxy} MUST match on this value. Matching a raw
+ * pathname while any sibling classifier matches a decoded one is fail-open: an
+ * encoded character inside a strict suffix (`/api/keys/k1/%72eveal`,
+ * `/api/oauth/cursor/%61uto-import`) would miss the strict list yet still hit
+ * the broader management prefix, which now accepts an application API key.
+ *
+ * Returns null on malformed encoding so the caller can fail closed.
+ *
+ * @param {string} pathname
+ * @returns {string|null}
+ */
+function decodePathname(pathname) {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Match exact management leaves as Next resolves them. Decode once so encoded
  * route spellings cannot bypass auth; malformed encoding fails closed.
  *
@@ -306,12 +344,8 @@ async function isAuthenticated(request) {
  * it onto the weaker generic gate.
  */
 function isManagementApi(pathname) {
-  let decodedPathname;
-  try {
-    decodedPathname = decodeURIComponent(pathname);
-  } catch {
-    return true;
-  }
+  const decodedPathname = decodePathname(pathname);
+  if (decodedPathname === null) return true;
   if (MANAGEMENT_API_EXACT_PATHS.includes(decodedPathname)) return true;
   return MANAGEMENT_API_PATHS.some((p) => decodedPathname === p || decodedPathname.startsWith(`${p}/`));
 }
@@ -329,18 +363,67 @@ function isManagementApi(pathname) {
  * @returns {string|null}
  */
 function gatewayOauthLeaf(pathname) {
-  let decodedPathname;
-  try {
-    decodedPathname = decodeURIComponent(pathname);
-  } catch {
-    return null;
-  }
+  const decodedPathname = decodePathname(pathname);
+  if (decodedPathname === null) return null;
   const segments = decodedPathname.split("/");
   // ["", "api", "mcp-gateway", "oauth", <id>, <action>]
   if (segments.length !== 6) return null;
   if (segments[1] !== "api" || segments[2] !== "mcp-gateway" || segments[3] !== "oauth") return null;
   if (!segments[4] || !segments[5]) return null;
   return segments[5];
+}
+
+/**
+ * True when the request asks for a raw stored secret.
+ *
+ * Covers both spellings the handlers honor: a `/reveal` leaf and the
+ * `?reveal=1` query the gateway key detail route reads
+ * (`src/app/api/mcp-gateway/keys/[id]/route.js`). The path is matched decoded,
+ * so `/api/keys/k1/%72eveal` cannot slip past as a plain management read.
+ * Malformed encoding is treated as reveal, failing closed.
+ *
+ * @param {import("next/server").NextRequest} request
+ * @returns {boolean}
+ */
+function isSecretRevealRequest(request) {
+  if (request.nextUrl.searchParams?.get("reveal") === "1") return true;
+  const decodedPathname = decodePathname(request.nextUrl.pathname);
+  if (decodedPathname === null) return true;
+  return decodedPathname === "/reveal" || decodedPathname.endsWith("/reveal");
+}
+
+/**
+ * True when the caller is an operator rather than a programmatic API-key
+ * client, and so may read stored proxy credentials verbatim.
+ *
+ * Qualifying principals are exactly the ones that could already reach these
+ * values before the management API accepted application API keys: a dashboard
+ * session, a machine-bound CLI token, or a loopback peer running an open
+ * dashboard (`requireLogin === false`). That last case matters — the dashboard
+ * round-trips `outboundProxyUrl` / `connectionProxyUrl` / `proxyUrl` through
+ * its edit forms, so redacting them for an open local dashboard would persist
+ * the redaction placeholder on the next save.
+ *
+ * An application API key is an inference credential and never qualifies.
+ *
+ * @param {Request} request
+ * @returns {Promise<boolean>}
+ */
+export async function isOperatorRequest(request) {
+  if (!request || !isFunction(request.headers?.get)) return false;
+  try {
+    if (await hasValidCliToken(request)) return true;
+    if (await hasValidToken(request)) return true;
+    // A presented API key is decisive, and it is checked before the
+    // open-dashboard fallback: a programmatic client running on the host would
+    // otherwise inherit operator reads whenever `requireLogin` is disabled.
+    if (await hasValidApiKey(request)) return false;
+    if (!isLocalRequest(request)) return false;
+    const settings = await loadSettings();
+    return Boolean(settings && settings.requireLogin === false);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -356,8 +439,7 @@ async function canAccessManagementApi(request) {
   // reveal, which stays JWT/CLI-only so a leaked LLM key cannot dump every
   // other credential. The loopback branch below is unchanged, so an open
   // dashboard on the host keeps its existing reveal behavior.
-  const isSecretReveal = request.nextUrl.pathname.endsWith("/reveal");
-  if (!isSecretReveal && (await hasValidApiKey(request))) return true;
+  if (!isSecretRevealRequest(request) && (await hasValidApiKey(request))) return true;
   if (isLocalRequest(request)) {
     const settings = await loadSettings();
     if (settings && settings.requireLogin === false) return true;
@@ -396,17 +478,35 @@ export const __test__ = {
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
+  // Classify on the path Next actually resolves. A raw-vs-decoded split between
+  // classifiers is fail-open: an encoded character inside a strict suffix
+  // (`/api/oauth/cursor/%61uto-import`) would miss the strict list yet still
+  // match the broader management prefix, which accepts an application API key.
+  // Malformed encoding is rejected outright rather than guessed at.
+  const routePath = decodePathname(pathname);
+  if (routePath === null) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   // /api/mcp/control is a management MCP endpoint: a remote caller must always
   // carry the local CLI token, a configured API key, or a valid dashboard JWT,
   // regardless of the requireLogin setting. This prevents an unauthenticated
   // remote caller from toggling providers when login is disabled.
-  if (pathname === "/api/mcp/control" || pathname.startsWith("/api/mcp/control/")) {
+  if (routePath === "/api/mcp/control" || routePath.startsWith("/api/mcp/control/")) {
     if (await hasValidCliToken(request) || await hasValidApiKey(request) || await hasValidToken(request)) {
       return NextResponse.next();
     }
     // Same-machine agents skip the key exactly when the LLM endpoints do:
-    // requireApiKey off. Remote callers always need a credential.
-    if (isLocalRequest(request)) {
+    // requireApiKey off. Loopback identity is not browser authentication,
+    // though — the server stamps the trusted-peer header on every request,
+    // including a browser's, so a page on a hostile origin could otherwise
+    // drive these management tools from the victim's own machine.
+    //
+    // Reject only a *present, foreign* Origin. A browser always sends one on a
+    // cross-origin POST, so this closes the CSRF path; curl, an MCP client, and
+    // the CLI send none at all, so the plan's credential-free local agent keeps
+    // working. Remote callers always need a credential.
+    if (isLocalRequest(request) && !hasForeignRequestOrigin(request)) {
       const settings = await loadSettings();
       if (settings && settings.requireApiKey !== true) return NextResponse.next();
     }
@@ -414,22 +514,22 @@ export async function proxy(request) {
   }
 
 
-  if (isPxpipePath(pathname)) {
+  if (isPxpipePath(routePath)) {
     if (await canAccessPxpipeRoute(request)) return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   // Local-only gate for spawn-capable / host-secret routes.
   // /api/mcp/control is exempt: it is an authenticated management MCP endpoint
   // and must use the same dashboard JWT / CLI auth as the other dashboard APIs.
-  const isMcpControlPath = pathname === "/api/mcp/control" || pathname.startsWith("/api/mcp/control/");
-  if (!isMcpControlPath && LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
+  const isMcpControlPath = routePath === "/api/mcp/control" || routePath.startsWith("/api/mcp/control/");
+  if (!isMcpControlPath && LOCAL_ONLY_PATHS.some((p) => routePath.startsWith(p))) {
     if (!(await canAccessLocalOnlyRoute(request))) {
       return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
     }
   }
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
-  if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
+  if (ALWAYS_PROTECTED.some((p) => routePath.startsWith(p))) {
     if (await hasValidCliToken(request) || await hasValidToken(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -439,7 +539,7 @@ export async function proxy(request) {
    * Browser preflights intentionally omit credentials, so answer only OPTIONS
    * for the existing public LLM path set before its API-key auth gate.
    */
-  if (request.method === "OPTIONS" && isPublicLlmApi(pathname)) {
+  if (request.method === "OPTIONS" && isPublicLlmApi(routePath)) {
     const requestedHeaders = request.headers.get("access-control-request-headers");
     return new NextResponse(null, {
       status: 204,
@@ -452,9 +552,9 @@ export async function proxy(request) {
     });
   }
 
-  if (isPublicLlmApi(pathname)) {
+  if (isPublicLlmApi(routePath)) {
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
-    if (pathname.includes("/v1/messages")) {
+    if (routePath.includes("/v1/messages")) {
       return NextResponse.json({
         type: "error",
         error: {
@@ -471,9 +571,9 @@ export async function proxy(request) {
   // CRUD subpaths (`/instances/*`, `/keys/*`) fall through to the standard
   // JWT/CLI auth below.
   const isGatewayProtocolSurface =
-    pathname === "/api/mcp-gateway" ||
-    pathname === "/api/mcp-gateway/sse" ||
-    pathname === "/api/mcp-gateway/message";
+    routePath === "/api/mcp-gateway" ||
+    routePath === "/api/mcp-gateway/sse" ||
+    routePath === "/api/mcp-gateway/message";
   if (isGatewayProtocolSurface) {
     if (isLocalRequest(request)) return NextResponse.next();
     if (await hasValidCliToken(request)) return NextResponse.next();
@@ -492,7 +592,7 @@ export async function proxy(request) {
   // Match the exact `/api/mcp-gateway/oauth/<id>/<action>` shape on the decoded
   // path: a suffix test would exempt a deeper path such as
   // `/api/mcp-gateway/oauth/a/b/callback`. Malformed encoding fails closed.
-  const oauthLeaf = gatewayOauthLeaf(pathname);
+  const oauthLeaf = gatewayOauthLeaf(routePath);
   if (oauthLeaf === "client-metadata") return NextResponse.next();
   if (oauthLeaf === "callback") {
     if (await hasValidCliToken(request) || await isAuthenticated(request)) {
@@ -502,9 +602,9 @@ export async function proxy(request) {
   }
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
-  if (pathname.startsWith("/api/")) {
-    if (isPublicApi(pathname)) return NextResponse.next();
-    if (isManagementApi(pathname)) {
+  if (routePath.startsWith("/api/")) {
+    if (isPublicApi(routePath)) return NextResponse.next();
+    if (isManagementApi(routePath)) {
       if (await canAccessManagementApi(request)) return NextResponse.next();
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

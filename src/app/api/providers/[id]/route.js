@@ -12,6 +12,8 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+import { isOperatorRequest } from "@/dashboardGuard";
+import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "clientSecret",
@@ -170,8 +172,10 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
-    // Hide sensitive fields
-    const result = sanitizeProviderConnection(connection);
+    // Hide sensitive fields. connectionProxyUrl may embed `user:password@`;
+    // only an operator (dashboard JWT or CLI token) reads it verbatim.
+    const privileged = await isOperatorRequest(request);
+    const result = sanitizeConnectionProxyUrl(sanitizeProviderConnection(connection), privileged);
 
     return NextResponse.json({ connection: result });
   } catch (error) {
@@ -296,8 +300,10 @@ export async function PUT(request, { params }) {
     const updated = await updateProviderConnection(id, updateData);
     if (isActive === false) notifyQuotaAutoPingSettingChanged(existing.provider, id, false);
 
-    // Hide sensitive fields
-    const result = sanitizeProviderConnection(updated);
+    // Hide sensitive fields. Without redacting here, an API-key caller could
+    // PUT an unrelated field and read the stored proxy credential back.
+    const updatePrivileged = await isOperatorRequest(request);
+    const result = sanitizeConnectionProxyUrl(sanitizeProviderConnection(updated), updatePrivileged);
 
     return NextResponse.json({ connection: result });
   } catch (error) {

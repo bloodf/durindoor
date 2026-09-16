@@ -13,6 +13,8 @@ import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { isFunction, isString } from "../../../shared/utils/typeChecks.js";
 import { PROVIDER_MODELS_CONFIG } from "./[id]/models/modelsConfig.js";
+import { isOperatorRequest } from "@/dashboardGuard";
+import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,7 @@ function sanitizeProviderConnection(connection) {
     ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
   };
 }
+
 // Mirrors src/app/api/providers/[id]/models/route.js branch-for-branch plus
 // the per-resolver contracts in open-sse/services/*Models.js so this flag is
 // never more permissive than what each resolver actually consumes.
@@ -130,7 +133,7 @@ async function normalizeProxyPoolId(proxyPoolId) {
 }
 
 // GET /api/providers - List all connections
-export async function GET() {
+export async function GET(request) {
   try {
     const connections = await getProviderConnections();
 
@@ -143,14 +146,17 @@ export async function GET() {
       }
     } catch {}
 
-    // Hide sensitive fields, enrich name for compatible providers
+    // Hide sensitive fields, enrich name for compatible providers.
+    // connectionProxyUrl may embed `user:password@`; only an operator
+    // (dashboard JWT or CLI token) reads it verbatim.
+    const privileged = await isOperatorRequest(request);
     const safeConnections = connections.map((c) => {
       const isCompatible = isOpenAICompatibleProvider(c.provider) || isAnthropicCompatibleProvider(c.provider);
       const name = isCompatible ?
       c.name || nodeNameMap[c.provider] || c.providerSpecificData?.nodeName || c.provider :
       c.name;
       return {
-        ...sanitizeProviderConnection({ ...c, name }),
+        ...sanitizeConnectionProxyUrl(sanitizeProviderConnection({ ...c, name }), privileged),
         canDiscoverModels: canDiscoverModels(c)
       };
     });
@@ -299,8 +305,13 @@ export async function POST(request) {
       throw error;
     }
 
-    // Hide sensitive fields
-    const result = sanitizeProviderConnection(newConnection);
+    // Hide sensitive fields. Echoing the created connection is a read of a
+    // stored proxy credential, so it is redacted like the list route.
+    const createPrivileged = await isOperatorRequest(request);
+    const result = sanitizeConnectionProxyUrl(
+      sanitizeProviderConnection(newConnection),
+      createPrivileged
+    );
 
     return NextResponse.json({ connection: result }, { status: 201 });
   } catch (error) {

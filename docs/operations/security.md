@@ -21,13 +21,13 @@ The dashboard can create API keys, add upstream provider credentials, configure 
 
 ### Headroom status and statistics
 
-`GET /api/headroom/status` and `GET /api/headroom/stats` use the management API policy because they expose the configured proxy URL, managed process and circuit state, and usage statistics. Remote callers need a dashboard JWT or machine-bound CLI token, including when `requireLogin=false`. Direct loopback requests keep open-dashboard access when login is disabled. API keys do not grant access, and existing dashboard CSRF/origin protections are unchanged.
+`GET /api/headroom/status` and `GET /api/headroom/stats` use the management API policy because they expose the configured proxy URL, managed process and circuit state, and usage statistics. Remote callers need a dashboard JWT, a machine-bound CLI token, or a DurinDoor application API key, including when `requireLogin=false`. Direct loopback requests keep open-dashboard access when login is disabled. Existing dashboard CSRF/origin protections are unchanged.
 
 ### Local MCP plugin bridges
 
 `GET` `/api/mcp/[plugin]/sse` and `POST` `/api/mcp/[plugin]/message` spawn or talk to host stdio MCP children. They are under `LOCAL_ONLY_PATHS`: unauthenticated remote callers receive `403`. Access requires a machine-bound CLI token (`x-9r-cli-token`), or a loopback peer that satisfies the dashboard login policy (JWT when `requireLogin` is enabled; open-dashboard when it is disabled). Cowork MCP apply injects the CLI token into local `/api/mcp/...` SSE entries so legitimate desktop clients keep working. Handlers re-check the same gate in-process. SSE sessions unregister on client abort as well as stream cancel so orphaned children are reaped.
 
-The management control endpoint `POST` `/api/mcp/control` is exempt from the loopback-only branch and instead requires CLI token, API key, or dashboard JWT (including remote). The MCP gateway (`/api/mcp-gateway`) uses gateway keys, not this LOCAL_ONLY policy.
+The management control endpoint `POST` `/api/mcp/control` is exempt from the loopback-only branch and instead requires CLI token, API key, or dashboard JWT (including remote). A credential-free loopback caller is accepted only while `requireApiKey` is off and only when the request carries no foreign `Origin`, so a browser page cannot drive it cross-origin. The MCP gateway (`/api/mcp-gateway`) uses gateway keys, not this LOCAL_ONLY policy.
 
 ### Database export and import
 

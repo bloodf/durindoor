@@ -50,7 +50,7 @@ vi.mock("@/lib/auth/trustedPeer", () => ({
 }));
 vi.mock("@/mitm/controlProof", async () => await import("../../src/mitm/controlProof.js"));
 
-const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
+const { proxy, __test__, isOperatorRequest } = await import("../../src/dashboardGuard.js");
 
 function request(pathname, headers = {}, method = "GET") {
   const normalizedHeaders = new Headers(headers);
@@ -834,14 +834,48 @@ describe("dashboard guard management API auth", () => {
     expect(response.status).toBe(401);
   });
 
-  it("never lets an API key reveal a stored secret", async () => {
+  it("never lets an API key reveal a stored secret, in any spelling", async () => {
     mocks.validateApiKey.mockResolvedValue(true);
-    for (const path of ["/api/keys/k1/reveal", "/api/mcp-gateway/keys/g1/reveal"]) {
+    for (const path of [
+      "/api/keys/k1/reveal",
+      "/api/mcp-gateway/keys/g1/reveal",
+      // Percent-encoded leaf: Next resolves it to the same reveal route, so a
+      // raw `endsWith("/reveal")` test would hand the secret to an API key.
+      "/api/keys/k1/%72eveal",
+      "/api/mcp-gateway/keys/g1/%72eveal",
+      // The gateway key detail route returns the raw key for `?reveal=1`,
+      // which no path test catches at all.
+      "/api/mcp-gateway/keys/g1?reveal=1",
+      "/api/keys/k1?reveal=1",
+    ]) {
       const response = await proxy(request(path, {
         host: "router.example.com",
         authorization: "Bearer sk-valid",
       }));
       expect(response.status, `${path} must refuse an API key`).toBe(401);
+    }
+  });
+
+  it("keeps strict path lists closed against encoded spellings", async () => {
+    // LOCAL_ONLY and ALWAYS_PROTECTED leaves sit under broader management
+    // prefixes. If they matched a raw path while the management gate matched a
+    // decoded one, an encoded character would skip the strict list and land on
+    // the weaker gate, which now accepts an application API key.
+    mocks.validateApiKey.mockResolvedValue(true);
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    for (const path of [
+      "/api/cli-tools/%61ntigravity-mitm",
+      "/api/oauth/cursor/%61uto-import",
+      "/api/settings/%64atabase",
+    ]) {
+      const response = await proxy(request(path, {
+        host: "router.example.com",
+        authorization: "Bearer sk-valid",
+      }));
+      expect(
+        [401, 403],
+        `${path} must stay on its strict gate (got ${response.status})`,
+      ).toContain(response.status);
     }
   });
 
@@ -949,6 +983,62 @@ describe("dashboard guard management API auth", () => {
       "x-9r-real-ip": "127.0.0.1",
     }));
     expect(response).toBe(mocks.nextResponse);
+  });
+
+  describe("isOperatorRequest", () => {
+
+    it("treats a dashboard session and a CLI token as operators", async () => {
+      mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+      expect(await isOperatorRequest(request("/api/settings", { host: "router.example.com" }))).toBe(true);
+
+      mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+      expect(
+        await isOperatorRequest(request("/api/settings", {
+          host: "router.example.com",
+          "x-9r-cli-token": "cli-token",
+        })),
+      ).toBe(true);
+    });
+
+    it("treats a loopback open dashboard as an operator", async () => {
+      // requireLogin=false means the local dashboard has no JWT. It still edits
+      // proxy settings, and the value round-trips through its form, so
+      // redacting here would persist the placeholder on the next save.
+      mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+      mocks.getSettings.mockResolvedValue({ requireLogin: false });
+      expect(
+        await isOperatorRequest(request("/api/settings", {
+          host: "localhost:20128",
+          "x-9r-real-ip": "127.0.0.1",
+        })),
+      ).toBe(true);
+    });
+
+    it("never treats an API-key caller as an operator, even on loopback", async () => {
+      mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+      mocks.validateApiKey.mockResolvedValue(true);
+      mocks.getSettings.mockResolvedValue({ requireLogin: false });
+      for (const headers of [
+        { host: "router.example.com", authorization: "Bearer sk-valid" },
+        // Loopback + open dashboard would otherwise hand a programmatic client
+        // the operator read path.
+        { host: "localhost:20128", "x-9r-real-ip": "127.0.0.1", authorization: "Bearer sk-valid" },
+      ]) {
+        expect(await isOperatorRequest(request("/api/settings", headers))).toBe(false);
+      }
+    });
+
+    it("is not an operator when login is required and no credential is presented", async () => {
+      mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+      mocks.validateApiKey.mockResolvedValue(false);
+      mocks.getSettings.mockResolvedValue({ requireLogin: true });
+      expect(
+        await isOperatorRequest(request("/api/settings", {
+          host: "localhost:20128",
+          "x-9r-real-ip": "127.0.0.1",
+        })),
+      ).toBe(false);
+    });
   });
 
   it("never lets an API key reach always-protected routes", async () => {

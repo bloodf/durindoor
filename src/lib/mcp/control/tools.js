@@ -20,6 +20,7 @@ import {
 "@/lib/combos/comboManagement";
 import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
 import { toApiKeyManagementView } from "@/shared/utils/apiKeyManagement";
+import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
 import {
   AUTH_CRITICAL_SETTING_KEYS,
   SECRET_SETTING_KEYS,
@@ -63,9 +64,16 @@ function toolError(message, status) {
   return err;
 }
 
-/** Strip the same secrets `GET /api/settings` withholds from the dashboard. */
+/**
+ * Strip the same secrets `GET /api/settings` withholds from the dashboard, and
+ * redact proxy userinfo: the MCP control surface authenticates with an
+ * application API key, which is never an operator session.
+ */
 function sanitizeSettings(settings) {
   const { password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safe } = settings ?? {};
+  if (safe.outboundProxyUrl) {
+    safe.outboundProxyUrl = redactProxyUrlCredentials(safe.outboundProxyUrl);
+  }
   return safe;
 }
 

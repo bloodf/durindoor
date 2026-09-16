@@ -2,12 +2,13 @@
 import { randomUUID } from "node:crypto";
 import { nowSec } from "./_base.js";
 import { PROVIDERS } from "../../config/providers.js";
+import { CODEX_CLI_VERSION, CODEX_CLI_USER_AGENT } from "../../config/appConstants.js";
 import { resolveCodexAccountId } from "../../shared/codexAccountId.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CODEX_RESPONSES_URL = PROVIDERS["codex"].baseUrl;
-const CODEX_USER_AGENT = "codex_cli_rs/0.136.0";
-const CODEX_VERSION = "0.136.0";
+const CODEX_USER_AGENT = CODEX_CLI_USER_AGENT;
+const CODEX_VERSION = CODEX_CLI_VERSION;
 const CODEX_ORIGINATOR = "codex_cli_rs";
 const CODEX_MODEL_SUFFIX = "-image";
 const CODEX_REF_DETAIL = "high";

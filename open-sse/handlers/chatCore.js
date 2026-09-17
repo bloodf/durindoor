@@ -49,7 +49,7 @@ import { getCapabilitiesForModel, resolveModelLimits } from "../providers/capabi
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
-import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
+import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
@@ -782,14 +782,20 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   salvageOrphanedToolResults(translatedBody);
   fixMissingToolResponses(translatedBody);
 
+  // Behavioral style prompts are skipped when the request carries media: on
+  // susceptible models a terse/style system prompt measurably degrades multimodal
+  // grounding, and the saving is not worth a wrong answer about an image. Text-only
+  // requests keep the full token-saver behavior.
+  const carriesMedia = hasMediaBlocks(translatedBody);
+
   // Caveman: inject terse-style system prompt
-  if (tokenSaverEnabled && cavemanEnabled && cavemanLevel) {
+  if (tokenSaverEnabled && cavemanEnabled && cavemanLevel && !carriesMedia) {
     injectCaveman(translatedBody, finalFormat, cavemanLevel);
     xf.push(`CAVEMAN:${cavemanLevel}`);
   }
 
   // Ponytail: inject lazy-senior-dev system prompt
-  if (tokenSaverEnabled && ponytailEnabled && ponytailLevel) {
+  if (tokenSaverEnabled && ponytailEnabled && ponytailLevel && !carriesMedia) {
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
     xf.push(`PONYTAIL:${ponytailLevel}`);
   }

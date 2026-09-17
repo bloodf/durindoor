@@ -21,6 +21,41 @@ const CLAUDE_CONFIG = {
 
 // Primary OAuth usage endpoint headers. The shared fingerprint exactly mirrors
 // Messages traffic; this separate OAuth endpoint retains its required beta flag.
+
+// Plan shown when the connection carries no profile data — pre-profile logins,
+// API keys, or a profile fetch that failed. Historical literal.
+const DEFAULT_CLAUDE_PLAN = "Claude Code";
+
+/**
+ * Human plan name from the profile data captured at OAuth connect time.
+ *
+ * `rate_limit_tier` is the most specific signal (e.g. `default_claude_max_20x`);
+ * `organization_type` and the account's `has_claude_*` flags are the fallbacks.
+ * Returns the historical default when nothing is known, so a connection without
+ * profile data reads exactly as it did before.
+ *
+ * @param {object|null} providerSpecificData - connection provider data
+ * @returns {string} display plan name
+ */
+export function claudePlanName(providerSpecificData) {
+  const tier = String(providerSpecificData?.claudeRateLimitTier || "").toLowerCase();
+  const multiplier = tier.match(/_(\d+)x$/)?.[1];
+  if (tier.includes("claude_max")) return multiplier ? `Claude Max ${multiplier}x` : "Claude Max";
+  if (tier.includes("claude_pro")) return "Claude Pro";
+  if (tier.includes("claude_team")) return "Claude Team";
+  if (tier.includes("claude_enterprise")) return "Claude Enterprise";
+
+  const orgType = String(providerSpecificData?.claudeOrgType || "").toLowerCase();
+  if (orgType === "claude_max") return "Claude Max";
+  if (orgType === "claude_pro") return "Claude Pro";
+  if (orgType === "claude_team") return "Claude Team";
+  if (orgType === "claude_enterprise") return "Claude Enterprise";
+
+  if (providerSpecificData?.claudeHasMax) return "Claude Max";
+  if (providerSpecificData?.claudeHasPro) return "Claude Pro";
+  return DEFAULT_CLAUDE_PLAN;
+}
+
 function buildOAuthUsageHeaders(accessToken) {
   return {
     "Authorization": `Bearer ${accessToken}`,
@@ -160,14 +195,14 @@ export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oau
   if (pending) return pending;
 
   let request;
-  request = pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey).finally(() => {
+  request = pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, claudePlanName(options?.providerSpecificData)).finally(() => {
     if (oauthQuotaInFlight.get(cacheKey) === request) oauthQuotaInFlight.delete(cacheKey);
   });
   oauthQuotaInFlight.set(cacheKey, request);
   return request;
 }
 
-async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey) {
+async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, plan = DEFAULT_CLAUDE_PLAN) {
   try {
     const oauthResponse = await proxyAwareFetch(CLAUDE_CONFIG.oauthUsageUrl, {
       method: "GET",
@@ -235,7 +270,7 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey) {
       }
 
       const result = {
-        plan: "Claude Code",
+        plan,
         extraUsage: data.extra_usage ?? null,
         quotas
       };

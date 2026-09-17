@@ -15,7 +15,7 @@ Do this before the process is reachable from the internet:
 6. Restrict the dashboard: VPN, firewall, proxy auth, or a trusted network.
 7. Back up `DATA_DIR` before every upgrade.
 
-Full lists: [Environment variables](../reference/environment.md), [Security](../operations/security.mdx).
+Full lists: [Environment variables](../reference/environment.mdx), [Security](../operations/security.mdx).
 
 <Callout type="warn">
 `HOSTNAME=0.0.0.0` binds every interface. The dashboard can start tunnels and other host commands. Leave `HOSTNAME` unset so `custom-server.js` pins `127.0.0.1`, then proxy to that loopback port. Set `0.0.0.0` only when the proxy is not on this host, and put authentication in front of it.

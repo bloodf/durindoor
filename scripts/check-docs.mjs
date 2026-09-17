@@ -231,7 +231,8 @@ const isPublic = (file) => {
 };
 
 function skipMetaPage(entry) {
-  if (typeof entry !== "string") return true;
+  // meta.json is parsed JSON; anything that is not already a string is not a page name.
+  if (String(entry) !== entry) return true;
   if (entry === "---") return true;
   if (entry.startsWith("...") || entry.startsWith("!")) return true;
   if (entry.startsWith("[")) return true;

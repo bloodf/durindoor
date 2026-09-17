@@ -91,10 +91,22 @@ export async function getGitHubUsage(accessToken, providerSpecificData, proxyOpt
 function formatGitHubQuotaSnapshot(quota) {
   if (!quota) return { used: 0, total: 0, unlimited: true };
 
-  return {
+  const snapshot = {
     used: quota.entitlement - quota.remaining,
     total: quota.entitlement,
     remaining: quota.remaining,
     unlimited: quota.unlimited || false,
   };
+
+  // `credits_used` is GitHub's own running AI Credits total for the billing
+  // period. It is the only field the local credit cutoff can trust, so it is
+  // surfaced verbatim and only when GitHub reported a usable number — an
+  // absent field must stay absent so the cutoff fails closed instead of
+  // reading a fabricated zero.
+  const creditsUsed = Number(quota.credits_used);
+  if (Number.isFinite(creditsUsed) && creditsUsed >= 0) {
+    snapshot.creditsUsed = creditsUsed;
+  }
+
+  return snapshot;
 }

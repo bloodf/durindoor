@@ -43,10 +43,10 @@ For users getting their first request through the gateway.
 
 For operators running DurinDoor in production or on a team server.
 
-- [Local Deployment](deployment/localhost.md)
-- [Docker](../DOCKER.md)
-- [Cloud and Docker Deployment](deployment/cloud.md)
-- [Static Assets and Reverse Proxy](deployment/static-assets.md)
+- [Laptop](deployment/localhost.mdx)
+- [Docker](deployment/docker.mdx)
+- [VPS and cloud](deployment/cloud.mdx)
+- [Reverse proxy and static assets](deployment/reverse-proxy-and-static-assets.mdx)
 - [Startup and Runtime Operations](operations/startup.md)
 - [Upgrading DurinDoor](operations/upgrading.md)
 - [Data Management and Backup](operations/data-management.md)

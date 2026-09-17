@@ -17,7 +17,7 @@ docker run -d \
   ghcr.io/bloodf/durindoor:latest
 ```
 
-This binds to localhost only and generates random secrets. For production, see [Cloud and Docker deployment](docs/deployment/cloud.md).
+This binds to localhost only and generates random secrets. For production compose, see [Docker](docs/deployment/docker.mdx). For systemd and TLS, see [VPS and cloud](docs/deployment/cloud.mdx).
 
 Open http://localhost:20128 and sign in. Change the password, add a provider, then create an API key.
 
@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/bloodf/durindoor/main/docker-compos
 
 Or copy from this repository's `docker-compose.yml`. Review the file and set all secrets in `.env` before `docker compose up -d`.
 
-For production compose with TLS, secrets, and optional Headroom, see [Cloud and Docker deployment](docs/deployment/cloud.md).
+For production compose with TLS and secrets, see [Docker](docs/deployment/docker.mdx) and [VPS and cloud](docs/deployment/cloud.mdx).
 
 ## Data persistence
 
@@ -81,7 +81,7 @@ Pin to a version tag (for example `3.9.0`) for production. `latest` is convenien
 
 ## Headroom sidecar (optional)
 
-Headroom is an optional token-saver proxy. To enable it alongside DurinDoor, add the Headroom service to your compose file as shown in [Cloud and Docker deployment](docs/deployment/cloud.md). Do not publish port `8787` to the host unless the port is protected by authentication.
+Headroom is an optional token-saver proxy. Setup lives in [Headroom](docs/HEADROOM.md). Do not publish port `8787` to the host unless the port is protected by authentication.
 
 ## Logs
 
@@ -89,6 +89,7 @@ Headroom is an optional token-saver proxy. To enable it alongside DurinDoor, add
 docker logs -f durindoor
 ```
 
-- [Cloud and Docker deployment](docs/deployment/cloud.md): production compose, TLS, secrets, upgrades, rollback
+- [Docker](docs/deployment/docker.mdx): Compose, volumes, env, upgrades
+- [VPS and cloud](docs/deployment/cloud.mdx): systemd, HOSTNAME, TLS
 - [Data management](docs/operations/data-management.md): backup, restore, migration for bind mounts and named volumes
 - [Security](docs/operations/security.md): dashboard access, API keys, secrets

@@ -158,7 +158,7 @@ docker run -d \
   ghcr.io/bloodf/durindoor:3.9.0
 ```
 
-See [Cloud deployment](docs/deployment/cloud.md) for the production compose setup, and [Upgrading](docs/operations/upgrading.md) before moving between versions.
+See [Docker](docs/deployment/docker.mdx) for Compose and volumes, [VPS and cloud](docs/deployment/cloud.mdx) for systemd, and [Upgrading](docs/operations/upgrading.md) before moving between versions.
 
 </details>
 

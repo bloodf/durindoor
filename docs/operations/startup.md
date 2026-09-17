@@ -69,7 +69,7 @@ docker run -d \
   ghcr.io/bloodf/durindoor:3.9.0
 ```
 
-See [Cloud Deployment](../deployment/cloud.md) for the full production compose setup.
+See [Docker](../deployment/docker.mdx) for the production compose setup.
 
 ## Health checks
 

@@ -1,0 +1,118 @@
+---
+title: Laptop
+description: Run DurinDoor on a laptop with npx, a global CLI install, or a source checkout.
+---
+
+Personal tools and desktop clients talk to a gateway on this machine. The published binary is `durindoor`. Node.js 20.20.2 and npm 10.8.2 are the engine versions.
+
+<Callout type="warn">
+The CLI default bind is `0.0.0.0`. Other hosts on the LAN can reach the port. Pass `--host 127.0.0.1` for loopback only. `npm run start` and `npm run dev` bind `127.0.0.1` unless `HOSTNAME` is set.
+</Callout>
+
+<Tabs items={['npx', 'global CLI', 'source']}>
+<Tab value="npx">
+
+```bash
+npx durindoor
+```
+
+One-off run. npm fetches the package for that invocation. Daily use is a global install or a source checkout.
+
+</Tab>
+<Tab value="global CLI">
+
+```bash
+npm install --global durindoor
+durindoor
+```
+
+Same binary. Flags from `durindoor --help` apply here and to `npx`.
+
+</Tab>
+<Tab value="source">
+
+```bash
+git clone https://github.com/bloodf/durindoor.git
+cd durindoor
+npm install --no-audit --no-fund
+npm run build
+npm run start
+```
+
+`npm run start` runs `.next/standalone/custom-server.js`. If `HOSTNAME` is unset, that process binds `127.0.0.1`.
+
+Contributor loop:
+
+```bash
+npm run dev
+```
+
+Dev listens on port 20127. Production CLI and `npm run start` use 20128.
+
+</Tab>
+</Tabs>
+
+## Ports and URLs
+
+| Surface | Default URL |
+| --- | --- |
+| Dashboard | `http://localhost:20128/dashboard` |
+| API base | `http://localhost:20128/v1` |
+| Health | `http://localhost:20128/api/health` |
+
+Change the CLI port with `-p` / `--port`, or `PORT` for source and Docker.
+
+```bash
+durindoor --port 8080
+```
+
+Then point clients at `http://localhost:8080/v1`. The CLI prints a LAN URL when it binds `0.0.0.0` and it can see a non-internal IPv4 address.
+
+`curl http://localhost:20128/api/health` should return `{"ok":true}`.
+
+## CLI flags
+
+```text
+-p, --port <port>   Port (default: 20128)
+-H, --host <host>   Bind address (default: 0.0.0.0)
+-n, --no-browser    Listed in --help
+-l, --log           Show server logs (hidden by default)
+-t, --tray          System tray, no interface menu
+    --skip-update   Skip the update check
+```
+
+The process starts the standalone server as a child with `PORT` and `HOSTNAME` set from those flags. Logs stay quiet unless `--log` is on. `-n` is parsed and printed by `--help`; start does not open a browser on its own. The menu entry "Web UI" and the tray item "Open Dashboard" call `open` / `start` / `xdg-open`.
+
+Heap default is a 6 GB V8 cap. `NINEROUTER_MAX_OLD_SPACE_SIZE` (positive integer MB, or `0` to leave sizing to Node) overrides it. An existing `--max-old-space-size` in `NODE_OPTIONS` also suppresses the CLI flag. Child argv always includes `--dns-result-order=ipv4first`.
+
+## Tray and launcher
+
+Foreground `durindoor` waits until the server answers, then shows a menu: Web UI, Terminal UI, Hide to Tray, Exit. A tray icon is created next to that menu.
+
+`-t` / `--tray` skips the menu. The process stays up with the tray only. Closing the terminal on macOS sends `SIGHUP`; tray mode ignores that signal so the menu-bar icon keeps the server.
+
+Hide to Tray on macOS stays in the same process (a detached child would sit outside the login session and the menu-bar item would not appear). On Windows and Linux, Hide to Tray stops the current worker, then spawns a detached `cli.js --tray --skip-update -p <port>`.
+
+Linux tray needs `DISPLAY`. Without it, tray init returns null and the server still runs. Windows uses a PowerShell NotifyIcon; macOS and Linux use systray.
+
+Tray menu rows: status with the port, Open Dashboard (`http://localhost:<port>/dashboard`), Enable Auto-start / a checkmark when it is on, Quit. Auto-start writes a LaunchAgent labeled `com.9router.autostart` on macOS, a Startup `.vbs` on Windows, or `~/.config/autostart/9router.desktop` on Linux.
+
+After an update relaunch with no TTY, the CLI forces tray mode even without `-t`.
+
+Quit from the tray sends SIGTERM to the worker, then SIGKILL if needed. `Ctrl+C` in a foreground terminal does the same cleanup.
+
+## Data directory
+
+Unset `DATA_DIR` uses `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. SQLite is `DATA_DIR/db/data.sqlite`. The directory is created if missing. A Unix-style path on Windows is ignored.
+
+```bash
+cp -a -- ~/.9router ~/.9router.backup-$(date +%Y%m%d%H%M%S)
+```
+
+If `DATA_DIR` is custom, copy that directory instead. Stop the process first. Full restore steps: [Data management](../operations/data-management.md).
+
+## Local network
+
+`--host 127.0.0.1` keeps the dashboard on this machine. Binding `0.0.0.0` without a password you set, and without a proxy, puts privileged dashboard routes on the LAN. Change `INITIAL_PASSWORD` (built-in fallback is `123456`). Set `JWT_SECRET` before the first start on a fresh data dir. Remote login with `123456` is refused.
+
+For a second device, prefer a VPN, SSH tunnel, Tailscale, or the [VPS](cloud.mdx) plus [reverse proxy](reverse-proxy-and-static-assets.mdx) path. [Security](../operations/security.md) is the hardening list. [Installation](../getting-started/installation.mdx) has env vars and Node versions.

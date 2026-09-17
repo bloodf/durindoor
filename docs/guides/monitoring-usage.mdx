@@ -1,0 +1,55 @@
+---
+title: Monitoring usage
+description: Read request history, console output, and the health endpoint after traffic flows.
+---
+
+Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`). The overview tab shows request counts, input and output tokens, cached tokens, and an estimated cost. It also charts that window, groups rows by provider, model, account, key, or endpoint, and draws the provider topology. Combo traffic has its own report on the same tab.
+
+The period control accepts `today`, `24h`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`, and `all`. Editing the calendar to a window that is not one of those presets queries stats by `startDate`/`endDate` and skips the chart (the chart endpoint is preset-only).
+
+The details tab lists individual calls: timestamp, model, provider, input/cached/output tokens, TTFT, and total latency. Filter by provider and a local date-time range. Open a row for payload metadata. Bodies are not stored; each stage keeps presence, type, and byte length:
+
+| Field | Label |
+| --- | --- |
+| `request` | Client request |
+| `providerRequest` | Provider request |
+| `providerResponse` | Provider response |
+| `response` | Client response |
+
+A `?tab=logs` URL still renders request-log lines from `/api/usage/request-logs` (datetime, model, provider, account, in, out, status). The segmented control on the page shows Overview and Details only.
+
+Reset on the overview tab posts `/api/usage/reset` with a period (`5m`, `1h`, `3h`, `6h`, `12h`, `1d`, `7d`, `30d`, or `all`). That delete cannot be undone.
+
+<Callout type="warn">
+Reset removes usage rows for the selected window. Back up `DATA_DIR` first if you still need the history.
+</Callout>
+
+## Where the numbers live
+
+`src/lib/usageDb.js` re-exports the SQLite usage layer. Live history is the `usageHistory` table in `DATA_DIR/db/data.sqlite`.
+
+| Path | Role |
+| --- | --- |
+| `DATA_DIR/db/data.sqlite` | `usageHistory`, `usageDaily`, `_meta.totalRequestsLifetime` |
+| `DATA_DIR/usage.json` | JSON-store import file (`LEGACY_FILES.usage`) |
+| `DATA_DIR/log.txt` | Not created. There is no request log file by that name |
+
+Default `DATA_DIR` is `~/.9router` on macOS and Linux, `%APPDATA%\9router` on Windows. Each `usageHistory` insert stores provider, model, connection id, API key, endpoint, token counts, estimated cost, status, optional `usageEventId`, and optional combo id/name. Overview cards read total requests, prompt tokens, cached tokens, completion tokens, and estimated cost. The requests panel on overview shows recent requests and active sessions (ended sessions stay visible for 15 seconds).
+
+Request-log lines shown by `/api/usage/request-logs` are derived from `usageHistory` on read (`getRecentLogs`, default 200 rows). `appendRequestLog` is a no-op. Parallel inserts with the same fields are not collapsed; only an explicit `usageEventId` dedupes a retry of the same event. History insert, daily upsert, and the lifetime counter run in one transaction.
+
+`DATA_DIR/usage.json` is the JSON-store import file (`LEGACY_FILES.usage`). SQLite boot can read it once. Runtime writes go to `usageHistory`, not that JSON file. There is no `log.txt` under the data dir.
+
+## Console log
+
+**Dashboard → Console log** (`/dashboard/console-log`) tails process `console.log`, `info`, `warn`, `error`, and `debug` from an in-memory ring.
+
+The ring keeps 200 lines. Filter by level (`ALL` or one of those five), pause the stream, or clear it. The page reads `GET /api/translator/console-logs` and `GET /api/translator/console-logs/stream`. Stream events are `init`, `line`, `lines`, and `clear`. Clear calls `DELETE /api/translator/console-logs`. The buffer is not a file on disk; a restart empties it. `statsEmitter` on the usage layer notifies connected dashboard clients after a usage write.
+
+## Health
+
+```bash
+curl http://localhost:20128/api/health
+```
+
+`GET /api/health` returns `{ "ok": true }` with CORS headers. `OPTIONS` returns 204. The path is public: it does not require a DurinDoor API key or a dashboard session. A 200 means the HTTP server answered; it does not prove a provider account works. Use `/v1/models` or a chat request for that. Production binds port `20128` unless `PORT` is set.

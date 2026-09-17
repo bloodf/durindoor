@@ -203,7 +203,7 @@ resp = client.chat.completions.create(
 print(resp.choices[0].message.content)
 ```
 
-SDK examples and the dashboard workflow are in the [Usage guide](docs/guides/usage.md).
+SDK examples and the dashboard workflow are in the [guides](docs/guides/index.mdx): [API keys](docs/guides/api-keys.mdx), [models](docs/guides/models-and-aliases.mdx), [SDK examples](docs/guides/sdk-examples.mdx), and [monitoring](docs/guides/monitoring-usage.mdx).
 
 ## What DurinDoor handles
 
@@ -335,7 +335,7 @@ DurinDoor is a fork of [9router](https://github.com/decolua/9router). These comp
 The canonical documentation is Markdown in this repository. GitHub-rendered Markdown is the source of truth.
 
 - [Index](docs/README.md#users)
-- Getting started: [Quick start](docs/getting-started/index.mdx), [Installation](docs/getting-started/installation.mdx), [Usage guide](docs/guides/usage.md)
+- Getting started: [Quick start](docs/getting-started/index.mdx), [Installation](docs/getting-started/installation.mdx), [Guides](docs/guides/index.mdx)
 - Providers: [connections](docs/providers/subscription.md), [custom nodes](docs/providers/cheap.md), [free and local](docs/providers/free.md)
 - Features: [Smart routing](docs/features/smart-routing.md), [Combos](docs/features/combos.md), [Usage and quota tracking](docs/features/quota-tracking.md), [Compression](docs/features/compression.md), [MCP Gateway](docs/features/mcp-gateway.md), [Realtime](docs/features/realtime.md)
 - Reference: [API reference](docs/reference/api.md), [Environment variables](docs/reference/environment.md), [Architecture](docs/ARCHITECTURE.md)

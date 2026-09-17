@@ -22,7 +22,7 @@ For users getting their first request through the gateway.
 
 - [Quick Start](getting-started/index.mdx): install, start, create an API key, and send the first request.
 - [Installation](getting-started/installation.mdx): npm, source, Docker, configuration, upgrades, and data paths.
-- [Usage Guide](guides/usage.md): dashboard workflow, API keys, model selection, combos, SDK examples, and monitoring.
+- [Guides](guides/index.mdx): [API keys](guides/api-keys.mdx), [models and aliases](guides/models-and-aliases.mdx), [SDK examples](guides/sdk-examples.mdx), and [monitoring](guides/monitoring-usage.mdx).
 - [Provider Connections](providers/subscription.md): OAuth, API key, cookie, and account-based providers.
 - [Provider Nodes and Custom Providers](providers/cheap.md): OpenAI-compatible nodes, Anthropic-compatible nodes, custom embeddings, and provider aliases.
 - [Free and Local Providers](providers/free.md): no-auth, local, browser-cookie, and local-device providers.

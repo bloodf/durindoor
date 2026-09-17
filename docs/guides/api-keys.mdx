@@ -1,0 +1,70 @@
+---
+title: API keys
+description: Mint DurinDoor keys, read the stored shapes, and scope or rotate them.
+---
+
+Open **Dashboard → API Keys → Create**. Give the key a name. The create response is the one JSON body that always includes the full secret. List and detail views mask it as `sk-••••••••`. The dashboard can still copy the stored secret later through a dedicated reveal route, after a signed-in session.
+
+Use one key per tool or person so you can pause or delete a single client without touching the rest.
+
+<Callout type="warn">
+Store the secret when it is shown. Paste that same value into client configs and media-test forms. The management list does not print it.
+</Callout>
+
+## Key shapes
+
+New keys are minted as `sk-<machineId>-<keyId>-<crc8>`. The machine id is this install, the key id is six lowercase letters or digits, and the crc is an eight-character HMAC of those two values under `API_KEY_SECRET` (or `DATA_DIR/api-key-secret` when the env var is unset). A bad crc does not parse.
+
+Two other strings show up around keys. They are not the minting format.
+
+| Shape | What it is |
+| --- | --- |
+| `sk-<machine>-<key>-<crc>` | Current mint. Four hyphen-separated parts after `sk`. |
+| `sk-<8 hex>` | Older stored secret. Two parts after `sk`. Accepted as-is; no HMAC. |
+| `sk_durindoor` | Local CLI-tool placeholder when no saved key is selected. Underscore after `sk`, not minted. |
+| `sk_9router` | Same class of placeholder, used as a MITM fallback string. 9router-era rows in the database still authenticate by exact lookup. |
+
+Authentication looks the presented string up in `apiKeys.key`. `parseApiKey` only understands the hyphenated `sk-` forms above. An underscore placeholder is not a crc-backed key.
+
+When **Require API Key** is on (Endpoint page), a missing credential returns `Missing API key` and a bad or paused or expired stored key returns `Invalid API key`. When that setting is off, an unknown placeholder is allowed for local use, but a stored key that is paused or expired is still rejected.
+
+Clients may send the secret as `Authorization: Bearer ...`, `x-api-key`, `x-goog-api-key`, or a `key` query parameter. Anthropic SDKs often send a stale Bearer token next to a valid `x-api-key`; DurinDoor checks every candidate.
+
+## Expiry
+
+Each key stores `expiresAt` as a UTC ISO timestamp, or null for never.
+
+| Preset | Stored value |
+| --- | --- |
+| Never expires | `null` |
+| 1 day | now + 1 × 86400000 ms |
+| 7 days | now + 7 × 86400000 ms |
+| 30 days | now + 30 × 86400000 ms |
+| 90 days | now + 90 × 86400000 ms |
+| Custom date and time | local `datetime-local` converted with `toISOString()` |
+
+Custom input is shown back in the operator's local timezone. Edit the key and choose **Never expires** to clear a timestamp.
+
+Expiry is compared to server time. The key is expired as soon as that clock is greater than or equal to the stored value. Expired keys stay on the list and in backups; they cannot authenticate. Clients see the same invalid-key response used for other bad credentials.
+
+HMAC secret resolution for new-format keys, in order: `process.env.API_KEY_SECRET`, then `DATA_DIR/api-key-secret`, then throw. `requireLogin` is not consulted. A different secret makes four-part keys fail `parseApiKey`. Two-part `sk-<8 hex>` rows are not HMAC-bound.
+
+## Scopes
+
+A key can carry several independent restrictions. Empty means unrestricted for that mechanism.
+
+`providerConnectionIds` lists the provider-connection rows the key may route through. Zero rows means every account. Details: [API key provider-account scoping](../security/api-key-provider-account-scoping.md).
+
+`allowedCombos` is a list of combo names. A non-empty list rejects any other combo with HTTP 403. `policy.allowedModels` is an exact-match allowlist of model strings; empty or missing means all models.
+
+`policy.maxTokens` and `policy.maxCostUsd` are lifetime caps on that key. `dailyLimitTokens` is a calendar-day token cap that resets at local midnight. `isActive` false keeps the row visible and stops authentication.
+
+Key groups are labels only. Membership never changes what a key can call.
+
+## Rotation
+
+There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `isActive: false`. Delete removes the row (join-table scope rows cascade).
+
+`POST /api/keys` requires a non-empty `name` and the install's `machineId`. The 201 body includes `key`, `id`, `expiresAt`, `policy`, and `providerConnectionIds`. Later `GET /api/keys` and `GET /api/keys/[id]` return `maskedKey` instead of `key`. `GET /api/keys/[id]/reveal` returns `{ key }` for a dashboard session. `PUT /api/keys/[id]` patches name, `isActive`, expiry, combos, policy, daily limit, provider connections, and groups in one transaction.
+
+If `API_KEY_SECRET` is unset, DurinDoor mints `DATA_DIR/api-key-secret` (mode 0600) when `DATA_DIR` is set. Without either, key minting throws.

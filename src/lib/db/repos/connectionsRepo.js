@@ -430,7 +430,8 @@ export async function recordProviderConnectionFallbackState(id, {
   cooldownMs,
   backoffLevel = 0,
   observedAt,
-  webFetch = false
+  webFetch = false,
+  videoPoll = false
 } = {}, { signal = null, now = Date.now() } = {}) {
   const eventMs = eventTimestamp(observedAt, now);
   if (!Number.isSafeInteger(cooldownMs) || cooldownMs < 0 || cooldownMs > 7 * 24 * 60 * 60 * 1000) {
@@ -456,7 +457,7 @@ export async function recordProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
-    const scope = boundedModelScope(existing.provider, model, { webFetch });
+    const scope = boundedModelScope(existing.provider, model, { webFetch, videoPoll });
     const lockKey = `${MODEL_LOCK_PREFIX}${scope}`;
     const versionKey = `${MODEL_STATE_VERSION_PREFIX}${scope}`;
     const storedVersion = Date.parse(existing[versionKey] || "") || 0;

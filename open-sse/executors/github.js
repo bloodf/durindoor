@@ -19,6 +19,7 @@ import { settleProviderAttemptDispatch, getCurrentProviderAttemptTimestamp, runQ
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
 import { estimateInputTokens } from "../utils/usageTracking.js";
+import { checkGitHubCreditLimit } from "../services/githubCreditLimit.js";
 import crypto from "crypto";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -143,6 +144,22 @@ export class GithubExecutor extends BaseExecutor {
 
   async execute(options) {
     const { model, log } = options;
+
+    // Local AI Credits cutoff runs before any route selection so every GitHub
+    // path (messages shim, /responses, /chat/completions) is gated identically.
+    const creditLimitError = await checkGitHubCreditLimit(options.credentials, options.proxyOptions);
+    if (creditLimitError) {
+      log?.warn("GITHUB", `Blocked by local AI Credits limit: ${creditLimitError.message}`);
+      return {
+        response: Response.json(
+          { error: { message: creditLimitError.message, type: "credit_limit_error" } },
+          { status: creditLimitError.status }
+        ),
+        url: this.config.baseUrl,
+        headers: {},
+        transformedBody: options.body,
+      };
+    }
 
     // Claude models: route to Copilot's Anthropic-native /v1/messages shim — the only
     // Copilot endpoint that surfaces prompt-cache token counts for Claude. Detected by

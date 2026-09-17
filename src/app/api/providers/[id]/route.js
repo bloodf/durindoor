@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isValidGitHubCreditLimit } from "open-sse/services/githubCreditLimit.js";
 import {
   getProviderConnectionById,
   getProxyPoolById,
@@ -228,6 +229,17 @@ export async function PUT(request, { params }) {
 
     const normalizedProviderSpecificData = normalizeOpenAIStoreSetting(existing.provider, providerSpecificData);
     const normalizedExistingProviderSpecificData = normalizeOpenAIStoreSetting(existing.provider, existing.providerSpecificData);
+
+    // Reject a malformed limit at the trust boundary. The enforcement point
+    // fails closed on an invalid value, so persisting one would silently break
+    // the connection rather than protect it.
+    if (existing.provider === "github" && providerSpecificData?.aiCreditLimit !== undefined &&
+    !isValidGitHubCreditLimit(providerSpecificData.aiCreditLimit)) {
+      return NextResponse.json(
+        { error: "AI Credits limit must be a non-negative number, or null to disable." },
+        { status: 400 }
+      );
+    }
 
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {

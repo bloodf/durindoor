@@ -38,6 +38,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [aiCreditLimit, setAiCreditLimit] = useState("");
 
   useEffect(() => {
     if (connection) {
@@ -47,6 +48,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         apiKey: "",
         openaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true
       });
+      setAiCreditLimit(connection.providerSpecificData?.aiCreditLimit?.toString() ?? "");
       // Load Azure-specific data if present
       if (connection.provider === "azure" && connection.providerSpecificData) {
         setAzureData({
@@ -91,6 +93,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const accountIdProviderLabel = connection?.provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const isGooglePse = isGooglePseProvider(connection?.provider);
   const isCodexOAuth = connection?.provider === "codex" && isOAuth;
+  const isGithub = connection?.provider === "github";
+  const invalidCreditLimit = isGithub && aiCreditLimit !== "" &&
+  (!Number.isFinite(Number(aiCreditLimit)) || Number(aiCreditLimit) < 0);
   const isCompatible = connection ?
   isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider) :
   false;
@@ -177,7 +182,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   };
 
   const handleSubmit = async () => {
-    if (!connection) return;
+    if (!connection || invalidCreditLimit) return;
     if (!hasRequiredGooglePseCx) return;
     if (requiresAccountId && !cloudflareData.accountId.trim()) return;
     setSaving(true);
@@ -219,7 +224,14 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         }
       }
 
-      if (providerSpecificData) {
+      // Merge rather than replace: buildProviderSpecificData owns the
+      // region/proxy/fingerprint fields and must not be clobbered here.
+      if (isGithub) {
+        updates.providerSpecificData = {
+          ...providerSpecificData,
+          aiCreditLimit: aiCreditLimit === "" ? null : Number(aiCreditLimit),
+        };
+      } else if (providerSpecificData) {
         updates.providerSpecificData = providerSpecificData;
       }
 
@@ -232,11 +244,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   if (!connection) return null;
 
   return (
-    <Modal open={isOpen} title="Edit Connection" subtitle="Update connection settings and validate new credentials before saving." onClose={onClose} size="md" footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={handleSubmit} loading={saving} disabled={!hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim()}>Save</Button></>}>
+    <Modal open={isOpen} title="Edit Connection" subtitle="Update connection settings and validate new credentials before saving." onClose={onClose} size="md" footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={handleSubmit} loading={saving} disabled={invalidCreditLimit || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim()}>Save</Button></>}>
       <div className="flex flex-col gap-5">
         <Input label="Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder={isOAuth ? "Account name" : "Production Key"} />
         {isOAuth && connection.email ? <section aria-label="Connected account" className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><p className="text-xs text-dd-muted">Email</p><p className="mt-1 text-[13px] font-medium text-dd-text">{connection.email}</p></section> : null}
         <Input label="Priority" type="number" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value, 10) || 1 })} />
+        {isGithub ? <Input label="AI Credits limit per billing period" type="number" min="0" step="any" value={aiCreditLimit} onChange={(e) => setAiCreditLimit(e.target.value)} placeholder="No local limit" error={invalidCreditLimit ? "Enter a non-negative number." : undefined} hint="Blank disables the limit; 0 blocks all requests. Checks GitHub-reported credit usage through a short-lived cache, and blocks when usage cannot be verified. Cached readings, GitHub reporting delays and in-flight requests can all overshoot this cutoff, so it is not a guaranteed spending ceiling. Applies only to this connection's traffic." /> : null}
         {!isOAuth ? <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><Input label="API Key" type="password" value={formData.apiKey} onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })} placeholder="Enter new API key" hint="Leave blank to keep current API key." /></div><Button variant="secondary" icon="fact_check" onClick={handleValidate} loading={validating} disabled={!formData.apiKey || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim() || saving}>Check</Button></div>
           {validationResult ? <Badge tone={validationResult === "success" ? "success" : "danger"}>{validationResult === "success" ? "Valid" : "Invalid"}</Badge> : null}

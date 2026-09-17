@@ -339,6 +339,17 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
         if (level) body.reasoning_effort = level;
         break;
       }
+    case "tokenmarket": {
+        // Token Market exposes a provider-agnostic boolean switch under
+        // extra_body rather than portable effort levels or thinking budgets.
+        // Other extra_body routing controls (e.g. provider sort preferences)
+        // must survive, so this merges rather than replacing the object.
+        // `isObject` here accepts null and arrays, so guard both: an array or a
+        // null extra_body must be replaced, not written through.
+        if (!body.extra_body || !isObject(body.extra_body) || Array.isArray(body.extra_body)) body.extra_body = {};
+        body.extra_body.enable_thinking = !(none && canDisable);
+        break;
+      }
     case "ollama":{
         // Ollama `/api/chat` accepts only top-level `think`, never reasoning_effort.
         if (none && canDisable) {body.think = false;break;}

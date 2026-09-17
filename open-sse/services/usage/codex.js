@@ -7,6 +7,7 @@ import { U, parseResetTime, toFiniteNumber } from "./shared.js";
 import { applyCodexAccountHeader, resolveCodexAccountId } from "../../shared/codexAccountId.js";
 import { resolveCodexSparkRateLimit } from "../../shared/codexSparkRateLimit.js";
 import { classifyCodexQuotaWindow } from "../../shared/codexQuotaWindow.js";
+import { CODEX_CLI_USER_AGENT } from "../../config/appConstants.js";
 
 // Codex (OpenAI) API config
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -101,7 +102,7 @@ function buildCodexHeaders(accessToken, providerSpecificData = {}, extra = {}, i
     "Authorization": `Bearer ${accessToken}`,
     "Accept": "application/json",
     "originator": "codex_cli_rs",
-    "User-Agent": "codex_cli_rs/0.136.0",
+    "User-Agent": CODEX_CLI_USER_AGENT,
     ...extra
   };
   applyCodexAccountHeader(headers, providerSpecificData, "ChatGPT-Account-ID", idToken);

@@ -6,6 +6,7 @@ import { dedupRefresh } from "./dedup.js";
 import { buildExternalIdpRefreshParams } from "../../../src/lib/oauth/kiroExternalIdp.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { getClineAccessToken } from "../../shared/clineAuth.js";
 
 function safeRefreshError(value) {
   if (isString(value)) return sanitizeErrorMessage(value);
@@ -699,6 +700,45 @@ export async function refreshCodebuddyToken(refreshToken, log, proxyOptions = nu
       accessToken: data.data.accessToken,
       refreshToken: data.data.refreshToken || refreshToken,
       expiresIn: data.data.expiresIn
+    };
+  }, log, proxyOptions);
+}
+
+// Cline / ClinePass refresh — POST /api/v1/auth/refresh with a JSON body
+// `{ refreshToken, grantType, clientType }`. The generic OAuth form-encoded
+// grant is NOT accepted here, so the proactive service path needs its own
+// handler; without it expired ClinePass tokens were never rotated and every
+// request kept 401ing. Response: `{ data: { accessToken, refreshToken,
+// expiresAt } }` (or the same fields at the top level).
+//
+// Ported from decolua/9router f6e7cabe.
+export async function refreshClineToken(refreshToken, log, proxyOptions = null) {
+  if (!refreshToken) return null;
+  return dedupRefresh("cline", refreshToken, async () => {
+    const response = await proxyAwareFetch(PROVIDERS.cline.refreshUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ refreshToken, grantType: "refresh_token", clientType: "extension" })
+    }, proxyOptions);
+
+    if (!response.ok) {
+      log?.error?.("TOKEN_REFRESH", "Failed to refresh Cline token", { status: response.status });
+      return null;
+    }
+
+    const payload = await response.json();
+    const data = payload?.data || payload;
+    if (!data?.accessToken) return null;
+
+    const expiresAtMs = data.expiresAt ? new Date(data.expiresAt).getTime() : NaN;
+    const expiresIn = Number.isFinite(expiresAtMs) ?
+    Math.max(1, Math.floor((expiresAtMs - Date.now()) / 1000)) :
+    undefined;
+
+    return {
+      accessToken: getClineAccessToken(data.accessToken),
+      refreshToken: data.refreshToken || refreshToken,
+      expiresIn
     };
   }, log, proxyOptions);
 }

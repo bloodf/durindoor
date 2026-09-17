@@ -3,6 +3,7 @@ import {
   resolveCodexAccountId } from
 "../../../shared/codexAccountId.js";
 import { resolveCodexSparkRateLimit } from "../../../shared/codexSparkRateLimit.js";
+import { CODEX_CLI_USER_AGENT } from "../../../config/appConstants.js";
 import { classifyCodexQuotaWindow } from "../../../shared/codexQuotaWindow.js";
 import {
   asArray,
@@ -158,7 +159,7 @@ export async function fetchCodexQuota(context) {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
     originator: "codex_cli_rs",
-    "User-Agent": "codex_cli_rs/0.136.0"
+    "User-Agent": CODEX_CLI_USER_AGENT
   };
   if (accountId) headers["ChatGPT-Account-ID"] = accountId;
   const result = await createProviderRequest(context)(config.url, { method: "GET", headers });

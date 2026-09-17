@@ -15,7 +15,7 @@ const SAFE_PSD_FIELDS = [
 "connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy",
 "githubLogin", "githubName", "githubEmail", "githubUserId",
 "username", "firstName", "lastName", "authMethod", "authKind",
-"profileArn", "codexFingerprintMode"];
+"profileArn", "codexFingerprintMode", "aiCreditLimit"];
 
 
 function maskName(name) {

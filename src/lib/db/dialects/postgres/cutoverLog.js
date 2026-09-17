@@ -1,7 +1,7 @@
 // Append a row to the `pgCutoverLog` table on the PG cluster.
 //
 // The `pgCutoverLog` table is created by the parallel PG migration set
-// (migration #018). On PG, this function inserts a single row; on any
+// (migration #019). On PG, this function inserts a single row; on any
 // failure it logs a warning and returns false (the cutover is
 // considered successful even if the log row could not be written).
 

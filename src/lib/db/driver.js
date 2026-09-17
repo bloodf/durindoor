@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { ensureDirs, hardenPermissions, currentDataFile } from "./paths.js";
+import { wrapCutoverGuard } from "./cutoverLock.js";
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
 import { isFunction } from "../../shared/utils/typeChecks.js";if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false, file: null, cacheKey: null };
@@ -129,10 +130,11 @@ export async function getAdapter() {
       return initAdapter(engine);
     })().
     then((adapter) => {
-      state.instance = adapter;
+      const guarded = wrapCutoverGuard(adapter);
+      state.instance = guarded;
       state.file = liveDataFile();
       state.cacheKey = `${getActiveEngine()}:${state.file}`;
-      return adapter;
+      return guarded;
     }).
     catch((error) => {
       state.instance = null;
@@ -201,9 +203,17 @@ export function getActiveEngine() {
  */
 export function setActiveAdapter(adapter) {
   if (!adapter) throw new Error("setActiveAdapter: adapter is required");
-  state.instance = adapter;
-  state.initPromise = Promise.resolve(adapter);
+  const prev = state.instance;
+  const guarded = wrapCutoverGuard(adapter);
+  state.instance = guarded;
+  state.initPromise = Promise.resolve(guarded);
   state.file = liveDataFile();
   state.cacheKey = `${getActiveEngine()}:${state.file}`;
+  if (prev && prev !== adapter && prev !== guarded && typeof prev.close === "function") {
+    try {
+      const closing = prev.close();
+      if (closing && typeof closing.then === "function") closing.catch(() => {});
+    } catch { /* previous adapter already closed */ }
+  }
 }
 

@@ -1,25 +1,24 @@
 // SQLite → PostgreSQL mirror.
 //
 // Streams every row from the source SQLite tables into the target PG
-// tables in 500-row chunks, inside per-table transactions, and asserts
-// the row counts match at the end. The skip-tables list excludes
-// `requestDetails` by default (it can be GB; the operator can opt in
-// via `includeRequestDetails: true`).
-//
-// The mirror is the only piece of the cutover pipeline that moves data;
-// every other step (test, migrate, snapshot, flip, record) is metadata.
-// The function is intentionally narrow: it does not invent new SQL. It
-// reads the source rows via `SELECT * FROM <table>` and writes them via
-// `INSERT INTO <table>(...) VALUES ($1, $2, ...)` after rewriting the
-// `?` placeholders that the SQLite adapter expects. The dialect
-// differences (BOOLEAN vs 0/1, JSON vs TEXT, etc.) are handled by
-// keeping storage identical between engines.
+// tables in 500-row chunks, inside per-table transactions, then asserts
+// COUNT(*) matches. Identifiers are quoted so camelCase columns survive
+// PG's lowercase fold. Each table is TRUNCATEd first so a retry cannot
+// keep leftover rows. Serial sequences are advanced after explicit id
+// inserts. `_meta` is copied except `schemaVersion` (the PG migration
+// runner owns that key).
 
 import { TABLES } from "../../schema.js";
-import { isString, isNumber } from "../../../../shared/utils/typeChecks.js";
+import { quoteIdent } from "./dmlRewrite.js";
+import { isNumber } from "../../../../shared/utils/typeChecks.js";
 
 const DEFAULT_CHUNK = 500;
-const SKIP_TABLES = new Set(["_meta", "requestDetails"]);
+const SKIP_TABLES = new Set(["requestDetails"]);
+const SERIAL_TABLES = new Map([
+  ["usageHistory", "id"],
+  ["tokenSaverEvents", "id"],
+  ["pgCutoverLog", "id"],
+]);
 
 function tableColumns(tableName) {
   const def = TABLES[tableName];
@@ -27,42 +26,31 @@ function tableColumns(tableName) {
   return Object.keys(def.columns);
 }
 
-function placeholderRewrite(sql) {
-  if (!sql || sql.indexOf("?") === -1) return { sql, params: undefined };
-  let out = "";
-  let pi = 0;
-  let inSingle = false;
-  for (let i = 0; i < sql.length; i += 1) {
-    const ch = sql[i];
-    if (ch === "'") {
-      if (inSingle && sql[i + 1] === "'") { out += "''"; i += 1; continue; }
-      inSingle = !inSingle;
-      out += ch;
-      continue;
-    }
-    if (ch === "?" && !inSingle) {
-      pi += 1;
-      out += `$${pi}`;
-      continue;
-    }
-    out += ch;
+function quotedList(cols) {
+  return cols.map((c) => quoteIdent(c)).join(", ");
+}
+
+async function countRows(adapter, tableName) {
+  const row = await Promise.resolve(
+    adapter.get(`SELECT COUNT(*) AS c FROM ${quoteIdent(tableName)}`)
+  );
+  return row ? Number(row.c) || 0 : 0;
+}
+
+async function resetSerial(pg, tableName, col) {
+  const sql =
+    `SELECT setval(pg_get_serial_sequence('${tableName.replace(/'/g, "''")}', '${col}'), ` +
+    `COALESCE((SELECT MAX(${quoteIdent(col)}) FROM ${quoteIdent(tableName)}), 1), ` +
+    `MAX(${quoteIdent(col)}) IS NOT NULL)`;
+  try {
+    await Promise.resolve(pg.get(sql));
+  } catch {
+    // Table has no sequence (TEXT pk) — ignore.
   }
-  return { sql: out, params: undefined };
 }
 
 /**
  * Mirror every SQLite table into the corresponding PG table.
- *
- * @param {object} sqlite - the SQLite adapter (source).
- * @param {object} pg - the PG adapter (target).
- * @param {{ includeRequestDetails?: boolean, chunkSize?: number }} options
- * @returns {{
- *   ok: boolean,
- *   tablesMigrated: number,
- *   rowsMigrated: number,
- *   error?: string,
- *   perTable?: { [tableName: string]: { rows: number, ok: boolean, error?: string } }
- * }}
  */
 export async function runMirror(sqlite, pg, options = {}) {
   const chunkSize = isNumber(options.chunkSize) ? options.chunkSize : DEFAULT_CHUNK;
@@ -72,51 +60,114 @@ export async function runMirror(sqlite, pg, options = {}) {
   const perTable = {};
   let tablesMigrated = 0;
   let rowsMigrated = 0;
-  for (const [tableName, def] of Object.entries(TABLES)) {
+
+  const names = Object.keys(TABLES);
+  for (const tableName of names) {
     if (skip.has(tableName)) continue;
     const cols = tableColumns(tableName);
     if (!cols || !cols.length) continue;
-    const sourceCount = await sqlite.get(`SELECT COUNT(*) AS c FROM ${tableName}`);
-    const total = sourceCount ? sourceCount.c : 0;
-    if (total === 0) {
+
+    const sourceCount = await countRows(sqlite, tableName);
+    if (tableName !== "_meta") {
+      try {
+        await Promise.resolve(pg.exec(`TRUNCATE TABLE ${quoteIdent(tableName)}`));
+      } catch (err) {
+        return {
+          ok: false,
+          tablesMigrated,
+          rowsMigrated,
+          error: `${tableName}: TRUNCATE failed: ${err.message}`,
+          perTable,
+        };
+      }
+    }
+
+    if (sourceCount === 0) {
+      if (tableName === "_meta") {
+        // Keep PG schemaVersion; nothing else to copy.
+      }
       perTable[tableName] = { rows: 0, ok: true };
       tablesMigrated += 1;
       continue;
     }
-    const colList = cols.map((c) => `"${c}"`).join(", ");
-    let offset = 0;
+
+    const colList = quotedList(cols);
+    const placeholders = cols.map(() => "?").join(", ");
+    const insertSql = tableName === "_meta"
+      ? `INSERT INTO ${quoteIdent(tableName)} (${colList}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`
+      : `INSERT INTO ${quoteIdent(tableName)} (${colList}) VALUES (${placeholders})`;
     let inserted = 0;
-    let ok = true;
+    let offset = 0;
     let error = null;
-    while (offset < total) {
-      const sourceRows = await sqlite.all(
-        `SELECT ${colList} FROM ${tableName} LIMIT ? OFFSET ?`,
-        [chunkSize, offset]
+
+    while (offset < sourceCount) {
+      const sourceRows = await Promise.resolve(
+        sqlite.all(
+          `SELECT ${colList} FROM ${quoteIdent(tableName)} LIMIT ? OFFSET ?`,
+          [chunkSize, offset]
+        )
       );
       if (!sourceRows || !sourceRows.length) break;
-      const targetSql = `INSERT INTO ${tableName} (${colList}) VALUES (${cols.map(() => "?").join(", ")}) ON CONFLICT DO NOTHING`;
-      const { sql: rewrittenSql } = placeholderRewrite(targetSql);
       try {
-        await pg.transaction(async () => {
+        await Promise.resolve(pg.transaction(() => {
           for (const row of sourceRows) {
-            const values = cols.map((c) => row[c] === undefined ? null : row[c]);
-            await pg.run(rewrittenSql, values);
+            if (tableName === "_meta" && row.key === "schemaVersion") continue;
+            const values = cols.map((c) => (row[c] === undefined ? null : row[c]));
+            if (tableName === "_meta") {
+              pg.run(
+                `INSERT INTO ${quoteIdent("_meta")} (${colList}) VALUES (${placeholders}) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+                values
+              );
+            } else {
+              pg.run(insertSql, values);
+            }
             inserted += 1;
           }
-        });
+        }));
       } catch (err) {
-        ok = false;
         error = err.message;
         break;
       }
       offset += sourceRows.length;
     }
-    perTable[tableName] = { rows: inserted, ok, error: error || undefined };
-    if (!ok) {
+
+    if (error) {
+      perTable[tableName] = { rows: inserted, ok: false, error };
       return { ok: false, tablesMigrated, rowsMigrated, error: `${tableName}: ${error}`, perTable };
     }
-    rowsMigrated += inserted;
+
+    const targetCount = await countRows(pg, tableName);
+    // `_meta` keeps PG schemaVersion and copies every other key. Compare
+    // non-schemaVersion keys only.
+    if (tableName === "_meta") {
+      const srcKeys = await Promise.resolve(
+        sqlite.all(`SELECT key FROM ${quoteIdent("_meta")} WHERE key <> ?`, ["schemaVersion"])
+      );
+      const dstKeys = await Promise.resolve(
+        pg.all(`SELECT key FROM ${quoteIdent("_meta")} WHERE key <> ?`, ["schemaVersion"])
+      );
+      const srcSet = new Set((srcKeys || []).map((r) => r.key));
+      const dstSet = new Set((dstKeys || []).map((r) => r.key));
+      for (const k of srcSet) {
+        if (!dstSet.has(k)) {
+          const msg = `_meta: missing key ${k} after mirror`;
+          perTable[tableName] = { rows: inserted, ok: false, error: msg };
+          return { ok: false, tablesMigrated, rowsMigrated, error: msg, perTable };
+        }
+      }
+    } else if (targetCount !== sourceCount) {
+      const msg = `${tableName}: COUNT mismatch source=${sourceCount} target=${targetCount}`;
+      perTable[tableName] = { rows: inserted, ok: false, error: msg };
+      return { ok: false, tablesMigrated, rowsMigrated, error: msg, perTable };
+    }
+
+    const serialCol = SERIAL_TABLES.get(tableName);
+    if (serialCol) await resetSerial(pg, tableName, serialCol);
+
+    perTable[tableName] = { rows: tableName === "_meta" ? inserted : targetCount, ok: true };
+    rowsMigrated += tableName === "_meta" ? inserted : targetCount;
     tablesMigrated += 1;
   }
+
   return { ok: true, tablesMigrated, rowsMigrated, perTable };
 }

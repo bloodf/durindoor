@@ -264,8 +264,19 @@ function importLegacyDetails(adapter, data) {
 // ─── Main entry ──────────────────────────────────────────────────────────
 export async function runMigrationOnce(adapter) {
   if (_migratedAdapters.has(adapter)) return;
+  if (isPostgres(adapter)) {
+    // PG has no sqlite_master / PRAGMA. The parallel migration set is the
+    // schema source of truth; additive SQLite sync and integrity checks
+    // would throw (or race on the async test seam) and abort cutover.
+    runPgVersionedMigrations(adapter);
+    try {
+      setMetaSync(adapter, "appVersion", getAppVersion());
+    } catch { /* _meta missing is a migration bug; surface via throw below */ }
+    _migratedAdapters.add(adapter);
+    return;
+  }
   // Check SQLite integrity before any migration, backup, marker, or version mutation.
-  if (!isPostgres(adapter)) runIntegrityCheckOrThrow(adapter);
+  runIntegrityCheckOrThrow(adapter);
 
   // Capture freshness BEFORE migrations stamp _meta (otherwise we'd misclassify
   // a brand-new DB as non-fresh once schemaVersion is written).

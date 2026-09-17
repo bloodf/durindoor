@@ -16,6 +16,7 @@ export async function POST(request) {
   }
   let body = {};
   try { body = await request.json(); } catch { /* empty body is OK */ }
-  const out = await runRollback({ snapshotPath: body.snapshotPath });
-  return NextResponse.json(out, { status: out.ok ? 200 : 500 });
+  const out = await runRollback({ snapshotPath: body.snapshotPath, force: body.force === true });
+  const status = out.ok ? 200 : out.error === "rollback_requires_force" ? 409 : 500;
+  return NextResponse.json(out, { status });
 }

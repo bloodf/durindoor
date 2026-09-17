@@ -2,9 +2,8 @@
 //
 // Copies `DATA_DIR/db/data.sqlite` to a timestamped sibling under
 // `DATA_DIR/db/backups/` with the prefix `data.sqlite.postgres-cutover-`.
-// The snapshot is best-effort: if the copy fails, the cutover pipeline
-// logs a warning and continues (the source SQLite is still on disk at
-// its original path; rollback can use the live file as a fallback).
+// A missing snapshot aborts cutover. Rollback has nothing to restore
+// if the copy is skipped.
 //
 // The snapshot is intentionally NOT a safety copy for migration
 // upgrades — those are handled by `src/lib/db/backup.js` with the
@@ -14,7 +13,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { currentDataDir } from "../../paths.js";
+import { currentDataFile, currentBackupsDir } from "../../paths.js";
 import { getAppVersion } from "../../version.js";
 import { chmodQuiet } from "../../paths.js";
 
@@ -28,10 +27,9 @@ function ts() {
 }
 
 export async function snapshotSqlite() {
-  const dataDir = currentDataDir();
-  const src = path.join(dataDir, "db", "data.sqlite");
+  const src = currentDataFile();
   if (!fs.existsSync(src)) return null;
-  const backupsDir = path.join(dataDir, "db", "backups");
+  const backupsDir = currentBackupsDir();
   if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true, mode: 0o700 });
   const dest = path.join(backupsDir, `${SNAPSHOT_PREFIX}${ts()}-${getAppVersion()}.sqlite`);
   fs.copyFileSync(src, dest);
@@ -40,8 +38,7 @@ export async function snapshotSqlite() {
 }
 
 export function listSnapshots() {
-  const dataDir = currentDataDir();
-  const backupsDir = path.join(dataDir, "db", "backups");
+  const backupsDir = currentBackupsDir();
   if (!fs.existsSync(backupsDir)) return [];
   return fs.readdirSync(backupsDir)
     .filter((n) => n.startsWith(SNAPSHOT_PREFIX))

@@ -25,7 +25,8 @@ src/lib/db/
     ├── 002-mcp-gateway.js
     ├── ...
     ├── 017-connection-groups.js
-    ├── 018-pg-cutover-log.js
+    ├── 018-api-key-groups.js          # same version+name as SQLite
+    ├── 019-pg-cutover-log.js          # PG-only
     └── index.js
 ```
 
@@ -52,9 +53,12 @@ migration:
    files are in sync with the source migrations. The CI gate fails
    if they drift.
 
-For the `pgCutoverLog` table specifically: it is a PG-only table.
-Its migration is the only one that does not have a SQLite
-equivalent. The generator handles it as a special case.
+For the `pgCutoverLog` table specifically: it is a PG-only **version**.
+SQLite 018 is `api-key-groups`; PG 018 is the same name (no-op, tables
+already come from 001). PG 019 creates `pgCutoverLog`. The checker
+compares `{version,name}` across the two registries and fails if they
+diverge. Runtime DML (`INSERT OR IGNORE`, `datetime('now')`,
+`COLLATE NOCASE`) is rewritten in the PG adapter, not the generator.
 
 ## The DDL translator
 

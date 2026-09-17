@@ -41,8 +41,12 @@ export async function GET(request) {
     settings.databasePgVersion,
     settings.databasePgFeatures,
   );
+  const { postgresUrl: _postgresUrl, ...publicSettings } = settings;
+  void _postgresUrl;
+  void publicSettings;
   return NextResponse.json({
     activeEngine,
+    servingFallback: activeEngine !== (settings.databaseEngine || "sqlite"),
     databaseEngine: settings.databaseEngine,
     databaseEngineError: settings.databaseEngineError,
     databaseCutoverAt: settings.databaseCutoverAt,
@@ -87,7 +91,13 @@ export async function POST(request) {
       postgresSslmode: body.postgresSslmode,
       postgresAuthSource: body.postgresAuthSource,
     });
-    return NextResponse.json({ ok: true, settings: next });
+    const { postgresUrl, password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safe } = next;
+    void postgresUrl;
+    void password;
+    void passwordSessionEpoch;
+    void oidcClientSecret;
+    void mitmSudoEncrypted;
+    return NextResponse.json({ ok: true, settings: safe });
   } catch (err) {
     return NextResponse.json({ error: err.message || "Failed to update settings" }, { status: 500 });
   }

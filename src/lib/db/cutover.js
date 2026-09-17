@@ -1,38 +1,19 @@
 // SQLite → PostgreSQL cutover orchestrator.
 //
-// Runs the full pipeline:
-//   1. acquireCutoverLock
-//   2. testConnection (transient pg.Client, SELECT 1)
-//   3. openPostgresPersistent (the persistent adapter the runtime will
-//      use after the flip)
-//   4. runMigrationOnce (the parallel PG migration set)
-//   5. mirrorSqliteToPostgres (stream rows in 500-row chunks, per-table
-//      transactions, row-count verification)
-//   6. snapshotSqliteTo (immutable copy of the source SQLite file at
-//      `data.sqlite.postgres-cutover-<ts>`; best-effort, warns on
-//      failure but does not abort the flip)
-//   7. flipRuntime (close SQLite, set state.instance = pg)
-//   8. updateSettings({ databaseEngine: "postgres", ... })
-//   9. appendCutoverLog (row in pgCutoverLog table on PG)
-//  10. releaseCutoverLock
-//  11. respond { ok, schemaVersion, tablesMigrated, rowsMigrated,
-//      durationMs, snapshotPath }
+// Pipeline:
+//   1. acquireCutoverLock (HTTP writes on the live adapter reject)
+//   2. testConnection
+//   3. open persistent PG adapter; runMigrationOnce (PG set only)
+//   4. checkpoint live SQLite; snapshot to currentBackupsDir()
+//   5. mirrorSqliteToPostgres (TRUNCATE, quoted idents, COUNT(*), setval, _meta)
+//   6. setActiveAdapter(pg) and close the previous SQLite adapter
+//   7. persist databaseEngine on BOTH the live PG adapter and the SQLite file
+//   8. appendCutoverLog
+//   9. releaseCutoverLock
 //
-// Failure at any step:
-//   - testConnection fail → no state change, 400.
-//   - migration fail → PG schema half-applied; PG closed; SQLite stays
-//     live; databaseEngineError set.
-//   - mirror row-count mismatch → PG schema half-applied; PG closed;
-//     SQLite stays live; error recorded in the cutover log.
-//   - snapshot copy fail → warn, continue (the source SQLite is still on
-//     disk at its original path).
-//
-// The flip order is strict: PG must open, migrate, mirror, verify
-// BEFORE SQLite is closed. This is the only way to avoid a "no DB at
-// all" failure window. The state write (step 8) happens AFTER SQLite
-// is closed, so a process crash between step 7 and step 8 leaves
-// `databaseEngine === "sqlite"` for the next boot, which reopens the
-// original SQLite file normally.
+// Snapshot failure aborts the flip. Rollback restores currentDataFile()
+// from an allowlisted snapshot and requires `force: true` so the operator
+// has confirmed that PG-era writes are discarded.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -42,43 +23,40 @@ import { createPostgresAdapter } from "./adapters/pgAdapter.js";
 import { openSqliteAdapter } from "./driver.js";
 import { currentDataFile } from "./paths.js";
 import { runMirror } from "./dialects/postgres/mirror.js";
-import { getActiveEngine, setActiveAdapter } from "./driver.js";
+import { setActiveAdapter } from "./driver.js";
 import { readSettingsViaTransientSqlite, writeSettingsViaTransientSqlite } from "./postgresFallback.js";
-import { resolvePostgresSecret } from "./secrets.js";
-import { snapshotSqlite, SNAPSHOT_PREFIX } from "./dialects/postgres/snapshot.js";
+import { snapshotSqlite, listSnapshots, SNAPSHOT_PREFIX } from "./dialects/postgres/snapshot.js";
 import { appendCutoverLog } from "./dialects/postgres/cutoverLog.js";
-import { isString, isObject } from "../../shared/utils/typeChecks.js";
+import { acquireCutoverLock, releaseCutoverLock, isCutoverInFlight } from "./cutoverLock.js";
+import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 
-// In-process async mutex (the plan's `CutoverLock`). Only one cutover
-// or rollback runs at a time. The runtime rejects new write requests
-// while the lock is held; readers (GET routes) keep serving from the
-// previous adapter.
-let lockHeld = false;
-let lockWaiters = [];
+export { isCutoverInFlight, SNAPSHOT_PREFIX };
 
-async function acquireCutoverLock() {
-  if (!lockHeld) {
-    lockHeld = true;
-    return;
+function mergeSettingsOnAdapter(adapter, updates) {
+  adapter.transaction(() => {
+    const row = adapter.get(`SELECT data FROM settings WHERE id = 1`);
+    const current = row ? parseJson(row.data, {}) : {};
+    const next = { ...current, ...updates };
+    adapter.run(
+      `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+      [stringifyJson(next)]
+    );
+  });
+}
+
+function resolveSnapshotPath(snapshotPath) {
+  const allowed = listSnapshots().map((p) => path.resolve(p));
+  if (snapshotPath) {
+    const resolved = path.resolve(snapshotPath);
+    if (!allowed.includes(resolved)) return null;
+    return resolved;
   }
-  await new Promise((resolve) => lockWaiters.push(resolve));
-  lockHeld = true;
-}
-
-function releaseCutoverLock() {
-  lockHeld = false;
-  const next = lockWaiters.shift();
-  if (next) next();
-}
-
-export function isCutoverInFlight() {
-  return lockHeld;
+  return allowed[0] || null;
 }
 
 /**
  * Test a PG connection URL without opening the persistent adapter.
- * Returns `{ ok, latencyMs, serverVersion, error? }`. Used by the
- * `/api/settings/database/test` route.
  */
 export async function testConnection({ url, sslmode }) {
   if (!isString(url) || !url) return { ok: false, error: "url is required" };
@@ -90,7 +68,7 @@ export async function testConnection({ url, sslmode }) {
     return { ok: false, error: err.message, latencyMs: Date.now() - t0 };
   }
   try {
-    const row = await pg.get("SELECT version() AS v, 1 AS n");
+    const row = await Promise.resolve(pg.get("SELECT version() AS v, 1 AS n"));
     return {
       ok: true,
       latencyMs: Date.now() - t0,
@@ -102,8 +80,7 @@ export async function testConnection({ url, sslmode }) {
 }
 
 /**
- * Run the full cutover pipeline. Returns a result object suitable for
- * the API response.
+ * Run the full cutover pipeline.
  */
 export async function runCutover({ url, sslmode, includeRequestDetails = false } = {}) {
   if (!isString(url) || !url) {
@@ -117,23 +94,42 @@ export async function runCutover({ url, sslmode, includeRequestDetails = false }
   let tablesMigrated = 0;
   let rowsMigrated = 0;
   try {
-    // 1. test the connection
     const probe = await testConnection({ url, sslmode });
     if (!probe.ok) {
+      try {
+        await writeSettingsViaTransientSqlite({ databaseEngineError: probe.error });
+      } catch { /* noop */ }
       return { ok: false, error: probe.error, latencyMs: probe.latencyMs };
     }
-    // 2. open the persistent adapter
     pg = await createPostgresAdapter({ url, sslmode });
-    // 3. run the PG migration set
     await runMigrationOnce(pg);
-    schemaVersion = pgLatestVersion(); // the parallel set's latest applied version
-    // 4. open a fresh SQLite adapter (read-only-ish) for the mirror source
+    schemaVersion = pgLatestVersion();
+
+    const liveSqlite = await openSqliteAdapter(currentDataFile());
+    try {
+      if (typeof liveSqlite.checkpoint === "function") {
+        await liveSqlite.checkpoint();
+      } else if (typeof liveSqlite.flush === "function") {
+        liveSqlite.flush();
+      }
+    } finally {
+      try { await liveSqlite.close?.(); } catch { /* noop */ }
+    }
+
+    snapshotPath = await snapshotSqlite();
+    if (!snapshotPath && fs.existsSync(currentDataFile())) {
+      throw new Error("cutover snapshot failed");
+    }
+
     const sqlite = await openSqliteAdapter(currentDataFile());
     try {
       const mirrorResult = await runMirror(sqlite, pg, { includeRequestDetails });
       tablesMigrated = mirrorResult.tablesMigrated;
       rowsMigrated = mirrorResult.rowsMigrated;
       if (!mirrorResult.ok) {
+        try {
+          await writeSettingsViaTransientSqlite({ databaseEngineError: mirrorResult.error });
+        } catch { /* noop */ }
         return {
           ok: false,
           error: `Mirror row-count mismatch: ${mirrorResult.error}`,
@@ -146,23 +142,22 @@ export async function runCutover({ url, sslmode, includeRequestDetails = false }
     } finally {
       try { await sqlite.close?.(); } catch { /* noop */ }
     }
-    // 5. snapshot the source SQLite (best-effort)
-    snapshotPath = await snapshotSqlite();
-    // 6. flip the runtime to PG
-    setActiveAdapter(pg);
-    pg = null; // ownership transferred to the driver
-    // 7. persist the engine flip in the settings row
-    const settings = await readSettingsViaTransientSqlite();
-    await writeSettingsViaTransientSqlite({
+
+    const engineUpdates = {
       databaseEngine: "postgres",
       databaseCutoverAt: new Date().toISOString(),
       databaseCutoverSchemaVersion: schemaVersion,
       databaseEngineError: null,
       postgresAuthSource: "settings",
-    });
-    void settings;
-    // 8. append a cutover log row on PG (best-effort; the runtime is
-    //    already on PG, so we open a transient adapter to log).
+    };
+    // Write the engine flag on PG (the live settings row after the flip)
+    // and on SQLite (boot still reads the engine from the SQLite file).
+    mergeSettingsOnAdapter(pg, engineUpdates);
+    await writeSettingsViaTransientSqlite(engineUpdates);
+
+    setActiveAdapter(pg);
+    pg = null;
+
     try {
       const logPg = await createPostgresAdapter({ url, sslmode });
       try {
@@ -178,7 +173,6 @@ export async function runCutover({ url, sslmode, includeRequestDetails = false }
         try { await logPg.close?.(); } catch { /* noop */ }
       }
     } catch (err) {
-      // Non-fatal: the runtime is on PG; the log row is a nice-to-have.
       console.warn(`[DB][cutover] log append failed: ${err.message}`);
     }
     return {
@@ -190,6 +184,9 @@ export async function runCutover({ url, sslmode, includeRequestDetails = false }
       snapshotPath,
     };
   } catch (err) {
+    try {
+      await writeSettingsViaTransientSqlite({ databaseEngineError: err.message });
+    } catch { /* noop */ }
     return {
       ok: false,
       error: err.message,
@@ -207,49 +204,69 @@ export async function runCutover({ url, sslmode, includeRequestDetails = false }
   }
 }
 
+const ROLLBACK_WARNING =
+  "Rollback restores SQLite as of the cutover snapshot. Writes made while PostgreSQL was live are not copied back.";
+
 /**
- * Rollback to SQLite from PG. Restores the most recent cutover snapshot
- * and flips the engine back to sqlite.
+ * Rollback to SQLite from PG. Restores an allowlisted cutover snapshot
+ * onto currentDataFile(). Requires `force: true` after a successful
+ * cutover so the operator has confirmed PG-era writes are discarded.
  */
-export async function runRollback({ snapshotPath } = {}) {
+export async function runRollback({ snapshotPath, force = false } = {}) {
   await acquireCutoverLock();
   const t0 = Date.now();
   try {
-    const sqlite = await openSqliteAdapter(currentDataFile());
+    let settings = null;
     try {
-      // Ensure the snapshot exists; if not, the operator must pick one
-      // via `body.snapshotPath` (or the most recent one is auto-picked).
-      const target = snapshotPath || pickLatestSnapshot();
-      if (!target || !fs.existsSync(target)) {
-        return { ok: false, error: "snapshot not found", durationMs: Date.now() - t0 };
-      }
-      // Restore the snapshot into the live SQLite path.
-      const live = path.join(process.env.DATA_DIR || "~/.9router", "db", "data.sqlite");
-      fs.copyFileSync(target, live);
-    } finally {
-      try { await sqlite.close?.(); } catch { /* noop */ }
+      settings = await readSettingsViaTransientSqlite();
+    } catch { /* missing SQLite file is fine; snapshot check is next */ }
+    if (settings && settings.databaseCutoverAt && !force) {
+      return {
+        ok: false,
+        error: "rollback_requires_force",
+        warning: ROLLBACK_WARNING,
+        discardedSince: settings.databaseCutoverAt,
+        durationMs: Date.now() - t0,
+      };
     }
-    // Reopen SQLite as the active adapter and persist the flip.
-    const freshSqlite = await openSqliteAdapter(currentDataFile());
+    const target = resolveSnapshotPath(snapshotPath);
+    if (!target || !fs.existsSync(target)) {
+      return { ok: false, error: "snapshot not found", durationMs: Date.now() - t0 };
+    }
+    const live = currentDataFile();
+    const dir = path.dirname(live);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+
+    if (fs.existsSync(live)) {
+      try {
+        const openSqlite = await openSqliteAdapter(live);
+        try {
+          if (typeof openSqlite.checkpoint === "function") {
+            try { await openSqlite.checkpoint(); } catch { /* best-effort */ }
+          }
+        } finally {
+          try { await openSqlite.close?.(); } catch { /* noop */ }
+        }
+      } catch { /* copy over whatever is there */ }
+    }
+
+    fs.copyFileSync(target, live);
+
+    const freshSqlite = await openSqliteAdapter(live);
     setActiveAdapter(freshSqlite);
     await writeSettingsViaTransientSqlite({
       databaseEngine: "sqlite",
       databaseEngineError: null,
     });
-    return { ok: true, durationMs: Date.now() - t0 };
+    return {
+      ok: true,
+      durationMs: Date.now() - t0,
+      warning: ROLLBACK_WARNING,
+      discardedSince: settings && settings.databaseCutoverAt,
+    };
   } catch (err) {
     return { ok: false, error: err.message, durationMs: Date.now() - t0 };
   } finally {
     releaseCutoverLock();
   }
-}
-
-function pickLatestSnapshot() {
-  const dir = path.join(process.env.DATA_DIR || "~/.9router", "db", "backups");
-  if (!fs.existsSync(dir)) return null;
-  const entries = fs.readdirSync(dir)
-    .filter((n) => n.startsWith(SNAPSHOT_PREFIX) || n.includes(SNAPSHOT_PREFIX))
-    .map((n) => ({ name: n, full: path.join(dir, n), mtime: fs.statSync(path.join(dir, n)).mtimeMs }))
-    .sort((a, b) => b.mtime - a.mtime);
-  return entries.length ? entries[0].full : null;
 }

@@ -108,7 +108,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
           "content-type": "application/json",
           "x-9r-password": password,
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ force: true }),
       });
       const body = await res.json();
       if (!res.ok || !body.ok) {
@@ -180,6 +180,17 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
           hint={status?.databaseCutoverSchemaVersion ? `schema v${status.databaseCutoverSchemaVersion}` : "no cutover yet"}
         />
       </section>
+
+      {status?.servingFallback ? (
+        <Card padding={false}>
+          <CardHeader icon="warning" title="Serving SQLite" subtitle="databaseEngine is postgres but this process fell back to the local file" />
+          <CardContent>
+            <p className="text-[13px] text-dd-text">
+              Settings still say PostgreSQL. This process could not open the cluster and is reading the pre-cutover SQLite file. New writes here will not land on PG.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {status?.databaseEngineError ? (
         <Card padding={false}>
@@ -262,7 +273,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
         <ConfirmDialog
           open
           title="Switch back to SQLite"
-          body="The most recent cutover snapshot will be restored and the runtime will boot from SQLite. The PG cluster is left untouched."
+          body="This restores SQLite as of the cutover snapshot. Writes made while PostgreSQL was live (keys, usage, settings) are not copied back. The PG cluster is left untouched."
           confirmLabel="Rollback"
           confirmVariant="ghost"
           onConfirm={handleRollback}

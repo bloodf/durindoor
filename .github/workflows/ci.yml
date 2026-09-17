@@ -41,6 +41,9 @@ jobs:
       - name: Agent index drift gate
         run: npm run check:agent-index
 
+      - name: Postgres migration registry gate
+        run: npm run check:postgres-migrations
+
       - name: "🏗️ Build (isolated state)"
         env:
           DATA_DIR: ${{ runner.temp }}/durindoor-data

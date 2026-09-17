@@ -47,9 +47,20 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
     }
   };
 
-  // Auto-detect tokens when modal opens
+  // Auto-detect tokens when the modal opens, and clear the typed credential when
+  // it closes. Without the reset the access token and machine ID survived a
+  // cancel and were still populated the next time the modal was opened — a
+  // credential left sitting in a form field, visible to anyone who reopens it.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setAccessToken("");
+      setMachineId("");
+      setError(null);
+      setAutoDetectError(null);
+      setAutoDetected(false);
+      setWindowsManual(false);
+      return;
+    }
     runAutoDetect();
   }, [isOpen]);
 

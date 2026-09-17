@@ -19,6 +19,7 @@ const ALIAS_TOKENS = [
   "gw","grok-web","pw","perplexity-web","mimo","xiaomi-mimo","xmtp","xiaomi-tokenplan","cf",
   "cloudflare-ai","fal","fal-ai","stability","stability-ai","bfl","black-forest-labs","recraft",
   "topaz","runway","runwayml","jina","jina-ai","polly","aws-polly","bb","blackbox",
+  "tm","tokenmarket",
 ];
 
 // Sort idToAlias by key — runtime accesses by key, order is irrelevant (content-based)

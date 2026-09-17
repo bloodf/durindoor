@@ -288,6 +288,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `theoldllm` | openai | free | `https://theoldllm.vercel.app/api/chatgpt` |
 | `tinyfish` |  | apikey | `` |
 | `together` |  | apikey | `https://api.together.xyz/v1/chat/completions` |
+| `tokenmarket` |  | apikey | `https://api.tokensmarket.ai/v1/chat/completions` |
 | `tokenrouter` |  | freeTier | `https://api.tokenrouter.com/v1/chat/completions` |
 | `topaz` |  | apikey | `` |
 | `tortoise` |  | freeTier | `` |

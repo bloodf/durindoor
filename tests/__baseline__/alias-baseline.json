@@ -90,7 +90,9 @@
     "polly": "aws-polly",
     "aws-polly": "aws-polly",
     "bb": "blackbox",
-    "blackbox": "blackbox"
+    "blackbox": "blackbox",
+    "tm": "tokenmarket",
+    "tokenmarket": "tokenmarket"
   },
   "idToAlias": {
     "agy": "agy",
@@ -155,6 +157,7 @@
     "qwen": "qw",
     "siliconflow": "siliconflow",
     "together": "together",
+    "tokenmarket": "tokenmarket",
     "venice": "venice",
     "vercel-ai-gateway": "vercel-ai-gateway",
     "vertex": "vertex",
@@ -240,6 +243,7 @@
     "siliconflow",
     "stability-ai",
     "together",
+    "tokenmarket",
     "venice",
     "vertex",
     "vertex-partner",

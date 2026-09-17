@@ -1,0 +1,28 @@
+---
+title: DurinDoor documentation
+description: One gateway in front of every AI provider, with an OpenAI-compatible API.
+---
+
+DurinDoor is a self-hosted AI gateway. You add provider credentials once in the dashboard, then point tools at `http://localhost:20128/v1` instead of wiring each app to a different vendor. Credentials stay on your machine. DurinDoor translates OpenAI-shaped requests for Claude, Gemini, Kiro, Cursor, Ollama, Vertex, and other upstream formats. Per request, the dashboard shows the provider, the model, tokens, cost estimates, latency, and fallback outcome.
+
+Start here if you want a first request through the gateway. Operators running DurinDoor on a team server use the deployment and operations pages. The contributing section is for people changing the codebase or the provider registry. DurinDoor is a fork of 9router. Existing installs keep their data, keys, and headers.
+
+`npm install -g durindoor`, then `durindoor`. Open http://localhost:20128/dashboard, sign in, add a provider connection, and create an API key. Send the request to http://localhost:20128/v1. Getting started covers that path. The cards name the other sections. Those URLs 404 until the folders exist.
+
+<Callout>
+Section cards point at folders that are not in the tree yet. A 404 here is expected.
+</Callout>
+
+<Cards>
+  <Card title="Getting started" href="/docs/getting-started" description="Install and send the first request." />
+  <Card title="Providers" href="/docs/providers" description="OAuth, API keys, compatible nodes, and local providers." />
+  <Card title="Integrations" href="/docs/integrations" description="Claude Code, Codex, Cursor, and other OpenAI-compatible tools." />
+  <Card title="Guides" href="/docs/guides" description="API keys, models, aliases, SDK examples, and usage." />
+  <Card title="Features" href="/docs/features" description="Routing, combos, quota, MCP, realtime, and compression." />
+  <Card title="Deployment" href="/docs/deployment" description="Localhost, Docker, cloud, and reverse proxies." />
+  <Card title="Operations" href="/docs/operations" description="Startup, upgrades, data, Postgres, and security." />
+  <Card title="Reference" href="/docs/reference" description="API routes, environment variables, CLI, and model limits." />
+  <Card title="Contributing" href="/docs/contributing" description="Local development, architecture, tests, and upstream sync." />
+  <Card title="FAQ" href="/docs/faq" description="Short answers to common setup and runtime questions." />
+  <Card title="Troubleshooting" href="/docs/troubleshooting" description="What to check when a request fails." />
+</Cards>

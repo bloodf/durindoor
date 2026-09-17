@@ -1,0 +1,99 @@
+---
+title: Automating DurinDoor
+description: Mint a key, script providers and combos with curl or MCP, then rotate and scope that key.
+---
+
+Use a DurinDoor API key as the automation credential. The same secret calls `/v1` and the dashboard REST under `/api/*`. An MCP client can do the same work through `POST /api/mcp/control`. Route tables and exclusions: [Management API](../reference/management-api.mdx). Tools and auth: [MCP control](../features/mcp-control.mdx).
+
+Production listens on port `20128`. Replace the host if you use a tunnel.
+
+<Callout type="warn">
+Store the secret when `POST /api/keys` returns it. List and detail views mask it. Reveal stays on a dashboard session.
+</Callout>
+
+## Mint a key for automation
+
+Dashboard path: **API Keys → Create**. Or POST:
+
+```bash
+curl http://localhost:20128/api/keys \
+  -H "Authorization: Bearer EXISTING_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"ci-bot"}'
+```
+
+The 201 body includes `key`, `id`, `expiresAt`, `policy`, and `providerConnectionIds`. Later `GET /api/keys` returns `maskedKey`. First-time minting from the dashboard is easier if you have no key yet: the session cookie is enough.
+
+Give this key a name you can revoke later. Optional `allowedCombos`, `policy.allowedModels`, `policy.maxTokens`, `policy.maxCostUsd`, `dailyLimitTokens`, `expiresAt`, and `providerConnectionIds`. Empty means unrestricted for that mechanism. Key groups are labels only. Shapes and expiry presets: [API keys](./api-keys.mdx).
+
+## Script provider and combo setup with curl
+
+Create an API-key connection, then a fallback combo, then read quota:
+
+```bash
+curl http://localhost:20128/api/providers \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"openai","name":"openai-main","apiKey":"sk-upstream-secret"}'
+
+curl http://localhost:20128/api/combos \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"coding-default","models":["openai/gpt-4.1","anthropic/claude-sonnet-4-5"]}'
+
+curl "http://localhost:20128/api/usage/CONNECTION_ID?force=1" \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+POST `/api/providers` needs `provider` and `name`. `apiKey` is required unless the provider is `noAuth` or `ollama-local`. Duplicate `(provider, apikey, name)` is 409. OAuth accounts use `/api/oauth/...`, not this POST.
+
+Combo names: letters, digits, `-`, `_`, `.`. The client then sends `"model": "coding-default"` on `/v1/chat/completions`.
+
+Confirm with `GET /api/combos` and `GET /api/providers`. Secrets are stripped on those reads. Proxy userinfo in `connectionProxyUrl` is `***` for this key.
+
+## Same work through an MCP client
+
+Add the control server (Claude Code shown; Cursor `mcp.json` is on [MCP control](../features/mcp-control.mdx)):
+
+```bash
+claude mcp add --transport http durindoor-control http://localhost:20128/api/mcp/control \
+  --header "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+Then ask the MCP client:
+
+1. List my combos and their members.
+2. Create a fallback combo named `coding-default` with those two models.
+3. Refresh quota for connection `CONNECTION_ID`.
+
+Those call `list_combos`, `create_combo`, and `refresh_quota`. `list_connections` is the read that matches `GET /api/providers`. There is no control tool that mints a DurinDoor API key; do that over REST or the dashboard.
+
+On loopback with `requireApiKey` off, the MCP client may omit the header. Remote MCP always sends the key. A browser `Origin` that is not this server is 401 even on loopback.
+
+## Rotate and scope the key
+
+There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `PUT /api/keys/{id}` with `"isActive": false`. Delete removes the row; join-table scope rows cascade.
+
+Scope before you hand the secret to CI:
+
+- `providerConnectionIds`: only those account rows
+- `allowedCombos`: only those combo names
+- `policy.allowedModels`: exact model strings
+- `policy.maxTokens` / `policy.maxCostUsd`: lifetime caps
+- `dailyLimitTokens`: calendar-day cap
+- `expiresAt`: UTC ISO, or omit for never
+
+Account scoping details: [API key scoping](../operations/api-key-scoping.mdx).
+
+## Keep on a dashboard session only
+
+Do not put these on the automation key:
+
+- `GET /api/keys/{id}/reveal` and gateway-key reveal (`?reveal=1` included)
+- `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`
+- `/api/settings/database` and cutover/rollback/import
+- `PATCH /api/settings` keys that change login, API-key enforcement, OIDC, outbound proxy, tunnel dashboard access, or observability
+- remote tunnel enable/disable, Tailscale, Headroom start/stop, CLI-tool spawners, password reset
+- `/api/key-groups`, `/api/data-retention` POST, `/api/compression/preview`, `/api/pxpipe/*`
+
+Use the dashboard (or CLI token on the host) for those. The automation key is for connections, combos, catalog, usage, timeline, and the non-secret settings patch.

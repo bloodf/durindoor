@@ -75,7 +75,7 @@ If the proxy rewrites `Host` to an internal name, set `BASE_URL` and `NEXT_PUBLI
 
 The management control endpoint `POST /api/mcp/control` is exempt from the loopback-only MCP plugin branch. It requires a CLI token, API key, or dashboard JWT, including from a remote host. A credential-free loopback caller is accepted only while `requireApiKey` is off and only when the request carries no foreign `Origin`, so a browser page cannot drive it cross-origin. The MCP gateway (`/api/mcp-gateway`) uses gateway keys, not that local-only policy.
 
-Covered route families and exclusions: [API](../reference/api.mdx#management-api). Control tools: [MCP gateway](../features/mcp-gateway.mdx#control-endpoint).
+Covered route families and exclusions: [Management API](../reference/management-api.mdx). Control tools: [MCP control](../features/mcp-control.mdx).
 
 ## API keys and scoping
 

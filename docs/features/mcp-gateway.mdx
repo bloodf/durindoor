@@ -1,6 +1,6 @@
 ---
 title: MCP gateway
-description: One JSON-RPC endpoint in front of registered MCP servers, with gateway keys, grants, and a management control server.
+description: One JSON-RPC endpoint in front of registered MCP servers, with gateway keys, grants, and OAuth.
 ---
 
 The MCP gateway merges tools from one or more upstream MCP instances into a single JSON-RPC namespace. Each caller uses a dedicated gateway key granted to specific instances (and, on the backend, to specific tools). DurinDoor can attach an OAuth access token to upstream requests for an instance.
@@ -31,7 +31,7 @@ Send the secret as `Authorization: Bearer …`, `x-api-key`, `x-goog-api-key`, o
 
 Grant the key to instances from the Keys page. An empty grant list means the key authenticates but sees no tools.
 
-The control endpoint `POST /api/mcp/control` does not accept a gateway key. It takes a dashboard session, the CLI token, or a DurinDoor API key.
+The control endpoint `POST /api/mcp/control` does not accept a gateway key. It takes a dashboard session, the CLI token, or a DurinDoor API key. Full tool list and client setup: [MCP control](./mcp-control.mdx).
 
 ## Instances
 
@@ -53,50 +53,7 @@ Token endpoints and refresh redirects go through the outbound URL guard. Cross-o
 
 ## Control endpoint
 
-`POST /api/mcp/control` is a JSON-RPC 2.0 MCP server for the running DurinDoor instance. Use it from operator and automation clients, not from gateway callers.
-
-The route uses the same dashboard guard as the rest of `/api/*`. It is exempt from the `LOCAL_ONLY_PATHS` branch used by spawn-capable MCP plugin routes, so a remote host can call it with any of:
-
-- a valid dashboard JWT (`auth_token` cookie)
-- the local CLI token (`x-9r-cli-token` header)
-- a DurinDoor API key (`Authorization: Bearer`, `x-api-key`, or `key=`)
-
-When `requireApiKey` is off, loopback callers on the same machine may omit credentials, the same rule the LLM endpoints use. That skip covers CLI and MCP clients, which send no `Origin` header. A request carrying an `Origin` that is not the server's own is refused even on loopback: the server stamps its trusted-peer header on every request, including a browser's, and a page on a hostile origin would otherwise drive these tools from the victim's machine. Remote callers always authenticate, regardless of `requireApiKey` or `requireLogin`. Unauthenticated requests receive 401.
-
-The same DurinDoor API key unlocks the management REST API. See [API](../reference/api.mdx#management-api) for the covered route families and the exclusions (secret reveal, shutdown and database routes, auth-critical settings keys).
-
-Protocol methods:
-
-- `initialize`: server capability handshake
-- `notifications/initialized`: no-content notification (returns 202)
-- `tools/list`: list available control tools
-- `tools/call`: invoke a tool by name
-
-| Tool | Description |
-| --- | --- |
-| `list_providers` | List built-in providers and registry metadata |
-| `list_connections` | List provider connections (credential fields sanitized) |
-| `toggle_connection_active` | Enable or disable a single connection by ID |
-| `toggle_provider_active` | Enable or disable every connection for a provider ID |
-| `usage_stats` | Aggregate usage statistics for a period |
-| `token_saver_stats` | Token-saver statistics for a period |
-| `model_list` | Available models in OpenAI-compatible format; optional `kinds` filter (`llm`, `image`, `tts`, `embedding`, `stt`, `imageToText`, `rerank`, `video`) |
-| `list_combos` | List every configured combo |
-| `get_combo` | Fetch a single combo by ID |
-| `create_combo` | Create a combo (name, models, members, kind, capabilities, allowlist) |
-| `update_combo` | Update a combo; omitted fields keep their stored value |
-| `delete_combo` | Delete a combo by ID |
-| `quota_snapshots` | Provider-reported quota/allowance snapshots for a provider or connection |
-| `refresh_quota` | Force a live quota refresh for one connection and return the new snapshots |
-| `list_api_keys` | DurinDoor API keys with usage totals; the raw secret is never returned |
-| `get_settings` | Settings with secrets withheld |
-| `update_settings` | Update non-secret, non-auth-critical settings |
-
-All JSON-RPC responses return HTTP 200, including JSON-RPC errors. Transport or auth errors still use HTTP 401 or 403.
-
-`list_api_keys` returns the management view of each DurinDoor API key: the raw credential is stripped before the row leaves the tool, the same as `GET /api/keys`. `get_settings` withholds `password`, `passwordSessionEpoch`, `oidcClientSecret`, and `mitmSudoEncrypted`, and redacts the `user:password@` userinfo from `outboundProxyUrl` while leaving its host readable. `update_settings` strips every auth-critical key (`requireLogin`, `requireApiKey`, `authMode`, OIDC, outbound proxy, `tunnelDashboardAccess`, `enableObservability`, `exposeComboOnly`) and the connection-scoped auto-ping keys, because an API-key caller can never satisfy `canModifySecurityCriticalSettings`. A patch whose keys are all stripped returns 400 rather than a silent no-op.
-
-Secrets (`apiKey`, `accessToken`, `refreshToken`, `idToken`, OAuth cookies, and provider-specific `clientSecret`) are never returned by `list_connections` or `toggle_connection_active`. The control endpoint reuses the shared client allowlist sanitizer and drops `connectionProxyUrl`, which may contain embedded credentials.
+`POST /api/mcp/control` is a separate JSON-RPC server for the running DurinDoor instance (combos, connections, settings, quota). Gateway callers stay on `/api/mcp-gateway` with a gateway key. Auth, every tool, client setup, and limits: [MCP control](./mcp-control.mdx). REST families and exclusions: [Management API](../reference/management-api.mdx).
 
 ## Usage
 

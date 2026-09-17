@@ -1,6 +1,6 @@
 ---
 title: API
-description: Method, path, body, streaming, and provider support for every /v1 route, plus the management REST surface.
+description: Method, path, body, streaming, and provider support for every /v1 route.
 ---
 
 Point clients at `http://localhost:20128/v1`. Production listens on port `20128`. Next rewrites `/v1/:path*` to `/api/v1/:path*`, so the files live under `src/app/api/v1` while the public path stays `/v1`. A second rewrite maps `/v1/v1/:path*` onto the same handlers for clients that already put `/v1` in both the base URL and the path. `/codex/:path*` and `/responses` land on `POST /v1/responses`. `/v1beta` is a separate tree.
@@ -165,41 +165,6 @@ Unmatched `/v1/*` returns JSON `{ error: { type: "not_found", code: "unknown_rou
 
 ## Management API
 
-The dashboard REST surface under `/api/*` accepts the same DurinDoor API key used for inference:
-
-```bash
-curl http://localhost:20128/api/combos \
-  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
-```
-
-Route families that accept that key:
-
-| Routes | Purpose |
-| --- | --- |
-| `/api/providers`, `/api/provider-nodes`, `/api/media-providers` | Provider connections and custom nodes |
-| `/api/keys` | API keys, policies, groups, usage totals |
-| `/api/combos`, `/api/connection-groups` | Combo CRUD and connection allowlists |
-| `/api/models`, `/api/pricing`, `/api/tags` | Catalog, pricing, labels |
-| `/api/usage`, `/api/timeline` | Usage statistics and request timeline |
-| `/api/settings` | Settings read and update |
-| `/api/mcp`, `/api/mcp-gateway/instances`, `/api/mcp-gateway/keys`, `/api/mcp-gateway/oauth` | MCP control server, gateway CRUD, gateway OAuth connect flow |
-| `/api/proxy-pools`, `/api/tunnel`, `/api/cli-tools`, `/api/translator`, `/api/oauth`, `/api/cloud` | Networking, tooling, and provider OAuth management |
-
-The three MCP gateway protocol surfaces (`/api/mcp-gateway`, `/api/mcp-gateway/sse`, `/api/mcp-gateway/message`) keep gateway-key auth.
-
-Two OAuth leaves stay off the management gate because neither carries a DurinDoor credential. `client-metadata` is fetched server-to-server by the upstream authorization server. `callback` is the upstream browser redirect; it keeps the dashboard login policy and defends itself with the server-side `state` it validates. `authorize` and `status` are operator actions, so an API-key client can run a complete connect flow.
-
-An API key is never enough for the rows below. Those still need a dashboard session (`auth_token` cookie) or the local CLI token (`x-9r-cli-token`):
-
-- `GET /api/keys/{id}/reveal`: the raw secret reveal leaf is carved out of API-key auth.
-- `GET /api/mcp-gateway/keys/{id}/reveal`: refused twice. The guard's reveal carve-out rejects an API key with 401, and the route also requires a loopback caller, answering 403 to a remote session or CLI caller. No credential reveals a gateway key remotely.
-- Any request carrying `?reveal=1`, which the gateway key detail route reads to return a raw key. The carve-out matches the query as well as the path, and matches the path decoded, so `/api/keys/{id}/%72eveal` is refused too.
-- `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`, `/api/settings/database`, and the OAuth auto-import routes.
-- Local-only routes (tunnel enable/disable, CLI-tool spawners, headroom process control, password reset).
-- Auth-critical settings keys on `PATCH /api/settings` (`requireLogin`, `requireApiKey`, `authMode`, OIDC fields, outbound-proxy fields, `tunnelDashboardAccess`, `enableObservability`, `exposeComboOnly`) are stripped from an API-key-authenticated patch.
-
-Proxy credentials are redacted, not withheld. `outboundProxyUrl` (`GET`/`PATCH /api/settings`, MCP `get_settings`), `proxyPools[].proxyUrl` (`GET /api/proxy-pools` and `/api/proxy-pools/{id}`), and `providerSpecificData.connectionProxyUrl` (`GET /api/providers` and `/api/providers/{id}`) keep their host and port readable but have any `user:password@` replaced with `***` unless the caller presents a dashboard session or CLI token. An application API key is an inference credential, not an operator session.
-
-For agent clients, the same capabilities are MCP tools on `POST /api/mcp/control`. See [MCP gateway](../features/mcp-gateway.mdx#control-endpoint).
+Dashboard REST under `/api/*` is on [Management API](./management-api.mdx). The same DurinDoor API key that calls `/v1` can call most of those routes; exclusions, redaction, and curl examples live there. MCP tools for the same work: [MCP control](../features/mcp-control.mdx).
 
 See [MCP gateway](../features/mcp-gateway.mdx) and [compression](../features/compression.mdx) for gateway features that are not `/v1` routes.

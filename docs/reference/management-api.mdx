@@ -1,0 +1,400 @@
+---
+title: Management API
+description: Every dashboard REST route under /api, which credentials it accepts, and what an API key cannot do.
+---
+
+Dashboard REST lives under `/api/*` on the same process as inference. Production listens on port `20128`. A DurinDoor API key that can call `/v1` can also call most of these routes. Tables below cover every `route.js` under `src/app/api` except `/v1`, `/v1beta`, and `[...catchAll]` (162 files). Tools for the same work sit on [MCP control](../features/mcp-control.mdx). A walkthrough is on [Automating DurinDoor](../guides/automating-durindoor.mdx).
+
+## Credentials
+
+The gate is `src/dashboardGuard.js` (`proxy`). It classifies a decoded pathname, then the handler may add a second check.
+
+| Code | Who |
+| --- | --- |
+| session | Dashboard JWT cookie `auth_token` |
+| CLI | Header `x-9r-cli-token` (machine-bound) |
+| key | DurinDoor API key: `Authorization: Bearer`, `x-api-key`, `x-goog-api-key`, or `?key=` |
+| loop | Loopback peer and `requireLogin` is off |
+| none | Public. No credential |
+| gw | MCP gateway key, not a DurinDoor API key |
+| local | Local-only gate first. Remote callers without CLI get HTTP 403 `Local only: CLI token required` |
+
+Loopback identity comes from wrapper-stamped peer headers, not from `Host` alone. A request through `x-9r-via-proxy` is never loopback. Management prefixes (`MANAGEMENT_API_PATHS`) accept session, CLI, key, or loop. Reveal paths reject a key. Always-protected paths (`/api/shutdown`, `/api/settings/database`, `/api/version/shutdown`, `/api/version/update`, OAuth auto-import) accept session or CLI only. Routes off that list fall through to session, CLI, or loop. `POST /api/mcp/control` is a separate branch: session, CLI, or key, plus loopback with no credential when `requireApiKey` is off and `Origin` is absent or same-origin. Gateway protocol surfaces (`/api/mcp-gateway`, `/sse`, `/message`) take a gateway key, CLI, or loopback, not a DurinDoor API key. Details: [MCP control](../features/mcp-control.mdx).
+
+<Callout type="warn">
+A DurinDoor API key is an inference credential. It cannot reveal stored secrets, shut the process down, or change login and proxy settings. Mint a dedicated key for automation and keep reveal, shutdown, and database work on a dashboard session.
+</Callout>
+
+## Route families
+
+### Providers
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, POST | `/api/providers` | List connections (GET) or create an API-key/cookie connection (POST) | session, CLI, key, loop |
+| GET | `/api/providers/client` | Paginated connections for the dashboard client, secrets stripped | session, CLI, key, loop |
+| GET | `/api/providers/kilo/free-models` | Cached Kilo free-model catalog | session, CLI, key, loop |
+| PUT | `/api/providers/reorder` | Atomically persist a full connection order | session, CLI, key, loop |
+| GET | `/api/providers/suggested-models` | Suggested models for a registry fetcher id | session, CLI, key, loop |
+| POST | `/api/providers/test-batch` | Test several connections in one call | session, CLI, key, loop |
+| POST | `/api/providers/validate` | Probe one provider with a deadline and SSRF guard | session, CLI, key, loop |
+| GET, PUT, PATCH, DELETE | `/api/providers/{id}` | Read, replace, patch, or delete one connection | session, CLI, key, loop |
+| PATCH | `/api/providers/{id}/auto-ping` | Set that connection's quota auto-ping flag | session, CLI, key, loop |
+| GET | `/api/providers/{id}/models` | Discover models for that connection | session, CLI, key, loop |
+| POST | `/api/providers/{id}/test` | Test one connection | session, CLI, key, loop |
+| POST | `/api/providers/{id}/test-models` | Ping models on that connection by kind | session, CLI, key, loop |
+
+### Provider nodes
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, POST | `/api/provider-nodes` | List (GET) or create (POST) a compatible/embedding node | session, CLI, key, loop |
+| POST | `/api/provider-nodes/validate` | SSRF-bounded URL probe for a node | session, CLI, key, loop |
+| PUT, DELETE | `/api/provider-nodes/{id}` | Update or delete a node | session, CLI, key, loop |
+
+### Media providers
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET | `/api/media-providers/tts/deepgram/voices` | Deepgram TTS voices grouped by language | session, CLI, key, loop |
+| GET | `/api/media-providers/tts/elevenlabs/voices` | ElevenLabs TTS voices grouped by language | session, CLI, key, loop |
+| GET | `/api/media-providers/tts/inworld/voices` | Inworld TTS voices grouped by language | session, CLI, key, loop |
+| GET | `/api/media-providers/tts/minimax/voices` | MiniMax TTS voices; query provider and voice_type | session, CLI, key, loop |
+| GET | `/api/media-providers/tts/voices` | Shared TTS voice picker (edge-tts, local-device, elevenlabs) | session, CLI, key, loop |
+
+### Keys
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, POST | `/api/keys` | List keys with usage (GET) or mint a key (POST, secret once) | session, CLI, key, loop |
+| GET | `/api/keys/policy-catalog` | Model ids valid for a key policy allowlist | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/keys/{id}` | Read, update, or delete a key (secret masked) | session, CLI, key, loop |
+| GET | `/api/keys/{id}/reveal` | Return the raw DurinDoor key secret | session, CLI, key, loop; key refused on reveal |
+
+### Key groups
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, POST | `/api/key-groups` | List or create API-key labels (labels only) | session, CLI, loop |
+| GET, PUT, DELETE | `/api/key-groups/{id}` | Rename or delete a label; keys stay | session, CLI, loop |
+
+### Combos
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, POST | `/api/combos` | List combos (GET) or create one (POST, 201) | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/combos/{id}` | Read, update, or delete a combo | session, CLI, key, loop |
+
+### Connection groups
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, POST | `/api/connection-groups` | List or create connection groups | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/connection-groups/{id}` | Read, update, or delete a group | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/connection-groups/{id}/members` | List, add, or remove group members | session, CLI, key, loop |
+
+### Models
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, PUT | `/api/models` | Dashboard model list with aliases (GET); set one alias (PUT) | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/models/alias` | List, set, or delete model aliases | session, CLI, key, loop |
+| GET, POST | `/api/models/availability` | List model cooldowns (GET); POST clearCooldown | session, CLI, key, loop |
+| GET, POST, PATCH, DELETE | `/api/models/custom` | CRUD custom model rows and capabilities | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/models/disabled` | List, set, or clear disabled model ids per provider | session, CLI, key, loop |
+| POST | `/api/models/test` | Ping one model through the internal completions/embeddings path | session, CLI, key, loop |
+| POST | `/api/models/test/batch` | Ping up to 200 models; streamed results | session, CLI, key, loop |
+
+### Pricing
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, PATCH, DELETE | `/api/pricing` | Read, patch, or reset merged pricing | session, CLI, key, loop |
+
+### Tags
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| OPTIONS, GET | `/api/tags` | Ollama-shaped tag list used by local clients | session, CLI, key, loop |
+
+### Usage
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET | `/api/usage/chart` | Usage chart buckets for a period | session, CLI, key, loop |
+| GET | `/api/usage/combos` | Combo-attributed usage for a period | session, CLI, key, loop |
+| GET | `/api/usage/history` | Aggregate usage stats (default period) | session, CLI, key, loop |
+| GET | `/api/usage/logs` | Last 200 usage log rows | session, CLI, key, loop |
+| GET | `/api/usage/providers` | Distinct providers from request details | session, CLI, key, loop |
+| GET | `/api/usage/request-details` | Paginated request-detail rows | session, CLI, key, loop |
+| GET | `/api/usage/request-logs` | Last 200 usage log rows (alias of logs) | session, CLI, key, loop |
+| POST | `/api/usage/reset` | Delete usage history for a period | session, CLI, key, loop |
+| GET | `/api/usage/stats` | Aggregate usage for a period or date range | session, CLI, key, loop |
+| GET | `/api/usage/stream` | SSE of full stats for a dashboard period | session, CLI, key, loop |
+| GET | `/api/usage/{connectionId}` | Live provider quota/usage for one connection; ?force=1 | session, CLI, key, loop |
+| GET, POST | `/api/usage/{connectionId}/codex-reset-credits` | Read or trigger Codex credit reset | session, CLI, key, loop |
+
+### Timeline
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, DELETE | `/api/timeline` | Paginated sidecar traces (GET); wipe traces (DELETE) | session, CLI, key, loop |
+| GET | `/api/timeline/stream` | SSE of live sidecar writes | session, CLI, key, loop |
+| GET | `/api/timeline/{id}` | One sidecar trace plus events | session, CLI, key, loop |
+
+### Settings
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, PATCH | `/api/settings` | Read settings (GET) or patch them (PATCH) | session, CLI, key, loop |
+| GET, POST | `/api/settings/auto-configure` | Headroom/PxPipe/Firecrawl probe status or run | session, CLI, key, loop; handler wants session |
+| GET, POST | `/api/settings/database` | Export/import the data file; JWT or CLI plus password | session, CLI; password on export/import |
+| POST | `/api/settings/database/cutover` | Run SQLite to PostgreSQL cutover | session, CLI; password on export/import |
+| GET, POST | `/api/settings/database/engine` | Read or switch the database engine | session, CLI; password on export/import |
+| GET | `/api/settings/database/log` | Recent pgCutoverLog rows | session, CLI; password on export/import |
+| POST | `/api/settings/database/rollback` | Restore SQLite from a cutover snapshot | session, CLI; password on export/import |
+| POST | `/api/settings/database/selective` | Selective provider/combo transfer; preview is secret-free | session, CLI; password on export/import |
+| POST | `/api/settings/database/test` | Probe a candidate Postgres URL without opening the adapter | session, CLI; password on export/import |
+| POST | `/api/settings/firecrawl/detect` | Probe Firecrawl endpoints; session or open dashboard in handler | session, CLI, key, loop; handler wants session |
+| POST | `/api/settings/proxy-test` | Test the configured outbound proxy against a fixed URL | session, CLI, key, loop |
+| GET | `/api/settings/require-login` | Public requireLogin and tunnel access flags | none |
+
+### Data retention
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, POST | `/api/data-retention` | Read retention policy (GET); run sweep (POST, JWT/CLI) | session, CLI, loop; POST needs JWT/CLI |
+
+### MCP
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| POST | `/api/mcp/control` | JSON-RPC 2.0 management MCP server | session, CLI, key; loopback if requireApiKey off |
+| POST | `/api/mcp/{plugin}/message` | JSON-RPC companion for a local stdio MCP plugin SSE session | session, CLI, key, loop; local |
+| GET | `/api/mcp/{plugin}/sse` | SSE handshake for a local stdio MCP plugin bridge | session, CLI, key, loop; local |
+
+### MCP gateway
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| POST, GET | `/api/mcp-gateway` | Gateway JSON-RPC POST; GET is 405 | gw, CLI, loopback |
+| GET, POST | `/api/mcp-gateway/instances` | List or create upstream MCP instances | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/mcp-gateway/instances/{id}` | Read, update, or delete an instance | session, CLI, key, loop |
+| POST | `/api/mcp-gateway/instances/{id}/test` | List upstream tools as a probe | session, CLI, key, loop |
+| GET, POST | `/api/mcp-gateway/keys` | List gateway keys (GET); create is local-only (POST 201) | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/mcp-gateway/keys/{id}` | Read (optional ?reveal=1), update grants, or delete | session, CLI, key, loop |
+| GET | `/api/mcp-gateway/keys/{id}/reveal` | Raw gateway secret; local request only | session, CLI, key, loop; key refused on reveal |
+| POST | `/api/mcp-gateway/message` | SSE companion POST; needs sessionId | gw, CLI, loopback |
+| GET | `/api/mcp-gateway/oauth/{id}/{action}` | authorize, callback, status, or client-metadata | mixed (see oauth leaves) |
+| GET | `/api/mcp-gateway/sse` | SSE handshake; returns the message URL | gw, CLI, loopback |
+
+### Proxy pools
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, POST | `/api/proxy-pools` | List or create proxy pools | session, CLI, key, loop |
+| POST | `/api/proxy-pools/cloudflare-deploy` | Deploy a Cloudflare relay worker | session, CLI, key, loop |
+| POST | `/api/proxy-pools/vercel-deploy` | Deploy a Vercel relay function | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/proxy-pools/{id}` | Read, update, or delete a pool | session, CLI, key, loop |
+| POST | `/api/proxy-pools/{id}/test` | Test one pool entry | session, CLI, key, loop |
+
+### Tunnel
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| POST | `/api/tunnel/disable` | Stop the Cloudflare tunnel | session, CLI, key, loop; local |
+| POST | `/api/tunnel/enable` | Start the Cloudflare tunnel | session, CLI, key, loop; local |
+| GET | `/api/tunnel/status` | Tunnel and Tailscale status | session, CLI, key, loop |
+| GET | `/api/tunnel/tailscale-check` | Parallel Tailscale probes | session, CLI, key, loop; local |
+| POST | `/api/tunnel/tailscale-disable` | Disable Tailscale serve | session, CLI, key, loop; local |
+| POST | `/api/tunnel/tailscale-enable` | Enable Tailscale serve | session, CLI, key, loop; local |
+| POST | `/api/tunnel/tailscale-install` | Install Tailscale on this host | session, CLI, key, loop; local |
+
+### CLI tools
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET | `/api/cli-tools/all-statuses` | Batch CLI-tool install/config status | session, CLI, key, loop |
+| GET, POST, DELETE, PATCH | `/api/cli-tools/antigravity-mitm` | MITM status and mutations for Antigravity | session, CLI, key, loop; local |
+| GET, PUT | `/api/cli-tools/antigravity-mitm/alias` | Read or save MITM aliases for a tool | session, CLI, key, loop; local |
+| GET, POST, DELETE | `/api/cli-tools/claude-settings` | Read, apply, or reset Claude Code settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/cline-settings` | Read, apply, or reset Cline settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/codex-settings` | Read, apply, or reset Codex settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/copilot-settings` | Read, apply, or reset Copilot settings | session, CLI, key, loop |
+| GET | `/api/cli-tools/cowork-mcp-registry` | Filtered Cowork MCP registry list | session, CLI, key, loop |
+| POST | `/api/cli-tools/cowork-mcp-tools` | Probe a Cowork MCP server tools/list | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/cowork-settings` | Read, apply, or reset Cowork settings | session, CLI, key, loop; local |
+| GET, POST, DELETE | `/api/cli-tools/deepseek-tui-settings` | Read, apply, or reset DeepSeek TUI settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/droid-settings` | Read, apply, or reset Droid settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/grok-build-settings` | Read, apply, or reset Grok Build config.toml | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/hermes-settings` | Read, apply, or reset Hermes settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/jcode-settings` | Read, apply, or reset JCode settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/kilo-settings` | Read, apply, or reset Kilo settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/openclaw-settings` | Read, apply, or reset OpenClaw settings | session, CLI, key, loop |
+| GET, POST, PATCH, DELETE | `/api/cli-tools/opencode-settings` | Read, apply, patch, or reset OpenCode settings | session, CLI, key, loop |
+
+### Translator
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, DELETE | `/api/translator/console-logs` | Read or clear translator console logs | session, CLI, key, loop |
+| GET | `/api/translator/console-logs/stream` | SSE of translator console logs | session, CLI, key, loop |
+| GET | `/api/translator/load` | Load an allowlisted translator fixture file | session, CLI, key, loop |
+| POST | `/api/translator/save` | Save an allowlisted translator fixture file | session, CLI, key, loop |
+| POST | `/api/translator/send` | Send a translator playground request | session, CLI, key, loop |
+| POST | `/api/translator/translate` | Run a one-shot translation without sending upstream | session, CLI, key, loop |
+
+### OAuth
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| POST | `/api/oauth/codex/bulk-import` | Bulk-import Codex OAuth account JSON | session, CLI, key, loop |
+| POST | `/api/oauth/codex/import-token` | Import a ChatGPT access token as a connection | session, CLI, key, loop |
+| GET | `/api/oauth/cursor/auto-import` | Read Cursor tokens from local SQLite | session, CLI; local |
+| POST, GET | `/api/oauth/cursor/import` | Import a Cursor access token | session, CLI, key, loop |
+| POST | `/api/oauth/gitlab/pat` | Create a GitLab Duo connection from a PAT | session, CLI, key, loop |
+| POST | `/api/oauth/grok-cli/bulk-import` | Bulk-import Grok CLI device accounts | session, CLI, key, loop |
+| POST | `/api/oauth/iflow/cookie` | Create an iFlow connection from a cookie | session, CLI, key, loop |
+| POST | `/api/oauth/kiro/api-key` | Import a Kiro headless API key | session, CLI, key, loop |
+| GET | `/api/oauth/kiro/auto-import` | Read Kiro refresh tokens from the AWS SSO cache | session, CLI; local |
+| POST | `/api/oauth/kiro/import` | Import a Kiro IDE refresh token | session, CLI, key, loop |
+| POST | `/api/oauth/kiro/import-cli-proxy` | Import Kiro CLIProxyAPI auth JSON | session, CLI, key, loop |
+| GET, POST | `/api/oauth/kiro/social-authorize` | Start Kiro social OAuth (POST; GET kept) | session, CLI, key, loop |
+| POST | `/api/oauth/kiro/social-exchange` | Exchange a Kiro social code | session, CLI, key, loop |
+| GET, POST | `/api/oauth/{provider}/{action}` | Generic OAuth: authorize, device-code, exchange, poll, cancel, proxies, import-token, manual-code | session, CLI, key, loop |
+
+### Compression
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| POST | `/api/compression/preview` | Run catalog engines on a body and report per-id status | session, CLI, loop |
+
+### Token saver
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET | `/api/token-saver/stream` | SSE of token-saver aggregates for a period | session, CLI, loop |
+
+### Headroom
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, POST | `/api/headroom/extras` | List or install Headroom extra wheels | session, CLI; local |
+| GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS | `/api/headroom/proxy/{path...}` | Reverse-proxy into the Headroom process | session, CLI; local |
+| POST | `/api/headroom/start` | Start the managed Headroom venv process | session, CLI; local |
+| GET | `/api/headroom/stats` | Headroom circuit and usage stats | session, CLI, key, loop |
+| GET | `/api/headroom/status` | Headroom process status; URL userinfo redacted for a key | session, CLI, key, loop |
+| POST | `/api/headroom/stop` | Stop the managed Headroom process | session, CLI; local |
+
+### PxPipe
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| POST, GET | `/api/pxpipe/health` | PxPipe module health; GET mirrors POST | session, CLI; loop follows requireLogin |
+| GET | `/api/pxpipe/logs` | PxPipe module logs | session, CLI; loop follows requireLogin |
+| POST | `/api/pxpipe/restart` | Reload the in-process PxPipe module | session, CLI; loop follows requireLogin |
+| POST | `/api/pxpipe/start` | Warm the in-process PxPipe transform module | session, CLI; loop follows requireLogin |
+| GET | `/api/pxpipe/stats` | PxPipe transform stats | session, CLI; loop follows requireLogin |
+| GET | `/api/pxpipe/status` | PxPipe module status | session, CLI; loop follows requireLogin |
+| POST | `/api/pxpipe/stop` | Drop the in-process module (fail-open passthrough) | session, CLI; loop follows requireLogin |
+
+### Health
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET, OPTIONS | `/api/health` | Liveness `{ ok: true }` with CORS | none |
+| GET, DELETE, OPTIONS | `/api/health/providers` | Cached provider health; DELETE invalidates; ?force=1 | none |
+
+### Version
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET | `/api/version` | Installed version and npm latest | none |
+| POST | `/api/version/shutdown` | Exit so a manual update can take file locks | session, CLI |
+| POST | `/api/version/update` | Schedule the detached updater and exit | session, CLI |
+
+### Locale
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| POST | `/api/locale` | Set the locale cookie | none |
+
+### Init
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET | `/api/init` | Boot initializer; body is the string Initialized | none |
+
+### Auth
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| POST | `/api/auth/change-password` | One-shot default-password change with a loopback proof | none |
+| POST | `/api/auth/login` | Password login; issues auth_token | none |
+| POST | `/api/auth/logout` | Clear the session cookie | none |
+| GET | `/api/auth/oidc/callback` | OIDC redirect callback | none |
+| GET | `/api/auth/oidc/start` | Start the OIDC login redirect | none |
+| POST | `/api/auth/oidc/test` | Probe OIDC discovery (400 on SSRF/URL errors) | none |
+| POST | `/api/auth/reset-password` | Clear the stored hash back to the default (local-only) | session, CLI; local |
+| GET | `/api/auth/status` | Session state and whether the built-in password is active | none |
+
+### Shutdown
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| POST | `/api/shutdown` | Dev-only process exit; needs SHUTDOWN_SECRET; 403 in production | session, CLI |
+
+## What an API key cannot do
+
+The gate refuses a key on `GET /api/keys/{id}/reveal`, `GET /api/mcp-gateway/keys/{id}/reveal` (also 403 unless loopback), any `?reveal=1` (including `/api/keys/{id}/%72eveal`), `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`, `/api/settings/database` and children, `/api/oauth/cursor/auto-import`, `/api/oauth/kiro/auto-import`, and remote calls to local-only spawn paths (tunnel enable/disable, Tailscale, Cowork settings, Antigravity MITM, Headroom start/stop/proxy/extras, MCP plugin `/sse` and `/message`, `POST /api/auth/reset-password`). Families never on `MANAGEMENT_API_PATHS`: `/api/key-groups`, `/api/data-retention`, `/api/compression`, `/api/token-saver`, `/api/pxpipe`.
+
+After the gate, `GET`/`POST /api/settings/auto-configure` and `POST /api/settings/firecrawl/detect` still want a session (or `requireLogin` off). `POST /api/data-retention` needs JWT or CLI. `POST /api/mcp-gateway/keys` is local-only in the handler. `POST /api/shutdown` also needs `SHUTDOWN_SECRET` and returns 403 in production.
+
+Gateway OAuth leaves: `client-metadata` is public. `callback` takes session, CLI, or loop. `authorize` and `status` sit on the management gate, so a key can finish a connect flow.
+
+## Settings keys stripped from an API-key patch
+
+`PATCH /api/settings` always drops `password`, `passwordSessionEpoch`, and `mitmSudoEncrypted`. Without a session or CLI it also drops `AUTH_CRITICAL_SETTING_KEYS`: `exposeComboOnly`, `requireLogin`, `requireApiKey`, `authMode`, `oidcIssuerUrl`, `oidcClientId`, `oidcClientSecret`, `oidcScopes`, `oidcLoginLabel`, `tunnelDashboardAccess`, `enableObservability`, `outboundProxyEnabled`, `outboundProxyUrl`, `outboundNoProxy`. `claudeAutoPing` and `codexAutoPing` return 400 (`Auto-ping must be updated through the connection-scoped endpoint`). MCP `update_settings` strips the same auth-critical set plus those auto-ping keys, and returns 400 `No updatable settings provided` when nothing remains.
+
+## Proxy URL redaction
+
+An API key sees host and port. `user:password@` becomes `***`. Unparsable strings become `***`. Session, CLI, and an open local dashboard keep the raw value so an edit form does not persist the placeholder. Fields: `outboundProxyUrl` on settings, `proxyUrl` on proxy pools, `providerSpecificData.connectionProxyUrl` on providers, and `headroomUrl` on `GET /api/headroom/status`. MCP `get_settings` redacts `outboundProxyUrl`. MCP `list_connections` drops `connectionProxyUrl` instead of redacting it.
+
+## Errors
+
+| HTTP | Body | When |
+| --- | --- | --- |
+| 401 | `{ error: "Unauthorized" }` | Gate: missing or wrong credential, including control with a foreign Origin |
+| 401 | `{ error: "gateway key required" }` | Gateway protocol surface without a gateway key (and not loopback/CLI) |
+| 403 | `{ error: "Local only: CLI token required" }` | Local-only path from a remote peer without CLI |
+| 403 | `{ error: "Key creation is only available from local requests." }` | Remote `POST /api/mcp-gateway/keys` |
+| 403 | `{ error: "Key reveal is only available from local requests." }` | Remote gateway-key reveal |
+| 400 | `{ error: "<message>" }` | Validation (combo name, missing provider, bad period) |
+| 404 | `{ error: "Connection not found" }` / `{ error: "Combo not found" }` / `{ error: "Key not found" }` | Missing row |
+| 409 | provider-connection conflict | Duplicate API-key connection create |
+| 500 | `{ error: "Failed to ..." }` | Handler catch-all |
+
+Malformed percent-encoding on an `/api` path is 401, fail-closed. Combo create and key create are 201. Key create includes `key`; later list/detail return `maskedKey`.
+
+## Worked examples
+
+Create a fallback combo (letters, digits, `-`, `_`, `.`; duplicates are 400; optional `members`, `kind`, `capabilities`, `allowedConnectionIds` up to 500):
+
+```bash
+curl http://localhost:20128/api/combos \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"coding-default","models":["anthropic/claude-sonnet-4-5","openai/gpt-4.1"]}'
+```
+
+Add an API-key connection and read quota. POST needs `provider` and `name`. `apiKey` is required unless the provider is `noAuth` or `ollama-local`. OAuth accounts use `/api/oauth/...`. `GET /api/usage/{connectionId}` returns provider quota for OAuth or a usage-eligible API-key provider. `?force=1` skips that provider's in-process cache. MCP snapshot refresh is `refresh_quota`.
+
+```bash
+curl http://localhost:20128/api/providers \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"openai","name":"openai-main","apiKey":"sk-upstream-secret"}'
+
+curl "http://localhost:20128/api/usage/CONNECTION_ID?force=1" \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```

@@ -1,9 +1,10 @@
 {
   "title": "Reference",
-  "description": "API routes, environment variables, CLI, plugin manifests, and model limits.",
+  "description": "API routes, management REST, environment variables, CLI, plugin manifests, and model limits.",
   "pages": [
     "index",
     "api",
+    "management-api",
     "environment",
     "cli",
     "provider-plugin-manifest",

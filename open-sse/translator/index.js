@@ -143,7 +143,6 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
       result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
       finalizeTranslatedRequest = directFn.finalize;
     } else {
-      // Step 1: source -> openai (if source is not openai)
       if (sourceFormat !== FORMATS.OPENAI) {
         const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
         if (toOpenAI) {
@@ -153,7 +152,6 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
         }
       }
 
-      // Step 2: openai -> target (if target is not openai)
       if (targetFormat !== FORMATS.OPENAI) {
         const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
         if (fromOpenAI) {
@@ -284,7 +282,6 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
     return converted ? Array.isArray(converted) ? converted : [converted] : [];
   }
 
-  // Step 1: target -> openai (if target is not openai)
   if (targetFormat !== FORMATS.OPENAI) {
     const toOpenAI = responseRegistry.get(`${targetFormat}:${FORMATS.OPENAI}`);
     if (toOpenAI) {
@@ -305,7 +302,6 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
     results = [null];
   }
 
-  // Step 2: openai -> source (if source is not openai)
   if (sourceFormat !== FORMATS.OPENAI) {
     const fromOpenAI = responseRegistry.get(`${FORMATS.OPENAI}:${sourceFormat}`);
     if (fromOpenAI) {

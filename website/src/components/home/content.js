@@ -76,7 +76,7 @@ export const QUOTA_SAMPLE = [
   { name: "Gemini", plan: "free tier", used: 0.27, reset: "resets daily", logo: providerLogo("gemini") },
 ];
 
-// Commands from README.md "Quick start" and DOCKER.md.
+// Commands from README.md "Quick start" and docs/deployment/docker.mdx.
 export const DEPLOYMENTS = [
   {
     id: "npm",

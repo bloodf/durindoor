@@ -57,7 +57,7 @@ vi.mock("../../open-sse/utils/streamHandler.js", () => ({
 }));
 
 vi.mock("../../open-sse/services/tokenRefresh.js", () => ({ refreshWithRetry: vi.fn() }));
-vi.mock("../../open-sse/translator/concerns/modality.js", () => ({ stripUnsupportedModalities: vi.fn(() => false) }));
+vi.mock("../../open-sse/translator/concerns/modality.js", () => ({ stripUnsupportedModalities: vi.fn(() => false), hasMediaBlocks: vi.fn(() => false) }));
 vi.mock("../../open-sse/translator/concerns/prefetch.js", () => ({ prefetchRemoteImages: vi.fn(async () => 0) }));
 vi.mock("../../open-sse/handlers/chatCore/requestDetail.js", () => ({
   buildRequestDetail: vi.fn((detail) => detail),

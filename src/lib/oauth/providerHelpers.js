@@ -1,5 +1,6 @@
 import { buildKiroProfileEndpoint } from "../../../open-sse/config/kiroRegions.js";
-import { isString } from "../../shared/utils/typeChecks.js";
+import { ANTHROPIC_API_VERSION } from "../../../open-sse/providers/shared.js";
+import { isBoolean, isString } from "../../shared/utils/typeChecks.js";
 
 const BASE64_BLOCK_SIZE = 4;
 const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
@@ -102,6 +103,81 @@ export function extractCodexAccountInfo(idToken) {
     chatgptPlanType: chatgpt.chatgpt_plan_type || payload.plan_type
   };
 }
+
+/**
+ * Fetch the Claude OAuth profile (account email + organization plan tier).
+ *
+ * Best-effort by design: a missing or failed profile must never fail the OAuth
+ * connect, since the tokens themselves are already valid at this point. The one
+ * exception is a strict proxy pool — that is a security boundary, so a transport
+ * failure there aborts rather than silently egressing or degrading, matching
+ * `fetchKiroProfileArn` above.
+ *
+ * @param {string} accessToken - freshly exchanged Claude OAuth access token
+ * @param {string} profileUrl - `oauth.profileUrl` from the claude registry
+ * @param {object|null} [proxyOptions] - OAuth-selected outbound proxy pool
+ * @returns {Promise<object|null>} raw profile payload, or null when unavailable
+ */
+export async function fetchClaudeProfile(accessToken, profileUrl, proxyOptions = null) {
+  if (!accessToken || !profileUrl) return null;
+  try {
+    const response = await fetch(profileUrl, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "anthropic-beta": "oauth-2025-04-20",
+        "anthropic-version": ANTHROPIC_API_VERSION
+      },
+      proxyOptions
+    });
+    if (!response.ok) {
+      if (proxyOptions?.strictProxy === true) {
+        throw new Error(`Claude profile fetch failed: HTTP ${response.status}`);
+      }
+      return null;
+    }
+    return await response.json();
+  } catch (error) {
+    if (proxyOptions?.strictProxy === true) throw error;
+    return null;
+  }
+}
+
+/**
+ * Connection fields derived from a Claude OAuth profile reply.
+ *
+ * Returns `{}` for a missing or unusable profile so callers can spread it blindly.
+ * Only `email`/`displayName` reach the client (both are already in the connection
+ * sanitizer's allowlist); the organization and account identifiers live under
+ * `providerSpecificData`, which the sanitizer never exposes.
+ *
+ * @param {object|null} profile - payload from `fetchClaudeProfile`
+ * @returns {object} connection patch fields
+ */
+export function claudeProfileFields(profile) {
+  const account = profile?.account;
+  const org = profile?.organization;
+  if (!account && !org) return {};
+
+  const fields = {};
+  if (account?.email) fields.email = account.email;
+  const displayName = account?.display_name || account?.full_name;
+  if (displayName) fields.displayName = displayName;
+
+  const providerSpecificData = {};
+  if (account?.uuid) providerSpecificData.claudeAccountUuid = account.uuid;
+  if (isBoolean(account?.has_claude_max)) providerSpecificData.claudeHasMax = account.has_claude_max;
+  if (isBoolean(account?.has_claude_pro)) providerSpecificData.claudeHasPro = account.has_claude_pro;
+  if (org?.uuid) providerSpecificData.claudeOrgUuid = org.uuid;
+  if (org?.name) providerSpecificData.claudeOrgName = org.name;
+  if (org?.organization_type) providerSpecificData.claudeOrgType = org.organization_type;
+  if (org?.rate_limit_tier) providerSpecificData.claudeRateLimitTier = org.rate_limit_tier;
+  if (Object.keys(providerSpecificData).length) fields.providerSpecificData = providerSpecificData;
+
+  return fields;
+}
+
 
 export {
   BASE64_BLOCK_SIZE,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { canonicalizeUsage, extractUsage, mergeUsage } from "../../open-sse/utils/usageTracking.js";
-import { calculateCostFromTokens } from "../../open-sse/providers/pricing.js";
+import { calculateCostFromTokens, getPricingForModel } from "../../open-sse/providers/pricing.js";
 import { toOpenAIUsage } from "../../open-sse/translator/concerns/usage.js";
 
 // Canonical convention (single source of truth for storage + cost):
@@ -155,6 +155,92 @@ describe("calculateCostFromTokens (canonical inclusive convention)", () => {
       { input: 1.75, output: 14, cached: 0.175, reasoning: 14 },
     );
     expect(cost).toBeCloseTo((1_000 * 1.75 + 9_000 * 0.175 + 500 * 14) / 1_000_000, 12);
+  });
+
+  // Long-context tiers. Most vendors bill the higher rate only once a request
+  // exceeds the threshold; xAI applies it to requests that reach it exactly.
+  const tiered = {
+    input: 2,
+    output: 6,
+    cached: 0.3,
+    reasoning: 6,
+    longContextThreshold: 200_000,
+    longContextInputMultiplier: 2,
+    longContextOutputMultiplier: 2,
+  };
+
+  it("bills ordinary rates below the long-context threshold", () => {
+    const cost = calculateCostFromTokens(
+      { prompt_tokens: 199_999, completion_tokens: 1_000 },
+      tiered,
+    );
+    expect(cost).toBeCloseTo((199_999 * 2 + 1_000 * 6) / 1_000_000, 12);
+  });
+
+  it("bills the long-context tier above the threshold, cached tokens included", () => {
+    const cost = calculateCostFromTokens(
+      { prompt_tokens: 300_000, cached_tokens: 100_000, completion_tokens: 1_000 },
+      tiered,
+    );
+    // Long-context doubles input, cached and output alike.
+    expect(cost).toBeCloseTo((200_000 * 4 + 100_000 * 0.6 + 1_000 * 12) / 1_000_000, 12);
+  });
+
+  it("keeps an exclusive threshold exclusive at the exact boundary", () => {
+    const cost = calculateCostFromTokens(
+      { prompt_tokens: 200_000, completion_tokens: 1_000 },
+      tiered,
+    );
+    expect(cost).toBeCloseTo((200_000 * 2 + 1_000 * 6) / 1_000_000, 12);
+  });
+
+  it("applies an inclusive threshold at the exact boundary", () => {
+    const cost = calculateCostFromTokens(
+      { prompt_tokens: 200_000, completion_tokens: 1_000 },
+      { ...tiered, longContextInclusive: true },
+    );
+    expect(cost).toBeCloseTo((200_000 * 4 + 1_000 * 12) / 1_000_000, 12);
+  });
+});
+
+describe("published vendor rates", () => {
+  // https://docs.x.ai/developers/pricing — Grok 4.5/4.6 are $2/$6 per 1M with a
+  // 200k long-context tier that doubles both, applied when a request *reaches*
+  // the threshold. They differ only in the cached rate.
+  it("prices Grok 4.5 and 4.6 variants from their published rates, not the grok-* fallback", () => {
+    for (const model of ["grok-4.5", "grok-4.5-high", "grok-4.6", "grok-4.6-xhigh"]) {
+      const pricing = getPricingForModel("gb", model);
+      expect(pricing.input).toBe(2);
+      expect(pricing.output).toBe(6);
+      expect(pricing.longContextThreshold).toBe(200_000);
+      expect(pricing.longContextInclusive).toBe(true);
+    }
+    expect(getPricingForModel("gb", "grok-4.5").cached).toBe(0.3);
+    expect(getPricingForModel("gb", "grok-4.6").cached).toBe(0.5);
+  });
+
+  it("charges a 200k-token Grok 4.6 request at the long-context tier", () => {
+    const cost = calculateCostFromTokens(
+      { prompt_tokens: 200_000, completion_tokens: 10_000 },
+      getPricingForModel("gb", "grok-4.6"),
+    );
+    expect(cost).toBeCloseTo((200_000 * 4 + 10_000 * 12) / 1_000_000, 12);
+  });
+
+  it("leaves older Grok models on the family fallback", () => {
+    for (const model of ["grok-3", "grok-4", "grok-code-fast-1"]) {
+      expect(getPricingForModel("gb", model).longContextThreshold).toBeUndefined();
+    }
+  });
+
+  // Anthropic lists Claude Opus 4 at $15 input / $75 output per 1M.
+  // The row previously carried output 25.00 against reasoning 112.50, billing
+  // reasoning at 4.5x its own output rate.
+  it("prices Claude Opus 4 reasoning consistently with its own output rate", () => {
+    const pricing = getPricingForModel("anthropic", "claude-opus-4-20250514");
+    expect(pricing.input).toBe(15);
+    expect(pricing.output).toBe(75);
+    expect(pricing.reasoning).toBeCloseTo(pricing.output * 1.5, 12);
   });
 });
 

@@ -1,3 +1,47 @@
+# 4.4.0
+
+## Features
+
+- feat(dashboard): split MCP Gateway instances and keys into separate pages (#873)
+- feat(keys): add API key groups with filter and search (#872)
+- feat(dashboard): split Endpoint and API Keys into separate pages (#869)
+- feat(skills): copy agent instructions with the selected endpoint and API key (#868)
+- feat(providers): add a keyless Local Whisper speech-to-text provider (#866)
+
+## Fixes
+
+- fix(translator): downgrade forced tool_choice that Claude thinking models reject (#877)
+- fix(dashboard): refuse to save gateway grants that failed to load (#876)
+- fix(dashboard): wait for instances before the grants picker reports none (#875)
+- fix(dashboard): load gateway instances only when the grants picker opens (#874)
+- fix(quota): keep Claude quota visible through a rate-limit cooldown (#867)
+- fix(endpoint): show the complete endpoint URL instead of a clipped fragment (#865)
+- fix(quota): arm credential refresh timeout when the rotation lane is acquired (#864)
+- fix(website): show the demo password on the login page (#861)
+
+## Upstream ports
+
+- port(upstream): #4041 - add a local AI Credits cutoff for GitHub Copilot (#891)
+- port(upstream): #4087 - isolate video poll cooldowns and pin polls to their account (#890)
+- port(upstream): #4068 - correct Grok 4.5/4.6 and Claude Opus 4 token costs (#889)
+- port(upstream): #4027 - clear credential fields when an auth modal closes (#887)
+- port(upstream): #3960 - add the Token Market provider (#886)
+- port(upstream): #4029 - store Claude account email and real plan on OAuth connect (#885)
+- port(upstream): #3967 - add Cline free-tier models and API-key auth (#884)
+- port(upstream): #4056 - skip style-prompt injection on media-carrying requests (#883)
+- port(upstream): #3997 - refresh credentials whose expiresAt is a numeric epoch string (#882)
+- port(upstream): a7047a0 - single-source the Codex CLI version header (#881)
+- port(upstream): f6e7cab - stop workos:-prefixing ClinePass API keys (#880)
+- port(upstream): 628ff1ea - bound the dashboard session cookie lifetime (#863)
+- port(upstream): #3947 - keep Anthropic-only tool types for DeepSeek (#862)
+
+## Maintenance
+
+- docs(changelog): correct when a forced tool_choice survives the thinking guard (#878)
+- test(pxpipe): assert the package's result shape, not just its export (#871)
+- chore(deps): update runtime and tooling packages (#870)
+
+
 # Unreleased
 
 ## Features

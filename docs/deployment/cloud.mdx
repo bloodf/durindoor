@@ -15,7 +15,7 @@ Do this before the process is reachable from the internet:
 6. Restrict the dashboard: VPN, firewall, proxy auth, or a trusted network.
 7. Back up `DATA_DIR` before every upgrade.
 
-Full lists: [Environment variables](../reference/environment.md), [Security](../operations/security.md).
+Full lists: [Environment variables](../reference/environment.md), [Security](../operations/security.mdx).
 
 <Callout type="warn">
 `HOSTNAME=0.0.0.0` binds every interface. The dashboard can start tunnels and other host commands. Leave `HOSTNAME` unset so `custom-server.js` pins `127.0.0.1`, then proxy to that loopback port. Set `0.0.0.0` only when the proxy is not on this host, and put authentication in front of it.
@@ -98,7 +98,7 @@ Put nginx or Caddy on 443, proxy to `http://127.0.0.1:20128`. Overwrite `X-Forwa
 | CLI `durindoor` | `0.0.0.0` (`--host` overrides) |
 | Docker image / Compose | `0.0.0.0` |
 
-Same-host proxy: keep `127.0.0.1` so `custom-server.js` treats the proxy as a loopback hop and can trust `X-Forwarded-For`. Other-host proxy or a raw public bind: `HOSTNAME=0.0.0.0`, firewall the port, and do not skip the [security](../operations/security.md) list.
+Same-host proxy: keep `127.0.0.1` so `custom-server.js` treats the proxy as a loopback hop and can trust `X-Forwarded-For`. Other-host proxy or a raw public bind: `HOSTNAME=0.0.0.0`, firewall the port, and do not skip the [security](../operations/security.mdx) list.
 
 ## Health and restart
 
@@ -109,4 +109,4 @@ sudo systemctl restart durindoor
 
 Restart after changing `PORT`, `HOSTNAME`, `DATA_DIR`, `JWT_SECRET`, `API_KEY_SECRET`, proxy env, or OAuth URL overrides. Dashboard settings stored in SQLite do not need a process restart.
 
-Upgrade: back up `DATA_DIR`, `git pull`, `npm install --no-audit --no-fund`, `npm run build`, restart the unit. [Upgrading](../operations/upgrading.md). Docker tag moves: [Docker](docker.mdx).
+Upgrade: back up `DATA_DIR`, `git pull`, `npm install --no-audit --no-fund`, `npm run build`, restart the unit. [Upgrading](../operations/upgrading.mdx). Docker tag moves: [Docker](docker.mdx).

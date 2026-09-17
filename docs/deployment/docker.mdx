@@ -30,7 +30,7 @@ docker run -d \
 
 `JWT_SECRET` is required on a fresh data dir. An older `DATA_DIR/jwt-secret` file is reused with a warning. DurinDoor does not write a new one.
 
-To listen on all host interfaces, change the publish to `-p 20128:20128` and put a reverse proxy in front. See [VPS and cloud](cloud.mdx) and [Security](../operations/security.md).
+To listen on all host interfaces, change the publish to `-p 20128:20128` and put a reverse proxy in front. See [VPS and cloud](cloud.mdx) and [Security](../operations/security.mdx).
 
 ## Compose
 
@@ -57,7 +57,7 @@ The `durindoor` service in that file:
 
 `HOSTNAME=0.0.0.0` is required inside the container so the process accepts traffic from Docker's port publish. The image Dockerfile sets the same `PORT`, `HOSTNAME`, and `DATA_DIR`.
 
-Put secrets in `.env`. Compose also forwards optional `DURINDOOR_PG_URL`, `DURINDOOR_PG_SSLMODE` (default `prefer`), and `DURINDOOR_PG_PREFERRED_VERSION` (default `18`). Postgres is opt-in: `docker compose --profile postgres18 up` (or `postgres17` / `postgres16`). Cutover is Settings, then Database. Operator runbook: [Postgres](../operations/postgres.md).
+Put secrets in `.env`. Compose also forwards optional `DURINDOOR_PG_URL`, `DURINDOOR_PG_SSLMODE` (default `prefer`), and `DURINDOOR_PG_PREFERRED_VERSION` (default `18`). Postgres is opt-in: `docker compose --profile postgres18 up` (or `postgres17` / `postgres16`). Cutover is Settings, then Database. Operator runbook: [Postgres](../operations/postgres.mdx).
 
 ```bash
 docker compose up -d
@@ -86,7 +86,7 @@ Named volume:
 -v durindoor-data:/app/data
 ```
 
-The image entrypoint `chown`s `/app/data` to `node` then `exec`s `node custom-server.js`. `EXPOSE 20128`. Backup and restore for both mount styles: [Data management](../operations/data-management.md).
+The image entrypoint `chown`s `/app/data` to `node` then `exec`s `node custom-server.js`. `EXPOSE 20128`. Backup and restore for both mount styles: [Data management](../operations/data-management.mdx).
 
 ## Image layout
 
@@ -103,7 +103,7 @@ docker logs -f durindoor
 
 ## Upgrade
 
-1. Stop and back up `DATA_DIR` ([Data management](../operations/data-management.md)).
+1. Stop and back up `DATA_DIR` ([Data management](../operations/data-management.mdx)).
 2. Record the current tag: `docker inspect durindoor --format '{{.Config.Image}}'`.
 3. Change the image tag in Compose, or pull a pinned tag.
 4. `docker compose pull` then `docker compose up -d`.
@@ -117,6 +117,6 @@ docker stop durindoor && docker rm durindoor
 # re-run the docker run command with the same volume and env
 ```
 
-If a schema migration already ran, restore the pre-upgrade backup before starting an older image. Release notes: [Upgrading](../operations/upgrading.md).
+If a schema migration already ran, restore the pre-upgrade backup before starting an older image. Release notes: [Upgrading](../operations/upgrading.mdx).
 
 Keep `JWT_SECRET` and `API_KEY_SECRET` stable across recreate. A new `API_KEY_SECRET` invalidates minted key checksums. [Environment variables](../reference/environment.md) is the full list.

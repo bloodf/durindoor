@@ -60,7 +60,7 @@ durindoor.example.com {
 
 `header_up X-Forwarded-For {remote_host}` overwrites the header with the client DurinDoor should see. Caddy still terminates TLS; set `AUTH_COOKIE_SECURE=true` and the `BASE_URL` pair to this HTTPS origin.
 
-`TRUST_PROXY=true` is a separate login-limiter switch. Only turn it on when this wrapper is in the path and the proxy overwrites forwarding headers. Details: [Security](../operations/security.md).
+`TRUST_PROXY=true` is a separate login-limiter switch. Only turn it on when this wrapper is in the path and the proxy overwrites forwarding headers. Details: [Security](../operations/security.mdx).
 
 ## Static assets
 

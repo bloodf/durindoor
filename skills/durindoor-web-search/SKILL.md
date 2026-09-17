@@ -24,4 +24,4 @@ curl -X POST "$DURINDOOR_URL/v1/search" \
 
 Optional country, language, time range, domain filter, search type, and provider options depend on the discovered model. The response includes normalized `results`, usage, metrics, and errors.
 
-Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

@@ -37,4 +37,4 @@ curl -X POST "$DURINDOOR_URL/v1/messages" \
 
 Use only a model or combo returned by discovery. Provider availability changes with connections and gateway version.
 
-Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

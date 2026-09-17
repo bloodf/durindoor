@@ -39,4 +39,4 @@ Use a returned `data[].id` as the request's `model`. Web entries identify `kind`
 - Web search: https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-web-search/SKILL.md
 - Web fetch: https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-web-fetch/SKILL.md
 
-Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

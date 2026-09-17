@@ -290,7 +290,7 @@ Use DurinDoor API keys generated in the dashboard. Do not send upstream provider
 | `/v1/moderations` | POST | Moderation (provider-dependent). |
 | `/api/health` | GET | Health check (no provider setup needed). |
 
-Per-key model and lifetime policy fields, plus compatibility notes, are in the [API reference](docs/reference/api.md).
+Per-key model and lifetime policy fields, plus compatibility notes, are in the [API reference](docs/reference/api.mdx).
 
 ## Architecture
 
@@ -338,7 +338,7 @@ The canonical documentation is Markdown in this repository. GitHub-rendered Mark
 - Getting started: [Quick start](docs/getting-started/index.mdx), [Installation](docs/getting-started/installation.mdx), [Guides](docs/guides/index.mdx)
 - Providers: [connections](docs/providers/connecting-accounts.mdx), [custom nodes](docs/providers/openai-compatible-nodes.mdx), [free and local](docs/providers/free-and-local.mdx)
 - Features: [Smart routing](docs/features/smart-routing.mdx), [Combos](docs/features/combos.mdx), [Usage and quota tracking](docs/features/quota-tracking.mdx), [Compression](docs/features/compression.mdx), [MCP Gateway](docs/features/mcp-gateway.mdx), [Realtime](docs/features/realtime.mdx), [Proxy timeline](docs/features/proxy-timeline.mdx), [Headroom](docs/features/headroom.mdx)
-- Reference: [API reference](docs/reference/api.md), [Environment variables](docs/reference/environment.md), [Architecture](docs/ARCHITECTURE.md)
+- Reference: [API reference](docs/reference/api.mdx), [Environment variables](docs/reference/environment.md), [Architecture](docs/ARCHITECTURE.md)
 - Operations: [Security](docs/operations/security.mdx), [Startup](docs/operations/startup.mdx), [Troubleshooting](docs/troubleshooting.md), [FAQ](docs/faq.md), [Release process](docs/development/release-process.md)
 - Public site: [website/README.md](website/README.md)
 - Community: [Security policy](.github/SECURITY.md), [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Changelog](CHANGELOG.md), [License](LICENSE), [Issues](https://github.com/bloodf/durindoor/issues), [Discussions](https://github.com/bloodf/durindoor/discussions)

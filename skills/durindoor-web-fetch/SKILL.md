@@ -24,4 +24,4 @@ curl -X POST "$DURINDOOR_URL/v1/web/fetch" \
 
 `model` and `url` are required. Formats, truncation, rendering, and extraction options depend on the selected provider. The normalized response contains URL, title, content, metadata, usage, and metrics.
 
-Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

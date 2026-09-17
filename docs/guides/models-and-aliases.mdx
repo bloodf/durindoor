@@ -56,6 +56,6 @@ Custom aliases contribute their target model ids into that provider's list; they
 
 If the request carries an `anthropic-version` header, the same catalog is wrapped in Anthropic's list envelope (`data`, `has_more`, `first_id`, `last_id`). Codex CLI user-agents get a `{ models: [...] }` object instead.
 
-Context windows and max output for a listed id are documented in [Model limits](../reference/model-limits.md).
+Context windows and max output for a listed id are documented in [Model limits](../reference/model-limits.mdx).
 
 Disabled model ids are omitted. When hide-paid is on, paid provider models drop out of the list, and a combo with no remaining visible members is omitted too. Compatible nodes are allowlist-only on this public catalog. Dashboard import discovery stays on `/api/providers/[id]/models`.

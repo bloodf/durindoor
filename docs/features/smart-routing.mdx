@@ -43,7 +43,7 @@ If the client asked for SSE and the provider cannot stream, chatCore converts th
 
 Malformed JSON or an invalid `messages` / `model` body is rejected with HTTP 400 before auth. Missing credentials return an auth error. A 429 or quota skip locks that account for a bounded window and tries the next connection or combo member. Client-shaped errors are not retried on unrelated providers.
 
-`BACKOFF_BASE_MS` (default 2000) and `BACKOFF_MAX_MS` (default 300000) bound lock delays. See [Environment](../reference/environment.md).
+`BACKOFF_BASE_MS` (default 2000) and `BACKOFF_MAX_MS` (default 300000) bound lock delays. See [Environment](../reference/environment.mdx).
 
 ## Worked example
 

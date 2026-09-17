@@ -98,7 +98,7 @@ A model's context window and maximum output resolve through a single function,
 whether the numbers are real catalog values or the generic floor. `handleChatCore`
 rejects an oversize request before dispatch instead of letting the provider
 return a 400, and stays silent when the model's real limit is unknown. See
-[Model Limits and Context Enforcement](reference/model-limits.md).
+[Model limits](reference/model-limits.mdx).
 
 ## Translation Layer
 

@@ -79,7 +79,7 @@ For developers working on the DurinDoor codebase, provider registry, or document
 For stable lookup pages for routes, environment variables, compatibility, and runtime behavior.
 
 - [API Reference](reference/api.mdx)
-- [Environment Variables](reference/environment.md)
+- [Environment variables](reference/environment.mdx)
 - [CLI](reference/cli.mdx)
 - [Provider Plugin Manifest](reference/provider-plugin-manifest.mdx)
 - [Model Limits and Context Enforcement](reference/model-limits.md)
@@ -144,7 +144,7 @@ DurinDoor is a fork of [9router](https://github.com/decolua/9router). These comp
 
 ## Operator Essentials
 
-- Use [Environment Variables](reference/environment.md) before deploying outside localhost.
+- Use [Environment variables](reference/environment.mdx) before deploying outside localhost.
 - Use [Startup and Runtime Operations](operations/startup.mdx) for process management, health checks, and smoke tests.
 - Use [Security and Production Hardening](operations/security.mdx) before exposing a dashboard, tunnel, or reverse proxy.
 - Use [API Reference](reference/api.mdx) when integrating SDKs, scripts, or custom clients.

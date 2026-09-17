@@ -1,6 +1,84 @@
 ---
 title: Model limits
-description: Context window and max output from the shared resolver.
+description: How DurinDoor resolves context windows and max output, and when chat rejects oversize requests.
 ---
 
-Pages in this section are being written.
+One function owns the numbers: `resolveModelLimits(provider, model)` in `open-sse/providers/capabilities.js`. The router, executors, and public model APIs all call it.
+
+```js
+import { resolveModelLimits } from "open-sse/providers/capabilities.js";
+
+resolveModelLimits(provider, model);
+// { contextWindow, maxOutput, known, source }
+```
+
+`source` names the row that supplied a positive `contextWindow`. Custom request caps and live cache values overlay that row when present.
+
+| `source` | Origin |
+| --- | --- |
+| `custom` | Request-scoped `customCaps` with a positive `contextWindow` |
+| `live` | Server-side live-limit cache (`liveLimits`) |
+| `provider` | `PROVIDER_CAPABILITIES[provider][model]` |
+| `exact` | `MODEL_CAPABILITIES[model]` |
+| `registry` | Registry `contextLength` / `maxOutputTokens` (or transport `defaultContextLength`) |
+| `pattern` | First `PATTERN_CAPABILITIES` glob with a positive window |
+| `default` | `DEFAULT_CAPABILITIES` floor; `known` is false |
+
+Catalog lookup order is provider, then exact id, then registry, then pattern, then the floor. After a hit, custom context wins the advertised window; a positive custom or live `maxOutput` replaces the catalog output.
+
+AI Horde (`aihorde` / `horde`) never uses the static tables. Limits exist only when custom or live values are present.
+
+## Known versus the floor
+
+`DEFAULT_CAPABILITIES` is `contextWindow: 200000` and `maxOutput: 64000`. `getCapabilitiesForModel` merges that floor into every unmatched lookup, so an unknown model looks like a 200K model.
+
+`resolveModelLimits` sets `known: false` on exactly those floor results. Callers must treat unknown as "no information":
+
+- `GET /v1/models` (Codex projection) omits `context_window` and `max_output_tokens`.
+- `GET /v1/models/info` omits `contextWindow` and `maxOutput`.
+- Ingress preflight does not reject, no matter how large the body is.
+
+A registry row counts only for fields it declares. A row without a usable `contextLength` falls through to the pattern chain instead of reporting `known: true` with empty numbers.
+
+`nr/auto` and `9router/auto` store `{ contextWindow: null, maxOutput: null }`. That is not a positive window, so the resolver reports unknown rather than 200K.
+
+When `maxOutput` is missing on a known window, the resolver fills `64000` unless the provider publishes no ceiling (`hasUnpublishedOutput`) or the caller passed `requireExplicitOutput`. Combo aggregation uses that last flag so unknown member output is skipped.
+
+## Pattern order
+
+Globs are first-match. Specific rows sit above family rows.
+
+`qwen3.8-2.4t-*` is text-only at 262,144 tokens. It is listed before `qwen3.8-*`, which is multimodal at 1,000,000 / 65,536. Muse Spark (`*muse-spark*`, 1,048,576) and Muse Glimmer (`*muse-glimmer*`, 128,000) sit above generic `*muse*` (128,000).
+
+CommandCode `meta/muse-spark-1.2-contributor` keeps `thinkingFormat: "commandcode"` on the provider capabilities row. That row has no `contextWindow`, so limit numbers still come from `*muse-spark*`.
+
+Direct OpenAI `gpt-5.4` is 1,050,000 / 128,000 on `PROVIDER_CAPABILITIES.openai`. Codex and `cx` overlay the same id at 272,000 with unpublished output, so OAuth catalog windows do not leak the API ceiling.
+
+## Ingress preflight
+
+`handleChatCore` runs the check after request shaping and immediately before executor dispatch.
+
+1. Resolve limits. If `known === false`, skip.
+2. Reserve output with `BaseExecutor.resolveEffectiveOutputReservation`.
+3. Count input with `countInputTokens`. Claude-compatible transports call `/messages/count_tokens` (or `baseUrl/count_tokens` when the base already ends in `/messages`). Anything else uses `estimateTokens` (characters / 4). A failed native call falls back to the estimate.
+4. Reject with status 400 when `input + reservation > contextWindow`.
+
+The error text contains `input is too long`. `isDeterministicPayloadError` treats that as terminal, so model fallback does not retry a payload no other model would accept.
+
+### Output reservation
+
+`resolveEffectiveOutputReservation` returns what `clampCustomMaxOutput` will let through:
+
+- An explicit client value (`max_tokens`, `max_completion_tokens`, `max_output_tokens`, or either Gemini `generationConfig.maxOutputTokens` shape), capped at catalog `maxOutput`.
+- Catalog `maxOutput` when the client names no output limit.
+
+If preflight charged the raw client number while the clamp shipped the smaller cap, requests the provider would accept would die locally.
+
+## Surfacing limits
+
+- Codex-shaped `GET /v1/models` emits `context_window` and `max_output_tokens` when `known` is true, and omits both otherwise. A Codex user-agent is `originator: codex_cli_rs` or `user-agent` matching `/codex/i`. Anthropic's `anthropic-version` header takes precedence and uses a different envelope with no limit fields.
+- `GET /v1/models/info?id={alias}/{modelId}` prefers a registry `contextWindow`, then the resolver. Capability-only models (pattern or provider override, no registry field) still get a window. Unknown stays absent. Missing `id` is 400.
+- Default and LLM combo rows expose `context_length` and `max_completion_tokens`. Both are the smallest known limit across resolved members, including nested combos and members reached through static aliases or custom connection prefixes. Unknown members are skipped. If every member is unknown, the fields are omitted.
+- Combos with `kind` `webSearch` or `webFetch` set that kind on the public entry and skip the limit overlay.
+
+`next.config.mjs` rewrites `/v1/:path*` to `/api/v1/:path*`.

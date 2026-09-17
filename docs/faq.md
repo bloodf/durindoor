@@ -78,7 +78,7 @@ The dashboard loads locale catalogs from `public/i18n/literals/`. Catalog keys a
 
 ## Where are all environment variables documented?
 
-Use [Environment Variables](reference/environment.md). `.env.example` is the starter template; the reference page explains when and why to set each variable.
+Use [Environment variables](reference/environment.mdx). `.env.example` is the starter template; the reference page explains when and why to set each variable.
 
 ## How do I contribute?
 

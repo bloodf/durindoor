@@ -1,6 +1,275 @@
 ---
-title: Environment
-description: Variables from .env.example and every process.env read in the gateway.
+title: Environment variables
+description: Operator variables from .env.example and every process.env read in src, open-sse, custom-server.js, and cli.
 ---
 
-Pages in this section are being written.
+Copy the starter file `.env.example` into `.env` before a production boot. Fill every placeholder. Blank strings are deleted at process start, so Docker `-e FOO=` is the same as leaving `FOO` unset.
+
+<Callout type="warn">
+`JWT_SECRET` is required on a fresh data dir. DurinDoor does not mint `DATA_DIR/jwt-secret`. An existing file from an older install is reused with a warning. Generate a value with `openssl rand -hex 32`.
+</Callout>
+
+Tables list the code default when the variable is unset, what it does, and the primary read site. `.env.example` may ship a different starter value (Firecrawl timeout is 30000 there; the code default is 15000).
+
+## Production secrets
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `JWT_SECRET` | none | Signs dashboard session tokens. Env wins. Legacy `DATA_DIR/jwt-secret` is accepted with a warning. Missing both throws. | `src/lib/auth/dashboardSession.js` |
+| `INITIAL_PASSWORD` | `123456` | Dashboard password when none is stored. Remote login with the built-in default is refused. | `src/lib/auth/dashboardSession.js` |
+| `API_KEY_SECRET` | minted at `DATA_DIR/api-key-secret` when `DATA_DIR` is set | Secret that signs API key checksums. Set it when minted keys must survive recreate. | `src/shared/utils/apiKey.js` |
+| `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Salt for the machine id embedded in generated API keys. | `src/shared/utils/machineId.js` |
+| `AUTH_COOKIE_SECURE` | `false` | `true` forces secure dashboard cookies. Otherwise https on `BASE_URL` / `NEXT_PUBLIC_BASE_URL` or the request URL decides. | `src/lib/auth/dashboardSession.js` |
+
+Native default `DATA_DIR` remains `~/.9router` on macOS/Linux and `%APPDATA%\9router` on Windows.
+
+## Listen address and URLs
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `PORT` | `20128` | Listen port for the gateway and dashboard. | `custom-server.js` |
+| `HOSTNAME` | `127.0.0.1` from `custom-server.js` when unset | Bind address. CLI default bind is `0.0.0.0`. Docker Compose sets `0.0.0.0` inside the container. | `custom-server.js` |
+| `HOST` | `127.0.0.1` | Host used when deriving the provider-plugin manifest URL. | `open-sse/config/providerPluginManifestUrl.js` |
+| `DASHBOARD_PORT` | falls back to `PORT` then `20128` | Alternate port for the manifest URL. | `open-sse/config/providerPluginManifestUrl.js` |
+| `API_PORT` | falls back to `PORT` then `20128` | Alternate port for the manifest URL. | `open-sse/config/providerPluginManifestUrl.js` |
+| `NODE_ENV` | unset (treated as not `production` / not `development` unless set) | `production` for production starts. Gates shutdown, intercept-path overrides, and similar. | `src/app/api/shutdown/route.js` |
+| `NINEROUTER_MAX_OLD_SPACE_SIZE` | `6144` MB | CLI child heap cap. Positive integer MB, or `0` to leave sizing to Node. An existing `--max-old-space-size` in `NODE_OPTIONS` suppresses the default. | `cli/hooks/nodeFlags.js` |
+| `BASE_URL` | unset | Server-side origin for callbacks, secure-cookie inference, and the sidecar manifest URL. | `src/lib/auth/dashboardSession.js` |
+| `NEXT_PUBLIC_BASE_URL` | unset | Browser-visible origin. Same fallback chain as `BASE_URL` for cookies and the manifest. | `src/lib/auth/requestOrigin.js` |
+| `CLOUD_URL` | unset | Optional server-side origin for a separately configured remote endpoint. No hosted default. | `src/lib/db/repos/settingsRepo.js` |
+| `NEXT_PUBLIC_CLOUD_URL` | unset | Browser-visible remote endpoint used by selected CLI-tool helpers. | `src/lib/db/repos/settingsRepo.js` |
+| `TRUST_PROXY` | unset (`false`) | `true` plus the custom-server peer token lets login rate limiting read `X-Forwarded-For`. | `src/lib/auth/loginLimiter.js` |
+| `SHUTDOWN_SECRET` | unset | Bearer secret for `/api/shutdown`. Production always 403s that route. | `src/app/api/shutdown/route.js` |
+
+`next.config.mjs` rewrites `/v1/:path*` to `/api/v1/:path*`.
+
+## Data directory and postgres
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `DATA_DIR` | `~/.9router` or `%APPDATA%\9router` | Persistent root for SQLite, auth secrets, logs, intercept files, tunnels, Headroom venv, backups. Created `0700` when set. Unix paths on Windows are ignored. | `src/lib/dataDir.js` |
+| `DURINDOOR_PG_URL` | unset | libpq URL. Wins over the dashboard secret. Unset keeps SQLite. | `src/lib/db/secrets.js` |
+| `DURINDOOR_PG_SSLMODE` | `prefer` in Compose | Interpolated by `docker-compose.yml`. No `process.env` read in `src/`. | `docker-compose.yml` |
+| `DURINDOOR_PG_PREFERRED_VERSION` | `18` in Compose | Operator cap on the target major version (`16`, `17`, `18`). Compose only. | `docker-compose.yml` |
+
+## Rate-limit backoff
+
+Positive decimal integers only. A resolved maximum below the base resets the whole schedule to defaults. Maximum delay is capped at 7 days.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `BACKOFF_BASE_MS` | `2000` | Initial account/model lock delay after rate-limit fallback. | `open-sse/config/errorConfig.js` |
+| `BACKOFF_MAX_MS` | `300000` | Maximum exponential lock delay. | `open-sse/config/errorConfig.js` |
+| `BACKOFF_MAX_LEVEL` | `15` | Maximum exponential backoff level. | `open-sse/config/errorConfig.js` |
+
+## Logs and request details
+
+`ENABLE_REQUEST_LOGS` writes metadata-only files under `logs/` in the routing core. It never enables or vetoes database persistence. `OBSERVABILITY_ENABLED` overrides the dashboard `enableObservability` setting when set to `true` or `false`; empty defers to the dashboard.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `ENABLE_REQUEST_LOGS` | `false` (must be the string `true`) | Diagnostic request files under `cwd/logs`. No payloads, stream chunks, stacks, or URL query/fragment. | `open-sse/utils/requestLogger.js` |
+| `OBSERVABILITY_ENABLED` | unset | `true` enables Usage → Details persistence; `false` vetoes it. | `src/lib/db/repos/requestDetailsRepo.js` |
+| `OBSERVABILITY_MAX_RECORDS` | `200` | Cap on retained request-detail rows when settings omit it. | `src/lib/db/repos/requestDetailsRepo.js` |
+| `OBSERVABILITY_BATCH_SIZE` | `20` | Flush batch size. | `src/lib/db/repos/requestDetailsRepo.js` |
+| `OBSERVABILITY_FLUSH_INTERVAL_MS` | `5000` | Flush interval. | `src/lib/db/repos/requestDetailsRepo.js` |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN`, `ERROR`. | `src/sse/utils/logger.js` |
+| `LOG_USAGE_VERBOSE` | unset | `1` prints extra usage-tracking debug. | `open-sse/utils/usageTracking.js` |
+| `STRIP_REASONING_CONTENT` | unset | `1` / `true` / `on` / `yes` strips non-streaming `reasoning_content` when the message also has `content`. Header `x-9router-reasoning: off` does the same per request. | `open-sse/utils/reasoningVisibility.js` |
+
+Treat request-log metadata as sensitive operational data. Keep opt-in diagnostics off unless needed.
+
+## Outbound proxy
+
+Dashboard proxy settings write `NINE_ROUTER_PROXY_MANAGED` plus the matching URL and no-proxy vars. Process-level `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY` (and lowercase twins) are also read. Loopback targets (`localhost`, `*.localhost`, `0.0.0.0`, `127.0.0.0/8`, `::`, `::1`, and IPv4-mapped loopback) never use an outbound proxy.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `HTTP_PROXY` / `http_proxy` | unset | Proxy URL for http upstreams. | `open-sse/utils/proxyFetch.js` |
+| `HTTPS_PROXY` / `https_proxy` | unset | Proxy URL for https upstreams. | `open-sse/utils/proxyFetch.js` |
+| `ALL_PROXY` / `all_proxy` | unset | Fallback proxy for all protocols. | `open-sse/utils/proxyFetch.js` |
+| `NO_PROXY` / `no_proxy` | unset | Comma-separated hosts that bypass the proxy. | `open-sse/utils/proxyFetch.js` |
+| `NINE_ROUTER_PROXY_URL` | unset | Managed proxy URL written by dashboard settings. | `src/lib/network/outboundProxy.js` |
+| `NINE_ROUTER_NO_PROXY` | unset | Managed no-proxy list. | `src/lib/network/outboundProxy.js` |
+| `NINE_ROUTER_PROXY_MANAGED` | unset | `1` when dashboard owns the proxy env. Disabled settings clear only managed vars. | `src/lib/network/outboundProxy.js` |
+| `OUTBOUND_SSRF_GUARD_ENABLED` | unset (guard on) | `false` / `0` / `no` / `off` allows private provider URLs (legacy opt-out). | `open-sse/config/runtimeConfig.js` |
+| `OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS` | unset | `1` / `true` / `yes` / `on` allows every private URL. | `open-sse/config/runtimeConfig.js` |
+| `OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS` | local allowed | Blank defaults to allowing LAN/localhost probes. Metadata endpoints stay blocked while a guard mode is active. | `open-sse/config/runtimeConfig.js` |
+| `PROXY_CONNECT_TIMEOUT_MS` | `90000` | Connect timeout for proxied fetches. | `open-sse/utils/proxyFetch.js` |
+| `PROXY_HEADERS_TIMEOUT_MS` | `300000` | Headers timeout for proxied fetches. | `open-sse/utils/proxyFetch.js` |
+
+Prefer dashboard proxy settings for day-to-day use. Use process-level vars for container egress.
+
+## Timeouts and stream bounds
+
+These are read through `process.env[name]` in `open-sse/config/runtimeConfig.js` unless noted. `envMs` keeps a positive integer; invalid values fall back to the default. `SSE_KEEPALIVE_MS` also accepts `0` to disable pings.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `SSE_KEEPALIVE_MS` | `10000` | Claude SSE ping interval during upstream silence. `0` disables. | `open-sse/config/runtimeConfig.js` |
+| `STREAM_STALL_TIMEOUT_MS` | `360000` | Inter-chunk stall timeout once tokens flow. | `open-sse/config/runtimeConfig.js` |
+| `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `200000` | Time-to-first-token timeout. | `open-sse/config/runtimeConfig.js` |
+| `OLLAMA_LOCAL_CONNECT_TIMEOUT_MS` | `120000` | Connect timeout for Ollama Local. Raise it for slow 70B loads. | `open-sse/config/runtimeConfig.js` |
+| `COMBO_MODEL_TIMEOUT_MS` | `0` (off) | Per-member combo timeout. `0` uses fetch connect timeout. | `open-sse/config/runtimeConfig.js` |
+| `FETCH_CONNECT_TIMEOUT_MS` | `60000` | Abort if upstream headers never arrive. | `open-sse/config/runtimeConfig.js` |
+| `PROVIDER_BODY_TIMEOUT_MS` | `120000` | Bound for a successful non-streaming provider body. | `open-sse/config/runtimeConfig.js` |
+| `RESPONSE_BODY_TIMEOUT_MS` | `120000` | Bound for forced stream-to-json conversion. | `open-sse/config/runtimeConfig.js` |
+| `MAX_PROVIDER_BODY_BYTES` | `8388608` | Max provider body bytes. | `open-sse/config/runtimeConfig.js` |
+| `MAX_RESPONSES_OUTPUT_ITEMS` | `1024` | Cap on Responses output items. | `open-sse/config/runtimeConfig.js` |
+| `CODEX_SSE_PEEK_TIMEOUT_MS` | `30000` (capped at 5 min) | Bound for the Codex SSE peek. | `open-sse/config/runtimeConfig.js` |
+| `GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS` | `45000` | Gemini native TTS header timeout. | `open-sse/config/runtimeConfig.js` |
+| `CONCURRENCY_GATE_TIMEOUT_MS` | `120000` | Wait for a provider concurrency slot. | `open-sse/services/concurrencyGate.js` |
+| `TRAE_STREAM_TIMEOUT_MS` | `300000` | Trae stream timeout. | `open-sse/executors/trae.js` |
+| `VIDEO_FETCH_TIMEOUT_MS` | `120000` | Video fetch timeout. | `open-sse/handlers/videoCore.js` |
+| `CODEX_REFRESH_SPACING_MS` | `2000` | Gap between sibling OAuth refreshes. `0` opts out. | `open-sse/services/refreshSerializer.js` |
+| `BG_REFRESH_DELAY_MS` | `1500` | Background token refresh delay (normal). | `src/sse/services/backgroundTokenRefresh.js` |
+| `BG_REFRESH_GOOGLE_DELAY_MS` | `12000` | Background refresh delay for Google-family tokens. | `src/sse/services/backgroundTokenRefresh.js` |
+| `DISABLE_BACKGROUND_TOKEN_REFRESH` | unset | Truthy disables background refresh. | `src/sse/services/backgroundTokenRefresh.js` |
+| `ONBOARD_MAX_ATTEMPTS` | `2` | Gemini/Antigravity project-id onboard attempts. | `open-sse/services/projectId.js` |
+| `ONBOARD_RETRY_DELAY_MS` | `12000` | Delay between onboard attempts. | `open-sse/services/projectId.js` |
+| `EAGER_PROJECT_ID_REFRESH` | unset | `true` refreshes Google project ids eagerly. | `src/sse/services/tokenRefresh.js` |
+
+## Web fetch and search
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `FIRECRAWL_BASE_URL` | `https://api.firecrawl.dev` (hosted); `http://127.0.0.1:3002` for `firecrawl_custom` if env is unset | Firecrawl-compatible base for `/v1/web/fetch`. | `open-sse/handlers/fetch/index.js` |
+| `FIRECRAWL_API_KEY` | unset | Firecrawl key. Leave empty for a self-hosted instance that does not need one. | `src/lib/autoConfigure/firecrawl.js` |
+| `FIRECRAWL_TIMEOUT_MS` | `15000` | Request timeout. `.env.example` writes `30000`. | `open-sse/handlers/fetch/index.js` |
+| `FIRECRAWL_DEFAULT_FORMAT` | `markdown` | Default extraction format. | `open-sse/handlers/fetch/index.js` |
+| `SEARXNG_URL` | `http://localhost:8888/search` | Built-in unauthenticated SearXNG web-search endpoint. | `open-sse/config/runtimeConfig.js` |
+| `CLINE_LIVE_CATALOG` | unset (off) | `true` fetches Cline's live OAuth model catalog. Default stays the registry. | `open-sse/services/clineModels.js` |
+
+## OAuth client overrides
+
+Most OAuth providers use built-in client metadata. Set these only when you run your own OAuth app.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `GEMINI_OAUTH_CLIENT_ID` | empty | Gemini CLI OAuth client id. | `open-sse/providers/shared.js` |
+| `GEMINI_OAUTH_CLIENT_SECRET` | empty | Gemini CLI OAuth client secret. | `open-sse/providers/shared.js` |
+| `GEMINI_CLIENT_ID` | unset | Alternate Gemini client id used by model-list helpers. | `src/app/api/providers/[id]/models/modelsConfig.js` |
+| `GEMINI_CLIENT_SECRET` | unset | Alternate Gemini client secret for those helpers. | `src/app/api/providers/[id]/models/modelsConfig.js` |
+| `ANTIGRAVITY_OAUTH_CLIENT_ID` | empty | Antigravity OAuth client id. | `open-sse/providers/shared.js` |
+| `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | empty | Antigravity OAuth client secret. | `open-sse/providers/shared.js` |
+| `AGY_CLIENT_ID` | unset | Antigravity client id used by model-list helpers. | `src/app/api/providers/[id]/models/modelsConfig.js` |
+| `AGY_CLIENT_SECRET` | unset | Antigravity client secret for those helpers. | `src/app/api/providers/[id]/models/modelsConfig.js` |
+| `KIMI_CODING_OAUTH_CLIENT_ID` | registry `clientId` | Kimi Coding device-code client id. | `src/lib/oauth/constants/oauth.js` |
+| `GITLAB_BASE_URL` | `https://gitlab.com` | GitLab origin. | `open-sse/providers/registry/gitlab-duo.js` |
+| `GITLAB_DUO_BASE_URL` | `https://gitlab.com` | GitLab Duo origin (preferred over `GITLAB_BASE_URL`). | `open-sse/providers/registry/gitlab-duo.js` |
+| `GITLAB_OAUTH_CLIENT_ID` | registry | GitLab OAuth client id. | `open-sse/providers/registry/gitlab-duo.js` |
+| `GITLAB_OAUTH_CLIENT_SECRET` | registry | GitLab OAuth client secret. | `open-sse/providers/registry/gitlab-duo.js` |
+| `GITLAB_DUO_OAUTH_CLIENT_ID` | registry | GitLab Duo OAuth client id. | `open-sse/providers/registry/gitlab-duo.js` |
+| `GITLAB_DUO_OAUTH_CLIENT_SECRET` | registry | GitLab Duo OAuth client secret. | `open-sse/providers/registry/gitlab-duo.js` |
+
+## MCP gateway, tunnels, Headroom
+
+MCP OAuth needs a public https URL. If the dashboard is reached through a tunnel, set that origin here.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `MCP_GATEWAY_OAUTH_PUBLIC_URL` | unset | Public origin for MCP Gateway OAuth callbacks. Wins, then tunnel status, then the request. | `src/app/api/mcp-gateway/oauth/[id]/[action]/route.js` |
+| `OAUTH_PUBLIC_BASE_URL` | unset | Older public OAuth origin fallback. | `src/app/api/mcp-gateway/oauth/[id]/[action]/route.js` |
+| `TUNNEL_WORKER_URL` | `https://abc-tunnel.us` | Cloudflare tunnel worker endpoint. | `src/lib/tunnel/cloudflare/config.js` |
+| `TUNNEL_TRANSPORT_PROTOCOL` | `http2` | Quick tunnel protocol: `http2`, `quic`, `auto`. | `src/lib/tunnel/cloudflare/cloudflared.js` |
+| `CLOUDFLARED_PROTOCOL` | `http2` | Alternate name for the same protocol. | `src/lib/tunnel/cloudflare/cloudflared.js` |
+| `HEADROOM_URL` | `http://localhost:8787` | External Headroom proxy URL. | `src/lib/headroom/detect.js` |
+| `HEADROOM_API_KEY` | unset | Optional key forwarded to the Headroom proxy route. | `src/app/api/headroom/proxy/[...path]/route.js` |
+
+## Local intercept helper
+
+The intercept helper is optional and local. Several of these are set by the manager for the child process. Do not set the nonce/gate vars by hand.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `MITM_ROUTER_BASE` | `http://localhost:20128` | Router base used by the intercept helper. | `src/mitm/handlers/base.js` |
+| `MITM_SERVER_PATH` | auto-detected `src/mitm/server.js` | Override the intercept server entrypoint. Ignored in production unless the path is inside the installed tree. | `src/mitm/manager.js` |
+| `MITM_LISTEN_PORT` | `8443` | Intercept listen port. Must be 1025-65535 (Windows allows 1-65535). | `src/mitm/server.js` |
+| `DEBUG_MITM` | unset | Truthy enables verbose intercept handler logs. | `src/mitm/handlers/base.js` |
+| `ROUTER_API_KEY` | unset | Optional key the intercept helper sends to the local router. | `src/mitm/handlers/base.js` |
+| `MITM_GLOBAL_STATE_DIR` | unset | Non-production only: shared intercept state dir. | `src/mitm/manager.js` |
+| `MITM_CA_PREPARED` | set to `1` by the manager | Child marker that the CA is ready. | `src/mitm/serverBootstrap.js` |
+| `MITM_INSTANCE_NONCE` | set by the manager | Launch-gate nonce. | `src/mitm/launchGate.js` |
+| `MITM_LAUNCH_GATE_FILE` | set by the manager | Launch-gate file path. | `src/mitm/launchGate.js` |
+| `MITM_MANAGER_PID` | set by the manager | Parent pid for the launch gate. | `src/mitm/launchGate.js` |
+
+## Provider debug, sidecars, Azure
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `VALIDATE_OUTBOUND` | `true` | `false` disables outbound payload validation. Keys are still stripped. | `open-sse/config/runtimeConfig.js` |
+| `ENABLE_TRANSLATOR` | unset (`false`) | `true` enables the dashboard translator feature path. | `src/app/api/settings/route.js` |
+| `CLIPROXYAPI_HOST` | `127.0.0.1` | CLIProxyAPI sidecar host when settings have no URL. | `open-sse/executors/cliproxyapi.js` |
+| `CLIPROXYAPI_PORT` | `8317` | CLIProxyAPI sidecar port. | `open-sse/executors/cliproxyapi.js` |
+| `OMNIROUTE_PROVIDER_MANIFEST_URL` | derived from `BASE_URL` or `http://127.0.0.1:20128/api/v1/provider-plugin-manifest` | Public provider manifest URL advertised to sidecars. | `open-sse/config/providerPluginManifestUrl.js` |
+| `OMNIROUTE_PUBLIC_PROTOCOL` | `http` | Protocol used when deriving that URL from host and port. | `open-sse/config/providerPluginManifestUrl.js` |
+| `CURSOR_STREAM_DEBUG` | unset | `1` logs Cursor executor stream debug. | `open-sse/executors/cursor.js` |
+| `CURSOR_PROTOBUF_DEBUG` | unset | `1` logs Cursor protobuf debug. | `open-sse/utils/cursorProtobuf.js` |
+| `CLAUDE_DISABLE_TOOL_NAME_CLOAK` | unset | `true` disables Claude Code tool-name cloaking. | `open-sse/services/claudeCodeToolRemapper.js` |
+| `AZURE_ENDPOINT` | `https://api.openai.com` | Azure OpenAI endpoint when the connection has none. | `open-sse/executors/azure.js` |
+| `AZURE_API_VERSION` | `2024-10-01-preview` | Azure API version fallback. | `open-sse/executors/azure.js` |
+| `AZURE_DEPLOYMENT` | `gpt-4` | Azure deployment fallback. | `open-sse/executors/azure.js` |
+| `AZURE_ORGANIZATION` | unset | Azure `OpenAI-Organization` header. | `open-sse/executors/azure.js` |
+| `OPENAI_API_KEY` | unset | Azure executor `api-key` fallback when the connection has none. | `open-sse/executors/azure.js` |
+| `WINDSURF_API_KEY` | unset | Devin CLI executor key fallback. | `open-sse/executors/devin-cli.js` |
+
+Provider-level CLIProxyAPI routing lives in the `upstreamProxyConfig` settings map (`enabled`, `mode` = `native` / `cliproxyapi` / `fallback`, `cliproxyapiModelMapping`). A connection can set `providerSpecificData.cliproxyapiMode = "claude-native"` to route only that connection.
+
+## CLI binaries and local tools
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `AUGGIE_BIN` / `CLI_AUGGIE_BIN` | unset | Path to the Auggie binary. | `open-sse/executors/auggie.js` |
+| `CLI_DEVIN_BIN` | unset | Path to the Devin CLI binary. | `open-sse/executors/devin-cli.js` |
+| `GROK_HOME` | `~/.grok` | Grok CLI home used by dashboard Grok Build settings. | `src/app/api/cli-tools/grok-build-settings/route.js` |
+| `TRAY_MODE` | unset | `1` marks a tray-launched process (set by the CLI). | `cli/cli.js` |
+| `DISPLAY` | unset | Linux tray needs an X display. Without it tray init returns null and the server still runs. | `cli/src/cli/tray/tray.js` |
+| `CODESPACES` | unset | Codespaces detection for printed URLs. | `cli/cli.js` |
+| `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN` | unset | Codespaces forwarded-port domain. | `cli/cli.js` |
+
+## Build, packaging, updater
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `NEXT_DIST_DIR` | `.next` | Next.js output directory. | `next.config.mjs` |
+| `NEXT_TRACING_ROOT_MODE` | project root | `workspace` traces from the parent of the project (CLI packaging). | `next.config.mjs` |
+| `NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE` | `128mb` | Next.js proxy client body-size limit for large LLM requests. | `next.config.mjs` |
+| `NEXT_PHASE` | set by Next | `phase-production-build` / `phase-export` / `phase-static` skip app bootstrap. | `src/shared/services/bootstrap.js` |
+| `NEXT_RUNTIME` | set by Next | `nodejs` selects the Node instrumentation file. | `src/instrumentation.js` |
+| `DURINDOOR_BUILD` | unset | `1` also skips bootstrap during packaging. | `src/shared/services/bootstrap.js` |
+| `DURINDOOR_WORKER_NONCE` | set by custom-server | 48-hex worker identity header. Do not set by hand. | `custom-server.js` |
+| `NINEROUTER_PEER_TOKEN` | minted by custom-server | Proves `x-9r-real-ip` came from the wrapper. Do not set by hand. | `src/lib/auth/trustedPeer.js` |
+
+Updater internals. Packaged updater only; they can change without notice.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `UPDATER_PKG_NAME` | `9router` | npm package the updater installs. | `src/lib/updater/updater.js` |
+| `UPDATER_PORT` | `20129` | Updater progress port. | `src/lib/updater/updater.js` |
+| `UPDATER_APP_PORT` | `20128` | App port the updater waits on. | `src/lib/updater/updater.js` |
+| `UPDATER_TAIL_LINES` | `8` | Log tail lines. | `src/lib/updater/updater.js` |
+| `UPDATER_RETRIES` | `3` | Install retries. | `src/lib/updater/updater.js` |
+| `UPDATER_RETRY_DELAY_MS` | `5000` | Delay between retries. | `src/lib/updater/updater.js` |
+| `UPDATER_LINGER_MS` | `30000` | Linger after finish. | `src/lib/updater/updater.js` |
+| `UPDATER_WAIT_MIN_MS` | `3000` | Minimum wait for the app port. | `src/lib/updater/updater.js` |
+| `UPDATER_WAIT_MAX_MS` | `15000` | Maximum wait for the app port. | `src/lib/updater/updater.js` |
+| `UPDATER_WAIT_CHECK_MS` | `500` | Port poll interval. | `src/lib/updater/updater.js` |
+| `UPDATER_SCRIPT_PATH` | derived | Path to the updater script. | `src/lib/appUpdater.js` |
+| `UPDATER_RELAUNCH` | unset | Relaunch switch. | `src/lib/updater/updater.js` |
+| `UPDATER_RELAUNCH_CMD` | unset | Relaunch command. | `src/lib/updater/updater.js` |
+| `UPDATER_RELAUNCH_ARGS` | unset | Relaunch args. | `src/lib/updater/updater.js` |
+
+## Host process
+
+Read for paths and temp dirs. Operators do not normally set these.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `HOME` | OS home | Headroom python / detect paths. | `src/lib/headroom/detect.js` |
+| `USERPROFILE` | Windows home | Headroom python on Windows. | `src/lib/headroom/pythonEnv.js` |
+| `APPDATA` | Windows roaming | Default `DATA_DIR` parent; updater and intercept paths. | `src/lib/dataDir.js` |
+| `LOCALAPPDATA` | Windows local | Cursor/Auggie/Devin local stores; Headroom detect. | `src/lib/headroom/detect.js` |
+| `XDG_CONFIG_HOME` | unset | jcode settings path on Linux. | `src/app/api/cli-tools/jcode-settings/route.js` |
+| `PATH` | OS path | Headroom, Tailscale, CLI-tool binary lookup. | `src/lib/headroom/detect.js` |
+| `TMPDIR` / `TMP` / `TEMP` | OS temp | Intercept helper temp files. | `src/mitm/manager.js` |
+| `SystemRoot` | `C:\Windows` | Windows hosts-file path for intercept-host cleanup. | `cli/hooks/cleanupMitmHosts.js` |

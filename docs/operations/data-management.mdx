@@ -55,7 +55,7 @@ It tars `~/.9router` to `~/.9router-backup-<stamp>.tar` before any move. It does
 
 After schema work and before the file is accepted, DurinDoor runs `PRAGMA quick_check`. Corruption reported there stops startup. The check is structural, not `PRAGMA integrity_check` or `PRAGMA foreign_key_check`. There is no automatic repair.
 
-If logs say `SQLite integrity check failed`, stop every writer. Keep `data.sqlite` plus `-wal` and `-shm`. Restore only a backup you have already verified. Lite migration backups omit `requestDetails`. Any salvage belongs on a copy.
+If logs say `SQLite integrity check failed`, stop every writer. Keep `data.sqlite` plus `-wal` and `-shm`. Restore only a backup you have already verified. Lite migration backups omit `requestDetails`. Any `REINDEX`, `VACUUM`, or salvage belongs on a copy.
 
 ## Backing up a host directory
 

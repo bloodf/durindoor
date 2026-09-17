@@ -87,7 +87,7 @@ All three are covered in `tests/unit/release-notes.test.js`. `extract` reads `CH
 
 `.github/workflows/docker-publish.yml` builds GHCR images on `v*` tags (`ghcr.io/bloodf/durindoor`) and on `workflow_dispatch`. It does not build `nightly-*` tags.
 
-`.github/workflows/nightly.yml` lists `cron: '0 2 * * *'` (02:00 UTC) and `workflow_dispatch`. After lint, `check:agent-index`, build, and `test:ci`, it publishes a GitHub pre-release tagged `nightly-` plus the UTC date from `date -u +%Y-%m-%d` when that tag does not already exist. A comment in the workflow says the schedule can be disabled in repository settings.
+`.github/workflows/nightly.yml` lists `cron: '0 2 * * *'` (02:00 UTC) and `workflow_dispatch`. After lint, `check:agent-index`, build, and `test:ci`, it publishes a GitHub pre-release `nightly-YYYY-MM-DD` (`date -u +%Y-%m-%d`) when that tag does not already exist. A comment in the workflow says the schedule can be disabled in repository settings.
 
 ## Failure and rollback
 

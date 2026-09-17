@@ -1,1 +1,1 @@
-{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["../src/*"], "@site/*": ["./src/*"], "open-sse/*": ["../open-sse/*"] } } }
+{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["../src/*"], "@site/*": ["./src/*"], "@source/*": ["./.source/*"], "open-sse/*": ["../open-sse/*"] } } }

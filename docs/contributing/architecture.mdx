@@ -80,7 +80,27 @@ A background ticker (`src/sse/services/backgroundTokenRefresh.js`) also refreshe
 
 Default `DATA_DIR` is `~/.9router` on Unix and `%APPDATA%\9router` on Windows (`src/lib/dataDir.js`). Override with `DATA_DIR`. The live SQLite file is `DATA_DIR/db/data.sqlite`. Backups go under `DATA_DIR/db/backups`. Mode `0700` on new credential directories; backup files use `0600` on POSIX.
 
-Postgres is opt-in and off by default. The engine flag is `databaseEngine` on the settings row. Cutover (`src/lib/db/cutover.js`) migrates the PG schema, mirrors SQLite tables in 500-row chunks, snapshots `data.sqlite` to `data.sqlite.postgres-cutover-<ts>`, then flips the live adapter. Rollback restores the newest snapshot. Operator steps: [Postgres](../operations/postgres.mdx). Contributor migration work: [Postgres migrations](./postgres-migrations.mdx).
+SQLite is the default. Boot reads `settings.databaseEngine` through a throwaway SQLite connection (`readEngineViaTransientSqlite`) so `getAdapter` never calls `getSettings`. A missing file or unreadable row returns `"sqlite"`. `DURINDOOR_PG_URL` does not switch the engine.
+
+On Node the adapter chain is `better-sqlite3`, then `node:sqlite` (Node 22.5+), then `sql.js`. On Bun it is `bun:sqlite`, then `sql.js`. `openSqliteAdapter` is the same helper the proxy-timeline sidecar uses. Repos call `run`, `get`, and `all` synchronously.
+
+Postgres is opt-in. `initAdapter("postgres")` calls `openActiveAdapter`, which opens PG only when that flag is `"postgres"`. Repos still emit SQLite DML. `dmlRewrite.js` rewrites `INSERT OR IGNORE`, `datetime('now')`, and `COLLATE NOCASE` inside the PG adapter, then `?` becomes `$1`. A worker thread (`pgSyncWorker.cjs`) owns a `pg.Pool` with `max: 1`. The parent blocks on `Atomics.wait` so those methods stay synchronous, like better-sqlite3.
+
+Cutover is `runCutover` in `src/lib/db/cutover.js`. That pipeline writes `databaseEngine: "postgres"` and swaps the live adapter. `getAdapter` and `setActiveAdapter` wrap the live adapter with `wrapCutoverGuard`.
+
+1. `acquireCutoverLock`. The guard throws `database cutover in progress` (`CUTOVER_IN_FLIGHT`) for `INSERT` / `UPDATE` / `DELETE` / DDL / `BEGIN`. `SELECT` still runs. The pipeline opens its own unguarded adapters for migrate, snapshot, and mirror, so those writes are not blocked.
+2. Probe the URL, open PG, run the PG migration set.
+3. Checkpoint the live SQLite WAL (`checkpoint`, or `flush` if the adapter has no checkpoint). `snapshotSqlite()` copies `currentDataFile()` into `currentBackupsDir()` as `data.sqlite.postgres-cutover-<ts>-<appVersion>.sqlite` (mode `0600`). If the copy is empty while `data.sqlite` exists, cutover throws `cutover snapshot failed` and does not flip.
+4. `runMirror` copies tables in 500-row chunks, one transaction per table, after `TRUNCATE`, and asserts `COUNT(*)`. `_meta` copies except `schemaVersion`. `requestDetails` is omitted unless `includeRequestDetails` is true.
+5. Persist `databaseEngine: "postgres"` on the PG settings row and on the SQLite file. Boot still reads the engine from SQLite. `setActiveAdapter(pg)` then closes the previous SQLite adapter and flips the live adapter to PG.
+
+`runCutover` releases the lock in `finally`. Failed steps before the settings write leave SQLite live. A crash after both writes, before `setActiveAdapter`, leaves the SQLite file saying postgres, so the next boot opens PG. A failed `pgCutoverLog` insert after the flip logs a warning and leaves the engine on postgres.
+
+If boot sees `databaseEngine === "postgres"` and cannot open the cluster, `openActiveAdapter` records `databaseEngineError` and returns a SQLite adapter. `servingFallback` is true when `activeEngine !== databaseEngine`. New writes on that process do not land on PG. The fallback is one-shot per process.
+
+Rollback (`runRollback`) copies an allowlisted cutover snapshot onto `currentDataFile()`, reopens SQLite, and sets `databaseEngine` back to `"sqlite"`. Writes made while PostgreSQL was live are not copied back. Rollback does not touch the PG cluster. After a successful cutover the call requires `force: true`; without it the function returns `rollback_requires_force`. `runRollback` rejects snapshot paths outside `currentBackupsDir()`.
+
+Operator steps: [Postgres](../operations/postgres.mdx). Contributor schema work: [Postgres migrations](./postgres-migrations.mdx).
 
 ## Security surfaces
 

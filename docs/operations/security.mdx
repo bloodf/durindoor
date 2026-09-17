@@ -69,6 +69,14 @@ Before anything other than loopback can reach `/dashboard`:
 
 If the proxy rewrites `Host` to an internal name, set `BASE_URL` and `NEXT_PUBLIC_BASE_URL` to the public origin so Origin checks match.
 
+## Management routes
+
+`GET /api/headroom/status` and `GET /api/headroom/stats` use the management API policy because they expose the configured proxy URL, managed process and circuit state, and usage statistics. Remote callers need a dashboard JWT, a machine-bound CLI token, or a DurinDoor application API key, including when `requireLogin` is false. Direct loopback requests keep open-dashboard access when login is disabled.
+
+The management control endpoint `POST /api/mcp/control` is exempt from the loopback-only MCP plugin branch. It requires a CLI token, API key, or dashboard JWT, including from a remote host. A credential-free loopback caller is accepted only while `requireApiKey` is off and only when the request carries no foreign `Origin`, so a browser page cannot drive it cross-origin. The MCP gateway (`/api/mcp-gateway`) uses gateway keys, not that local-only policy.
+
+Covered route families and exclusions: [API](../reference/api.mdx#management-api). Control tools: [MCP gateway](../features/mcp-gateway.mdx#control-endpoint).
+
 ## API keys and scoping
 
 Create separate keys, short expiry when you can, revoke unused ones. The create response is the one body that always includes the full secret. Scope a key to named provider accounts: [API key scoping](./api-key-scoping.mdx).

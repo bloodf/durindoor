@@ -67,8 +67,8 @@ For developers working on the DurinDoor codebase, provider registry, or document
 
 - [Contributing](contributing/index.mdx)
 - [Local Development](contributing/local-development.mdx)
-- [Provider Brand Assets](development/provider-brand-assets.md) — provider-logo policy and provenance.
-- [Architecture](ARCHITECTURE.md)
+- [Provider brand assets](contributing/provider-brand-assets.mdx)
+- [Architecture](contributing/architecture.mdx)
 - [Upstream Sync Watch](contributing/upstream-sync.mdx)
 - [tests/README.md](../tests/README.md)
 - [DurinDoor omp Extension](../omp-extension/README.md)
@@ -89,7 +89,7 @@ For stable lookup pages for routes, environment variables, compatibility, and ru
 - [Compression](features/compression.mdx)
 - [Local Router Providers](providers/local-router-providers.mdx)
 - [Compatibility and Migration](#compatibility)
-- [Architecture](ARCHITECTURE.md)
+- [Architecture](contributing/architecture.mdx)
 
 ## Package Documentation
 

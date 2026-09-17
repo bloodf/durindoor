@@ -1,6 +1,75 @@
 ---
 title: Design system
-description: Durin DS tokens and primitives a contributor actually touches.
+description: Durin DS tokens, primitives, Storybook preview, and the rules for dashboard UI changes.
 ---
 
-Pages in this section are being written.
+Durin DS is the dashboard visual language: warm "Moria stone" dark surfaces, "Parchment" light surfaces, emerald as the primary interactive accent, gold as the secondary highlight. Tokens live in `src/shared/ui/tokens.css`. The root layout imports that file, so `*-dd-*` utilities work in the app and in Storybook.
+
+The tree is DurinDoor-owned and is diffed against `origin/main`, not against upstream 9router. Preview the primitives and page mocks in Storybook before copying a pattern into `src/app`.
+
+```bash
+npm run storybook
+```
+
+That is `storybook dev -p 6006`. Open `http://localhost:6006`. The Theme toolbar flips Dark (Moria stone, default) and Light (Parchment). `npm run storybook:build` writes `storybook-static/`. Coverage against that build is `npm run check:storybook-coverage`.
+
+A short directory map is in [src/shared/ui/README.md](https://github.com/bloodf/durindoor/blob/main/src/shared/ui/README.md).
+
+## Tokens and color roles
+
+Raw properties are `--dd-*`. `@theme inline` maps them to Tailwind v4 utilities (`bg-dd-surface`, `text-dd-muted`, `border-dd-border-subtle`, `bg-dd-accent`). Never hardcode a hex value in a component.
+
+| Role | Token | Use |
+| --- | --- | --- |
+| Primary accent | `--dd-accent` (emerald) | Primary `Button`, active tab, selected `Chip`, ON `Toggle`, focus border on inputs. Not a passive fill. |
+| Secondary accent | `--dd-accent-2` (gold) | Second series on dual-axis charts, secondary highlights. Not the primary action. |
+| Semantic | `--dd-success` / `--dd-warning` / `--dd-danger` / `--dd-info` | Health, quota, validation, banners. Red as an action color only on `Button variant="danger"` and `ConfirmDialog tone="danger"`. |
+| Text | `--dd-text`, `--dd-text-muted`, `--dd-text-subtle` | Reading hierarchy. Generated utilities are `text-dd-muted` and `text-dd-subtle` (the extra `text-` in the raw name is dropped). |
+
+Light emerald is `#03543B`. Dark emerald is `#10E882`. Do not use the legacy white-on-transparent `durindoor-wordmark.png` on the Parchment surface; render wordmarks as token-colored text.
+
+## Surface ladder
+
+```text
+surface-0  --dd-bg / --dd-bg-alt     page canvas
+surface-1  --dd-surface              card / panel  + shadow-dd-raised
+surface-2  --dd-surface-2            inset
+surface-3  --dd-surface-3            deeper inset
+```
+
+A surface may hold a lower rung as an inset. Do not invert that order. `shadow-dd-elevated` is for overlays (`Select`, `Tooltip`, `Drawer`, `Modal`), not resting cards.
+
+A frame (`Card`, `Modal`, `Drawer`, an expanded `DataTable` row) is the only box for its contents. No card in a card. Structure inside a frame comes from spacing, type, and hairline dividers. Embed a table with `framed={false}`.
+
+Dashboard content gutters are `p-4 sm:p-6 xl:p-8` around a `max-w-7xl` column. Pages should not add a second outer gutter.
+
+## Controls
+
+Interactive controls share one height: 44px (`min-h-11`). `size="sm"` / `"md"` changes padding and font size, not height. Do not hand-roll `h-7` through `h-10` next to these controls. The rows-per-page `<select>` inside `Pagination` is the intentional exception.
+
+Focus is `outline-none focus-visible:shadow-dd-focus`. The ring tracks the accent family. Inputs also use `focus:border-dd-accent`.
+
+Icons are Material Symbols Outlined, `aria-hidden="true"`. Accessible name comes from surrounding text or `IconButton`'s required `label`.
+
+Inter is the UI font. Body text in primitives is 13px. `.dd-tnum` turns on tabular figures for metrics.
+
+## Authoring
+
+- One component per file under `src/shared/ui/components/`, PascalCase. `Card.jsx` is the exception that also exports `CardHeader`, `CardContent`, `CardFooter`.
+- Most primitives `export default function`. `Badge`, `Card`, `Chip`, and `StatusDot` are named exports only. `ProviderLogo` exports both. Read the file before importing.
+- Story next door: `Toggle.stories.jsx`, CSF3 only. Titles under `Durin DS/<Group>/<Component>`. `tags: ["autodocs"]` is opt-in; copy a neighbor.
+- Tailwind v4 scans source text. Do not interpolate class names. Branch on tone or size with maps of full literal strings (`TONE_CLASSES`, `SIZES`), then join at render.
+- There are 27 primitives today. Import from the file, not from a barrel, except `src/shared/ui/shell`.
+
+`/login` draws the Doors of Durin backdrop from `src/shared/ui/login/durinDoorBackdrop.js`. Palette comes from `--dd-bg`, `--dd-surface-2`, and `--dd-accent` at runtime. `startDurinDoorBackdrop` never throws; `prefers-reduced-motion: reduce` paints one static frame.
+
+`Modal` and `Drawer` currently lack focus trap, focus return, inert background, and nesting support. Do not adopt them on a new page until that lands.
+
+## Upstream-tracking UI
+
+`src/app/**` still receives 9router ports. For a styled page:
+
+1. Take upstream logic (state, effects, data, errors, accessibility).
+2. Replace class names with `*-dd-*` utilities.
+3. Extract a primitive under `src/shared/ui/components/` when the same JSX appears on three or more mocks.
+4. Do not edit `src/app/globals.css` during a visual change. Token work stays in `tokens.css`.

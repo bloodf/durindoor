@@ -75,7 +75,7 @@ The model field accepts several shapes, resolved before any upstream call:
 
 Credential selection skips accounts that are locked, expired, or excluded by the current fallback attempt, and refreshes OAuth tokens when the upstream supports refresh.
 
-See [Architecture](docs/ARCHITECTURE.md) and [Smart routing](docs/features/smart-routing.mdx) for the request lifecycle and failure handling.
+See [Architecture](docs/contributing/architecture.mdx) and [Smart routing](docs/features/smart-routing.mdx) for the request lifecycle and failure handling.
 
 ## Quick start
 
@@ -307,7 +307,7 @@ DurinDoor is a Next.js gateway with a dashboard and an OpenAI-compatible API.
 
 Two fallback layers sit in the routing core. Account fallback picks another active connection for the same provider and model. Combo fallback moves to the next model in an ordered combo chain. The OpenAI-pivot translation layer keeps client and provider formats separate so one client can reach many upstreams.
 
-See [Architecture](docs/ARCHITECTURE.md) for the request lifecycle, routing internals, and extension points.
+See [Architecture](docs/contributing/architecture.mdx) for the request lifecycle, routing internals, and extension points.
 
 ## Security and operations
 
@@ -345,7 +345,7 @@ The canonical documentation is Markdown in this repository. GitHub-rendered Mark
 
 ## Contributing
 
-Read [Contributing](CONTRIBUTING.md), [Local development](docs/contributing/local-development.mdx), and [Architecture](docs/ARCHITECTURE.md) before opening a pull request, and follow the [pull request template](.github/PULL_REQUEST_TEMPLATE.md). Postgres engine PRs use [.github/pr-templates/postgres-engine.md](.github/pr-templates/postgres-engine.md). The anti-slop oxlint gate is documented in [tools/oxlint/anti-slop/VENDOR.md](tools/oxlint/anti-slop/VENDOR.md).
+Read [Contributing](CONTRIBUTING.md), [Local development](docs/contributing/local-development.mdx), and [Architecture](docs/contributing/architecture.mdx) before opening a pull request, and follow the [pull request template](.github/PULL_REQUEST_TEMPLATE.md). Postgres engine PRs use [.github/pr-templates/postgres-engine.md](.github/pr-templates/postgres-engine.md). The anti-slop oxlint gate is documented in [tools/oxlint/anti-slop/VENDOR.md](tools/oxlint/anti-slop/VENDOR.md).
 
 ## Durin DS design system preview
 
@@ -354,7 +354,7 @@ dashboard, previewed in Storybook before any production wiring. The work
 lives in `src/shared/ui/` (tokens, primitives, shell, page mocks) so
 upstream 9router PRs remain mechanically portable.
 
-- Full reference: [docs/development/durin-ds.md](docs/development/durin-ds.md)
+- Full reference: [docs/contributing/design-system.mdx](docs/contributing/design-system.mdx)
 - Quick tour: [src/shared/ui/README.md](src/shared/ui/README.md)
 
 From the repository root:

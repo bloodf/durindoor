@@ -1,6 +1,102 @@
 ---
 title: Architecture
-description: Request lifecycle, combo fallback, OAuth refresh, and persistence.
+description: Request path, account and combo fallback, OAuth refresh, and persistence as the runtime does them today.
 ---
 
-Pages in this section are being written.
+DurinDoor is a Next.js process that exposes an OpenAI-compatible API, a dashboard, and the `open-sse` routing core. Client tools hit `/v1`. The dashboard hits `/api`. Both share SQLite at `DATA_DIR/db/data.sqlite` unless an operator has cut over to Postgres.
+
+Next rewrites `/v1/:path*` to `/api/v1/:path*` and `/v1beta` to `/api/v1beta`. `POST /v1/chat/completions` calls `handleChat` in `src/sse/handlers/chat.js`.
+
+## Runtime areas
+
+| Area | Paths | Job |
+| --- | --- | --- |
+| Dashboard | `src/app/(dashboard)` | Browser UI for providers, combos, usage, tools, tunnels, MITM, MCP, and settings. |
+| Compatibility API | `src/app/api/v1`, `src/app/api/v1beta` | Client-facing OpenAI-compatible routes. |
+| Management API | `src/app/api/*` | Dashboard routes for keys, usage, settings, OAuth, tunnels, MCP, and proxy pools. |
+| Routing layer | `src/sse` | Auth, model resolution, account selection, combo dispatch. |
+| Core engine | `open-sse` | Translation, executors, streaming, fallback, token refresh, usage. |
+| Persistence | `src/lib/db` | SQLite driver, migrations, repositories, backups, optional Postgres. |
+| CLI | `cli` | Starts the app. Bundled runtime is Node `20.20.2` / npm `10.8.2`. |
+
+Provider files live under `open-sse/providers/registry`. Translators live under `open-sse/translator`. See [Provider registry](provider-registry.mdx) and [Translators](translators.mdx).
+
+## Request lifecycle
+
+Chat is the path below. Other `/v1` families reuse connections and have their own handlers. Watch outcomes on **Dashboard → Usage** (`/dashboard/usage`). Model-string rules and credential rotation live on [Smart routing](../features/smart-routing.mdx).
+
+1. The client sends a request with `model` and a DurinDoor API key.
+2. The `/v1` rewrite lands on the App Router route. `POST` for chat rejects a non-JSON `Content-Type` with 415, then calls `handleChat`.
+3. `handleChat` validates the DurinDoor key, resolves the model (alias, combo, or `provider/model`), and picks an active connection.
+4. For `authType === "oauth"`, `refreshAndUpdateCredentials` runs before dispatch. A refresh failure logs and the request continues with the stored credential.
+5. Account fallback can retry another connection for the same provider and model, up to `MAX_ACCOUNT_ATTEMPTS_PER_REQUEST` (1024).
+6. Combo names go to `handleComboChat` (or `handleFusionChat`). Each member still runs `handleChatCore`.
+7. `handleChatCore` detects source and target formats, translates, optionally compresses `tool_result` bodies, and calls the executor.
+8. The executor talks to the upstream. Response chunks translate back to the client format.
+9. Usage, request details, and connection state write through `src/lib/db`.
+
+```text
+Client
+  -> /v1 route (next.config.mjs rewrite)
+  -> src/sse/handlers/chat.js
+  -> account pick + optional OAuth refresh
+  -> open-sse/handlers/chatCore.js  (or combo.js then chatCore per member)
+  -> translator + executor
+  -> upstream
+  -> translated response to client
+  -> SQLite or Postgres
+```
+
+A model's context window and max output come from `resolveModelLimits` in `open-sse/providers/capabilities.js`. `handleChatCore` rejects an oversize request when those numbers are known catalog values. It stays silent when the real limit is unknown, so a guessed floor does not 400 a larger undeclared window. See [Model limits](../reference/model-limits.mdx).
+
+## Routing and fallback
+
+Two layers:
+
+1. Account fallback chooses another active connection for the same provider and model (`open-sse/services/accountFallback.js`).
+2. Combo fallback chooses the next model in an ordered combo chain (`open-sse/services/combo.js`).
+
+A direct model request uses account fallback only. A combo request can use both. Account fallback inside one member still runs first: if OpenAI account A 429s and account B succeeds, the combo does not move to member 2.
+
+`checkFallbackError` decides whether an upstream error rotates. HTTP 499 from the client or an external hop is terminal for account fallback. Anthropic `invalid_request_error` 400s do not rotate. Combo-owned per-attempt timeouts are handled in `combo.js`, not by that 499 branch.
+
+Empty HTTP 200 bodies and SSE streams that never carry a usable frame also fail through. Details and strategies are on [Combos](../features/combos.mdx).
+
+Transport for the outbound call follows the final body format. A model-level `targetFormat` can move the request to a different endpoint, header set, and auth scheme (`resolveRequestTransport` in `chatCore.js`). Unpinned models can still use a client-format endpoint when registry metadata lists that format.
+
+Antigravity's executor rewrites `OpenCode` branding in provider-bound system instructions to case-matched `Antigravity` after translation. Plain Gemini, Gemini CLI, Vertex, and conversation content stay unchanged.
+
+## OAuth refresh
+
+On-request refresh is `refreshAndUpdateCredentials` in `src/shared/services/providerCredentials.js`. It runs when the executor's `needsRefresh` is true, or when the caller passes `force`. In-flight refreshes for the same connection share one network call (`serializeRefresh`). Stored secrets change only when the provider returns a replacement value.
+
+Default lead time is `TOKEN_EXPIRY_BUFFER_MS` (5 minutes) in `open-sse/services/tokenRefresh.js`. A provider can set `oauth.refreshLeadMs` in its registry entry; `REFRESH_LEAD_MS` is built from those values.
+
+Unrecoverable refresh errors (`unrecoverable_refresh_error`, `refresh_token_reused`, `invalid_request`, `invalid_grant`) mark the connection for reauth rather than looping.
+
+A background ticker (`src/sse/services/backgroundTokenRefresh.js`) also refreshes OAuth connections whose access token expires within `max(provider lead, BACKGROUND_REFRESH_LEAD_MS)` (30 minutes). First tick after 10 seconds, then every 5 minutes. Tick errors never kill the interval.
+
+## Persistence
+
+Default `DATA_DIR` is `~/.9router` on Unix and `%APPDATA%\9router` on Windows (`src/lib/dataDir.js`). Override with `DATA_DIR`. The live SQLite file is `DATA_DIR/db/data.sqlite`. Backups go under `DATA_DIR/db/backups`. Mode `0700` on new credential directories; backup files use `0600` on POSIX.
+
+Postgres is opt-in and off by default. The engine flag is `databaseEngine` on the settings row. Cutover (`src/lib/db/cutover.js`) migrates the PG schema, mirrors SQLite tables in 500-row chunks, snapshots `data.sqlite` to `data.sqlite.postgres-cutover-<ts>`, then flips the live adapter. Rollback restores the newest snapshot. Operator steps: [Postgres](../operations/postgres.mdx). Contributor migration work: [Postgres migrations](postgres-migrations.mdx).
+
+## Security surfaces
+
+Dashboard cookies, DurinDoor API keys, upstream tokens, optional request-body logs, optional MITM, optional tunnels, and MCP gateway keys. Production needs explicit secrets, TLS at the reverse proxy, restricted dashboard access, and backups of `DATA_DIR`. See [Security](../operations/security.mdx).
+
+## Extension points
+
+| Extension | Where |
+| --- | --- |
+| Provider registry entry | `open-sse/providers/registry/{id}.js` plus `npm run gen:registry-index` |
+| Models and capabilities | Same registry file |
+| Executor | `open-sse/executors` when the default OpenAI-compatible executor is not enough |
+| Translator | `open-sse/translator/request` and `response`, imported from `open-sse/translator/index.js` |
+| Dashboard provider UI | Registry `display` fields and dashboard components |
+| Compression | `open-sse/rtk` and [Compression](../features/compression.mdx) |
+| Realtime | [Realtime](../features/realtime.mdx) |
+| MCP Gateway | `src/lib/mcp` and [MCP Gateway](../features/mcp-gateway.mdx) |
+| API route | `src/app/api` |
+| Database entity | `src/lib/db/schema.js`, a SQLite migration, then the PG generator |

@@ -1,6 +1,83 @@
 ---
 title: Provider registry
-description: Registry files, generated index, gen:registry-index, and gen:agent-index.
+description: Per-provider registry files, the generated barrel, and the gen/check scripts for registry and agent indexes.
 ---
 
-Pages in this section are being written.
+Each provider is one module under `open-sse/providers/registry/`. `open-sse/providers/index.js` builds `PROVIDERS`, `PROVIDER_MODELS`, `PROVIDER_OAUTH`, and `PROVIDER_MEDIA` from that list. The catalog, `/v1/models`, and executor lookup all read those objects.
+
+Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX.md`.
+
+## Add or change a provider
+
+<Steps>
+<Step>
+Copy [REGISTRY_TEMPLATE.js](https://github.com/bloodf/durindoor/blob/main/open-sse/providers/REGISTRY_TEMPLATE.js) to `open-sse/providers/registry/{id}.js`. `{id}` is kebab-case and unique.
+
+The template is not imported by the barrel. It lives in `open-sse/providers/`, one directory above `registry/`, so `gen:registry-index` never picks it up.
+
+</Step>
+<Step>
+Keep only the fields you need. Required fields are `id` and `category`. Everything else is optional or derived. The contract is `@typedef RegistryEntry` in [schema.js](https://github.com/bloodf/durindoor/blob/main/open-sse/providers/schema.js).
+
+Quick shapes from the template:
+
+- API-key LLM: `id`, `alias`, `category: "apikey"`, `display`, `transport.baseUrl`, `models`.
+- OAuth LLM: add `oauth`. `clientId` / `tokenUrl` inject into `transport` at build time. Do not duplicate them under `transport`.
+- Media-only: drop chat `models` and fill `media.serviceKinds` plus the matching `*Config` blocks.
+
+Default `transport.format` is `"openai"`. Declare only what differs.
+
+</Step>
+<Step>
+Regenerate the barrel and commit it when it changes:
+
+```bash
+npm run gen:registry-index
+npm run check:registry-index
+```
+
+`gen:registry-index` is `node scripts/gen-registry-index.mjs`. `check:registry-index` is the same script with `--check`.
+
+</Step>
+<Step>
+Add an executor under `open-sse/executors` only when the default OpenAI-compatible executor cannot speak the upstream. Then regenerate the agent index:
+
+```bash
+npm run gen:agent-index
+npm run check:agent-index
+```
+
+</Step>
+<Step>
+Add focused tests for auth, request format, streaming, refresh, or the provider-specific behaviour you changed. Update [Providers](../providers/index.mdx) when the operator-facing setup changes.
+
+</Step>
+</Steps>
+
+## Generated registry barrel
+
+[registry/index.js](https://github.com/bloodf/durindoor/blob/main/open-sse/providers/registry/index.js) starts with:
+
+```js
+// Auto-generated: static imports of all registry entries
+```
+
+The generator scans `open-sse/providers/registry/*.js`, skips `index.js`, sorts filenames by code point (`Array.prototype.sort()`, not `localeCompare`), and assigns `p0..pN`. Array-valued modules (for example `omniroute-api-cloud.js`) emit `...pN` so the aggregate stays flat. Detection imports the module and uses `Array.isArray` on the default export.
+
+A static import list is required because Next/webpack cannot analyze a dynamic `import()` of the whole directory.
+
+`--check` does not write. It exits non-zero when the committed file differs from a fresh generate. CI runs `npm run check:registry-index`.
+
+## Agent index
+
+`npm run gen:agent-index` is `node scripts/gen-agent-index.mjs`. It reads `open-sse/executors/index.js` and the registry barrel, then writes `open-sse/AGENT-INDEX.md` with two tables: executor id to class and file, and provider id to format, category, and `baseUrl`.
+
+`npm run check:agent-index` is `node scripts/check-agent-index.mjs`. It regenerates in memory and exits 1 on drift, with the message to run `npm run gen:agent-index` and commit.
+
+## Field reminders
+
+- `category` drives dashboard grouping (`apikey`, `oauth`, `freeTier`, and the other values in the typedef).
+- `models: []` is an explicit empty list. Omitting `models` means no model key.
+- `passthroughModels` forwards the client model id untouched.
+- `oauth.refreshLeadMs` feeds on-request refresh lead time. See [Architecture](architecture.mdx).
+- Provider logos are a separate policy: [Provider brand assets](provider-brand-assets.mdx).

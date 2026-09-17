@@ -20,3 +20,5 @@ public/durindoor-wordmark.png
 
 # Shared stylesheets copied by scripts/sync-public.mjs
 src/styles/shared/
+
+.source/

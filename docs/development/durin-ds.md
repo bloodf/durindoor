@@ -500,11 +500,7 @@ font size; `sm` remains the convention in dense toolbars (`Header` actions,
 ## Upstream-portability notes
 
 Durin DS lives in `src/shared/ui/`. Everything else in the repo tracks
-upstream 9router. For the full porting playbook — including how to
-rebase a UI-heavy 9router PR onto DS tokens and how to decide what
-becomes a new primitive — see
-[`docs/development/porting-upstream-ui.md`](./porting-upstream-ui.md).
-This section is a short summary; the playbook is authoritative.
+upstream 9router.
 
 ### What is DurinDoor-owned
 

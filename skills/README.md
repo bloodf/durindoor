@@ -25,6 +25,6 @@ curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/api/health"
 
 Use discovery endpoints in each skill instead of copying model IDs from old examples. Available models depend on the running version and configured providers.
 
-- [DurinDoor documentation](../docs/README.md)
+- [DurinDoor documentation](../docs/index.mdx)
 - [API reference](../docs/reference/api.mdx)
 - [Source](https://github.com/bloodf/durindoor)

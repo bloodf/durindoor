@@ -47,7 +47,7 @@ export const FALLBACK_TIERS = [
   },
 ];
 
-// Default from docs/features/smart-routing.md: stickyRoundRobinLimit = 3.
+// Default from docs/features/smart-routing.mdx: stickyRoundRobinLimit = 3.
 export const STICKY_LIMIT = 3;
 
 // Logos present in ../public/providers (copied by scripts/sync-public.mjs).
@@ -61,7 +61,7 @@ export const CONSTELLATION = {
 };
 export const constellationLogo = providerLogo;
 
-// Engines documented in docs/features/compression.md and open-sse/rtk/.
+// Engines documented in docs/features/compression.mdx and open-sse/rtk/.
 export const SAVER_ENGINES = [
   { name: "RTK filters", body: "Condense tool output such as git status, git diff, ls, grep, find and build logs." },
   { name: "Caveman", body: "Rule-based prose compression with lite, full and ultra intensities." },

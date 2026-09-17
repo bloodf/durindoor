@@ -9,7 +9,7 @@
  * vendored plugin is pre-bundled to `tools/oxlint/anti-slop/index.bundle.js`
  * by `scripts/build-anti-slop-plugin.mjs` before oxlint runs.
  *
- * @see docs/development/anti-slop.md
+ * @see docs/contributing/local-development.mdx
  * @see https://github.com/dmmulroy/anti-slop
  */
 

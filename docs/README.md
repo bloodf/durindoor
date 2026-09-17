@@ -36,8 +36,8 @@ For users getting their first request through the gateway.
 - [Other OpenAI-Compatible Tools](integrations/other-tools.mdx)
 - [Combos and Fallback](features/combos.mdx): ordered model chains, retry behavior, exclusions, and operating patterns.
 - [Smart Routing](features/smart-routing.mdx): model resolution, provider selection, account fallback, and format translation.
-- [FAQ](faq.md)
-- [Troubleshooting](troubleshooting.md)
+- [FAQ](faq.mdx)
+- [Troubleshooting](troubleshooting.mdx)
 
 ## Operators
 
@@ -58,8 +58,8 @@ For operators running DurinDoor in production or on a team server.
 - [Realtime Behavior](features/realtime.mdx)
 - [Compression](features/compression.mdx)
 - [Headroom Setup and Diagnostics](features/headroom.mdx)
-- [Troubleshooting](troubleshooting.md)
-- [FAQ](faq.md)
+- [Troubleshooting](troubleshooting.mdx)
+- [FAQ](faq.mdx)
 
 ## Contributors
 

@@ -728,6 +728,19 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*gpt-3.5*", caps: { contextWindow: 16385, maxOutput: 4096 } },
 { pattern: "*gpt-oss*", caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 } },
 
+// ── Cline free tier (Upstage Solar Pro 4, LongCat) ───────────────
+// MUST stay above the o-series catch-alls: "solar-pro4" contains "o4", so left
+// below them it inherits vision:true and a 100K output ceiling and the gateway
+// advertises image support for a text-only model. The same trap already bit
+// solar-pro3 against "*o3*", which is why the exact `upstage.solar-pro3`
+// override exists above — that override is deliberately provider-scoped, so
+// this pattern is scoped to `solar-pro4` rather than a `*solar-pro*` glob that
+// would also swallow solar-pro3 and erase the evidence for that override.
+// Windows are unverified upstream, so these carry the conservative 200K/32K the
+// other free agentic models use rather than the o-series' 200K/100K.
+{ pattern: "*solar-pro4*", caps: { vision: false, reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 32000 } },
+{ pattern: "*longcat*", caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 32000 } },
+
 // ── OpenAI o-series (reasoning, vision) ──────────────────────────
 { pattern: "*o1-mini*", caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 } },
 { pattern: "*o1*", caps: { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 100000 } },

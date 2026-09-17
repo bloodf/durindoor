@@ -2,6 +2,7 @@
 
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
+import Link from "next/link";
 import { FEATURES } from "../data.js";
 import Icon from "../ui/Icon.jsx";
 import { Reveal, SectionHeader, spotlight } from "../ui/primitives.jsx";
@@ -12,9 +13,9 @@ export default function Features() {
     <section id="features" className="section section-features" aria-labelledby="features-title">
       <div className="container">
         <SectionHeader
-          eyebrow={t("What the door guards")}
-          title={<span id="features-title">{t("Everything between your tools and your providers")}</span>}
-          lead={t("Credentials, routing, fallbacks, translation and the ledger of every call, all on hardware you control.")}
+          eyebrow={t("Also on this machine")}
+          title={<span id="features-title">{t("MCP, realtime, proxy traces, tunnels")}</span>}
+          lead={t("Each card opens the matching docs page.")}
         />
         <ul className="feature-grid">
           {FEATURES.map((feature, i) => (
@@ -24,7 +25,12 @@ export default function Features() {
               delay={(i % 4) * 0.06}
               className={`feature-card ${feature.wide ? "is-wide" : ""}`}
             >
-              <div className="feature-inner" onPointerMove={spotlight}>
+              <Link
+                href={feature.href}
+                className="feature-inner"
+                onPointerMove={spotlight}
+                style={{ display: "block", color: "inherit", textDecoration: "none" }}
+              >
                 <div className="feature-top">
                   <span className="feature-icon">
                     <Icon name={feature.icon} size={22} />
@@ -33,7 +39,7 @@ export default function Features() {
                 </div>
                 <h3>{t(feature.title)}</h3>
                 <p>{t(feature.body)}</p>
-              </div>
+              </Link>
             </Reveal>
           ))}
         </ul>

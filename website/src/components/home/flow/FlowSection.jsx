@@ -6,13 +6,13 @@ import FlowDiagram from "./FlowDiagram.jsx";
 import ModelResolver from "./ModelResolver.jsx";
 import FallbackTiers from "./FallbackTiers.jsx";
 import ThreeStage from "../threeui/ThreeStage.jsx";
-import { Reveal, SectionHeader } from "../ui/primitives.jsx";
+import { DocsCta, Reveal, SectionHeader } from "../ui/primitives.jsx";
 
 const STEPS = [
   { n: "01", title: "Knock", body: "A tool sends a /v1 request with a DurinDoor key and a model string." },
   { n: "02", title: "Resolve", body: "The key is checked, the model resolved, and a healthy connection chosen." },
   { n: "03", title: "Translate", body: "Formats are bridged both ways; the upstream call uses stored credentials." },
-  { n: "04", title: "Record", body: "Usage, latency and outcome land in local SQLite as the response streams back." },
+  { n: "04", title: "Record", body: "Usage, latency and outcome land in local SQLite. Switch the engine to Postgres when you outgrow the file." },
 ];
 
 export default function FlowSection() {
@@ -25,7 +25,7 @@ export default function FlowSection() {
         <SectionHeader
           eyebrow={t("How it works")}
           title={<span id="how-title">{t("Every request passes one door")}</span>}
-          lead={t("Your tools speak OpenAI. Your providers speak whatever they like. DurinDoor stands between them, holds the keys, and keeps the ledger.")}
+          lead={t("Clients post OpenAI /v1/chat/completions or /v1/responses, or Anthropic /v1/messages. DurinDoor translates, picks a healthy account, and records the outcome.")}
         />
         <Reveal className="flow-frame">
           <FlowDiagram />
@@ -49,6 +49,7 @@ export default function FlowSection() {
         <Reveal>
           <FallbackTiers />
         </Reveal>
+        <DocsCta href="/docs/features/smart-routing" />
       </div>
     </section>
   );

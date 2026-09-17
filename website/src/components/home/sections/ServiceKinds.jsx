@@ -4,7 +4,7 @@ import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
 import { REGISTRY_PROVIDER_COUNT, SERVICE_KINDS } from "../content.js";
 import Icon from "../ui/Icon.jsx";
-import { CountUp, Reveal, SectionHeader, spotlight } from "../ui/primitives.jsx";
+import { CountUp, DocsCta, Reveal, SectionHeader, spotlight } from "../ui/primitives.jsx";
 
 const MAX = Math.max(...SERVICE_KINDS.map((kind) => kind.count));
 
@@ -20,16 +20,15 @@ export default function ServiceKinds() {
       <div className="container">
         <SectionHeader
           eyebrow={t("One door, every provider")}
-          title={<span id="kinds-title">{t("Not just chat. Every kind of model call.")}</span>}
-          lead={t("The same key and base URL reach chat, embeddings, speech, images, video and the web. Whatever the modality, it walks through the same door.")}
+          title={<span id="kinds-title">{t("Nine kinds of model call, one key.")}</span>}
+          lead={t("The same key and base URL cover chat, embeddings, speech, images, video, search, and fetch.")}
         />
 
         <Reveal className="kinds-total">
           <span className="kinds-total-n">
             <CountUp to={REGISTRY_PROVIDER_COUNT} className="count" />
           </span>
-          <span className="kinds-total-label">{t("providers in the registry")}<small>{t("OAuth logins, API keys, web cookies, free tiers and local runtimes")}</small>
-          </span>
+          <span className="kinds-total-label">{t("providers in the registry")}</span>
         </Reveal>
 
         <ul className="kinds-grid">
@@ -55,6 +54,7 @@ export default function ServiceKinds() {
           ))}
         </ul>
         <p className="kinds-note">{t("Provider counts come from the DurinDoor provider registry. Support for each modality depends on the provider.")}</p>
+        <DocsCta href="/docs/providers" />
       </div>
     </section>
   );

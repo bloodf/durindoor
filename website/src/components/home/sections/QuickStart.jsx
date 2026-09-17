@@ -109,7 +109,7 @@ export default function QuickStart() {
         </Reveal>
         <Reveal>
           <Magnetic href="/docs/getting-started" internal className="btn btn-ghost">
-            {t("Read the documentation")}
+            {t("Read the docs")}
           </Magnetic>
         </Reveal>
         <Reveal>

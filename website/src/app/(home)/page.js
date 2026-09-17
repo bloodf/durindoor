@@ -6,7 +6,6 @@ import ToolsMarquee from "@site/components/home/sections/ToolsMarquee.jsx";
 import TokenSavers from "@site/components/home/sections/TokenSavers.jsx";
 import QuotaUsage from "@site/components/home/sections/QuotaUsage.jsx";
 import Features from "@site/components/home/sections/Features.jsx";
-import Compare from "@site/components/home/sections/Compare.jsx";
 import QuickStart from "@site/components/home/sections/QuickStart.jsx";
 import DemoTeaser from "@site/components/home/sections/DemoTeaser.jsx";
 import FinalCta from "@site/components/home/sections/FinalCta.jsx";
@@ -16,7 +15,7 @@ import { RuneDivider } from "@site/components/home/ui/primitives.jsx";
 
 // Story order: the door opens (hero), what walks through it (kinds), how it
 // routes (flow + fallback), who is behind it (providers, tools), what it saves
-// (tokens, quota), what else it guards (features, comparison), then the way in.
+// (tokens, quota), leftover surfaces (features), then the way in.
 export default function HomePage() {
   return (
     <SmoothScroll>
@@ -33,7 +32,6 @@ export default function HomePage() {
         <TokenSavers />
         <QuotaUsage />
         <Features />
-        <Compare />
         <QuickStart />
         <DemoTeaser />
         <FinalCta />

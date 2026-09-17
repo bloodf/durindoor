@@ -6,7 +6,7 @@ import { motion } from "motion/react";
 import { QUOTA_SAMPLE } from "../content.js";
 import ThreeStage from "../threeui/ThreeStage.jsx";
 import Icon from "../ui/Icon.jsx";
-import { CountUp, Reveal, SectionHeader } from "../ui/primitives.jsx";
+import { CountUp, DocsCta, Reveal, SectionHeader } from "../ui/primitives.jsx";
 
 const R = 52;
 const CIRCUMFERENCE = 2 * Math.PI * R;
@@ -53,8 +53,8 @@ function Gauge({ account, index }) {
 
 const LEDGER = [
   { icon: "chart", text: "Provider, model, tokens, cost estimate and latency for every request" },
-  { icon: "layers", text: "Which model served each request, and the fallback outcome" },
   { icon: "gauge", text: "Provider limits and reset windows side by side" },
+  { icon: "layers", text: "Codex reset credits redeem against that account's exhausted windows" },
 ];
 
 export default function QuotaUsage() {
@@ -67,7 +67,7 @@ export default function QuotaUsage() {
         <SectionHeader
           eyebrow={t("The ledger")}
           title={<span id="quota-title">{t("Know which account still has room")}</span>}
-          lead={t("DurinDoor records every call in local SQLite and tracks provider limits and reset windows, so you can see which account still has headroom before a tool hits a wall.")}
+          lead={t("Quota views show provider limits, reset windows, and Codex reset credits.")}
         />
         <div className="quota-layout">
           <div className="gauges-wrap">
@@ -90,6 +90,7 @@ export default function QuotaUsage() {
             </ul>
           </Reveal>
         </div>
+        <DocsCta href="/docs/features/quota-tracking" />
       </div>
     </section>
   );

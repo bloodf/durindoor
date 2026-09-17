@@ -2,8 +2,9 @@
 
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
+import Link from "next/link";
 import { TOOLS } from "../data.js";
-import { SectionHeader } from "../ui/primitives.jsx";
+import { DocsCta, SectionHeader } from "../ui/primitives.jsx";
 
 // Two CSS marquees in opposite directions. The duplicate track is aria-hidden,
 // and reduced motion stops the animation and lets the row wrap instead.
@@ -28,7 +29,7 @@ export default function ToolsMarquee() {
         <SectionHeader
           eyebrow={t("Compatible tools")}
           title={<span id="tools-title">{t("If it speaks OpenAI, it walks through")}</span>}
-          lead={t("Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.")}
+          lead={t("Claude Code, Codex, Cursor, Cline, Roo, and Continue have setup pages. Anything that speaks OpenAI uses the same base URL.")}
         />
       </div>
       <Track
@@ -36,11 +37,23 @@ export default function ToolsMarquee() {
         items={TOOLS}
         renderItem={(tool) => (
           <li key={tool.name} className="tool-chip">
-            <span className="logo-chip"><img src={tool.logo} alt="" width="28" height="28" loading="lazy" /></span>
-            <span>{tool.name}</span>
+            {tool.href ? (
+              <Link href={tool.href} style={{ display: "inline-flex", alignItems: "center", gap: "inherit", color: "inherit", textDecoration: "none" }}>
+                <span className="logo-chip"><img src={tool.logo} alt="" width="28" height="28" loading="lazy" /></span>
+                <span>{tool.name}</span>
+              </Link>
+            ) : (
+              <>
+                <span className="logo-chip"><img src={tool.logo} alt="" width="28" height="28" loading="lazy" /></span>
+                <span>{tool.name}</span>
+              </>
+            )}
           </li>
         )}
       />
+      <div className="container">
+        <DocsCta href="/docs/integrations" />
+      </div>
     </section>
   );
 }

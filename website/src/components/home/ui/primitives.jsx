@@ -135,3 +135,14 @@ export function SectionHeader({ eyebrow, title, lead, align = "center" }) {
     </Reveal>
   );
 }
+
+export function DocsCta({ href = "/docs" }) {
+  const { t } = useHomeLocale();
+  return (
+    <Reveal>
+      <Magnetic href={href} internal className="btn btn-ghost">
+        {t("Read the docs")}
+      </Magnetic>
+    </Reveal>
+  );
+}

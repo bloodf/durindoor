@@ -2162,5 +2162,12 @@
     "validateUrl": "https://zenmux.ai/api/v1/models",
     "thinkingFormat": "openai",
     "format": "openai"
+  },
+  "tokenmarket": {
+    "baseUrl": "https://api.tokensmarket.ai/v1/chat/completions",
+    "validateUrl": "https://api.tokensmarket.ai/v1/models",
+    "thinkingFormat": "tokenmarket",
+    "format": "openai",
+    "authType": "apikey"
   }
 }

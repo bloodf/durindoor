@@ -45,3 +45,43 @@ jobs:
         env:
           DATA_DIR: ${{ runner.temp }}/durindoor-data
         run: npm run build
+
+  website-build:
+    name: Website build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            website/package-lock.json
+
+      - name: Pin npm
+        run: |
+          npm install --global npm@10.8.2
+          test "$(npm --version)" = "10.8.2"
+
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install website dependencies
+        working-directory: website
+        run: npm ci --no-audit --no-fund
+
+      - name: Build website
+        working-directory: website
+        run: npm run build
+
+      - name: Check docs
+        run: npm run check:docs
+
+      - name: Check provider catalog
+        run: npm run check:provider-catalog

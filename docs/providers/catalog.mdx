@@ -1,0 +1,262 @@
+---
+title: Provider catalog
+description: Registry providers with id, auth type, model count, and site link.
+---
+
+`scripts/gen-provider-catalog.mjs` reads the 235 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+
+| Name | Id | Auth | Models | Docs |
+| --- | --- | --- | --- | --- |
+| 360 AI | `360ai` | apikey | 0 | [site](https://ai.360.cn) |
+| 9router | `9router` | apikey | 1 | [site](https://www.npmjs.com/package/9router) |
+| Adapta Web | `adapta-web` | cookie | 7 | [site](https://agent.adapta.one) |
+| AgentRouter | `agentrouter` | apikey | 4 | [site](https://agentrouter.org) |
+| Antigravity CLI | `agy` | oauth | 21 | [site](https://antigravity.google) |
+| AI21 Labs | `ai21` | apikey | 2 | [site](https://www.ai21.com) |
+| AI Horde | `aihorde` | apikey | 0 | [site](https://aihorde.net) |
+| AI/ML API | `aimlapi` | apikey | 6 | [site](https://aimlapi.com) |
+| Alibaba | `alibaba` | apikey | 12 | [site](https://bailian.console.alibabacloud.com/) |
+| Alibaba DashScope CN | `alibaba-cn` | apikey | 12 | [site](https://dashscope.aliyuncs.com) |
+| Alibaba | `alicode` | apikey | 8 | [site](https://bailian.console.aliyun.com) |
+| Alibaba Intl | `alicode-intl` | apikey | 7 | [site](https://modelstudio.console.alibabacloud.com) |
+| Alibaba Token Plan | `alitp-intl` | apikey | 6 | [site](https://www.alibabacloud.com/campaign/ai-landing-page-token) |
+| Anthropic | `anthropic` | apikey | 14 | [site](https://console.anthropic.com) |
+| Antigravity | `antigravity` | oauth | 21 | [site](https://antigravity.google) |
+| Api.airforce | `api-airforce` | apikey | 7 | [site](https://api.airforce) |
+| Arcee AI | `arcee-ai` | apikey | 0 | [site](https://arcee.ai) |
+| AssemblyAI | `assemblyai` | apikey | 4 | [site](https://assemblyai.com) |
+| Augment Auggie CLI | `auggie` | none | 12 | [site](https://augmentcode.com) |
+| Auto (Zero-Config) | `auto` | system | 0 |  |
+| AWS Polly | `aws-polly` | apikey | 0 | [site](https://aws.amazon.com/polly/) |
+| Azure OpenAI | `azure` | apikey | 0 | [site](https://azure.microsoft.com/en-us/products/ai-services/openai-service) |
+| Azure AI Foundry | `azure-ai` | apikey | 0 | [site](https://learn.microsoft.com/azure/ai-foundry) |
+| Azure OpenAI | `azure-openai` | apikey | 0 | [site](https://azure.microsoft.com/products/ai-services/openai-service) |
+| B.AI | `bai` | apikey | 0 | [site](https://b.ai) |
+| Baichuan | `baichuan` | apikey | 5 | [site](https://baichuan.com) |
+| Baidu (ERNIE) | `baidu` | apikey | 16 | [site](https://yiyan.baidu.com) |
+| Alibaba Coding Plan | `bailian-coding-plan` | apikey | 10 | [site](https://www.alibabacloud.com/help/en/model-studio/coding-plan) |
+| Baseten | `baseten` | apikey | 6 | [site](https://baseten.co) |
+| BazaarLink | `bazaarlink` | apikey | 33 | [site](https://bazaarlink.ai) |
+| Amazon Bedrock | `bedrock` | apikey | 6 | [site](https://aws.amazon.com/bedrock) |
+| BigModel | `bigmodel` | apikey | 2 | [site](https://open.bigmodel.cn) |
+| Black Forest Labs | `black-forest-labs` | apikey | 6 | [site](https://blackforestlabs.ai) |
+| Blackbox AI | `blackbox` | apikey | 10 | [site](https://blackbox.ai) |
+| BluesMinds | `bluesminds` | apikey | 22 | [site](https://www.bluesminds.com) |
+| Brave Search | `brave-search` | apikey | 0 | [site](https://brave.com/search/api) |
+| BytePlus ModelArk | `byteplus` | freeTier | 7 | [site](https://console.byteplus.com/ark) |
+| Bytez | `bytez` | apikey | 3 | [site](https://bytez.com) |
+| CablyAI | `cablyai` | apikey | 0 | [site](https://cablyai.com) |
+| Cartesia | `cartesia` | apikey | 0 | [site](https://cartesia.ai) |
+| Cerebras | `cerebras` | apikey | 6 | [site](https://www.cerebras.ai) |
+| Charm Hyper | `charm-hyper` | apikey | 20 | [site](https://hyper.charm.land) |
+| ChatGPT Web | `chatgpt-web` | cookie | 10 | [site](https://chatgpt.com) |
+| Chenzk API | `chenzk` | apikey | 16 | [site](https://chenzk.top) |
+| Chipotle Pepper | `chipotle` | none | 1 | [site](https://amelia.chipotle.com) |
+| Chutes AI | `chutes` |  | 0 | [site](https://chutes.ai) |
+| Clarifai | `clarifai` | apikey | 0 | [site](https://docs.clarifai.com) |
+| Claude Code | `claude` | oauth | 7 | [site](https://claude.ai) |
+| Cline | `cline` | oauth | 9 | [site](https://cline.bot) |
+| ClinePass | `clinepass` | oauth, apikey | 10 | [site](https://cline.bot) |
+| CLIProxyAPI | `cliproxyapi` | apikey | 0 | [site](https://github.com/router-for-me/CLIProxyAPI) |
+| Cloudflare | `cloudflare-ai` | apikey | 48 | [site](https://developers.cloudflare.com/workers-ai/) |
+| CodeBuddy CN | `codebuddy-cn` | oauth, apikey | 13 | [site](https://copilot.tencent.com) |
+| Codestral | `codestral` | apikey | 2 | [site](https://mistral.ai) |
+| OpenAI Codex | `codex` | oauth | 32 | [site](https://chatgpt.com/codex) |
+| Codex Cloud | `codex-cloud` | apikey | 0 | [site](https://openai.com/codex) |
+| Cohere | `cohere` | apikey | 3 | [site](https://cohere.com) |
+| ComfyUI | `comfyui` | apikey | 2 | [site](https://github.com/comfyanonymous/ComfyUI) |
+| Command Code | `command-code` | apikey | 18 | [site](https://commandcode.ai) |
+| Command Code | `commandcode` | apikey | 25 | [site](https://commandcode.ai) |
+| Microsoft 365 Copilot Web | `copilot-m365-web` | cookie | 1 | [site](https://m365.cloud.microsoft/chat) |
+| Copilot Web | `copilot-web` | cookie | 3 | [site](https://copilot.microsoft.com) |
+| Coqui TTS | `coqui` | none | 0 | [site](https://github.com/coqui-ai/TTS) |
+| Crof AI | `crof` | apikey | 19 | [site](https://crof.ai) |
+| Cursor IDE | `cursor` | oauth | 14 | [site](https://cursor.com) |
+| Databricks | `databricks` | apikey | 4 | [site](https://www.databricks.com) |
+| DataRobot | `datarobot` | apikey | 0 | [site](https://docs.datarobot.com) |
+| Deepgram | `deepgram` | apikey | 4 | [site](https://deepgram.com) |
+| DeepInfra | `deepinfra` | apikey | 22 | [site](https://deepinfra.com) |
+| DeepSeek | `deepseek` | apikey | 6 | [site](https://deepseek.com) |
+| Devin | `devin` | apikey | 1 | [site](https://devin.ai) |
+| Devin CLI | `devin-cli` | oauth | 0 | [site](https://cli.devin.ai) |
+| DGrid AI | `dgrid` | apikey | 1 | [site](https://dgrid.ai) |
+| Dify | `dify` | apikey | 1 | [site](https://dify.ai) |
+| DigitalOcean | `digitalocean` | apikey | 14 | [site](https://docs.digitalocean.com/products/ai-platform/) |
+| DIT.ai | `dit` | apikey | 2 | [site](https://dit.ai) |
+| Docker Model Runner | `docker-model-runner` | apikey | 0 | [site](https://docs.docker.com/ai/model-runner/) |
+| Doubao | `doubao` | apikey | 9 | [site](https://www.volcengine.com/product/doubao) |
+| DuckDuckGo AI Chat | `duckduckgo-web` | none | 6 | [site](https://duckduckgo.com/aichat) |
+| Edge TTS | `edge-tts` | none | 11 |  |
+| ElevenLabs | `elevenlabs` | apikey | 0 | [site](https://elevenlabs.io) |
+| Empower | `empower` | apikey | 0 | [site](https://docs.empower.dev) |
+| Exa | `exa` | apikey | 0 | [site](https://exa.ai) |
+| Factory | `factory` | apikey | 1 | [site](https://factory.ai) |
+| Fal.ai | `fal-ai` | apikey | 7 | [site](https://fal.ai) |
+| Featherless AI | `featherless-ai` | apikey | 9 | [site](https://featherless.ai) |
+| FenayAI | `fenayai` | apikey | 0 | [site](https://fenayai.com) |
+| Firecrawl | `firecrawl` | apikey | 0 | [site](https://firecrawl.dev) |
+| Firecrawl (Custom/Local) | `firecrawl_custom` | none | 0 | [site](https://firecrawl.dev) |
+| Fireworks AI | `fireworks` | apikey | 17 | [site](https://fireworks.ai) |
+| Fish Audio | `fish-audio` | apikey | 0 | [site](https://fish.audio) |
+| FreeAIAPIKey | `freeaiapikey` | apikey | 7 | [site](https://freeaiapikey.com) |
+| FreeModel.dev | `freemodel-dev` | apikey | 4 | [site](https://freemodel.dev) |
+| FriendliAI | `friendliai` | apikey | 2 | [site](https://friendli.ai) |
+| Galadriel | `galadriel` | apikey | 1 | [site](https://galadriel.ai) |
+| Gemini | `gemini` | freeTier | 24 | [site](https://ai.google.dev) |
+| Gemini CLI | `gemini-cli` | oauth | 7 | [site](https://github.com/google-gemini/gemini-cli) |
+| GoAPI | `getgoapi` | apikey | 0 | [site](https://api.getgoapi.com) |
+| GigaChat | `gigachat` | apikey | 3 | [site](https://developers.sber.ru/portal/products/gigachat-api) |
+| GitHub Copilot | `github` | oauth | 20 | [site](https://github.com/features/copilot) |
+| GitHub Models | `github-models` | apikey | 12 | [site](https://github.com/marketplace/models) |
+| GitLab Duo | `gitlab` | oauth | 0 | [site](https://gitlab.com) |
+| GitLab Duo | `gitlab-duo` | oauth | 0 | [site](https://gitlab.com) |
+| Gitlawb | `gitlawb` | apikey | 5 | [site](https://github.com/Gitlawb/openclaude) |
+| Gitlawb GMI | `gitlawb-gmi` | apikey | 2 | [site](https://opengateway.gitlawb.com) |
+| GLHF | `glhf` | apikey | 1 | [site](https://glhf.chat) |
+| GLM Coding | `glm` | apikey | 10 | [site](https://open.bigmodel.cn) |
+| GLM (China) | `glm-cn` | apikey | 8 | [site](https://open.bigmodel.cn) |
+| GLM T | `glmt` | apikey | 13 | [site](https://z.ai) |
+| Google PSE | `google-pse` | apikey | 0 | [site](https://programmablesearchengine.google.com) |
+| Google TTS | `google-tts` | none | 60 |  |
+| Grok CLI (Grok Build) | `grok-cli` | oauth | 11 | [site](https://x.ai) |
+| Grok Web (Subscription) | `grok-web` | cookie | 12 | [site](https://grok.com) |
+| Groq | `groq` | apikey | 10 | [site](https://groq.com) |
+| Hack Club AI | `hackclub` | apikey | 3 | [site](https://ai.hackclub.com) |
+| Haiper | `haiper` | apikey | 0 | [site](https://haiper.ai) |
+| Huancheng Public API | `hcnsec` | apikey | 0 | [site](https://api.hcnsec.cn) |
+| Heroku Inference | `heroku` | apikey | 12 | [site](https://www.heroku.com/ai) |
+| HuggingChat | `huggingchat` | cookie | 24 | [site](https://huggingface.co/chat) |
+| HuggingFace | `huggingface` | apikey | 4 | [site](https://huggingface.co) |
+| Hyperbolic | `hyperbolic` | apikey | 8 | [site](https://hyperbolic.xyz) |
+| Ideogram | `ideogram` | apikey | 2 | [site](https://ideogram.ai) |
+| iFlow AI | `iflow` | oauth | 15 | [site](https://iflow.cn) |
+| iFlytek Spark | `iflytek` | apikey | 6 | [site](https://www.xfyun.cn) |
+| Inference.net | `inference-net` | apikey | 3 | [site](https://inference.net) |
+| Inner.ai | `inner-ai` | apikey | 19 | [site](https://app.innerai.com) |
+| Inworld TTS | `inworld` | apikey | 0 | [site](https://inworld.ai) |
+| Jina AI | `jina-ai` | apikey | 0 | [site](https://jina.ai) |
+| Jina Reader | `jina-reader` | apikey | 0 | [site](https://jina.ai/reader) |
+| Kenari | `kenari` | apikey | 0 | [site](https://kenari.id) |
+| Kie.ai | `kie` | apikey | 11 | [site](https://kie.ai) |
+| Kilo Gateway | `kilo-gateway` | optional | 6 | [site](https://kilo.ai) |
+| Kilo Code | `kilocode` | oauth | 8 | [site](https://kilocode.ai) |
+| Kimchi | `kimchi` | oauth, apikey | 8 | [site](https://kimchi.dev) |
+| Kimi | `kimi` | oauth | 4 | [site](https://www.kimi.com) |
+| Kimi Coding | `kimi-coding` | oauth | 4 | [site](https://www.kimi.com) |
+| Kimi Coding API Key | `kimi-coding-apikey` | apikey | 4 | [site](https://www.kimi.com) |
+| Kimi Web | `kimi-web` | cookie | 2 | [site](https://www.kimi.com) |
+| Kiro AI | `kiro` | oauth | 47 | [site](https://kiro.dev) |
+| Lambda AI | `lambda-ai` | apikey | 3 | [site](https://lambda.ai) |
+| LaoZhang AI | `laozhang` | apikey | 0 | [site](https://api.laozhang.ai) |
+| Lemonade Server | `lemonade` | apikey | 0 | [site](https://lemonade-server.ai) |
+| Leonardo.Ai | `leonardo` | apikey | 2 | [site](https://leonardo.ai) |
+| Linkup | `linkup` | apikey | 0 | [site](https://linkup.so) |
+| Liquid AI | `liquid` | apikey | 1 | [site](https://www.liquid.ai) |
+| llama.cpp | `llama-cpp` | apikey | 0 | [site](https://github.com/ggml-org/llama.cpp) |
+| Llamafile | `llamafile` | apikey | 0 | [site](https://github.com/Mozilla-Ocho/llamafile) |
+| LlamaGate | `llamagate` | apikey | 3 | [site](https://llamagate.ai) |
+| LLM7 | `llm7` | apikey | 4 | [site](https://llm7.io) |
+| LM Studio | `lm-studio` | apikey | 0 | [site](https://lmstudio.ai) |
+| Local Device | `local-device` | none | 1 |  |
+| Local Whisper | `local-whisper` | none | 1 | [site](https://github.com/openai/whisper) |
+| LongCat | `longcat` | apikey | 1 | [site](https://longcat.chat) |
+| MariTalk | `maritalk` | apikey | 4 | [site](https://www.maritaca.ai) |
+| Meta Llama | `meta-llama` | apikey | 4 | [site](https://www.llama.com) |
+| MiMo Code Free | `mimo-free` | none | 1 |  |
+| MiMoCode | `mimocode` | none | 1 | [site](https://github.com/XiaomiMiMo/MiMo-Code) |
+| Minimax Coding | `minimax` | apikey | 19 | [site](https://www.minimaxi.com) |
+| Minimax (China) | `minimax-cn` | apikey | 13 | [site](https://www.minimaxi.com) |
+| Mistral | `mistral` | apikey | 4 | [site](https://mistral.ai) |
+| MMF | `mmf` | apikey | 1 |  |
+| Morph | `morph` | apikey | 6 | [site](https://morphllm.com) |
+| Muse Spark Web | `muse-spark-web` | cookie | 3 | [site](https://www.meta.ai) |
+| NanoBanana API | `nanobanana` | apikey | 2 | [site](https://nanobananaapi.ai) |
+| Nebius AI | `nebius` | apikey | 2 | [site](https://nebius.com) |
+| Nomic | `nomic` | hidden | 0 | [site](https://nomic.ai) |
+| Novita AI | `novita` | apikey | 4 | [site](https://novita.ai) |
+| Nube.sh | `nube` | apikey | 8 | [site](https://nube.sh) |
+| NVIDIA NIM | `nvidia` | freeTier | 49 | [site](https://developer.nvidia.com/nim) |
+| OCI Generative AI | `oci` | apikey | 0 | [site](https://www.oracle.com/artificial-intelligence/generative-ai) |
+| Ollama Cloud | `ollama` | apikey | 7 | [site](https://ollama.com) |
+| Ollama Local | `ollama-local` | apikey | 0 | [site](https://ollama.com) |
+| oobabooga | `oobabooga` | apikey | 0 | [site](https://github.com/oobabooga/text-generation-webui) |
+| OpenAI | `openai` | apikey | 38 | [site](https://platform.openai.com) |
+| OpenCode Free | `opencode` | none | 1 |  |
+| OpenCode Go | `opencode-go` | apikey | 18 | [site](https://opencode.ai/auth) |
+| OpenCode Zen | `opencode-zen` | apikey | 40 | [site](https://opencode.ai/zen) |
+| OpenRouter | `openrouter` | freeTier | 18 | [site](https://openrouter.ai) |
+| Perplexity | `perplexity` | apikey | 2 | [site](https://www.perplexity.ai) |
+| Perplexity Agent | `perplexity-agent` | apikey | 11 | [site](https://www.perplexity.ai) |
+| Perplexity Web (Pro/Max) | `perplexity-web` | cookie | 7 | [site](https://www.perplexity.ai) |
+| PiAPI | `piapi` | apikey | 0 | [site](https://piapi.ai) |
+| PlayHT | `playht` | apikey | 0 | [site](https://play.ht) |
+| Poe | `poe` | apikey | 0 | [site](https://creator.poe.com/api-reference) |
+| Pollinations | `pollinations` | apikey | 31 | [site](https://pollinations.ai) |
+| Poolside | `poolside` | apikey | 3 | [site](https://poolside.ai) |
+| Puter | `puter` | apikey | 34 | [site](https://puter.com) |
+| Baidu Qianfan | `qianfan` | apikey | 3 | [site](https://cloud.baidu.com/product/wenxinworkshop) |
+| Qiniu | `qiniu` | apikey | 0 | [site](https://www.qiniu.com) |
+| Qoder | `qoder` | oauth, apikey | 16 | [site](https://qoder.com) |
+| Qoder CN | `qoder-cn` | oauth | 1 | [site](https://qoder.com.cn) |
+| Qwen Code | `qwen` | oauth | 4 | [site](https://chat.qwen.ai) |
+| Recraft | `recraft` | apikey | 2 | [site](https://recraft.ai) |
+| Reka | `reka` | freeTier | 3 | [site](https://docs.reka.ai/chat/overview) |
+| Requesty | `requesty` | freeTier | 0 | [site](https://requesty.ai) |
+| Runway ML | `runwayml` | apikey | 4 | [site](https://runwayml.com) |
+| SambaNova | `sambanova` | freeTier | 5 | [site](https://sambanova.ai) |
+| SAP Generative AI Hub | `sap` | apikey | 0 | [site](https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/generative-ai-hub-in-sap-ai-core) |
+| Scaleway AI | `scaleway` | freeTier | 6 | [site](https://www.scaleway.com/en/docs/ai-data/generative-apis/) |
+| SD WebUI | `sdwebui` | apikey | 2 | [site](https://github.com/AUTOMATIC1111/stable-diffusion-webui) |
+| SearchAPI | `searchapi` | apikey | 0 | [site](https://www.searchapi.io) |
+| SearXNG | `searxng` | none | 0 | [site](https://docs.searxng.org) |
+| SenseNova | `sensenova` | freeTier | 3 | [site](https://platform.sensenova.cn) |
+| Serper | `serper` | apikey | 0 | [site](https://serper.dev) |
+| SiliconFlow | `siliconflow` | apikey | 16 | [site](https://cloud.siliconflow.com) |
+| Snowflake Cortex | `snowflake` | apikey | 4 | [site](https://www.snowflake.com) |
+| SparkDesk | `sparkdesk` | freeTier | 4 | [site](https://xinghuo.xfyun.cn) |
+| Stability AI | `stability-ai` | apikey | 5 | [site](https://stability.ai) |
+| StepFun | `stepfun` | freeTier | 5 | [site](https://stepfun.com) |
+| SumoPod | `sumopod` | apikey | 0 | [site](https://ai.sumopod.com) |
+| Suno | `suno` | cookie | 4 | [site](https://suno.ai) |
+| Synthetic | `synthetic` | apikey | 6 | [site](https://synthetic.new) |
+| T3 Chat Web | `t3-web` | cookie | 23 | [site](https://t3.chat) |
+| Tavily | `tavily` | apikey | 0 | [site](https://tavily.com) |
+| Tencent Hunyuan | `tencent` | freeTier | 6 | [site](https://hunyuan.tencent.com) |
+| TheB.AI | `thebai` | apikey | 0 | [site](https://theb.ai) |
+| The Old LLM | `theoldllm` | none | 26 | [site](https://theoldllm.vercel.app) |
+| TinyFish Fetch | `tinyfish` | apikey | 0 | [site](https://docs.tinyfish.ai/fetch-api) |
+| Together AI | `together` | apikey | 6 | [site](https://www.together.ai) |
+| TokenRouter | `tokenrouter` | freeTier | 23 | [site](https://tokenrouter.com) |
+| Topaz | `topaz` | apikey | 0 | [site](https://topazlabs.com) |
+| Tortoise TTS | `tortoise` | none | 0 | [site](https://github.com/neonbjb/tortoise-tts) |
+| Trae | `trae` | oauth | 0 | [site](https://trae.ai) |
+| NVIDIA Triton | `triton` | apikey | 0 | [site](https://developer.nvidia.com/triton-inference-server) |
+| Udio | `udio` | cookie | 1 | [site](https://udio.com) |
+| UncloseAI | `uncloseai` | freeTier | 3 | [site](https://uncloseai.com) |
+| Upstage | `upstage` | apikey | 2 | [site](https://www.upstage.ai) |
+| v0 (Vercel) | `v0-vercel` | apikey | 3 | [site](https://v0.dev) |
+| Venice AI | `venice` | apikey | 15 | [site](https://venice.ai) |
+| Veo AI Free Web | `veoaifree-web` | none | 2 | [site](https://veoaifree.com) |
+| Vercel AI Gateway | `vercel-ai-gateway` | apikey | 0 | [site](https://vercel.com/ai-gateway) |
+| Vertex AI | `vertex` | freeTier | 4 | [site](https://cloud.google.com/vertex-ai) |
+| Vertex Partner | `vertex-partner` | apikey | 4 | [site](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-partner-models) |
+| vLLM | `vllm` | apikey | 0 | [site](https://github.com/vllm-project/vllm) |
+| Volcengine | `volcengine` | apikey | 7 | [site](https://www.volcengine.com) |
+| Volcengine Ark | `volcengine-ark` | apikey | 11 | [site](https://ark.cn-beijing.volces.com) |
+| Voyage AI | `voyage-ai` | apikey | 7 | [site](https://www.voyageai.com) |
+| Wafer AI | `wafer` | apikey | 4 | [site](https://wafer.ai) |
+| Weights & Biases Inference | `wandb` | apikey | 3 | [site](https://wandb.ai) |
+| IBM watsonx.ai Gateway | `watsonx` | apikey | 0 | [site](https://www.ibm.com/products/watsonx-ai) |
+| Windsurf | `windsurf` | oauth | 0 | [site](https://windsurf.com) |
+| X5Lab | `x5lab` | apikey | 0 | [site](https://x5lab.dev) |
+| xAI (Grok) | `xai` | oauth, apikey | 13 | [site](https://x.ai) |
+| Xiaomi MiMo | `xiaomi-mimo` | apikey | 4 | [site](https://xiaomimimo.com) |
+| Xiaomi MiMo (Token Plan) | `xiaomi-tokenplan` | apikey | 9 | [site](https://mimo.xiaomi.com) |
+| XInference | `xinference` | apikey | 0 | [site](https://inference.readthedocs.io) |
+| Yi (01.AI) | `yi` | apikey | 1 | [site](https://01.ai) |
+| You.com Search | `youcom` | apikey | 0 | [site](https://you.com) |
+| Tencent Yuanbao Web | `yuanbao-web` | cookie | 8 | [site](https://yuanbao.tencent.com) |
+| Z.AI | `zai` | apikey | 14 | [site](https://open.bigmodel.cn) |
+| Zed IDE | `zed` | oauth | 0 | [site](https://zed.dev) |
+| ZenMux | `zenmux` | freeTier | 9 | [site](https://zenmux.ai) |
+| ZenMux Free | `zenmux-free` | cookie | 11 | [site](https://zenmux.ai) |

@@ -66,12 +66,12 @@ describe("documentation integrity", () => {
     ]);
   });
 
-  it("requires both approved assets in both entry points", async () => {
-    const issues = await check({ "README.md": "# DurinDoor", "docs/README.md": "# Docs" });
+  it("requires both approved assets in README.md", async () => {
+    const issues = await check({ "README.md": "# DurinDoor" });
     expect(issues).toContain("README.md: missing durindoor-banner.png");
     expect(issues).toContain("README.md: missing durindoor-wordmark-theme-aware.svg");
-    expect(issues).toContain("docs/README.md: missing durindoor-banner.png");
-    expect(issues).toContain("docs/README.md: missing durindoor-wordmark-theme-aware.svg");
+    expect(issues).not.toContain("docs/README.md: missing durindoor-banner.png");
+    expect(issues).not.toContain("docs/index.mdx: missing durindoor-banner.png");
   });
 
   it("reports forbidden URLs even inside code blocks", async () => {
@@ -143,17 +143,12 @@ describe("documentation integrity", () => {
       "AGENTS.md": "internal",
       "CLAUDE.md": "internal",
     });
-    expect(issues).not.toContain("open-sse/AGENT-INDEX.md: public document is not reachable from README.md or docs/README.md");
-    expect(issues).not.toContain("tests/README.md: public document is not reachable from README.md or docs/README.md");
-    expect(issues).not.toContain("cli/README.md: public document is not reachable from README.md or docs/README.md");
-    expect(issues).not.toContain("AGENTS.md: public document is not reachable from README.md or docs/README.md");
-    expect(issues).not.toContain("CLAUDE.md: public document is not reachable from README.md or docs/README.md");
+    expect(issues.filter((i) => i.includes("not reachable"))).toEqual([]);
   });
 
   it("flags duplicate required asset only once per file", async () => {
     const issues = await check({
       "README.md": assets,
-      "docs/README.md": assets,
     });
     const bannerIssues = issues.filter((i) => i.includes("missing durindoor-banner.png"));
     const wordmarkIssues = issues.filter((i) => i.includes("missing durindoor-wordmark-theme-aware.svg"));
@@ -183,12 +178,11 @@ describe("documentation integrity", () => {
   it("reports missing required community files", async () => {
     const root = await fixture({
       "README.md": assets,
-      "docs/README.md": assets,
       "package.json": '{"name":"test"}',
     });
     const issues = await validateDocumentation({
       root,
-      files: ["README.md", "docs/README.md", "package.json"],
+      files: ["README.md", "package.json"],
     });
     expect(issues).toContain("repository: missing required community file CODE_OF_CONDUCT.md");
     expect(issues).toContain("repository: missing required community file .github/SECURITY.md");
@@ -202,3 +196,167 @@ describe("documentation integrity", () => {
     expect(issues).not.toContain(expect.stringMatching(/npm script 'build'/));
   });
 });
+
+const INDEX_MDX = `---
+title: Docs
+description: Test documentation index.
+---
+
+Hello from the index.
+`;
+
+const PAGE_MDX = `---
+title: Extra
+description: A listed extra page.
+---
+
+Hello from extra.
+`;
+
+function mdxTree(extra = {}) {
+  return {
+    "README.md": assets,
+    "docs/index.mdx": INDEX_MDX,
+    "docs/meta.json": JSON.stringify({ pages: ["index"] }, null, 2),
+    ...extra,
+  };
+}
+
+describe("mdx tree rules", () => {
+  it("accepts a listed mdx tree with frontmatter", async () => {
+    const issues = await check(mdxTree());
+    expect(issues.filter((i) => i.includes("docs/"))).toEqual([]);
+  });
+
+  it("reports an mdx file missing from its folder meta.json pages", async () => {
+    const issues = await check(mdxTree({
+      "docs/extra.mdx": PAGE_MDX,
+    }));
+    expect(issues).toContain("docs/extra.mdx: not listed in docs/meta.json pages");
+  });
+
+  it("reports a dangling meta.json pages entry", async () => {
+    const issues = await check(mdxTree({
+      "docs/meta.json": JSON.stringify({ pages: ["index", "ghost"] }, null, 2),
+    }));
+    expect(issues).toContain("docs/meta.json: dangling pages entry 'ghost'");
+  });
+
+  it("does not flag dangling pages in a Task 12 stub section", async () => {
+    const issues = await check(mdxTree({
+      "docs/meta.json": JSON.stringify({ pages: ["index", "getting-started"] }, null, 2),
+      "docs/getting-started/index.mdx": `---
+title: Getting started
+description: Install and send the first request.
+---
+
+Pages in this section are being written.
+`,
+      "docs/getting-started/meta.json": JSON.stringify({
+        pages: ["index", "installation", "first-request"],
+      }, null, 2),
+    }));
+    expect(issues.filter((i) => i.includes("dangling"))).toEqual([]);
+  });
+
+  it("reports missing frontmatter title and description", async () => {
+    const issues = await check(mdxTree({
+      "docs/meta.json": JSON.stringify({ pages: ["index", "extra"] }, null, 2),
+      "docs/extra.mdx": "Hello without frontmatter.\n",
+    }));
+    expect(issues).toContain("docs/extra.mdx: missing frontmatter title");
+    expect(issues).toContain("docs/extra.mdx: missing frontmatter description");
+  });
+
+  it("allows a section stub to omit description", async () => {
+    const issues = await check(mdxTree({
+      "docs/meta.json": JSON.stringify({ pages: ["index", "faq"] }, null, 2),
+      "docs/faq.mdx": `---
+title: FAQ
+---
+
+Pages in this section are being written.
+`,
+    }));
+    expect(issues.filter((i) => i.includes("frontmatter"))).toEqual([]);
+  });
+
+  it("reports an em dash outside code fences", async () => {
+    const issues = await check(mdxTree({
+      "docs/meta.json": JSON.stringify({ pages: ["index", "extra"] }, null, 2),
+      "docs/extra.mdx": `---
+title: Extra
+description: A listed extra page.
+---
+
+This sentence uses an em dash \u2014 which is banned.
+`,
+    }));
+    expect(issues).toContain("docs/extra.mdx: em dash (U+2014) outside code fences");
+  });
+
+  it("ignores an em dash inside a fenced code block", async () => {
+    const issues = await check(mdxTree({
+      "docs/meta.json": JSON.stringify({ pages: ["index", "extra"] }, null, 2),
+      "docs/extra.mdx": `---
+title: Extra
+description: A listed extra page.
+---
+
+\`\`\`text
+em dash \u2014 inside a fence
+\`\`\`
+`,
+    }));
+    expect(issues.filter((i) => i.includes("em dash"))).toEqual([]);
+  });
+
+  it("reports emoji outside code fences", async () => {
+    const issues = await check(mdxTree({
+      "docs/meta.json": JSON.stringify({ pages: ["index", "extra"] }, null, 2),
+      "docs/extra.mdx": `---
+title: Extra
+description: A listed extra page.
+---
+
+Ship it \u2705
+`,
+    }));
+    expect(issues).toContain("docs/extra.mdx: emoji outside code fences");
+  });
+
+  it("skips headings inside MDX component blocks", async () => {
+    const issues = await check({
+      "README.md": `${assets}\n[x](docs/index.mdx#fake)\n`,
+      "docs/index.mdx": `---
+title: Docs
+description: Test documentation index.
+---
+
+<Cards>
+# fake
+</Cards>
+`,
+      "docs/meta.json": JSON.stringify({ pages: ["index"] }, null, 2),
+    });
+    expect(issues).toContain("README.md: missing anchor #fake in docs/index.mdx");
+  });
+
+  it("reaches root-level markdown through docs/README.md", async () => {
+    const issues = await check({
+      "README.md": assets,
+      "docs/README.md": "[Docker](../DOCKER.md)\n",
+      "DOCKER.md": "# Docker\n",
+    });
+    expect(issues.filter((i) => i.includes("DOCKER.md"))).toEqual([]);
+  });
+
+  it("does not require legacy docs markdown to be reachable via meta.json", async () => {
+    const issues = await check(mdxTree({
+      "docs/development/contributing.md": "[gone](anti-slop.md)\n",
+    }));
+    expect(issues.filter((i) => i.includes("anti-slop"))).toEqual([]);
+    expect(issues.filter((i) => i.includes("contributing.md"))).toEqual([]);
+  });
+});
+

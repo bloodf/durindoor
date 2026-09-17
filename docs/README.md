@@ -82,7 +82,7 @@ For stable lookup pages for routes, environment variables, compatibility, and ru
 - [Environment variables](reference/environment.mdx)
 - [CLI](reference/cli.mdx)
 - [Provider Plugin Manifest](reference/provider-plugin-manifest.mdx)
-- [Model Limits and Context Enforcement](reference/model-limits.md)
+- [Model Limits and Context Enforcement](reference/model-limits.mdx)
 - [Migrating from 9router](reference/migrating-from-9router.mdx)
 - [MCP Gateway](features/mcp-gateway.mdx)
 - [Realtime Behavior](features/realtime.mdx)

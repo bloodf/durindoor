@@ -51,7 +51,7 @@ Labels (`name`) matter once you have more than one row. OAuth connections withou
 
 ## Account fallback
 
-Account fallback stays inside the same provider and model. If connection A returns a fallback-worthy error (auth failure, rate limit, quota, some 5xx), DurinDoor marks that account unavailable and tries connection B. Combo fallback is separate: it moves to the next model in a combo chain after every account for the current member has failed. See [Combos](../features/combos.md).
+Account fallback stays inside the same provider and model. If connection A returns a fallback-worthy error (auth failure, rate limit, quota, some 5xx), DurinDoor marks that account unavailable and tries connection B. Combo fallback is separate: it moves to the next model in a combo chain after every account for the current member has failed. See [Combos](../features/combos.mdx).
 
 ```text
 Client asks for openai/gpt-4.1

@@ -32,6 +32,18 @@ Cause: dashboard cookies are signed with `loadJwtSecret()`. Env `JWT_SECRET` win
 
 Fix: set `JWT_SECRET` (copy `.env.example`, or `openssl rand -hex 32`) and restart. Keep the same value across deploys. [Security](./operations/security.mdx).
 
+## Cutover stops midway
+
+Cause: `runCutover` failed after taking the in-process lock. SQLite stays live. `databaseEngineError` on **Settings → Database** holds the reason. Distinct messages: `cutover snapshot failed` (copy into `currentBackupsDir()` returned empty while `data.sqlite` exists; the flip is aborted); `Mirror row-count mismatch: …` (`COUNT(*)` after a table copy did not match); HTTP 503 `A cutover is already in flight; retry in a moment.` (second cutover or rollback holds the lock); live HTTP writes during the lock throw `database cutover in progress` (`CUTOVER_IN_FLIGHT`). `SELECT` still works. A crash after both settings writes, before `setActiveAdapter`, leaves `databaseEngine: "postgres"` on the SQLite file, so the next boot tries PG.
+
+Fix: read `databaseEngineError`. Fix the URL, cluster, disk, or permissions. Retry **Cut over to Postgres**. A leftover `data.sqlite.postgres-cutover-*` file is not an engine flip. Procedure: [Postgres](./operations/postgres.mdx).
+
+## Engine says postgres but this process is on SQLite
+
+Cause: `databaseEngine` is `postgres` but `openActiveAdapter` could not open the cluster (missing URL, connect error, migration failure). `GET /api/settings/database/engine` returns `servingFallback: true`. The Database page shows **Serving SQLite**. New writes stay on the local file and do not land on PG. The boot log can still print `engine: postgres` for the requested engine.
+
+Fix: read `databaseEngineError`, restore the URL or cluster, then restart so the one-shot fallback can try again. [Postgres](./operations/postgres.mdx).
+
 ## SQLite driver fallback
 
 Cause: the Node chain is `better-sqlite3` → `node:sqlite` (Node ≥ 22.5) → `sql.js`. Each miss logs `[DB] <driver> unavailable: …`. If every adapter fails, boot throws `[DB] No SQLite driver available (bun/better/node/sql.js all failed)`. A successful open logs `[DB] Driver: … | engine: sqlite` once.

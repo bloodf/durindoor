@@ -149,10 +149,10 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET, PATCH | `/api/settings` | Read settings (GET) or patch them (PATCH) | session, CLI, key, loop |
 | GET, POST | `/api/settings/auto-configure` | Headroom/PxPipe/Firecrawl probe status or run | session, CLI, key, loop; handler wants session |
 | GET, POST | `/api/settings/database` | Export/import the data file; JWT or CLI plus password | session, CLI; password on export/import |
-| POST | `/api/settings/database/cutover` | Run SQLite to PostgreSQL cutover | session, CLI; password on export/import |
-| GET, POST | `/api/settings/database/engine` | Read or switch the database engine | session, CLI; password on export/import |
+| POST | `/api/settings/database/cutover` | Run SQLite to PostgreSQL cutover; 503 + `Retry-After: 5` if the lock is held | session, CLI; password on export/import |
+| GET, POST | `/api/settings/database/engine` | Read engine status (`servingFallback`; never `postgresUrl`) or patch version/features | session, CLI; password |
 | GET | `/api/settings/database/log` | Recent pgCutoverLog rows | session, CLI; password on export/import |
-| POST | `/api/settings/database/rollback` | Restore SQLite from a cutover snapshot | session, CLI; password on export/import |
+| POST | `/api/settings/database/rollback` | Restore an allowlisted cutover snapshot; 409 `rollback_requires_force` unless `force: true` | session, CLI; password |
 | POST | `/api/settings/database/selective` | Selective provider/combo transfer; preview is secret-free | session, CLI; password on export/import |
 | POST | `/api/settings/database/test` | Probe a candidate Postgres URL without opening the adapter | session, CLI; password on export/import |
 | POST | `/api/settings/firecrawl/detect` | Probe Firecrawl endpoints; session or open dashboard in handler | session, CLI, key, loop; handler wants session |
@@ -354,7 +354,7 @@ Gateway OAuth leaves: `client-metadata` is public. `callback` takes session, CLI
 
 ## Settings keys stripped from an API-key patch
 
-`PATCH /api/settings` always drops `password`, `passwordSessionEpoch`, and `mitmSudoEncrypted`. Without a session or CLI it also drops `AUTH_CRITICAL_SETTING_KEYS`: `exposeComboOnly`, `requireLogin`, `requireApiKey`, `authMode`, `oidcIssuerUrl`, `oidcClientId`, `oidcClientSecret`, `oidcScopes`, `oidcLoginLabel`, `tunnelDashboardAccess`, `enableObservability`, `outboundProxyEnabled`, `outboundProxyUrl`, `outboundNoProxy`. `claudeAutoPing` and `codexAutoPing` return 400 (`Auto-ping must be updated through the connection-scoped endpoint`). MCP `update_settings` strips the same auth-critical set plus those auto-ping keys, and returns 400 `No updatable settings provided` when nothing remains.
+`PATCH /api/settings` always drops `password`, `passwordSessionEpoch`, `mitmSudoEncrypted`, and `postgresUrl` (`SECRET_SETTING_KEYS`). `GET /api/settings` withholds `postgresUrl` from every caller, including an operator session: the libpq URL carries `user:password@`. Without a session or CLI it also drops `AUTH_CRITICAL_SETTING_KEYS`: `exposeComboOnly`, `requireLogin`, `requireApiKey`, `authMode`, `oidcIssuerUrl`, `oidcClientId`, `oidcClientSecret`, `oidcScopes`, `oidcLoginLabel`, `tunnelDashboardAccess`, `enableObservability`, `outboundProxyEnabled`, `outboundProxyUrl`, `outboundNoProxy`. `claudeAutoPing` and `codexAutoPing` return 400 (`Auto-ping must be updated through the connection-scoped endpoint`). MCP `update_settings` strips the same secret set and auth-critical set plus those auto-ping keys, and returns 400 `No updatable settings provided` when nothing remains. `POST /api/settings/database/engine` also strips `postgresUrl`, `password`, `passwordSessionEpoch`, `oidcClientSecret`, and `mitmSudoEncrypted` from the returned `settings` object. `POST /api/settings/database/rollback` accepts `{ snapshotPath?, force }` and returns `{ error: "rollback_requires_force", warning, discardedSince }` without `force: true`. `POST /api/settings/database/cutover` returns `{ error: "A cutover is already in flight; retry in a moment." }` when the lock is held.
 
 ## Proxy URL redaction
 
@@ -371,7 +371,7 @@ An API key sees host and port. `user:password@` becomes `***`. Unparsable string
 | 403 | `{ error: "Key reveal is only available from local requests." }` | Remote gateway-key reveal |
 | 400 | `{ error: "<message>" }` | Validation (combo name, missing provider, bad period) |
 | 404 | `{ error: "Connection not found" }` / `{ error: "Combo not found" }` / `{ error: "Key not found" }` | Missing row |
-| 409 | provider-connection conflict | Duplicate API-key connection create |
+| 409 | provider-connection conflict; `{ error: "rollback_requires_force" }` | Duplicate API-key connection create; rollback after cutover without `force: true` |
 | 500 | `{ error: "Failed to ..." }` | Handler catch-all |
 
 Malformed percent-encoding on an `/api` path is 401, fail-closed. Combo create and key create are 201. Key create includes `key`; later list/detail return `maskedKey`.

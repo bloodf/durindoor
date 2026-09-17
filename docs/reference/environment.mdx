@@ -48,8 +48,8 @@ Native default `DATA_DIR` remains `~/.9router` on macOS/Linux and `%APPDATA%\9ro
 | Variable | Default | Purpose | Read in |
 | --- | --- | --- | --- |
 | `DATA_DIR` | `~/.9router` or `%APPDATA%\9router` | Persistent root for SQLite, auth secrets, logs, intercept files, tunnels, Headroom venv, backups. Created `0700` when set. Unix paths on Windows are ignored. | `src/lib/dataDir.js` |
-| `DURINDOOR_PG_URL` | unset | libpq URL. Wins over the dashboard secret. Unset keeps SQLite. | `src/lib/db/secrets.js` |
-| `DURINDOOR_PG_SSLMODE` | `prefer` in Compose | Interpolated by `docker-compose.yml`. No `process.env` read in `src/`. | `docker-compose.yml` |
+| `DURINDOOR_PG_URL` | unset | libpq URL. Wins over the dashboard secret at boot. Does not flip the engine; boot opens PG only when `settings.databaseEngine === "postgres"`. | `src/lib/db/secrets.js` |
+| `DURINDOOR_PG_SSLMODE` | unset in `src/` (`prefer` in Compose) | Appended to the URL when it has no `sslmode=` already. | `src/lib/db/adapters/pgAdapter.js` |
 | `DURINDOOR_PG_PREFERRED_VERSION` | `18` in Compose | Operator cap on the target major version (`16`, `17`, `18`). Compose only. | `docker-compose.yml` |
 
 ## Rate-limit backoff

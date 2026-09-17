@@ -1,15 +1,15 @@
 ---
 title: Postgres
-description: Opt-in PostgreSQL engine, compose profiles, cutover, fallback, and rollback.
+description: Opt-in PostgreSQL engine, compose profiles, cutover lock, snapshot abort, and rollback that discards PG-era writes.
 ---
 
-SQLite is the default. PostgreSQL is opt-in.
+SQLite is the default. PostgreSQL is opt-in. Setting `DURINDOOR_PG_URL` does not switch the engine. Boot opens PostgreSQL only when `settings.databaseEngine === "postgres"`. The cutover pipeline is what flips that flag.
 
 The dashboard page is **Settings → Database** (`/dashboard/settings/database`). Cutover, test, and rollback routes require a dashboard JWT or CLI token plus the current dashboard password (`x-9r-password`).
 
 ## Version policy
 
-Compose ships profile-gated clusters: `postgres16`, `postgres17`, `postgres18`. `DURINDOOR_PG_PREFERRED_VERSION` defaults to `18`. The runtime reads `server_version_num` at boot and turns off features whose `requires` floor is above the cluster major. You can also pin `databasePgVersion` in the dashboard.
+Compose ships profile-gated clusters: `postgres16`, `postgres17`, `postgres18`. `DURINDOOR_PG_PREFERRED_VERSION` defaults to `18` in Compose. The runtime reads `server_version_num` at boot and turns off features whose `requires` floor is above the cluster major. You can also pin `databasePgVersion` in the dashboard.
 
 | Major | In compose | Default features |
 | --- | --- | --- |
@@ -27,31 +27,32 @@ Start a cluster. Default compose `up` does not start Postgres.
 ```bash
 docker compose --profile postgres18 up -d
 ```
+
 </Step>
 <Step>
-Put the URL in `.env`. Optional SSL mode and version cap:
+Optional: seed the connection URL in `.env`. **Test connection** with persist also stores it encrypted on the settings row. `DURINDOOR_PG_SSLMODE` is appended when the URL has no `sslmode=` already.
 
 ```bash
 echo 'DURINDOOR_PG_URL=postgres://durindoor:durindoor@postgres18:5432/durindoor' >> .env
 echo 'DURINDOOR_PG_SSLMODE=prefer' >> .env
-echo 'DURINDOOR_PG_PREFERRED_VERSION=18' >> .env
 ```
 
 Compose user, password, and database are all `durindoor`. The service hostname is `postgres18`.
 </Step>
 <Step>
-Restart DurinDoor so boot can see the env var.
+Restart DurinDoor. It is still on SQLite.
 
 ```bash
 docker compose restart durindoor
 ```
+
 </Step>
 <Step>
-Open **Settings → Database**. Run **Test connection**. On success the probe returns latency and `serverVersion`. Then **Cut over to Postgres**.
+Open **Settings → Database**. Paste the URL. Run **Test connection**. On success the probe returns latency and `serverVersion`. Then **Cut over to Postgres**.
 </Step>
 </Steps>
 
-A healthy PG boot logs `[DB] Driver: pg | engine: postgres`.
+After a later restart on a healthy PG boot, the log line is `[DB] Driver: pg | engine: postgres`. The dashboard Engine card shows `postgres` as soon as cutover returns `ok`.
 
 ## Connection URL
 
@@ -61,34 +62,89 @@ Resolved in this order:
 2. `settings.postgresUrl` (AES-256-GCM blob in the settings row; dashboard persist writes here)
 3. Legacy `DATA_DIR/durindoor-secrets.json` (mode `0600`, read-only)
 
-New writes go only to the settings row. `GET /api/settings/database` returns redacted host, port, database, user, sslmode, and authSource. It never returns the password.
+New writes go only to the settings row. `GET /api/settings/database/engine` returns redacted host, port, database, user, sslmode, and authSource. It never returns the password or `postgresUrl`.
 
 ## Cutover
 
-**Cut over to Postgres** runs `runCutover`:
+**Cut over to Postgres** runs `runCutover`, which calls `acquireCutoverLock`. While that lock is held, HTTP writes on the live adapter (`INSERT` / `UPDATE` / `DELETE` / DDL / `BEGIN`) throw `database cutover in progress` (`CUTOVER_IN_FLIGHT`). `SELECT` still works. The pipeline opens its own unguarded adapters for migrate, snapshot, and mirror.
 
-1. `testConnection(url)` with a transient client (`SELECT version()`). Fail-fast.
-2. Open the persistent PG adapter. Run the parallel PG migration set (latest version 18, `018-pg-cutover-log`).
-3. Open a fresh SQLite adapter as the mirror source.
-4. `runMirror` copies tables in 500-row chunks, one transaction per table, then asserts row counts. `requestDetails` is skipped unless `includeRequestDetails` is true.
-5. Snapshot `data.sqlite` to `DATA_DIR/db/backups/data.sqlite.postgres-cutover-<ts>-<version>.sqlite` (mode `0600`). Copy failure warns and continues.
-6. Flip the live adapter to PG (`setActiveAdapter`).
-7. Persist `databaseEngine: "postgres"` on the settings row.
-8. Append a `pgCutoverLog` row with `type` `cutover`.
+A second `POST /api/settings/database/cutover` while the lock is held returns HTTP 503 `{ error: "A cutover is already in flight; retry in a moment." }` with `Retry-After: 5`.
 
-PG must open, migrate, mirror, and verify before SQLite is closed. The settings write is after the flip. A crash between those two leaves `databaseEngine === "sqlite"` for the next boot.
+<Steps>
+<Step>
+`testConnection(url)` opens a transient client and runs `SELECT version() AS v, 1 AS n`. Fail-fast. On failure the engine stays SQLite and `databaseEngineError` is set.
+</Step>
+<Step>
+Open the persistent PG adapter. Run the parallel PG migration set (latest version 19, `019-pg-cutover-log`). Shared versions 001-018 keep the same `{version,name}` as SQLite; PG 018 is `api-key-groups` (no-op, tables already come from 001).
+</Step>
+<Step>
+Checkpoint the live SQLite WAL (`checkpoint`, or `flush` if the adapter has no checkpoint). Then `snapshotSqlite()` copies `currentDataFile()` to `currentBackupsDir()` as `data.sqlite.postgres-cutover-<ts>-<appVersion>.sqlite` (mode `0600`). If the copy returns empty while `data.sqlite` exists, cutover throws `cutover snapshot failed` and **aborts the flip**.
+</Step>
+<Step>
+`runMirror` copies tables in 500-row chunks, one transaction per table. Each table is `TRUNCATE`d first (quoted camelCase identifiers). Then `COUNT(*)` is asserted. `_meta` is copied except `schemaVersion` (the PG runner owns that key). `requestDetails` is skipped unless `includeRequestDetails` is true.
+</Step>
+<Step>
+Persist `databaseEngine: "postgres"` on **both** the live PG settings row and the SQLite file. Boot still reads the engine from SQLite.
+</Step>
+<Step>
+`setActiveAdapter(pg)` closes the previous SQLite adapter and flips the live adapter.
+</Step>
+<Step>
+Append a `pgCutoverLog` row with `type` `cutover`. If that insert fails, the flip stays; the process logs a warning.
+</Step>
+</Steps>
 
-Any failed step keeps SQLite live and records `databaseEngineError`. A second cutover while one is in flight returns HTTP 503.
+The lock is released in `finally`, including thrown errors.
+
+### Failure at each stage
+
+| Stage that fails | Live engine | What is recorded |
+| --- | --- | --- |
+| Probe / connect | SQLite | `databaseEngineError` = probe error |
+| PG migrate | SQLite | `databaseEngineError` = thrown message; transient PG client closed |
+| Snapshot copy | SQLite | `cutover snapshot failed` |
+| Mirror `COUNT(*)` | SQLite | `Mirror row-count mismatch: …` |
+| Crash after both settings writes, before `setActiveAdapter` | next boot opens PG | SQLite file already says `databaseEngine: "postgres"` |
+| `pgCutoverLog` append | PG (flip already done) | console warning; engine stays postgres |
+
+Any failed step before the settings write keeps SQLite live.
+
+### Verify success
+
+1. Dashboard **Engine** card reads `postgres`.
+2. `servingFallback` is false (no "Serving SQLite" banner).
+3. `databaseEngineError` is empty.
+4. A snapshot exists under `$DATA_DIR/db/backups` with prefix `data.sqlite.postgres-cutover-`.
+5. After restart, boot logs `[DB] Driver: pg | engine: postgres`.
 
 ## Boot fallback
 
-If `databaseEngine` is `postgres` and the cluster is unreachable, missing a URL, or fails migrations, the wrapper records `databaseEngineError` and returns a SQLite adapter. The fallback is one-shot per process. Repeated outages do not loop.
+If `databaseEngine` is `postgres` and `openActiveAdapter` cannot use the cluster (no URL, connect error, migration failure), it records `databaseEngineError` and returns a SQLite adapter. `GET /api/settings/database/engine` then has `servingFallback: true` (`activeEngine !== databaseEngine`). The dashboard banner says settings still claim PostgreSQL while this process is reading the pre-cutover SQLite file. New writes on that process do not land on PG.
+
+Known `databaseEngineError` strings:
+
+- `PG engine is on but no connection URL is configured`
+- `PG connect failed: …`
+- `PG cluster reachable but version query failed`
+- `PG migration failed: …`
+
+The fallback is one-shot per process. Repeated outages do not loop. Restart after you fix the URL or cluster.
+
+The boot log still prints `engine: postgres` for the requested engine even when the adapter that came back is SQLite. Trust `servingFallback` and the Engine card, not that log line alone.
 
 ## Rollback
 
-**Switch back to SQLite** restores the newest `data.sqlite.postgres-cutover-*` snapshot into the live SQLite path, reopens SQLite, and sets `databaseEngine` back to `"sqlite"`. The PG cluster is left as-is. The button stays disabled until snapshots exist.
+<Callout type="warn">
+Rollback restores SQLite as of the cutover snapshot. Writes made while PostgreSQL was live (keys, usage, settings) are not copied back. The PG cluster is left untouched. The confirm dialog on **Switch back to SQLite** says so.
+</Callout>
 
-Manual copy (set `DATA_DIR` to the real absolute path first):
+**Switch back to SQLite** restores an allowlisted snapshot from `currentBackupsDir()` into `currentDataFile()`, reopens SQLite, and sets `databaseEngine` back to `"sqlite"`. Snapshot paths outside that backups directory are refused. A literal `~/.9router` path is never used; `path.join` does not expand `~`.
+
+The button stays disabled until snapshots exist and `activeEngine` is `postgres`.
+
+`POST /api/settings/database/rollback` returns HTTP 409 `{ error: "rollback_requires_force" }` unless the body includes `force: true`. The dashboard confirm sends `{ force: true }`.
+
+Manual copy (set `DATA_DIR` to the real absolute path first; do not type `~` into a path join):
 
 ```bash
 ls -lh "$DATA_DIR/db/backups"/data.sqlite.postgres-cutover-*.sqlite
@@ -103,6 +159,11 @@ Then restart, or use the dashboard rollback so the settings row flips with the f
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Runtime still on SQLite | Connect, URL, or migration failed | Read `databaseEngineError` on the Database page |
+| Engine card says postgres, banner says Serving SQLite | `servingFallback`: this process could not open PG | Fix the URL or cluster, then restart |
 | `pg_isready` fails | Cluster down or wrong port | `docker compose ps postgres18` and `docker compose logs postgres18` |
 | Mirror of `requestDetails` is huge | Observability log can be gigabytes | Leave `includeRequestDetails` false (the default) |
-| Cutover returns 503 | Another cutover holds the lock | Wait and retry |
+| Cutover returns 503 | Another cutover or rollback holds the lock | Wait and retry. `Retry-After: 5` |
+| Cutover returns `cutover snapshot failed` | Copy into `currentBackupsDir()` returned empty | Check disk and permissions on `$DATA_DIR/db/backups`, retry |
+| Cutover returns `Mirror row-count mismatch` | A table's `COUNT(*)` did not match after copy | Inspect `databaseEngineError`; SQLite is still live; retry |
+| HTTP writes fail with `database cutover in progress` | Lock is held; readers still serve | Wait for cutover or rollback to finish |
+| Rollback returns 409 `rollback_requires_force` | Body omitted `force: true` after a successful cutover | Confirm you accept discarding PG-era writes, then send `force: true` |

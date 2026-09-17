@@ -28,7 +28,7 @@ DATA_DIR/
 └── durindoor-secrets.json  # legacy Postgres URL
 ```
 
-`DATA_DIR/db/data.sqlite` is the main store. Pre-upgrade copies go in `DATA_DIR/db/backups`. Credential directories and the SQLite files are chmod'd owner-only on POSIX (`0700` / `0600`). Windows ACLs are left alone.
+`DATA_DIR/db/data.sqlite` is the main store (`currentDataFile()`). Pre-upgrade copies go in `DATA_DIR/db/backups` (`currentBackupsDir()`). Postgres cutover copies use the same backups directory with prefix `data.sqlite.postgres-cutover-`. They are not the three-directory migration safety copies. Procedure: [Postgres](./postgres.mdx). Credential directories and the SQLite files are chmod'd owner-only on POSIX (`0700` / `0600`). Windows ACLs are left alone.
 
 SQLite adapter order: Bun uses `bun:sqlite` then `sql.js`. Node uses `better-sqlite3`, then `node:sqlite` on Node 22.5+, then `sql.js`. The `sql.js` fallback exports the full image to an owner-only sibling, fsyncs, then renames over `data.sqlite`. A failed stage leaves the previous file in place.
 

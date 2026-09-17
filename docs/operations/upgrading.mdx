@@ -56,7 +56,7 @@ npm start
 
 ## Schema migrations
 
-SQLite runs forward-only migrations on startup. The chain is append-only. Current SQLite latest is version 18 (`018-api-key-groups`). A fresh file starts clean. A skip-version upgrade applies every pending `up()`.
+SQLite runs forward-only migrations on startup. The chain is append-only. Current SQLite latest is version 18 (`018-api-key-groups`). When `databaseEngine` is `postgres`, boot runs the parallel PG set instead; latest there is 19 (`019-pg-cutover-log`). A fresh file starts clean. A skip-version upgrade applies every pending `up()`.
 
 Do not edit, truncate, or delete `DATA_DIR/db/data.sqlite` by hand. If `PRAGMA quick_check` fails, startup stops. Restore a backup whose integrity you have already checked.
 

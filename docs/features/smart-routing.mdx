@@ -1,0 +1,62 @@
+---
+title: Smart routing
+description: How a client model string becomes an upstream call, including credentials and fallback.
+---
+
+Every chat request goes through the same path: `POST /v1/chat/completions` (or `/v1/messages`) calls `src/sse/handlers/chat.js`, which resolves the model and credentials, then `open-sse/handlers/chatCore.js` translates, compresses if enabled, and dispatches an executor. Other `/v1` families reuse provider connections but have their own handlers.
+
+There is no dedicated Routing page. Watch the outcome on **Dashboard → Usage** (`/dashboard/usage`). Round-robin and sticky limits live on **Dashboard → Settings** (`/dashboard/profile`) and, per provider, on **Dashboard → Providers → (provider)**. Combos have their own page at [Combos](combos.mdx).
+
+## Model strings
+
+The `model` field is parsed in `open-sse/services/model.js`. A slash splits `prefix/rest`. The prefix is a registry id or alias; the rest is the upstream model id (extra slashes stay in the model id).
+
+| Client `model` | What happens |
+| --- | --- |
+| `openai/gpt-4.1` | Provider plus upstream model. |
+| `cc/claude-sonnet` | Provider alias from the registry, then the model. |
+| `my-node/local-model` | Compatible-node prefix plus that node's model. |
+| `daily-coder` | Custom alias mapped to `provider/model`. |
+| `coding-default` | Combo name. No slash. See [Combos](combos.mdx). |
+
+Confirm live ids with `GET /v1/models` or the dashboard model picker. If `getModelInfo` returns no provider, the chat handler tries `getComboModels`. A bare string that is neither an alias nor a combo is inferred from the model id prefix (`claude-` → anthropic, `gemini-` → gemini, `gpt-` / `o1` / `o3` / `o4` → openai, `deepseek-` → openrouter) and otherwise `openai`.
+
+A doubled `<connId>/<prefix>/<model>` from a combo step is stripped to the inner model id.
+
+## Credentials
+
+After the model resolves, DurinDoor picks an active connection for that provider. Locked, expired, and allow-list-excluded accounts are skipped. Quota preflight can skip a spent account before the HTTP call; missing or stale quota fails open. See [Quota tracking](quota-tracking.mdx).
+
+**Dashboard → Settings** has a Round Robin toggle. Off is fill-first. On, `stickyRoundRobinLimit` (default 3, range 1-10) keeps the same account for that many calls, then rotates.
+
+When the client sends a session id, round-robin pins that session to the first eligible account and stays there until the account is gone or the in-memory entry is evicted. Header keys, in order: `x-session-id`, `session-id`, `session_id`, `x-amp-thread-id`, `x-client-request-id`. Body fields `prompt_cache_key`, `session_id`, and `conversation_id` are also read. For Kiro, `x-client-request-id` is ignored so per-request ids do not break stickiness. The affinity map caps at 5,000 entries.
+
+A preferred connection id, when present and still eligible, wins over rotation.
+
+## Translation
+
+Client format is detected from the path and body. OpenAI-shaped requests are the common entry. Direct translator pairs exist where the OpenAI hop would drop fields (thinking blocks, tool ids, non-base64 images, `tool_result.is_error`). Matching source and target skip translation.
+
+If the client asked for SSE and the provider cannot stream, chatCore converts the final JSON into chat-completion chunks so the client still sees a stream.
+
+## Failure handling
+
+Malformed JSON or an invalid `messages` / `model` body is rejected with HTTP 400 before auth. Missing credentials return an auth error. A 429 or quota skip locks that account for a bounded window and tries the next connection or combo member. Client-shaped errors are not retried on unrelated providers.
+
+`BACKOFF_BASE_MS` (default 2000) and `BACKOFF_MAX_MS` (default 300000) bound lock delays. See [Environment](../reference/environment.md).
+
+## Worked example
+
+Send a direct provider model. The Usage row should show that provider, not a combo name.
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-4.1",
+    "messages": [{"role": "user", "content": "ping"}]
+  }'
+```
+
+To pin round-robin across turns, add `-H "x-session-id: my-thread-1"`. The second call with the same header should reuse the same connection while it stays eligible.

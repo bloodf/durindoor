@@ -290,10 +290,10 @@ Health does not require the same provider setup as model routes. Use `/v1/models
 GET /v1/realtime  (WebSocket upgrade)
 ```
 
-DurinDoor exposes an OpenAI-Realtime-shaped WebSocket endpoint. Authenticate with `Authorization: Bearer YOUR_DURINDOOR_API_KEY` or the `openai-insecure-api-key.<key>` WebSocket subprotocol. The bridge supports text conversations only; requesting audio emits `modality_not_supported` and keeps the socket open. See [Realtime Behavior](../features/realtime.md) for events, validation, limits, close codes, and cleanup.
+DurinDoor exposes an OpenAI-Realtime-shaped WebSocket endpoint. Authenticate with `Authorization: Bearer YOUR_DURINDOOR_API_KEY` or the `openai-insecure-api-key.<key>` WebSocket subprotocol. The bridge supports text conversations only; requesting audio emits `modality_not_supported` and keeps the socket open. See [Realtime](../features/realtime.mdx) for events, validation, limits, close codes, and cleanup.
 
 ## Related Gateway Features
 
-- [MCP Gateway](../features/mcp-gateway.md)
-- [Compression](../features/compression.md)
-- [Realtime Behavior](../features/realtime.md)
+- [MCP Gateway](../features/mcp-gateway.mdx)
+- [Compression](../features/compression.mdx)
+- [Realtime](../features/realtime.mdx)

@@ -34,8 +34,8 @@ For users getting their first request through the gateway.
 - [Roo](integration/roo.md)
 - [Continue](integration/continue.md)
 - [Other OpenAI-Compatible Tools](integration/other-tools.md)
-- [Combos and Fallback](features/combos.md): ordered model chains, retry behavior, exclusions, and operating patterns.
-- [Smart Routing](features/smart-routing.md): model resolution, provider selection, account fallback, and format translation.
+- [Combos and Fallback](features/combos.mdx): ordered model chains, retry behavior, exclusions, and operating patterns.
+- [Smart Routing](features/smart-routing.mdx): model resolution, provider selection, account fallback, and format translation.
 - [FAQ](faq.md)
 - [Troubleshooting](troubleshooting.md)
 
@@ -52,12 +52,12 @@ For operators running DurinDoor in production or on a team server.
 - [Data Management and Backup](operations/data-management.md)
 - [Security and Production Hardening](operations/security.md)
 - [API-key Provider-account Scoping](security/api-key-provider-account-scoping.md)
-- [Usage and Quota Tracking](features/quota-tracking.md)
-- [Proxy Timeline](features/proxy-timeline.md)
-- [MCP Gateway](features/mcp-gateway.md)
-- [Realtime Behavior](features/realtime.md)
-- [Compression](features/compression.md)
-- [Headroom Setup and Diagnostics](HEADROOM.md)
+- [Usage and Quota Tracking](features/quota-tracking.mdx)
+- [Proxy Timeline](features/proxy-timeline.mdx)
+- [MCP Gateway](features/mcp-gateway.mdx)
+- [Realtime Behavior](features/realtime.mdx)
+- [Compression](features/compression.mdx)
+- [Headroom Setup and Diagnostics](features/headroom.mdx)
 - [Troubleshooting](troubleshooting.md)
 - [FAQ](faq.md)
 
@@ -82,9 +82,9 @@ For stable lookup pages for routes, environment variables, compatibility, and ru
 - [Environment Variables](reference/environment.md)
 - [Provider Plugin Manifest](reference/provider-plugin-manifest.md)
 - [Model Limits and Context Enforcement](reference/model-limits.md)
-- [MCP Gateway](features/mcp-gateway.md)
-- [Realtime Behavior](features/realtime.md)
-- [Compression](features/compression.md)
+- [MCP Gateway](features/mcp-gateway.mdx)
+- [Realtime Behavior](features/realtime.mdx)
+- [Compression](features/compression.mdx)
 - [Local Router Providers](providers/local-router-providers.mdx)
 - [Compatibility and Migration](#compatibility)
 - [Architecture](ARCHITECTURE.md)

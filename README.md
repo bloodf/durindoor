@@ -75,7 +75,7 @@ The model field accepts several shapes, resolved before any upstream call:
 
 Credential selection skips accounts that are locked, expired, or excluded by the current fallback attempt, and refreshes OAuth tokens when the upstream supports refresh.
 
-See [Architecture](docs/ARCHITECTURE.md) and [Smart routing](docs/features/smart-routing.md) for the request lifecycle and failure handling.
+See [Architecture](docs/ARCHITECTURE.md) and [Smart routing](docs/features/smart-routing.mdx) for the request lifecycle and failure handling.
 
 ## Quick start
 
@@ -229,13 +229,13 @@ A route existing does not mean every provider supports it. Modalities are provid
 
 | Capability | What it does |
 | --- | --- |
-| [Smart routing](docs/features/smart-routing.md) | Resolves model strings, selects an available connection, translates formats, and records usage. |
-| [Account fallback](docs/features/smart-routing.md) | Retries another active connection for the same provider and model. |
-| [Combos](docs/features/combos.md) | Chain models behind one stable name; a failed member falls through to the next. |
-| [Usage and quota tracking](docs/features/quota-tracking.md) | Request logs, cost estimates, provider limits, and reset windows in the dashboard. |
-| [Compression](docs/features/compression.md) | Opt-in prompt compression before upstream dispatch; fail-open by design. |
-| [MCP Gateway](docs/features/mcp-gateway.md) | Expose multiple MCP servers behind managed keys and routes. |
-| [Realtime](docs/features/realtime.md) | Text WebSocket sessions in the OpenAI Realtime shape. |
+| [Smart routing](docs/features/smart-routing.mdx) | Resolves model strings, selects an available connection, translates formats, and records usage. |
+| [Account fallback](docs/features/smart-routing.mdx) | Retries another active connection for the same provider and model. |
+| [Combos](docs/features/combos.mdx) | Chain models behind one stable name; a failed member falls through to the next. |
+| [Usage and quota tracking](docs/features/quota-tracking.mdx) | Request logs, cost estimates, provider limits, and reset windows in the dashboard. |
+| [Compression](docs/features/compression.mdx) | Opt-in prompt compression before upstream dispatch; fail-open by design. |
+| [MCP Gateway](docs/features/mcp-gateway.mdx) | Expose multiple MCP servers behind managed keys and routes. |
+| [Realtime](docs/features/realtime.mdx) | Text WebSocket sessions in the OpenAI Realtime shape. |
 
 Common combo strategies:
 
@@ -337,7 +337,7 @@ The canonical documentation is Markdown in this repository. GitHub-rendered Mark
 - [Index](docs/README.md#users)
 - Getting started: [Quick start](docs/getting-started/index.mdx), [Installation](docs/getting-started/installation.mdx), [Guides](docs/guides/index.mdx)
 - Providers: [connections](docs/providers/connecting-accounts.mdx), [custom nodes](docs/providers/openai-compatible-nodes.mdx), [free and local](docs/providers/free-and-local.mdx)
-- Features: [Smart routing](docs/features/smart-routing.md), [Combos](docs/features/combos.md), [Usage and quota tracking](docs/features/quota-tracking.md), [Compression](docs/features/compression.md), [MCP Gateway](docs/features/mcp-gateway.md), [Realtime](docs/features/realtime.md)
+- Features: [Smart routing](docs/features/smart-routing.mdx), [Combos](docs/features/combos.mdx), [Usage and quota tracking](docs/features/quota-tracking.mdx), [Compression](docs/features/compression.mdx), [MCP Gateway](docs/features/mcp-gateway.mdx), [Realtime](docs/features/realtime.mdx), [Proxy timeline](docs/features/proxy-timeline.mdx), [Headroom](docs/features/headroom.mdx)
 - Reference: [API reference](docs/reference/api.md), [Environment variables](docs/reference/environment.md), [Architecture](docs/ARCHITECTURE.md)
 - Operations: [Security](docs/operations/security.md), [Startup](docs/operations/startup.md), [Troubleshooting](docs/troubleshooting.md), [FAQ](docs/faq.md), [Release process](docs/development/release-process.md)
 - Public site: [website/README.md](website/README.md)

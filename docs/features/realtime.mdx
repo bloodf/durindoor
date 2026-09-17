@@ -1,0 +1,56 @@
+---
+title: Realtime
+description: Text WebSocket at GET /v1/realtime in the OpenAI Realtime shape. Audio is refused.
+---
+
+`GET /v1/realtime` (trailing slash allowed) upgrades to a WebSocket. Other paths, including `/_next/webpack-hmr`, stay with Next.js. `custom-server.js` owns the upgrade so it does not race Next's listener. Each `response.create` is turned into an ordinary `POST /api/v1/chat/completions` on loopback `127.0.0.1` (the same `handleChat` → `handleChatCore` path) and the SSE is reframed as Realtime events. Pass `?model=provider/model` on the upgrade URL to set the session model.
+
+There is no Realtime dashboard page. Use **Dashboard → API Docs** (`/dashboard/api-docs`) for the route list, and **Dashboard → Usage** to see the loopback chat calls.
+
+Audio is not supported. Declaring `audio` in `session.modalities` and then sending `response.create` yields an `error` event with code `modality_not_supported`. The socket stays open. Audio is never faked.
+
+## Auth
+
+Send a DurinDoor API key as `Authorization: Bearer <key>`, `x-api-key`, `x-goog-api-key`, `?key=`, or the OpenAI subprotocol `openai-insecure-api-key.<key>`. The selected subprotocol echoed back is only `realtime` or `openai-beta.realtime-v1`. The key-bearing token is never selected.
+
+The wrapper probes `GET /api/v1/realtime/auth` on `127.0.0.1` at `PORT` (default 20128), using the same `resolveClientApiKey` as HTTP chat. A rejected key closes with code 4001. A failed probe (not a bad credential) closes with 1011. `x-9r-cli-token` can be forwarded for local dashboard access. Frames that arrive before auth finishes are queued and drained in order after `session.created`.
+
+## Client events
+
+| Event | Purpose |
+| --- | --- |
+| `session.update` | Update `model`, `instructions`, `modalities`, `temperature`, `max_output_tokens`. Validated atomically. Unknown fields are ignored. On failure an `error` is emitted and nothing mutates. |
+| `conversation.item.create` | Append a message. `item.role` must be `user`, `assistant`, or `system` when set; omitted defaults to `user`. |
+| `response.create` | Generate from the current conversation. Refused with `response_in_progress` while a response is streaming. |
+| `response.cancel` | Abort the in-flight response. |
+
+Server events: `session.created`, `session.updated`, `conversation.item.created`, `response.created`, `response.output_text.delta`, `response.output_text.done`, `response.done`, `error`.
+
+## Limits
+
+| Field or cap | Rule |
+| --- | --- |
+| `modalities` | Array of strings, each `text` or `audio`. |
+| `temperature` | Finite number in `[0.6, 1.2]`. |
+| `max_output_tokens` | Finite integer in `[1, 4096]`. The literal `"inf"` is not accepted. |
+| `model` | String. Default `openai/gpt-4o-mini` if the URL has none. |
+| Session items | Default 100. Env `REALTIME_MAX_SESSION_ITEMS`. Oldest non-system items drop first. All-system history at the cap rejects with `session_item_limit`. |
+| Frame size | Default 1 MiB. Env `REALTIME_MAX_FRAME_BYTES`. Oversize closes with 1009. |
+
+On `close` and `error`, `dispose()` aborts any in-flight upstream chat. Frames queued during the auth window are dropped if the socket dies first. Binary WebSocket frames are ignored. The `ws` `maxPayload` option enforces the frame cap before JSON parsing.
+
+## Worked example
+
+Upgrade, then send JSON text frames (not binary). After `session.created`:
+
+```json
+{"type":"conversation.item.create","item":{"type":"message","role":"user","content":"ping"}}
+```
+
+```json
+{"type":"response.create"}
+```
+
+You should see `response.created`, one or more `response.output_text.delta`, `response.output_text.done`, and `response.done`. Usage shows a streaming chat-completions call for the session model.
+
+To refuse audio, send `session.update` with `"modalities":["audio"]` and then `response.create`. Expect `error.code = "modality_not_supported"` and a still-open socket.

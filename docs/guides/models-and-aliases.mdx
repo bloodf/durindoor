@@ -17,7 +17,7 @@ A slash means `prefix/rest`. The prefix is a provider id or a provider alias fro
 | `coding-default` | Combo name (no slash) |
 | `short-name` | Custom alias mapped to `provider/model` |
 
-Custom aliases are a `{ "short-name": "provider/model" }` map stored by the dashboard. Combos are a named fallback list; the client sends the combo name and DurinDoor tries each member. See [Combos](../features/combos.md).
+Custom aliases are a `{ "short-name": "provider/model" }` map stored by the dashboard. Combos are a named fallback list; the client sends the combo name and DurinDoor tries each member. See [Combos](../features/combos.mdx).
 
 If `getModelInfo` returns no provider, the chat handler calls `getComboModels` and, when that returns a list, runs the combo path. If the bare string is neither an alias nor a combo, DurinDoor infers a provider from the model id prefix (`claude-` → anthropic, `gemini-` → gemini, `gpt-` / `o1` / `o3` / `o4` → openai, `deepseek-` → openrouter) and otherwise uses `openai`.
 

@@ -138,9 +138,9 @@ Production deployments should set explicit secrets, use HTTPS, restrict dashboar
 | Provider executor | `open-sse/executors` when the upstream is not generic compatible |
 | Request or response translator | `open-sse/translator/request` and `open-sse/translator/response` |
 | Dashboard provider UI | Registry display fields and dashboard components |
-| Compression | [`features/compression.md`](features/compression.md) and `open-sse/services/compression` |
-| Realtime | [`features/realtime.md`](features/realtime.md) and the WebSocket server |
-| MCP Gateway | [`features/mcp-gateway.md`](features/mcp-gateway.md) and `src/lib/mcp` |
+| Compression | [`features/compression.mdx`](features/compression.mdx) and `open-sse/services/compression` |
+| Realtime | [`features/realtime.mdx`](features/realtime.mdx) and the WebSocket server |
+| MCP Gateway | [`features/mcp-gateway.mdx`](features/mcp-gateway.mdx) and `src/lib/mcp` |
 | API route | `src/app/api` |
 | Database entity | `src/lib/db/schema.js`, migrations, and repositories |
 

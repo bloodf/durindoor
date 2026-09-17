@@ -101,6 +101,10 @@ export const STREAM_STALL_TIMEOUT_MS = envMs("STREAM_STALL_TIMEOUT_MS", 360 * 10
 // Time-to-first-token timeout (prompt prefill). Env: STREAM_FIRST_CHUNK_TIMEOUT_MS.
 export const STREAM_FIRST_CHUNK_TIMEOUT_MS = envMs("STREAM_FIRST_CHUNK_TIMEOUT_MS", 200 * 1000);
 
+// How long a GitHub Copilot AI Credits usage reading is reused before the
+// local credit cutoff re-fetches it. Env: GITHUB_CREDIT_USAGE_CACHE_TTL_MS.
+export const GITHUB_CREDIT_USAGE_CACHE_TTL_MS = envMs("GITHUB_CREDIT_USAGE_CACHE_TTL_MS", 30 * 1000);
+
 /**
  * Interval for client-facing Claude SSE ping events during upstream silence.
  * Set `SSE_KEEPALIVE_MS=0` to disable both early and post-translation pings.

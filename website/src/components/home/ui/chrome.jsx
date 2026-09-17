@@ -61,9 +61,26 @@ const NAV_LINKS = [
   { href: "#demo", label: "Demo" },
 ];
 
+function MenuIcon({ open }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      {open ? (
+        <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      ) : (
+        <path d="M4 6h12M4 10h12M4 14h12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      )}
+    </svg>
+  );
+}
+
 export function Nav() {
   const { t } = useHomeLocale();
   const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const menuBtnRef = useRef(null);
+  const panelRef = useRef(null);
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
     onScroll();
@@ -71,28 +88,87 @@ export function Nav() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1099px)");
+    const apply = () => {
+      setCompact(media.matches);
+      if (!media.matches) setMenuOpen(false);
+    };
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, []);
+
+  const closeMenu = () => {
+    if (menuOpen) menuBtnRef.current?.focus();
+    setMenuOpen(false);
+  };
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeMenu();
+    };
+    const onPointer = (event) => {
+      const target = event.target;
+      if (panelRef.current?.contains(target) || menuBtnRef.current?.contains(target)) return;
+      closeMenu();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [menuOpen]);
+
+  const links = NAV_LINKS.map((link) => (
+    <li key={link.href}>
+      <a href={link.href} onClick={closeMenu}>{t(link.label)}</a>
+    </li>
+  ));
+
   return (
-    <header className={`site-nav ${scrolled ? "is-scrolled" : ""}`}>
+    <header className={`site-nav ${scrolled ? "is-scrolled" : ""} ${menuOpen ? "is-menu-open" : ""}`}>
       <a className="skip-link" href="#main">{t("Skip to content")}</a>
       <nav className="nav-inner" aria-label={t("Primary")}>
         <a href="#top" className="nav-brand" aria-label={t("DurinDoor home")}>
           <BrandMark />
           <span>DurinDoor</span>
         </a>
-        <ul className="nav-links">
-          {NAV_LINKS.map((link) => (
-            <li key={link.href}>
-              <a href={link.href}>{t(link.label)}</a>
-            </li>
-          ))}
-        </ul>
+        <div
+          ref={panelRef}
+          id="home-nav-panel"
+          className={`nav-panel ${menuOpen ? "is-open" : ""}`}
+          aria-hidden={compact && !menuOpen}
+          inert={compact && !menuOpen ? true : undefined}
+        >
+          <ul className="nav-links">{links}</ul>
+          <div className="nav-panel-cta">
+            <Link className="btn btn-small btn-ghost" href="/docs" onClick={closeMenu}>{t("Docs")}</Link>
+            <Link className="btn btn-small btn-primary" href="/dashboard" onClick={closeMenu}>{t("Live demo")}</Link>
+          </div>
+        </div>
         <div className="nav-actions">
           <HomeLocaleSelect />
-          <Link className="btn btn-small btn-ghost" href="/docs">{t("Docs")}</Link>
+          <Link className="btn btn-small btn-ghost nav-action-docs" href="/docs">{t("Docs")}</Link>
           <a className="nav-icon" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label={t("DurinDoor on GitHub")}>
-            <GitHubMark size={20} />
+            <GitHubMark size={18} />
           </a>
-          <Link className="btn btn-small btn-primary" href="/dashboard">{t("Live demo")}</Link>
+          <Link className="btn btn-small btn-primary nav-action-demo" href="/dashboard">{t("Live demo")}</Link>
+          <button
+            ref={menuBtnRef}
+            type="button"
+            className="nav-menu-btn"
+            aria-label={t("Primary")}
+            aria-expanded={menuOpen}
+            aria-controls="home-nav-panel"
+            onClick={() => setMenuOpen((value) => !value)}
+          >
+            <MenuIcon open={menuOpen} />
+          </button>
         </div>
       </nav>
     </header>

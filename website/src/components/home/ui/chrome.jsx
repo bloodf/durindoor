@@ -88,6 +88,7 @@ export function Nav() {
         </ul>
         <div className="nav-actions">
           <HomeLocaleSelect />
+          <Link className="btn btn-small btn-ghost" href="/docs">{t("Docs")}</Link>
           <a className="nav-icon" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label={t("DurinDoor on GitHub")}>
             <GitHubMark size={20} />
           </a>

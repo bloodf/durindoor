@@ -204,6 +204,7 @@ const messages = {
   "Features": "功能",
   "Demo": "演示",
   "Docs": "文档",
+  "Read the documentation": "阅读文档",
   "MIT License": "MIT 许可证",
   "Install the CLI": "安装 CLI",
   "Node.js 20.20.2 and npm 10.8.2. One global package, no accounts.": "Node.js 20.20.2 和 npm 10.8.2。一个全局软件包，无需账户。",

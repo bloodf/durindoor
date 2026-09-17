@@ -204,6 +204,7 @@ const messages = {
   "Features": "機能",
   "Demo": "デモ",
   "Docs": "ドキュメント",
+  "Read the documentation": "ドキュメントを読む",
   "MIT License": "MIT ライセンス",
   "Install the CLI": "CLI をインストール",
   "Node.js 20.20.2 and npm 10.8.2. One global package, no accounts.": "Node.js 20.20.2 と npm 10.8.2。グローバルパッケージ 1 つ、アカウント不要。",

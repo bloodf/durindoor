@@ -204,6 +204,7 @@ const messages = {
   "Features": "Funktionen",
   "Demo": "Demo",
   "Docs": "Dokumentation",
+  "Read the documentation": "Dokumentation lesen",
   "MIT License": "MIT-Lizenz",
   "Install the CLI": "CLI installieren",
   "Node.js 20.20.2 and npm 10.8.2. One global package, no accounts.": "Node.js 20.20.2 und npm 10.8.2. Ein globales Paket, keine Konten.",

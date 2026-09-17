@@ -1,6 +1,70 @@
 ---
 title: Migrating from 9router
-description: Legacy identifiers, data directory, and the one-shot cutover script.
+description: Legacy 9router identifiers DurinDoor still accepts, and the one-shot migrate-from-9router script.
 ---
 
-Pages in this section are being written.
+Display names and new IDs are DurinDoor / `durindoor`. A 9router install can keep running against the same files. The runtime still reads a short list of 9router identifiers so existing keys, CLI configs, and the default data directory keep working.
+
+You do not have to run a script to start DurinDoor on a 9router data directory. Stop 9router, back up that directory, start DurinDoor with the same `DATA_DIR` (or the default `~/.9router`), then check providers, keys, combos, and usage. That path is also in [Installation](../getting-started/installation.mdx).
+
+## Identifiers the runtime still honors
+
+| Identifier | What still works |
+| --- | --- |
+| Data directory `~/.9router` (`%APPDATA%\9router` on Windows) | Default `DATA_DIR` when the env var is unset. |
+| API keys `sk-<8 hex>` | `parseApiKey` accepts the two-part `sk-` shape with no HMAC. Four-part `sk-<machineId>-<keyId>-<crc8>` is what new keys mint. |
+| Stored secrets in `DATA_DIR/db/data.sqlite` | Auth looks up `apiKeys.key` by exact string. The cutover script never rewrites those rows. |
+| CLI section label `9router` | Incoming tool configs still use it. Codex Apply writes `[model_providers.9router]` and `model_provider = "9router"`. The dashboard `has9Router` flag is that text. |
+| `X-9Router-*` request headers | Wire aliases next to `X-DurinDoor-*`. Example: `X-9Router-Token-Saver` / `x-9router-token-saver`. |
+| Outbound `X-Msh-Platform: 9router` | Kimi OAuth helper `buildKimiHeaders` still sends that value. It is not an inbound DurinDoor auth header. |
+
+`sk_9router` is a MITM fallback placeholder, not a minted key. Underscore placeholders do not pass `parseApiKey`. A row that already stores that string still authenticates by exact lookup.
+
+<Callout type="warn">
+The cutover script never rewrites API key strings. SQLite files are not walked. Only TOML, JSON, and JSON5 files under the DurinDoor data dir get provider-section renames.
+</Callout>
+
+## Cutover script
+
+`scripts/migrate-from-9router.mjs` is a one-shot operator tool. It is idempotent. Re-running a finished install prints `no migration needed` and exits.
+
+```bash
+node scripts/migrate-from-9router.mjs --dry-run
+node scripts/migrate-from-9router.mjs
+node scripts/migrate-from-9router.mjs --target-dir <path> --legacy-dir <path>
+```
+
+| Flag | Default |
+| --- | --- |
+| `--dry-run` | off. Prints intended actions. No rename, copy, or write. |
+| `--target-dir` | `~/.durindoor` |
+| `--legacy-dir` | `~/.9router` |
+
+DurinDoor's default `DATA_DIR` remains `~/.9router`. After a move into `~/.durindoor`, set `DATA_DIR` to that target or the next start will create a fresh default directory.
+
+### Modes
+
+| Condition | Mode |
+| --- | --- |
+| target missing, legacy present | `move`: tar the legacy dir, then `renameSync` it to the target |
+| both present | `merge`: tar both trees, copy files that do not already exist in the target (skip on collision), then rewrite labels in the target |
+| one or both missing in any other combination | no-op: `no migration needed` |
+
+Move-mode backup lands at `~/.9router-backup-<iso-stamp>.tar` before any rename. Keep that tar. Restore with `tar -xf <tarball>.tar -C /`. Merge mode also tars the pre-existing `~/.durindoor` tree to a `.durindoor-backup-*.tar` before copies or rewrites.
+
+A tar failure exits nonzero before any move. SIGINT or I/O failure after a move started deletes the partial target and restores `~/.9router` from the backup tar, then exits 1. Merge is additive. A mid-merge failure leaves `~/.9router` untouched and `~/.durindoor` with whatever files copied so far. Re-run to resume.
+
+### What gets rewritten
+
+After the move or merge, the script walks the target (or the legacy dir on dry-run move) and rewrites only these:
+
+- TOML section headers `[providers.9router]`, `[model_providers.9router]`, `[provider.9router]`
+- TOML assignment `model_provider = "9router"`
+- JSON/JSON5 keys named `9router` under objects whose parent key is `provider`, `providers`, or `model_providers`
+- Provider-prefixed model ids `9router/...` inside a renamed provider object
+
+Unrelated tables such as `[profiles.9router]` stay. String values that only mention `[providers.9router]` stay. YAML, INI, and other extensions are not touched.
+
+## After the script
+
+Point DurinDoor at the target directory if you moved away from `~/.9router`. Start the process. Open the dashboard and confirm providers, API keys, combos, and usage. Client tools that still write a `9router` provider section keep working without the rewrite. The rewrite is for configs you want labeled `durindoor`.

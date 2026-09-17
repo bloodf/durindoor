@@ -1,6 +1,140 @@
 ---
 title: CLI
-description: durindoor launcher commands, flags, tray behaviour, and updates.
+description: Flags, tray, update check, heap, DNS, and DATA_DIR for the durindoor npm launcher.
 ---
 
-Pages in this section are being written.
+The published `durindoor` package is the npm launcher. Its binary is `durindoor` and it starts the standalone `custom-server.js` that ships inside the package. There are no subcommands. Flags change listen address, logs, tray, and whether the npm registry is queried.
+
+Node.js 20.20.2 is the engine pin on the CLI package. The repo also pins npm 10.8.2.
+
+<Tabs items={['npm', 'npx']}>
+<Tab value="npm">
+
+```bash
+npm install --global durindoor
+durindoor
+```
+
+</Tab>
+<Tab value="npx">
+
+```bash
+npx durindoor
+```
+
+One-off run. No global install.
+
+</Tab>
+</Tabs>
+
+The dashboard is `http://localhost:20128/dashboard` when the default port is free. Clients use `http://localhost:20128/v1`. Next.js rewrites `/v1/:path*` to `/api/v1/:path*`, so that client base URL is the same gateway as `/api/v1`.
+
+`npx durindoor` and a global install both spawn `cli.js`. Source `npm start` does not; that path is [Startup](../operations/startup.mdx).
+
+## Flags
+
+`durindoor --help` prints this list. `-p`/`--port` and `-H`/`--host` consume the next argv token.
+
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `-p, --port <port>` | `20128` | Listen port. `parseInt` of the next token; a NaN value falls back to `20128`. Passed to the worker as `PORT`. |
+| `-H, --host <host>` | `0.0.0.0` | Bind address. Passed to the worker as `HOSTNAME`. |
+| `-n, --no-browser` | off | Parsed and listed in help. After parse, the variable is never read. The CLI does not auto-open a browser on start. |
+| `-l, --log` | off | Worker stdio is inherited. Without it, stdout is ignored and stderr is kept for a 50-line crash buffer. |
+| `-t, --tray` | off | Tray-only mode. Sets `TRAY_MODE=1`. Skips the interface menu. |
+| `--skip-update` | off | Skip the npm registry check. Combined with a missing TTY and no `--tray`, the process still enters tray mode. |
+| `-h, --help` | | Print usage and exit 0. |
+| `-v, --version` | | Print `package.json` `version` and exit 0. |
+
+Bind `0.0.0.0` (the default) and the CLI prints a network-exposed warning with the first non-internal IPv4. The URL it shows operators is still `localhost`. Use `--host 127.0.0.1` for loopback only.
+
+<Callout type="warn">
+Default bind is all interfaces. Do not leave `0.0.0.0` on a public network without the checks in [Security](../operations/security.mdx).
+</Callout>
+
+## Heap and DNS
+
+The worker argv is `--dns-result-order=ipv4first`, then optional heap flags, then `custom-server.js`. IPv4-first stays on even when heap flags are omitted.
+
+Default V8 heap cap is 6144 MB (`--max-old-space-size=6144`).
+
+| `NINEROUTER_MAX_OLD_SPACE_SIZE` | Result |
+| --- | --- |
+| unset, and `NODE_OPTIONS` has no `--max-old-space-size` | CLI adds `--max-old-space-size=6144` |
+| `0` | CLI adds no heap flag. Node sizes the heap. |
+| a positive integer (MB) | CLI adds `--max-old-space-size=<that>` |
+| any other string | Warning on stderr. Then the unset path above. |
+
+If `NODE_OPTIONS` already contains `--max-old-space-size` or `--max_old_space_size`, the CLI adds no heap flag. It never rewrites `NODE_OPTIONS`.
+
+```bash
+NINEROUTER_MAX_OLD_SPACE_SIZE=8192 durindoor
+NINEROUTER_MAX_OLD_SPACE_SIZE=0 durindoor
+```
+
+## Data directory
+
+`cli.js` sets `process.env.DATA_DIR` from `getAppDataDir()` before it spawns the worker. Unset `DATA_DIR` means `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. A Unix-style path on Windows is ignored. An unwritable configured path falls back to that same default.
+
+Layout and backup steps: [Data management](../operations/data-management.mdx).
+
+Postinstall writes optional native deps under `DATA_DIR/runtime/node_modules`: `sql.js@1.14.1` always if the bundled wasm is missing, `better-sqlite3@12.10.1` only from postinstall (startup never blocks on node-gyp), and `systray2@2.1.4` on macOS/Linux. Windows tray uses PowerShell `NotifyIcon` and does not install systray. Failure is non-fatal. The worker sees those modules through `NODE_PATH`.
+
+## Tray
+
+`--tray` (or a non-TTY `--skip-update` start) waits on `GET http://127.0.0.1:<port>/api/health` for up to 60 seconds, then attaches a tray icon. macOS ignores `SIGHUP` so closing the terminal does not kill the process. The menu:
+
+| Item | Action |
+| --- | --- |
+| `DurinDoor (Port <port>)` | Status only. Disabled. |
+| Open Dashboard | Opens `http://<display-host>:<port>/dashboard`. |
+| Enable Auto-start / Auto-start Enabled | Toggles OS login start. |
+| Quit | Stops MITM, tray, Headroom proxy, tunnels, then the worker. |
+
+Tray support: macOS, Windows, Linux with `DISPLAY` set. Anything else skips the icon.
+
+"Hide to Tray" from the interface menu is a second path. On macOS it keeps the current process (a detached child would sit outside the login session and `NSStatusItem` would fail). On Windows and Linux it stops the current worker, then spawns a detached child:
+
+```bash
+node --dns-result-order=ipv4first cli.js --tray --skip-update -p <port>
+```
+
+The first Hide-to-Tray also calls `ensureAutoStart` once. After `DATA_DIR/autostart-decided` exists, later hides do not rewrite the login entry.
+
+Login start still uses 9router filenames:
+
+| Platform | Entry |
+| --- | --- |
+| macOS | `~/Library/LaunchAgents/com.9router.autostart.plist` (`--tray --skip-update`; logs `/tmp/9router.log`) |
+| Windows | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\9router.vbs` |
+| Linux | `~/.config/autostart/9router.desktop` |
+
+## Interface menu
+
+When the process is not in tray-only mode and `/api/health` becomes ready, the CLI shows a TUI next to the tray icon. If readiness fails, the tray still attaches and the menu does not.
+
+Choices: Web UI (open dashboard, then wait for Enter), Terminal UI, Hide to Tray, Exit. If the registry check found a newer version, an Update row is first.
+
+Terminal UI talks to the local dashboard API. Top-level items: Providers, API Keys, Combos, CLI Tools, Settings.
+
+## Update check
+
+Unless `--skip-update` is set, startup queries `https://registry.npmjs.org/durindoor/latest` (3 second request timeout, 8 second safety timeout). Failures resolve to "no update" and do not block listen.
+
+A newer semver than `package.json` adds the Update row. Picking it prints:
+
+```bash
+npm i -g durindoor@latest --prefer-online
+```
+
+Then the CLI cleans up and exits 0. It does not run npm itself. After you install, start `durindoor` again. Read [CHANGELOG.md](../../CHANGELOG.md) and [Upgrading](../operations/upgrading.mdx), and back up `DATA_DIR` first.
+
+`npm update --global durindoor` is the same operator path without the in-process prompt.
+
+## Start and stop
+
+The worker is `app/custom-server.js` next to `cli.js`. Missing that file exits 1 with a reinstall message. Before listen, the CLI tries to recover stale MITM ownership, then kills leftover node processes whose command line includes `9router` plus `cli.js` or `next-server`, then frees the listen port.
+
+SIGINT, SIGTERM, and SIGHUP (foreground only) run that cleanup. Tray-only mode ignores SIGHUP.
+
+If the worker exits while the CLI still wants it, the CLI restarts it up to twice. The counter resets when a run lasts 30 seconds. After two crashes it starts one recovery worker to drop MITM system state, then exits 1.

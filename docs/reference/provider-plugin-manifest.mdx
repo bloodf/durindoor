@@ -1,6 +1,100 @@
 ---
 title: Provider plugin manifest
-description: Generated JSON at GET /v1/provider-plugin-manifest for sidecar loaders.
+description: JSON provider metadata at GET /v1/provider-plugin-manifest, sidecar eligibility, and the CLIProxyAPI header.
 ---
 
-Pages in this section are being written.
+`GET /api/v1/provider-plugin-manifest` returns a JSON document built from `open-sse/providers/registry`. Next.js rewrites `/v1/:path*` to `/api/v1/:path*`, so `GET /v1/provider-plugin-manifest` is the same handler. Sidecars such as CLIProxyAPI read this instead of importing DurinDoor executor code.
+
+`OPTIONS` is allowed. The JSON response is `Cache-Control: public, max-age=60` with `Access-Control-Allow-Origin: *`.
+
+The body is produced by `generateProviderPluginManifest()`. It is JSON-serializable. Registry functions, OAuth client secrets, and session-pool objects are not copied onto the wire.
+
+```text
+GET http://localhost:20128/v1/provider-plugin-manifest
+```
+
+## Document shape
+
+Top-level object:
+
+| Field | Value |
+| --- | --- |
+| `schemaVersion` | `1` |
+| `generatedFrom` | `"open-sse/providers/registry"` |
+| `providers` | Array of entries, sorted by `id` |
+
+A client that fetches this URL rejects the body when `schemaVersion` is not `1` or `providers` is not an array.
+
+Each provider entry:
+
+| Field | Source |
+| --- | --- |
+| `id` | Registry `id` |
+| `alias` | Present when the registry sets `alias` |
+| `aliases` | Present when the registry has a non-empty `aliases` array |
+| `format` | `transport.format`, or `"openai"` |
+| `executor` | `transport.executor`, then `executor`, then `"default"` |
+| `auth` | Compact object: `type`, `header`, `prefix` (see below) |
+| `endpoints` | Compact object of static URL fields |
+| `capabilities` | Sorted tag list |
+| `passthroughModels` | `true` when the registry sets that flag |
+| `defaultContextLength` | Present when the registry value is a number |
+| `timeoutMs` | Present when `transport.timeoutMs` is a number |
+| `models` | Mapped model rows |
+| `sidecar` | `{ eligible, reasons }` |
+
+`endpoints` may include `baseUrl`, `baseUrls`, `responsesBaseUrl` (from `responsesBaseUrl` or `responsesUrl`), `chatPath`, `modelsUrl`, `headers` (a shallow copy of `transport.headers`), and `urlSuffix`. Missing values are omitted.
+
+Each model row may include `id`, `name`, `contextLength`, `maxOutputTokens`, `toolCalling`, `supportsReasoning`, `supportsVision`, `unsupportedParams`, `targetFormat`, and `kind`. Undefined fields are omitted.
+
+Lookup helpers: `getProviderPluginManifestEntry(provider)` matches `id` then `alias`. `getProviderPluginManifestEntryForModel(model)` prefers an exact model id owner, then the slash prefix (`openai/gpt-4` tries provider `openai`).
+
+## Auth object
+
+`auth.type` is not the registry `category`. It is derived in this order:
+
+1. `entry.authType` when set
+2. `"none"` when `noAuth === true`
+3. `"oauth"` when `hasOAuth`, `oauth`, or `authModes` includes `"oauth"`
+4. `"apikey"` otherwise
+
+`auth.header` is `transport.auth.header`, then `transport.auth.apiKey.header`, then `"x-api-key"` for `format === "claude"`, else `"Authorization"`.
+
+`auth.prefix` is `"Bearer"` when the scheme is `"bearer"`. Otherwise it is `transport.auth.prefix` or `transport.auth.apiKey.prefix`.
+
+## Sidecar eligibility
+
+`sidecar.eligible` is true only when `reasons` is empty. Treat it as a candidate signal. DurinDoor still executes providers the sidecar refuses.
+
+A reason is recorded when any of these hold:
+
+| Check | Reason text |
+| --- | --- |
+| executor is not `"default"` | `custom executor: <name>` |
+| `auth.type` is not `apikey`, `optional`, or `none` | `auth type requires JS handling: <type>` |
+| no `baseUrl`, `baseUrls`, `responsesBaseUrl`, or `responsesUrl` | `no static upstream endpoint` |
+| any of those URLs contains `{...}` | `templated URL requires JS handling` |
+| `transport.urlBuilder` is a function | `dynamic URL builder` |
+| `oauth` or `hasOAuth` | `oauth metadata` |
+| `poolConfig` is set | `session pool config` |
+| `format` is `gemini`, `gemini-tts`, or `gemini-stt` | `Gemini endpoint constructed at dispatch` |
+
+`capabilities` is a sorted set. Tags that can appear: `apikey`, `oauth`, `responses`, `passthrough-models`, `custom-executor`, `sidecar-candidate`. `sidecar-candidate` is added only when `sidecar.eligible` is true.
+
+<Callout type="warn">
+Eligible does not mean the sidecar implements the provider. Custom executors, OAuth, templated URLs, Gemini formats, and session pools stay on the JavaScript path until the sidecar has equivalent behavior.
+</Callout>
+
+The loader does not emit OAuth client secrets, `urlBuilder` functions, or `poolConfig` internals. Static `transport.headers` do go out on `endpoints.headers`.
+
+## CLIProxyAPI header
+
+When DurinDoor dispatches through the `cliproxyapi` executor, the outbound request includes `X-OmniRoute-Provider-Manifest-Url`. That value is resolved from trusted server configuration only. Inbound `Origin` is ignored.
+
+Resolution order in `resolveProviderPluginManifestUrl()`:
+
+1. `OMNIROUTE_PROVIDER_MANIFEST_URL` if non-empty
+2. `BASE_URL` or `NEXT_PUBLIC_BASE_URL` when the value looks like `http://` or `https://`, with `/api/v1/provider-plugin-manifest` appended
+3. Otherwise `{OMNIROUTE_PUBLIC_PROTOCOL || http}://{HOST || 127.0.0.1}:{PORT || DASHBOARD_PORT || API_PORT || 20128}/api/v1/provider-plugin-manifest`
+
+Set `OMNIROUTE_PROVIDER_MANIFEST_URL` when the sidecar cannot reach the local DurinDoor origin. CLIProxyAPI itself is optional. Host and port defaults for the sidecar process are `CLIPROXYAPI_HOST` (`127.0.0.1`) and `CLIPROXYAPI_PORT` (`8317`).

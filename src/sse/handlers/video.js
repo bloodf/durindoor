@@ -15,6 +15,7 @@ import * as log from "../utils/logger.js";
 // deliberately don't parse) land here.
 const DEFAULT_VIDEO_PROVIDER = "xai";
 
+
 async function enforceVideoPolicy(request, provider, model, apiKey) {
   return enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
 }
@@ -260,7 +261,16 @@ async function handleVideoGetHandler(request, requestId) {
   const policyError = await enforceVideoPolicy(request, provider, policyModel, apiKey);
   if (policyError) return policyError;
 
-  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, null, { preferredConnectionId, apiKeyId: apiKeyAuth.apiKeyId });
+  // Polls carry no model, and `model = null` resolves to the account-wide lock
+  // key, so a poll failure would otherwise cool down the whole account for
+  // chat and every other modality. Scope poll cooldowns to their own key, and
+  // never substitute another account for a job that only exists on this one.
+  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, null, {
+    preferredConnectionId,
+    strictConnectionId: preferredConnectionId,
+    apiKeyId: apiKeyAuth.apiKeyId,
+    videoPoll: true,
+  });
   if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
     if (credentials?.providerDisabled) {
       log.warn("VIDEO", `[${provider}/${policyModel}] free no-auth provider disabled by settings`);
@@ -296,13 +306,13 @@ async function handleVideoGetHandler(request, requestId) {
   });
 
   if (result.success) {
-    await clearAccountError(credentials.connectionId, credentials, null);
+    await clearAccountError(credentials.connectionId, credentials, null, { videoPoll: true });
     return withConnectionHeader(result.response, credentials.connectionId);
   }
 
   if (shouldMarkAccountUnavailable(result.status)) {
     await markAccountUnavailable(
-      credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, null
+      credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, null, null, { videoPoll: true }
     );
   }
   return result.response;

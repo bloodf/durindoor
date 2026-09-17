@@ -130,7 +130,7 @@
   color: var(--dd-text);
 }
 
-.dd-docs #nd-sidebar a.inline-flex {
+.dd-docs #nd-sidebar a.inline-flex:not(.dd-docs-sidebar-icon) {
   font-weight: 600;
   color: var(--dd-text);
   font-size: 15px;
@@ -221,7 +221,8 @@
 .dd-docs .prose a.dd-docs-btn-ghost,
 .dd-docs .prose a.dd-docs-start-card,
 .dd-docs .prose a.dd-docs-section-card,
-.dd-docs .prose a.dd-docs-popular-link {
+.dd-docs .prose a.dd-docs-popular-link,
+.dd-docs .prose a.dd-docs-whats-here-link {
   color: var(--dd-text);
 }
 
@@ -238,6 +239,12 @@
   border-color: var(--dd-border);
   border-radius: var(--dd-radius);
   box-shadow: none;
+}
+
+/* github-light comment/keyword tokens miss WCAG AA on parchment --dd-surface-2. */
+html:not(.dark) .dd-docs figure.shiki,
+html:not(.dark) .dd-docs pre {
+  background-color: var(--dd-surface);
 }
 
 .dd-docs :not(pre) > code {
@@ -258,6 +265,20 @@
   border-color: color-mix(in srgb, var(--dd-accent) 40%, var(--dd-border));
   transform: translateY(-2px);
   box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--dd-accent) 35%, transparent);
+}
+
+/* Heading anchors also set data-card so prose skips link color. Do not paint them as cards. */
+.dd-docs :is(h1, h2, h3, h4, h5, h6) > a[data-card],
+.dd-docs :is(h1, h2, h3, h4, h5, h6) > a[data-card]:hover {
+  background: none;
+  border: none;
+  box-shadow: none;
+  transform: none;
+  color: inherit;
+  text-decoration: none;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
 }
 
 .dd-docs [class*="rounded-xl"] {
@@ -338,6 +359,8 @@
 .dd-docs .dd-docs-popular-link,
 .dd-docs .dd-docs-btn,
 .dd-docs .dd-docs-theme-toggle,
+.dd-docs .dd-docs-sidebar-icon,
+.dd-docs .dd-docs-whats-here-link,
 .dd-docs .dd-docs-search-lg,
 .dd-docs #nd-sidebar a,
 .dd-docs #nd-sidebar button {
@@ -348,32 +371,45 @@
 .dd-docs-hero {
   position: relative;
   isolation: isolate;
-  padding: 1.5rem 0 2rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
+  gap: 1.5rem 2.5rem;
+  align-items: start;
+  padding: 0.25rem 0 1.5rem;
 }
 
 .dd-docs-hero::before {
   content: "";
   position: absolute;
-  inset: -12% -8% auto;
-  height: 280px;
+  inset: -2% -6% auto;
+  height: 180px;
   z-index: -1;
   pointer-events: none;
   background: radial-gradient(
-    ellipse at 28% 30%,
-    color-mix(in srgb, var(--dd-accent) 22%, transparent),
-    transparent 70%
+    ellipse at 22% 40%,
+    color-mix(in srgb, var(--dd-accent) 18%, transparent),
+    transparent 72%
   );
+}
+
+.dd-docs-hero-overline {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dd-accent-2);
 }
 
 .dd-docs-hero-brand {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.9rem;
 }
 
 .dd-docs-hero-brand img {
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   border-radius: var(--dd-radius);
 }
 
@@ -387,18 +423,26 @@
 }
 
 .dd-docs-hero-pitch {
-  margin: 0.85rem 0 1.25rem;
+  margin: 0.75rem 0 1rem;
   max-width: 42rem;
   color: var(--dd-text-muted);
   font-size: 1.05rem;
   line-height: 1.55;
 }
 
+.dd-docs-hero-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem 1rem;
+  align-items: center;
+  max-width: 42rem;
+}
+
 .dd-docs-search-lg {
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
-  width: min(100%, 36rem);
+  width: 100%;
   min-height: 2.75rem;
   padding: 0.65rem 0.85rem;
   font-size: 0.95rem;
@@ -431,9 +475,9 @@
 
 .dd-docs-hero-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.75rem;
-  margin-top: 1.1rem;
+  margin: 0;
 }
 
 .dd-docs-btn {
@@ -563,37 +607,45 @@
 .dd-docs-sidebar-footer {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  gap: 0.25rem;
+  width: 100%;
+  margin-top: 0.25rem;
   font-size: 0.8rem;
   color: var(--dd-text-muted);
 }
 
-.dd-docs-sidebar-github {
+.dd-docs-sidebar-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--dd-radius);
   color: var(--dd-text);
   text-decoration: none;
-  font-weight: 600;
 }
 
-.dd-docs-sidebar-github:hover {
+.dd-docs-sidebar-icon:hover {
+  background-color: var(--dd-accent-soft);
   color: var(--dd-accent);
 }
 
 .dd-docs-sidebar-version {
-  margin-inline-end: auto;
+  margin-inline-start: auto;
+  margin-inline-end: 0.15rem;
 }
 
 .dd-docs-theme-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  margin-inline-start: auto;
-  padding: 0.3rem 0.55rem;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
   border: 1px solid var(--dd-border);
   border-radius: var(--dd-radius);
   background: var(--dd-surface-2);
   color: var(--dd-text);
-  font-size: 0.75rem;
   cursor: pointer;
 }
 
@@ -620,10 +672,86 @@
   margin-top: 0.75rem;
 }
 
+.dd-docs-page-actions {
+  margin: -0.25rem 0 0.5rem;
+}
+
+.dd-docs-whats-here {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--dd-border);
+  border-radius: var(--dd-radius-lg);
+  background: var(--dd-surface);
+}
+
+.dd-docs-whats-here-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dd-accent-2);
+}
+
+.dd-docs-whats-here-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.dd-docs-whats-here-link {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+  color: var(--dd-text);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.dd-docs-whats-here-link:hover {
+  color: var(--dd-accent);
+}
+
+.dd-docs-whats-here-count {
+  color: var(--dd-text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.dd-docs .prose a.dd-docs-whats-here-link {
+  text-decoration: none;
+  color: var(--dd-text);
+}
+
+.dd-docs .prose a.dd-docs-whats-here-link:hover {
+  color: var(--dd-accent);
+}
+
+@media (max-width: 1100px) {
+  .dd-docs-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .dd-docs-whats-here {
+    display: none;
+  }
+}
+
 @media (max-width: 900px) {
   .dd-docs-start,
   .dd-docs-sections {
     grid-template-columns: 1fr;
+  }
+
+  .dd-docs-hero-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .dd-docs-hero-actions {
+    flex-wrap: wrap;
   }
 }
 
@@ -634,6 +762,8 @@
   .dd-docs .dd-docs-popular-link,
   .dd-docs .dd-docs-btn,
   .dd-docs .dd-docs-theme-toggle,
+  .dd-docs .dd-docs-sidebar-icon,
+  .dd-docs .dd-docs-whats-here-link,
   .dd-docs .dd-docs-search-lg,
   .dd-docs #nd-sidebar a,
   .dd-docs #nd-sidebar button {
@@ -645,4 +775,25 @@
   .dd-docs .dd-docs-section-card:hover {
     transform: none;
   }
+}
+
+/* The typography plugin gives list items margins and a tall line height.
+   Inside the hero panel that tripled the row height and left a gap beside it. */
+.dd-docs .prose .dd-docs-whats-here-list,
+.dd-docs .prose .dd-docs-whats-here-list li {
+  margin: 0;
+  padding: 0;
+  line-height: 1.35;
+}
+
+.dd-docs .prose .dd-docs-whats-here-list li + li {
+  border-top: 1px solid var(--dd-border);
+}
+
+.dd-docs .prose a.dd-docs-whats-here-link {
+  padding: 0.4rem 0;
+}
+
+.dd-docs-hero {
+  align-items: start;
 }

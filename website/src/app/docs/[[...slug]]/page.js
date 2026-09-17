@@ -29,20 +29,27 @@ export default async function Page(props) {
   const RelativeLink = createRelativeLink(source, page);
   const isLanding = !params.slug || params.slug.length === 0;
   const githubFile = `${GITHUB_DOCS}/${page.path}`;
+  const toc = page.data.toc ?? [];
+  const hasToc = !isLanding && toc.length > 0;
 
   return (
     <DocsPage
-      toc={page.data.toc}
+      toc={toc}
       full={page.data.full}
       breadcrumb={{ enabled: !isLanding }}
       tableOfContent={{
-        enabled: !isLanding,
-        footer: isLanding ? undefined : <EditOnGitHub href={githubFile} />,
+        enabled: hasToc,
+        footer: hasToc ? <EditOnGitHub href={githubFile} /> : undefined,
       }}
-      tableOfContentPopover={{ enabled: !isLanding }}
+      tableOfContentPopover={{ enabled: hasToc }}
     >
       {!isLanding && <DocsTitle>{page.data.title}</DocsTitle>}
       {!isLanding && <DocsDescription>{page.data.description}</DocsDescription>}
+      {!isLanding && !hasToc && (
+        <div className="dd-docs-page-actions">
+          <EditOnGitHub href={githubFile} />
+        </div>
+      )}
       <DocsBody>
         <Mdx
           components={getMDXComponents({

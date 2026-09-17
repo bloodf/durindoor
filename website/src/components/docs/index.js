@@ -1,4 +1,5 @@
 export { DocsHero } from "./Hero.jsx";
+export { DOCS_SECTIONS } from "./sections.js";
 export { DocsSearchTrigger } from "./SearchTrigger.jsx";
 export { DocsStartRow, DocsStartCard } from "./StartRow.jsx";
 export { DocsSectionGrid, DocsSectionCard } from "./SectionGrid.jsx";

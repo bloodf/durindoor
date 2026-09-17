@@ -31,11 +31,18 @@ function productVersion() {
 
 const VERSION = productVersion();
 
+function treeWithoutRootIndex(tree) {
+  return {
+    ...tree,
+    children: tree.children.filter((node) => node.type !== "page" || node.url !== "/docs"),
+  };
+}
+
 export default function Layout({ children }) {
   return (
     <RootProvider theme={{ enabled: false }} search={{ options: { api: "/docs-search" } }}>
       <DocsLayout
-        tree={source.getPageTree()}
+        tree={treeWithoutRootIndex(source.getPageTree())}
         {...baseOptions()}
         tabs={false}
         sidebar={{

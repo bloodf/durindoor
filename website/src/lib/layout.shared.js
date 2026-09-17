@@ -3,7 +3,7 @@ export function baseOptions() {
     nav: {
       title: (
         <>
-          <img src="/durindoor-wordmark.png" alt="" width={26} height={26} />
+          <img src="/durindoor-wordmark.png" alt="DurinDoor" width={26} height={26} />
           DurinDoor
         </>
       ),

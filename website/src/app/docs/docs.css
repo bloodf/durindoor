@@ -1,0 +1,96 @@
+/* Docs surface only. Imported from layout.js, never from the root layout.
+   This file is its own PostCSS graph. Without `@import "tailwindcss"` here,
+   preset.css `@utility fd-steps` dies on `@apply sm:ms-4`. `source(none)`
+   stops a second scan of the app; fumadocs `css/lib/base.css` re-declares
+   `@variant dark (&:where(.dark, .dark *))`, same selector as globals. */
+
+@import "tailwindcss" source(none);
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/* preset.css pulls generated/docs.css and generated/shared.css, which already
+   ship `@source inline(...)` for fumadocs-ui class names. This extra `@source`
+   covers any class the inline lists miss when this file is compiled as its own
+   CSS entry (not imported from globals). */
+@source "../../../../node_modules/fumadocs-ui/dist/**/*.js";
+
+/* Map Fumadocs `--color-fd-*` onto the DurinDoor palette from :root / .dark
+   in src/app/globals.css. Both selectors are required: neutral.css writes
+   literal hsl values on `.dark`, which would otherwise replace the var() refs. */
+:root {
+  --color-fd-background: var(--color-bg);
+  --color-fd-foreground: var(--color-text-main);
+  --color-fd-muted: var(--color-surface-2);
+  --color-fd-muted-foreground: var(--color-text-muted);
+  --color-fd-popover: var(--color-surface);
+  --color-fd-popover-foreground: var(--color-text-main);
+  --color-fd-card: var(--color-surface);
+  --color-fd-card-foreground: var(--color-text-main);
+  --color-fd-border: var(--color-border);
+  --color-fd-primary: var(--color-brand-500);
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-secondary: var(--color-surface-2);
+  --color-fd-secondary-foreground: var(--color-text-main);
+  --color-fd-accent: var(--color-gold-soft);
+  --color-fd-accent-foreground: var(--color-gold);
+  --color-fd-ring: var(--color-brand-500);
+  --color-fd-overlay: rgba(13, 17, 23, 0.4);
+}
+
+.dark {
+  --color-fd-background: var(--color-bg);
+  --color-fd-foreground: var(--color-text-main);
+  --color-fd-muted: var(--color-surface-2);
+  --color-fd-muted-foreground: var(--color-text-muted);
+  --color-fd-popover: var(--color-surface);
+  --color-fd-popover-foreground: var(--color-text-main);
+  --color-fd-card: var(--color-surface);
+  --color-fd-card-foreground: var(--color-text-main);
+  --color-fd-border: var(--color-border);
+  --color-fd-primary: var(--color-brand-500);
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-secondary: var(--color-surface-2);
+  --color-fd-secondary-foreground: var(--color-text-main);
+  --color-fd-accent: var(--color-gold-soft);
+  --color-fd-accent-foreground: var(--color-gold);
+  --color-fd-ring: var(--color-brand-500);
+  --color-fd-overlay: rgba(0, 0, 0, 0.55);
+}
+
+/* neutral.css tints the sidebar with its own greys. Re-bind those too. */
+.dark #nd-sidebar {
+  --color-fd-muted: var(--color-surface-2);
+  --color-fd-secondary: var(--color-surface-2);
+  --color-fd-muted-foreground: var(--color-text-muted);
+}
+
+/* Fumadocs preflight (css/lib/base.css) paints body and every border with
+   `--color-fd-*`. Restore the dashboard tokens so `/`, `/login`, and
+   `/dashboard` stay pixel-identical if this sheet is in the shared bundle. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border, currentColor);
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text-main);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+#nd-docs-layout {
+  font-family: var(--font-sans);
+  --tw-prose-links: var(--color-gold);
+}
+
+#nd-docs-layout .prose a:not([data-card]) {
+  color: var(--color-gold);
+  text-decoration-color: var(--color-gold);
+}

@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/bloodf/durindoor/blob/main/assets/durindoor-wordmark-theme-aware.svg">
-    <img src="https://raw.githubusercontent.com/bloodf/durindoor/main/assets/durindoor-wordmark-theme-aware.svg" alt="DurinDoor — Speak, friend, and enter. One guarded gateway for every AI provider" width="760">
+    <img src="https://raw.githubusercontent.com/bloodf/durindoor/main/assets/durindoor-wordmark-theme-aware.svg" alt="DurinDoor. Speak, friend, and enter. One guarded gateway for every AI provider" width="760">
   </a>
 </p>
 
@@ -18,37 +18,34 @@
 </p>
 
 <p align="center">
-  <strong>Add provider credentials once in a self-hosted dashboard, then point any OpenAI-compatible tool at a single local endpoint with unified usage tracking, provider combos, and request logs.</strong>
+  <strong>Add provider credentials once in a self-hosted dashboard, then point any OpenAI-compatible tool at one local endpoint.</strong>
 </p>
 
-## 🗺️ Explore
+## Explore
 
-- [Why DurinDoor?](#-why-durindoor)
-- [How it works](#-how-it-works)
-- [Quick start](#-quick-start)
-- [Connect your tools](#-connect-your-tools)
-- [What DurinDoor handles](#-what-durindoor-handles)
-- [API surface](#-api-surface)
-- [Architecture](#-architecture)
-- [Security and operations](#-security-and-operations)
-- [Documentation](#-documentation)
-- [Contributing](#-contributing)
-- [Acknowledgments](#-acknowledgments)
+- [Why DurinDoor](#why-durindoor)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Connect your tools](#connect-your-tools)
+- [What DurinDoor handles](#what-durindoor-handles)
+- [API surface](#api-surface)
+- [Architecture](#architecture)
+- [Security and operations](#security-and-operations)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [Acknowledgments](#acknowledgments)
 
-## 🚪 Why DurinDoor?
+## Why DurinDoor
 
-DurinDoor is a self-hosted AI gateway that sits between your tools and your providers. It keeps provider credentials on your own machine and exposes one local API every OpenAI-compatible client can speak.
+DurinDoor is a self-hosted AI gateway between your tools and your providers. Credentials stay on your machine. Clients speak one local API.
 
-- **One local endpoint** — Configure tools once against `http://localhost:20128/v1` instead of wiring each app to a different provider.
-- **Reusable provider connections** — Add an OAuth login, API key, cookie, or compatible endpoint once; every tool shares it.
-- **Account and combo fallback** — Chain multiple connections for resilience, or stack models behind one stable name so a failed attempt retries the next option.
-- **Format translation** — Send OpenAI-shaped requests and have them translated for Claude, Gemini, Kiro, Cursor, Ollama, Vertex, and other upstream formats.
-- **Usage visibility** — Inspect provider, model, tokens, cost estimates, latency, and fallback outcome per request in the dashboard.
-- **Self-hosted state** — Storage, credentials, and logs live in your `DATA_DIR`; you control where it runs and who can reach it.
+Point tools at `http://localhost:20128/v1` instead of wiring each app to a different vendor. Add an OAuth login, API key, cookie, or compatible endpoint once; every tool shares it. Chain connections for fallback, or stack models behind one name so a failed attempt retries the next option.
 
-DurinDoor is a fork of [9router](https://github.com/decolua/9router). Existing installations can keep their data, keys, and headers.
+Send OpenAI-shaped requests and DurinDoor translates them for Claude, Gemini, Kiro, Cursor, Ollama, Vertex, and other upstream formats. The dashboard shows provider, model, tokens, cost estimates, latency, and fallback outcome per request. Storage, credentials, and logs live in `DATA_DIR`.
 
-## 🧭 How it works
+DurinDoor is a fork of [9router](https://github.com/decolua/9router). Existing installs can keep their data, keys, and headers.
+
+## How it works
 
 ```mermaid
 flowchart LR
@@ -63,8 +60,8 @@ flowchart LR
 
 1. A client sends a request to `/v1` with a DurinDoor API key and a model string (provider model, alias, or combo name).
 2. DurinDoor validates the key, resolves the model, and selects an available provider connection.
-3. If the client and provider speak different formats, the request and response are translated; the upstream call is made with stored credentials.
-4. Usage, latency, and outcome are written to local SQLite, and the response streams back to the client in the client's format.
+3. If the client and provider speak different formats, the request and response are translated; the upstream call uses stored credentials.
+4. Usage, latency, and outcome are written to local SQLite, and the response streams back in the client's format.
 
 The model field accepts several shapes, resolved before any upstream call:
 
@@ -76,22 +73,20 @@ The model field accepts several shapes, resolved before any upstream call:
 | Model alias | `daily-coder` | A user-defined alias mapped to another model. |
 | Combo name | `coding-default` | An ordered fallback chain of models. |
 
-Credential selection avoids accounts that are temporarily locked, expired, or excluded by the current fallback attempt, and refreshes OAuth tokens when the upstream supports refresh.
+Credential selection skips accounts that are locked, expired, or excluded by the current fallback attempt, and refreshes OAuth tokens when the upstream supports refresh.
 
-See [Architecture](docs/ARCHITECTURE.md) and [Smart Routing](docs/features/smart-routing.md) for the internal request lifecycle and failure handling.
+See [Architecture](docs/ARCHITECTURE.md) and [Smart routing](docs/features/smart-routing.md) for the request lifecycle and failure handling.
 
-## ⚡ Quick start
+## Quick start
 
-**Requirements:** Node.js `20.20.2` and npm `10.8.2` (also bundled in the Docker image).
-
-Install the CLI globally and start the gateway:
+Requirements: Node.js `20.20.2` and npm `10.8.2` (also bundled in the Docker image).
 
 ```bash
 npm install -g durindoor
 durindoor
 ```
 
-On first run DurinDoor creates `DATA_DIR` and initializes the database. Default surfaces:
+On first run DurinDoor creates `DATA_DIR` and initializes the database.
 
 | Surface | URL |
 | --- | --- |
@@ -101,7 +96,7 @@ On first run DurinDoor creates `DATA_DIR` and initializes the database. Default 
 
 1. Open the dashboard and sign in with the `INITIAL_PASSWORD` you set (or the local default). Change it before exposing the instance.
 2. Add a provider connection under **Providers** (OAuth login, API key, compatible endpoint, or local provider).
-3. Create a DurinDoor API key under **API Keys**. New keys have the shape `sk-<machine>-<key>-<crc>`; older `sk-*` keys remain supported. The full key is shown once — store it.
+3. Create a DurinDoor API key under **API Keys**. New keys have the shape `sk-<machine>-<key>-<crc>`; older `sk-*` keys remain supported. The full key is shown once. Store it.
 4. Send a request:
 
 ```bash
@@ -128,7 +123,7 @@ Replace `MODEL_ID` with a model ID, alias, or combo name from your dashboard.
 npx durindoor
 ```
 
-Use `npx` for quick evaluation. For daily use, install globally or run from source.
+Use `npx` for a quick look. For daily use, install globally or run from source.
 
 </details>
 
@@ -143,14 +138,14 @@ npm run build
 npm start
 ```
 
-For development, `npm run dev` serves on port `20127` (production uses `20128`).
+For development, `npm run dev` serves on port `20127`. Production uses `20128`.
 
 </details>
 
 <details>
 <summary>Run with Docker</summary>
 
-Pin a version tag for production; do not rely on `latest` for stability:
+Pin a version tag for production. Do not rely on `latest` for stability:
 
 ```bash
 docker run -d \
@@ -163,15 +158,13 @@ docker run -d \
   ghcr.io/bloodf/durindoor:3.9.0
 ```
 
-See [Cloud Deployment](docs/deployment/cloud.md) for the full production compose setup, and [Upgrading](docs/operations/upgrading.md) before moving between versions.
+See [Cloud deployment](docs/deployment/cloud.md) for the production compose setup, and [Upgrading](docs/operations/upgrading.md) before moving between versions.
 
 </details>
 
-See [Installation](docs/getting-started/installation.md) for the full configuration reference, data paths, and environment variables.
+[Installation](docs/getting-started/installation.md) covers data paths and environment variables. [Quick start](docs/getting-started/quick-start.md) walks through the first request.
 
-More in the [Quick Start](docs/getting-started/quick-start.md) and [Installation](docs/getting-started/installation.md) guides.
-
-## 🧩 Connect your tools
+## Connect your tools
 
 Point any OpenAI-compatible client at one base URL with your DurinDoor key:
 
@@ -180,8 +173,6 @@ Base URL: http://localhost:20128/v1
 API key:  your DurinDoor API key
 Model:    a model ID, alias, or combo name from the dashboard
 ```
-
-Integration guides for popular tools:
 
 - [Claude Code](docs/integration/claude-code.md)
 - [OpenAI Codex](docs/integration/codex.md)
@@ -212,9 +203,9 @@ resp = client.chat.completions.create(
 print(resp.choices[0].message.content)
 ```
 
-For more SDK examples and the dashboard workflow, see the [Usage Guide](docs/guides/usage.md).
+SDK examples and the dashboard workflow are in the [Usage guide](docs/guides/usage.md).
 
-## ✨ What DurinDoor handles
+## What DurinDoor handles
 
 ### Compatible API families
 
@@ -232,7 +223,7 @@ For more SDK examples and the dashboard workflow, see the [Usage Guide](docs/gui
 | Rerank / moderation | `/v1/rerank` and `/v1/moderations` with providers that support them. |
 | Token counting | `/v1/messages/count_tokens`. Provider support varies. |
 
-A route existing does not mean every provider supports it; modalities are provider-dependent.
+A route existing does not mean every provider supports it. Modalities are provider-dependent.
 
 ### Routing, combos, and visibility
 
@@ -266,9 +257,9 @@ A combo member can still use multiple accounts for the same provider before fall
 | Compatible endpoint | OpenAI-compatible or Anthropic-compatible URL. |
 | Local provider | Local URL, no remote account. |
 
-See [Provider Connections](docs/providers/subscription.md), [Provider Nodes and Custom Providers](docs/providers/cheap.md), and [Free and Local Providers](docs/providers/free.md). All modality support is provider-dependent.
+See [Provider connections](docs/providers/subscription.md), [Provider nodes and custom providers](docs/providers/cheap.md), and [Free and local providers](docs/providers/free.md). All modality support is provider-dependent.
 
-## 🔌 API surface
+## API surface
 
 Base URL: `http://localhost:20128/v1` (use your HTTPS origin for remote deployments).
 
@@ -276,7 +267,7 @@ Base URL: `http://localhost:20128/v1` (use your HTTPS origin for remote deployme
 Authorization: Bearer YOUR_DURINDOOR_API_KEY
 ```
 
-Use DurinDoor API keys generated in the dashboard; do not send upstream provider keys to client-facing routes.
+Use DurinDoor API keys generated in the dashboard. Do not send upstream provider keys to client-facing routes.
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
@@ -299,11 +290,11 @@ Use DurinDoor API keys generated in the dashboard; do not send upstream provider
 | `/v1/moderations` | POST | Moderation (provider-dependent). |
 | `/api/health` | GET | Health check (no provider setup needed). |
 
-Full details, per-key model and lifetime policy fields, and compatibility notes are in the [API Reference](docs/reference/api.md).
+Per-key model and lifetime policy fields, plus compatibility notes, are in the [API reference](docs/reference/api.md).
 
-## 🏗️ Architecture
+## Architecture
 
-DurinDoor is a Next.js gateway with a dashboard and an OpenAI-compatible compatibility API.
+DurinDoor is a Next.js gateway with a dashboard and an OpenAI-compatible API.
 
 | Area | Responsibility |
 | --- | --- |
@@ -314,22 +305,22 @@ DurinDoor is a Next.js gateway with a dashboard and an OpenAI-compatible compati
 | `open-sse` translators | Convert between OpenAI, Anthropic Claude, Gemini, Responses, Kiro, Cursor, CommandCode, Ollama, Vertex, and other formats. |
 | SQLite persistence | Driver, migrations, repositories, and backups under `DATA_DIR`. |
 
-Two fallback layers operate inside the routing core: **account fallback** picks another active connection for the same provider and model, and **combo fallback** moves to the next model in an ordered combo chain. The OpenAI-pivot translation layer keeps client and provider formats separate so one client can reach many upstreams.
+Two fallback layers sit in the routing core. Account fallback picks another active connection for the same provider and model. Combo fallback moves to the next model in an ordered combo chain. The OpenAI-pivot translation layer keeps client and provider formats separate so one client can reach many upstreams.
 
 See [Architecture](docs/ARCHITECTURE.md) for the request lifecycle, routing internals, and extension points.
 
-## 🔐 Security and operations
+## Security and operations
 
-DurinDoor stores provider credentials and routes model traffic — treat it as sensitive infrastructure.
+DurinDoor stores provider credentials and routes model traffic. Treat it as sensitive infrastructure.
 
-- **Prefer localhost-only binding.** The CLI binds `0.0.0.0` by default, so run `durindoor --host 127.0.0.1` for local-only use. Source runs default to `127.0.0.1` when `HOSTNAME` is unset. Docker sets `HOSTNAME=0.0.0.0` inside the container; keep it private with host-side mapping such as `-p 127.0.0.1:20128:20128`. Do not expose the dashboard publicly with only the default password.
-- **Separate DurinDoor keys from upstream credentials.** Client tools use DurinDoor API keys; upstream provider keys, OAuth tokens, and cookies stay in `DATA_DIR` and are never sent to client-facing routes.
-- **Set explicit production secrets.** Define `JWT_SECRET`, `API_KEY_SECRET`, and a strong `INITIAL_PASSWORD` before any remote exposure.
-- **Use HTTPS and restrict dashboard access.** Reverse proxy with auth, VPN, firewall, or trusted-network allowlist; set `AUTH_COOKIE_SECURE=true` behind HTTPS.
-- **Back up `DATA_DIR`.** Protect `db/data.sqlite`, `db/backups/`, `auth/`, and `mitm/` as secrets.
-- **Review the security docs before exposure.** See [Security and Production Hardening](docs/operations/security.md), [Startup and Runtime Operations](docs/operations/startup.md), and [Environment Variables](docs/reference/environment.md).
-- **Keep request logging off by default.** Detailed logs may include prompts, responses, and file names; set `ENABLE_REQUEST_LOGS=false` unless actively debugging, with a defined retention and access policy.
-- **Treat tunnels as exposure.** HTTPS tunnels make the gateway reachable from another network — keep dashboard auth on, prefer dedicated keys, and disable tunnels when unused.
+- Prefer localhost-only binding. The CLI binds `0.0.0.0` by default, so run `durindoor --host 127.0.0.1` for local-only use. Source runs default to `127.0.0.1` when `HOSTNAME` is unset. Docker sets `HOSTNAME=0.0.0.0` inside the container; keep it private with host-side mapping such as `-p 127.0.0.1:20128:20128`. Do not expose the dashboard publicly with only the default password.
+- Separate DurinDoor keys from upstream credentials. Client tools use DurinDoor API keys; upstream provider keys, OAuth tokens, and cookies stay in `DATA_DIR` and are never sent to client-facing routes.
+- Set explicit production secrets. Define `JWT_SECRET`, `API_KEY_SECRET`, and a strong `INITIAL_PASSWORD` before any remote exposure.
+- Use HTTPS and restrict dashboard access. Reverse proxy with auth, VPN, firewall, or trusted-network allowlist; set `AUTH_COOKIE_SECURE=true` behind HTTPS.
+- Back up `DATA_DIR`. Protect `db/data.sqlite`, `db/backups/`, `auth/`, and `mitm/` as secrets.
+- Read the security docs before exposure: [Security and production hardening](docs/operations/security.md), [Startup and runtime operations](docs/operations/startup.md), and [Environment variables](docs/reference/environment.md).
+- Keep request logging off unless you are debugging. Detailed diagnostic files are controlled by `ENABLE_REQUEST_LOGS` (default `false`). Set a retention and access policy if you turn them on.
+- Treat tunnels as exposure. HTTPS tunnels make the gateway reachable from another network. Keep dashboard auth on, prefer dedicated keys, and disable tunnels when unused.
 
 ### Compatibility notes
 
@@ -339,47 +330,43 @@ DurinDoor is a fork of [9router](https://github.com/decolua/9router). These comp
 - Legacy API keys in the `sk-<8 hex>` shape alongside current `sk-<machine>-<key>-<crc>` keys.
 - Internal headers prefixed `X-9Router-` and their `X-DurinDoor-` equivalents.
 
-## 📚 Documentation
+## Documentation
 
-The canonical documentation is Markdown in this repository; GitHub-rendered Markdown is the source of truth.
+The canonical documentation is Markdown in this repository. GitHub-rendered Markdown is the source of truth.
 
-- **Index** — [docs/README.md](docs/README.md#users)
-- **Getting started**
-  - [Quick Start](docs/getting-started/quick-start.md)
-  - [Installation](docs/getting-started/installation.md)
-  - [Usage Guide](docs/guides/usage.md)
-- **Providers** — [connections](docs/providers/subscription.md), [custom nodes](docs/providers/cheap.md), [free and local](docs/providers/free.md)
-- **Features** — [Smart Routing](docs/features/smart-routing.md), [Combos](docs/features/combos.md), [Usage and Quota Tracking](docs/features/quota-tracking.md), [Compression](docs/features/compression.md), [MCP Gateway](docs/features/mcp-gateway.md), [Realtime](docs/features/realtime.md)
-- **Reference** — [API Reference](docs/reference/api.md), [Environment Variables](docs/reference/environment.md), [Architecture](docs/ARCHITECTURE.md)
-- **Operations** — [Security](docs/operations/security.md), [Startup](docs/operations/startup.md), [Troubleshooting](docs/troubleshooting.md), [FAQ](docs/faq.md)
-- **Community and project** — [Security Policy](.github/SECURITY.md), [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Changelog](CHANGELOG.md), [License](LICENSE), [Issues](https://github.com/bloodf/durindoor/issues), [Discussions](https://github.com/bloodf/durindoor/discussions)
+- [Index](docs/README.md#users)
+- Getting started: [Quick start](docs/getting-started/quick-start.md), [Installation](docs/getting-started/installation.md), [Usage guide](docs/guides/usage.md)
+- Providers: [connections](docs/providers/subscription.md), [custom nodes](docs/providers/cheap.md), [free and local](docs/providers/free.md)
+- Features: [Smart routing](docs/features/smart-routing.md), [Combos](docs/features/combos.md), [Usage and quota tracking](docs/features/quota-tracking.md), [Compression](docs/features/compression.md), [MCP Gateway](docs/features/mcp-gateway.md), [Realtime](docs/features/realtime.md)
+- Reference: [API reference](docs/reference/api.md), [Environment variables](docs/reference/environment.md), [Architecture](docs/ARCHITECTURE.md)
+- Operations: [Security](docs/operations/security.md), [Startup](docs/operations/startup.md), [Troubleshooting](docs/troubleshooting.md), [FAQ](docs/faq.md), [Release process](docs/development/release-process.md)
+- Public site: [website/README.md](website/README.md)
+- Community: [Security policy](.github/SECURITY.md), [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Changelog](CHANGELOG.md), [License](LICENSE), [Issues](https://github.com/bloodf/durindoor/issues), [Discussions](https://github.com/bloodf/durindoor/discussions)
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome. Read [Contributing](CONTRIBUTING.md), [Local Development](docs/development/local-development.md), and [Architecture](docs/ARCHITECTURE.md) before opening a pull request, and follow the [pull request template](.github/PULL_REQUEST_TEMPLATE.md).
+Read [Contributing](CONTRIBUTING.md), [Local development](docs/development/local-development.md), and [Architecture](docs/ARCHITECTURE.md) before opening a pull request, and follow the [pull request template](.github/PULL_REQUEST_TEMPLATE.md). Postgres engine PRs use [.github/pr-templates/postgres-engine.md](.github/pr-templates/postgres-engine.md). The anti-slop oxlint gate is documented in [tools/oxlint/anti-slop/VENDOR.md](tools/oxlint/anti-slop/VENDOR.md).
 
-
-## 🎨 Durin DS design system preview
+## Durin DS design system preview
 
 A warm "Moria stone" / "Parchment" design language for the next DurinDoor
 dashboard, previewed in Storybook before any production wiring. The work
-lives entirely in `src/shared/ui/` (tokens, 25 primitives, shell, page
-mocks) so upstream 9router PRs remain mechanically portable.
+lives in `src/shared/ui/` (tokens, primitives, shell, page mocks) so
+upstream 9router PRs remain mechanically portable.
 
 - Full reference: [docs/development/durin-ds.md](docs/development/durin-ds.md)
 - Quick tour: [src/shared/ui/README.md](src/shared/ui/README.md)
 
-Run the preview:
+From the repository root:
 
 ```bash
-cd .omc/wt-durin-ds
 npm install --no-audit --no-fund
 npm run storybook   # http://localhost:6006
 ```
 
-Use the Theme toolbar (sun/moon icon) to flip between **Dark — Moria
-
+The Theme toolbar (sun/moon icon) flips between Dark (Moria stone, the default)
+and Light (Parchment).
 
 ## Acknowledgments
 
-DurinDoor is a fork of [9router](https://github.com/decolua/9router), created by [decolua](https://github.com/decolua). This project builds on that foundation with a new identity, enhanced features, and an emphasis on keeping the doors of your AI stack open. Upstream documentation and branding remain the property of their respective authors and are not presented as DurinDoor's source of truth.
+DurinDoor is a fork of [9router](https://github.com/decolua/9router), created by [decolua](https://github.com/decolua). Upstream documentation and branding remain the property of their respective authors and are not presented as DurinDoor's source of truth.

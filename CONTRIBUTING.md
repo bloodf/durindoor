@@ -1,14 +1,10 @@
 # Contributing to DurinDoor
 
-Thank you for contributing to DurinDoor.
+Open an issue before large changes. Pull requests target `main`.
 
-## Before you start
+Use [Node.js 20.20.2](https://nodejs.org/) and npm 10.8.2. Run the test suite and any affected checks before you open the PR. Update docs when behaviour changes.
 
-- Open an issue to discuss significant changes before opening a pull request.
-- Pull requests target the `main` branch.
-- Use [Node.js 20.20.2](https://nodejs.org/) and npm 10.8.2 for development.
-- Run the test suite and any affected checks before submitting.
-- Keep documentation updated for user-facing or behavioral changes.
+`npm run lint` runs eslint on `src`, then the anti-slop oxlint gate (`npm run lint:anti-slop`).
 
 ## Commit messages
 
@@ -18,12 +14,15 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 type(scope): description
 ```
 
-Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
+Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `ci`, `chore`, `revert`, `merge`, `port`, `sync`. Subject text maxes out at 100 characters.
 
 ## Useful links
 
-- [Detailed contributor guide](docs/development/contributing.md)
-- [Anti-slop (oxlint) gate](docs/development/anti-slop.md)
+- [Contributor guide](docs/development/contributing.md)
+- [Local development](docs/development/local-development.md)
+- [Release process](docs/development/release-process.md)
+- [Anti-slop vendor notes](tools/oxlint/anti-slop/VENDOR.md)
+- [Postgres engine PR template](.github/pr-templates/postgres-engine.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security policy](.github/SECURITY.md)
 

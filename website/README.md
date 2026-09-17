@@ -32,8 +32,8 @@ account you add or delete shows up in each of those surfaces.
 
 Signing in needs the demo password, so the login page shows it in a persistent
 notice above the form with a copy button, and the homepage teaser repeats it
-next to the demo link. Both read `src/mock/demoPassword.js` — the same module
-the mocked login checks — so the displayed value cannot drift from the accepted
+next to the demo link. Both read `src/mock/demoPassword.js`, the same module
+the mocked login checks, so the displayed value cannot drift from the accepted
 one.
 
 Static assets the shared UI expects (fonts, provider logos, icons, i18n
@@ -99,3 +99,5 @@ absolute base for Open Graph URLs.
 - Browser OAuth flows and the MCP "Connect" button open a second tab before completing.
 - "Open Headroom Dashboard" links to `/api/headroom/proxy/dashboard`, which has no mock route.
 - The demo login only checks a single fixed password (`melon`); it does not model rate limiting, lockouts, or the real password-change flow.
+
+See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for the website tree.

@@ -1,6 +1,6 @@
 # DurinDoor Docker
 
-Run DurinDoor in a container. Image: [`ghcr.io/bloodf/durindoor`](https://github.com/bloodf/durindoor/pkgs/container/durindoor) — multi-platform `linux/amd64` + `linux/arm64`.
+Run DurinDoor in a container. Image: [`ghcr.io/bloodf/durindoor`](https://github.com/bloodf/durindoor/pkgs/container/durindoor), multi-platform `linux/amd64` and `linux/arm64`.
 
 Requirements: Docker, persistent storage for `DATA_DIR`. Node.js is bundled in the image; the local build uses Node.js 20.20.2 and npm 10.8.2.
 
@@ -15,11 +15,11 @@ docker run -d \
   -e JWT_SECRET="$(openssl rand -hex 32)" \
   -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \
   ghcr.io/bloodf/durindoor:latest
-
-This binds to localhost only and generates random secrets. For production, see [Cloud and Docker deployment](docs/deployment/cloud.md).
 ```
 
-Open http://localhost:20128 — sign in, change the password, add a provider, create an API key.
+This binds to localhost only and generates random secrets. For production, see [Cloud and Docker deployment](docs/deployment/cloud.md).
+
+Open http://localhost:20128 and sign in. Change the password, add a provider, then create an API key.
 
 ## Docker Compose
 
@@ -53,11 +53,11 @@ Named volume example:
 -v durindoor-data:/app/data
 ```
 
-See [Data Management](docs/operations/data-management.md) for backup, restore, and volume guidance.
+See [Data management](docs/operations/data-management.md) for backup, restore, and volume guidance.
 
 ## Configure 429 account backoff
 
-Rate-limit fallback temporarily locks affected account/model with exponential backoff. Defaults remain 2 seconds, doubling to 5-minute cap, for at most 15 levels. Override schedule in `docker run` or Compose:
+Rate-limit fallback temporarily locks the affected account/model with exponential backoff. Defaults remain 2 seconds, doubling to a 5-minute cap, for at most 15 levels. Override the schedule in `docker run` or Compose:
 
 ```bash
 -e BACKOFF_BASE_MS=2000 \
@@ -65,9 +65,9 @@ Rate-limit fallback temporarily locks affected account/model with exponential ba
 -e BACKOFF_MAX_LEVEL=15
 ```
 
-Each optional value must be positive integer. Invalid values retain that key's default, and maximum delay is capped at 7 days. If resolved maximum is below resolved base, whole schedule uses defaults. Settings affect fallback locks, not provider retry-delay or RPM logic.
+Each optional value must be a positive integer. Invalid values keep that key's default, and the maximum delay is capped at 7 days. If the resolved maximum is below the resolved base, the whole schedule uses defaults. Settings affect fallback locks, not provider retry-delay or RPM logic.
 
-Per-account RPM admission (`Providers → [provider] → RPM / account`) is persisted in `settings.rpmByProvider`; it is not an environment variable. Blank uses the provider default (NVIDIA: 40 RPM; others: unlimited), while `0` explicitly disables the cap. Counters are process-local, so each Docker replica enforces its own budget (decolua/9router#3203).
+Per-account RPM admission (Providers, then the provider page, then RPM / account) is persisted in `settings.rpmByProvider`; it is not an environment variable. Blank uses the provider default (NVIDIA: 40 RPM; others: unlimited), while `0` explicitly disables the cap. Counters are process-local, so each Docker replica enforces its own budget (decolua/9router#3203).
 
 ## Update
 
@@ -77,7 +77,7 @@ docker stop durindoor && docker rm durindoor
 # re-run the one-command above
 ```
 
-Pin to a version tag (e.g. `3.9.0`) for production. `latest` is convenient for quick evaluation.
+Pin to a version tag (for example `3.9.0`) for production. `latest` is convenient for a quick evaluation.
 
 ## Headroom sidecar (optional)
 
@@ -89,8 +89,6 @@ Headroom is an optional token-saver proxy. To enable it alongside DurinDoor, add
 docker logs -f durindoor
 ```
 
-## Next steps
-
-- [Cloud and Docker deployment](docs/deployment/cloud.md) — production compose, TLS, secrets, upgrades, rollback
-- [Data management](docs/operations/data-management.md) — backup, restore, migration for bind mounts and named volumes
-- [Security](docs/operations/security.md) — dashboard access, API keys, secrets
+- [Cloud and Docker deployment](docs/deployment/cloud.md): production compose, TLS, secrets, upgrades, rollback
+- [Data management](docs/operations/data-management.md): backup, restore, migration for bind mounts and named volumes
+- [Security](docs/operations/security.md): dashboard access, API keys, secrets

@@ -10,7 +10,7 @@
     "build": "next build --webpack",
     "start": "next start -p 3000",
     "mock:smoke": "node --import ./scripts/register-alias.mjs scripts/mock-smoke.mjs",
-    "postinstall": "fumadocs-mdx"
+    "postinstall": "fumadocs-mdx source.config.mjs"
   },
   "dependencies": {
     "@designcodeio/threeui": "^1.2.0",

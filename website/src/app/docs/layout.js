@@ -1,0 +1,14 @@
+import { DocsLayout } from "fumadocs-ui/layouts/docs";
+import { RootProvider } from "fumadocs-ui/provider/next";
+import { source } from "@site/lib/source";
+import { baseOptions } from "@site/lib/layout.shared";
+
+export default function Layout({ children }) {
+  return (
+    <RootProvider theme={{ enabled: false }} search={{ options: { api: "/docs-search" } }}>
+      <DocsLayout tree={source.getPageTree()} {...baseOptions()}>
+        {children}
+      </DocsLayout>
+    </RootProvider>
+  );
+}

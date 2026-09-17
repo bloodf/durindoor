@@ -174,10 +174,10 @@ API key:  your DurinDoor API key
 Model:    a model ID, alias, or combo name from the dashboard
 ```
 
-- [Claude Code](docs/integration/claude-code.md)
-- [OpenAI Codex](docs/integration/codex.md)
-- [Cursor](docs/integration/cursor.md)
-- [Cline](docs/integration/cline.md)
+- [Claude Code](docs/integrations/claude-code.mdx)
+- [OpenAI Codex](docs/integrations/codex.mdx)
+- [Cursor](docs/integrations/cursor.mdx)
+- [Cline](docs/integrations/cline.mdx)
 - [Roo Code](docs/integration/roo.md)
 - [Continue](docs/integration/continue.md)
 - [Ollama + Claude Code](docs/integration/ollama-claude.md)

@@ -1,0 +1,70 @@
+---
+title: Cursor
+description: Point Cursor at a public DurinDoor URL with an OpenAI-compatible custom model.
+---
+
+Cursor is a guide tool on **CLI Tools**, not an apply target. There is no `/api/cli-tools/cursor-settings` route. `GET /api/cli-tools/all-statuses` does not include `cursor`. The card at `/dashboard/cli-tools/cursor` copies a base URL, key, and model for Cursor's OpenAI-compatible settings. Cursor's own servers make the request, so a loopback URL is not enough.
+
+You need Cursor installed, a Cursor Pro account (the warning on that card), a DurinDoor API key, a model ID or combo, and a URL Cursor's cloud can reach. Turn on Tunnel or Cloud Endpoint under **Endpoint** (`/dashboard/endpoint`) before you open the Cursor card's step list.
+
+## Dashboard guide
+
+The Cursor entry in `CLI_TOOLS` has `configType: "guide"` and `requiresExternalUrl: true`. The local `127.0.0.1` preset is omitted from the endpoint picker. The step list stays hidden until **Tunnel** or **Cloud Endpoint** is on. Tailscale can appear in other tools' pickers; this card still waits on tunnel or cloud before showing the steps.
+
+The card then walks:
+
+<Steps>
+<Step>
+Open Settings, then Models.
+</Step>
+<Step>
+Enable the "OpenAI API key" option.
+</Step>
+<Step>
+Paste the base URL. The card substitutes `{{baseUrl}}` and always appends `/v1` if it is missing.
+</Step>
+<Step>
+Paste the API key. The localhost placeholder `sk_durindoor` is the wrong value here because the request is not local.
+</Step>
+<Step>
+Click "View All Model", then "Add Custom Model".
+</Step>
+<Step>
+Select the DurinDoor model id (or type a combo name).
+</Step>
+</Steps>
+
+<Callout type="warn">
+Do not paste `http://localhost:20128/v1` into Cursor. Enable Tunnel or Cloud Endpoint on **Endpoint**, then copy that public URL. Do not expose the dashboard with the default password.
+</Callout>
+
+`scripts/auto-configure.mjs` and `/api/settings/auto-configure` do not write Cursor settings. They probe Headroom, PxPipe, and Firecrawl only.
+
+## Manual config
+
+In Cursor, OpenAI-compatible custom API:
+
+```text
+Base URL: https://example.invalid/v1
+API key:  YOUR_DURINDOOR_API_KEY
+Model:    provider/model-id
+```
+
+Replace the host with the tunnel or cloud URL from `/dashboard/endpoint`. Use a combo name if you want fallback to stay inside DurinDoor when you change providers later.
+
+The card's `cloudCheck` note is: Cursor routes requests through its own server, so a local endpoint is not supported. The `warning` note is: Cursor Pro is required for this feature. Both come from `CLI_TOOLS.cursor.notes`. The local `127.0.0.1` preset is omitted because `requiresExternalUrl` is true.
+
+## Legacy `9router` labels
+
+Cursor's UI has no `9router` provider section. The server still accepts that section label in other tools' config files, and still accepts `X-Msh-Platform: 9router`. Create a dedicated DurinDoor key for Cursor so you can revoke it without touching Claude Code or Codex.
+
+## Check it works
+
+Send a short chat in Cursor using the custom model. Open **Usage**. If no row appears, Cursor is still on a built-in model or the base URL never left Cursor's cloud.
+
+| Symptom | Check |
+| --- | --- |
+| Card shows no steps | Tunnel or Cloud Endpoint is off |
+| Invalid API key | Paste the full DurinDoor secret, not an OpenAI platform key |
+| Model not found | Use an id from `GET /v1/models` or a combo name |
+| No usage row | Cursor is not using the custom OpenAI provider |

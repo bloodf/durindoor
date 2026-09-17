@@ -26,11 +26,11 @@ For users getting their first request through the gateway.
 - [Provider Connections](providers/connecting-accounts.mdx): OAuth, API key, cookie, and account-based providers.
 - [Provider Nodes and Custom Providers](providers/openai-compatible-nodes.mdx): OpenAI-compatible nodes, Anthropic-compatible nodes, custom embeddings, and provider aliases.
 - [Free and Local Providers](providers/free-and-local.mdx): no-auth, local, browser-cookie, and local-device providers.
-- [Claude Code](integration/claude-code.md)
+- [Claude Code](integrations/claude-code.mdx)
 - [Ollama + Claude Code](integration/ollama-claude.md)
-- [OpenAI Codex](integration/codex.md)
-- [Cursor](integration/cursor.md)
-- [Cline](integration/cline.md)
+- [OpenAI Codex](integrations/codex.mdx)
+- [Cursor](integrations/cursor.mdx)
+- [Cline](integrations/cline.mdx)
 - [Roo](integration/roo.md)
 - [Continue](integration/continue.md)
 - [Other OpenAI-Compatible Tools](integration/other-tools.md)

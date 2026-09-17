@@ -1,0 +1,79 @@
+---
+title: Claude Code
+description: Point Claude Code at DurinDoor with ANTHROPIC_BASE_URL, a DurinDoor key, and model aliases.
+---
+
+Claude Code speaks Anthropic. Point it at DurinDoor with `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`, then map Opus, Sonnet, Fable, and Haiku aliases to gateway model IDs. DurinDoor receives `/v1/messages`, decodes picker IDs, and routes the request.
+
+You need the gateway running, a DurinDoor API key, at least one chat-capable connection or combo, and the `claude` CLI (`npm install -g @anthropic-ai/claude-code`).
+
+## Dashboard apply
+
+Open **CLI Tools**, then **Claude Code** (`/dashboard/cli-tools/claude`). The card reads and writes `~/.claude/settings.json` through `GET`/`POST`/`DELETE` `/api/cli-tools/claude-settings`.
+
+Apply merges an `env` object into the existing file and sets `hasCompletedOnboarding` to `true`. It always appends `/v1` to `ANTHROPIC_BASE_URL` if that suffix is missing. Localhost with no pasted key uses the placeholder `sk_durindoor`. Cloud endpoints need a real DurinDoor secret.
+
+The route strips a leading `cc/` from `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`, and `ANTHROPIC_DEFAULT_FABLE_MODEL` before the write. Claude Code copies those values into the Task tool schema, and Anthropic rejects `cc/claude-opus-4-8` with 400. The bare id still routes through DurinDoor.
+
+Context-window presets on the card write `CLAUDE_CODE_MAX_CONTEXT_TOKENS` (200K stores `198000`, 1M stores `998000`). Leave **Default** selected and Apply deletes that key so Claude Code uses the model window.
+
+**Filter naming** is a DurinDoor setting (`ccFilterNaming`), not a Claude Code env var. When it is on, the gateway intercepts Claude Code topic-naming requests (`isNewTopic` in the system prompt) and answers them locally.
+
+Reset `DELETE`s `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, the Opus/Sonnet/Haiku default-model keys, `API_TIMEOUT_MS`, and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`. Other keys in `settings.json` stay.
+
+## Manual config
+
+Paste this into `~/.claude/settings.json`, or export the same names in the shell. Use a minted DurinDoor key, not an upstream Anthropic key.
+
+```json
+{
+  "hasCompletedOnboarding": true,
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:20128/v1",
+    "ANTHROPIC_AUTH_TOKEN": "YOUR_DURINDOOR_API_KEY",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-fable-5-1",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5-20251001"
+  }
+}
+```
+
+<Callout type="warn">
+If you copy the dashboard manual snippet, drop any `cc/` prefix on the `ANTHROPIC_DEFAULT_*_MODEL` values. Apply strips that prefix; a hand-edited file does not.
+</Callout>
+
+Shell equivalent:
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:20128/v1"
+export ANTHROPIC_AUTH_TOKEN="YOUR_DURINDOOR_API_KEY"
+claude --model sonnet "Summarize this repository."
+```
+
+Card defaults before the strip are `cc/claude-opus-5`, `cc/claude-sonnet-5`, `cc/claude-fable-5-1`, and `cc/claude-haiku-4-5-20251001`. Combo names such as `coding-default` also work if you created that combo.
+
+## Model names Claude Code sees
+
+Claude Code calls `GET /v1/models` with an `anthropic-version` header. Presence of that header, even empty, switches the list to Anthropic's paginated envelope. Each catalog id that is not already a slash-free `claude-*` name is advertised as `claude-<provider>/<model>`. A `[1m]` suffix is added only when the model-limit resolver reports a known context window of at least 1,048,576 tokens.
+
+On `/v1/messages`, DurinDoor decodes those projected IDs (and a trailing `[1m]`) back to a routable model, combo, or alias before auth and routing. Unknown official `claude-*` names and exact configured IDs pass through unchanged.
+
+## Legacy `9router` labels
+
+Claude Code's file has no provider section named `9router`. The dashboard treats the tool as connected when `env.ANTHROPIC_BASE_URL` is set (`has9Router`). Other CLI tools still write the section label `9router`; the server accepts that label, plus `X-Msh-Platform: 9router`, at the runtime boundary.
+
+## Check it works
+
+```bash
+curl http://localhost:20128/v1/messages \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-5",
+    "max_tokens": 64,
+    "messages": [{"role": "user", "content": "Say hello."}]
+  }'
+```
+
+If curl succeeds and `claude` fails, the process is not reading `~/.claude/settings.json` or the shell still exports an upstream Anthropic key. Confirm `ANTHROPIC_AUTH_TOKEN` is the DurinDoor key.

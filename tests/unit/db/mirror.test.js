@@ -92,4 +92,39 @@ describe("postgres mirror", () => {
     const ver = pg.tables._meta.find((r) => r.key === "schemaVersion");
     expect(ver?.value).toBe("19");
   });
+
+  it("cascades TRUNCATE so a referenced parent table can be emptied", async () => {
+    // PG refuses `TRUNCATE parent` while another table references it. Tables
+    // are truncated in declaration order, so every parent is emptied while its
+    // children still hold rows — without CASCADE the mirror aborts here.
+    const { TABLES } = await import("@/lib/db/schema.js");
+    const referenced = new Set();
+    for (const def of Object.values(TABLES)) {
+      for (const type of Object.values(def.columns || {})) {
+        const m = String(type).match(/REFERENCES\s+(\w+)/i);
+        if (m) referenced.add(m[1]);
+      }
+    }
+    expect(referenced.size).toBeGreaterThan(0);
+
+    const sqlite = makeMem({});
+    const pg = makeMem({});
+    for (const name of Object.keys(TABLES)) {
+      sqlite.tables[name] = [];
+      pg.tables[name] = [];
+    }
+    // Model PG's actual behavior: a bare TRUNCATE of a referenced table throws.
+    pg.exec = (sql) => {
+      const tr = sql.match(/TRUNCATE TABLE "(\w+)"(\s+CASCADE)?/);
+      if (!tr) return;
+      if (referenced.has(tr[1]) && !tr[2]) {
+        throw new Error(`cannot truncate a table referenced in a foreign key constraint`);
+      }
+      pg.tables[tr[1]] = [];
+    };
+
+    const out = await runMirror(sqlite, pg);
+    expect(out.ok).toBe(true);
+    expect(out.error).toBeUndefined();
+  });
 });

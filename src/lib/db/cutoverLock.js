@@ -5,6 +5,8 @@
 // opens its own unguarded adapters for migrate/mirror/snapshot, so those
 // writes are not blocked. Readers (SELECT) keep serving.
 
+import { isFunction } from "../../shared/utils/typeChecks.js";
+
 let lockHeld = false;
 const waiters = [];
 
@@ -46,26 +48,35 @@ export function guardWrites(sql) {
  * Wrap the live adapter so HTTP traffic cannot mutate SQLite/PG while
  * cutover holds the lock. Fresh adapters opened by the pipeline itself
  * must NOT be wrapped.
+ *
+ * Only the mutating methods an adapter actually implements are wrapped:
+ * the sql.js and PG adapters expose different surfaces, and test doubles
+ * implement just the subset they exercise. Wrapping an absent method
+ * would turn a missing capability into a TypeError at open time.
  */
 export function wrapCutoverGuard(adapter) {
   if (!adapter || adapter.__cutoverGuarded) return adapter;
-  const origRun = adapter.run.bind(adapter);
-  const origExec = adapter.exec.bind(adapter);
-  const origTx = adapter.transaction.bind(adapter);
-  return {
-    ...adapter,
-    run(sql, params) {
+  const guarded = { ...adapter, __cutoverGuarded: true };
+  if (isFunction(adapter.run)) {
+    const origRun = adapter.run.bind(adapter);
+    guarded.run = (sql, params) => {
       guardWrites(sql);
       return origRun(sql, params);
-    },
-    exec(sql) {
+    };
+  }
+  if (isFunction(adapter.exec)) {
+    const origExec = adapter.exec.bind(adapter);
+    guarded.exec = (sql) => {
       guardWrites(sql);
       return origExec(sql);
-    },
-    transaction(fn) {
+    };
+  }
+  if (isFunction(adapter.transaction)) {
+    const origTx = adapter.transaction.bind(adapter);
+    guarded.transaction = (fn) => {
       guardWrites("BEGIN");
       return origTx(fn);
-    },
-    __cutoverGuarded: true,
-  };
+    };
+  }
+  return guarded;
 }

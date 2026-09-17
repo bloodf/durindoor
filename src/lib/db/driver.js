@@ -209,10 +209,10 @@ export function setActiveAdapter(adapter) {
   state.initPromise = Promise.resolve(guarded);
   state.file = liveDataFile();
   state.cacheKey = `${getActiveEngine()}:${state.file}`;
-  if (prev && prev !== adapter && prev !== guarded && typeof prev.close === "function") {
+  if (prev && prev !== adapter && prev !== guarded && isFunction(prev.close)) {
     try {
       const closing = prev.close();
-      if (closing && typeof closing.then === "function") closing.catch(() => {});
+      if (closing && isFunction(closing.then)) closing.catch(() => {});
     } catch { /* previous adapter already closed */ }
   }
 }

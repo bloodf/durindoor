@@ -13,13 +13,32 @@ describe("dialects/postgres/dmlRewrite", () => {
     expect(out).toContain("ON CONFLICT DO NOTHING");
   });
 
-  it("rewrites INSERT OR REPLACE with a column list to ON CONFLICT DO UPDATE", () => {
+  it("targets the full composite primary key on INSERT OR REPLACE", () => {
+    // `kv` is PRIMARY KEY (scope, key). Naming only `scope` is not a unique
+    // constraint, so PG rejects the upsert with 42P10.
     const out = rewriteSqliteDml(
       "INSERT OR REPLACE INTO kv(scope, key, value) VALUES(?, ?, ?)"
     );
     expect(out).toContain("INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)");
-    expect(out).toContain("ON CONFLICT (scope) DO UPDATE SET");
+    expect(out).toContain('ON CONFLICT ("scope", "key") DO UPDATE SET');
     expect(out).toContain("value = excluded.value");
+    // Key columns are the conflict target; assigning them to themselves is a no-op.
+    expect(out).not.toContain("scope = excluded.scope");
+  });
+
+  it("targets the declared single-column primary key", () => {
+    const out = rewriteSqliteDml(
+      "INSERT OR REPLACE INTO combos(id, name) VALUES(?, ?)"
+    );
+    expect(out).toContain('ON CONFLICT ("id") DO UPDATE SET');
+    expect(out).toContain("name = excluded.name");
+  });
+
+  it("falls back to the first column for a table outside the schema", () => {
+    const out = rewriteSqliteDml(
+      "INSERT OR REPLACE INTO notATable(a, b) VALUES(?, ?)"
+    );
+    expect(out).toContain('ON CONFLICT ("a") DO UPDATE SET b = excluded.b');
   });
 
   it("rewrites datetime('now') to CURRENT_TIMESTAMP", () => {

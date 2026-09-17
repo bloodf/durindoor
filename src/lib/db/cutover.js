@@ -29,7 +29,7 @@ import { snapshotSqlite, listSnapshots, SNAPSHOT_PREFIX } from "./dialects/postg
 import { appendCutoverLog } from "./dialects/postgres/cutoverLog.js";
 import { acquireCutoverLock, releaseCutoverLock, isCutoverInFlight } from "./cutoverLock.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isString, isFunction } from "../../shared/utils/typeChecks.js";
 
 export { isCutoverInFlight, SNAPSHOT_PREFIX };
 
@@ -107,9 +107,9 @@ export async function runCutover({ url, sslmode, includeRequestDetails = false }
 
     const liveSqlite = await openSqliteAdapter(currentDataFile());
     try {
-      if (typeof liveSqlite.checkpoint === "function") {
+      if (isFunction(liveSqlite.checkpoint)) {
         await liveSqlite.checkpoint();
-      } else if (typeof liveSqlite.flush === "function") {
+      } else if (isFunction(liveSqlite.flush)) {
         liveSqlite.flush();
       }
     } finally {
@@ -241,7 +241,7 @@ export async function runRollback({ snapshotPath, force = false } = {}) {
       try {
         const openSqlite = await openSqliteAdapter(live);
         try {
-          if (typeof openSqlite.checkpoint === "function") {
+          if (isFunction(openSqlite.checkpoint)) {
             try { await openSqlite.checkpoint(); } catch { /* best-effort */ }
           }
         } finally {

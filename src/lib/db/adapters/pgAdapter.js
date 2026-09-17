@@ -17,6 +17,7 @@ import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { rewriteSqliteDml } from "../dialects/postgres/dmlRewrite.js";
+import { isFunction } from "../../../shared/utils/typeChecks.js";
 
 const { Client } = pg;
 
@@ -236,7 +237,7 @@ async function createSyncAdapter(connStr) {
     txDepth += 1;
     try {
       const result = fn();
-      if (result && typeof result.then === "function") {
+      if (result && isFunction(result.then)) {
         txDepth -= 1;
         if (!nested) {
           try { bridge.rollback(); } catch { /* noop */ }

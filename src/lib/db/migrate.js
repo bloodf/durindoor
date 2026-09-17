@@ -266,8 +266,12 @@ export async function runMigrationOnce(adapter) {
   if (_migratedAdapters.has(adapter)) return;
   if (isPostgres(adapter)) {
     // PG has no sqlite_master / PRAGMA. The parallel migration set is the
-    // schema source of truth; additive SQLite sync and integrity checks
-    // would throw (or race on the async test seam) and abort cutover.
+    // schema source of truth; additive SQLite sync and the SQLite integrity
+    // preflight would throw (or race on the async test seam) and abort
+    // cutover. The freshness probe still runs first: it is a plain COUNT on
+    // _meta, and a database that cannot answer it is unhealthy enough that
+    // stamping DDL over it would bury the original error.
+    isFreshDb(adapter);
     runPgVersionedMigrations(adapter);
     try {
       setMetaSync(adapter, "appVersion", getAppVersion());

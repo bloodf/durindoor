@@ -70,7 +70,13 @@ export async function runMirror(sqlite, pg, options = {}) {
     const sourceCount = await countRows(sqlite, tableName);
     if (tableName !== "_meta") {
       try {
-        await Promise.resolve(pg.exec(`TRUNCATE TABLE ${quoteIdent(tableName)}`));
+        // CASCADE is required, not merely convenient: PG refuses to TRUNCATE a
+        // table that other tables reference, and tables are truncated in
+        // declaration order, so parents (apiKeys, providerConnections,
+        // quotaReservations, …) are emptied while their children still hold
+        // rows. Every referencing table is itself mirrored and truncated here,
+        // so cascading cannot discard data that is not about to be rewritten.
+        await Promise.resolve(pg.exec(`TRUNCATE TABLE ${quoteIdent(tableName)} CASCADE`));
       } catch (err) {
         return {
           ok: false,

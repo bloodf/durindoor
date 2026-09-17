@@ -43,13 +43,38 @@ describe("apiKeyUsageTotals table lifecycle", () => {
       `SELECT name FROM sqlite_master WHERE type='table'`
     ).map((r) => r.name);
     expect(tables).toContain("apiKeyUsageTotals");
-    // And the table is queryable with the column shape apiKeyUsageTotalsRepo uses.
+    // And the table is queryable with the column shape apiKeyUsageTotalsRepo
+    // uses. The rollup references apiKeys(id), so attribute it to a real key
+    // exactly as the repo does.
+    db.run(
+      `INSERT INTO apiKeys(id, key, name, createdAt) VALUES(?, ?, ?, ?)`,
+      ["seed", "sk-seed", "seed", new Date().toISOString()]
+    );
     db.run(
       `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
       ["seed", 0, 0, 0, new Date().toISOString()]
     );
     const row = db.get(`SELECT totalTokens FROM apiKeyUsageTotals WHERE apiKeyId = ?`, ["seed"]);
     expect(row.totalTokens).toBe(0);
+  });
+
+  it("cascades rollups when their API key is deleted", async () => {
+    // The table has always been created by migration 006 with
+    // `REFERENCES apiKeys(id) ON DELETE CASCADE`; a duplicate TABLES entry
+    // used to shadow that on fresh DBs only, so a fresh install disagreed
+    // with every migrated database. Pin the constraint that actually ships.
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    db.run(
+      `INSERT INTO apiKeys(id, key, name, createdAt) VALUES(?, ?, ?, ?)`,
+      ["k1", "sk-k1", "k1", new Date().toISOString()]
+    );
+    db.run(
+      `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
+      ["k1", 5, 0.5, 1, new Date().toISOString()]
+    );
+    db.run(`DELETE FROM apiKeys WHERE id = ?`, ["k1"]);
+    expect(db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, ["k1"])).toBeUndefined();
   });
 
   it("is added when an existing DB upgrades to the current schema version", async () => {
@@ -164,8 +189,22 @@ describe("apiKeyUsageTotals table lifecycle", () => {
   });
 
   it("does not delete rollups without a current API key", async () => {
-    const { getAdapter } = await import("@/lib/db/driver.js");
-    const db = await getAdapter();
+    // This backfill helper targets legacy/imported databases, where it creates
+    // the table without the FK the current migration adds. Orphan rollups only
+    // exist in that legacy shape, so exercise it there — on a current database
+    // `ON DELETE CASCADE` means an orphan cannot be written at all.
+    const Database = (await import("better-sqlite3")).default;
+    const legacyFile = path.join(tempDir, "legacy.sqlite");
+    const raw = new Database(legacyFile);
+    const db = {
+      exec: (sql) => raw.exec(sql),
+      run: (sql, params = []) => raw.prepare(sql).run(...params),
+      get: (sql, params = []) => raw.prepare(sql).get(...params),
+      all: (sql, params = []) => raw.prepare(sql).all(...params),
+    };
+    db.exec(`CREATE TABLE apiKeys (id TEXT PRIMARY KEY, key TEXT, name TEXT, createdAt TEXT)`);
+    db.exec(`CREATE TABLE usageHistory (id TEXT PRIMARY KEY, apiKey TEXT, promptTokens INTEGER, completionTokens INTEGER, cost REAL)`);
+
     const orphan = {
       apiKeyId: "deleted-key-id",
       totalTokens: 99,
@@ -173,15 +212,18 @@ describe("apiKeyUsageTotals table lifecycle", () => {
       totalRequests: 3,
       updatedAt: "2026-01-03T00:00:00.000Z",
     };
+    const { ensureAndBackfillApiKeyUsageTotals } = await import("@/lib/db/migrations/apiKeyUsageTotalsBackfill.js");
+    ensureAndBackfillApiKeyUsageTotals(db);
     db.run(
       `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
       [orphan.apiKeyId, orphan.totalTokens, orphan.totalCost, orphan.totalRequests, orphan.updatedAt]
     );
 
-    const { ensureAndBackfillApiKeyUsageTotals } = await import("@/lib/db/migrations/apiKeyUsageTotalsBackfill.js");
+    // A second pass must leave the rollup it did not create untouched.
     ensureAndBackfillApiKeyUsageTotals(db);
 
     expect(db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [orphan.apiKeyId])).toEqual(orphan);
+    raw.close();
   });
 });
 

@@ -5,6 +5,8 @@
 // adapter rewrites those shapes before sending the statement so the
 // existing sync repos keep working on both engines.
 
+import { TABLES } from "../../schema.js";
+
 /**
  * Quote a PG identifier, preserving camelCase that unquoted names would fold.
  */
@@ -17,6 +19,23 @@ function splitSqlByComma(list) {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+/**
+ * Columns of a table's declared primary key, or null when the table is
+ * unknown. `TABLES` is the same declarative schema the DDL translator and
+ * `syncSchemaFromTables` build from, so the conflict target a rewritten
+ * upsert names always matches the key PG actually created.
+ */
+function primaryKeyColumns(table) {
+  const def = TABLES[table];
+  if (!def) return null;
+  const composite = def.primaryKey &&
+    String(def.primaryKey).match(/PRIMARY\s+KEY\s*\(([^)]+)\)/i);
+  if (composite) return splitSqlByComma(composite[1]).map((c) => c.replace(/"/g, ""));
+  const inline = Object.entries(def.columns || {}).
+    find(([, type]) => /PRIMARY\s+KEY/i.test(String(type)));
+  return inline ? [inline[0]] : null;
 }
 
 /**
@@ -50,11 +69,31 @@ export function rewriteSqliteDml(sql) {
       /INSERT\s+INTO\s+("?[\w]+"?)\s*\(([^)]+)\)\s*VALUES/i
     );
     if (m) {
+      const table = m[1].replace(/"/g, "");
       const cols = splitSqlByComma(m[2]);
-      if (cols.length) {
-        const pk = cols[0];
-        const sets = cols.map((c) => `${c} = excluded.${c.replace(/"/g, "")}`).join(", ");
-        out = out.replace(/;?\s*$/, ` ON CONFLICT (${pk}) DO UPDATE SET ${sets}`);
+      // The conflict target must name a real unique constraint. Composite-PK
+      // tables (kv, apiKeyGroupMembers, …) would otherwise get `ON CONFLICT
+      // (firstColumn)`, which PG rejects with 42P10 because a prefix of a
+      // composite key is not itself unique. Take the declared key.
+      const target = primaryKeyColumns(table) || cols.slice(0, 1);
+      if (cols.length && target.length) {
+        // Assigning the conflict columns to themselves is a no-op; update the
+        // remaining columns, which is what INSERT OR REPLACE does.
+        const updatable = cols.filter(
+          (c) => !target.includes(c.replace(/"/g, ""))
+        );
+        const conflict = target.map(quoteIdent).join(", ");
+        if (!updatable.length) {
+          out = out.replace(/;?\s*$/, ` ON CONFLICT (${conflict}) DO NOTHING`);
+        } else {
+          const sets = updatable.
+            map((c) => `${c} = excluded.${c.replace(/"/g, "")}`).
+            join(", ");
+          out = out.replace(
+            /;?\s*$/,
+            ` ON CONFLICT (${conflict}) DO UPDATE SET ${sets}`
+          );
+        }
       }
     }
   }

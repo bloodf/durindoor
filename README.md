@@ -178,10 +178,10 @@ Model:    a model ID, alias, or combo name from the dashboard
 - [OpenAI Codex](docs/integrations/codex.mdx)
 - [Cursor](docs/integrations/cursor.mdx)
 - [Cline](docs/integrations/cline.mdx)
-- [Roo Code](docs/integration/roo.md)
-- [Continue](docs/integration/continue.md)
-- [Ollama + Claude Code](docs/integration/ollama-claude.md)
-- [Other OpenAI-compatible tools](docs/integration/other-tools.md)
+- [Roo Code](docs/integrations/roo.mdx)
+- [Continue](docs/integrations/continue.mdx)
+- [Ollama + Claude Code](docs/integrations/ollama-claude.mdx)
+- [Other OpenAI-compatible tools](docs/integrations/other-tools.mdx)
 
 Claude-compatible clients may expect `ANTHROPIC_BASE_URL`; see the per-tool guide.
 

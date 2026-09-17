@@ -27,13 +27,13 @@ For users getting their first request through the gateway.
 - [Provider Nodes and Custom Providers](providers/openai-compatible-nodes.mdx): OpenAI-compatible nodes, Anthropic-compatible nodes, custom embeddings, and provider aliases.
 - [Free and Local Providers](providers/free-and-local.mdx): no-auth, local, browser-cookie, and local-device providers.
 - [Claude Code](integrations/claude-code.mdx)
-- [Ollama + Claude Code](integration/ollama-claude.md)
+- [Ollama + Claude Code](integrations/ollama-claude.mdx)
 - [OpenAI Codex](integrations/codex.mdx)
 - [Cursor](integrations/cursor.mdx)
 - [Cline](integrations/cline.mdx)
-- [Roo](integration/roo.md)
-- [Continue](integration/continue.md)
-- [Other OpenAI-Compatible Tools](integration/other-tools.md)
+- [Roo](integrations/roo.mdx)
+- [Continue](integrations/continue.mdx)
+- [Other OpenAI-Compatible Tools](integrations/other-tools.mdx)
 - [Combos and Fallback](features/combos.mdx): ordered model chains, retry behavior, exclusions, and operating patterns.
 - [Smart Routing](features/smart-routing.mdx): model resolution, provider selection, account fallback, and format translation.
 - [FAQ](faq.md)

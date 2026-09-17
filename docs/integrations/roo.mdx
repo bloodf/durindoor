@@ -1,6 +1,65 @@
 ---
 title: Roo
-description: Point Roo at DurinDoor with an Ollama or OpenAI-compatible base URL.
+description: Point Roo at DurinDoor with the Ollama provider and a /v1 base URL.
 ---
 
-Pages in this section are being written.
+Roo is a guide tool on **CLI Tools**, not an apply target. There is no `/api/cli-tools/roo-settings` route. `GET /api/cli-tools/all-statuses` does not include `roo`. The card at `/dashboard/cli-tools/roo` copies a base URL, key, and model for Roo's Ollama provider.
+
+You need Roo installed, the gateway running, a DurinDoor API key, and a chat-capable model or combo.
+
+## Dashboard guide
+
+The Roo entry in `CLI_TOOLS` has `configType: "guide"`. The detail page renders `DefaultToolCard`. The copied base URL always ends with `/v1`. Localhost with no pasted key uses the placeholder `sk_durindoor`.
+
+The card then walks:
+
+<Steps>
+<Step>
+Open the Roo Settings panel.
+</Step>
+<Step>
+Choose API Provider, then Ollama.
+</Step>
+<Step>
+Paste the base URL. The card substitutes `{{baseUrl}}` and appends `/v1` if it is missing.
+</Step>
+<Step>
+Paste the API key.
+</Step>
+<Step>
+Select the DurinDoor model id, or type a combo name.
+</Step>
+</Steps>
+
+`scripts/auto-configure.mjs` and `/api/settings/auto-configure` do not write Roo settings. They probe Headroom, PxPipe, and Firecrawl only.
+
+## Manual config
+
+In Roo, API Provider Ollama:
+
+```text
+Base URL: http://localhost:20128/v1
+API key:  YOUR_DURINDOOR_API_KEY
+Model:    provider/model-id
+```
+
+If a Roo build also offers an OpenAI-compatible custom provider, those three values work there too. Combo names such as `coding-default` are valid in the model field if you created that combo.
+
+<Callout type="warn">
+The copied base URL must include `/v1`. Roo's Ollama provider typically posts to `{base}/api/chat`, which becomes `POST /v1/api/chat` on DurinDoor. That route runs `transformToOllama` and returns NDJSON. Curl by hand still uses `/v1/chat/completions` or `/v1/messages`.
+</Callout>
+
+## Legacy `9router` labels
+
+Roo's UI has no provider section named `9router`. Other CLI tools still write that section label; the server accepts it, plus `X-Msh-Platform: 9router`. Data still lives under `~/.9router/` unless you set `DATA_DIR`.
+
+## Check it works
+
+Send a one-line prompt in Roo. Confirm the row on **Usage**.
+
+| Symptom | Check |
+| --- | --- |
+| Connection refused | Base URL missing `/v1`, or the gateway is not on port 20128 |
+| Invalid API key | Paste the DurinDoor secret, not an upstream Ollama or OpenAI key |
+| Model not found | Use an id from `GET /v1/models` or a combo name |
+| Tools fail after a simple chat | Every combo member must support the tool-call shape Roo sends |

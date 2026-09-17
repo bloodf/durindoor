@@ -3,4 +3,84 @@ title: Continue
 description: Add an OpenAI model entry in Continue that points at DurinDoor.
 ---
 
-Pages in this section are being written.
+Continue is a guide tool on **CLI Tools**, not an apply target. There is no `/api/cli-tools/continue-settings` route. `GET /api/cli-tools/all-statuses` does not include `continue`. The card at `/dashboard/cli-tools/continue` copies a JSON object for Continue's `models` array.
+
+You need VS Code or another Continue host, the gateway running, a DurinDoor API key, and a model ID or combo.
+
+## Dashboard guide
+
+The Continue entry in `CLI_TOOLS` has `configType: "guide"` and a `codeBlock` in JSON. The detail page renders `DefaultToolCard`. Placeholders in the snippet:
+
+- `{{baseUrl}}` becomes the selected origin plus `/v1` if that suffix is missing
+- `{{apiKey}}` becomes the selected DurinDoor key, or `sk_durindoor` on localhost when none is selected
+- `{{model}}` becomes the selected id, or `provider/model-id` if you left the picker empty
+
+The card then walks:
+
+<Steps>
+<Step>
+Open the Continue configuration file.
+</Step>
+<Step>
+Paste the API key.
+</Step>
+<Step>
+Select the DurinDoor model id, or type a combo name.
+</Step>
+<Step>
+Add the JSON object to your `models` array.
+</Step>
+</Steps>
+
+`scripts/auto-configure.mjs` and `/api/settings/auto-configure` do not write Continue files. They probe Headroom, PxPipe, and Firecrawl only.
+
+## Manual config
+
+Merge this object into the `models` array in the Continue config file:
+
+```json
+{
+  "apiBase": "http://localhost:20128/v1",
+  "title": "provider/model-id",
+  "model": "provider/model-id",
+  "provider": "openai",
+  "apiKey": "YOUR_DURINDOOR_API_KEY"
+}
+```
+
+A full file with one entry looks like this:
+
+```json
+{
+  "models": [
+    {
+      "apiBase": "http://localhost:20128/v1",
+      "title": "provider/model-id",
+      "model": "provider/model-id",
+      "provider": "openai",
+      "apiKey": "YOUR_DURINDOOR_API_KEY"
+    }
+  ]
+}
+```
+
+Add more objects in that array to switch combos from Continue's model picker. A remote DurinDoor needs an `https` URL and a host Continue can reach.
+
+<Callout type="warn">
+`provider` must be `"openai"`. `apiBase` must include `/v1`. A missing suffix is the usual "Continue cannot reach DurinDoor" miss.
+</Callout>
+
+## Legacy `9router` labels
+
+Continue's config uses `provider: "openai"`, not a `9router` table. Other CLI tools still write that section label; the server accepts it, plus `X-Msh-Platform: 9router`. Data still lives under `~/.9router/` unless you set `DATA_DIR`.
+
+## Check it works
+
+Reload Continue. Send a small prompt. Confirm the row on **Usage**.
+
+| Symptom | Check |
+| --- | --- |
+| Cannot reach DurinDoor | `apiBase`, firewall, and whether the gateway is running on port 20128 |
+| Invalid model | Use an id from `GET /v1/models` or a combo name |
+| Provider parameter error | The selected upstream may not support a field Continue sends. Try another model or combo member |
+| Tools or large context fail | Test the exact workflow before relying on a new combo |

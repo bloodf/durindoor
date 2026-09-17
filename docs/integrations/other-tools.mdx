@@ -3,4 +3,95 @@ title: Other tools
 description: Point any OpenAI-compatible client at DurinDoor with one base URL and key.
 ---
 
-Pages in this section are being written.
+Any client that can set a custom OpenAI-compatible base URL can use DurinDoor. The client must send requests here, use a DurinDoor API key, and pick a model ID, alias, or combo from `GET /v1/models`.
+
+```text
+Base URL: http://localhost:20128/v1
+API key:  YOUR_DURINDOOR_API_KEY
+Model:    MODEL_ID_OR_COMBO
+```
+
+Production bind is port 20128. `npm run dev` listens on 20127. Remote deployments need HTTPS and a host the client can reach. Include `/v1` in the base URL unless the client adds it. Use a DurinDoor key, not the upstream provider key. SDK samples live on [first request](../getting-started/first-request.mdx) and [SDK examples](../guides/sdk-examples.mdx).
+
+## Dashboard versus auto-configure
+
+**CLI Tools** (`/dashboard/cli-tools`) is the apply and guide path for coding agents. This section documents Claude Code, Codex, Cursor, Cline, Roo, and Continue. The same grid also lists OpenCode, Cowork, Hermes, Droid, Kilo, DeepSeek TUI, jcode, Grok Build, Qwen Code, Open Claw, GitHub Copilot, Amp, and others. Open those cards at `/dashboard/cli-tools/<toolId>`.
+
+**Auto-configure** (`/dashboard/auto-configure`, `scripts/auto-configure.mjs`, `/api/settings/auto-configure`) probes Headroom, PxPipe, and Firecrawl. It does not write client config files.
+
+<Callout type="warn">
+Amp (`CLI_TOOLS.amp`) is `unsupported`. `AMP_URL` configures the Amp service, not a model inference endpoint, so Amp cannot point at DurinDoor.
+</Callout>
+
+## GitHub Copilot
+
+The Copilot card (`/dashboard/cli-tools/copilot`) is `configType: "guide"`. It walks the [9Router for Github Copilot](https://marketplace.visualstudio.com/items?itemName=hotrungnhan.9router-for-github-copilot) VS Code extension: install, run `9Router: Configure Server`, then pick DurinDoor models in Copilot Chat.
+
+`POST /api/cli-tools/copilot-settings` writes VS Code's `chatLanguageModels.json`. A missing file is created. An existing file that is unreadable, malformed JSON, or not a provider array aborts with `refusing to overwrite it`. Other providers in that array stay.
+
+On success the DurinDoor entry is:
+
+```json
+{
+  "name": "DurinDoor",
+  "vendor": "azure",
+  "apiKey": "YOUR_DURINDOOR_API_KEY",
+  "models": [
+    {
+      "id": "provider/model-id",
+      "name": "provider/model-id",
+      "url": "http://localhost:20128/v1/chat/completions#models.ai.azure.com",
+      "toolCalling": true,
+      "vision": false,
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16000
+    }
+  ]
+}
+```
+
+Paths: macOS `~/Library/Application Support/Code/User/chatLanguageModels.json`, Linux `~/.config/Code/User/chatLanguageModels.json`, Windows `%APPDATA%\Code\User\chatLanguageModels.json`. Localhost with no pasted key uses `sk_durindoor`. Reset removes the DurinDoor entry only. Reload VS Code after a write.
+
+`GET` reports `has9Router` when an entry named `DurinDoor` is present.
+
+## Agent skills
+
+The skills under `skills/` teach agents how to call a running gateway as an OpenAI-compatible client. They are not the `durindoor` npm launcher.
+
+```bash
+export DURINDOOR_URL="http://localhost:20128"
+export DURINDOOR_KEY="YOUR_DURINDOOR_API_KEY"
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/api/health"
+```
+
+`GET /api/health` returns `{ "ok": true }` with no provider setup. Use discovery endpoints in each skill instead of copying model IDs from old examples.
+
+| Capability | Skill |
+| --- | --- |
+| Entry and setup | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor/SKILL.md |
+| Chat | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-chat/SKILL.md |
+| Image generation | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-image/SKILL.md |
+| Text-to-speech | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-tts/SKILL.md |
+| Speech-to-text | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-stt/SKILL.md |
+| Embeddings | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-embeddings/SKILL.md |
+| Web search | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-web-search/SKILL.md |
+| Web fetch | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-web-fetch/SKILL.md |
+
+Kind slugs on `GET /v1/models/<kind>`: `image`, `tts`, `stt`, `embedding`, `image-to-text`, `web`, `rerank`. Web entries identify `kind` as `webSearch` or `webFetch`. Search and fetch requests go to `POST /v1/search` and `POST /v1/web/fetch`.
+
+## Endpoint families
+
+DurinDoor exposes compatibility routes including `/v1/chat/completions`, `/v1/responses`, `/v1/messages`, `/v1/models`, `/v1/embeddings`, `/v1/images/generations`, `/v1/images/edits`, `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/moderations`, `/v1/rerank`, `/v1/search`, `/v1/web/fetch`, and `/v1/messages/count_tokens`. Next rewrites `/v1/:path*` to `/api/v1/:path*`.
+
+## Legacy `9router` labels
+
+Display names and new IDs are DurinDoor. Incoming CLI configs still use the section label `9router` where the tool stores a provider id (Codex `model_provider`, OpenCode `provider.9router`, Grok Build `[model.9router]`). Copilot's written entry is named `DurinDoor`. The HTTP header `X-Msh-Platform: 9router` remains accepted. Data still lives under `~/.9router/` unless you set `DATA_DIR`.
+
+## Check it works
+
+```bash
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+A 401 means the key is missing or rejected. A 200 list means the gateway is reachable. Then send a one-line prompt from the client and confirm the row on **Usage**. Test streaming, tool calls, images, or audio if that workflow needs them.

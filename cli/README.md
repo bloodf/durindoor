@@ -72,7 +72,7 @@ Native installations use these defaults when `DATA_DIR` is not set:
 - macOS/Linux: `~/.9router`
 - Windows: `%APPDATA%\9router`
 
-Docker deployments normally set `DATA_DIR=/app/data` and mount a persistent host directory or named volume there. See [Data Management](../docs/operations/data-management.md) before moving, restoring, or deleting data.
+Docker deployments normally set `DATA_DIR=/app/data` and mount a persistent host directory or named volume there. See [Data Management](../docs/operations/data-management.mdx) before moving, restoring, or deleting data.
 
 ## Updating
 
@@ -80,7 +80,7 @@ Docker deployments normally set `DATA_DIR=/app/data` and mount a persistent host
 npm update --global durindoor
 ```
 
-Read the [changelog](../CHANGELOG.md) and [upgrade guide](../docs/operations/upgrading.md), then back up `DATA_DIR` before updating.
+Read the [changelog](../CHANGELOG.md) and [upgrade guide](../docs/operations/upgrading.mdx), then back up `DATA_DIR` before updating.
 
 ## License
 

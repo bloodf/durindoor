@@ -1,0 +1,108 @@
+---
+title: Postgres
+description: Opt-in PostgreSQL engine, compose profiles, cutover, fallback, and rollback.
+---
+
+SQLite is the default. PostgreSQL is opt-in.
+
+The dashboard page is **Settings → Database** (`/dashboard/settings/database`). Cutover, test, and rollback routes require a dashboard JWT or CLI token plus the current dashboard password (`x-9r-password`).
+
+## Version policy
+
+Compose ships profile-gated clusters: `postgres16`, `postgres17`, `postgres18`. `DURINDOOR_PG_PREFERRED_VERSION` defaults to `18`. The runtime reads `server_version_num` at boot and turns off features whose `requires` floor is above the cluster major. You can also pin `databasePgVersion` in the dashboard.
+
+| Major | In compose | Default features |
+| --- | --- | --- |
+| 16 | `--profile postgres16` | Floor. Parallel GIN, AIO, skip scan stay off |
+| 17 | `--profile postgres17` | Parallel GIN, streaming I/O, vacuum memory rewrite |
+| 18 | `--profile postgres18` | AIO and B-tree skip scan on by default |
+| 19 | none | Forward-compat toggles in `databasePgFeatures`, default off |
+
+## Quick start
+
+<Steps>
+<Step>
+Start a cluster. Default compose `up` does not start Postgres.
+
+```bash
+docker compose --profile postgres18 up -d
+```
+</Step>
+<Step>
+Put the URL in `.env`. Optional SSL mode and version cap:
+
+```bash
+echo 'DURINDOOR_PG_URL=postgres://durindoor:durindoor@postgres18:5432/durindoor' >> .env
+echo 'DURINDOOR_PG_SSLMODE=prefer' >> .env
+echo 'DURINDOOR_PG_PREFERRED_VERSION=18' >> .env
+```
+
+Compose user, password, and database are all `durindoor`. The service hostname is `postgres18`.
+</Step>
+<Step>
+Restart DurinDoor so boot can see the env var.
+
+```bash
+docker compose restart durindoor
+```
+</Step>
+<Step>
+Open **Settings → Database**. Run **Test connection**. On success the probe returns latency and `serverVersion`. Then **Cut over to Postgres**.
+</Step>
+</Steps>
+
+A healthy PG boot logs `[DB] Driver: pg | engine: postgres`.
+
+## Connection URL
+
+Resolved in this order:
+
+1. `DURINDOOR_PG_URL` (always wins at boot)
+2. `settings.postgresUrl` (AES-256-GCM blob in the settings row; dashboard persist writes here)
+3. Legacy `DATA_DIR/durindoor-secrets.json` (mode `0600`, read-only)
+
+New writes go only to the settings row. `GET /api/settings/database` returns redacted host, port, database, user, sslmode, and authSource. It never returns the password.
+
+## Cutover
+
+**Cut over to Postgres** runs `runCutover`:
+
+1. `testConnection(url)` with a transient client (`SELECT version()`). Fail-fast.
+2. Open the persistent PG adapter. Run the parallel PG migration set (latest version 18, `018-pg-cutover-log`).
+3. Open a fresh SQLite adapter as the mirror source.
+4. `runMirror` copies tables in 500-row chunks, one transaction per table, then asserts row counts. `requestDetails` is skipped unless `includeRequestDetails` is true.
+5. Snapshot `data.sqlite` to `DATA_DIR/db/backups/data.sqlite.postgres-cutover-<ts>-<version>.sqlite` (mode `0600`). Copy failure warns and continues.
+6. Flip the live adapter to PG (`setActiveAdapter`).
+7. Persist `databaseEngine: "postgres"` on the settings row.
+8. Append a `pgCutoverLog` row with `type` `cutover`.
+
+PG must open, migrate, mirror, and verify before SQLite is closed. The settings write is after the flip. A crash between those two leaves `databaseEngine === "sqlite"` for the next boot.
+
+Any failed step keeps SQLite live and records `databaseEngineError`. A second cutover while one is in flight returns HTTP 503.
+
+## Boot fallback
+
+If `databaseEngine` is `postgres` and the cluster is unreachable, missing a URL, or fails migrations, the wrapper records `databaseEngineError` and returns a SQLite adapter. The fallback is one-shot per process. Repeated outages do not loop.
+
+## Rollback
+
+**Switch back to SQLite** restores the newest `data.sqlite.postgres-cutover-*` snapshot into the live SQLite path, reopens SQLite, and sets `databaseEngine` back to `"sqlite"`. The PG cluster is left as-is. The button stays disabled until snapshots exist.
+
+Manual copy (set `DATA_DIR` to the real absolute path first):
+
+```bash
+ls -lh "$DATA_DIR/db/backups"/data.sqlite.postgres-cutover-*.sqlite
+SNAP=$(ls -t "$DATA_DIR/db/backups"/data.sqlite.postgres-cutover-*.sqlite | head -1)
+cp -a "$SNAP" "$DATA_DIR/db/data.sqlite"
+```
+
+Then restart, or use the dashboard rollback so the settings row flips with the file.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Runtime still on SQLite | Connect, URL, or migration failed | Read `databaseEngineError` on the Database page |
+| `pg_isready` fails | Cluster down or wrong port | `docker compose ps postgres18` and `docker compose logs postgres18` |
+| Mirror of `requestDetails` is huge | Observability log can be gigabytes | Leave `includeRequestDetails` false (the default) |
+| Cutover returns 503 | Another cutover holds the lock | Wait and retry |

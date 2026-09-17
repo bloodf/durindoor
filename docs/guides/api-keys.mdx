@@ -53,7 +53,7 @@ HMAC secret resolution for new-format keys, in order: `process.env.API_KEY_SECRE
 
 A key can carry several independent restrictions. Empty means unrestricted for that mechanism.
 
-`providerConnectionIds` lists the provider-connection rows the key may route through. Zero rows means every account. Details: [API key provider-account scoping](../security/api-key-provider-account-scoping.md).
+`providerConnectionIds` lists the provider-connection rows the key may route through. Zero rows means every account. Details: [API key provider-account scoping](../operations/api-key-scoping.mdx).
 
 `allowedCombos` is a list of combo names. A non-empty list rejects any other combo with HTTP 403. `policy.allowedModels` is an exact-match allowlist of model strings; empty or missing means all models.
 

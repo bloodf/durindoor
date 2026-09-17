@@ -49,7 +49,7 @@ OAuth client overrides (`GEMINI_OAUTH_CLIENT_ID`, `ANTIGRAVITY_OAUTH_CLIENT_ID`,
 
 A DurinDoor client key (`sk-...`) can be limited to a subset of provider connections. Zero relation rows means unrestricted: the key may use every reachable account. Assigning one or more connection ids opts into the restriction. Clearing the list restores the unrestricted default.
 
-Details, deletion guards, and the HTTP shape live in [API-key provider-account scoping](../security/api-key-provider-account-scoping.md). Deleting a connection that is the last scoped account for a key is rejected with HTTP 409 `API_KEY_SCOPE_WOULD_BROADEN` so the key cannot silently become unrestricted.
+Details, deletion guards, and the HTTP shape live in [API key scoping](../operations/api-key-scoping.mdx). Deleting a connection that is the last scoped account for a key is rejected with HTTP 409 `API_KEY_SCOPE_WOULD_BROADEN` so the key cannot silently become unrestricted.
 
 Test a saved key from the provider page. Connection tests stop after 15 seconds. Custom URLs still go through the outbound SSRF guard. Hidden registry providers cannot be created through this form; `POST /api/providers` returns `Invalid provider`.
 

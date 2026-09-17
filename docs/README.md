@@ -47,11 +47,11 @@ For operators running DurinDoor in production or on a team server.
 - [Docker](deployment/docker.mdx)
 - [VPS and cloud](deployment/cloud.mdx)
 - [Reverse proxy and static assets](deployment/reverse-proxy-and-static-assets.mdx)
-- [Startup and Runtime Operations](operations/startup.md)
-- [Upgrading DurinDoor](operations/upgrading.md)
-- [Data Management and Backup](operations/data-management.md)
-- [Security and Production Hardening](operations/security.md)
-- [API-key Provider-account Scoping](security/api-key-provider-account-scoping.md)
+- [Startup and Runtime Operations](operations/startup.mdx)
+- [Upgrading DurinDoor](operations/upgrading.mdx)
+- [Data Management and Backup](operations/data-management.mdx)
+- [Security and Production Hardening](operations/security.mdx)
+- [API key scoping](operations/api-key-scoping.mdx)
 - [Usage and Quota Tracking](features/quota-tracking.mdx)
 - [Proxy Timeline](features/proxy-timeline.mdx)
 - [MCP Gateway](features/mcp-gateway.mdx)
@@ -143,8 +143,8 @@ DurinDoor is a fork of [9router](https://github.com/decolua/9router). These comp
 ## Operator Essentials
 
 - Use [Environment Variables](reference/environment.md) before deploying outside localhost.
-- Use [Startup and Runtime Operations](operations/startup.md) for process management, health checks, and smoke tests.
-- Use [Security and Production Hardening](operations/security.md) before exposing a dashboard, tunnel, or reverse proxy.
+- Use [Startup and Runtime Operations](operations/startup.mdx) for process management, health checks, and smoke tests.
+- Use [Security and Production Hardening](operations/security.mdx) before exposing a dashboard, tunnel, or reverse proxy.
 - Use [API Reference](reference/api.md) when integrating SDKs, scripts, or custom clients.
 - Use [Contributing](development/contributing.md) before opening pull requests.
 

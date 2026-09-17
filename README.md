@@ -318,7 +318,7 @@ DurinDoor stores provider credentials and routes model traffic. Treat it as sens
 - Set explicit production secrets. Define `JWT_SECRET`, `API_KEY_SECRET`, and a strong `INITIAL_PASSWORD` before any remote exposure.
 - Use HTTPS and restrict dashboard access. Reverse proxy with auth, VPN, firewall, or trusted-network allowlist; set `AUTH_COOKIE_SECURE=true` behind HTTPS.
 - Back up `DATA_DIR`. Protect `db/data.sqlite`, `db/backups/`, `auth/`, and `mitm/` as secrets.
-- Read the security docs before exposure: [Security and production hardening](docs/operations/security.md), [Startup and runtime operations](docs/operations/startup.md), and [Environment variables](docs/reference/environment.md).
+- Read the security docs before exposure: [Security and production hardening](docs/operations/security.mdx), [Startup and runtime operations](docs/operations/startup.mdx), and [Environment variables](docs/reference/environment.md).
 - Keep request logging off unless you are debugging. Detailed diagnostic files are controlled by `ENABLE_REQUEST_LOGS` (default `false`). Set a retention and access policy if you turn them on.
 - Treat tunnels as exposure. HTTPS tunnels make the gateway reachable from another network. Keep dashboard auth on, prefer dedicated keys, and disable tunnels when unused.
 
@@ -339,7 +339,7 @@ The canonical documentation is Markdown in this repository. GitHub-rendered Mark
 - Providers: [connections](docs/providers/connecting-accounts.mdx), [custom nodes](docs/providers/openai-compatible-nodes.mdx), [free and local](docs/providers/free-and-local.mdx)
 - Features: [Smart routing](docs/features/smart-routing.mdx), [Combos](docs/features/combos.mdx), [Usage and quota tracking](docs/features/quota-tracking.mdx), [Compression](docs/features/compression.mdx), [MCP Gateway](docs/features/mcp-gateway.mdx), [Realtime](docs/features/realtime.mdx), [Proxy timeline](docs/features/proxy-timeline.mdx), [Headroom](docs/features/headroom.mdx)
 - Reference: [API reference](docs/reference/api.md), [Environment variables](docs/reference/environment.md), [Architecture](docs/ARCHITECTURE.md)
-- Operations: [Security](docs/operations/security.md), [Startup](docs/operations/startup.md), [Troubleshooting](docs/troubleshooting.md), [FAQ](docs/faq.md), [Release process](docs/development/release-process.md)
+- Operations: [Security](docs/operations/security.mdx), [Startup](docs/operations/startup.mdx), [Troubleshooting](docs/troubleshooting.md), [FAQ](docs/faq.md), [Release process](docs/development/release-process.md)
 - Public site: [website/README.md](website/README.md)
 - Community: [Security policy](.github/SECURITY.md), [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Changelog](CHANGELOG.md), [License](LICENSE), [Issues](https://github.com/bloodf/durindoor/issues), [Discussions](https://github.com/bloodf/durindoor/discussions)
 

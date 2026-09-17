@@ -1,0 +1,94 @@
+---
+title: Upgrading
+description: Back up DATA_DIR, move to a new image or npm version, then verify health.
+---
+
+Read [CHANGELOG.md](../../CHANGELOG.md) before you bump. Breaking schema work and behaviour shifts land there first.
+
+## Backup
+
+Stop DurinDoor so SQLite is not mid-write. Host bind: [backing up a host directory](data-management.mdx#backing-up-a-host-directory). Named volume: [backing up a Docker named volume](data-management.mdx#backing-up-a-docker-named-volume).
+
+Startup also copies `DATA_DIR/db/data.sqlite` into `DATA_DIR/db/backups` before a schema or app-version change. Those copies keep the newest three directories and omit the `requestDetails` table on the lite path. Take your own full copy anyway.
+
+## Image or package
+
+<Tabs items={['Docker', 'npm', 'source']}>
+<Tab value="Docker">
+
+Pin a version tag in production. `latest` is for evaluation.
+
+```bash
+docker pull ghcr.io/bloodf/durindoor:latest
+docker stop durindoor && docker rm durindoor
+docker run -d \
+  --name durindoor \
+  -p 20128:20128 \
+  -v durindoor-data:/app/data \
+  -e DATA_DIR=/app/data \
+  -e JWT_SECRET="your-secret" \
+  -e API_KEY_SECRET="your-secret" \
+  -e INITIAL_PASSWORD="your-password" \
+  ghcr.io/bloodf/durindoor:latest
+```
+
+Or change the `image:` line in `docker-compose.yml` and run `docker compose up -d`. Keep the same volume and the same `JWT_SECRET` / `API_KEY_SECRET`.
+
+</Tab>
+<Tab value="npm">
+
+```bash
+npm update -g durindoor
+```
+
+</Tab>
+<Tab value="source">
+
+```bash
+git pull
+npm install --no-audit --no-fund
+npm run build
+npm start
+```
+
+</Tab>
+</Tabs>
+
+## Schema migrations
+
+SQLite runs forward-only migrations on startup. The chain is append-only. Current SQLite latest is version 18 (`018-api-key-groups`). A fresh file starts clean. A skip-version upgrade applies every pending `up()`.
+
+Do not edit, truncate, or delete `DATA_DIR/db/data.sqlite` by hand. If `PRAGMA quick_check` fails, startup stops. Restore a backup whose integrity you have already checked.
+
+## After the bump
+
+```bash
+curl http://localhost:20128/api/health
+```
+
+Then open the dashboard and confirm providers, API keys, combos, and usage.
+
+## Rollback
+
+Rollback is the previous image or git tag plus the pre-upgrade backup. A completed migration is not undone by starting an old binary on the new file. Restore the backup first.
+
+Named volume: [restoring a Docker named volume](data-management.mdx#restoring-a-docker-named-volume).
+
+Host bind: `DATA_DIR` must be an absolute path, then [restoring a host directory](data-management.mdx#restoring-a-host-directory), then start the old image:
+
+```bash
+case "$DATA_DIR" in
+  /*) ;;
+  *) echo "ERROR: DATA_DIR must be an absolute path, got '$DATA_DIR'" >&2; exit 1 ;;
+esac
+docker stop durindoor && docker rm durindoor
+docker run -d \
+  --name durindoor \
+  --env-file .env \
+  -p 20128:20128 \
+  -v "$DATA_DIR:/app/data" \
+  -e DATA_DIR=/app/data \
+  ghcr.io/bloodf/durindoor:<old-version>
+```
+
+Source: `git checkout <prior-tag>` and rebuild.

@@ -104,18 +104,18 @@ If problems appeared after an upgrade:
 3. Confirm `API_KEY_SECRET` and `JWT_SECRET` are stable.
 4. Verify providers and keys in the dashboard.
 
-See [Upgrading](operations/upgrading.md) for the full procedure.
+See [Upgrading](operations/upgrading.mdx) for the full procedure.
 
 ## Still stuck
 
 1. Collect logs: `docker logs durindoor` or runtime logs from `DATA_DIR/logs/`.
-2. Check [Startup](operations/startup.md) for health check and verification steps.
-3. Check [Data Management](operations/data-management.md) if data is missing or corrupt.
+2. Check [Startup](operations/startup.mdx) for health check and verification steps.
+3. Check [Data Management](operations/data-management.mdx) if data is missing or corrupt.
 4. Search [GitHub Issues](https://github.com/bloodf/durindoor/issues) for similar reports.
 
 ## Related pages
 
-- [Startup](operations/startup.md)
-- [Security](operations/security.md)
-- [Upgrading](operations/upgrading.md)
-- [Data Management](operations/data-management.md)
+- [Startup](operations/startup.mdx)
+- [Security](operations/security.mdx)
+- [Upgrading](operations/upgrading.mdx)
+- [Data Management](operations/data-management.mdx)

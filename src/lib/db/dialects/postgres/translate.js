@@ -31,14 +31,17 @@
 //   - Indexes with `COLLATE NOCASE`
 //       → functional index `LOWER(<col>)`.
 //
+// Runtime DML (`INSERT OR IGNORE`, `datetime('now')`, `COLLATE NOCASE`) is
+// rewritten by `dmlRewrite.js` inside the PG adapter, not here.
+//
 // What the translator does NOT do (and why):
-//   - It does not rewrite SQL at runtime. Migrations are translated at
-//     generate-time; the runtime never re-translates.
 //   - It does not handle JSONB conversion. JSON columns stay as `TEXT`
 //     in PG to match the SQLite storage and avoid surprises with
 //     `columnCrypto` (which encrypts the cell as a string).
 //   - It does not introduce 18+ features (AIO, skip scan, parallel GIN
 //     hints). The capability gate enables those at runtime.
+
+import { quoteIdent } from "./dmlRewrite.js";
 
 const BOOLEAN_COLUMNS = new Set([
   "isActive",
@@ -65,6 +68,11 @@ function looksLikeBooleanFlag(columnName) {
  */
 export function translateColumnDef(columnName, def) {
   let out = def;
+
+  // Singleton rows (`settings.id` CHECK (id = 1)) must stay INTEGER, not BIGSERIAL.
+  if (/INTEGER\s+PRIMARY\s+KEY/i.test(out) && /CHECK\s*\(\s*id\s*=\s*1\s*\)/i.test(out)) {
+    return out.replace(/\s+AUTOINCREMENT/i, "").replace(/\s+/g, " ").trim();
+  }
 
   // INTEGER PRIMARY KEY → BIGSERIAL PRIMARY KEY (autoincrement sequence)
   if (/^INTEGER\s+PRIMARY\s+KEY(\s+AUTOINCREMENT)?\s*$/i.test(out.trim())) {
@@ -98,10 +106,10 @@ export function translateColumnDef(columnName, def) {
  */
 export function translateCreateTable(tableName, def) {
   const columns = Object.entries(def.columns || {}).map(([colName, colDef]) => {
-    return `${colName} ${translateColumnDef(colName, colDef)}`;
+    return `${quoteIdent(colName)} ${translateColumnDef(colName, colDef)}`;
   });
   if (def.primaryKey) columns.push(def.primaryKey);
-  const createSql = `CREATE TABLE IF NOT EXISTS ${tableName} (${columns.join(", ")})`;
+  const createSql = `CREATE TABLE IF NOT EXISTS ${quoteIdent(tableName)} (${columns.join(", ")})`;
   const indexSqls = (def.indexes || []).map(translateIndex).filter(Boolean);
   return { createSql, indexSqls };
 }
@@ -123,11 +131,15 @@ export function translateIndex(idxSql) {
   const cols = colsRaw.split(",").map((c) => {
     const trimmed = c.trim();
     const nocase = /\bCOLLATE\s+NOCASE\b/i.test(trimmed);
-    if (!nocase) return trimmed;
-    const colOnly = trimmed.replace(/\s+COLLATE\s+NOCASE/i, "").trim();
-    return `LOWER(${colOnly})`;
+    if (!nocase) {
+      const ident = trimmed.replace(/^["`]|["`]$/g, "");
+      return /^[A-Za-z_][\w]*$/.test(ident) ? quoteIdent(ident) : trimmed;
+    }
+    const colOnly = trimmed.replace(/\s+COLLATE\s+NOCASE/i, "").trim().replace(/^["`]|["`]$/g, "");
+    return `LOWER(${quoteIdent(colOnly)})`;
   });
-  const head = `CREATE ${unique || ""}INDEX IF NOT EXISTS ${name} ON ${table}(${cols.join(", ")})`.replace(/\s+/g, " ").trim();
+  const tableIdent = table.replace(/^["`]|["`]$/g, "");
+  const head = `CREATE ${unique || ""}INDEX IF NOT EXISTS ${name} ON ${quoteIdent(tableIdent)}(${cols.join(", ")})`.replace(/\s+/g, " ").trim();
   return whereClause ? `${head} ${whereClause.trim()}` : head;
 }
 

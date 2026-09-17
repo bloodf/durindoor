@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
+import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "./quotaSql.js";
 import {
   canonicalizeQuotaNow,
   normalizeQuotaIdentifier,
@@ -119,6 +119,11 @@ function normalizeAcquire(value, now) {
 }
 
 function acquireWriterLock(db) {
+  if (db.capabilities?.isPostgres) {
+    const row = db.get(QUOTA_WRITE_LOCK_SQL_PG);
+    if (!row) throw new QuotaReservationError("Quota storage is not initialized");
+    return;
+  }
   const lock = db.run(QUOTA_WRITE_LOCK_SQL);
   if ((lock.changes || 0) !== 1) throw new QuotaReservationError("Quota storage is not initialized");
 }

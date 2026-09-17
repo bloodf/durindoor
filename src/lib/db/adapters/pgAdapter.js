@@ -1,55 +1,55 @@
-// PostgreSQL adapter — implements the same `adapter` interface used by
-// the SQLite adapters (`bunSqliteAdapter`, `betterSqliteAdapter`,
-// `nodeSqliteAdapter`, `sqljsAdapter`). Methods: `run`, `get`, `all`,
-// `exec`, `transaction`, `close`, `flush`, `checkpoint` (no-op on PG).
+// PostgreSQL adapter — same `adapter` interface as the SQLite adapters
+// (`run`, `get`, `all`, `exec`, `transaction`, `close`, `flush`,
+// `checkpoint`). Repos stay unchanged: they call those methods
+// synchronously, the way better-sqlite3 does.
 //
-// The interface mirrors the SQLite adapters so the repos (which call
-// `db.run`, `db.get`, `db.all`, `db.exec`, `db.transaction`) are
-// unchanged when the engine is PG. The adapter translates the small
-// set of dialect differences:
+// Production path: a worker thread owns a `pg.Pool` (max 1) and the
+// parent blocks on `Atomics.wait` for each query. That matches the
+// existing SQLite contract (the event loop already blocks on
+// better-sqlite3). Tests inject `clientFactory` and stay async.
 //
-//   - Placeholders: the adapter accepts `?` style placeholders and
-//     rewrites them to `$1, $2, ...` for PG. Repos can keep using `?`.
-//   - lastInsertRowid: the adapter wraps `INSERT` statements and adds
-//     a `RETURNING id` clause when a `BIGSERIAL` column is present in
-//     the target table. The returned `lastInsertRowid` is the bigint
-//     from the sequence. Repos that call `db.run` and read
-//     `lastInsertRowid` keep working.
-//   - Booleans: PG `BOOLEAN` columns return JS booleans, but the
-//     existing repos store 0/1. The adapter exposes a `normalize`
-//     hook for callers that want to coerce 0/1 to boolean; the
-//     default path keeps 0/1 (matching SQLite storage).
-//
-// What the adapter does NOT do:
-//   - It does not manage a pool. A single `pg.Client` is held for the
-//     process lifetime; the mirror is sequential and the repos are
-//     single-writer.
-//   - It does not retry on transient errors. Repos that need
-//     retry-on-conflict already do that themselves.
-//   - It does not auto-reconnect. The `postgresFallback` wrapper is
-//     responsible for catching connection drops and falling back to
-//     SQLite at boot.
+// Dialect translations the adapter owns:
+//   - SQLite DML (`INSERT OR IGNORE`, `datetime('now')`, `COLLATE NOCASE`)
+//   - `?` placeholders → `$1, $2, ...`
+//   - `RETURNING` on known BIGSERIAL tables so `lastInsertRowid` works
 
+import { Worker } from "node:worker_threads";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { rewriteSqliteDml } from "../dialects/postgres/dmlRewrite.js";
+import { isFunction } from "../../../shared/utils/typeChecks.js";
 
 const { Client } = pg;
 
-/**
- * Rewrite `?` placeholders to `$1, $2, ...`. The set of reserved
- * characters inside string literals is approximated by counting
- * single-quote pairs from the start of the SQL. This is a small,
- * deliberate simplification: the repos build SQL with parameterised
- * placeholders only, never with literal `?` characters in strings.
- */
+const AUTINCREMENT_TABLES = new Map([
+  ["usageHistory", "id"],
+  ["tokenSaverEvents", "id"],
+  ["pgCutoverLog", "id"],
+]);
+
+// Resolved lazily: webpack rewrites `import.meta.url` when it bundles this
+// module, and `fileURLToPath` then rejects the value it produces. At module
+// scope that turns a mere import into a build-time crash ("Failed to collect
+// page data"), even for routes that never open a PG connection. Resolving on
+// first use keeps the failure inside the call that actually needs a worker.
+let workerPath = null;
+function resolveWorkerPath() {
+  if (workerPath) return workerPath;
+  workerPath = fileURLToPath(new URL("./pgSyncWorker.cjs", import.meta.url));
+  return workerPath;
+}
+const SAB_BYTES = 8 * 1024 * 1024;
+const HEADER_BYTES = 8;
+const WAIT_MS = 120_000;
+
 function rewritePlaceholders(sql) {
-  if (!sql || sql.indexOf("?") === -1) return { sql, params: undefined };
+  if (!sql || sql.indexOf("?") === -1) return sql;
   let out = "";
   let pi = 0;
   let inSingle = false;
   for (let i = 0; i < sql.length; i += 1) {
     const ch = sql[i];
     if (ch === "'") {
-      // Toggle on single-quote; '' (escaped quote) does not toggle.
       if (inSingle && sql[i + 1] === "'") {
         out += "''";
         i += 1;
@@ -66,24 +66,11 @@ function rewritePlaceholders(sql) {
     }
     out += ch;
   }
-  return { sql: out, params: undefined };
+  return out;
 }
-
-/**
- * Identify tables that have a `BIGSERIAL` (or `SERIAL`) autoincrement
- * column. The adapter adds `RETURNING <col>` to `INSERT` statements
- * targeting these tables so the SQLite-style `lastInsertRowid()` works
- * unchanged.
- */
-const AUTINCREMENT_TABLES = new Map([
-  ["usageHistory", "id"],
-  ["tokenSaverEvents", "id"],
-  ["pgCutoverLog", "id"],
-]);
 
 function detectAutoincrementReturning(sql) {
   if (!/^\s*INSERT\b/i.test(sql)) return null;
-  // Find the first table name after `INSERT INTO` (or `INSERT`).
   const into = sql.match(/INSERT\s+INTO\s+("?[\w]+"?)/i);
   if (!into) return null;
   const rawName = into[1].replace(/"/g, "");
@@ -93,96 +80,244 @@ function detectAutoincrementReturning(sql) {
   return col;
 }
 
+function prepareSql(sql) {
+  const rewrittenDml = rewriteSqliteDml(sql);
+  const rewritten = rewritePlaceholders(rewrittenDml);
+  const returningCol = detectAutoincrementReturning(rewritten);
+  const finalSql = returningCol
+    ? rewritten.replace(/;?\s*$/, "") + ` RETURNING "${returningCol}"`
+    : rewritten;
+  return { finalSql, returningCol };
+}
+
 function paramsObj(params) {
   if (params == null) return undefined;
   if (Array.isArray(params) && params.length === 0) return undefined;
   return params;
 }
 
-/**
- * Open a PG adapter. `options.url` is a libpq connection string. The
- * adapter establishes the connection on the first call and reuses it
- * for the process lifetime.
- *
- * @param {{ url: string, sslmode?: string, clientFactory?: () => any }} options
- *   `clientFactory` is an optional dependency-injection hook used by the
- *   unit tests; production callers omit it and get the canonical
- *   `new pg.Client({...})` factory.
- */
-export async function createPostgresAdapter({ url, sslmode, clientFactory } = {}) {
-  if (!url) throw new Error("[DB][pg] url is required");
-  // Build the connection string with optional sslmode override. libpq
-  // understands ?sslmode=... so we just append if not already present.
-  let connStr = url;
-  if (sslmode && !/[?&]sslmode=/i.test(connStr)) {
-    connStr += (connStr.indexOf("?") === -1 ? "?" : "&") + "sslmode=" + encodeURIComponent(sslmode);
+function sanitizePgError(err) {
+  const message = String(err && err.message || err)
+    .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "postgres://***");
+  const out = new Error(message);
+  if (err && err.code) out.code = err.code;
+  return out;
+}
+
+function appendSslmode(url, sslmode) {
+  const mode = sslmode || process.env.DURINDOOR_PG_SSLMODE;
+  if (!mode) return url;
+  if (/[?&]sslmode=/i.test(url)) return url;
+  return url + (url.indexOf("?") === -1 ? "?" : "&") + "sslmode=" + encodeURIComponent(mode);
+}
+
+function createSyncBridge(url) {
+  const sab = new SharedArrayBuffer(SAB_BYTES);
+  const i32 = new Int32Array(sab, 0, 2);
+  const worker = new Worker(resolveWorkerPath(), { workerData: { url, sab } });
+  let closed = false;
+
+  function call(msg) {
+    if (closed) throw new Error("[DB][pg] adapter is closed");
+    Atomics.store(i32, 0, 0);
+    worker.postMessage(msg);
+    const rc = Atomics.wait(i32, 0, 0, WAIT_MS);
+    if (rc === "timed-out") {
+      throw new Error("[DB][pg] query timed out");
+    }
+    const status = Atomics.load(i32, 0);
+    const len = Atomics.load(i32, 1);
+    const json = Buffer.from(sab, HEADER_BYTES, len).toString("utf8");
+    const parsed = json ? JSON.parse(json) : {};
+    if (status !== 1) {
+      throw sanitizePgError(parsed);
+    }
+    return parsed;
   }
 
-  const client = clientFactory
-    ? clientFactory({ connectionString: connStr, keepAlive: true })
-    : new Client({
-    connectionString: connStr,
-    // Keep the default keepAlive on so a half-open socket is detected
-    // quickly. PG 19 will respect direct TLS negotiation automatically
-    // when the cluster supports it.
-    keepAlive: true,
-  });
-  await client.connect();
+  return {
+    query(sql, params) {
+      return call({ op: "query", sql, params: paramsObj(params) || [] });
+    },
+    exec(sql) {
+      return call({ op: "exec", sql });
+    },
+    begin() {
+      return call({ op: "begin" });
+    },
+    commit() {
+      return call({ op: "commit" });
+    },
+    rollback() {
+      return call({ op: "rollback" });
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+      try { call({ op: "close" }); } catch { /* noop */ }
+      try { await worker.terminate(); } catch { /* noop */ }
+    },
+  };
+}
 
-  // Detect the cluster's major version once at connect time. Used by
-  // postgresCapabilityGate to decide which features are exercisable.
+function mapRunResult(res, returningCol) {
+  const lastInsertRowid = returningCol && res.rows && res.rows[0]
+    ? Number(res.rows[0][returningCol])
+    : null;
+  return { changes: res.rowCount ?? 0, lastInsertRowid };
+}
+
+function capabilitiesOf(serverVersionNum, serverVersion) {
+  return Object.freeze({
+    // Real transactions exist; quota reservations take a FOR UPDATE lock.
+    sharedFileTransactions: true,
+    isPostgres: true,
+    serverVersionNum,
+    serverVersion,
+  });
+}
+
+async function readServerVersion(queryFn) {
   let serverVersionNum = 0;
   let serverVersion = "unknown";
   try {
-    const r = await client.query("SHOW server_version_num");
-    serverVersionNum = parseInt(r.rows[0].server_version_num, 10) || 0;
-    const v = await client.query("SHOW server_version");
-    serverVersion = v.rows[0].server_version || "unknown";
+    const r = await queryFn("SHOW server_version_num");
+    const row = r.rows && r.rows[0];
+    serverVersionNum = parseInt(row && row.server_version_num, 10) || 0;
+    const v = await queryFn("SHOW server_version");
+    const vrow = v.rows && v.rows[0];
+    serverVersion = (vrow && vrow.server_version) || "unknown";
   } catch (e) {
-    // SHOW is a PG meta-command that the libpq driver translates to
-    // a query against pg_settings. If it fails, the cluster is in a
-    // degraded state but we still have a working connection.
     serverVersion = `unknown (${e.message})`;
   }
+  return { serverVersionNum, serverVersion };
+}
+
+/**
+ * Open a PG adapter. `options.url` is a libpq connection string.
+ *
+ * @param {{ url: string, sslmode?: string, clientFactory?: () => any }} options
+ *   `clientFactory` is the unit-test seam (async `pg.Client` mock).
+ *   Production omits it and uses the sync worker bridge.
+ */
+export async function createPostgresAdapter({ url, sslmode, clientFactory } = {}) {
+  if (!url) throw new Error("[DB][pg] url is required");
+  const connStr = appendSslmode(url, sslmode);
+
+  if (clientFactory) {
+    return createAsyncAdapter(connStr, clientFactory);
+  }
+  return createSyncAdapter(connStr);
+}
+
+async function createSyncAdapter(connStr) {
+  const bridge = createSyncBridge(connStr);
+  const { serverVersionNum, serverVersion } = await readServerVersion(async (sql) =>
+    bridge.query(sql)
+  );
+
+  let txDepth = 0;
 
   function run(sql, params = []) {
-    const { sql: rewritten } = rewritePlaceholders(sql);
-    const returningCol = detectAutoincrementReturning(rewritten);
-    const finalSql = returningCol
-      ? rewritten.replace(/;?\s*$/, "") + ` RETURNING "${returningCol}"`
-      : rewritten;
+    const { finalSql, returningCol } = prepareSql(sql);
+    const res = bridge.query(finalSql, params);
+    return mapRunResult(res, returningCol);
+  }
+
+  function get(sql, params = []) {
+    const { finalSql } = prepareSql(sql);
+    const res = bridge.query(finalSql, params);
+    return res.rows[0];
+  }
+
+  function all(sql, params = []) {
+    const { finalSql } = prepareSql(sql);
+    const res = bridge.query(finalSql, params);
+    return res.rows;
+  }
+
+  function exec(sql) {
+    const rewritten = rewriteSqliteDml(sql);
+    bridge.exec(rewritten);
+  }
+
+  function transaction(fn) {
+    const nested = txDepth > 0;
+    if (!nested) bridge.begin();
+    txDepth += 1;
+    try {
+      const result = fn();
+      if (result && isFunction(result.then)) {
+        txDepth -= 1;
+        if (!nested) {
+          try { bridge.rollback(); } catch { /* noop */ }
+        }
+        throw new Error("[DB][pg] transaction callback must be synchronous");
+      }
+      txDepth -= 1;
+      if (!nested) bridge.commit();
+      return result;
+    } catch (e) {
+      txDepth -= 1;
+      if (!nested) {
+        try { bridge.rollback(); } catch { /* noop */ }
+      }
+      throw e;
+    }
+  }
+
+  return Object.freeze({
+    driver: "pg",
+    capabilities: capabilitiesOf(serverVersionNum, serverVersion),
+    run,
+    get,
+    all,
+    exec,
+    transaction,
+    close: () => bridge.close(),
+    flush() { /* durable */ },
+    async checkpoint() { /* no WAL */ },
+    raw: null,
+  });
+}
+
+async function createAsyncAdapter(connStr, clientFactory) {
+  const client = clientFactory
+    ? clientFactory({ connectionString: connStr, keepAlive: true })
+    : new Client({ connectionString: connStr, keepAlive: true });
+  await client.connect();
+
+  const { serverVersionNum, serverVersion } = await readServerVersion((sql) =>
+    client.query(sql)
+  );
+
+  function run(sql, params = []) {
+    const { finalSql, returningCol } = prepareSql(sql);
     return (async () => {
       const res = await client.query(finalSql, paramsObj(params));
-      const lastInsertRowid = returningCol && res.rows[0]
-        ? Number(res.rows[0][returningCol])
-        : null;
-      return { changes: res.rowCount ?? 0, lastInsertRowid };
+      return mapRunResult(res, returningCol);
     })();
   }
 
   function get(sql, params = []) {
-    const { sql: rewritten } = rewritePlaceholders(sql);
+    const { finalSql } = prepareSql(sql);
     return (async () => {
-      const res = await client.query(rewritten, paramsObj(params));
+      const res = await client.query(finalSql, paramsObj(params));
       return res.rows[0];
     })();
   }
 
   function all(sql, params = []) {
-    const { sql: rewritten } = rewritePlaceholders(sql);
+    const { finalSql } = prepareSql(sql);
     return (async () => {
-      const res = await client.query(rewritten, paramsObj(params));
+      const res = await client.query(finalSql, paramsObj(params));
       return res.rows;
     })();
   }
 
   function exec(sql) {
-    // `exec` may be called with a multi-statement string. PG's
-    // `client.query` does not support multi-statement strings; the
-    // caller (the migration set) is expected to call `exec` once per
-    // statement. We split on `;` followed by a newline or end-of-string
-    // to keep the SQLite-shape contract.
-    const statements = sql
+    const rewritten = rewriteSqliteDml(sql);
+    const statements = rewritten
       .split(/;\s*(?=\n|$)/m)
       .map((s) => s.trim())
       .filter(Boolean);
@@ -193,9 +328,6 @@ export async function createPostgresAdapter({ url, sslmode, clientFactory } = {}
     })();
   }
 
-  // PG transactions use `BEGIN` / `COMMIT` / `ROLLBACK` on the same
-  // client; we keep the SQLite-style `transaction(() => ...)` shape by
-  // serialising the callback on the adapter.
   let txDepth = 0;
   function transaction(fn) {
     const sp = `sp_${Math.random().toString(36).slice(2)}`;
@@ -213,10 +345,10 @@ export async function createPostgresAdapter({ url, sslmode, clientFactory } = {}
         try {
           await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
           await client.query(`RELEASE SAVEPOINT ${sp}`);
-        } catch {}
+        } catch { /* noop */ }
         txDepth -= 1;
         if (txDepth === 0) {
-          try { await client.query("ROLLBACK"); } catch {}
+          try { await client.query("ROLLBACK"); } catch { /* noop */ }
         }
         throw e;
       }
@@ -230,29 +362,19 @@ export async function createPostgresAdapter({ url, sslmode, clientFactory } = {}
     }
   }
 
-  // PG is durable by default — no in-memory flush. We expose the method
-  // for interface symmetry with the SQLite adapters.
-  function flush() { /* no-op on PG */ }
-  // PG has no WAL file to checkpoint; the method exists for the
-  // interface.
-  async function checkpoint() { /* no-op on PG */ }
-
   return Object.freeze({
     driver: "pg",
-    capabilities: Object.freeze({
-      sharedFileTransactions: false,
-      isPostgres: true,
-      serverVersionNum,
-      serverVersion,
-    }),
+    capabilities: capabilitiesOf(serverVersionNum, serverVersion),
     run,
     get,
     all,
     exec,
     transaction,
     close,
-    flush,
-    checkpoint,
+    flush() { /* no-op */ },
+    async checkpoint() { /* no-op */ },
     raw: client,
   });
 }
+
+export { rewritePlaceholders, prepareSql, appendSslmode };

@@ -12,6 +12,7 @@ export const SECRET_SETTING_KEYS = Object.freeze([
   "password",
   "passwordSessionEpoch",
   "mitmSudoEncrypted",
+  "postgresUrl",
 ]);
 
 /**

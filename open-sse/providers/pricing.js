@@ -160,7 +160,11 @@ export const MODEL_PRICING = {
   "claude-sonnet-4-5-20250929": { input: 3.00, output: 15.00, cached: 0.30, reasoning: 15.00, cache_creation: 3.75 },
   "claude-haiku-4-5-20251001": { input: 1.00, output: 5.00, cached: 0.10, reasoning: 5.00, cache_creation: 1.25 },
   "claude-sonnet-4-20250514": { input: 3.00, output: 15.00, cached: 1.50, reasoning: 15.00, cache_creation: 3.00 },
-  "claude-opus-4-20250514": { input: 15.00, output: 25.00, cached: 7.50, reasoning: 112.50, cache_creation: 15.00 },
+  // Anthropic lists Claude Opus 4 at $15 input / $75 output per 1M.
+  // https://docs.anthropic.com/en/docs/about-claude/pricing
+  // The reasoning rate here (112.50 = 1.5 x 75) was left behind when output was
+  // edited down to 25.00, so the row billed reasoning at 4.5x its own output.
+  "claude-opus-4-20250514": { input: 15.00, output: 75.00, cached: 1.50, reasoning: 112.50, cache_creation: 18.75 },
   "claude-3-5-sonnet-20241022": { input: 3.00, output: 15.00, cached: 1.50, reasoning: 15.00, cache_creation: 3.00 },
   "claude-haiku-4.5": { input: 0.50, output: 2.50, cached: 0.05, reasoning: 3.75, cache_creation: 0.50 },
   "claude-opus-4.1": { input: 5.00, output: 25.00, cached: 0.50, reasoning: 37.50, cache_creation: 5.00 },
@@ -435,6 +439,18 @@ export const PATTERN_PRICING = [
 // --- Grok ---
 { pattern: "grok-code-*", pricing: { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 } },
 
+// Grok 4.5/4.6 publish exact rates and a long-context tier that applies to
+// requests *reaching* 200k prompt tokens, not only those exceeding it.
+// https://docs.x.ai/developers/pricing
+// Reasoning is a subset of output here, so it carries the plain output rate.
+// 4.5 and 4.6 differ only in the cached rate ($0.30 vs $0.50).
+// Patterns are anchored to the variant boundary so a future `grok-4.55`
+// cannot inherit 4.5 rates from a greedy suffix match.
+{ pattern: "grok-4.5", pricing: { input: 2.00, output: 6.00, cached: 0.30, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.5-*", pricing: { input: 2.00, output: 6.00, cached: 0.30, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.6", pricing: { input: 2.00, output: 6.00, cached: 0.50, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.6-*", pricing: { input: 2.00, output: 6.00, cached: 0.50, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+
 { pattern: "grok-*", pricing: { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 } },
 
 /** Meta Muse pattern rates; first match wins, so specializations precede the family fallback. */
@@ -542,8 +558,15 @@ export function calculateCostFromTokens(tokens, pricing) {
   // are subsets, so subtract both to avoid charging them at the full input rate.
   const nonCachedInput = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
 
-  const inputMultiplier = inputTokens > pricing.longContextThreshold ? pricing.longContextInputMultiplier || 1 : 1;
-  const outputMultiplier = inputTokens > pricing.longContextThreshold ? pricing.longContextOutputMultiplier || 1 : 1;
+  // Long-context tiers. Most vendors bill the higher rate only once a request
+  // exceeds the threshold; xAI applies it to requests that *reach* it, so a
+  // row may opt into an inclusive comparison. Both multipliers default to 1,
+  // so a row without a tier is unaffected.
+  const overLongContext = pricing.longContextInclusive ?
+    inputTokens >= pricing.longContextThreshold :
+    inputTokens > pricing.longContextThreshold;
+  const inputMultiplier = overLongContext ? pricing.longContextInputMultiplier || 1 : 1;
+  const outputMultiplier = overLongContext ? pricing.longContextOutputMultiplier || 1 : 1;
   cost += nonCachedInput * (pricing.input * inputMultiplier / 1000000);
 
   if (cachedTokens > 0) {

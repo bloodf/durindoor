@@ -33,6 +33,23 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
   const [autoDetected, setAutoDetected] = useState(false);
   const [idcCredentials, setIdcCredentials] = useState(null);
 
+  // Clear every credential field when the modal closes. A refresh token, an API
+  // key, or a pasted CLI-proxy JSON blob otherwise survived a cancel and was
+  // still populated on the next open, leaving a secret sitting in a form field.
+  useEffect(() => {
+    if (isOpen) return;
+    setSelectedMethod(null);
+    setIdcStartUrl("");
+    setIdcRegion("us-east-1");
+    setRefreshToken("");
+    setCliProxyJson("");
+    setApiKey("");
+    setApiKeyRegion("us-east-1");
+    setError(null);
+    setAutoDetected(false);
+    setIdcCredentials(null);
+  }, [isOpen]);
+
   // Auto-detect token when import method is selected
   useEffect(() => {
     if (selectedMethod !== "import" || !isOpen) return;

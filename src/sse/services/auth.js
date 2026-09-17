@@ -415,6 +415,10 @@ async function buildPublicNoAuthCredential(providerId) {
  * @param {string} provider - Provider name
  * @param {Set<string>|string|null} excludeConnectionIds - Connection ID(s) to exclude (for retry with next account)
  * @param {string|null} model - Model name for per-model rate limit filtering
+ * @param {object} [options] - Selection options. `options.strictConnectionId`
+ *   restricts selection to that single account for account-bound resources
+ *   (e.g. polling a video job, which only exists on its creating account):
+ *   no substitute is chosen when it is missing, inactive, or cooling down.
  */
 export async function getProviderCredentials(provider, excludeConnectionIds = null, model = null, options = {}) {
   const signal = options?.signal || null;
@@ -470,7 +474,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     throwIfAborted(signal);
 
-    const boundedModel = resolveFallbackModelScope(providerId, model, { webFetch: options?.webFetch === true });
+    const boundedModel = resolveFallbackModelScope(providerId, model, { webFetch: options?.webFetch === true, videoPoll: options?.videoPoll === true });
 
     // API-key provider-account relations and combo allow-lists both narrow the
     // eligible pool. Their intersection is authoritative; a derived empty
@@ -487,9 +491,15 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     const scopeRestricted = scopedConnectionIds !== null;
     const scopedHasOverlap = !scopeRestricted || scopedConnectionIds.size > 0;
+    // Account-bound resources (a video job lives on the account that created
+    // it) must never fall back to a different owner, even when the pinned
+    // account is missing, deactivated or cooling down. Substituting another
+    // account there cannot succeed upstream and bills the wrong account.
+    const strictConnectionId = options?.strictConnectionId || null;
     const connections = scopedHasOverlap ?
     (await getProviderConnections({ provider: providerId, isActive: true })).filter(
-      (connection) => !scopeRestricted || scopedConnectionIds.has(connection.id)
+      (connection) => (!scopeRestricted || scopedConnectionIds.has(connection.id)) &&
+      (!strictConnectionId || connection.id === strictConnectionId)
     ) :
     [];
     throwIfAborted(signal);
@@ -1123,7 +1133,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const providerRuleConnectionWide = fallbackResult.scope === "connection";
   const fallbackModel = resolveFallbackModelScope(provider, model, {
     accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide,
-    webFetch: context?.webFetch === true
+    webFetch: context?.webFetch === true,
+    videoPoll: context?.videoPoll === true
   });
   let atomicApplied = false;
   try {
@@ -1137,7 +1148,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         cooldownMs: legacyCooldownMs,
         backoffLevel: newBackoffLevel ?? backoffLevel,
         observedAt,
-        webFetch: context?.webFetch === true
+        webFetch: context?.webFetch === true,
+        videoPoll: context?.videoPoll === true
       }, { signal });
       atomicApplied = true;
     }
@@ -1207,7 +1219,7 @@ export async function clearAccountError(connectionId, currentConnection, model =
   context.attemptStartedAt :
   Date.now();
   const provider = context?.provider || conn?.provider;
-  const fallbackModel = resolveFallbackModelScope(provider, model, { webFetch: context?.webFetch === true });
+  const fallbackModel = resolveFallbackModelScope(provider, model, { webFetch: context?.webFetch === true, videoPoll: context?.videoPoll === true });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");

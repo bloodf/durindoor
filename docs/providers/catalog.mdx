@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 235 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 236 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -55,8 +55,8 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Chutes AI | `chutes` |  | 0 | [site](https://chutes.ai) |
 | Clarifai | `clarifai` | apikey | 0 | [site](https://docs.clarifai.com) |
 | Claude Code | `claude` | oauth | 7 | [site](https://claude.ai) |
-| Cline | `cline` | oauth | 9 | [site](https://cline.bot) |
-| ClinePass | `clinepass` | oauth, apikey | 10 | [site](https://cline.bot) |
+| Cline | `cline` | oauth, apikey | 14 | [site](https://cline.bot) |
+| ClinePass | `clinepass` | apikey, oauth | 10 | [site](https://cline.bot) |
 | CLIProxyAPI | `cliproxyapi` | apikey | 0 | [site](https://github.com/router-for-me/CLIProxyAPI) |
 | Cloudflare | `cloudflare-ai` | apikey | 48 | [site](https://developers.cloudflare.com/workers-ai/) |
 | CodeBuddy CN | `codebuddy-cn` | oauth, apikey | 13 | [site](https://copilot.tencent.com) |
@@ -226,6 +226,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | The Old LLM | `theoldllm` | none | 26 | [site](https://theoldllm.vercel.app) |
 | TinyFish Fetch | `tinyfish` | apikey | 0 | [site](https://docs.tinyfish.ai/fetch-api) |
 | Together AI | `together` | apikey | 6 | [site](https://www.together.ai) |
+| Token Market | `tokenmarket` | apikey | 5 | [site](https://www.tokensmarket.ai) |
 | TokenRouter | `tokenrouter` | freeTier | 23 | [site](https://tokenrouter.com) |
 | Topaz | `topaz` | apikey | 0 | [site](https://topazlabs.com) |
 | Tortoise TTS | `tortoise` | none | 0 | [site](https://github.com/neonbjb/tortoise-tts) |

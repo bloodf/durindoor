@@ -115,6 +115,7 @@ vi.mock("../../open-sse/providers/capabilities.js", () => ({
 
 vi.mock("../../open-sse/translator/concerns/modality.js", () => ({
   stripUnsupportedModalities: vi.fn(() => false),
+  hasMediaBlocks: vi.fn(() => false),
 }));
 
 vi.mock("../../open-sse/translator/concerns/prefetch.js", () => ({

@@ -17,6 +17,8 @@ import {
   stripSettingKeys,
 } from "@/lib/settings/settingsPatchAuth";
 import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
+import { isOperatorRequest } from "@/dashboardGuard";
 import { resolveObservabilityEnabled } from "@/lib/db/repos/requestDetailsRepo";
 
 const SETTINGS_RESPONSE_HEADERS = {
@@ -25,11 +27,33 @@ const SETTINGS_RESPONSE_HEADERS = {
 
 const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
 
-export async function GET() {
+/**
+ * Shape settings for a response.
+ *
+ * `password`, `passwordSessionEpoch`, `oidcClientSecret` and `mitmSudoEncrypted`
+ * are withheld from every caller. `outboundProxyUrl` may embed
+ * `user:password@`, so its userinfo is redacted unless the caller proved
+ * dashboard or CLI identity: an application API key is an inference
+ * credential, not an operator session, and must not read proxy credentials.
+ *
+ * @param {object} settings
+ * @param {{ privileged: boolean }} options
+ */
+function sanitizeSettingsForResponse(settings, { privileged }) {
+  const { password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } =
+    settings;
+  safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+  if (!privileged && safeSettings.outboundProxyUrl) {
+    safeSettings.outboundProxyUrl = redactProxyUrlCredentials(safeSettings.outboundProxyUrl);
+  }
+  return { safeSettings, password };
+}
+
+export async function GET(request) {
   try {
     const settings = await getSettings();
-    const { password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
-    safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+    const privileged = await isOperatorRequest(request);
+    const { safeSettings, password } = sanitizeSettingsForResponse(settings, { privileged });
 
     const enableObservability = resolveObservabilityEnabled(settings);
     const enableTranslator = process.env.ENABLE_TRANSLATOR === "true";
@@ -289,8 +313,12 @@ export async function PATCH(request) {
       resetComboScoring();
     }
 
-    const { password, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } = settings;
-    safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+    // Write authority and read authority differ: an open local dashboard may
+    // not flip auth-critical keys, but it must still see its own proxy URL
+    // verbatim, because the value round-trips through the edit form.
+    const { safeSettings } = sanitizeSettingsForResponse(settings, {
+      privileged: await isOperatorRequest(request),
+    });
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch {
     console.error("[settings] update failed");

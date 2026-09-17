@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
 import { isString } from "../../../shared/utils/typeChecks.js";
+import { isOperatorRequest } from "@/dashboardGuard";
+import { sanitizeProxyPool } from "@/shared/utils/proxyUrlRedaction.js";
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -55,16 +57,17 @@ export async function GET(request) {
     }
 
     const proxyPools = await getProxyPools(filter);
+    const privileged = await isOperatorRequest(request);
 
     if (!includeUsage) {
-      return NextResponse.json({ proxyPools });
+      return NextResponse.json({ proxyPools: proxyPools.map((pool) => sanitizeProxyPool(pool, privileged)) });
     }
 
     const connections = await getProviderConnections();
     const usageMap = buildUsageMap(connections);
 
     const enrichedProxyPools = proxyPools.map((pool) => ({
-      ...pool,
+      ...sanitizeProxyPool(pool, privileged),
       boundConnectionCount: usageMap.get(pool.id) || 0
     }));
 
@@ -86,7 +89,10 @@ export async function POST(request) {
     }
 
     const proxyPool = await createProxyPool(normalized);
-    return NextResponse.json({ proxyPool }, { status: 201 });
+    // Echoing the created pool is a read of a stored credential; redact it for
+    // the same callers the list and detail routes redact for.
+    const privileged = await isOperatorRequest(request);
+    return NextResponse.json({ proxyPool: sanitizeProxyPool(proxyPool, privileged) }, { status: 201 });
   } catch (error) {
     console.log("Error creating proxy pool:", error);
     return NextResponse.json({ error: "Failed to create proxy pool" }, { status: 500 });

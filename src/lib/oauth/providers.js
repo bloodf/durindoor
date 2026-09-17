@@ -40,11 +40,13 @@ import {
   decodeXaiIdTokenEmail,
   extractEmailFromAccessToken,
   extractCodexAccountInfo,
+  fetchClaudeProfile,
+  claudeProfileFields,
   fetchKiroProfileArn } from
 "./providerHelpers";
 import { isString } from "../../shared/utils/typeChecks.js";
 
-export { extractCodexAccountInfo, fetchKiroProfileArn };
+export { extractCodexAccountInfo, fetchKiroProfileArn, fetchClaudeProfile, claudeProfileFields };
 
 // Inlined from services/xai.js to keep web route bundle free of `open` (CLI-only) package
 let cachedXaiDiscovery = null;
@@ -121,11 +123,18 @@ const PROVIDERS = {
 
       return await response.json();
     },
-    mapTokens: (tokens) => ({
+    postExchange: async (tokens, proxyOptions) => {
+      // Best-effort: valid tokens must not be thrown away because the profile
+      // call failed. A strict proxy pool still aborts inside fetchClaudeProfile.
+      const profile = await fetchClaudeProfile(tokens.access_token, CLAUDE_CONFIG.profileUrl, proxyOptions);
+      return { profile };
+    },
+    mapTokens: (tokens, extra) => ({
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresIn: tokens.expires_in,
-      scope: tokens.scope
+      scope: tokens.scope,
+      ...claudeProfileFields(extra?.profile)
     })
   },
 
@@ -1838,5 +1847,49 @@ export async function backfillCodexEmails() {
   } catch (err) {
     codexBackfillDone = false;
     console.log("backfillCodexEmails failed:", err?.message || err);
+  }
+}
+
+// Run-once guard across the process lifetime
+let claudeBackfillDone = false;
+
+/**
+ * Backfill email + organization plan info for claude OAuth connections that
+ * predate the profile fetch.
+ *
+ * Unlike `backfillCodexEmails` (a local idToken decode) this makes one network
+ * call per affected connection, so callers MUST NOT await it — the guard resets
+ * on failure and the next call retries.
+ */
+export async function backfillClaudeProfiles() {
+  if (claudeBackfillDone) return;
+  claudeBackfillDone = true;
+  try {
+    const { getProviderConnections, updateProviderConnection } = await import("@/lib/localDb");
+    const connections = await getProviderConnections();
+    const targets = connections.filter((c) => (
+      c.provider === "claude" &&
+      c.authType === "oauth" &&
+      !!c.accessToken &&
+      (!c.email || !c.providerSpecificData?.claudeAccountUuid)));
+
+    for (const conn of targets) {
+      const profile = await fetchClaudeProfile(conn.accessToken, CLAUDE_CONFIG.profileUrl);
+      const fields = claudeProfileFields(profile);
+      const patch = {};
+      if (!conn.email && fields.email) patch.email = fields.email;
+      if (fields.providerSpecificData) {
+        patch.providerSpecificData = {
+          ...(conn.providerSpecificData || {}),
+          ...fields.providerSpecificData
+        };
+      }
+      if (Object.keys(patch).length) {
+        await updateProviderConnection(conn.id, patch);
+      }
+    }
+  } catch (err) {
+    claudeBackfillDone = false;
+    console.log("backfillClaudeProfiles failed:", err?.message || err);
   }
 }

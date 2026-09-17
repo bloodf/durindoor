@@ -5,7 +5,7 @@ import { FORMATS } from "../formats.js";
 
 // Placeholder text inserted where a media block was removed.
 // Current turn: explain the active model can't read what the user just sent.
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const PLACEHOLDER_CURRENT = {
   vision: "[image omitted: model has no vision support]",
   audioInput: "[audio omitted: model has no audio support]",
@@ -204,4 +204,36 @@ export function stripUnsupportedModalities(body, sourceFormat, caps) {
       stripOpenAI(body, caps);
   }
   return true;
+}
+
+// Property names `inlineData`/`fileData` are media-only in Gemini shapes; the quoted
+// `type` values cover Claude (image/document), OpenAI chat (image_url / input_audio /
+// file) and Responses (input_image / input_file).
+const MEDIA_MARKER_RE = /"type"\s*:\s*"(?:image|document|image_url|input_image|input_file|input_audio|audio_url|file)"|"inlineData"|"fileData"/;
+
+/**
+ * True when the request body carries any media block (image / audio / document), in
+ * any wire format.
+ *
+ * Used to skip the behavioral style-prompt injectors (caveman, ponytail): on
+ * susceptible models a terse/style system prompt measurably degrades multimodal
+ * grounding, so a request carrying an image keeps the model's full instructions.
+ *
+ * Deliberately a scan of the serialized body rather than a per-format tree walk, so
+ * every wire shape — including Kiro's `conversationState` envelope and formats added
+ * later — is covered by one implementation that cannot drift per format. Matching is
+ * anchored on `"type": "<media>"` rather than a bare word, so a tool schema with an
+ * `image` *property name* does not trip it.
+ *
+ * @param {unknown} body - request body in any source format
+ * @returns {boolean} whether the body carries at least one media block
+ */
+export function hasMediaBlocks(body) {
+  if (!body || !isObject(body)) return false;
+  try {
+    return MEDIA_MARKER_RE.test(JSON.stringify(body));
+  } catch {
+    // Circular or non-serializable body: no evidence of media, so do not gate.
+    return false;
+  }
 }

@@ -50,7 +50,7 @@ vi.mock("@/lib/auth/trustedPeer", () => ({
 }));
 vi.mock("@/mitm/controlProof", async () => await import("../../src/mitm/controlProof.js"));
 
-const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
+const { proxy, __test__, isOperatorRequest } = await import("../../src/dashboardGuard.js");
 
 function request(pathname, headers = {}, method = "GET") {
   const normalizedHeaders = new Headers(headers);
@@ -682,14 +682,23 @@ describe("dashboard guard management API auth", () => {
       expect(response.status).toBe(401);
       expect(response.body.error).toBe("Unauthorized");
     });
-    it(`rejects API-key-only remote GET ${path}`, async () => {
+    it(`allows API-key remote GET ${path}`, async () => {
       mocks.validateApiKey.mockResolvedValue(true);
       const response = await proxy(request(path, {
         host: "router.example.com",
         authorization: "Bearer sk-valid",
       }));
+      expect(response).toBe(mocks.nextResponse);
+      expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
+    });
+
+    it(`rejects an invalid API key on remote GET ${path}`, async () => {
+      mocks.validateApiKey.mockResolvedValue(false);
+      const response = await proxy(request(path, {
+        host: "router.example.com",
+        authorization: "Bearer sk-bogus",
+      }));
       expect(response.status).toBe(401);
-      expect(mocks.validateApiKey).not.toHaveBeenCalled();
     });
 
     it(`allows remote JWT access to GET ${path}`, async () => {
@@ -802,6 +811,244 @@ describe("dashboard guard management API auth", () => {
     for (const path of ["/api/keys", "/api/oauth/status", "/api/combos"]) {
       const response = await proxy(request(path, { host: "router.example.com" }));
       expect(response.status).toBe(401);
+    }
+  });
+
+  it("allows remote management API with a valid application API key", async () => {
+    mocks.validateApiKey.mockResolvedValue(true);
+    for (const path of ["/api/combos", "/api/keys", "/api/providers", "/api/settings"]) {
+      const response = await proxy(request(path, {
+        host: "router.example.com",
+        authorization: "Bearer sk-valid",
+      }));
+      expect(response, `${path} must accept an API key`).toBe(mocks.nextResponse);
+    }
+  });
+
+  it("rejects an invalid application API key on the management API", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    const response = await proxy(request("/api/combos", {
+      host: "router.example.com",
+      authorization: "Bearer sk-bogus",
+    }));
+    expect(response.status).toBe(401);
+  });
+
+  it("never lets an API key reveal a stored secret, in any spelling", async () => {
+    mocks.validateApiKey.mockResolvedValue(true);
+    for (const path of [
+      "/api/keys/k1/reveal",
+      "/api/mcp-gateway/keys/g1/reveal",
+      // Percent-encoded leaf: Next resolves it to the same reveal route, so a
+      // raw `endsWith("/reveal")` test would hand the secret to an API key.
+      "/api/keys/k1/%72eveal",
+      "/api/mcp-gateway/keys/g1/%72eveal",
+      // The gateway key detail route returns the raw key for `?reveal=1`,
+      // which no path test catches at all.
+      "/api/mcp-gateway/keys/g1?reveal=1",
+      "/api/keys/k1?reveal=1",
+    ]) {
+      const response = await proxy(request(path, {
+        host: "router.example.com",
+        authorization: "Bearer sk-valid",
+      }));
+      expect(response.status, `${path} must refuse an API key`).toBe(401);
+    }
+  });
+
+  it("keeps strict path lists closed against encoded spellings", async () => {
+    // LOCAL_ONLY and ALWAYS_PROTECTED leaves sit under broader management
+    // prefixes. If they matched a raw path while the management gate matched a
+    // decoded one, an encoded character would skip the strict list and land on
+    // the weaker gate, which now accepts an application API key.
+    mocks.validateApiKey.mockResolvedValue(true);
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    for (const path of [
+      "/api/cli-tools/%61ntigravity-mitm",
+      "/api/oauth/cursor/%61uto-import",
+      "/api/settings/%64atabase",
+    ]) {
+      const response = await proxy(request(path, {
+        host: "router.example.com",
+        authorization: "Bearer sk-valid",
+      }));
+      expect(
+        [401, 403],
+        `${path} must stay on its strict gate (got ${response.status})`,
+      ).toContain(response.status);
+    }
+  });
+
+  it("keeps gateway CRUD and OAuth actions on management auth while protocol surfaces are excluded", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    for (const path of [
+      "/api/mcp-gateway/keys",
+      "/api/mcp-gateway/instances",
+      "/api/mcp-gateway/oauth/i1/authorize",
+      "/api/mcp-gateway/oauth/i1/status",
+    ]) {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.status, `${path} must require management auth`).toBe(401);
+    }
+    for (const path of ["/api/mcp-gateway", "/api/mcp-gateway/sse", "/api/mcp-gateway/message"]) {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.body?.error, `${path} must stay on gateway-key auth`).toBe("gateway key required");
+    }
+  });
+
+  it("lets an API key drive the gateway OAuth connect flow", async () => {
+    mocks.validateApiKey.mockResolvedValue(true);
+    for (const path of ["/api/mcp-gateway/oauth/i1/authorize", "/api/mcp-gateway/oauth/i1/status"]) {
+      const response = await proxy(request(path, {
+        host: "router.example.com",
+        authorization: "Bearer sk-valid",
+      }));
+      expect(response, `${path} must accept an API key`).toBe(mocks.nextResponse);
+    }
+  });
+
+  it("keeps the credential-free OAuth callback and CIMD leaves off the management gate", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    // The upstream authorization server fetches CIMD server-to-server.
+    expect(await proxy(request("/api/mcp-gateway/oauth/i1/client-metadata", {
+      host: "router.example.com",
+    }))).toBe(mocks.nextResponse);
+    // The callback is an upstream browser redirect: it keeps the dashboard's
+    // login policy (requireLogin=false here), never the API-key gate.
+    expect(await proxy(request("/api/mcp-gateway/oauth/i1/callback?code=x&state=y", {
+      host: "router.example.com",
+    }))).toBe(mocks.nextResponse);
+  });
+
+  it("rejects the OAuth callback when dashboard login is required and absent", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    const response = await proxy(request("/api/mcp-gateway/oauth/i1/callback?code=x&state=y", {
+      host: "router.example.com",
+    }));
+    expect(response.status).toBe(401);
+  });
+
+  it("refuses to exempt a deeper or encoded path that merely ends in an OAuth leaf", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    for (const path of [
+      "/api/mcp-gateway/oauth/a/b/callback",
+      "/api/mcp-gateway/oauth/a/b/client-metadata",
+      "/api/mcp-gateway/oauth/i1/authorize/nested/callback",
+    ]) {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.status, `${path} must not receive an auth exemption`).toBe(401);
+    }
+  });
+
+  it("treats an encoded OAuth leaf exactly like its plain spelling", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    // Next resolves the encoded spelling to the same action, so the guard must
+    // decode before matching: an encoded leaf may never gain more access than
+    // the plain one. `callback` is credential-gated, so both spellings 401.
+    for (const path of [
+      "/api/mcp-gateway/oauth/i1/callback",
+      "/api/mcp-gateway/oauth/i1/%63allback",
+    ]) {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.status, `${path} must be gated`).toBe(401);
+    }
+  });
+
+  it("keeps encoded OAuth action spellings on the management gate", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    // requireLogin=false must not open these to a remote caller: an encoded
+    // action is not an exempt leaf, so it stays on the management gate.
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    for (const path of [
+      "/api/mcp-gateway/oauth/i1/%61uthorize",
+      "/api/mcp-gateway/oauth/i1/authorize",
+      "/api/mcp-gateway/oauth/i1/extra/callback",
+      "/api/mcp%2Dgateway/oauth/i1/authorize",
+    ]) {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.status, `${path} must require management auth`).toBe(401);
+    }
+  });
+
+  it("preserves loopback open-dashboard reveal when requireLogin=false", async () => {
+    const response = await proxy(request("/api/keys/k1/reveal", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+      "x-9r-real-ip": "127.0.0.1",
+    }));
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  describe("isOperatorRequest", () => {
+
+    it("treats a dashboard session and a CLI token as operators", async () => {
+      mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+      expect(await isOperatorRequest(request("/api/settings", { host: "router.example.com" }))).toBe(true);
+
+      mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+      expect(
+        await isOperatorRequest(request("/api/settings", {
+          host: "router.example.com",
+          "x-9r-cli-token": "cli-token",
+        })),
+      ).toBe(true);
+    });
+
+    it("treats a loopback open dashboard as an operator", async () => {
+      // requireLogin=false means the local dashboard has no JWT. It still edits
+      // proxy settings, and the value round-trips through its form, so
+      // redacting here would persist the placeholder on the next save.
+      mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+      mocks.getSettings.mockResolvedValue({ requireLogin: false });
+      expect(
+        await isOperatorRequest(request("/api/settings", {
+          host: "localhost:20128",
+          "x-9r-real-ip": "127.0.0.1",
+        })),
+      ).toBe(true);
+    });
+
+    it("never treats an API-key caller as an operator, even on loopback", async () => {
+      mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+      mocks.validateApiKey.mockResolvedValue(true);
+      mocks.getSettings.mockResolvedValue({ requireLogin: false });
+      for (const headers of [
+        { host: "router.example.com", authorization: "Bearer sk-valid" },
+        // Loopback + open dashboard would otherwise hand a programmatic client
+        // the operator read path.
+        { host: "localhost:20128", "x-9r-real-ip": "127.0.0.1", authorization: "Bearer sk-valid" },
+      ]) {
+        expect(await isOperatorRequest(request("/api/settings", headers))).toBe(false);
+      }
+    });
+
+    it("is not an operator when login is required and no credential is presented", async () => {
+      mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+      mocks.validateApiKey.mockResolvedValue(false);
+      mocks.getSettings.mockResolvedValue({ requireLogin: true });
+      expect(
+        await isOperatorRequest(request("/api/settings", {
+          host: "localhost:20128",
+          "x-9r-real-ip": "127.0.0.1",
+        })),
+      ).toBe(false);
+    });
+  });
+
+  it("never lets an API key reach always-protected routes", async () => {
+    mocks.validateApiKey.mockResolvedValue(true);
+    for (const path of ["/api/shutdown", "/api/settings/database", "/api/version/update"]) {
+      const response = await proxy(request(path, {
+        host: "router.example.com",
+        authorization: "Bearer sk-valid",
+      }));
+      expect(response.status, `${path} must refuse an API key`).toBe(401);
     }
   });
 });

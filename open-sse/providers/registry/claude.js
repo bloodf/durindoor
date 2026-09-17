@@ -57,6 +57,9 @@ export default {
     clientId: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
     authorizeUrl: "https://claude.ai/oauth/authorize",
     tokenUrl: "https://api.anthropic.com/v1/oauth/token",
+    // Account email + organization plan tier, read once at connect time. The
+    // `user:profile` scope below is what authorizes it.
+    profileUrl: "https://api.anthropic.com/api/oauth/profile",
     scopes: [
       "org:create_api_key",
       "user:profile",

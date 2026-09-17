@@ -14,7 +14,10 @@ export default {
     },
   },
   category: "oauth",
-  authModes: ["oauth", "apikey"],
+  // ClinePass authenticates with a plain API key from app.cline.bot/settings/api-keys.
+  // The Cline OAuth extension flow does not issue tokens the ClinePass consumer
+  // endpoint accepts (HTTP 401), so apikey is the default mode.
+  authModes: ["apikey", "oauth"],
   hasOAuth: true,
   transport: {
     baseUrl: "https://api.cline.bot/api/v1/chat/completions",

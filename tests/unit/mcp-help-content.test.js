@@ -13,7 +13,7 @@ const src = readFileSync(
   "utf8"
 );
 
-// The seven control tools that must be listed, matching src/lib/mcp/control/tools.js.
+// Every control tool that must be listed, matching src/lib/mcp/control/tools.js.
 const CONTROL_TOOLS = [
   "list_providers",
   "list_connections",
@@ -22,6 +22,16 @@ const CONTROL_TOOLS = [
   "usage_stats",
   "token_saver_stats",
   "model_list",
+  "list_combos",
+  "get_combo",
+  "create_combo",
+  "update_combo",
+  "delete_combo",
+  "quota_snapshots",
+  "refresh_quota",
+  "list_api_keys",
+  "get_settings",
+  "update_settings",
 ];
 
 describe("MCP Help page documents every surface", () => {
@@ -41,7 +51,7 @@ describe("MCP Help page documents every surface", () => {
     expect(src).toMatch(/instanceSlug|brave__search/);
   });
 
-  it("documents the control server endpoint and all 7 tools", () => {
+  it("documents the control server endpoint and every control tool", () => {
     expect(src).toContain("/api/mcp/control");
     for (const tool of CONTROL_TOOLS) {
       expect(src, `control tool ${tool} must be documented`).toContain(tool);

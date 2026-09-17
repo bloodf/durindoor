@@ -1,5 +1,10 @@
 import { withCodexReviewModels } from "../models/helpers.js";
 
+// Codex CLI version OpenAI's backend sees. Single source for the `Version` and
+// `User-Agent` identity headers across transport, image, usage and quota paths.
+// Bump when the upstream codex CLI is upgraded.
+const CODEX_CLI_VERSION = "0.154.0";
+
 export default {
   id: "codex",
   priority: 30,
@@ -35,9 +40,10 @@ export default {
     baseUrl: "https://chatgpt.com/backend-api/codex/responses",
     format: "openai-responses",
     forceStream: true,
+    cliVersion: CODEX_CLI_VERSION,
     headers: {
       originator: "codex_cli_rs",
-      "User-Agent": "codex_cli_rs/0.136.0",
+      "User-Agent": `codex_cli_rs/${CODEX_CLI_VERSION}`,
     },
     // Official openai/codex: semantic Ultra serializes as Max for requests.
     // Upstream provenance: decolua/9router#2523 — alias lookup is case-sensitive
@@ -50,7 +56,7 @@ export default {
     usage: {
       url: "https://chatgpt.com/backend-api/wham/usage",
       modelsUrl: "https://chatgpt.com/backend-api/codex/models",
-      clientVersion: "0.136.0",
+      clientVersion: CODEX_CLI_VERSION,
       resetCreditsUrl: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
       resetCreditsConsumeUrl: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
     },

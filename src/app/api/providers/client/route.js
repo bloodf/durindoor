@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
-import { backfillCodexEmails } from "@/lib/oauth/providers";
+import { backfillClaudeProfiles, backfillCodexEmails } from "@/lib/oauth/providers";
 import { backfillCursorEmails } from "@/lib/oauth/services/cursorLocalStore.js";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { sanitizeProviderConnectionForClient } from "@/lib/providers/sanitizeProviderConnectionForClient.js";
@@ -54,6 +54,10 @@ export async function GET(request) {
   try {
     await backfillCodexEmails();
     await backfillCursorEmails();
+    // Network-bound (one profile call per connection), unlike the two local
+    // backfills above — never block the connection listing on it. Its run-once
+    // guard resets on failure so the next request retries.
+    void backfillClaudeProfiles();
 
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider") || "all";

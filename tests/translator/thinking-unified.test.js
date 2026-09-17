@@ -298,6 +298,32 @@ describe("applyThinking per provider format", () => {
     expect(minimal.reasoning_effort).toBe("low");
     expect(xhigh.reasoning_effort).toBe("max");
   });
+  it("Token Market nests its boolean thinking switch under extra_body", () => {
+    const enabled = apply("openai", "gpt-5.6-sol", { reasoning_effort: "high" }, "tokenmarket");
+    const disabled = apply("openai", "gpt-5.6-sol", { reasoning_effort: "none" }, "tokenmarket");
+    expect(enabled.extra_body).toEqual({ enable_thinking: true });
+    expect(enabled.reasoning_effort).toBeUndefined();
+    expect(disabled.extra_body).toEqual({ enable_thinking: false });
+  });
+  it("Token Market preserves other extra_body routing controls", () => {
+    const out = apply("openai", "gpt-5.6-sol", {
+      reasoning_effort: "high",
+      extra_body: { provider: { sort: ["latency"] } },
+    }, "tokenmarket");
+    expect(out.extra_body).toEqual({
+      provider: { sort: ["latency"] },
+      enable_thinking: true,
+    });
+  });
+  // `isObject` accepts arrays and null, so a malformed extra_body must be
+  // replaced rather than written through (an array would gain a stray property).
+  it("Token Market replaces a malformed extra_body instead of writing through it", () => {
+    const fromArray = apply("openai", "gpt-5.6-sol", { reasoning_effort: "high", extra_body: [] }, "tokenmarket");
+    const fromNull = apply("openai", "gpt-5.6-sol", { reasoning_effort: "high", extra_body: null }, "tokenmarket");
+    expect(Array.isArray(fromArray.extra_body)).toBe(false);
+    expect(fromArray.extra_body).toEqual({ enable_thinking: true });
+    expect(fromNull.extra_body).toEqual({ enable_thinking: true });
+  });
   it("MiniMax M3 → adaptive", () => {
     const out = apply("claude", "MiniMax-M3", { reasoning_effort: "high" }, "minimax");
     expect(out.thinking).toEqual({ type: "adaptive" });

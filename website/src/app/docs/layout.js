@@ -1,8 +1,35 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { Cinzel } from "next/font/google";
 import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import { RootProvider } from "fumadocs-ui/provider/next";
 import { source } from "@site/lib/source";
 import { baseOptions } from "@site/lib/layout.shared";
+import { DocsSidebarFooter } from "@site/components/docs/SidebarFooter.jsx";
 import "./docs.css";
+
+const cinzel = Cinzel({
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-docs-display",
+  display: "swap",
+});
+
+function productVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), "..", "package.json"), "utf8"));
+    if (pkg.name === "durindoor" && pkg.version) return pkg.version;
+  } catch {
+    // website-only checkout
+  }
+  try {
+    return JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version;
+  } catch {
+    return "";
+  }
+}
+
+const VERSION = productVersion();
 
 export default function Layout({ children }) {
   return (
@@ -10,8 +37,12 @@ export default function Layout({ children }) {
       <DocsLayout
         tree={source.getPageTree()}
         {...baseOptions()}
-        sidebar={{ collapsible: true }}
-        containerProps={{ className: "dd-docs" }}
+        tabs={false}
+        sidebar={{
+          collapsible: true,
+          footer: <DocsSidebarFooter version={VERSION} />,
+        }}
+        containerProps={{ className: `dd-docs ${cinzel.variable}` }}
       >
         {children}
       </DocsLayout>

@@ -1,5 +1,6 @@
 {
   "title": "Deployment",
   "description": "Run locally, in Docker, in the cloud, or behind a reverse proxy.",
+  "icon": "Server",
   "pages": ["index", "localhost", "docker", "cloud", "reverse-proxy-and-static-assets"]
 }

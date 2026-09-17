@@ -1,5 +1,11 @@
 import { notFound } from "next/navigation";
-import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/layouts/docs/page";
+import {
+  DocsBody,
+  DocsDescription,
+  DocsPage,
+  DocsTitle,
+  EditOnGitHub,
+} from "fumadocs-ui/layouts/docs/page";
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import { source } from "@site/lib/source";
 import { getMDXComponents } from "@site/components/mdx";
@@ -12,6 +18,7 @@ function withDotPrefix(href) {
 }
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://durindoor.vercel.app";
+const GITHUB_DOCS = "https://github.com/bloodf/durindoor/blob/main/docs";
 
 export default async function Page(props) {
   const params = await props.params;
@@ -20,11 +27,22 @@ export default async function Page(props) {
 
   const Mdx = page.data.body;
   const RelativeLink = createRelativeLink(source, page);
+  const isLanding = !params.slug || params.slug.length === 0;
+  const githubFile = `${GITHUB_DOCS}/${page.path}`;
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
+    <DocsPage
+      toc={page.data.toc}
+      full={page.data.full}
+      breadcrumb={{ enabled: !isLanding }}
+      tableOfContent={{
+        enabled: !isLanding,
+        footer: isLanding ? undefined : <EditOnGitHub href={githubFile} />,
+      }}
+      tableOfContentPopover={{ enabled: !isLanding }}
+    >
+      {!isLanding && <DocsTitle>{page.data.title}</DocsTitle>}
+      {!isLanding && <DocsDescription>{page.data.description}</DocsDescription>}
       <DocsBody>
         <Mdx
           components={getMDXComponents({

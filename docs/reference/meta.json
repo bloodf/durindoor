@@ -1,6 +1,7 @@
 {
   "title": "Reference",
   "description": "API routes, management REST, environment variables, CLI, plugin manifests, and model limits.",
+  "icon": "FileText",
   "pages": [
     "index",
     "api",

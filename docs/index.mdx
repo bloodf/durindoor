@@ -1,24 +1,49 @@
 ---
 title: DurinDoor documentation
 description: One gateway in front of every AI provider, with an OpenAI-compatible API.
+full: true
 ---
 
-DurinDoor is a self-hosted AI gateway. You add provider credentials once in the dashboard, then point tools at `http://localhost:20128/v1` instead of wiring each app to a different vendor. Credentials stay on your machine. DurinDoor translates OpenAI-shaped requests for Claude, Gemini, Kiro, Cursor, Ollama, Vertex, and other upstream formats. Per request, the dashboard shows the provider, the model, tokens, cost estimates, latency, and fallback outcome.
+<DocsHero
+  title="DurinDoor"
+  pitch="One gateway in front of every AI provider, with an OpenAI-compatible API."
+  quickStartHref="/docs/getting-started"
+  apiHref="/docs/reference/api"
+/>
 
-Start here if you want a first request through the gateway. Operators running DurinDoor on a team server use the deployment and operations pages. The contributing section is for people changing the codebase or the provider registry. DurinDoor is a fork of 9router. Existing installs keep their data, keys, and headers.
+Install the CLI. Send one request through `http://localhost:20128/v1` after you mint a key in the dashboard. Operators running a team server should read deployment and operations. The contributing section is for people changing the gateway or the provider registry.
 
-`npm install -g durindoor`, then `durindoor`. Open http://localhost:20128/dashboard, sign in, add a provider connection, and create an API key. Send the request to http://localhost:20128/v1. Getting started covers that path. The cards name the other sections.
+## Start here
 
-<Cards>
-  <Card title="Getting started" href="/docs/getting-started" description="Install and send the first request." />
-  <Card title="Providers" href="/docs/providers" description="OAuth, API keys, compatible nodes, and local providers." />
-  <Card title="Integrations" href="/docs/integrations" description="Claude Code, Codex, Cursor, and other OpenAI-compatible tools." />
-  <Card title="Guides" href="/docs/guides" description="API keys, models, aliases, SDK examples, usage, and automation." />
-  <Card title="Features" href="/docs/features" description="Routing, combos, quota, MCP gateway and control, realtime, and compression." />
-  <Card title="Deployment" href="/docs/deployment" description="Localhost, Docker, cloud, and reverse proxies." />
-  <Card title="Operations" href="/docs/operations" description="Startup, upgrades, data, Postgres, and security." />
-  <Card title="Reference" href="/docs/reference" description="API routes, management REST, environment variables, CLI, and model limits." />
-  <Card title="Contributing" href="/docs/contributing" description="Local development, architecture, tests, and upstream sync." />
-  <Card title="FAQ" href="/docs/faq" description="Short answers to common setup and runtime questions." />
-  <Card title="Troubleshooting" href="/docs/troubleshooting" description="What to check when a request fails." />
-</Cards>
+<DocsStartRow>
+  <DocsStartCard href="/docs/getting-started/installation" icon="Download" title="Install" description="npm, source, or Docker." />
+  <DocsStartCard href="/docs/getting-started/first-request" icon="Send" title="First request" description="Mint a key and send one chat call." />
+  <DocsStartCard href="/docs/integrations" icon="Cable" title="Connect a tool" description="Point Claude Code, Codex, Cursor, or another client at the gateway." />
+</DocsStartRow>
+
+## Sections
+
+<DocsSectionGrid>
+  <DocsSectionCard href="/docs/getting-started" icon="Rocket" title="Getting started" description="Install DurinDoor and send the first request." pages={4} />
+  <DocsSectionCard href="/docs/providers" icon="Unplug" title="Providers" description="Connect OAuth accounts, API keys, compatible nodes, and local providers." pages={7} />
+  <DocsSectionCard href="/docs/integrations" icon="Puzzle" title="Integrations" description="Point Claude Code, Codex, Cursor, and other tools at the gateway." pages={9} />
+  <DocsSectionCard href="/docs/guides" icon="BookOpen" title="Guides" description="API keys, model aliases, SDK examples, usage monitoring, and automation." pages={6} />
+  <DocsSectionCard href="/docs/features" icon="Sparkles" title="Features" description="Routing, combos, quota tracking, MCP gateway and control, realtime, compression, and Headroom." pages={10} />
+  <DocsSectionCard href="/docs/deployment" icon="Server" title="Deployment" description="Run locally, in Docker, in the cloud, or behind a reverse proxy." pages={5} />
+  <DocsSectionCard href="/docs/operations" icon="Settings" title="Operations" description="Startup, upgrades, data, Postgres, security, and API-key scoping." pages={7} />
+  <DocsSectionCard href="/docs/reference" icon="FileText" title="Reference" description="API routes, environment variables, CLI, plugin manifests, and model limits." pages={7} />
+  <DocsSectionCard href="/docs/contributing" icon="GitPullRequest" title="Contributing" description="Local development, architecture, tests, releases, and upstream sync." pages={11} />
+  <DocsSectionCard href="/docs/faq" icon="CircleQuestionMark" title="FAQ" description="Short answers to common setup and runtime questions." pages={1} />
+  <DocsSectionCard href="/docs/troubleshooting" icon="Wrench" title="Troubleshooting" description="What to check when a request fails." pages={1} />
+</DocsSectionGrid>
+
+## Popular pages
+
+<DocsPopularList>
+  <DocsPopularLink href="/docs/reference/api" title="API reference" />
+  <DocsPopularLink href="/docs/reference/environment" title="Environment variables" />
+  <DocsPopularLink href="/docs/features/combos" title="Combos" />
+  <DocsPopularLink href="/docs/integrations/claude-code" title="Claude Code" />
+  <DocsPopularLink href="/docs/deployment/docker" title="Docker" />
+  <DocsPopularLink href="/docs/troubleshooting" title="Troubleshooting" />
+</DocsPopularList>

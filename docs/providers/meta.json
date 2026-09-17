@@ -1,6 +1,7 @@
 {
   "title": "Providers",
   "description": "Connect OAuth accounts, API keys, compatible nodes, and local providers.",
+  "icon": "Unplug",
   "pages": [
     "index",
     "connecting-accounts",

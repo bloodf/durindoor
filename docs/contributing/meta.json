@@ -1,6 +1,7 @@
 {
   "title": "Contributing",
   "description": "Local development, architecture, tests, releases, and upstream sync.",
+  "icon": "GitPullRequest",
   "pages": [
     "index",
     "local-development",

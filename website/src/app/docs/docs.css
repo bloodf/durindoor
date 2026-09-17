@@ -178,9 +178,11 @@
 }
 
 .dd-docs h1 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font-family: var(--font-docs-display), Cinzel, "Trajan Pro", Georgia, serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   color: var(--dd-text);
 }
 
@@ -192,9 +194,35 @@
   color: var(--dd-text);
 }
 
+.dd-docs article > h1 + p {
+  max-width: 72ch;
+  margin-top: 0.5rem;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--dd-text-muted);
+}
+
 .dd-docs .prose a:not([data-card]) {
   color: var(--dd-accent);
   text-decoration-color: var(--dd-accent);
+}
+
+.dd-docs .prose a.dd-docs-btn,
+.dd-docs .prose a.dd-docs-start-card,
+.dd-docs .prose a.dd-docs-section-card,
+.dd-docs .prose a.dd-docs-popular-link {
+  text-decoration: none;
+}
+
+.dd-docs .prose a.dd-docs-btn-primary {
+  color: var(--dd-on-accent);
+}
+
+.dd-docs .prose a.dd-docs-btn-ghost,
+.dd-docs .prose a.dd-docs-start-card,
+.dd-docs .prose a.dd-docs-section-card,
+.dd-docs .prose a.dd-docs-popular-link {
+  color: var(--dd-text);
 }
 
 .dd-docs :not(pre) > code,
@@ -227,7 +255,9 @@
 
 .dd-docs [data-card]:hover {
   background-color: var(--dd-surface-2);
-  border-color: var(--dd-border-subtle);
+  border-color: color-mix(in srgb, var(--dd-accent) 40%, var(--dd-border));
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--dd-accent) 35%, transparent);
 }
 
 .dd-docs [class*="rounded-xl"] {
@@ -246,4 +276,373 @@
 .dd-docs thead {
   background-color: var(--dd-surface-2);
   color: var(--dd-text);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.dd-docs tbody tr:nth-child(even) {
+  background: transparent;
+}
+
+.dd-docs .prose {
+  max-width: 72ch;
+}
+
+.dd-docs article:has(.dd-docs-hero) .prose,
+.dd-docs article:has(.dd-docs-hero) {
+  max-width: none;
+}
+
+.dd-docs .fd-step::before {
+  background-color: var(--dd-accent-2);
+  color: #fff;
+  font-weight: 600;
+}
+
+.dark .dd-docs .fd-step::before {
+  color: #1c1913;
+}
+
+.dd-docs [style*="--callout-color"] {
+  --color-fd-info: var(--dd-accent);
+  --color-fd-warning: var(--dd-accent-2);
+  --color-fd-error: var(--dd-danger);
+  border-inline-start: 3px solid var(--callout-color);
+}
+
+.dd-docs #nd-toc a[data-active="true"] {
+  color: var(--dd-accent);
+  font-weight: 600;
+}
+
+.dd-docs figure.shiki:focus-within,
+.dd-docs [role="tablist"] :focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dd-surface), 0 0 0 4px var(--dd-accent-2);
+}
+
+.dd-docs figure.shiki [role="region"]:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--dd-accent-2);
+}
+
+.dd-docs :not(pre) > code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875em;
+}
+
+.dd-docs [data-card],
+.dd-docs .dd-docs-start-card,
+.dd-docs .dd-docs-section-card,
+.dd-docs .dd-docs-popular-link,
+.dd-docs .dd-docs-btn,
+.dd-docs .dd-docs-theme-toggle,
+.dd-docs .dd-docs-search-lg,
+.dd-docs #nd-sidebar a,
+.dd-docs #nd-sidebar button {
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease,
+    color 140ms ease, transform 140ms ease;
+}
+
+.dd-docs-hero {
+  position: relative;
+  isolation: isolate;
+  padding: 1.5rem 0 2rem;
+}
+
+.dd-docs-hero::before {
+  content: "";
+  position: absolute;
+  inset: -12% -8% auto;
+  height: 280px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 28% 30%,
+    color-mix(in srgb, var(--dd-accent) 22%, transparent),
+    transparent 70%
+  );
+}
+
+.dd-docs-hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.dd-docs-hero-brand img {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--dd-radius);
+}
+
+.dd-docs-hero-title {
+  margin: 0;
+  font-family: var(--font-docs-display), Cinzel, "Trajan Pro", Georgia, serif;
+  font-size: clamp(1.85rem, 4vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.dd-docs-hero-pitch {
+  margin: 0.85rem 0 1.25rem;
+  max-width: 42rem;
+  color: var(--dd-text-muted);
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.dd-docs-search-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: min(100%, 36rem);
+  min-height: 2.75rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.95rem;
+  border-radius: var(--dd-radius-lg);
+  border: 1px solid var(--dd-border);
+  background-color: var(--dd-surface);
+  color: var(--dd-text-muted);
+  cursor: pointer;
+}
+
+.dd-docs-search-keys {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-inline-start: auto;
+}
+
+.dd-docs-search-lg kbd {
+  border: 1px solid var(--dd-border);
+  background: var(--dd-bg);
+  border-radius: var(--dd-radius);
+  padding: 0.1rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+.dd-docs-search-lg:hover {
+  background-color: var(--dd-surface-2);
+  color: var(--dd-text);
+  border-color: color-mix(in srgb, var(--dd-accent) 35%, var(--dd-border));
+}
+
+.dd-docs-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.1rem;
+}
+
+.dd-docs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.15rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  text-decoration: none;
+}
+
+.dd-docs-btn-primary {
+  background: var(--dd-accent);
+  color: var(--dd-on-accent);
+  border: 1px solid transparent;
+}
+
+.dd-docs-btn-primary:hover {
+  background: var(--dd-accent-hover);
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--dd-accent) 45%, transparent);
+}
+
+.dd-docs-btn-ghost {
+  background: transparent;
+  color: var(--dd-text);
+  border: 1px solid var(--dd-border);
+}
+
+.dd-docs-btn-ghost:hover {
+  border-color: var(--dd-accent-2);
+  background: var(--dd-accent-2-soft);
+}
+
+.dd-docs-start {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0.5rem 0 1.75rem;
+}
+
+.dd-docs-start-card,
+.dd-docs-section-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1.15rem 1.2rem;
+  border: 1px solid var(--dd-border);
+  border-radius: var(--dd-radius-lg);
+  background: var(--dd-surface);
+  color: var(--dd-text);
+  text-decoration: none;
+}
+
+.dd-docs-start-card:hover,
+.dd-docs-section-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--dd-accent) 40%, var(--dd-border));
+  box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--dd-accent) 35%, transparent);
+}
+
+.dd-docs-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--dd-radius);
+  background: var(--dd-accent-soft);
+  color: var(--dd-accent);
+}
+
+.dd-docs-start-card-title,
+.dd-docs-section-card-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--dd-accent);
+}
+
+.dd-docs-start-card-desc,
+.dd-docs-section-card-desc {
+  color: var(--dd-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.dd-docs-section-card-count {
+  margin-top: auto;
+  color: var(--dd-text-muted);
+  font-size: 0.75rem;
+}
+
+.dd-docs-sections {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 0.5rem 0 1.75rem;
+}
+
+.dd-docs-popular {
+  list-style: none;
+  margin: 0.5rem 0 1.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.dd-docs-popular-link {
+  display: block;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--dd-border);
+  border-radius: var(--dd-radius);
+  background: var(--dd-surface);
+  color: var(--dd-text);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.dd-docs-popular-link:hover {
+  border-color: color-mix(in srgb, var(--dd-accent) 40%, var(--dd-border));
+  background: var(--dd-accent-soft);
+  color: var(--dd-accent);
+}
+
+.dd-docs-sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--dd-text-muted);
+}
+
+.dd-docs-sidebar-github {
+  color: var(--dd-text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.dd-docs-sidebar-github:hover {
+  color: var(--dd-accent);
+}
+
+.dd-docs-sidebar-version {
+  margin-inline-end: auto;
+}
+
+.dd-docs-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-inline-start: auto;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--dd-border);
+  border-radius: var(--dd-radius);
+  background: var(--dd-surface-2);
+  color: var(--dd-text);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.dd-docs-theme-toggle:hover {
+  border-color: var(--dd-accent);
+  color: var(--dd-accent);
+}
+
+.dd-docs #nd-sidebar a[href="/docs/deployment"],
+.dd-docs #nd-sidebar a[href="/docs/reference"],
+.dd-docs #nd-sidebar a[href="/docs/contributing"],
+.dd-docs #nd-sidebar a[href="/docs/faq"] {
+  margin-top: 0.65rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--dd-border);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.dd-docs-toc-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .dd-docs-start,
+  .dd-docs-sections {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dd-docs [data-card],
+  .dd-docs .dd-docs-start-card,
+  .dd-docs .dd-docs-section-card,
+  .dd-docs .dd-docs-popular-link,
+  .dd-docs .dd-docs-btn,
+  .dd-docs .dd-docs-theme-toggle,
+  .dd-docs .dd-docs-search-lg,
+  .dd-docs #nd-sidebar a,
+  .dd-docs #nd-sidebar button {
+    transition: none;
+  }
+
+  .dd-docs [data-card]:hover,
+  .dd-docs .dd-docs-start-card:hover,
+  .dd-docs .dd-docs-section-card:hover {
+    transform: none;
+  }
 }

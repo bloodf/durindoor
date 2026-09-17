@@ -1,6 +1,7 @@
 {
   "title": "Integrations",
   "description": "Point Claude Code, Codex, Cursor, and other tools at the gateway.",
+  "icon": "Puzzle",
   "pages": [
     "index",
     "claude-code",

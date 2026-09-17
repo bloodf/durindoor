@@ -118,7 +118,7 @@ npx vitest run --config vitest.config.js unit/example.test.js
 npx vitest run --config vitest.config.js translator/example.test.js
 ```
 
-Translator tests that call `translateRequest` or `translateResponse` must import `translator/registerAll.js`. The CI gate and live provider runs are on [Testing](testing.mdx).
+Translator tests that call `translateRequest` or `translateResponse` must import `translator/registerAll.js`. The CI gate and live provider runs are on [Testing](./testing.mdx).
 
 ## Full checks
 
@@ -148,7 +148,7 @@ npm run gen:agent-index
 npm run check:agent-index
 ```
 
-Commit generated output when it changes. Do not hand-edit `open-sse/providers/registry/index.js` (header: `Auto-generated: static imports of all registry entries`) or `open-sse/AGENT-INDEX.md`. Details on [Provider registry](provider-registry.mdx).
+Commit generated output when it changes. Do not hand-edit `open-sse/providers/registry/index.js` (header: `Auto-generated: static imports of all registry entries`) or `open-sse/AGENT-INDEX.md`. Details on [Provider registry](./provider-registry.mdx).
 
 ## Debugging
 

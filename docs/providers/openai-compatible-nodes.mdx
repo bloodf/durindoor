@@ -51,7 +51,7 @@ coding-default
 
 `coding-default` is a combo or a model alias, not a node prefix. Model aliases are `PUT /api/models/alias` with `{ model, alias }` and show up as extra names for an existing model string. Combos are a fallback chain; see [Combos](../features/combos.mdx).
 
-Dedicated local registry ids (`ollama-local`, `lm-studio`, `vllm`) are usually a better fit than a generic node when one exists. Those ids omit `Authorization` when no key is saved. Compatible nodes still require the key field. See [Local router providers](local-router-providers.mdx) and [Free and local](free-and-local.mdx).
+Dedicated local registry ids (`ollama-local`, `lm-studio`, `vllm`) are usually a better fit than a generic node when one exists. Those ids omit `Authorization` when no key is saved. Compatible nodes still require the key field. See [Local router providers](./local-router-providers.mdx) and [Free and local](./free-and-local.mdx).
 
 If DurinDoor runs in Docker, `localhost` inside the container is the container. Use a compose service name or the host gateway for a server that runs on the machine.
 

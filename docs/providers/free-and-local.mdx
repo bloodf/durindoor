@@ -33,7 +33,7 @@ Save. Send `ollama-local/<model>` or `lmstudio/<model>` (or the alias the catalo
 
 If DurinDoor is in Docker, `localhost` is the container. Point `baseUrl` at `host.docker.internal` or a compose service name.
 
-Other self-hosted OpenAI-compatible ids (`vllm`, `llama-cpp`, `docker-model-runner`, and the rest) are listed on [Local router providers](local-router-providers.mdx). Those executors omit `Authorization` when no API key or access token is saved.
+Other self-hosted OpenAI-compatible ids (`vllm`, `llama-cpp`, `docker-model-runner`, and the rest) are listed on [Local router providers](./local-router-providers.mdx). Those executors omit `Authorization` when no API key or access token is saved.
 
 ## No-auth providers
 
@@ -47,7 +47,7 @@ AI Horde is the public anonymous exception. Registry id `aihorde`, alias `horde`
 
 ## Browser-cookie providers
 
-Same paste flow as [Connecting accounts](connecting-accounts.mdx): Dashboard, Providers, cookie card, cookie value. ChatGPT Web wants `__Secure-next-auth.session-token`. These sessions die when the browser session dies. Fine for a personal box; a poor fit for a shared team gateway.
+Same paste flow as [Connecting accounts](./connecting-accounts.mdx): Dashboard, Providers, cookie card, cookie value. ChatGPT Web wants `__Secure-next-auth.session-token`. These sessions die when the browser session dies. Fine for a personal box; a poor fit for a shared team gateway.
 
 ## Local device media
 

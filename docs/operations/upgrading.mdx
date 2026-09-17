@@ -7,7 +7,7 @@ Read [CHANGELOG.md](../../CHANGELOG.md) before you bump. Breaking schema work an
 
 ## Backup
 
-Stop DurinDoor so SQLite is not mid-write. Host bind: [backing up a host directory](data-management.mdx#backing-up-a-host-directory). Named volume: [backing up a Docker named volume](data-management.mdx#backing-up-a-docker-named-volume).
+Stop DurinDoor so SQLite is not mid-write. Host bind: [backing up a host directory](./data-management.mdx#backing-up-a-host-directory). Named volume: [backing up a Docker named volume](./data-management.mdx#backing-up-a-docker-named-volume).
 
 Startup also copies `DATA_DIR/db/data.sqlite` into `DATA_DIR/db/backups` before a schema or app-version change. Those copies keep the newest three directories and omit the `requestDetails` table on the lite path. Take your own full copy anyway.
 
@@ -72,9 +72,9 @@ Then open the dashboard and confirm providers, API keys, combos, and usage.
 
 Rollback is the previous image or git tag plus the pre-upgrade backup. A completed migration is not undone by starting an old binary on the new file. Restore the backup first.
 
-Named volume: [restoring a Docker named volume](data-management.mdx#restoring-a-docker-named-volume).
+Named volume: [restoring a Docker named volume](./data-management.mdx#restoring-a-docker-named-volume).
 
-Host bind: `DATA_DIR` must be an absolute path, then [restoring a host directory](data-management.mdx#restoring-a-host-directory), then start the old image:
+Host bind: `DATA_DIR` must be an absolute path, then [restoring a host directory](./data-management.mdx#restoring-a-host-directory), then start the old image:
 
 ```bash
 case "$DATA_DIR" in

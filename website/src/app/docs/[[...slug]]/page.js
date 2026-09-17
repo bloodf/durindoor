@@ -4,6 +4,13 @@ import { createRelativeLink } from "fumadocs-ui/mdx";
 import { source } from "@site/lib/source";
 import { getMDXComponents } from "@site/components/mdx";
 
+// source.resolveHref only resolves hrefs that start with ./ or ../, and the MDX
+// pipeline drops a leading ./, so same-folder page links arrive bare.
+function withDotPrefix(href) {
+  if (!href || /^(\.{1,2}\/|\/|#|[a-z][a-z0-9+.-]*:)/i.test(href)) return href;
+  return /\.mdx?(#.*)?$/.test(href) ? `./${href}` : href;
+}
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://durindoor.vercel.app";
 
 export default async function Page(props) {
@@ -12,6 +19,7 @@ export default async function Page(props) {
   if (!page) notFound();
 
   const Mdx = page.data.body;
+  const RelativeLink = createRelativeLink(source, page);
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
@@ -20,7 +28,7 @@ export default async function Page(props) {
       <DocsBody>
         <Mdx
           components={getMDXComponents({
-            a: createRelativeLink(source, page),
+            a: ({ href, ...rest }) => <RelativeLink href={withDotPrefix(href)} {...rest} />,
           })}
         />
       </DocsBody>

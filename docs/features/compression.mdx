@@ -5,14 +5,14 @@ description: RTK, the chat compression seam, Test Savers preview, and the per-re
 
 DurinDoor can shrink outbound prompts after translation and before the executor runs. Every step fails open: an error returns the original body and the request still goes upstream.
 
-Open **Dashboard → Token Saver → Statistics** (`/dashboard/token-saver`) for saved-byte totals. Open **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/settings`) for the RTK, Headroom, Caveman, Ponytail, and PXPIPE toggles. Open **Dashboard → Test Savers** (`/dashboard/compression-studio`) to dry-run engines against a sample payload. Headroom's process and venv live on [Headroom](headroom.mdx).
+Open **Dashboard → Token Saver → Statistics** (`/dashboard/token-saver`) for saved-byte totals. Open **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/settings`) for the RTK, Headroom, Caveman, Ponytail, and PXPIPE toggles. Open **Dashboard → Test Savers** (`/dashboard/compression-studio`) to dry-run engines against a sample payload. Headroom's process and venv live on [Headroom](./headroom.mdx).
 
 ## Order on a chat request
 
 In `handleChatCore`, after the body is in the provider shape:
 
 1. RTK compresses `tool_result` / tool-message content when `rtkEnabled` is on (default true). On error it returns null and leaves the body untouched. It skips `is_error` and `status:"error"` results.
-2. Headroom, when enabled, calls the proxy once. See [Headroom](headroom.mdx).
+2. Headroom, when enabled, calls the proxy once. See [Headroom](./headroom.mdx).
 3. The compression seam (`runCompressionSeam`) runs when `compressionEnabled` is on. Default is off.
 4. Caveman / Ponytail / PXPIPE settings still apply after the seam when those toggles are on.
 

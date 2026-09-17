@@ -25,7 +25,7 @@ Save. `POST /api/providers` creates the row with `authType: "apikey"` (cookie pr
 </Step>
 </Steps>
 
-`ollama-local` and other `noAuth` providers may omit the key. Compatible nodes still require a value even when the upstream ignores it; use a placeholder such as `local-dev-key`. See [OpenAI-compatible nodes](openai-compatible-nodes.mdx).
+`ollama-local` and other `noAuth` providers may omit the key. Compatible nodes still require a value even when the upstream ignores it; use a placeholder such as `local-dev-key`. See [OpenAI-compatible nodes](./openai-compatible-nodes.mdx).
 
 Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
 
@@ -43,7 +43,7 @@ Saved connections are the path you should use. A handful of executors still read
 | `WINDSURF_API_KEY` | Devin CLI executor, if the connection has no key or token. |
 | `CLIPROXYAPI_HOST` / `CLIPROXYAPI_PORT` | CLIProxyAPI listen address. |
 
-OAuth client overrides (`GEMINI_OAUTH_CLIENT_ID`, `ANTIGRAVITY_OAUTH_CLIENT_ID`, and their secrets) belong on [Connecting accounts](connecting-accounts.mdx). The full operator list is [Environment variables](../reference/environment.mdx).
+OAuth client overrides (`GEMINI_OAUTH_CLIENT_ID`, `ANTIGRAVITY_OAUTH_CLIENT_ID`, and their secrets) belong on [Connecting accounts](./connecting-accounts.mdx). The full operator list is [Environment variables](../reference/environment.mdx).
 
 ## Scoping a DurinDoor API key to accounts
 
@@ -53,7 +53,7 @@ Details, deletion guards, and the HTTP shape live in [API key scoping](../operat
 
 Test a saved key from the provider page. Connection tests stop after 15 seconds. Custom URLs still go through the outbound SSRF guard. Hidden registry providers cannot be created through this form; `POST /api/providers` returns `Invalid provider`.
 
-Priority is per provider. Drag-reorder on the provider page writes the full id list in one transaction to `PUT /api/providers/reorder`. Fill-first selection then uses that order. See [Connecting accounts](connecting-accounts.mdx) for how that interacts with account fallback.
+Priority is per provider. Drag-reorder on the provider page writes the full id list in one transaction to `PUT /api/providers/reorder`. Fill-first selection then uses that order. See [Connecting accounts](./connecting-accounts.mdx) for how that interacts with account fallback.
 
 Kiro's headless key flow persists `authType` as `api_key` (underscore). Quota and test routes accept both `apikey` and `api_key`. Edit Connection never shows the stored secret; paste a new value to rotate. Rotate the key at the vendor first, then update DurinDoor.
 

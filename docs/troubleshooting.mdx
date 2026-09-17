@@ -17,7 +17,7 @@ curl http://localhost:20128/v1/models \
 
 Cause: nothing is accepting `PORT` (default `20128`), a firewall or unpublished Docker port is in the way, or the client omitted `/v1` on API calls.
 
-Fix: confirm DurinDoor is running. Production and the CLI use `20128`; `npm run dev` uses `20127`. Docker needs `-p 20128:20128`. Then retry the health curl. Full start table: [Startup](operations/startup.mdx).
+Fix: confirm DurinDoor is running. Production and the CLI use `20128`; `npm run dev` uses `20127`. Docker needs `-p 20128:20128`. Then retry the health curl. Full start table: [Startup](./operations/startup.mdx).
 
 ## Port already in use
 
@@ -29,31 +29,31 @@ Fix: stop the other process, or pass `--port` / set `PORT`. The CLI kills a left
 
 Cause: dashboard cookies are signed with `loadJwtSecret()`. Env `JWT_SECRET` wins. A leftover `DATA_DIR/jwt-secret` file is reused with a warning. Fresh installs throw `JWT_SECRET environment variable is required` when neither source exists. The throw happens on sign or verify (login), not at the first line of `custom-server.js`.
 
-Fix: set `JWT_SECRET` (copy `.env.example`, or `openssl rand -hex 32`) and restart. Keep the same value across deploys. [Security](operations/security.mdx).
+Fix: set `JWT_SECRET` (copy `.env.example`, or `openssl rand -hex 32`) and restart. Keep the same value across deploys. [Security](./operations/security.mdx).
 
 ## SQLite driver fallback
 
 Cause: the Node chain is `better-sqlite3` → `node:sqlite` (Node ≥ 22.5) → `sql.js`. Each miss logs `[DB] <driver> unavailable: …`. If every adapter fails, boot throws `[DB] No SQLite driver available (bun/better/node/sql.js all failed)`. A successful open logs `[DB] Driver: … | engine: sqlite` once.
 
-Fix: the `sql.js` fallback is enough for a small install. Native `better-sqlite3` is faster; reinstall the CLI package if that binding failed. Postgres is a separate opt-in engine: [Postgres](operations/postgres.mdx).
+Fix: the `sql.js` fallback is enough for a small install. Native `better-sqlite3` is faster; reinstall the CLI package if that binding failed. Postgres is a separate opt-in engine: [Postgres](./operations/postgres.mdx).
 
 ## Invalid API key
 
 Cause: the client sent an upstream provider key, a truncated secret, a paused or expired row, or a four-part key whose HMAC no longer matches because `API_KEY_SECRET` changed. Chat returns 401 `Invalid API key` (or `Missing API key` when **Require API Key** is on). Realtime closes with code `4001` and `invalid_api_key`.
 
-Fix: mint a DurinDoor key in the dashboard and paste the whole secret. Keep `API_KEY_SECRET` stable. [API keys](guides/api-keys.mdx).
+Fix: mint a DurinDoor key in the dashboard and paste the whole secret. Keep `API_KEY_SECRET` stable. [API keys](./guides/api-keys.mdx).
 
 ## Model not found
 
 Cause: the `model` string is unknown, or `GET /v1/models` never listed it. An unknown provider returns 404 `model_not_found` with `Unknown provider "…" in model "…"`. A shutdown catalog id returns 410 `model_shutdown`.
 
-Fix: copy an id from `/v1/models` or the dashboard picker. For a stable client string, send a combo name. [First request](getting-started/first-request.mdx).
+Fix: copy an id from `/v1/models` or the dashboard picker. For a stable client string, send a combo name. [First request](./getting-started/first-request.mdx).
 
 ## Provider not configured
 
 Cause: the provider id is routable, but no active credential was selected. Chat returns 404 `provider_not_configured`: `No active credentials for provider: …. Connect an account for this provider in the dashboard.`
 
-Fix: open **Providers**, add or reconnect that account, confirm it is active, then retry. [Connecting accounts](providers/connecting-accounts.mdx).
+Fix: open **Providers**, add or reconnect that account, confirm it is active, then retry. [Connecting accounts](./providers/connecting-accounts.mdx).
 
 ## Provider authentication or network failure
 
@@ -65,7 +65,7 @@ Fix: open the connection in the dashboard and read the stored error. Reconnect O
 
 Cause: upstream 429, an exhausted quota snapshot, or every account for that provider in cooldown. Chat can also return 503 `Provider quota capacity unavailable` when a reservation cannot be taken. A per-provider concurrency gate that never gets a slot returns 503 `Concurrency limit reached for provider "…"`.
 
-Fix: wait for the reset window shown on **Usage** and **Quota Tracker**. Add another connection or a combo fallback. [Quota tracking](features/quota-tracking.mdx).
+Fix: wait for the reset window shown on **Usage** and **Quota Tracker**. Add another connection or a combo fallback. [Quota tracking](./features/quota-tracking.mdx).
 
 ## Request aborted
 
@@ -77,7 +77,7 @@ Fix: retry. If it repeats on every call, check proxy idle timeouts and that the 
 
 Cause: counted input plus the output reservation is larger than the known context window. Chat returns 400 whose message starts with `input is too long`. That failure is terminal; combos do not fall through.
 
-Fix: shorten the prompt, lower `max_tokens`, or pick a model with a larger window. [Model limits](reference/model-limits.mdx).
+Fix: shorten the prompt, lower `max_tokens`, or pick a model with a larger window. [Model limits](./reference/model-limits.mdx).
 
 ## Translation or outbound validation failed
 
@@ -95,19 +95,19 @@ Fix: retry once. If it stays, pick another model or combo member and inspect **U
 
 Cause: a reverse proxy's read or send timeout closed the SSE socket, or the selected provider does not stream.
 
-Fix: raise proxy timeouts, test on localhost without the proxy, or set `"stream": false` if the client allows it. [Reverse proxy and static assets](deployment/reverse-proxy-and-static-assets.mdx).
+Fix: raise proxy timeouts, test on localhost without the proxy, or set `"stream": false` if the client allows it. [Reverse proxy and static assets](./deployment/reverse-proxy-and-static-assets.mdx).
 
 ## Dashboard login loops or is refused
 
 Cause: `JWT_SECRET` changed across restarts, the browser dropped the cookie, `AUTH_COOKIE_SECURE=true` is set without HTTPS, Origin does not match, or the built-in password `123456` is still in use. Remote login on that password returns 403 `mustChangePassword` and never issues a session cookie. Five failures from one IP lock out with 429 `Retry-After`. OIDC mode returns 403 `Password login is disabled`.
 
-Fix: keep `JWT_SECRET` stable. Behind TLS, set `AUTH_COOKIE_SECURE=true` and `X-Forwarded-Proto`. Change the dashboard password on loopback first. [Security](operations/security.mdx).
+Fix: keep `JWT_SECRET` stable. Behind TLS, set `AUTH_COOKIE_SECURE=true` and `X-Forwarded-Proto`. Change the dashboard password on loopback first. [Security](./operations/security.mdx).
 
 ## Docker cannot reach a local model
 
 Cause: inside the container, `localhost` is the container itself. Compose publishes `20128:20128` and sets `HOSTNAME: "0.0.0.0"` so the process accepts Docker's port map.
 
-Fix: point the node `baseUrl` at `host.docker.internal` or a compose service name (`postgres18:5432` is the pattern this repo uses for sidecar reachability). Publish `-p 20128:20128`. [Docker](deployment/docker.mdx) and [Free and local](providers/free-and-local.mdx).
+Fix: point the node `baseUrl` at `host.docker.internal` or a compose service name (`postgres18:5432` is the pattern this repo uses for sidecar reachability). Publish `-p 20128:20128`. [Docker](./deployment/docker.mdx) and [Free and local](./providers/free-and-local.mdx).
 
 ## MITM Root CA, lock, or redirect errors
 
@@ -129,7 +129,7 @@ An `installing` or `uncertain` redirect journal is a quarantine marker. Close ev
 
 Cause: `DATA_DIR` was not backed up, `API_KEY_SECRET` or `JWT_SECRET` changed, or a schema migration already ran on a newer build.
 
-Fix: restore the pre-upgrade backup, keep those secrets stable, then re-check providers and keys. Procedure: [Upgrading](operations/upgrading.mdx).
+Fix: restore the pre-upgrade backup, keep those secrets stable, then re-check providers and keys. Procedure: [Upgrading](./operations/upgrading.mdx).
 
 ## Logs
 

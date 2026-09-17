@@ -381,6 +381,10 @@ export async function validateDocumentation({ root, files, readText }) {
       if (EMOJI_RE.test(rendered)) {
         issues.push(`${file}: emoji outside code fences`);
       }
+      // Fumadocs only resolves page links that start with ./ or ../
+      for (const m of rendered.matchAll(/\]\((?!\.{1,2}\/|\/|https?:|#|mailto:)([^)\s]+\.mdx)/g)) {
+        issues.push(`${file}: bare relative link ${m[1]} (prefix with ./)`);
+      }
     }
 
     const checkLinks = !isDocsLegacyMd(file) || file === "docs/README.md";

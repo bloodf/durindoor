@@ -19,7 +19,7 @@ Next rewrites `/v1/:path*` to `/api/v1/:path*` and `/v1beta` to `/api/v1beta`. `
 | Persistence | `src/lib/db` | SQLite driver, migrations, repositories, backups, optional Postgres. |
 | CLI | `cli` | Starts the app. Bundled runtime is Node `20.20.2` / npm `10.8.2`. |
 
-Provider files live under `open-sse/providers/registry`. Translators live under `open-sse/translator`. See [Provider registry](provider-registry.mdx) and [Translators](translators.mdx).
+Provider files live under `open-sse/providers/registry`. Translators live under `open-sse/translator`. See [Provider registry](./provider-registry.mdx) and [Translators](./translators.mdx).
 
 ## Request lifecycle
 
@@ -80,7 +80,7 @@ A background ticker (`src/sse/services/backgroundTokenRefresh.js`) also refreshe
 
 Default `DATA_DIR` is `~/.9router` on Unix and `%APPDATA%\9router` on Windows (`src/lib/dataDir.js`). Override with `DATA_DIR`. The live SQLite file is `DATA_DIR/db/data.sqlite`. Backups go under `DATA_DIR/db/backups`. Mode `0700` on new credential directories; backup files use `0600` on POSIX.
 
-Postgres is opt-in and off by default. The engine flag is `databaseEngine` on the settings row. Cutover (`src/lib/db/cutover.js`) migrates the PG schema, mirrors SQLite tables in 500-row chunks, snapshots `data.sqlite` to `data.sqlite.postgres-cutover-<ts>`, then flips the live adapter. Rollback restores the newest snapshot. Operator steps: [Postgres](../operations/postgres.mdx). Contributor migration work: [Postgres migrations](postgres-migrations.mdx).
+Postgres is opt-in and off by default. The engine flag is `databaseEngine` on the settings row. Cutover (`src/lib/db/cutover.js`) migrates the PG schema, mirrors SQLite tables in 500-row chunks, snapshots `data.sqlite` to `data.sqlite.postgres-cutover-<ts>`, then flips the live adapter. Rollback restores the newest snapshot. Operator steps: [Postgres](../operations/postgres.mdx). Contributor migration work: [Postgres migrations](./postgres-migrations.mdx).
 
 ## Security surfaces
 

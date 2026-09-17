@@ -78,4 +78,4 @@ npm run verify:static
 
 `scripts/verify-static-assets.mjs` boots `.next/standalone/custom-server.js` on a free `127.0.0.1` port, with a throwaway `DATA_DIR` and dummy `JWT_SECRET` / `API_KEY_SECRET`. It `GET`s `/dashboard`, parses local `.js`, `.css`, `.woff2`, `.svg`, `.ico`, `.webmanifest`, and `.png` URLs, and requires HTTP 200 for each. Missing assets print and the process exits non-zero. No JS/CSS in the HTML is also a failure.
 
-Run it in CI and before a VPS or image promote. Source: [Laptop](localhost.mdx). Docker copies: [Docker](docker.mdx). VPS unit: [VPS and cloud](cloud.mdx).
+Run it in CI and before a VPS or image promote. Source: [Laptop](./localhost.mdx). Docker copies: [Docker](./docker.mdx). VPS unit: [VPS and cloud](./cloud.mdx).

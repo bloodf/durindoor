@@ -3,7 +3,7 @@ title: VPS and cloud
 description: Run DurinDoor on a VPS with systemd, HOSTNAME, and a reverse proxy in front.
 ---
 
-A VPS or home server that should stay up across logouts. Docker on that host is [Docker](docker.mdx). This page is a source install under systemd, loopback bind, and a proxy on the same machine.
+A VPS or home server that should stay up across logouts. Docker on that host is [Docker](./docker.mdx). This page is a source install under systemd, loopback bind, and a proxy on the same machine.
 
 Do this before the process is reachable from the internet:
 
@@ -84,7 +84,7 @@ Expect `{"ok":true}`. Logs: `journalctl -u durindoor -f`.
 
 </Step>
 <Step>
-Put nginx or Caddy on 443, proxy to `http://127.0.0.1:20128`. Overwrite `X-Forwarded-For` with the client address; do not append. Snippets: [Reverse proxy and static assets](reverse-proxy-and-static-assets.mdx). After `npm run build`, `npm run verify:static` checks that `/dashboard` hashed assets return 200.
+Put nginx or Caddy on 443, proxy to `http://127.0.0.1:20128`. Overwrite `X-Forwarded-For` with the client address; do not append. Snippets: [Reverse proxy and static assets](./reverse-proxy-and-static-assets.mdx). After `npm run build`, `npm run verify:static` checks that `/dashboard` hashed assets return 200.
 
 </Step>
 </Steps>
@@ -109,4 +109,4 @@ sudo systemctl restart durindoor
 
 Restart after changing `PORT`, `HOSTNAME`, `DATA_DIR`, `JWT_SECRET`, `API_KEY_SECRET`, proxy env, or OAuth URL overrides. Dashboard settings stored in SQLite do not need a process restart.
 
-Upgrade: back up `DATA_DIR`, `git pull`, `npm install --no-audit --no-fund`, `npm run build`, restart the unit. [Upgrading](../operations/upgrading.mdx). Docker tag moves: [Docker](docker.mdx).
+Upgrade: back up `DATA_DIR`, `git pull`, `npm install --no-audit --no-fund`, `npm run build`, restart the unit. [Upgrading](../operations/upgrading.mdx). Docker tag moves: [Docker](./docker.mdx).

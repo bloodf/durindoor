@@ -30,7 +30,7 @@ docker run -d \
 
 `JWT_SECRET` is required on a fresh data dir. An older `DATA_DIR/jwt-secret` file is reused with a warning. DurinDoor does not write a new one.
 
-To listen on all host interfaces, change the publish to `-p 20128:20128` and put a reverse proxy in front. See [VPS and cloud](cloud.mdx) and [Security](../operations/security.mdx).
+To listen on all host interfaces, change the publish to `-p 20128:20128` and put a reverse proxy in front. See [VPS and cloud](./cloud.mdx) and [Security](../operations/security.mdx).
 
 ## Compose
 
@@ -90,7 +90,7 @@ The image entrypoint `chown`s `/app/data` to `node` then `exec`s `node custom-se
 
 ## Image layout
 
-The runtime stage copies `public/`, `.next/static/`, the Next standalone tree, `custom-server.js`, `open-sse/`, and the MITM sources the tracer drops. If you fork the Dockerfile, keep those `COPY` lines or the dashboard 404s hashed chunks. Confirm a source build with `npm run verify:static` before you change the image; see [Reverse proxy and static assets](reverse-proxy-and-static-assets.mdx).
+The runtime stage copies `public/`, `.next/static/`, the Next standalone tree, `custom-server.js`, `open-sse/`, and the MITM sources the tracer drops. If you fork the Dockerfile, keep those `COPY` lines or the dashboard 404s hashed chunks. Confirm a source build with `npm run verify:static` before you change the image; see [Reverse proxy and static assets](./reverse-proxy-and-static-assets.mdx).
 
 ## Health and logs
 

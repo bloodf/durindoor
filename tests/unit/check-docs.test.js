@@ -295,6 +295,21 @@ This sentence uses an em dash \u2014 which is banned.
     expect(issues).toContain("docs/extra.mdx: em dash (U+2014) outside code fences");
   });
 
+  it("reports a bare relative mdx link that Fumadocs cannot resolve", async () => {
+    const issues = await check(mdxTree({
+      "docs/meta.json": JSON.stringify({ pages: ["index", "extra"] }, null, 2),
+      "docs/extra.mdx": `---
+title: Extra
+description: A listed extra page.
+---
+
+See [the index](index.mdx) and [the same page](./index.mdx).
+`,
+    }));
+    expect(issues).toContain("docs/extra.mdx: bare relative link index.mdx (prefix with ./)");
+    expect(issues.filter((i) => i.includes("bare relative link"))).toHaveLength(1);
+  });
+
   it("ignores an em dash inside a fenced code block", async () => {
     const issues = await check(mdxTree({
       "docs/meta.json": JSON.stringify({ pages: ["index", "extra"] }, null, 2),

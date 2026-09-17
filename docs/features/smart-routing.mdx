@@ -5,7 +5,7 @@ description: How a client model string becomes an upstream call, including crede
 
 Every chat request goes through the same path: `POST /v1/chat/completions` (or `/v1/messages`) calls `src/sse/handlers/chat.js`, which resolves the model and credentials, then `open-sse/handlers/chatCore.js` translates, compresses if enabled, and dispatches an executor. Other `/v1` families reuse provider connections but have their own handlers.
 
-There is no dedicated Routing page. Watch the outcome on **Dashboard → Usage** (`/dashboard/usage`). Round-robin and sticky limits live on **Dashboard → Settings** (`/dashboard/profile`) and, per provider, on **Dashboard → Providers → (provider)**. Combos have their own page at [Combos](combos.mdx).
+There is no dedicated Routing page. Watch the outcome on **Dashboard → Usage** (`/dashboard/usage`). Round-robin and sticky limits live on **Dashboard → Settings** (`/dashboard/profile`) and, per provider, on **Dashboard → Providers → (provider)**. Combos have their own page at [Combos](./combos.mdx).
 
 ## Model strings
 
@@ -17,7 +17,7 @@ The `model` field is parsed in `open-sse/services/model.js`. A slash splits `pre
 | `cc/claude-sonnet` | Provider alias from the registry, then the model. |
 | `my-node/local-model` | Compatible-node prefix plus that node's model. |
 | `daily-coder` | Custom alias mapped to `provider/model`. |
-| `coding-default` | Combo name. No slash. See [Combos](combos.mdx). |
+| `coding-default` | Combo name. No slash. See [Combos](./combos.mdx). |
 
 Confirm live ids with `GET /v1/models` or the dashboard model picker. If `getModelInfo` returns no provider, the chat handler tries `getComboModels`. A bare string that is neither an alias nor a combo is inferred from the model id prefix (`claude-` → anthropic, `gemini-` → gemini, `gpt-` / `o1` / `o3` / `o4` → openai, `deepseek-` → openrouter) and otherwise `openai`.
 
@@ -25,7 +25,7 @@ A doubled `<connId>/<prefix>/<model>` from a combo step is stripped to the inner
 
 ## Credentials
 
-After the model resolves, DurinDoor picks an active connection for that provider. Locked, expired, and allow-list-excluded accounts are skipped. Quota preflight can skip a spent account before the HTTP call; missing or stale quota fails open. See [Quota tracking](quota-tracking.mdx).
+After the model resolves, DurinDoor picks an active connection for that provider. Locked, expired, and allow-list-excluded accounts are skipped. Quota preflight can skip a spent account before the HTTP call; missing or stale quota fails open. See [Quota tracking](./quota-tracking.mdx).
 
 **Dashboard → Settings** has a Round Robin toggle. Off is fill-first. On, `stickyRoundRobinLimit` (default 3, range 1-10) keeps the same account for that many calls, then rotates.
 

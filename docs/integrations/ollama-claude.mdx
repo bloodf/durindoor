@@ -5,7 +5,7 @@ description: Claude Messages transport for ollama and ollama-local connections.
 
 This is not a CLI Tools card. `ollama` and `ollama-local` are providers. When the client speaks Claude Messages, DurinDoor picks the Claude transport (`/v1/messages`) instead of `/api/chat`. Other client formats still use the Ollama `/api/chat` transport.
 
-Point Claude Code, or any Anthropic client, at DurinDoor as in [Claude Code](claude-code.mdx). Put `ANTHROPIC_BASE_URL` on this gateway, not on Ollama. Use a model id `ollama-local/<name>` or `ollama/<name>` from `GET /v1/models`.
+Point Claude Code, or any Anthropic client, at DurinDoor as in [Claude Code](./claude-code.mdx). Put `ANTHROPIC_BASE_URL` on this gateway, not on Ollama. Use a model id `ollama-local/<name>` or `ollama/<name>` from `GET /v1/models`.
 
 You need an `ollama-local` or `ollama` connection, a DurinDoor API key, and a model that connection actually serves. Add the local host on **Providers** if it is not `http://localhost:11434`. See [Free and local](../providers/free-and-local.mdx).
 

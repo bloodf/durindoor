@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
+// custom-server.js stamps this per-boot secret; loopback classification is
+// refused without it, so the local-caller cases need a value to echo.
+process.env.NINEROUTER_PEER_TOKEN = "peer-token-for-test";
+
 const mocks = vi.hoisted(() => ({
   listTools: vi.fn(),
   callTool: vi.fn(),
@@ -217,5 +221,57 @@ describe("dashboard guard mcp-control auth", () => {
     expect(response).toBeDefined();
     expect(response.status).toBe(200);
     expect(mocks.validateApiKey).toHaveBeenCalledWith("sk-valid");
+  });
+
+  it("allows loopback mcp-control without any credential when requireApiKey is off", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: false });
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "localhost:20128",
+      "x-9r-peer-token": process.env.NINEROUTER_PEER_TOKEN,
+    }));
+    expect(response.status).toBe(200);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects a cross-origin browser POST to loopback mcp-control", async () => {
+    // custom-server.js stamps the trusted-peer header on every request,
+    // including a browser's, so loopback classification alone is not browser
+    // authentication: a page on a hostile origin could otherwise drive these
+    // management tools from the victim's own machine.
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: false });
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "localhost:20128",
+      "x-9r-peer-token": process.env.NINEROUTER_PEER_TOKEN,
+      origin: "https://evil.example.com",
+    }));
+    expect(response.status).toBe(401);
+  });
+
+  it("allows a same-origin dashboard POST to loopback mcp-control", async () => {
+    // The Origin check must reject only a foreign origin, never the app's own.
+    mocks.getSettings.mockResolvedValue({ requireLogin: true, requireApiKey: false });
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "localhost:20128",
+      "x-9r-peer-token": process.env.NINEROUTER_PEER_TOKEN,
+      origin: "http://localhost:20128",
+    }));
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects loopback mcp-control without a credential when requireApiKey is on", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false, requireApiKey: true });
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "localhost:20128",
+      "x-9r-peer-token": process.env.NINEROUTER_PEER_TOKEN,
+    }));
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects remote mcp-control without a credential even when requireApiKey is off", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: false, requireApiKey: false });
+    const response = await proxy(guardRequest("/api/mcp/control", {
+      host: "router.example.com",
+    }));
+    expect(response.status).toBe(401);
   });
 });

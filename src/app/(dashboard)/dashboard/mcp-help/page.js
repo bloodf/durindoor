@@ -17,7 +17,17 @@ const CONTROL_TOOLS = [
   ["toggle_provider_active", "Enable or disable every connection for a provider ID."],
   ["usage_stats", "Aggregate usage statistics for a time period."],
   ["token_saver_stats", "Token-saver statistics for a time period."],
-  ["model_list", "List available LLM models in OpenAI-compatible format."],
+  ["model_list", "List available models in OpenAI-compatible format, filtered by service kind."],
+  ["list_combos", "List every configured combo."],
+  ["get_combo", "Fetch a single combo by ID."],
+  ["create_combo", "Create a combo from a name, models, members, capabilities and allowlist."],
+  ["update_combo", "Update a combo; omitted fields keep their stored value."],
+  ["delete_combo", "Delete a combo by ID."],
+  ["quota_snapshots", "Read provider-reported quota/allowance snapshots."],
+  ["refresh_quota", "Force a live quota refresh for one connection."],
+  ["list_api_keys", "List DurinDoor API keys with usage totals (never the raw secret)."],
+  ["get_settings", "Read DurinDoor settings with secrets withheld."],
+  ["update_settings", "Update non-secret, non-auth-critical settings."],
 ];
 
 function InlineCode({ children }) {
@@ -66,7 +76,8 @@ export default function McpHelpPage() {
       <CodeBlock label="MCP client config (JSON)">{CLIENT_CONFIG}</CodeBlock>
     </DocCard>
     <DocCard icon="build" title="Control server" subtitle="Manage DurinDoor itself">
-      <p>Separate from the gateway, DurinDoor runs a <strong className="font-medium text-dd-text">control</strong> MCP server that exposes management tools. It is a JSON-RPC 2.0 server at <InlineCode>POST /api/mcp/control</InlineCode>, authenticated by your dashboard session or CLI token.</p>
+      <p>Separate from the gateway, DurinDoor runs a <strong className="font-medium text-dd-text">control</strong> MCP server that exposes management tools. It is a JSON-RPC 2.0 server at <InlineCode>POST /api/mcp/control</InlineCode>, authenticated by your dashboard session, CLI token, or a DurinDoor API key.</p>
+      <p>When <strong className="font-medium text-dd-text">Require API key</strong> is off, loopback callers on the same machine may omit the credential entirely. Remote callers always authenticate. The same DurinDoor API key also unlocks the management REST API (<InlineCode>/api/providers</InlineCode>, <InlineCode>/api/combos</InlineCode>, <InlineCode>/api/usage</InlineCode>, <InlineCode>/api/settings</InlineCode>, …) — except raw secret reveal, shutdown, and database routes, which stay session/CLI-only.</p>
       <ul className="space-y-1.5">{CONTROL_TOOLS.map(([name, desc]) => <li key={name} className="flex flex-col gap-0.5 sm:flex-row sm:gap-2"><code className="shrink-0 rounded-dd bg-dd-surface-2 px-1.5 py-0.5 font-mono text-xs text-dd-text">{name}</code><span className="text-[13px] text-dd-muted">{desc}</span></li>)}</ul>
     </DocCard>
     <DocCard icon="lock" title="Connecting upstream servers over OAuth" subtitle="Authorization-code flow">

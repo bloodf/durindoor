@@ -257,7 +257,7 @@ A combo member can still use multiple accounts for the same provider before fall
 | Compatible endpoint | OpenAI-compatible or Anthropic-compatible URL. |
 | Local provider | Local URL, no remote account. |
 
-See [Provider connections](docs/providers/subscription.md), [Provider nodes and custom providers](docs/providers/cheap.md), and [Free and local providers](docs/providers/free.md). All modality support is provider-dependent.
+See [Provider connections](docs/providers/connecting-accounts.mdx), [Provider nodes and custom providers](docs/providers/openai-compatible-nodes.mdx), and [Free and local providers](docs/providers/free-and-local.mdx). All modality support is provider-dependent.
 
 ## API surface
 
@@ -336,7 +336,7 @@ The canonical documentation is Markdown in this repository. GitHub-rendered Mark
 
 - [Index](docs/README.md#users)
 - Getting started: [Quick start](docs/getting-started/index.mdx), [Installation](docs/getting-started/installation.mdx), [Guides](docs/guides/index.mdx)
-- Providers: [connections](docs/providers/subscription.md), [custom nodes](docs/providers/cheap.md), [free and local](docs/providers/free.md)
+- Providers: [connections](docs/providers/connecting-accounts.mdx), [custom nodes](docs/providers/openai-compatible-nodes.mdx), [free and local](docs/providers/free-and-local.mdx)
 - Features: [Smart routing](docs/features/smart-routing.md), [Combos](docs/features/combos.md), [Usage and quota tracking](docs/features/quota-tracking.md), [Compression](docs/features/compression.md), [MCP Gateway](docs/features/mcp-gateway.md), [Realtime](docs/features/realtime.md)
 - Reference: [API reference](docs/reference/api.md), [Environment variables](docs/reference/environment.md), [Architecture](docs/ARCHITECTURE.md)
 - Operations: [Security](docs/operations/security.md), [Startup](docs/operations/startup.md), [Troubleshooting](docs/troubleshooting.md), [FAQ](docs/faq.md), [Release process](docs/development/release-process.md)

@@ -21,7 +21,7 @@ export const SERVICE_KINDS = [
   { id: "fetch", icon: "globe", label: "Web fetch", route: "/v1/web/fetch", count: 6 },
 ];
 
-// Tier order mirrors docs/providers/free.md ("Primary subscription or paid API
+// Tier order mirrors docs/providers/free-and-local.mdx ("Primary subscription or paid API
 // model → ... → Local model or free-tier model") and the combo strategies table.
 export const FALLBACK_TIERS = [
   {

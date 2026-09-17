@@ -1,0 +1,66 @@
+---
+title: Free and local
+description: No-auth providers, Ollama, LM Studio, browser-cookie sessions, and local-device media.
+---
+
+Some providers never take a paid API key. They are local processes, anonymous public endpoints, OAuth free tiers, or browser cookies. Rate limits and terms still belong to the upstream.
+
+| Kind | What you save | Examples |
+| --- | --- | --- |
+| Local model service | Optional key, optional `baseUrl` | `ollama-local`, `lm-studio`, vLLM |
+| No-auth registry | Nothing, or a toggle | AI Horde, other `category: "free"` + `noAuth: true` entries |
+| OAuth free tier | OAuth connection | Provider-specific free allowance |
+| Browser cookie | Cookie value | ChatGPT Web, other `webCookie` ids |
+| Local device media | Nothing | `local-device` TTS on the host |
+
+## Ollama and LM Studio
+
+`ollama-local` talks to `http://localhost:11434` unless the connection sets `providerSpecificData.baseUrl`. The add-key dialog shows an Ollama Host URL field. Local Ollama does not validate keys; DurinDoor still sends Bearer when a key is present.
+
+LM Studio is registry id `lm-studio` (alias `lmstudio`). It is `noAuth: true` with default base URL `http://localhost:1234/v1`. API key is optional. Models are passthrough: DurinDoor forwards whatever LM Studio currently serves.
+
+<Steps>
+<Step>
+Start Ollama or LM Studio on the host and confirm it answers locally (`curl` against `/api/tags` or `/v1/models`).
+</Step>
+<Step>
+Open Dashboard, then Providers, then the card. For Ollama, set the host if it is not `localhost:11434`. For LM Studio, override `baseUrl` only if you changed the listen port.
+</Step>
+<Step>
+Save. Send `ollama-local/<model>` or `lmstudio/<model>` (or the alias the catalog shows).
+</Step>
+</Steps>
+
+If DurinDoor is in Docker, `localhost` is the container. Point `baseUrl` at `host.docker.internal` or a compose service name.
+
+Other self-hosted OpenAI-compatible ids (`vllm`, `llama-cpp`, `docker-model-runner`, and the rest) are listed on [Local router providers](local-router-providers.mdx). Those executors omit `Authorization` when no API key or access token is saved.
+
+## No-auth providers
+
+A no-auth provider is `noAuth: true` on the registry entry. Chat auto-combo only seeds the subset marked `autoComboNoAuth` with `category: "free"` and an `llm` service kind. You can disable a free no-auth id from the Providers page; that writes `disabledFreeProviders` in settings.
+
+<Callout type="warn">
+Only use a no-auth upstream that is already locked down by the network or that runs on the same machine. Do not publish a no-auth local server through DurinDoor to the public internet without an outer access-control layer. DurinDoor client keys still apply; they do not make the upstream private.
+</Callout>
+
+AI Horde is the public anonymous exception. Registry id `aihorde`, alias `horde`. With no saved key, DurinDoor sends AI Horde's documented sentinel `0000000000` against `https://oai.aihorde.net/v1`. A saved Horde API key replaces that sentinel and can receive better queue priority. Model ids come from the live `/v1/models` facade and can contain `/`. Treat Horde as a low-priority fallback: volunteer workers join and leave, queues move, and prompts are processed on community machines. Do not send secrets. The facade rejects `max_tokens` below 16.
+
+## Browser-cookie providers
+
+Same paste flow as [Connecting accounts](connecting-accounts.mdx): Dashboard, Providers, cookie card, cookie value. ChatGPT Web wants `__Secure-next-auth.session-token`. These sessions die when the browser session dies. Fine for a personal box; a poor fit for a shared team gateway.
+
+## Local device media
+
+`local-device` is a TTS provider (`serviceKinds: ["tts"]`, `authType: "none"`). It synthesizes on the host (macOS or Windows) and returns mp3. Other local media ids include local Whisper (`local-whisper`, default `http://127.0.0.1:11500`) and optional local TTS/STT tools listed on the media-provider pages. Check those pages for voice, format, sample rate, and service URL fields.
+
+## OpenCode free
+
+OpenCode Free is registry id `opencode`, alias `oc`, `noAuth: true`, and `autoComboNoAuth: true`. The static catalog currently lists Ox Alpha Free as `oc/x-preview-f-free` over Chat Completions. OpenCode Go subscribers can use the same model as `ocg/ox-alpha-free`. Catalog rows can change; `GET /v1/models` is the live list.
+
+## Xiaomi token plan
+
+`xiaomi-tokenplan` (aliases `xmtp`) is an API-key provider for SenseNova Token Plan keys (`tp-` prefix). Region is required: Singapore (`sgp`, default), China (`cn`), or Amsterdam (`ams`). The catalog is discovered at runtime. Use the dashboard or `GET /v1/models` instead of copying ids from this page.
+
+## Free tiers
+
+OAuth free tiers still need an account. Quota rules change without a DurinDoor release. Keep a paid or local fallback for work that cannot wait on a free pool. Watch usage on the dashboard and reconnect if the upstream revokes the token.

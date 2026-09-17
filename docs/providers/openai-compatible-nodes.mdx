@@ -1,0 +1,64 @@
+---
+title: OpenAI-compatible nodes
+description: Custom OpenAI-compatible, Anthropic-compatible, and embedding endpoints, plus aliases.
+---
+
+A provider node is an endpoint DurinDoor does not ship as a registry provider. Use it for an internal gateway, a self-hosted vLLM, a vendor that only speaks OpenAI or Anthropic routes, or an embeddings-only server.
+
+Open Dashboard, then Providers. The Custom Providers section has Add OpenAI Compatible and Add Anthropic Compatible. That POSTs `/api/provider-nodes`. Ids are `openai-compatible-<apiType>-<id>`, `anthropic-compatible-<id>`, or `custom-embedding-<id>`.
+
+## OpenAI-compatible
+
+<Steps>
+<Step>
+Click Add OpenAI Compatible. Name and prefix are required. Prefix is the client-facing provider token in `prefix/model` strings, for example `oc-prod/llama-3.1-70b`.
+</Step>
+<Step>
+Pick Chat Completions or Responses API. Default base URL is `https://api.openai.com/v1`. Point it at your gateway, including the `/v1` suffix the upstream expects.
+</Step>
+<Step>
+Save, then open the node and add an API key connection. The create route requires a key even if the upstream ignores it. For a local server that does not check auth, paste a placeholder such as `local-dev-key`.
+</Step>
+<Step>
+Add model names, or enable passthrough if the node should forward unknown ids. An empty saved model list exposes no models for that node. Use Import on the node page to discover `/v1/models` from the upstream, then save the rows you want.
+</Step>
+</Steps>
+
+`GET /v1/models` on DurinDoor is the list clients should trust. Discovery against the node needs both `providerSpecificData.baseUrl` and a token.
+
+## Anthropic-compatible
+
+Same Providers page, Add Anthropic Compatible. Default base URL is `https://api.anthropic.com/v1`. If you paste a URL that already ends in `/messages`, DurinDoor strips that suffix so runtime does not double it.
+
+DurinDoor translates OpenAI-shaped client requests to Claude Messages when the node needs it. Tools, images, reasoning, and streaming do not always map. Test those before you put the node in a combo.
+
+Third-party Anthropic gateways that are not `api.anthropic.com` get both `x-api-key` and `Authorization: Bearer` so either header style works.
+
+## Custom embeddings
+
+Embedding-only nodes live under Dashboard, Media providers, embedding. The modal posts `type: "custom-embedding"`. A trailing `/embeddings` on the base URL is stripped. Default base URL is `https://api.openai.com/v1`. Clients call `/v1/embeddings`.
+
+## Aliases and naming
+
+Keep the prefix lowercase and stable. Leave the upstream model id after the slash alone. Avoid spaces.
+
+```text
+oc-lab/llama-3.1-70b
+ac-internal/claude-sonnet
+emb-search/text-embedding-model
+coding-default
+```
+
+`coding-default` is a combo or a model alias, not a node prefix. Model aliases are `PUT /api/models/alias` with `{ model, alias }` and show up as extra names for an existing model string. Combos are a fallback chain; see [Combos](../features/combos.md).
+
+Dedicated local registry ids (`ollama-local`, `lm-studio`, `vllm`) are usually a better fit than a generic node when one exists. Those ids omit `Authorization` when no key is saved. Compatible nodes still require the key field. See [Local router providers](local-router-providers.mdx) and [Free and local](free-and-local.mdx).
+
+If DurinDoor runs in Docker, `localhost` inside the container is the container. Use a compose service name or the host gateway for a server that runs on the machine.
+
+Node URL probes go through `/api/provider-nodes/validate`. Only `http` and `https` are accepted. The probe is SSRF-guarded and stops after 10 seconds. Connection refused, DNS failure, and certificate errors come back as that 400/403 payload rather than hanging the dashboard.
+
+Icon URLs are optional and must pass `isValidProviderIconUrl`. A missing name or prefix is 400.
+
+Custom nodes may reject content-part arrays, tool calls, or unknown OpenAI fields. Prefer one node per upstream behavior rather than mixing incompatible models behind the same prefix.
+
+Before you put a node in a combo: confirm `GET /v1/models` lists the names you expect, send a small chat request, then test streaming and tools if your clients need them. Test images, audio, or embeddings only when those routes are in play. Usage logs show provider name, model name, latency, and errors.

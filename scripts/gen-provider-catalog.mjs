@@ -68,7 +68,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-\`scripts/gen-provider-catalog.mjs\` reads the ${files.length} modules in \`open-sse/providers/registry/\` except \`index.js\`. Model counts are \`PROVIDER_MODELS\` lengths from \`open-sse/config/providerModels.js\`. Auth is \`authType\` when set, otherwise \`authModes\`, \`oauth\`, \`noAuth\`, or \`category\`. Site links use \`display.website\`. Run \`npm run gen:provider-catalog\` after a registry change.
+Every row is one registry provider. \`scripts/gen-provider-catalog.mjs\` reads the ${files.length} modules in \`open-sse/providers/registry/\` except \`index.js\`. Model counts are \`PROVIDER_MODELS\` lengths from \`open-sse/config/providerModels.js\`. Auth is \`authType\` when set, otherwise \`authModes\`, \`oauth\`, \`noAuth\`, or \`category\`. Site links use \`display.website\`. Run \`npm run gen:provider-catalog\` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |

@@ -14,54 +14,65 @@
    CSS entry (not imported from globals). */
 @source "../../../../node_modules/fumadocs-ui/dist/**/*.js";
 
-/* Map Fumadocs `--color-fd-*` onto the DurinDoor palette from :root / .dark
-   in src/app/globals.css. Both selectors are required: neutral.css writes
-   literal hsl values on `.dark`, which would otherwise replace the var() refs. */
+/* Map every Fumadocs `--color-fd-*` onto Durin DS tokens from
+   src/shared/ui/tokens.css. Both :root and .dark are required: neutral.css
+   writes literal hsl values on `.dark`, which would otherwise replace the
+   var() refs. Values are token references only. */
 :root {
-  --color-fd-background: var(--color-bg);
-  --color-fd-foreground: var(--color-text-main);
-  --color-fd-muted: var(--color-surface-2);
-  --color-fd-muted-foreground: var(--color-text-muted);
-  --color-fd-popover: var(--color-surface);
-  --color-fd-popover-foreground: var(--color-text-main);
-  --color-fd-card: var(--color-surface);
-  --color-fd-card-foreground: var(--color-text-main);
-  --color-fd-border: var(--color-border);
-  --color-fd-primary: var(--color-brand-500);
-  --color-fd-primary-foreground: #ffffff;
-  --color-fd-secondary: var(--color-surface-2);
-  --color-fd-secondary-foreground: var(--color-text-main);
-  --color-fd-accent: var(--color-gold-soft);
-  --color-fd-accent-foreground: var(--color-gold);
-  --color-fd-ring: var(--color-brand-500);
-  --color-fd-overlay: rgba(13, 17, 23, 0.4);
+  --color-fd-background: var(--dd-bg);
+  --color-fd-foreground: var(--dd-text);
+  --color-fd-muted: var(--dd-surface-2);
+  --color-fd-muted-foreground: var(--dd-text-muted);
+  --color-fd-popover: var(--dd-surface);
+  --color-fd-popover-foreground: var(--dd-text);
+  --color-fd-card: var(--dd-surface);
+  --color-fd-card-foreground: var(--dd-text);
+  --color-fd-border: var(--dd-border);
+  --color-fd-primary: var(--dd-accent);
+  --color-fd-primary-foreground: var(--dd-on-accent);
+  --color-fd-secondary: var(--dd-surface-2);
+  --color-fd-secondary-foreground: var(--dd-text);
+  --color-fd-accent: var(--dd-accent-soft);
+  --color-fd-accent-foreground: var(--dd-accent);
+  --color-fd-ring: var(--dd-focus-ring);
+  --color-fd-overlay: var(--dd-backdrop);
+  --color-fd-info: var(--dd-info);
+  --color-fd-warning: var(--dd-warning);
+  --color-fd-error: var(--dd-danger);
+  --color-fd-success: var(--dd-success);
+  --color-fd-idea: var(--dd-accent-2);
 }
 
 .dark {
-  --color-fd-background: var(--color-bg);
-  --color-fd-foreground: var(--color-text-main);
-  --color-fd-muted: var(--color-surface-2);
-  --color-fd-muted-foreground: var(--color-text-muted);
-  --color-fd-popover: var(--color-surface);
-  --color-fd-popover-foreground: var(--color-text-main);
-  --color-fd-card: var(--color-surface);
-  --color-fd-card-foreground: var(--color-text-main);
-  --color-fd-border: var(--color-border);
-  --color-fd-primary: var(--color-brand-500);
-  --color-fd-primary-foreground: #ffffff;
-  --color-fd-secondary: var(--color-surface-2);
-  --color-fd-secondary-foreground: var(--color-text-main);
-  --color-fd-accent: var(--color-gold-soft);
-  --color-fd-accent-foreground: var(--color-gold);
-  --color-fd-ring: var(--color-brand-500);
-  --color-fd-overlay: rgba(0, 0, 0, 0.55);
+  --color-fd-background: var(--dd-bg);
+  --color-fd-foreground: var(--dd-text);
+  --color-fd-muted: var(--dd-surface-2);
+  --color-fd-muted-foreground: var(--dd-text-muted);
+  --color-fd-popover: var(--dd-surface);
+  --color-fd-popover-foreground: var(--dd-text);
+  --color-fd-card: var(--dd-surface);
+  --color-fd-card-foreground: var(--dd-text);
+  --color-fd-border: var(--dd-border);
+  --color-fd-primary: var(--dd-accent);
+  --color-fd-primary-foreground: var(--dd-on-accent);
+  --color-fd-secondary: var(--dd-surface-2);
+  --color-fd-secondary-foreground: var(--dd-text);
+  --color-fd-accent: var(--dd-accent-soft);
+  --color-fd-accent-foreground: var(--dd-accent);
+  --color-fd-ring: var(--dd-focus-ring);
+  --color-fd-overlay: var(--dd-backdrop);
+  --color-fd-info: var(--dd-info);
+  --color-fd-warning: var(--dd-warning);
+  --color-fd-error: var(--dd-danger);
+  --color-fd-success: var(--dd-success);
+  --color-fd-idea: var(--dd-accent-2);
 }
 
 /* neutral.css tints the sidebar with its own greys. Re-bind those too. */
 .dark #nd-sidebar {
-  --color-fd-muted: var(--color-surface-2);
-  --color-fd-secondary: var(--color-surface-2);
-  --color-fd-muted-foreground: var(--color-text-muted);
+  --color-fd-muted: var(--dd-surface-2);
+  --color-fd-secondary: var(--dd-surface-2);
+  --color-fd-muted-foreground: var(--dd-text-muted);
 }
 
 /* Fumadocs preflight (css/lib/base.css) paints body and every border with
@@ -85,12 +96,154 @@
   }
 }
 
-#nd-docs-layout {
-  font-family: var(--font-sans);
-  --tw-prose-links: var(--color-gold);
+/* Shell, type, and component overrides. Scoped so they never leak. */
+.dd-docs {
+  /* Same stack as src/app/globals.css @theme --font-sans. docs.css is its own
+     Tailwind graph, so var(--font-sans) here would resolve to the preset default. */
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+  font-size: 0.875rem;
+  background-color: var(--dd-bg);
+  color: var(--dd-text);
+  --tw-prose-links: var(--dd-accent);
+  --color-fd-background: var(--dd-bg);
+  --color-fd-foreground: var(--dd-text);
+  --color-fd-muted: var(--dd-surface-2);
+  --color-fd-muted-foreground: var(--dd-text-muted);
+  --color-fd-popover: var(--dd-surface);
+  --color-fd-popover-foreground: var(--dd-text);
+  --color-fd-card: var(--dd-surface);
+  --color-fd-card-foreground: var(--dd-text);
+  --color-fd-border: var(--dd-border);
+  --color-fd-primary: var(--dd-accent);
+  --color-fd-primary-foreground: var(--dd-on-accent);
+  --color-fd-secondary: var(--dd-surface-2);
+  --color-fd-secondary-foreground: var(--dd-text);
+  --color-fd-accent: var(--dd-accent-soft);
+  --color-fd-accent-foreground: var(--dd-accent);
+  --color-fd-ring: var(--dd-focus-ring);
+  --color-fd-overlay: var(--dd-backdrop);
 }
 
-#nd-docs-layout .prose a:not([data-card]) {
-  color: var(--color-gold);
-  text-decoration-color: var(--color-gold);
+.dd-docs #nd-sidebar {
+  background-color: var(--dd-surface);
+  border-inline-end: 1px solid var(--dd-border);
+  color: var(--dd-text);
+}
+
+.dd-docs #nd-sidebar a.inline-flex {
+  font-weight: 600;
+  color: var(--dd-text);
+  font-size: 15px;
+}
+
+.dd-docs #nd-sidebar [data-active="true"] {
+  background-color: var(--dd-accent-soft);
+  color: var(--dd-accent);
+}
+
+.dd-docs #nd-sidebar a:hover,
+.dd-docs #nd-sidebar button:hover {
+  background-color: var(--dd-accent-soft);
+  color: var(--dd-text);
+}
+
+.dd-docs #nd-sidebar [data-active="true"]:hover {
+  background-color: var(--dd-accent-soft);
+  color: var(--dd-accent);
+}
+
+.dd-docs #nd-subnav {
+  height: 3.5rem;
+  background-color: var(--dd-surface);
+  border-bottom: 1px solid var(--dd-border);
+  backdrop-filter: none;
+}
+
+.dd-docs [data-search-full] {
+  border-radius: var(--dd-radius);
+  border: 1px solid var(--dd-border);
+  background-color: var(--dd-surface);
+  color: var(--dd-text-muted);
+}
+
+.dd-docs [data-search-full]:hover {
+  background-color: var(--dd-surface-2);
+  color: var(--dd-text);
+}
+
+.dd-docs [data-search-full] kbd {
+  border-color: var(--dd-border);
+  background-color: var(--dd-bg);
+  border-radius: var(--dd-radius);
+}
+
+.dd-docs h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--dd-text);
+}
+
+.dd-docs h2,
+.dd-docs h3,
+.dd-docs h4 {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--dd-text);
+}
+
+.dd-docs .prose a:not([data-card]) {
+  color: var(--dd-accent);
+  text-decoration-color: var(--dd-accent);
+}
+
+.dd-docs :not(pre) > code,
+.dd-docs pre,
+.dd-docs .shiki,
+.dd-docs kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.dd-docs figure.shiki,
+.dd-docs pre {
+  background-color: var(--dd-surface-2);
+  border-color: var(--dd-border);
+  border-radius: var(--dd-radius);
+  box-shadow: none;
+}
+
+.dd-docs :not(pre) > code {
+  background-color: var(--dd-surface-2);
+  color: var(--dd-text);
+  border-radius: var(--dd-radius);
+}
+
+.dd-docs [data-card] {
+  background-color: var(--dd-surface);
+  border-color: var(--dd-border);
+  border-radius: var(--dd-radius-lg);
+  color: var(--dd-text);
+}
+
+.dd-docs [data-card]:hover {
+  background-color: var(--dd-surface-2);
+  border-color: var(--dd-border-subtle);
+}
+
+.dd-docs [class*="rounded-xl"] {
+  border-radius: var(--dd-radius-lg);
+}
+
+.dd-docs table {
+  border-color: var(--dd-border);
+}
+
+.dd-docs th,
+.dd-docs td {
+  border-color: var(--dd-border);
+}
+
+.dd-docs thead {
+  background-color: var(--dd-surface-2);
+  color: var(--dd-text);
 }

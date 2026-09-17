@@ -40,6 +40,10 @@ export async function generateMetadata(props) {
   return {
     title: page.data.title,
     description: page.data.description,
+    icons: {
+      icon: "/icons/icon-512.png",
+      apple: "/icons/icon-192.png",
+    },
     openGraph: {
       title: page.data.title,
       description: page.data.description,

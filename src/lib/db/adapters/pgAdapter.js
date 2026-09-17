@@ -27,7 +27,17 @@ const AUTINCREMENT_TABLES = new Map([
   ["pgCutoverLog", "id"],
 ]);
 
-const WORKER_PATH = fileURLToPath(new URL("./pgSyncWorker.cjs", import.meta.url));
+// Resolved lazily: webpack rewrites `import.meta.url` when it bundles this
+// module, and `fileURLToPath` then rejects the value it produces. At module
+// scope that turns a mere import into a build-time crash ("Failed to collect
+// page data"), even for routes that never open a PG connection. Resolving on
+// first use keeps the failure inside the call that actually needs a worker.
+let workerPath = null;
+function resolveWorkerPath() {
+  if (workerPath) return workerPath;
+  workerPath = fileURLToPath(new URL("./pgSyncWorker.cjs", import.meta.url));
+  return workerPath;
+}
 const SAB_BYTES = 8 * 1024 * 1024;
 const HEADER_BYTES = 8;
 const WAIT_MS = 120_000;
@@ -104,7 +114,7 @@ function appendSslmode(url, sslmode) {
 function createSyncBridge(url) {
   const sab = new SharedArrayBuffer(SAB_BYTES);
   const i32 = new Int32Array(sab, 0, 2);
-  const worker = new Worker(WORKER_PATH, { workerData: { url, sab } });
+  const worker = new Worker(resolveWorkerPath(), { workerData: { url, sab } });
   let closed = false;
 
   function call(msg) {

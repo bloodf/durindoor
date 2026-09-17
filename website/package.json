@@ -9,6 +9,7 @@
     "prebuild": "node scripts/sync-public.mjs",
     "build": "next build --webpack",
     "start": "next start -p 3000",
+    "test:docs": "playwright test tests/docs.spec.mjs",
     "mock:smoke": "node --import ./scripts/register-alias.mjs scripts/mock-smoke.mjs",
     "postinstall": "fumadocs-mdx source.config.mjs"
   },
@@ -43,6 +44,8 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "tailwindcss": "^4.3.3"
   }

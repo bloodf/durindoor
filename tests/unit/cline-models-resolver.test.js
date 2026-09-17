@@ -8,7 +8,10 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({
 
 import { resolveClineModels } from "../../open-sse/services/clineModels.js";
 
-const connection = { accessToken: "oauth-token" };
+// Cline OAuth access tokens are WorkOS JWTs; only those are `workos:`-prefixed
+// on the wire (an opaque ClinePass API key must be sent verbatim).
+const OAUTH_JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1XzEifQ.sig";
+const connection = { accessToken: OAUTH_JWT };
 
 describe("resolveClineModels", () => {
   beforeEach(() => {
@@ -45,7 +48,7 @@ describe("resolveClineModels", () => {
         method: "GET",
         headers: expect.objectContaining({
           Accept: "application/json",
-          Authorization: "Bearer workos:oauth-token",
+          Authorization: `Bearer workos:${OAUTH_JWT}`,
         }),
       }),
       proxyOptions,

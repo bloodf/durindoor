@@ -504,6 +504,8 @@ export async function saveRequestUsage(entry) {
     }
   } catch (e) {
     console.error("Failed to save usage stats:", e);
+    const msg = String(e && e.message || "");
+    if (/syntax error|does not exist|collation/i.test(msg)) throw e;
   }
 }
 

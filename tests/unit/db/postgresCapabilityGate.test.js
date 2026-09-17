@@ -26,6 +26,12 @@ describe("postgresCapabilityGate — evaluateCapabilities", () => {
     expect(out.versionMismatch).toBe(true);
   });
 
+  it("disables 18-only features when the operator cap is 16 even on a 18 cluster", () => {
+    const out = evaluateCapabilities(cluster(18), 16, DEFAULT_FEATURES);
+    expect(out.effective.aio.enabled).toBe(false);
+    expect(out.effective.parallelGin.enabled).toBe(false);
+  });
+
   it("disables >=18 features on a 16 cluster", () => {
     const out = evaluateCapabilities(cluster(16), 16, DEFAULT_FEATURES);
     expect(out.effective.aio.enabled).toBe(false);

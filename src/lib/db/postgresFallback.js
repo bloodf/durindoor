@@ -136,7 +136,10 @@ export async function openActiveAdapter() {
   }
   let pg;
   try {
-    pg = await createPostgresAdapter({ url, sslmode: settings.postgresSslmode });
+    pg = await createPostgresAdapter({
+      url,
+      sslmode: settings.postgresSslmode || process.env.DURINDOOR_PG_SSLMODE,
+    });
   } catch (err) {
     try {
       await writeSettingsViaTransientSqlite({

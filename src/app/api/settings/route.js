@@ -30,8 +30,10 @@ const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
 /**
  * Shape settings for a response.
  *
- * `password`, `passwordSessionEpoch`, `oidcClientSecret` and `mitmSudoEncrypted`
- * are withheld from every caller. `outboundProxyUrl` may embed
+ * `password`, `passwordSessionEpoch`, `oidcClientSecret`, `mitmSudoEncrypted`
+ * and `postgresUrl` are withheld from every caller — the PG connection string
+ * carries `user:password@` for the database itself, so it never leaves the
+ * server even for an operator. `outboundProxyUrl` may embed
  * `user:password@`, so its userinfo is redacted unless the caller proved
  * dashboard or CLI identity: an application API key is an inference
  * credential, not an operator session, and must not read proxy credentials.
@@ -40,8 +42,15 @@ const SCOPED_SETTING_KEYS = ["claudeAutoPing", "codexAutoPing"];
  * @param {{ privileged: boolean }} options
  */
 function sanitizeSettingsForResponse(settings, { privileged }) {
-  const { password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safeSettings } =
-    settings;
+  const {
+    password,
+    passwordSessionEpoch,
+    oidcClientSecret,
+    mitmSudoEncrypted,
+    postgresUrl,
+    ...safeSettings
+  } = settings;
+  void postgresUrl;
   safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
   if (!privileged && safeSettings.outboundProxyUrl) {
     safeSettings.outboundProxyUrl = redactProxyUrlCredentials(safeSettings.outboundProxyUrl);

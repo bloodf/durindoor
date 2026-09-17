@@ -59,7 +59,7 @@ describe("dialects/postgres/translate — CREATE TABLE", () => {
       },
     });
     expect(createSql).toBe(
-      "CREATE TABLE IF NOT EXISTS widget (id TEXT PRIMARY KEY, name TEXT NOT NULL, price DOUBLE PRECISION DEFAULT 0)"
+      'CREATE TABLE IF NOT EXISTS "widget" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "price" DOUBLE PRECISION DEFAULT 0)'
     );
     expect(indexSqls).toEqual([]);
   });
@@ -67,14 +67,14 @@ describe("dialects/postgres/translate — CREATE TABLE", () => {
   it("translates a representative table with all 17 construct flavors", () => {
     const def = TABLES.providerConnections;
     const { createSql, indexSqls } = translateCreateTable("providerConnections", def);
-    expect(createSql).toContain("CREATE TABLE IF NOT EXISTS providerConnections");
-    expect(createSql).toContain("id TEXT PRIMARY KEY");
-    expect(createSql).toContain("provider TEXT NOT NULL");
-    expect(createSql).toContain("priority INTEGER");
-    expect(createSql).toContain("isActive INTEGER DEFAULT 1");
-    expect(createSql).toContain("data TEXT NOT NULL");
-    expect(createSql).toContain("createdAt TEXT NOT NULL");
-    expect(createSql).toContain("updatedAt TEXT NOT NULL");
+    expect(createSql).toContain('CREATE TABLE IF NOT EXISTS "providerConnections"');
+    expect(createSql).toContain('"id" TEXT PRIMARY KEY');
+    expect(createSql).toContain('"provider" TEXT NOT NULL');
+    expect(createSql).toContain('"priority" INTEGER');
+    expect(createSql).toContain('"isActive" INTEGER DEFAULT 1');
+    expect(createSql).toContain('"data" TEXT NOT NULL');
+    expect(createSql).toContain('"createdAt" TEXT NOT NULL');
+    expect(createSql).toContain('"updatedAt" TEXT NOT NULL');
     // Indexes are translated
     for (const idx of indexSqls) {
       expect(idx).toMatch(/^CREATE (UNIQUE )?INDEX IF NOT EXISTS /);
@@ -93,7 +93,7 @@ describe("dialects/postgres/translate — indexes", () => {
     const out = translateIndex(
       "CREATE INDEX IF NOT EXISTS idx_foo ON bar(name COLLATE NOCASE)"
     );
-    expect(out).toBe("CREATE INDEX IF NOT EXISTS idx_foo ON bar(LOWER(name))");
+    expect(out).toBe('CREATE INDEX IF NOT EXISTS idx_foo ON "bar"(LOWER("name"))');
   });
 
   it("preserves plain indexes", () => {
@@ -101,7 +101,7 @@ describe("dialects/postgres/translate — indexes", () => {
       "CREATE INDEX IF NOT EXISTS idx_pc_provider ON providerConnections(provider)"
     );
     expect(out).toBe(
-      "CREATE INDEX IF NOT EXISTS idx_pc_provider ON providerConnections(provider)"
+      'CREATE INDEX IF NOT EXISTS idx_pc_provider ON "providerConnections"("provider")'
     );
   });
 
@@ -109,8 +109,16 @@ describe("dialects/postgres/translate — indexes", () => {
     const out = translateIndex(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON usageHistory(usageEventId) WHERE usageEventId IS NOT NULL"
     );
-    expect(out).toMatch(/^CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON usageHistory\(usageEventId\)/);
+    expect(out).toMatch(/^CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON "usageHistory"\("usageEventId"\)/);
     expect(out).toContain("WHERE usageEventId IS NOT NULL");
+  });
+});
+
+describe("dialects/postgres/translate — singleton INTEGER PK", () => {
+  it("does not rewrite settings.id CHECK (id = 1) to BIGSERIAL", () => {
+    expect(translateColumnDef("id", "INTEGER PRIMARY KEY CHECK (id = 1)")).toBe(
+      "INTEGER PRIMARY KEY CHECK (id = 1)"
+    );
   });
 });
 

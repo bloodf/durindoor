@@ -92,6 +92,17 @@ describe("adapters/pgAdapter — placeholder rewriting", () => {
     adapter = r.adapter; calls = r.calls;
   });
 
+  it("rewrites INSERT OR IGNORE before placeholder substitution", async () => {
+    await adapter.run("INSERT OR IGNORE INTO _meta(key, value) VALUES(?, ?)", ["k", "v"]);
+    const last = calls[calls.length - 1];
+    expect(last.sql).toContain("INSERT INTO _meta(key, value) VALUES($1, $2)");
+    expect(last.sql).toContain("ON CONFLICT DO NOTHING");
+  });
+
+  it("exposes sharedFileTransactions so quota reservations can lock", async () => {
+    expect(adapter.capabilities.sharedFileTransactions).toBe(true);
+  });
+
   it("rewrites ? to $N in the order they appear", async () => {
     await adapter.run("UPDATE x SET a = ?, b = ? WHERE id = ?", [1, 2, "abc"]);
     const last = calls[calls.length - 1];

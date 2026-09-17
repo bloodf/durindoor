@@ -80,7 +80,8 @@ export function evaluateCapabilities(cluster = {}, versionCap = 18, features) {
   const effective = {};
   for (const [id, def] of Object.entries(cfg)) {
     const requiresMajor = parseRequiredMajor(def && def.requires);
-    const enabled = Boolean(def && def.enabled) && clusterMajor >= requiresMajor && clusterMajor >= cap;
+    const effectiveMajor = Math.min(clusterMajor || 0, cap);
+    const enabled = Boolean(def && def.enabled) && effectiveMajor >= requiresMajor;
     effective[id] = {
       enabled,
       requires: def && def.requires,

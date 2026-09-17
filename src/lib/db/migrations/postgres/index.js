@@ -19,11 +19,12 @@ import m014 from "./014-api-key-provider-connections.js";
 import m015 from "./015-combo-members.js";
 import m016 from "./016-combo-capabilities.js";
 import m017 from "./017-connection-groups.js";
-import m018 from "./018-pg-cutover-log.js";
+import m018 from "./018-api-key-groups.js";
+import m019 from "./019-pg-cutover-log.js";
 
 export const PG_MIGRATIONS = [
   m001, m002, m003, m004, m005, m006, m007, m008, m009,
-  m010, m011, m012, m013, m014, m015, m016, m017, m018,
+  m010, m011, m012, m013, m014, m015, m016, m017, m018, m019,
 ].sort((a, b) => a.version - b.version);
 
 export function pgLatestVersion() {

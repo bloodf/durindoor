@@ -13,11 +13,15 @@ const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   output: "standalone",
-  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite"],
+  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "pg"],
   turbopack: {
     root: tracingRoot
   },
   outputFileTracingRoot: tracingRoot,
+  outputFileTracingIncludes: {
+    "/api/**/*": ["./src/lib/db/adapters/pgSyncWorker.cjs"],
+    "/*": ["./src/lib/db/adapters/pgSyncWorker.cjs"],
+  },
   images: {
     unoptimized: true
   },
@@ -48,7 +52,11 @@ const nextConfig = {
     if (isServer) {
       const prev = config.externals;
       config.externals = [
-        ({ request }, cb) => (request === "better-sqlite3" ? cb(null, "commonjs better-sqlite3") : cb()),
+        ({ request }, cb) => (
+          request === "better-sqlite3" || request === "pg"
+            ? cb(null, `commonjs ${request}`)
+            : cb()
+        ),
         ...(Array.isArray(prev) ? prev : prev ? [prev] : []),
       ];
     }

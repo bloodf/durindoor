@@ -431,6 +431,8 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
     for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'mitmAlias'`)) out.mitmAlias[r.key] = parseJson(r.value);
     for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
 
+    if (!includeSecrets && out.settings) delete out.settings.postgresUrl;
+
     return out;
   });
 }

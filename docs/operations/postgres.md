@@ -22,21 +22,26 @@ to opt out of features the cluster does not have.
 
 ## Quick start
 
+Setting `DURINDOOR_PG_URL` does **not** switch the engine. Boot only
+opens PostgreSQL when `settings.databaseEngine === "postgres"`. The
+cutover pipeline is what flips that flag.
+
 ```bash
 # 1. Start a PG 18 cluster (profile-gated so default `docker compose up` is unchanged)
 docker compose --profile postgres18 up -d
 
-# 2. Set the connection URL in .env
+# 2. Optional: seed the connection URL (the dashboard "Test connection"
+#    persist also stores it encrypted in settings).
 echo 'DURINDOOR_PG_URL=postgres://durindoor:durindoor@postgres18:5432/durindoor' >> .env
-# Optional: pin the SSL mode and the version cap
+# Optional TLS mode appended when the URL has no sslmode= already
 echo 'DURINDOOR_PG_SSLMODE=prefer' >> .env
-echo 'DURINDOOR_PG_PREFERRED_VERSION=18' >> .env
 
-# 3. Restart DurinDoor so it boots the PG adapter
+# 3. Restart DurinDoor (still on SQLite)
 docker compose restart durindoor
 
-# 4. From the dashboard: Settings > Database > "Test connection"
-#    Expected log line:
+# 4. Dashboard: Settings > Database > paste the URL > Test connection
+#    > Cut over to Postgres.
+#    Expected log line after a successful cutover:
 #      [DB] Driver: pg | engine: postgres
 ```
 
@@ -51,12 +56,17 @@ The dashboard action "Cut over to Postgres" runs:
    in chunks of 500, per-table transactions, row-count assertion.
    `requestDetails` is skipped by default (can be GB; opt in via
    `includeRequestDetails: true`).
-5. `snapshotSqlite()` — copy `data.sqlite` to
-   `DATA_DIR/db/backups/data.sqlite.postgres-cutover-<ts>.sqlite` (mode
-   0600). Best-effort: warn on failure, continue.
-6. `setActiveAdapter(pg)` — flip the runtime to PG.
-7. Persist `databaseEngine: "postgres"` in the settings row.
-8. Append a row to `pgCutoverLog` on the target cluster.
+5. Checkpoint the live SQLite WAL, then `snapshotSqlite()` — copy
+   `currentDataFile()` to `currentBackupsDir()` as
+   `data.sqlite.postgres-cutover-<ts>.sqlite` (mode 0600). A failed
+   snapshot **aborts** the flip.
+6. HTTP writes on the live adapter are rejected while the cutover lock
+   is held. The pipeline uses its own unguarded adapters for mirror.
+7. `setActiveAdapter(pg)` — close the previous SQLite adapter, flip.
+8. Persist `databaseEngine: "postgres"` on **both** the live PG
+   settings row and the SQLite file (boot still reads the engine from
+   SQLite).
+9. Append a row to `pgCutoverLog` on the target cluster.
 
 The flip order is strict: PG opens, migrates, mirrors, and verifies
 BEFORE SQLite is closed. The settings write happens after the
@@ -91,9 +101,16 @@ acts.
 
 The dashboard "Switch back to SQLite" action restores the most
 recent cutover snapshot (`DATA_DIR/db/backups/data.sqlite.postgres-cutover-*`)
-into the live `data.sqlite` path, reopens the SQLite adapter, and
-flips `databaseEngine` back to `"sqlite"`. The PG cluster is left
+into `currentDataFile()`, reopens the SQLite adapter, and flips
+`databaseEngine` back to `"sqlite"`. The PG cluster is left
 untouched.
+
+**Writes made while PostgreSQL was live are discarded.** The confirm
+dialog says so. The API returns `409 rollback_requires_force` unless
+the body includes `force: true`.
+
+Snapshot paths are allowlisted under `currentBackupsDir()`. A literal
+`~/.9router` path is never used; `~` is not expanded by `path.join`.
 
 Manual rollback (operator shell):
 

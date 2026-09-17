@@ -20,8 +20,8 @@ This repository is the canonical source for DurinDoor documentation. There is no
 
 For users getting their first request through the gateway.
 
-- [Quick Start](getting-started/quick-start.md): install, start, create an API key, and send the first request.
-- [Installation](getting-started/installation.md): npm, source, Docker, configuration, upgrades, and data paths.
+- [Quick Start](getting-started/index.mdx): install, start, create an API key, and send the first request.
+- [Installation](getting-started/installation.mdx): npm, source, Docker, configuration, upgrades, and data paths.
 - [Usage Guide](guides/usage.md): dashboard workflow, API keys, model selection, combos, SDK examples, and monitoring.
 - [Provider Connections](providers/subscription.md): OAuth, API key, cookie, and account-based providers.
 - [Provider Nodes and Custom Providers](providers/cheap.md): OpenAI-compatible nodes, Anthropic-compatible nodes, custom embeddings, and provider aliases.

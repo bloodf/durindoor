@@ -1,6 +1,84 @@
 ---
 title: Quick start
-description: Install DurinDoor and send one request through the gateway.
+description: Install DurinDoor, sign in, mint an API key, and send one chat request.
 ---
 
-Pages in this section are being written.
+Install a local gateway, sign in, mint a key, and send one `/v1/chat/completions` call. The other pages in this folder cover extra install methods, SDK samples, and the dashboard screens.
+
+<Cards>
+  <Card title="Quick start" href="/docs/getting-started" description="Install, sign in, mint a key, send one request." />
+  <Card title="Installation" href="/docs/getting-started/installation" description="npm, source, Docker, Node version, and DATA_DIR." />
+  <Card title="First request" href="/docs/getting-started/first-request" description="Model IDs, curl, SDKs, streaming, and errors." />
+  <Card title="Dashboard tour" href="/docs/getting-started/dashboard-tour" description="What each dashboard page is for." />
+</Cards>
+
+You need Node.js 20.20.2 and npm 10.8.2. The published CLI binary is `durindoor`.
+
+<Steps>
+<Step>
+Install and start the CLI.
+
+```bash
+npx durindoor
+```
+
+`npx` downloads the package for that run. For a machine you use every day:
+
+```bash
+npm install -g durindoor
+durindoor
+```
+
+The CLI binds port 20128 and opens `http://localhost:20128/dashboard`. It also prints a LAN URL when it binds `0.0.0.0` (the CLI default). Pass `--host 127.0.0.1` if you want loopback only.
+
+| Surface | URL |
+| --- | --- |
+| Dashboard | http://localhost:20128/dashboard |
+| API base | http://localhost:20128/v1 |
+| Health | http://localhost:20128/api/health |
+
+</Step>
+<Step>
+Sign in.
+
+On a fresh data directory the dashboard password is `INITIAL_PASSWORD`, or `123456` if that variable is unset. Loopback login with the built-in password does not issue a session cookie. The UI asks you to set a new password first. Remote clients using `123456` are refused.
+
+Set `JWT_SECRET` before the first start (copy `.env.example`). Dashboard cookies are not signed without it, unless an older `DATA_DIR/jwt-secret` file already exists.
+
+</Step>
+<Step>
+Add a provider.
+
+Open **Providers**. Add one connection: OAuth (browser or device code), a provider API key, an OpenAI- or Anthropic-compatible URL, or a local URL with no remote account.
+
+</Step>
+<Step>
+Create a DurinDoor API key.
+
+Open **API Keys** and create a key. Copy the secret immediately. Later lists show a mask only.
+
+Minted keys look like `sk-<machineId>-<keyId>-<crc8>`. Older `sk-<8 hex>` keys still authenticate. `sk_durindoor` is a localhost placeholder in CLI-tool cards, not the minted prefix.
+
+</Step>
+<Step>
+Send one request.
+
+Pick a model id from the dashboard (or `GET /v1/models`). Then:
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-4.1",
+    "messages": [
+      {"role": "user", "content": "Reply with one short sentence."}
+    ],
+    "max_tokens": 32
+  }'
+```
+
+Point OpenAI-compatible tools at `http://localhost:20128/v1` with the same key. Claude-compatible clients often set `ANTHROPIC_BASE_URL` to that same origin. See the integrations section for those tools.
+
+</Step>
+</Steps>

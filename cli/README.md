@@ -3,7 +3,7 @@
 The `durindoor` package installs and runs the DurinDoor self-hosted AI gateway.
 
 - [Full documentation](../docs/README.md)
-- [Installation](../docs/getting-started/installation.md)
+- [Installation](../docs/getting-started/installation.mdx)
 - [CLI package on npm](https://www.npmjs.com/package/durindoor)
 - [Container image](https://github.com/bloodf/durindoor/pkgs/container/durindoor)
 

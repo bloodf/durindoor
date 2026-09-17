@@ -1,0 +1,124 @@
+---
+title: Installation
+description: Install DurinDoor with npm, from source, or Docker, and set DATA_DIR and JWT_SECRET.
+---
+
+npm, source, and Docker all start the same gateway and dashboard. The host needs Node.js 20.20.2 and npm 10.8.2. The Docker image already has that Node. You also need a browser (dashboard and OAuth), disk for the database, and network access to remote providers.
+
+<Tabs items={['npm', 'npx', 'source', 'Docker']}>
+<Tab value="npm">
+
+```bash
+npm install -g durindoor
+durindoor
+```
+
+The CLI binary name is `durindoor`. Default port is 20128. Default bind is `0.0.0.0`. Use `--host 127.0.0.1` for loopback only, `--port` to change the port, `--no-browser` to skip opening the dashboard.
+
+</Tab>
+<Tab value="npx">
+
+```bash
+npx durindoor
+```
+
+Use this for a one-off run. For daily use, install globally or run from source.
+
+</Tab>
+<Tab value="source">
+
+```bash
+git clone https://github.com/bloodf/durindoor.git
+cd durindoor
+npm install --no-audit --no-fund
+npm run build
+npm run start
+```
+
+`npm run start` runs `.next/standalone/custom-server.js`. If `HOSTNAME` is unset, that server binds `127.0.0.1`, not all interfaces.
+
+Development:
+
+```bash
+npm run dev
+```
+
+Dev listens on port 20127. Production uses 20128.
+
+</Tab>
+<Tab value="Docker">
+
+```bash
+docker run -d \
+  --name durindoor \
+  -p 127.0.0.1:20128:20128 \
+  -v "$HOME/.durindoor:/app/data" \
+  -e DATA_DIR=/app/data \
+  -e JWT_SECRET="$(openssl rand -hex 32)" \
+  -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \
+  ghcr.io/bloodf/durindoor:latest
+```
+
+The host bind path `$HOME/.durindoor` is not the native default (`~/.9router`). Inside the container, `DATA_DIR` is `/app/data`. Pin a version tag in production. Full compose, TLS, and volume notes live in the [deployment](../deployment) section.
+
+</Tab>
+</Tabs>
+
+## Data directory
+
+`DATA_DIR` is the persistent root. Set it at deploy time. If it is unset, the process uses `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. The directory is created if missing. A Unix-style path on Windows is ignored and the default is used.
+
+Layout:
+
+```text
+DATA_DIR/
+├── db/
+│   ├── data.sqlite
+│   └── backups/
+├── auth/
+├── logs/
+├── mitm/
+└── runtime/
+```
+
+SQLite lives at `DATA_DIR/db/data.sqlite`. Pre-upgrade copies go in `DATA_DIR/db/backups`.
+
+## Environment
+
+Copy `.env.example` and fill every `CHANGE_ME` value before a production boot. [Environment variables](../reference/environment.md) is the full list.
+
+| Variable | Default | Role |
+| --- | --- | --- |
+| `PORT` | `20128` | HTTP listen port |
+| `HOSTNAME` | `127.0.0.1` for `npm start`; CLI default bind is `0.0.0.0` | Listen address. Do not set `0.0.0.0` on a public network without a proxy in front |
+| `DATA_DIR` | `~/.9router` | Persistent data |
+| `JWT_SECRET` | none (legacy `DATA_DIR/jwt-secret` still accepted) | Dashboard session signing. Fresh installs fail closed without env or file |
+| `INITIAL_PASSWORD` | `123456` | First dashboard password when none is stored |
+| `API_KEY_SECRET` | minted under `DATA_DIR` when `DATA_DIR` is set | HMAC secret for API key checksums. Set it when keys must survive redeploys |
+| `BASE_URL` | local URL | Server-side URL for callbacks |
+| `NEXT_PUBLIC_BASE_URL` | local URL | Browser-visible URL |
+
+<Callout type="warn">
+`JWT_SECRET` is required. DurinDoor does not write a new `DATA_DIR/jwt-secret` file. An existing file from an older install is reused with a warning. Generate a value with `openssl rand -hex 32`.
+</Callout>
+
+## Upgrading
+
+Back up `DATA_DIR` first. Then follow [Upgrading](../operations/upgrading.md). Global npm installs update with `npm update --global durindoor`.
+
+## Migration from 9router
+
+DurinDoor can reuse a 9router data directory. Stop the old process, back up that directory, start DurinDoor with the same `DATA_DIR`, then check providers, keys, combos, and usage in the dashboard.
+
+## Check the process
+
+```bash
+curl http://localhost:20128/api/health
+```
+
+A JSON body `{ "ok": true }` means the HTTP server is up. Then:
+
+```bash
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```

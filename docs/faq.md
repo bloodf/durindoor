@@ -86,7 +86,7 @@ Use [Contributing](development/contributing.md). Pull requests target `main`.
 
 ## Next steps
 
-- [Installation](getting-started/installation.md) — production configuration and data paths
+- [Installation](getting-started/installation.mdx) — production configuration and data paths
 - [Upgrading](operations/upgrading.md) — release notes, backup, version changes
 - [Data Management](operations/data-management.md) — backup, restore, migration
 - [Startup](operations/startup.md) — health checks, verification, restart

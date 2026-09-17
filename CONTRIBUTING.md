@@ -18,9 +18,9 @@ Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `ci`,
 
 ## Useful links
 
-- [Contributor guide](docs/development/contributing.md)
-- [Local development](docs/development/local-development.md)
-- [Release process](docs/development/release-process.md)
+- [Contributor guide](docs/contributing/index.mdx)
+- [Local development](docs/contributing/local-development.mdx)
+- [Release process](docs/contributing/release-process.mdx)
 - [Anti-slop vendor notes](tools/oxlint/anti-slop/VENDOR.md)
 - [Postgres engine PR template](.github/pr-templates/postgres-engine.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)

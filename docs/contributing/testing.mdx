@@ -1,0 +1,85 @@
+---
+title: Testing
+description: Vitest in tests/, the fail-closed baseline gate, and credential-backed real runs.
+---
+
+The suite lives in `tests/`, its own npm package (`9router-tests`). Root `package.json` has no `test` script. Install root deps, then the deps under `tests/`.
+
+## Setup
+
+Node at the repo root is `20.20.2`. The tests package accepts `^20.19.0 || >=22.12.0` and npm `10.8.2`.
+
+```bash
+npm ci --no-audit --no-fund
+cd tests
+npm ci --no-audit --no-fund
+```
+
+Set disposable `HOME` and `DATA_DIR` for commands that can touch runtime storage. CI does the same (`HOME` and `DATA_DIR` under the runner temp directory).
+
+## Focused runs
+
+Run from `tests/` so Vitest loads `vitest.config.js`. From the repo root, pass `--config tests/vitest.config.js`.
+
+```bash
+cd tests
+npx vitest run --config vitest.config.js unit/example.test.js
+npx vitest run --config vitest.config.js translator/example.test.js
+```
+
+`include` is `**/*.test.js`. The config pins `LANG` and `LC_ALL` to `en_US.UTF-8`, `maxWorkers` to 4, `testTimeout` to 15000, and `maxConcurrency` to 60. It skips `**/.omc/**`, `**/.claude/**`, `**/omp-extension/**`, and `**/*.live.test.js`. Live `*.live.test.js` files hit real upstreams; they are not part of the default or CI run.
+
+Translator tests that call `translateRequest` or `translateResponse` must import `translator/registerAll.js` at the top of the file. `open-sse/translator/index.js` uses `require()` that no-ops under Vitest ESM, so a missing import can produce a false pass.
+
+## Full suite
+
+From `tests/`:
+
+```bash
+npm test
+```
+
+That is `vitest run --reporter=verbose`. The CI and baseline gate is:
+
+```bash
+cd tests && npm run test:ci
+```
+
+`test:ci` runs `tests/__baseline__/run-ci.mjs`. That script:
+
+1. Deletes stale `.test-results.json` and `.test-results.junit.xml`.
+2. Runs Vitest with `--reporter=json` and `--outputFile=./.test-results.json`.
+3. Writes `.test-results.junit.xml`.
+4. Fails closed on missing, stale, or unparseable reports, empty collection, collection failures, runtime errors, and exit/report mismatches.
+5. Feeds the json report to `tests/__baseline__/verify-no-regression.mjs`.
+6. Runs `tests/__baseline__/verify-baseline-diff.mjs` when `BASELINE_BASE_REF` is set (CI sets it to `HEAD^`).
+
+`verify-no-regression.mjs` compares failed assertions against `tests/__baseline__/known-fails.txt`. That file is empty in this tree, so every failing assertion is a regression. Do not add entries. Remove an entry only when a listed failure is fixed. `verify-baseline-diff.mjs` refuses any added line in that file versus `BASELINE_BASE_REF`.
+
+A checked-in `baseline-results.json` is an old report from another tree. It is not a live count for this checkout.
+
+Offline translator tests need no credentials.
+
+## Test groups
+
+- `unit/`: application, API, database, provider, executor, CLI, security, and build contracts.
+- `translator/`: offline request/response translation and bug-exposure tests.
+- `translator/real/`: credential-backed provider smoke tests. Enabled only with `RUN_REAL=1`.
+- `functional/` and route-specific suites: end-to-end behaviour where present.
+
+Bugs that still exist in the app use `it.fails(...)` in `tests/translator/bugs-*.test.js`. After a fix, switch that row to `it` and run the file.
+
+## Real provider tests
+
+```bash
+cd tests
+RUN_REAL=1 npx vitest run --config vitest.config.js translator/real/
+```
+
+Optional filter: `REAL_PROVIDERS=gemini,kiro,codex`.
+
+These tests read connections from the local data dir (`~/.9router/db/data.sqlite` unless `DATA_DIR` is set). They consume quota. Run them only with credentials you intend to spend.
+
+`describe.skipIf(!RUN_REAL)` wraps the suites. Account, plan, and quota errors (status 401, 402, 403, 429, and matching error text) are skipped with `console.warn`. Protocol and translation failures remain failures.
+
+Dashboard Playwright is on [Local development](local-development.mdx).

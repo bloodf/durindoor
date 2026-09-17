@@ -339,13 +339,13 @@ The canonical documentation is Markdown in this repository. GitHub-rendered Mark
 - Providers: [connections](docs/providers/connecting-accounts.mdx), [custom nodes](docs/providers/openai-compatible-nodes.mdx), [free and local](docs/providers/free-and-local.mdx)
 - Features: [Smart routing](docs/features/smart-routing.mdx), [Combos](docs/features/combos.mdx), [Usage and quota tracking](docs/features/quota-tracking.mdx), [Compression](docs/features/compression.mdx), [MCP Gateway](docs/features/mcp-gateway.mdx), [Realtime](docs/features/realtime.mdx), [Proxy timeline](docs/features/proxy-timeline.mdx), [Headroom](docs/features/headroom.mdx)
 - Reference: [API reference](docs/reference/api.mdx), [Environment variables](docs/reference/environment.mdx), [Architecture](docs/ARCHITECTURE.md)
-- Operations: [Security](docs/operations/security.mdx), [Startup](docs/operations/startup.mdx), [Troubleshooting](docs/troubleshooting.md), [FAQ](docs/faq.md), [Release process](docs/development/release-process.md)
+- Operations: [Security](docs/operations/security.mdx), [Startup](docs/operations/startup.mdx), [Troubleshooting](docs/troubleshooting.md), [FAQ](docs/faq.md), [Release process](docs/contributing/release-process.mdx)
 - Public site: [website/README.md](website/README.md)
 - Community: [Security policy](.github/SECURITY.md), [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), [Changelog](CHANGELOG.md), [License](LICENSE), [Issues](https://github.com/bloodf/durindoor/issues), [Discussions](https://github.com/bloodf/durindoor/discussions)
 
 ## Contributing
 
-Read [Contributing](CONTRIBUTING.md), [Local development](docs/development/local-development.md), and [Architecture](docs/ARCHITECTURE.md) before opening a pull request, and follow the [pull request template](.github/PULL_REQUEST_TEMPLATE.md). Postgres engine PRs use [.github/pr-templates/postgres-engine.md](.github/pr-templates/postgres-engine.md). The anti-slop oxlint gate is documented in [tools/oxlint/anti-slop/VENDOR.md](tools/oxlint/anti-slop/VENDOR.md).
+Read [Contributing](CONTRIBUTING.md), [Local development](docs/contributing/local-development.mdx), and [Architecture](docs/ARCHITECTURE.md) before opening a pull request, and follow the [pull request template](.github/PULL_REQUEST_TEMPLATE.md). Postgres engine PRs use [.github/pr-templates/postgres-engine.md](.github/pr-templates/postgres-engine.md). The anti-slop oxlint gate is documented in [tools/oxlint/anti-slop/VENDOR.md](tools/oxlint/anti-slop/VENDOR.md).
 
 ## Durin DS design system preview
 

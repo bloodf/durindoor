@@ -65,11 +65,11 @@ For operators running DurinDoor in production or on a team server.
 
 For developers working on the DurinDoor codebase, provider registry, or documentation.
 
-- [Contributing](development/contributing.md)
-- [Local Development](development/local-development.md)
+- [Contributing](contributing/index.mdx)
+- [Local Development](contributing/local-development.mdx)
 - [Provider Brand Assets](development/provider-brand-assets.md) — provider-logo policy and provenance.
 - [Architecture](ARCHITECTURE.md)
-- [Upstream Sync Watch](UPSTREAM_SYNC.md)
+- [Upstream Sync Watch](contributing/upstream-sync.mdx)
 - [tests/README.md](../tests/README.md)
 - [DurinDoor omp Extension](../omp-extension/README.md)
 
@@ -148,7 +148,7 @@ DurinDoor is a fork of [9router](https://github.com/decolua/9router). These comp
 - Use [Startup and Runtime Operations](operations/startup.mdx) for process management, health checks, and smoke tests.
 - Use [Security and Production Hardening](operations/security.mdx) before exposing a dashboard, tunnel, or reverse proxy.
 - Use [API Reference](reference/api.mdx) when integrating SDKs, scripts, or custom clients.
-- Use [Contributing](development/contributing.md) before opening pull requests.
+- Use [Contributing](contributing/index.mdx) before opening pull requests.
 
 ## Documentation Language Policy
 

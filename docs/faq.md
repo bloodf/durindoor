@@ -82,7 +82,7 @@ Use [Environment variables](reference/environment.mdx). `.env.example` is the st
 
 ## How do I contribute?
 
-Use [Contributing](development/contributing.md). Pull requests target `main`.
+Use [Contributing](contributing/index.mdx). Pull requests target `main`.
 
 ## Next steps
 

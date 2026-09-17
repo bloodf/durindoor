@@ -10,7 +10,7 @@ import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 
 // Single source: codex.oauth.maxRefreshAgeMs (8 days) — proactive refresh window
-import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export const CODEX_MAX_REFRESH_AGE_MS = PROVIDER_OAUTH["codex"]?.maxRefreshAgeMs;
 
 const refreshLocks = new Map();
@@ -38,10 +38,29 @@ function makeRoomForRefreshLock() {
   }
 }
 
-function parseTimeMs(value) {
+const NUMERIC_STRING_RE = /^\d+(\.\d+)?$/;
+
+/**
+ * Normalize a credential timestamp to epoch milliseconds.
+ *
+ * Accepts the three shapes credentials actually arrive in:
+ *   - number       — epoch seconds or milliseconds
+ *   - numeric text — the same, as a string. The OAuth bulk-import routes persist
+ *                    the user-supplied `expires_at`/`expiresAt` verbatim, and a
+ *                    TEXT column reads back as a string. `new Date("1789012345678")`
+ *                    is an Invalid Date, so these must be converted numerically
+ *                    before reaching the Date fallback.
+ *   - date string  — ISO 8601, and anything else `Date` understands.
+ *
+ * @param {unknown} value
+ * @returns {number|null} epoch milliseconds, or null when there is no usable time.
+ */
+export function parseTimeMs(value) {
   if (value === undefined || value === null || value === "") return null;
-  if (isNumber(value)) {
-    return value < 1e12 ? value * 1000 : value;
+  if (isNumber(value) || (isString(value) && NUMERIC_STRING_RE.test(value.trim()))) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return numeric < 1e12 ? numeric * 1000 : numeric;
   }
 
   const parsed = new Date(value).getTime();

@@ -1,0 +1,15 @@
+{
+  "title": "Integrations",
+  "description": "Point Claude Code, Codex, Cursor, and other tools at the gateway.",
+  "pages": [
+    "index",
+    "claude-code",
+    "codex",
+    "cursor",
+    "cline",
+    "roo",
+    "continue",
+    "ollama-claude",
+    "other-tools"
+  ]
+}

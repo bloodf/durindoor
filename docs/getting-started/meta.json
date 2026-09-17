@@ -1,0 +1,6 @@
+{
+  "title": "Getting started",
+  "description": "Install DurinDoor and send the first request.",
+  "defaultOpen": true,
+  "pages": ["index", "installation", "first-request", "dashboard-tour"]
+}

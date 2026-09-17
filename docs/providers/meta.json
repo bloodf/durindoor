@@ -1,0 +1,13 @@
+{
+  "title": "Providers",
+  "description": "Connect OAuth accounts, API keys, compatible nodes, and local providers.",
+  "pages": [
+    "index",
+    "connecting-accounts",
+    "api-key-providers",
+    "openai-compatible-nodes",
+    "free-and-local",
+    "local-router-providers",
+    "catalog"
+  ]
+}

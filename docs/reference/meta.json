@@ -1,0 +1,13 @@
+{
+  "title": "Reference",
+  "description": "API routes, environment variables, CLI, plugin manifests, and model limits.",
+  "pages": [
+    "index",
+    "api",
+    "environment",
+    "cli",
+    "provider-plugin-manifest",
+    "model-limits",
+    "migrating-from-9router"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "title": "Contributing",
+  "description": "Local development, architecture, tests, releases, and upstream sync.",
+  "pages": [
+    "index",
+    "local-development",
+    "architecture",
+    "provider-registry",
+    "translators",
+    "testing",
+    "release-process",
+    "upstream-sync",
+    "design-system",
+    "provider-brand-assets",
+    "postgres-migrations"
+  ]
+}

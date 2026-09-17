@@ -1,0 +1,15 @@
+{
+  "title": "Features",
+  "description": "Routing, combos, quota tracking, MCP, realtime, compression, and Headroom.",
+  "pages": [
+    "index",
+    "smart-routing",
+    "combos",
+    "quota-tracking",
+    "proxy-timeline",
+    "mcp-gateway",
+    "realtime",
+    "compression",
+    "headroom"
+  ]
+}

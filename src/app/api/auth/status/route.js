@@ -6,6 +6,7 @@ import {
   getDashboardAuthSession,
   isUsingDefaultPassword,
 } from "@/lib/auth/dashboardSession";
+import { isMfaEnabled } from "@/lib/auth/mfa";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export async function GET() {
     return NextResponse.json({
       requireLogin,
       authMode,
+      mfaEnabled: isMfaEnabled(settings),
       oidcConfigured: isOidcConfigured(settings),
       oidcLoginLabel: (settings.oidcLoginLabel || "Sign in with OIDC").trim() || "Sign in with OIDC",
       hasPassword: !!settings.password,
@@ -44,6 +46,7 @@ export async function GET() {
     return NextResponse.json({
       requireLogin: true,
       authMode: "password",
+      mfaEnabled: false,
       oidcConfigured: false,
       oidcLoginLabel: "Sign in with OIDC",
       hasPassword: false,

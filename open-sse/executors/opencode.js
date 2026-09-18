@@ -4,7 +4,8 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { stripPriorReasoningItem } from "../translator/formats/responsesApi.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const OPENCODE_UA = "opencode";
 const MESSAGES_MODELS = new Set();
@@ -40,6 +41,11 @@ function isEnabled(name) {
   return /^(1|true|yes|on)$/i.test(process.env[name]?.trim() ?? "");
 }
 
+// Strip the thinking suffix "model(level)" so quirk checks hit the base id.
+function baseModelId(model) {
+  return String(model || "").replace(/\([^()]+\)\s*$/, "").trim();
+}
+
 // PR #3321: OpenCode Zen's free-tier IP rate limiter buckets anonymous
 // clients by x-real-ip; without it every free-tier user shares one bucket
 // and hits FreeUsageLimitError/429. Forward the real client IP so each user
@@ -68,6 +74,21 @@ export class OpenCodeExecutor extends BaseExecutor {
       trustedSessionKey(credentials, requestContext, this._privateSessionKey)
     );
     delete body.client_metadata;
+    if (/muse/i.test(model) && body && isObject(body)) {
+      // OpenCode Free 400s muse-spark-1.3-contributor-free when tool_choice is
+      // anything but "auto" (port of decolua/9router aa14ef72).
+      if ("tool_choice" in body && body.tool_choice !== "auto" &&
+      this.config.quirks?.forceAutoToolChoiceModels?.includes(baseModelId(model))) {
+        body.tool_choice = "auto";
+      }
+      // A native Responses client (sourceFormat === targetFormat) skips translation,
+      // so a prior-turn reasoning item's encrypted_content can reach here unvalidated
+      // by this caller's pooled/rotated credentials (port of decolua/9router eafac37d).
+      if (Array.isArray(body.input)) {
+        body.input = body.input.filter((item) =>
+        !item || !isObject(item) || Array.isArray(item) || stripPriorReasoningItem(item));
+      }
+    }
     const transformed = injectReasoningContent({ provider: this.provider, model, body });
     /** Muse Responses rejects every Chat and Responses token-cap spelling. */
     return /muse/i.test(model) ? stripUnsupportedParams(this.provider, model, transformed) : transformed;

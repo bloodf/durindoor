@@ -21,6 +21,11 @@ export default {
       "x-opencode-client": "desktop",
     },
     noAuth: true,
+    // OpenCode Free 400s muse-spark-1.3-contributor-free when tool_choice is
+    // anything but "auto" (port of decolua/9router aa14ef72).
+    quirks: {
+      forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
+    },
   },
   models: [
     { id: "x-preview-f-free", name: "Ox Alpha Free", targetFormat: "openai", supportedFormats: ["openai"] },

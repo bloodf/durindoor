@@ -1,7 +1,8 @@
 // MFA state + second-factor verification shared by the login and enrollment routes.
 import { getSettings, updateSettings } from "@/lib/localDb";
+import { consumeBackupCodeAtomic } from "@/lib/db/repos/settingsRepo.js";
 import { verifyTotpCode } from "./totp.js";
-import { consumeBackupCode } from "./backupCodes.js";
+import { findBackupCodeHashIndexSync } from "./backupCodes.js";
 
 /** True when a second factor must be presented for password logins. */
 export function isMfaEnabled(settings) {
@@ -38,15 +39,18 @@ export async function verifySecondFactor(input) {
     return { ok: false, method: null };
   }
 
-  const { matched, remainingHashes } = await consumeBackupCode(
+  // Atomic: re-reads the stored hashes and removes the matched one inside a
+  // single transaction, so two concurrent verifications (including a replay
+  // of the SAME code) can never both succeed against a pre-write snapshot.
+  // See settingsRepo.js consumeBackupCodeAtomic for why the naive
+  // read-then-write version was a TOCTOU race (decolua/9router#4144).
+  const { matched, backupCodesRemaining } = await consumeBackupCodeAtomic(
     candidate,
-    settings.mfaBackupCodes || [],
+    findBackupCodeHashIndexSync,
   );
   if (!matched) return { ok: false, method: null };
 
-  // Burn the code immediately -- single use is the whole point.
-  await updateSettings({ mfaBackupCodes: remainingHashes });
-  return { ok: true, method: "backup", backupCodesRemaining: remainingHashes.length };
+  return { ok: true, method: "backup", backupCodesRemaining };
 }
 
 /** Turn MFA off and wipe every stored secret/recovery hash. */

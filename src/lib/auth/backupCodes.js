@@ -69,3 +69,29 @@ export async function consumeBackupCode(input, hashes = []) {
   }
   return { matched: false, remainingHashes: list };
 }
+
+/**
+ * Synchronous match-only variant for use inside a synchronous db transaction
+ * (see settingsRepo.js `consumeBackupCodeAtomic`). bcryptjs's `compareSync` is
+ * pure JS -- no I/O, no libuv thread pool -- so it never yields the event
+ * loop, which is what lets the caller's transaction body run start-to-finish
+ * without an await point in the middle (the property the TOCTOU fix depends
+ * on: decolua/9router#4144 follow-up).
+ *
+ * @returns {number} index of the first matching hash, or -1
+ */
+export function findBackupCodeHashIndexSync(input, hashes = []) {
+  const candidate = normalizeBackupCode(input);
+  const list = Array.isArray(hashes) ? hashes : [];
+  if (!candidate) return -1;
+  for (let i = 0; i < list.length; i += 1) {
+    let ok = false;
+    try {
+      ok = bcrypt.compareSync(candidate, list[i]);
+    } catch {
+      ok = false;
+    }
+    if (ok) return i;
+  }
+  return -1;
+}

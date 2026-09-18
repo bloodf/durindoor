@@ -3,17 +3,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  consumeBackupCodeAtomic: vi.fn(),
 }));
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   updateSettings: mocks.updateSettings,
+}));
+vi.mock("@/lib/db/repos/settingsRepo.js", () => ({
+  consumeBackupCodeAtomic: mocks.consumeBackupCodeAtomic,
 }));
 
 const { isMfaEnabled, isMfaEnabledNow, verifySecondFactor, disableMfa } = await import(
   "../../src/lib/auth/mfa.js"
 );
 const { generateTotpSecret, generateTotpCode, totpCounter } = await import("../../src/lib/auth/totp.js");
-const { generateBackupCodes } = await import("../../src/lib/auth/backupCodes.js");
+const { generateBackupCodes, findBackupCodeHashIndexSync } = await import("../../src/lib/auth/backupCodes.js");
 
 describe("isMfaEnabled", () => {
   it("requires both the flag and a stored secret", () => {
@@ -30,6 +34,7 @@ describe("verifySecondFactor", () => {
   beforeEach(() => {
     mocks.getSettings.mockReset();
     mocks.updateSettings.mockReset();
+    mocks.consumeBackupCodeAtomic.mockReset();
   });
 
   it("returns not-ok when MFA is disabled", async () => {
@@ -52,15 +57,26 @@ describe("verifySecondFactor", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("accepts a valid backup code and burns it", async () => {
+  it("accepts a valid backup code via the atomic consume path, not a getSettings/updateSettings round trip", async () => {
     const { codes, hashes } = await generateBackupCodes(3);
     mocks.getSettings.mockResolvedValue({ mfaEnabled: true, mfaSecret: secret, mfaBackupCodes: hashes });
+    mocks.consumeBackupCodeAtomic.mockResolvedValue({ matched: true, backupCodesRemaining: 2 });
+
     const result = await verifySecondFactor(codes[0]);
-    expect(result.ok).toBe(true);
-    expect(result.method).toBe("backup");
-    expect(result.backupCodesRemaining).toBe(2);
-    expect(mocks.updateSettings).toHaveBeenCalledWith({ mfaBackupCodes: expect.arrayContaining([hashes[1], hashes[2]]) });
-    expect(mocks.updateSettings.mock.calls[0][0].mfaBackupCodes).toHaveLength(2);
+
+    expect(result).toEqual({ ok: true, method: "backup", backupCodesRemaining: 2 });
+    expect(mocks.consumeBackupCodeAtomic).toHaveBeenCalledWith(codes[0], findBackupCodeHashIndexSync);
+    // The TOCTOU fix means the match+write happens inside consumeBackupCodeAtomic's
+    // own transaction, not via a separate getSettings-computed updateSettings call.
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a backup code the atomic consume path did not match", async () => {
+    mocks.getSettings.mockResolvedValue({ mfaEnabled: true, mfaSecret: secret, mfaBackupCodes: ["h1"] });
+    mocks.consumeBackupCodeAtomic.mockResolvedValue({ matched: false, backupCodesRemaining: 1 });
+
+    const result = await verifySecondFactor("ZZZZZ-ZZZZZ");
+    expect(result.ok).toBe(false);
   });
 
   it("rejects empty input", async () => {

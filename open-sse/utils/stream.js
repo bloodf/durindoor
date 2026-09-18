@@ -1,7 +1,7 @@
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
-import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
+import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
@@ -900,12 +900,12 @@ export function createSSEStream(options = {}) {
               const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
               if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
-                parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
+                parsed.usage = filterUsageForFormat(enrichUsageCost(estimated, provider, model), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
               } else if (isFinishChunk && usage) {
                 const buffered = addBufferToUsage(usage);
-                parsed.usage = filterUsageForFormat(buffered, FORMATS.OPENAI);
+                parsed.usage = filterUsageForFormat(enrichUsageCost(buffered, provider, model), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
               } else if (idFixed || fieldsInjected) {
@@ -1136,11 +1136,11 @@ export function createSSEStream(options = {}) {
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
             if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
               const estimated = mergeUsage(state.usage ?? item.usage, estimateUsage(body, totalContentLength, sourceFormat));
-              item.usage = filterUsageForFormat(estimated, sourceFormat); // Filter + already has buffer
+              item.usage = filterUsageForFormat(enrichUsageCost(estimated, provider, model), sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
               const buffered = addBufferToUsage(state.usage);
-              item.usage = filterUsageForFormat(buffered, sourceFormat);
+              item.usage = filterUsageForFormat(enrichUsageCost(buffered, provider, model), sourceFormat);
             }
 
             const output = formatSSE(item, sourceFormat);

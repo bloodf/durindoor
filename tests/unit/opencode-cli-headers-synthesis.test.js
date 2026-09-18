@@ -24,10 +24,25 @@ describe("OpenCodeExecutor CLI identity synthesis", () => {
     expect(headers["User-Agent"]).toBe("opencode-cli/2.5.0");
   });
 
-  it("preserves official OpenCode UA when synthesis is disabled (free-tier)", () => {
+  it("defaults to the versioned free-tier UA when synthesis is disabled", () => {
     const headers = new OpenCodeExecutor().buildHeaders({}, true, {
       clientHeaders: { "user-agent": "curl/8.5.0" },
     });
-    expect(headers["User-Agent"]).toBe("opencode");
+    // Zen free tier 403s bare "opencode" and versions < 1.17.0 (FreeTierError).
+    expect(headers["User-Agent"]).toBe("opencode/1.18.31");
+  });
+
+  it("preserves a valid versioned opencode/<x.y.z> client UA as-is", () => {
+    const headers = new OpenCodeExecutor().buildHeaders({}, true, {
+      clientHeaders: { "user-agent": "opencode/1.18.31 ai-sdk/provider-utils/4.0.40" },
+    });
+    expect(headers["User-Agent"]).toBe("opencode/1.18.31 ai-sdk/provider-utils/4.0.40");
+  });
+
+  it("overrides an outdated opencode/<version> client UA (< 1.17.0)", () => {
+    const headers = new OpenCodeExecutor().buildHeaders({}, true, {
+      clientHeaders: { "user-agent": "opencode/1.15.0" },
+    });
+    expect(headers["User-Agent"]).toBe("opencode/1.18.31");
   });
 });

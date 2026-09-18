@@ -5,16 +5,162 @@ import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { normalizeResponsesTools, sanitizeResponsesItems } from "./opencode-go.js";
 
-const OPENCODE_UA = "opencode";
+/**
+ * OpenCode free-tier executor (upstream #4041-adjacent cluster: 93837af0 +
+ * 6091ff59, plus PR #4155).
+ *
+ * OpenCode Zen validates free-tier (no-auth) requests and 403s
+ * (`FreeTierError`) unless three things hold:
+ *
+ * 1. `x-opencode-session` matches the canonical `ses_<12 hex><14 base62>`
+ *    shape (`OPENCODE_SESSION_RE`) — an arbitrary opaque id is rejected.
+ * 2. `User-Agent` looks like `opencode/<version>` with version >= 1.17.0.
+ * 3. Muse Responses requests declare the `bash`/`read` fingerprint tools
+ *    upstream's own CLI always sends, even when the caller already supplied
+ *    its own tools (#4155) — cloaked as unusable decoys so a real client
+ *    tool of the same name still wins.
+ *
+ * Session identity is resolved once per request in `prepareRequestCredentials`
+ * (called from `execute`) onto a request-local credentials copy, mirroring
+ * opencode-go.js: no session state lives on this singleton executor, so
+ * concurrent requests never race on a shared field.
+ */
+const OPENCODE_UA = "opencode/1.18.31";
 const MESSAGES_MODELS = new Set();
 
-function generateRequestId() {
-  return `msg_${crypto.randomUUID().replace(/-/g, "")}`;
+export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
+const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const SESSION_HEADER = "x-opencode-session";
+const SESSION_FIELD = "_opencodeSession";
+
+// OpenCode Zen requires User-Agent: opencode/<major>.<minor>[.<patch>] with
+// major.minor >= 1.17 — anything older 426s, anything unversioned 403s.
+function hasValidOpencodeVersion(ua) {
+  const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
+  if (!m) return false;
+  const major = parseInt(m[1], 10);
+  const minor = parseInt(m[2], 10);
+  return major > 1 || (major === 1 && minor >= 17);
 }
 
+// OpenCode free tier requires both 'bash' and 'read' in tools payload.
+// Injected as cloaked decoy tools so external CLI tools (e.g. Claude Code's Bash/Read)
+// take precedence while satisfying upstream verification.
+const OPENCODE_DECOY_CHAT_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "bash",
+      description: "This tool is currently unavailable and must not be used.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read",
+      description: "This tool is currently unavailable and must not be used.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+];
+
+const OPENCODE_DECOY_RESPONSES_TOOLS = [
+  {
+    type: "function",
+    name: "bash",
+    description: "This tool is currently unavailable and must not be used.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function",
+    name: "read",
+    description: "This tool is currently unavailable and must not be used.",
+    parameters: { type: "object", properties: {} },
+  },
+];
+
+// #4155: cloak decoy tools unconditionally, even when the caller already
+// supplied its own tools — the free tier requires the bash/read fingerprint
+// on every request, not only tool-less ones. A real client tool of the same
+// name is left untouched (only missing decoys are appended).
+function cloakOpencodeTools(body, isResponses) {
+  if (!body) return;
+  if (isResponses) {
+    if (!Array.isArray(body.tools)) body.tools = [];
+    const names = new Set(body.tools.map((t) => t.name || t.function?.name));
+    for (const tool of OPENCODE_DECOY_RESPONSES_TOOLS) {
+      if (!names.has(tool.name)) body.tools.push({ ...tool });
+    }
+    if (!body.tool_choice) body.tool_choice = "auto";
+  } else {
+    const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+    if (!hasTools) {
+      body.tools = OPENCODE_DECOY_CHAT_TOOLS.map((t) => ({ ...t, function: { ...t.function } }));
+      if (!body.tool_choice) body.tool_choice = "none";
+    } else {
+      const names = new Set(body.tools.map((t) => t.function?.name || t.name));
+      for (const tool of OPENCODE_DECOY_CHAT_TOOLS) {
+        if (!names.has(tool.function.name)) {
+          body.tools.push({ ...tool, function: { ...tool.function } });
+        }
+      }
+    }
+  }
+}
+
+function normalizeSession(value) {
+  if (!isString(value)) return null;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= 256 ? trimmed : null;
+}
+
+// A caller-supplied session header is only trusted when it already matches
+// the canonical shape — otherwise it gets translated below like any other
+// seed, so a spoofed/legacy header can't skip validation.
+function nativeSession(rawHeaders) {
+  if (!rawHeaders) return null;
+  for (const [key, value] of Object.entries(rawHeaders)) {
+    if (key.toLowerCase() === SESSION_HEADER) {
+      const normalized = normalizeSession(value);
+      if (normalized && OPENCODE_SESSION_RE.test(normalized)) return normalized;
+    }
+  }
+  return null;
+}
+
+// Deterministic translation from an arbitrary source string into the
+// canonical `ses_<12 hex><14 base62>` shape OpenCode Zen's free tier
+// validates. Namespacing by clientTool isolates different downstream agents
+// that happen to reuse the same raw conversation id.
+function canonicalSessionId(source, clientTool) {
+  const digest = crypto.createHash("sha256")
+    .update(`opencode\0${clientTool || "generic"}\0${source}`)
+    .digest();
+  const timeHex = digest.subarray(0, 6).toString("hex");
+  let randomPart = "";
+  for (let i = 6; i < 20; i++) randomPart += BASE62_CHARS[digest[i] % 62];
+  return `ses_${timeHex}${randomPart}`;
+}
+
+// Fallback generator for contexts with no resolvable session seed at all
+// (e.g. buildHeaders invoked standalone, outside execute()).
 function generateSessionId() {
-  return `ses_${crypto.randomUUID().replace(/-/g, "")}`;
+  const bytes = crypto.randomBytes(20);
+  const timeHex = bytes.subarray(0, 6).toString("hex");
+  let randomPart = "";
+  for (let i = 6; i < 20; i++) randomPart += BASE62_CHARS[bytes[i] % 62];
+  return `ses_${timeHex}${randomPart}`;
+}
+
+function generateRequestId() {
+  const bytes = crypto.randomBytes(20);
+  const timeHex = bytes.subarray(0, 6).toString("hex");
+  let randomPart = "";
+  for (let i = 6; i < 20; i++) randomPart += BASE62_CHARS[bytes[i] % 62];
+  return `msg_${timeHex}${randomPart}`;
 }
 
 function trustedSessionKey(credentials, requestContext, fallback) {
@@ -26,14 +172,6 @@ function trustedSessionKey(credentials, requestContext, fallback) {
   requestContext.sessionId.trim() :
   null;
   return JSON.stringify([connectionId, sessionId]);
-}
-
-function opaqueSessionId(source) {
-  const digest = crypto.createHash("sha256").
-  update("opencode-session\0").
-  update(source).
-  digest("hex");
-  return `ses_${digest.slice(0, 32)}`;
 }
 
 function isEnabled(name) {
@@ -60,14 +198,48 @@ export class OpenCodeExecutor extends BaseExecutor {
   constructor() {
     super("opencode", PROVIDERS.opencode);
     this._privateSessionKey = crypto.randomUUID();
-    this._currentSessionId = null;
   }
 
-  transformRequest(model, body, stream, credentials, requestContext) {
-    this._currentSessionId = opaqueSessionId(
-      trustedSessionKey(credentials, requestContext, this._privateSessionKey)
-    );
+  /**
+   * Resolve the free-tier session identity onto a request-local credentials
+   * copy (never mutates the shared `credentials` object or `this`). A valid
+   * native `x-opencode-session` header wins as-is; otherwise the
+   * chatCore-forwarded `providerSessionId`/connection identity is translated
+   * into the canonical shape.
+   */
+  prepareRequestCredentials({ body, credentials, providerSessionId, clientTool, requestContext } = {}) {
+    const sourceCredentials = credentials || {};
+    const native = nativeSession(sourceCredentials.rawHeaders || requestContext?.clientHeaders);
+    const source = normalizeSession(providerSessionId) ||
+    trustedSessionKey(sourceCredentials, requestContext, this._privateSessionKey);
+    return {
+      ...sourceCredentials,
+      [SESSION_FIELD]: native || canonicalSessionId(source, clientTool),
+    };
+  }
+
+  async execute(args) {
+    return super.execute({ ...args, credentials: this.prepareRequestCredentials(args) });
+  }
+
+  transformRequest(model, body, stream, credentials, requestContext = null) {
     delete body.client_metadata;
+    // Zen rejects non-streaming requests on free models with 403 FreeTierError;
+    // always stream upstream and let chatCore's forceStream registry flag
+    // aggregate the SSE back to JSON for non-streaming clients. The Codex
+    // compact-responses contract stays unary — never force streaming there.
+    if (body) {
+      if (requestContext?.compact === true) delete body.stream;
+      else body.stream = true;
+    }
+    if (/muse/i.test(model) && body) {
+      body.store = false;
+      normalizeResponsesTools(body);
+      sanitizeResponsesItems(body);
+      cloakOpencodeTools(body, true);
+    } else if (body) {
+      cloakOpencodeTools(body, false);
+    }
     const transformed = injectReasoningContent({ provider: this.provider, model, body });
     /** Muse Responses rejects every Chat and Responses token-cap spelling. */
     return /muse/i.test(model) ? stripUnsupportedParams(this.provider, model, transformed) : transformed;
@@ -108,7 +280,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     const headers = {
       ...baseHeaders,
       "x-opencode-client": "desktop",
-      "x-opencode-session": this._currentSessionId ?? generateSessionId(),
+      "x-opencode-session": credentials?.[SESSION_FIELD] ?? generateSessionId(),
       "x-opencode-request": generateRequestId(),
       "x-opencode-project": "global"
     };
@@ -116,6 +288,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     if (rawIp && !isPrivateIp(rawIp)) headers["x-real-ip"] = rawIp;
     if (synthesizeCli && !clientUaIsCli) headers["User-Agent"] = "opencode-cli/1.0.0";else
     if (clientUaIsCli) headers["User-Agent"] = clientUa;else
+    if (hasValidOpencodeVersion(clientUa)) headers["User-Agent"] = clientUa;else
     headers["User-Agent"] = OPENCODE_UA;
     return headers;
   }

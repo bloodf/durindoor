@@ -237,7 +237,11 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
       total: Date.now() - requestStartTime
     };
-    const safeContent = contentObj?.content || "[Empty streaming response]";
+    const toolCallNames = contentObj?.toolCallNames || [];
+    // Tool calls carry no accumulated content, so a tool-call-only turn would otherwise
+    // log as "[Empty streaming response]" — indistinguishable from a truncated stream.
+    const safeContent = contentObj?.content
+      || (toolCallNames.length ? `[Tool calls: ${toolCallNames.join(", ")}]` : "[Empty streaming response]");
     const safeThinking = contentObj?.thinking || null;
 
     saveRequestDetail(buildRequestDetail({
@@ -247,7 +251,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       request: extractRequestConfig(body, stream),
       providerRequest: finalBody || translatedBody || null,
       providerResponse: summary?.providerResponse ?? safeContent,
-      response: { content: safeContent, thinking: safeThinking, type: "streaming" },
+      response: { content: safeContent, thinking: safeThinking, tool_calls: toolCallNames, type: "streaming" },
       pxpipe,
       status: "success"
     }, { id: streamDetailId })).catch((err) => {

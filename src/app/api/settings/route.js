@@ -269,6 +269,14 @@ export async function PATCH(request) {
         && !isBoolean(body.dataRetentionEnabled)) {
       return NextResponse.json({ error: "Invalid dataRetentionEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
+
+    // claudeClassifierCompat gates a default-allow short-circuit for Claude
+    // Code's auto-permission classifier (open-sse/handlers/chatCore.js); an
+    // unrecognized value must never fall through to a permissive default.
+    if (Object.prototype.hasOwnProperty.call(body, "claudeClassifierCompat")
+        && !["off", "auto", "always"].includes(body.claudeClassifierCompat)) {
+      return NextResponse.json({ error: "Invalid claudeClassifierCompat" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
     if (Object.prototype.hasOwnProperty.call(body, "dataRetentionDays")) {
       const v = body.dataRetentionDays;
       if (!Number.isInteger(v) || v < 1 || v > 3650) {

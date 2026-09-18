@@ -36,6 +36,12 @@ export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
   "outboundProxyEnabled",
   "outboundProxyUrl",
   "outboundNoProxy",
+  /**
+   * Gates a default-allow short-circuit for Claude Code's auto-permission
+   * classifier (see open-sse/handlers/chatCore.js). An unproved caller must
+   * not be able to remotely widen what gets auto-approved.
+   */
+  "claudeClassifierCompat",
 ]);
 
 /**

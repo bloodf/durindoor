@@ -5,9 +5,12 @@ import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 
 const OPENCODE_UA = "opencode";
-const MESSAGES_MODELS = new Set();
+// Models served by /zen/v1/messages (Claude wire format); every other model
+// stays on /chat/completions (or /responses, gated separately by /muse/).
+const MESSAGES_MODELS = new Set(["union-alpha"]);
 
 function generateRequestId() {
   return `msg_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -82,7 +85,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     `${base}/zen/v1/chat/completions`;
   }
 
-  buildHeaders(credentials, stream = true, requestContext = null) {
+  buildHeaders(credentials, stream = true, requestContext = null, model = null) {
     const clientHeaders = new Headers(requestContext?.clientHeaders ?? credentials?.rawHeaders ?? {});
     const clientUa = clientHeaders.get("user-agent");
     const credentialToken = credentials?.apiKey || credentials?.accessToken || credentials?.authorization;
@@ -93,6 +96,7 @@ export class OpenCodeExecutor extends BaseExecutor {
       "x-opencode-client": clientHeaders.get("x-opencode-client") || "desktop",
       "Accept": stream ? "text/event-stream" : "*/*"
     };
+    if (MESSAGES_MODELS.has(model)) baseHeaders["anthropic-version"] = ANTHROPIC_API_VERSION;
     if (hasPaidIdentity) {
       baseHeaders.Authorization = credentialToken.startsWith?.("Bearer ") ? credentialToken : `Bearer ${credentialToken}`;
     }

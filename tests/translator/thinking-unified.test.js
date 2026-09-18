@@ -135,6 +135,22 @@ describe("applyThinking per provider format", () => {
     // DurinDoor always sends the explicit adaptive switch (harmless on Fable 5.1).
     expect(out.thinking).toEqual({ type: "adaptive", display: "summarized" });
   });
+  // Ported from upstream decolua/9router (fix(translator): preserve thinking
+  // display across translations): a client that explicitly asks for a display
+  // mode (e.g. "omitted" to suppress the reasoning summary) must win over the
+  // "summarized" default.
+  it("claude adaptive keeps an explicit client display request over the default", () => {
+    const out = apply("claude", "claude-opus-4.8", { thinking: { type: "adaptive", display: "omitted" } }, "claude");
+    expect(out.thinking).toEqual({ type: "adaptive", display: "omitted" });
+  });
+  it("claude budget thinking keeps an explicit client display request", () => {
+    const out = apply("claude", "claude-sonnet-4-5-20250929", { thinking: { type: "enabled", budget_tokens: 4096, display: "omitted" } }, "claude");
+    expect(out.thinking.display).toBe("omitted");
+  });
+  it("claude budget thinking omits display when the client did not request one", () => {
+    const out = apply("claude", "claude-sonnet-4-5-20250929", { thinking: { type: "enabled", budget_tokens: 4096 } }, "claude");
+    expect(out.thinking.display).toBeUndefined();
+  });
   it("claude opus-4.8 adaptive → summarized display", () => {
     const out = apply("claude", "claude-opus-4.8", { reasoning_effort: "high" }, "claude");
     expect(out.output_config).toEqual({ effort: "high" });
@@ -238,6 +254,25 @@ describe("applyThinking per provider format", () => {
     expect(out.thinking).toEqual({ type: "enabled" });
     expect(out.reasoning_effort).toBe(scalar);
     expect(out.reasoning).toEqual({ effort: object });
+  });
+  it.each([
+    ["mistral", "zai-glm-5-2"],
+    ["mistral", "glm-5.3"],
+    ["mistral", "deepseek-v4-pro"],
+    ["mistral", "minimax-m3"],
+    ["baidu", "glm-5.2"],
+    ["alicode", "qwen3.5-plus"],
+  ])("OpenAI-compatible reseller %s hosting %s → reasoning_effort, never a vendor-native thinking field (regression: Mistral 422 extra_forbidden body.thinking)", (provider, model) => {
+    const out = apply("openai", model, { reasoning_effort: "high" }, provider);
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.thinking).toBeUndefined();
+    expect(out.enable_thinking).toBeUndefined();
+    expect(out.thinking_budget).toBeUndefined();
+  });
+  it("native Z.ai endpoint (glm-cn) keeps its native thinking shape on the openai wire", () => {
+    const out = apply("openai", "glm-5.3", { reasoning_effort: "high" }, "glm-cn");
+    expect(out.thinking).toEqual({ type: "enabled" });
+    expect(out.reasoning_effort).toBe("high");
   });
   it.each([
     ["none", false],

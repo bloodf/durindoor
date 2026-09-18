@@ -206,7 +206,7 @@ export default function MfaCard({ mfaEnabled, mfaBackupCodesRemaining, onChanged
               inputMode="numeric"
               autoComplete="one-time-code"
               label="6-digit code"
-              placeholder="123456"
+              placeholder="000000"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               error={error || undefined}
@@ -247,7 +247,7 @@ export default function MfaCard({ mfaEnabled, mfaBackupCodesRemaining, onChanged
               inputMode="text"
               autoComplete="one-time-code"
               label="Authentication or backup code"
-              placeholder="123456"
+              placeholder="000000"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               error={error || undefined}

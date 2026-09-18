@@ -80,7 +80,7 @@ export function LoginView({
                 inputMode="text"
                 autoComplete="one-time-code"
                 label="Authentication code"
-                placeholder="123456"
+                placeholder="000000"
                 value={mfaCode}
                 onChange={(event) => setMfaCode(event.target.value)}
                 error={error || undefined}

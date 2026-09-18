@@ -188,7 +188,7 @@ function truncate(s, n) {
  */
 function buildQoderParameters(body, maxTokens) {
   const parameters = { max_tokens: maxTokens };
-  const effort = typeof body?.reasoning_effort === "string"
+  const effort = isString(body?.reasoning_effort)
     ? body.reasoning_effort.trim().toLowerCase()
     : "";
   if (effort && effort !== "auto") parameters.reasoning_effort = effort;

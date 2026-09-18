@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { errorResponse, readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
-import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE } from "../config/appConstants.js";
 import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId, toNumericSessionId } from "../utils/sessionManager.js";
@@ -313,7 +313,7 @@ export class AntigravityExecutor extends BaseExecutor {
       const modifiedParts = parts?.map(p => {
         if (!p.functionCall) return p;
         const callId = p.functionCall.id;
-        const cachedSig = callId ? getGeminiThoughtSignatureSync(callId, sessionId) : null;
+        const cachedSig = callId ? getGeminiThoughtSignatureSync(callId, sessionId, body.model || model) : null;
         const callSig = p.thoughtSignature || cachedSig || (!firstFunctionCallSeen ? DEFAULT_THINKING_AG_SIGNATURE : undefined);
         firstFunctionCallSeen = true;
         if (callSig) {
@@ -425,6 +425,8 @@ export class AntigravityExecutor extends BaseExecutor {
       for (const part of requestWithoutTools.systemInstruction.parts) {
         if (!isString(part.text)) continue;
         part.text = rewriteOpenCodeBranding(part.text);
+        part.text = part.text.replace(ANTIGRAVITY_BILLING_HEADER_RE, "");
+        part.text = part.text.replace(ANTIGRAVITY_HERMES_IDENTITY_REWRITE.from, ANTIGRAVITY_HERMES_IDENTITY_REWRITE.to);
         if (part.text.includes(competitiveMarker)) {
           part.text = part.text.split(competitiveMarker).join("");
         }

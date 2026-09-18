@@ -8,7 +8,8 @@ import { fetchImageAsBase64, parseDataUri } from "./image.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 const TARGETS_NEED_BASE64 = new Set([
 FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX,
-FORMATS.ANTIGRAVITY, FORMATS.OLLAMA, FORMATS.KIRO]
+FORMATS.ANTIGRAVITY, FORMATS.OLLAMA, FORMATS.KIRO,
+FORMATS.COMMANDCODE]
 );
 
 function isRemoteUrl(url) {

@@ -39,16 +39,23 @@ describe("OpenCodeExecutor Muse Free tool_choice normalization", () => {
       const body = responsesBody(model, structuredClone(choice));
       const out = new OpenCodeExecutor().transformRequest(model, body, true, {});
       expect(out.tool_choice).toBe("auto");
-      expect(out.tools).toHaveLength(1);
+      // The cluster's unconditional decoy cloaking (port(upstream): #907) appends
+      // bash/read fingerprint tools alongside the caller's own tool; assert the
+      // caller's tool survives rather than pinning an exact count.
+      expect(out.tools.some((t) => t.name === "get_weather")).toBe(true);
     }
   });
 
-  it("leaves auto and absent tool_choice untouched", () => {
+  it("leaves an explicit auto untouched; absent gets the cluster's own auto default", () => {
     const autoOut = new OpenCodeExecutor().transformRequest(FREE_13, responsesBody(FREE_13, "auto"), true, {});
     expect(autoOut.tool_choice).toBe("auto");
 
+    // #907's cloakOpencodeTools defaults any missing tool_choice to "auto" on
+    // Responses requests unconditionally — this quirk's own force only ever
+    // needs to act on an EXPLICIT non-auto value, so the two behaviors don't
+    // fight; the caller ends up at "auto" either way.
     const absentOut = new OpenCodeExecutor().transformRequest(FREE_13, responsesBody(FREE_13, undefined), true, {});
-    expect("tool_choice" in absentOut).toBe(false);
+    expect(absentOut.tool_choice).toBe("auto");
   });
 
   it.each([

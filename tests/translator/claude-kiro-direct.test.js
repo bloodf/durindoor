@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import "./registerAll.js";
 import { translateRequest, translateResponse } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { kiroToClaudeNonStreaming } from "../../open-sse/translator/response/kiro-to-claude.js";
 
 const C2K = (body, credentials = null) =>
   translateRequest(FORMATS.CLAUDE, FORMATS.KIRO, "claude-sonnet-4.5", body, true, credentials, "kiro");
@@ -480,5 +481,90 @@ describe("Kiro → Claude (direct route, OpenAI-shaped chunks from executor)", (
     expect(events.findIndex((event) => event.type === "message_delta")).toBeLessThan(
       events.findIndex((event) => event.type === "message_stop")
     );
+  });
+});
+
+// Port of upstream fix(kiro): preserve underscores in tool names and restore
+// sanitized names in responses / fix(translator): keep tool-result images,
+// restore Kiro tool names, preserve thinking display — re-implemented against
+// this fork's claude:kiro direct route (no shared kiroConversation.js here;
+// claude-to-kiro.js and openai-to-kiro.js each carry their own sanitizer).
+describe("Kiro tool names round-trip (direct claude:kiro route)", () => {
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+  it("does not collapse legal consecutive underscores like mcp__browser__computer", () => {
+    const out = C2K({
+      tools: [{ name: "mcp__browser__computer", description: "browser", input_schema: { type: "object", properties: {} } }],
+      messages: [{ role: "user", content: "take a screenshot" }],
+    });
+    const tools = out.conversationState.currentMessage.userInputMessage.userInputMessageContext.tools;
+    expect(tools[0].toolSpecification.name).toBe("mcp__browser__computer");
+    expect(out._toolNameMap).toBeUndefined();
+  });
+
+  it("sanitizes illegal characters and attaches a reverse _toolNameMap", () => {
+    const out = C2K({
+      tools: [{ name: "my.tool/search", description: "search", input_schema: { type: "object", properties: {} } }],
+      messages: [{ role: "user", content: "search for x" }],
+    });
+    const tools = out.conversationState.currentMessage.userInputMessage.userInputMessageContext.tools;
+    expect(tools[0].toolSpecification.name).toBe("my_tool_search");
+    expect(out._toolNameMap).toBeInstanceOf(Map);
+    expect(out._toolNameMap.get("my_tool_search")).toBe("my.tool/search");
+  });
+
+  it("sanitizes a matching assistant tool_use name in history the same way", () => {
+    const out = C2K({
+      tools: [{ name: "my.tool/search", description: "search", input_schema: { type: "object", properties: {} } }],
+      messages: [
+        { role: "user", content: "search for x" },
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "my.tool/search", input: { q: "x" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "found it" }] },
+      ],
+    });
+    const history = out.conversationState.history;
+    const toolUseTurn = history.find((h) => h.assistantResponseMessage?.toolUses?.length);
+    expect(toolUseTurn.assistantResponseMessage.toolUses[0].name).toBe("my_tool_search");
+  });
+
+  it("forwards a tool_result image to Kiro as a user image instead of dropping it", () => {
+    const out = C2K({
+      tools: [{ name: "mcp__browser__computer", description: "browser", input_schema: { type: "object", properties: {} } }],
+      messages: [
+        { role: "user", content: "take a screenshot" },
+        { role: "assistant", content: [{ type: "tool_use", id: "toolu_1", name: "mcp__browser__computer", input: { action: "screenshot" } }] },
+        {
+          role: "user",
+          content: [{
+            type: "tool_result",
+            tool_use_id: "toolu_1",
+            content: [
+              { type: "text", text: "Successfully captured screenshot" },
+              { type: "image", source: { type: "base64", media_type: "image/png", data: PNG } },
+            ],
+          }],
+        },
+      ],
+    });
+    const json = JSON.stringify(out.conversationState);
+    expect(json).toContain(PNG);
+    expect(json).toContain("Successfully captured screenshot");
+  });
+});
+
+describe("kiroToClaudeNonStreaming restores the client's tool name", () => {
+  it("restores the original name from data.toolNameMap", () => {
+    const result = kiroToClaudeNonStreaming({
+      choices: [{ message: { tool_calls: [{ id: "call_1", function: { name: "my_tool_search", arguments: "{}" } }] } }],
+      toolNameMap: new Map([["my_tool_search", "my.tool/search"]]),
+    });
+    expect(result.content[0].name).toBe("my.tool/search");
+  });
+
+  it("passes an unmapped name through untouched", () => {
+    const result = kiroToClaudeNonStreaming({
+      choices: [{ message: { tool_calls: [{ id: "call_1", function: { name: "plain_tool", arguments: "{}" } }] } }],
+    });
+    expect(result.content[0].name).toBe("plain_tool");
   });
 });

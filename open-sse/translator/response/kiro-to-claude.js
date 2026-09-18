@@ -261,6 +261,9 @@ export function kiroToClaudeNonStreaming(data) {
   const content = [];
   const choice = data?.choices?.[0];
   const message = choice?.message || {};
+  // No `state` reaches this defensive, non-streaming path; the caller can
+  // attach the sanitized→original map directly on `data` instead.
+  const toolNameMap = data?.toolNameMap || data?._toolNameMap;
 
   if (message.content) {
     content.push({ type: "text", text: message.content });
@@ -276,10 +279,11 @@ export function kiroToClaudeNonStreaming(data) {
       } catch {
         input = {};
       }
+      const sanitizedName = tc.function?.name || "";
       content.push({
         type: "tool_use",
         id: tc.id || `toolu_${Date.now()}`,
-        name: tc.function?.name || "",
+        name: toolNameMap?.get(sanitizedName) ?? sanitizedName,
         input
       });
     }

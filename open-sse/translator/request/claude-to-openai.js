@@ -4,7 +4,7 @@ import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function stripAnthropicBillingHeader(text) {
   if (!isString(text)) return "";
@@ -77,14 +77,17 @@ export function claudeToOpenAIRequest(model, body, stream) {
 
   // Tools
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map((tool) => ({
-      type: OPENAI_BLOCK.FUNCTION,
-      function: {
+    result.tools = body.tools.map((tool) => {
+      const fn = {
         name: tool.name,
         description: String(tool.description || ""),
         parameters: tool.input_schema || { type: "object", properties: {} }
-      }
-    }));
+      };
+      // Preserve an explicit Claude tool.strict flag through the OpenAI pivot; a
+      // missing flag is left unset so downstream translators keep their own default.
+      if (isBoolean(tool.strict)) fn.strict = tool.strict;
+      return { type: OPENAI_BLOCK.FUNCTION, function: fn };
+    });
   }
 
   // Tool choice

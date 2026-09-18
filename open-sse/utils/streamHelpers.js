@@ -1,4 +1,8 @@
 import { FORMATS } from "../translator/formats.js";
+import { buildErrorBody } from "./error.js";
+import { SSE_DONE } from "./sseConstants.js";
+
+const sharedEncoder = new TextEncoder();
 
 // ANSI / VT100 escape sequence pattern.
 // Matches: CSI sequences (\x1b[ ... final-byte), OSC sequences (\x1b] ... ST/BEL),
@@ -172,6 +176,24 @@ export function formatSSE(data, sourceFormat) {
  * @param {string} buffer Accumulated raw SSE text that may contain a partial final frame.
  * @returns {{frames: string[], remainder: string}} Complete frames and the unterminated tail.
  */
+// Terminal frame for a stream that aborted (watchdog stall/ttft timeout, lost
+// upstream connection) after HTTP 200 was already sent, for client formats
+// createTerminalTracker does not cover (Gemini-family, Ollama, Kiro,
+// Commandcode, Cursor) — those still closed silently otherwise. OpenAI-shaped
+// clients get `data: {"error":...}` then `[DONE]` (openai-python raises
+// APIError on any `data:` payload carrying an `error` key, checked before
+// [DONE]); Claude clients get `event: error`. Never fabricate a successful
+// finish_reason instead.
+export function buildStreamErrorBytes(statusCode, message, clientFormat) {
+  const { error } = buildErrorBody(statusCode, message);
+
+  const sse = clientFormat === FORMATS.CLAUDE
+    ? formatSSE({ type: "error", error }, FORMATS.CLAUDE)
+    : formatSSE({ error }, clientFormat) + SSE_DONE;
+
+  return sharedEncoder.encode(sse);
+}
+
 export function extractCompleteSseFrames(buffer) {
   const frames = [];
   const delimiter = /\r?\n\r?\n/g;

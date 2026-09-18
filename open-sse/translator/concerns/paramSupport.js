@@ -33,6 +33,11 @@ const STRIP_RULES = [
 // this field on assistant turns; it is only meaningful in streamed responses, not
 // in request bodies. Strip it from every message before forwarding. #1649
 { provider: "mistral", dropMessageFields: ["reasoning_content"] },
+// Mistral's OpenAI-compatible API validates the body strictly and rejects the
+// Anthropic/Z.ai-native `thinking` object with 422 extra_forbidden. It only
+// accepts `reasoning_effort`, so drop any stray native thinking field that
+// survives translation (final wire guard alongside registry thinkingFormat).
+{ provider: "mistral", drop: ["thinking"] },
 // NVIDIA NIM z-ai/glm-5.2 rejects both OpenAI-style `reasoning` and
 // Claude-style `thinking` request fields on its OpenAI-compatible wrapper.
 { provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },

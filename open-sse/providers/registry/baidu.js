@@ -16,6 +16,10 @@ export default {
   category: "apikey",
   transport: {
     baseUrl: "https://qianfan.baidubce.com/v2/chat/completions",
+    // Qianfan re-hosts third-party models (DeepSeek/GLM/Kimi/Qwen) behind an
+    // OpenAI-compatible API that rejects vendor-native thinking shapes. Force
+    // the OpenAI `reasoning_effort` shape for every model routed here.
+    thinkingFormat: "openai",
   },
   models: [
     { id: "ernie-5.1", name: "ERNIE 5.1", contextLength: 131072 },

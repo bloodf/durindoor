@@ -21,6 +21,16 @@ export const JWT_SECRET_FILE_BASENAME = "jwt-secret";
  */
 export const SESSION_MAX_AGE_SEC = 24 * 60 * 60;
 
+/**
+ * Short-lived cookie/token issued between "password accepted" and "MFA
+ * satisfied" (decolua/9router#4144). Its `scope` claim keeps it from ever
+ * being read back as a real session, even if it were replayed under the
+ * `auth_token` cookie name.
+ */
+export const MFA_PENDING_COOKIE = "mfa_pending";
+const MFA_PENDING_MAX_AGE_SEC = 5 * 60;
+const MFA_PENDING_SCOPE = "mfa_pending";
+
 export function validateDashboardPassword(password) {
   if (!isString(password) || password.length < 6) {
     return "Password must be at least 6 characters";
@@ -186,6 +196,10 @@ export async function verifyDashboardAuthToken(token) {
   if (!token) return false;
   try {
     const { payload } = await jwtVerify(token, getSecretBytes());
+    // An MFA-pending token proves only the first factor. Treating it as a
+    // session would make the second factor bypassable by replaying the
+    // intermediate cookie, so it is rejected everywhere a session is expected.
+    if (payload.scope === MFA_PENDING_SCOPE) return false;
     if (payload.oidc) return true;
     const settings = await getSettings();
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch;
@@ -198,12 +212,53 @@ export async function getDashboardAuthSession(token) {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, getSecretBytes());
+    if (payload.scope === MFA_PENDING_SCOPE) return null;
     if (payload.oidc) return payload;
     const settings = await getSettings();
     return payload.passwordSessionEpoch === settings.passwordSessionEpoch ? payload : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Issue the intermediate token for a login that passed the password check but
+ * still owes a TOTP/backup code. Deliberately carries no `authenticated`
+ * session semantics -- its `scope` alone gates it out of every session check.
+ */
+export async function createMfaPendingToken(claims = {}) {
+  return new SignJWT({ ...claims, scope: MFA_PENDING_SCOPE })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${MFA_PENDING_MAX_AGE_SEC}s`)
+    .sign(getSecretBytes());
+}
+
+/** Verify an MFA-pending token. Returns its payload or null. */
+export async function getMfaPendingSession(token) {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, getSecretBytes());
+    if (payload.scope !== MFA_PENDING_SCOPE) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+export async function setMfaPendingCookie(cookieStore, request, claims = {}) {
+  const token = await createMfaPendingToken(claims);
+  cookieStore.set(MFA_PENDING_COOKIE, token, {
+    httpOnly: true,
+    secure: shouldUseSecureCookie(request),
+    sameSite: "lax",
+    path: "/",
+    maxAge: MFA_PENDING_MAX_AGE_SEC,
+  });
+}
+
+export function clearMfaPendingCookie(cookieStore) {
+  cookieStore.delete(MFA_PENDING_COOKIE);
 }
 
 export async function setDashboardAuthCookie(cookieStore, request, claims = {}, expectedPasswordSessionEpoch) {

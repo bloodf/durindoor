@@ -457,7 +457,9 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           name: name.slice(0, MAX_TOOL_NAME_LEN),
           description: String(tool.function.description || ""),
           parameters: normalizeToolParameters(tool.function.parameters),
-          strict: tool.function.strict
+          // The Responses API requires `strict` on every function tool; default to
+          // false (non-strict) instead of forwarding an undefined field.
+          strict: tool.function.strict ?? false
         };
       }
       return tool;

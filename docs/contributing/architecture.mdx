@@ -58,7 +58,7 @@ Two layers:
 
 A direct model request uses account fallback only. A combo request can use both. Account fallback inside one member still runs first: if OpenAI account A 429s and account B succeeds, the combo does not move to member 2.
 
-`checkFallbackError` decides whether an upstream error rotates. HTTP 499 from the client or an external hop is terminal for account fallback. Anthropic `invalid_request_error` 400s do not rotate. Combo-owned per-attempt timeouts are handled in `combo.js`, not by that 499 branch.
+`checkFallbackError` decides whether an upstream error rotates. HTTP 499 from the client or an external hop is terminal for account fallback. Anthropic `invalid_request_error` 400s do not rotate. Any other unmatched 400-499 (context overflow, a malformed body, an unsupported parameter) is treated the same way: it is a request-scoped failure that switching accounts cannot fix, so it never cools the account down. Account-scoped statuses (401/402/403/404/429) keep their cooldown, and rate-limit/quota wording still rotates on any status. Combo-owned per-attempt timeouts are handled in `combo.js`, not by that 499 branch.
 
 Empty HTTP 200 bodies and SSE streams that never carry a usable frame also fail through. Details and strategies are on [Combos](../features/combos.mdx).
 

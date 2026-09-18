@@ -19,6 +19,8 @@ Context-window presets on the card write `CLAUDE_CODE_MAX_CONTEXT_TOKENS` (200K 
 
 **Filter naming** is a DurinDoor setting (`ccFilterNaming`), not a Claude Code env var. When it is on, the gateway intercepts Claude Code topic-naming requests (`isNewTopic` in the system prompt) and answers them locally.
 
+**Classifier** controls `claudeClassifierCompat` (`off` by default). Claude Code's `--permission-mode auto` sends an internal security-classifier request that must get back a response starting with `<block>no</block>` (allow) or `<block>yes</block>` (block); anything else is unparseable and Claude Code fails closed, blocking every gated action (Bash, Edit, WebFetch) for that turn. `auto` and `always` detect the classifier's system-prompt marker and answer that one request locally with a synthetic allow, without calling upstream, so a combo route that happens to send it to a model returning empty content cannot break the classifier. `off` never touches traffic. Because this setting can affect what gets auto-approved, changing it from the dashboard requires a signed-in session or CLI token, the same as `requireApiKey` and the OIDC settings.
+
 Reset `DELETE`s `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, the Opus/Sonnet/Haiku default-model keys, `API_TIMEOUT_MS`, and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`. Other keys in `settings.json` stay.
 
 ## Manual config

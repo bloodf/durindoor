@@ -18,6 +18,9 @@ export default {
   authHint: "Personal Access Token (pt-...) từ https://qoder.com/account/integrations",
   transport: {
     baseUrl: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
+    // Qoder's private chat wire accepts reasoning_effort through OpenAI-shape
+    // normalization; the executor moves it into the parameters block.
+    thinkingFormat: "openai",
     headers: {},
     timeoutMs: 120000,
     stallTimeoutMs: 120000,

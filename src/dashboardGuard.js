@@ -46,6 +46,11 @@ const PUBLIC_API_EXACT_PATHS = [
   // One-time password-change proof recipient. Only valid proofs can drive
   // a write here; the route does not fall through to a session check.
   "/api/auth/change-password",
+  // Login step 2 (decolua/9router#4144). Public by necessity -- the caller
+  // holds no session yet, only the short-lived mfa_pending cookie, which the
+  // route verifies itself. Exact path only, so /api/auth/mfa/{setup,enable,
+  // disable} stay behind the normal session check below.
+  "/api/auth/mfa/verify",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).

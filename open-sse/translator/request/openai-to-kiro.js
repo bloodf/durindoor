@@ -168,13 +168,17 @@ function safeJSONParse(str, fallback) {
 }
 
 /**
- * Kiro's CodeWhisperer API rejects tool names containing consecutive
- * underscores, so `codex_app__send_message_to_thread` 400s. Collapse any run
- * of underscores to a single one; the caller records the original name so the
- * response translators can hand the client back the name it sent.
+ * Kiro's CodeWhisperer API rejects tool names with characters outside
+ * `[a-zA-Z0-9_-]`, so a dotted/slashed MCP alias like `my.tool/search` 400s.
+ * Replace only the illegal characters with `_` — consecutive underscores are
+ * legal and must survive intact, since MCP-style names like
+ * `mcp__server__tool` rely on the double underscore as a separator; collapsing
+ * them lost the separator and could collide two distinct tool names into one.
+ * The caller records the original name so the response translators can hand
+ * the client back the name it sent.
  */
 function sanitizeKiroToolName(name) {
-  return isString(name) ? name.replace(/_{2,}/g, "_") : name;
+  return isString(name) ? name.replace(/[^a-zA-Z0-9_-]/g, "_") : name;
 }
 
 /**

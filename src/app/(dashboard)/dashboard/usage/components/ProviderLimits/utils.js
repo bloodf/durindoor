@@ -954,7 +954,7 @@ export function parseQuotaData(provider, data) {
         break;
 
       case "ollama":
-        // Session (5h) / Weekly (7d) usage from ollama.com/api/usage. Carries
+        // Session (5h) / Weekly (7d) / Monthly usage from ollama.com/api/usage. Carries
         // remainingPercentage only — the API reports a ratio, not an absolute
         // remaining count, and the bar reads the percentage.
         if (data.quotas) {

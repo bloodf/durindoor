@@ -80,4 +80,5 @@ A static import list is required because Next/webpack cannot analyze a dynamic `
 - `models: []` is an explicit empty list. Omitting `models` means no model key.
 - `passthroughModels` forwards the client model id untouched.
 - `oauth.refreshLeadMs` feeds on-request refresh lead time. See [Architecture](./architecture.mdx).
+- `transport.thinkingFormat` overrides the wire shape `applyThinking` picks for every model behind this provider, ahead of a model's own capability-derived format. Set it to `"openai"` on a strict OpenAI-compatible reseller (Alicode, Baidu, Mistral) that re-hosts third-party reasoning models and rejects their native `thinking`/`enable_thinking`/`thinking_budget` fields.
 - Provider logos are a separate policy: [Provider brand assets](./provider-brand-assets.mdx).

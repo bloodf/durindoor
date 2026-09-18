@@ -48,10 +48,18 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
     oidcClientSecret,
     mitmSudoEncrypted,
     postgresUrl,
+    mfaSecret,
+    mfaBackupCodes,
     ...safeSettings
   } = settings;
   void postgresUrl;
+  void mfaSecret;
   safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+  // mfaEnabled is a plain flag (safe to expose); the secret and recovery-code
+  // hashes never leave the server. Only a count is exposed so the profile UI
+  // can warn when backup codes are running low.
+  safeSettings.mfaEnabled = settings.mfaEnabled === true;
+  safeSettings.mfaBackupCodesRemaining = Array.isArray(mfaBackupCodes) ? mfaBackupCodes.length : 0;
   if (!privileged && safeSettings.outboundProxyUrl) {
     safeSettings.outboundProxyUrl = redactProxyUrlCredentials(safeSettings.outboundProxyUrl);
   }

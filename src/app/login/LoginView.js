@@ -29,6 +29,11 @@ export function LoginView({
   handleLogin,
   handleSetNewPassword,
   handleOidcLogin,
+  mfaRequired,
+  mfaCode,
+  setMfaCode,
+  handleMfaSubmit,
+  onBackToPassword,
 }) {
   const backdropRef = useRef(null);
 
@@ -59,13 +64,44 @@ export function LoginView({
           </div>
           <p className="mt-2 font-serif text-sm italic text-dd-muted">Speak, friend, and enter</p>
           <p className="mt-3 text-[13px] text-dd-muted">
-            {authMode === "oidc" && oidcConfigured
+            {mfaRequired
+              ? "Enter the code from your authenticator app"
+              : authMode === "oidc" && oidcConfigured
               ? "Sign in with your OIDC provider to access the dashboard"
               : "Enter your password to access the dashboard"}
           </p>
         </div>
         <Card className="shadow-dd-elevated">
-          {mustChange && passwordChangeProof ? (
+          {mfaRequired ? (
+            <form onSubmit={handleMfaSubmit} className="flex flex-col gap-4">
+              <Input
+                id="mfa-code"
+                type="text"
+                inputMode="text"
+                autoComplete="one-time-code"
+                label="Authentication code"
+                placeholder="123456"
+                value={mfaCode}
+                onChange={(event) => setMfaCode(event.target.value)}
+                error={error || undefined}
+                required
+                autoFocus
+              />
+              <p className="text-xs text-dd-muted">Lost your device? Enter one of your backup codes instead.</p>
+              {retryAfter > 0 ? (
+                <p aria-live="polite" className="flex items-center gap-2 text-xs text-dd-warning">
+                  <StatusDot tone="warning" pulse />
+                  Locked. Retry in <span className="font-mono dd-tnum text-dd-text">{retryAfter}s</span>.
+                </p>
+              ) : null}
+              <Button type="submit" variant="primary" className="w-full" loading={loading} disabled={!mfaCode || retryAfter > 0}>
+                {retryAfter > 0 ? `Wait ${retryAfter}s` : "Verify"}
+              </Button>
+              <button type="button" className="text-xs text-dd-muted underline hover:text-dd-text" onClick={onBackToPassword}>
+                Back to sign in
+              </button>
+            </form>
+          ) : mustChange && passwordChangeProof ? (
             <form onSubmit={handleSetNewPassword} className="flex flex-col gap-4">
               <Badge tone="warning" size="sm" icon="warning">Password update required</Badge>
               <p className="text-center text-[13px] text-dd-warning">Set a new password before accessing the dashboard remotely.</p>

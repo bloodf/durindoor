@@ -44,6 +44,13 @@ const DEFAULT_SETTINGS = {
   oidcClientSecret: "",
   oidcScopes: "openid profile email",
   oidcLoginLabel: "Sign in with OIDC",
+  // TOTP dashboard 2FA (decolua/9router#4144). mfaSecret/mfaBackupCodes are
+  // credentials -- see SECRET_SETTING_KEYS in settingsPatchAuth.js and the
+  // GET/PATCH redaction in the settings route; they must never round-trip
+  // through the generic settings API.
+  mfaEnabled: false,
+  mfaSecret: "",
+  mfaBackupCodes: [],
   passwordSessionEpoch: "initial",
   enableObservability: true,
   enableProxyTimeline: false,

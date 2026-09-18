@@ -66,6 +66,10 @@ const PATTERN_THINKING = [
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
+  // Qoder's private chat wire accepts reasoning_effort levels through the
+  // parameters block. Keep max distinct from xhigh instead of applying the
+  // generic OpenAI max→xhigh clamp.
+  { provider: "qoder", pattern: "*", levels: L.budgetX },
   // Ollama GPT-OSS accepts low/medium/high only; max must clamp to high.
   { provider: "ollama", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },
   { provider: "ollama-local", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },

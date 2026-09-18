@@ -63,6 +63,12 @@ const PATTERN_THINKING = [
   { provider: "codebuddy-cn", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
   { provider: "codebuddy-cn", pattern: "hy3*", levels: ["low", "high"] },
   { provider: "codebuddy-cn", pattern: "hy4*", levels: ["high"] },
+  // DeepSeek v4.* dotted releases (Alibaba MaaS, probed live): effort
+  // low|medium|high|xhigh|max all 200 via output_config.effort; "none" is a 400
+  // on the anthropic route (disable thinking instead). none kept for the picker
+  // = disable. Placed after the codebuddy-cn-scoped deepseek-v4* rule above so a
+  // dotted id on that gateway keeps its own narrower set (first-match semantics).
+  { pattern: "*deepseek-v4.*", levels: ["none", "low", "medium", "high", "xhigh", "max"] },
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking

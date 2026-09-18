@@ -33,7 +33,7 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * Check if error should trigger account fallback (switch to next account)
  * Config-driven: terminal status rules win before text rules, then remaining
  * ERROR_RULES match top-to-bottom. Known account/quota text rules take
- * precedence otherwise; deterministic 400/422 client failures do not rotate.
+ * precedence otherwise; deterministic request-scoped 4xx client failures do not rotate.
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
@@ -184,7 +184,16 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
     }
   }
 
-  if (status === 400 || status === 422) {
+  // Request-scoped client errors that matched no rule above: a 4xx caused by the
+  // request itself (context overflow, malformed body, unsupported parameter) says
+  // nothing about the credential, so cooling the account down only removes a
+  // healthy connection from rotation. With a single connection it is worse: every
+  // later request in the window fails with a copy of this very error, which hides
+  // the real cause from the caller and makes unrelated sessions look like they hit
+  // the same limit. Hand the upstream error back for this request instead.
+  // Account-scoped statuses (401/402/403/404/429) already returned above via
+  // their ERROR_RULES status match, so they never reach this fallthrough.
+  if (status >= 400 && status < 500) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
 

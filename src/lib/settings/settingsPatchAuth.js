@@ -13,6 +13,14 @@ export const SECRET_SETTING_KEYS = Object.freeze([
   "passwordSessionEpoch",
   "mitmSudoEncrypted",
   "postgresUrl",
+  // mfaSecret / mfaBackupCodes / mfaEnabled are managed exclusively by the
+  // /api/auth/mfa/* routes (which require the current password + a valid
+  // code). Allowing them through here would let any authenticated session
+  // silently disable the second factor or swap in an attacker-controlled
+  // secret (decolua/9router#4144).
+  "mfaEnabled",
+  "mfaSecret",
+  "mfaBackupCodes",
 ]);
 
 /**

@@ -48,15 +48,22 @@ export function buildErrorBody(statusCode, message, overrides = null) {
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
  * @param {{ type?: string, code?: string }} [overrides] - See buildErrorBody.
+ * @param {number} [retryAfterSec] - Seconds until the caller may retry (emits Retry-After).
+ *   Mirrors the header `unavailableResponse` already sends on combo exhaustion, for the
+ *   single-account error path.
  * @returns {Response} HTTP Response object
  */
-export function errorResponse(statusCode, message, overrides = null) {
+export function errorResponse(statusCode, message, overrides = null, retryAfterSec = null) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*"
+  };
+  if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+    headers["Retry-After"] = String(Math.ceil(retryAfterSec));
+  }
   return new Response(JSON.stringify(buildErrorBody(statusCode, message, overrides)), {
     status: statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*"
-    }
+    headers
   });
 }
 
@@ -579,6 +586,13 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
   const credentialSecrets = collectCredentialSecrets(credentialSource);
   const safeMessage = sanitizeErrorMessageWithSecrets(message, credentialSecrets);
   const safeBody = errorBody ? sanitizeStructuredErrorBody(errorBody, credentialSecrets) : null;
+  // Surface the resolved cooldown to the client too (RFC 7231 Retry-After),
+  // mirroring unavailableResponse's combo-exhaustion header. Without it an
+  // OpenAI-compatible caller sees a bare error and falls back to its own short
+  // generic backoff, hammering a provider that already told us how long to wait.
+  const retryAfterSec = Number.isFinite(resetsAtMs) ?
+  Math.max(Math.ceil((resetsAtMs - Date.now()) / 1000), 1) :
+  null;
   return {
     success: false,
     status: statusCode,
@@ -591,10 +605,11 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
       status: clientStatus,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
+        "Access-Control-Allow-Origin": "*",
+        ...(retryAfterSec !== null ? { "Retry-After": String(retryAfterSec) } : null)
       }
     }) :
-    errorResponse(clientStatus, safeMessage)
+    errorResponse(clientStatus, safeMessage, null, retryAfterSec)
   };
 }
 

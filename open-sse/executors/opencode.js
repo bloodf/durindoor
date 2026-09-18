@@ -9,7 +9,7 @@ import { normalizeResponsesTools, sanitizeResponsesItems } from "./opencode-go.j
 
 /**
  * OpenCode free-tier executor (upstream #4041-adjacent cluster: 93837af0 +
- * 6091ff59, plus PR #4155).
+ * 6091ff59 + 0c6ab4f9, plus PR #4155).
  *
  * OpenCode Zen validates free-tier (no-auth) requests and 403s
  * (`FreeTierError`) unless three things hold:
@@ -26,14 +26,34 @@ import { normalizeResponsesTools, sanitizeResponsesItems } from "./opencode-go.j
  * (called from `execute`) onto a request-local credentials copy, mirroring
  * opencode-go.js: no session state lives on this singleton executor, so
  * concurrent requests never race on a shared field.
+ *
+ * Stable session per identity (upstream 0c6ab4f9): upstream introduces a
+ * process-lifetime `Map` cache (identity -> random session, TTL-evicted)
+ * because its sessions are random and must be remembered to be reused. This
+ * fork already reuses one session per identity without a cache: `session`
+ * above is a deterministic hash of `[connectionId, requestContext.sessionId]`
+ * (`canonicalSessionId`/`trustedSessionKey`), so the same identity always
+ * derives the same session with no stored state, no TTL, and no memory
+ * growth — a superset of upstream's guarantee, and already covered by the
+ * "uses trusted connection identity" tests below. What upstream also adds
+ * that this fork lacked is a deterministic `x-opencode-request` per logical
+ * turn (`deriveRequestId`): every dispatch used to mint a fresh random id
+ * even on a credential-refresh retry of the exact same message, unlike the
+ * real CLI's stable per-turn id. `x-opencode-request` is now derived the
+ * same way as the session (hash of session + last user message text), so
+ * retries of one turn share an id and a new turn gets a new one.
  */
 const OPENCODE_UA = "opencode/1.18.31";
 const MESSAGES_MODELS = new Set();
 
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
+export const OPENCODE_REQUEST_RE = /^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const SESSION_HEADER = "x-opencode-session";
+const REQUEST_HEADER = "x-opencode-request";
 const SESSION_FIELD = "_opencodeSession";
+const REQ_FIELD = "_opencodeRequest";
+const LAST_TEXT_MAX_LEN = 600;
 
 // OpenCode Zen requires User-Agent: opencode/<major>.<minor>[.<patch>] with
 // major.minor >= 1.17 — anything older 426s, anything unversioned 403s.
@@ -117,18 +137,65 @@ function normalizeSession(value) {
   return trimmed && trimmed.length <= 256 ? trimmed : null;
 }
 
+function readHeader(rawHeaders, name) {
+  if (!rawHeaders) return null;
+  for (const [key, value] of Object.entries(rawHeaders)) {
+    if (key.toLowerCase() === name) return value;
+  }
+  return null;
+}
+
 // A caller-supplied session header is only trusted when it already matches
 // the canonical shape — otherwise it gets translated below like any other
 // seed, so a spoofed/legacy header can't skip validation.
 function nativeSession(rawHeaders) {
-  if (!rawHeaders) return null;
-  for (const [key, value] of Object.entries(rawHeaders)) {
-    if (key.toLowerCase() === SESSION_HEADER) {
-      const normalized = normalizeSession(value);
-      if (normalized && OPENCODE_SESSION_RE.test(normalized)) return normalized;
+  const normalized = normalizeSession(readHeader(rawHeaders, SESSION_HEADER));
+  return normalized && OPENCODE_SESSION_RE.test(normalized) ? normalized : null;
+}
+
+// Same trust rule as nativeSession: a caller-supplied request id is only
+// honored when it already matches the canonical shape.
+function nativeRequestId(rawHeaders) {
+  const normalized = normalizeSession(readHeader(rawHeaders, REQUEST_HEADER));
+  return normalized && OPENCODE_REQUEST_RE.test(normalized) ? normalized : null;
+}
+
+// Extract the current turn's user-facing text (Chat `messages` or Responses
+// `input`) so the request id can be derived from it. Bounded to the tail of
+// the text — only used as hash input, never sent upstream.
+function lastUserText(body) {
+  if (!body) return "";
+  const arr = Array.isArray(body.messages) ? body.messages : Array.isArray(body.input) ? body.input : null;
+  if (!arr) return isString(body.input) ? body.input.slice(-LAST_TEXT_MAX_LEN) : "";
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const msg = arr[i];
+    if (!msg) continue;
+    if (msg.role && msg.role !== "user") continue;
+    const content = msg.content;
+    if (isString(content) && content.trim()) return content.trim().slice(-LAST_TEXT_MAX_LEN);
+    if (Array.isArray(content)) {
+      const text = content.map((part) => (isString(part) ? part : part?.text || part?.input_text || "")).join(" ").trim();
+      if (text) return text.slice(-LAST_TEXT_MAX_LEN);
     }
   }
-  return null;
+  return "";
+}
+
+// The real CLI sends the current user message id (stable per turn, same on
+// retries) as x-opencode-request. Derive it deterministically from the
+// session plus the last user message so credential-refresh retries of the
+// same turn reuse the same id; a body with no readable user text (or a new
+// turn) falls back to a fresh random id.
+function deriveRequestId(sessionId, body) {
+  const text = lastUserText(body);
+  if (!text) return generateRequestId();
+  const digest = crypto.createHash("sha256")
+    .update(`opencode-req\0${sessionId || ""}\0${text}`)
+    .digest();
+  const timeHex = digest.subarray(0, 6).toString("hex");
+  let randomPart = "";
+  for (let i = 6; i < 20; i++) randomPart += BASE62_CHARS[digest[i] % 62];
+  return `msg_${timeHex}${randomPart}`;
 }
 
 // Deterministic translation from an arbitrary source string into the
@@ -201,20 +268,26 @@ export class OpenCodeExecutor extends BaseExecutor {
   }
 
   /**
-   * Resolve the free-tier session identity onto a request-local credentials
-   * copy (never mutates the shared `credentials` object or `this`). A valid
-   * native `x-opencode-session` header wins as-is; otherwise the
-   * chatCore-forwarded `providerSessionId`/connection identity is translated
-   * into the canonical shape.
+   * Resolve the free-tier session + request identity onto a request-local
+   * credentials copy (never mutates the shared `credentials` object or
+   * `this`). A valid native `x-opencode-session` header wins as-is;
+   * otherwise the chatCore-forwarded `providerSessionId`/connection identity
+   * is translated into the canonical shape — deterministically, so the same
+   * identity always derives the same session with no cache to evict (see
+   * class doc). `x-opencode-request` is likewise a valid native header, else
+   * derived from the session plus the current turn's text so retries of one
+   * turn share an id (upstream 0c6ab4f9).
    */
   prepareRequestCredentials({ body, credentials, providerSessionId, clientTool, requestContext } = {}) {
     const sourceCredentials = credentials || {};
-    const native = nativeSession(sourceCredentials.rawHeaders || requestContext?.clientHeaders);
+    const headerSource = sourceCredentials.rawHeaders || requestContext?.clientHeaders;
     const source = normalizeSession(providerSessionId) ||
     trustedSessionKey(sourceCredentials, requestContext, this._privateSessionKey);
+    const session = nativeSession(headerSource) || canonicalSessionId(source, clientTool);
     return {
       ...sourceCredentials,
-      [SESSION_FIELD]: native || canonicalSessionId(source, clientTool),
+      [SESSION_FIELD]: session,
+      [REQ_FIELD]: nativeRequestId(headerSource) || deriveRequestId(session, body),
     };
   }
 
@@ -281,7 +354,7 @@ export class OpenCodeExecutor extends BaseExecutor {
       ...baseHeaders,
       "x-opencode-client": "desktop",
       "x-opencode-session": credentials?.[SESSION_FIELD] ?? generateSessionId(),
-      "x-opencode-request": generateRequestId(),
+      "x-opencode-request": credentials?.[REQ_FIELD] ?? generateRequestId(),
       "x-opencode-project": "global"
     };
     const rawIp = (clientHeaders.get("x-9r-real-ip") || clientHeaders.get("x-real-ip") || "").trim();

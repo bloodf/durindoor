@@ -40,10 +40,12 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {string} provider - Optional provider ID for provider-specific rules
  * @param {Headers|object|null} headers - Optional upstream response headers
  * @param {unknown} structuredError - Optional parsed upstream error body
- * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object }}
+ * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object, terminal?: boolean }}
  *   `rateLimitEvidence` is present only on an explicit quota-exhausted 429,
  *   so markAccountUnavailable can persist state:"exhausted" instead of an
- *   ordinary cooldown.
+ *   ordinary cooldown. `terminal` marks a state retrying cannot fix
+ *   (billing/credit exhausted) — the account still cools down, but callers
+ *   must not advertise a client-facing Retry-After for it.
  */
 export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null) {
   const normalizedText = errorText ?
@@ -159,7 +161,7 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
       }
-      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs, terminal: rule.terminal };
     }
 
     // Pattern-based rule: regex match, for phrases the model name sits inside
@@ -170,7 +172,7 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
       }
-      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs, terminal: rule.terminal };
     }
 
     // Status-based rule: match HTTP status code
@@ -180,7 +182,7 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
       }
-      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs, terminal: rule.terminal };
     }
   }
 

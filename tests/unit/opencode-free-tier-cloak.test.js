@@ -86,13 +86,20 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     expect(() => executor.transformRequest("big-pickle", chatBody, true, {})).not.toThrow();
   });
 
-  it("forces stream:true for free-tier dispatch and skips it for compact requests", () => {
+  it("forces stream:true for free-tier dispatch", () => {
     const executor = new OpenCodeExecutor();
     const streamed = executor.transformRequest("big-pickle", { messages: [] }, false, {}, null);
     expect(streamed.stream).toBe(true);
+  });
 
-    const compact = executor.transformRequest("big-pickle", { messages: [] }, false, {}, { compact: true });
-    expect(compact.stream).toBeUndefined();
+  // The compact-responses endpoint hardcodes stream:false at the chatCore level
+  // (ignores forceStream) — Zen 403s any non-streaming free-tier dispatch, so
+  // that combination can never succeed. Fail fast with a clear message instead
+  // of silently deleting body.stream and surfacing an opaque upstream 403.
+  it("fails fast with a clear message for the incompatible compact-responses endpoint", () => {
+    const executor = new OpenCodeExecutor();
+    expect(() => executor.transformRequest("big-pickle", { messages: [] }, false, {}, { compact: true }))
+      .toThrow(/compact-responses/i);
   });
 });
 

@@ -123,18 +123,20 @@ function normalizeSession(value) {
   return trimmed && trimmed.length <= 256 ? trimmed : null;
 }
 
+function readHeader(rawHeaders, name) {
+  if (!rawHeaders) return null;
+  for (const [key, value] of Object.entries(rawHeaders)) {
+    if (key.toLowerCase() === name) return value;
+  }
+  return null;
+}
+
 // A caller-supplied session header is only trusted when it already matches
 // the canonical shape — otherwise it gets translated below like any other
 // seed, so a spoofed/legacy header can't skip validation.
 function nativeSession(rawHeaders) {
-  if (!rawHeaders) return null;
-  for (const [key, value] of Object.entries(rawHeaders)) {
-    if (key.toLowerCase() === SESSION_HEADER) {
-      const normalized = normalizeSession(value);
-      if (normalized && OPENCODE_SESSION_RE.test(normalized)) return normalized;
-    }
-  }
-  return null;
+  const normalized = normalizeSession(readHeader(rawHeaders, SESSION_HEADER));
+  return normalized && OPENCODE_SESSION_RE.test(normalized) ? normalized : null;
 }
 
 // Deterministic translation from an arbitrary source string into the
@@ -200,6 +202,26 @@ function isPrivateIp(ip) {
   return false;
 }
 
+// Every no-auth caller shares the literal connectionId "noauth" (there is no
+// per-account row for the public fallback — src/sse/services/auth.js
+// buildNoAuthCredential/buildOptionalNoAuthCredential). trustedSessionKey and
+// chatCore's own resolveSessionId(connectionId) fallback both derive from that
+// same shared literal on a first turn with no client session hint, so two
+// unrelated anonymous callers can land on the identical canonical session.
+// The unspoofable TCP-peer IP (same signal PR #3321 already trusts for
+// free-tier bucketing, above) is the only other caller-distinguishing signal
+// available at this point, so anonymous identity folds it in as an extra hash
+// dimension. This narrows the collision from "every anonymous caller on this
+// instance" to "every anonymous caller sharing one public IP" — still a real
+// collision behind NAT/VPN/CGNAT, and still open when the peer IP itself is
+// private (no reverse proxy, e.g. plain local dev) or unavailable; there is
+// no stronger identity signal available at the executor layer to close that
+// gap (see PR report for the full trace and the discarded alternatives).
+function anonymousCallerIp(rawHeaders) {
+  const raw = (readHeader(rawHeaders, "x-9r-real-ip") || readHeader(rawHeaders, "x-real-ip") || "").trim();
+  return raw && !isPrivateIp(raw) ? raw : null;
+}
+
 export class OpenCodeExecutor extends BaseExecutor {
   constructor() {
     super("opencode", PROVIDERS.opencode);
@@ -212,15 +234,26 @@ export class OpenCodeExecutor extends BaseExecutor {
    * native `x-opencode-session` header wins as-is; otherwise the
    * chatCore-forwarded `providerSessionId`/connection identity is translated
    * into the canonical shape.
+   *
+   * Anonymous (no-auth) callers all share the literal connectionId "noauth",
+   * so `source` alone can be identical across unrelated callers on a first
+   * turn — see `anonymousCallerIp`. The peer IP, when available and public,
+   * is folded into the hash input so different anonymous callers still land
+   * on different sessions; this is a mitigation, not a full fix (documented
+   * on `anonymousCallerIp`).
    */
   prepareRequestCredentials({ body, credentials, providerSessionId, clientTool, requestContext } = {}) {
     const sourceCredentials = credentials || {};
-    const native = nativeSession(sourceCredentials.rawHeaders || requestContext?.clientHeaders);
+    const headerSource = sourceCredentials.rawHeaders || requestContext?.clientHeaders;
+    const native = nativeSession(headerSource);
+    const isAnonymous = sourceCredentials.id === "noauth" || sourceCredentials.connectionId === "noauth";
+    const identityIp = isAnonymous ? anonymousCallerIp(headerSource) : null;
     const source = normalizeSession(providerSessionId) ||
     trustedSessionKey(sourceCredentials, requestContext, this._privateSessionKey);
+    const hashInput = identityIp ? `${source}\0ip:${identityIp}` : source;
     return {
       ...sourceCredentials,
-      [SESSION_FIELD]: native || canonicalSessionId(source, clientTool),
+      [SESSION_FIELD]: native || canonicalSessionId(hashInput, clientTool),
     };
   }
 
@@ -233,11 +266,16 @@ export class OpenCodeExecutor extends BaseExecutor {
     // Zen rejects non-streaming requests on free models with 403 FreeTierError;
     // always stream upstream and let chatCore's forceStream registry flag
     // aggregate the SSE back to JSON for non-streaming clients. The Codex
-    // compact-responses contract stays unary — never force streaming there.
-    if (body) {
-      if (requestContext?.compact === true) delete body.stream;
-      else body.stream = true;
+    // compact-responses contract stays unary — chatCore forces stream:false
+    // for it unconditionally (ignores forceStream), so it can never be
+    // satisfied here. Fail fast with a clear message instead of silently
+    // deleting body.stream and letting Zen 403 with an opaque FreeTierError.
+    if (requestContext?.compact === true) {
+      throw new Error(
+        "OpenCode free tier requires a streaming upstream dispatch and is incompatible with the compact-responses endpoint (stream is forced off there); use the regular /v1/responses or /v1/chat/completions endpoint for opencode models instead."
+      );
     }
+    if (body) body.stream = true;
     if (/muse/i.test(model) && body) {
       body.store = false;
       normalizeResponsesTools(body);

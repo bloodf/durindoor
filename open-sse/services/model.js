@@ -145,6 +145,10 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
 
 // Config-driven prefix → provider inference (first match wins, fallback "openai").
 const MODEL_PREFIX_PROVIDERS = [
+// Codex CLI sends this bare virtual model id for auto-review — keep it on
+// OAuth Codex instead of falling through to the "openai" default, which has
+// no credentials for it (port of decolua/9router#4135).
+[/^codex-auto-review$/, "codex"],
 [/^claude-/, "anthropic"],
 [/^gemini-/, "gemini"],
 [/^gpt-/, "openai"],

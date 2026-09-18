@@ -135,6 +135,22 @@ describe("applyThinking per provider format", () => {
     // DurinDoor always sends the explicit adaptive switch (harmless on Fable 5.1).
     expect(out.thinking).toEqual({ type: "adaptive", display: "summarized" });
   });
+  // Ported from upstream decolua/9router (fix(translator): preserve thinking
+  // display across translations): a client that explicitly asks for a display
+  // mode (e.g. "omitted" to suppress the reasoning summary) must win over the
+  // "summarized" default.
+  it("claude adaptive keeps an explicit client display request over the default", () => {
+    const out = apply("claude", "claude-opus-4.8", { thinking: { type: "adaptive", display: "omitted" } }, "claude");
+    expect(out.thinking).toEqual({ type: "adaptive", display: "omitted" });
+  });
+  it("claude budget thinking keeps an explicit client display request", () => {
+    const out = apply("claude", "claude-sonnet-4-5-20250929", { thinking: { type: "enabled", budget_tokens: 4096, display: "omitted" } }, "claude");
+    expect(out.thinking.display).toBe("omitted");
+  });
+  it("claude budget thinking omits display when the client did not request one", () => {
+    const out = apply("claude", "claude-sonnet-4-5-20250929", { thinking: { type: "enabled", budget_tokens: 4096 } }, "claude");
+    expect(out.thinking.display).toBeUndefined();
+  });
   it("claude opus-4.8 adaptive → summarized display", () => {
     const out = apply("claude", "claude-opus-4.8", { reasoning_effort: "high" }, "claude");
     expect(out.output_config).toEqual({ effort: "high" });

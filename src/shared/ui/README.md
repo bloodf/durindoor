@@ -50,6 +50,5 @@ The Theme toolbar (sun/moon, top of the canvas) flips between
 
 ## Full documentation
 
-- [docs/development/durin-ds.md](../../../docs/development/durin-ds.md) —
-  design principles, full token reference, component inventory, page mock
-  index, authoring conventions, upstream-portability notes.
+- [docs/contributing/design-system.mdx](../../../docs/contributing/design-system.mdx)
+  tokens, primitives, Storybook, and authoring rules.

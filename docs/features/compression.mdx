@@ -1,0 +1,71 @@
+---
+title: Compression
+description: RTK, the chat compression seam, Test Savers preview, and the per-request bypass header.
+---
+
+DurinDoor can shrink outbound prompts after translation and before the executor runs. Every step fails open: an error returns the original body and the request still goes upstream.
+
+Open **Dashboard → Token Saver → Statistics** (`/dashboard/token-saver`) for saved-byte totals. Open **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/settings`) for the RTK, Headroom, Caveman, Ponytail, and PXPIPE toggles. Open **Dashboard → Test Savers** (`/dashboard/compression-studio`) to dry-run engines against a sample payload. Headroom's process and venv live on [Headroom](./headroom.mdx).
+
+## Order on a chat request
+
+In `handleChatCore`, after the body is in the provider shape:
+
+1. RTK compresses `tool_result` / tool-message content when `rtkEnabled` is on (default true). On error it returns null and leaves the body untouched. It skips `is_error` and `status:"error"` results.
+2. Headroom, when enabled, calls the proxy once. See [Headroom](./headroom.mdx).
+3. The compression seam (`runCompressionSeam`) runs when `compressionEnabled` is on. Default is off.
+4. Caveman / Ponytail / PXPIPE settings still apply after the seam when those toggles are on.
+
+The seam never mutates the caller's body in place. A failed engine rolls back that step. A seam crash restores the pre-stack snapshot and emits no header.
+
+## Engines the seam can dispatch
+
+`open-sse/services/compression/engineCatalog.js` names every engine. Only `available: true` rows are imported.
+
+| Engine | Available | Role |
+| --- | --- | --- |
+| `session-dedup` | yes | Cross-turn block deduplication. |
+| `caveman` | yes | Rule-based prose compression (`lite`, `full`, `ultra`). |
+| `headroom` | yes | Adapter around the Headroom proxy. |
+| `rtk`, `lite`, `ccr`, `relevance`, `aggressive`, `llmlingua`, `ultra` | no | Catalog labels only. Not dispatched. |
+
+RTK still runs through the dedicated `rtkEnabled` path above. The catalog `rtk` row is a placeholder so the studio can name it.
+
+`compressionEngines` is a per-id map such as `{ caveman: { enabled: true, level: "full" } }`. One enabled single-mode engine becomes that mode; several become `stacked`, ordered by `stackPriority`.
+
+## Bypass
+
+Send this header to disable every token saver for one chat request, including Ponytail slash-command interceptors:
+
+```http
+X-DurinDoor-Token-Saver: off
+```
+
+The legacy `X-9Router-Token-Saver: off` header is still read. When both are present, the DurinDoor header wins, even if empty. Only the exact value `off` (case-insensitive) bypasses.
+
+## Response header
+
+When at least one seam engine both reports `compressed: true` and actually changes the body, the final chat response carries:
+
+```http
+X-DurinDoor-Compression: <engineId>[,<engineId>...]|<overallSavingsPercent>%
+```
+
+The percent is the stack input vs final output token estimate, rounded to two decimals, not a sum of per-engine percents. Disabled, no-op, fail-open, and upstream-error responses omit the header.
+
+## Preview
+
+`POST /api/compression/preview` dry-runs the catalog against a JSON body. Test Savers posts here with the dashboard session, not a DurinDoor API key. Status values: `compressed` / `unchanged` (ran), `unavailable` (placeholder), `error` (`apply()` threw). Fallback runs include `fallbackReasons`.
+
+## PXPIPE
+
+Image-compression transform `pxpipe-proxy` ships as a dependency. There is no install endpoint. If status is `DEPENDENCY_MISSING`, reinstall the app. **Dashboard → PXPIPE** (`/dashboard/pxpipe`) lists transform events. Management routes need a dashboard session or machine-bound CLI token even when `requireLogin` is off; API keys do not grant them.
+
+## Worked example
+
+1. On Token Saver → Settings, leave RTK on.
+2. Send a chat request whose history includes a large `role: "tool"` string (a long `git status` dump works).
+3. Token Saver → Statistics should show RTK bytes saved on that request.
+4. Repeat the same request with `-H "X-DurinDoor-Token-Saver: off"`. The statistics delta should not increase, and no `X-DurinDoor-Compression` header should appear.
+
+To preview Caveman without touching live traffic, open Test Savers, paste a multi-turn payload, and read the per-engine `savingsPercent`.

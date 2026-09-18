@@ -33,4 +33,4 @@ curl -X POST "$DURINDOOR_URL/v1/audio/speech" \
 
 The default response is raw audio. Use `?response_format=json` for base64 JSON when supported.
 
-Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

@@ -1,0 +1,16 @@
+{
+  "pages": [
+    "index",
+    "getting-started",
+    "providers",
+    "integrations",
+    "guides",
+    "features",
+    "deployment",
+    "operations",
+    "reference",
+    "contributing",
+    "faq",
+    "troubleshooting"
+  ]
+}

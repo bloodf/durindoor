@@ -1,32 +1,11 @@
 # Contributing to DurinDoor
 
-Thank you for contributing to DurinDoor.
+The contributor guide is at [https://durindoor.vercel.app/docs/contributing](https://durindoor.vercel.app/docs/contributing).
 
-## Before you start
+Open an issue before large changes. Pull requests target `bloodf/durindoor:main`. Do not send PRs to `decolua/9router:dev` from this fork.
 
-- Open an issue to discuss significant changes before opening a pull request.
-- Pull requests target the `main` branch.
-- Use [Node.js 20.20.2](https://nodejs.org/) and npm 10.8.2 for development.
-- Run the test suite and any affected checks before submitting.
-- Keep documentation updated for user-facing or behavioral changes.
+Use Node.js 20.20.2 and npm 10.8.2. A behaviour change needs a doc update and a test. Pure docs and CI edits can skip tests.
 
-## Commit messages
-
-Use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-type(scope): description
-```
-
-Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
-
-## Useful links
-
-- [Detailed contributor guide](docs/development/contributing.md)
-- [Anti-slop (oxlint) gate](docs/development/anti-slop.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security policy](.github/SECURITY.md)
-
-## License
+Commit with Conventional Commits: `type(scope): description`. Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `ci`, `chore`, `revert`, `merge`, `port`, `sync`. Subject text maxes out at 100 characters.
 
 By contributing, you agree that your contributions will be licensed under the MIT License.

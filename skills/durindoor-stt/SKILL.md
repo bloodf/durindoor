@@ -25,4 +25,4 @@ curl -X POST "$DURINDOOR_URL/v1/audio/transcriptions" \
 
 `file` and `model` are required. `language`, `prompt`, `temperature`, and response formats depend on the discovered model. The default JSON response contains `text`; verbose formats may include duration and segments.
 
-Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

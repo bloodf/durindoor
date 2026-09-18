@@ -2,7 +2,6 @@
 
 export const GITHUB_URL = "https://github.com/bloodf/durindoor";
 export const NPM_URL = "https://www.npmjs.com/package/durindoor";
-export const DOCS_URL = "https://github.com/bloodf/durindoor/tree/main/docs";
 
 const logo = (file) => `/home/providers/${file}.png`;
 
@@ -23,17 +22,17 @@ export const FLOW_PROVIDERS = [
 ];
 
 export const TOOLS = [
-  { name: "Claude Code", logo: logo("claude") },
-  { name: "OpenAI Codex", logo: logo("codex") },
-  { name: "Cursor", logo: logo("cursor") },
-  { name: "Cline", logo: logo("cline") },
+  { name: "Claude Code", logo: logo("claude"), href: "/docs/integrations/claude-code" },
+  { name: "OpenAI Codex", logo: logo("codex"), href: "/docs/integrations/codex" },
+  { name: "Cursor", logo: logo("cursor"), href: "/docs/integrations/cursor" },
+  { name: "Cline", logo: logo("cline"), href: "/docs/integrations/cline" },
   { name: "Kilo Code", logo: logo("kilocode") },
   { name: "Droid", logo: logo("droid") },
   { name: "OpenCode", logo: logo("opencode") },
   { name: "GitHub Copilot", logo: logo("copilot") },
   { name: "Hermes", logo: logo("hermes") },
-  { name: "Continue", logo: logo("continue") },
-  { name: "Roo Code", logo: logo("roo") },
+  { name: "Continue", logo: logo("continue"), href: "/docs/integrations/continue" },
+  { name: "Roo Code", logo: logo("roo"), href: "/docs/integrations/roo" },
   { name: "Gemini CLI", logo: logo("gemini-cli") },
   { name: "Antigravity", logo: logo("antigravity") },
   { name: "Kiro", logo: logo("kiro") },
@@ -90,59 +89,31 @@ export const RESOLUTIONS = [
   },
 ];
 
-// Bento order: each row of the 4-column grid adds up to four cells.
-// Claims map to README.md, docs/ARCHITECTURE.md, docs/providers/cheap.md and docs/guides/usage.md.
+// Leftover surfaces not claimed in flow, quota, savers, or tools.
+// href values follow master plan §4; stubs are fine until the content tasks land.
 export const FEATURES = [
   {
-    icon: "layers",
-    title: "Combos",
-    body: "Stack models behind one stable name. A failed member falls through to the next, so tools never change their config.",
-    wide: true,
+    icon: "hub",
+    title: "MCP gateway",
+    body: "One DurinDoor endpoint in front of several MCP servers, with gateway keys that map to specific instances.",
+    href: "/docs/features/mcp-gateway",
   },
   {
-    icon: "swap",
-    title: "Format translator",
-    body: "Send OpenAI-shaped requests; Claude, Gemini, Kiro, Cursor, Ollama and Vertex formats are handled upstream.",
+    icon: "chat",
+    title: "Realtime",
+    body: "GET /v1/realtime upgrades to a text WebSocket in the OpenAI Realtime shape. Audio is not supported.",
+    href: "/docs/features/realtime",
   },
   {
-    icon: "users",
-    title: "Multi-account",
-    body: "Several connections per provider. Locked or expired accounts are skipped and OAuth tokens refresh.",
+    icon: "route",
+    title: "Proxy timeline",
+    body: "Optional redacted hop log for proxy calls. Off by default. Stored next to the main database.",
+    href: "/docs/features/proxy-timeline",
   },
   {
     icon: "tunnel",
     title: "Tunnels",
-    body: "Reach your gateway from another network over HTTPS. Keep dashboard auth on, turn it off when unused.",
-  },
-  {
-    icon: "route",
-    title: "Proxy pools",
-    body: "Route upstream traffic through configured proxies for regional routing or egress control.",
-  },
-  {
-    icon: "mask",
-    title: "MITM bridge",
-    body: "Optional local interception for supported IDE traffic, behind explicit setup and trust changes.",
-  },
-  {
-    icon: "hub",
-    title: "MCP gateway",
-    body: "Expose multiple MCP servers behind managed keys and routes from the same dashboard.",
-  },
-  {
-    icon: "dash",
-    title: "One dashboard",
-    body: "Providers, API keys, combos, usage, request logs, endpoint setup, CLI tools, tunnels, MITM and MCP in one browser UI.",
-    wide: true,
-  },
-  {
-    icon: "wand",
-    title: "CLI tool setup",
-    body: "Copy ready integration settings for Claude Code, Codex, Cursor, Cline and more.",
-  },
-  {
-    icon: "shield",
-    title: "Self-hosted state",
-    body: "Storage, credentials and logs live in your DATA_DIR. You decide who can reach it.",
+    body: "Reach the gateway from another network over HTTPS. Cloudflare and Tailscale are the built-in tunnel providers.",
+    href: "/docs/deployment",
   },
 ];

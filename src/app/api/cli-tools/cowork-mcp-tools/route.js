@@ -18,7 +18,6 @@ async function probeMcp(url) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
   try {
-    // Step 1: initialize
     const initRes = await fetch(url, {
       method: "POST",
       headers,
@@ -48,7 +47,6 @@ async function probeMcp(url) {
       signal: ac.signal
     }).catch(() => {});
 
-    // Step 3: tools/list
     const listRes = await fetch(url, {
       method: "POST",
       headers: listHeaders,

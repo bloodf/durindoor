@@ -1,0 +1,62 @@
+---
+title: Integrations
+description: Point coding tools at http://localhost:20128/v1 with a DurinDoor key and a model name.
+icon: Puzzle
+---
+
+Point the tool at DurinDoor. Three fields, always:
+
+```text
+Base URL: http://localhost:20128/v1
+API key:  a DurinDoor key from /dashboard/keys
+Model:    a model ID, alias, or combo from GET /v1/models
+```
+
+**CLI Tools** (`/dashboard/cli-tools`) writes those values into Claude Code, Codex, Cline, and other CLIs that have an apply route. Cursor is copy-paste only: Cursor's cloud has to call a public URL, so a loopback base is rejected.
+
+Production CLI bind is port 20128 (`UPDATER_CONFIG.appPort`). `npm run dev` listens on 20127. Minted keys look like `sk-<machineId>-<keyId>-<crc8>`. Older `sk-<8 hex>` keys still authenticate. `sk_durindoor` is a localhost placeholder the CLI-tool cards insert when no saved key is selected; it is not a minted prefix.
+
+<Cards>
+  <Card title="Claude Code" href="/docs/integrations/claude-code" description="ANTHROPIC_BASE_URL and ~/.claude/settings.json." />
+  <Card title="Codex" href="/docs/integrations/codex" description="~/.codex/config.toml provider 9router and auth.json." />
+  <Card title="Cursor" href="/docs/integrations/cursor" description="OpenAI-compatible custom model through a public URL." />
+  <Card title="Cline" href="/docs/integrations/cline" description="OpenAI provider fields in ~/.cline/data." />
+  <Card title="Roo" href="/docs/integrations/roo" description="Roo settings with an Ollama or OpenAI-compatible base URL." />
+  <Card title="Continue" href="/docs/integrations/continue" description="OpenAI model entry in the Continue config file." />
+  <Card title="Ollama and Claude" href="/docs/integrations/ollama-claude" description="Claude Messages transport for ollama and ollama-local." />
+  <Card title="Other tools" href="/docs/integrations/other-tools" description="Any OpenAI-compatible client using the same three values." />
+</Cards>
+
+| Tool | Dashboard id | Apply writes files |
+| --- | --- | --- |
+| Claude Code | `claude` | `~/.claude/settings.json` |
+| Codex | `codex` | `~/.codex/config.toml`, `~/.codex/auth.json` |
+| Cursor | `cursor` | no; guide only |
+| Cline | `cline` | `~/.cline/data/globalState.json`, `secrets.json` |
+
+Detail URLs are `/dashboard/cli-tools/<toolId>`. The grid at `/dashboard/cli-tools` also lists OpenCode, Cowork, Hermes, Droid, Kilo, DeepSeek TUI, jcode, Grok Build, and others; those pages are not in this section.
+
+## Pick a model
+
+`GET /v1/models` lists what this instance currently exposes. A slash splits `provider/model`. A string with no slash is treated as a model alias or combo name. Combos are named on **Combos** (`/dashboard/combos`).
+
+Claude-compatible clients set `ANTHROPIC_BASE_URL` to the same origin plus `/v1`. Cline's stored `openAiBaseUrl` is that origin without `/v1`; curl and OpenAI SDKs still use `/v1`. See [first request](../getting-started/first-request.mdx) for curl and SDK samples.
+
+## Dashboard apply versus settings auto-configure
+
+**CLI Tools** is the apply path for coding agents. Open `/dashboard/cli-tools/<toolId>`. Claude, Codex, and Cline POST to `/api/cli-tools/claude-settings`, `/api/cli-tools/codex-settings`, and `/api/cli-tools/cline-settings`. Those routes merge DurinDoor fields into the tool's own config files. Cursor has no apply route; the card is a six-step guide.
+
+**Auto-configure** (`/dashboard/auto-configure`, `scripts/auto-configure.mjs`, `/api/settings/auto-configure`) is a different screen. It probes Headroom, PxPipe, and Firecrawl and can upsert a Firecrawl connection. It does not write Claude, Codex, Cursor, or Cline files.
+
+## Check a connection
+
+```bash
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+A 401 means the key is missing or rejected. A 200 list means the gateway is reachable; then send a one-line prompt from the tool and confirm the row on **Usage**.
+
+## Legacy `9router` labels
+
+Display names and new IDs are DurinDoor. Incoming CLI configs still use the section label `9router` where the tool stores a provider id (Codex `model_provider` and `[model_providers.9router]`). The HTTP header `X-Msh-Platform: 9router` remains accepted. Data still lives under `~/.9router/` unless you set `DATA_DIR`.

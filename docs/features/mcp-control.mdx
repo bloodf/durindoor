@@ -1,0 +1,136 @@
+---
+title: MCP control
+description: JSON-RPC management server at POST /api/mcp/control, its tools, auth, and client setup.
+---
+
+The control server is a JSON-RPC 2.0 MCP endpoint for the running DurinDoor instance. An MCP client lists combos, toggles connections, reads quota, and patches non-secret settings without opening the dashboard. The MCP gateway is a different endpoint: it sits in front of upstream MCP servers and authenticates with a gateway key on `/api/mcp-gateway`. Control authenticates with a dashboard session, the CLI token, or a DurinDoor API key, the same principals as the [Management API](../reference/management-api.mdx).
+
+Open **Dashboard → MCP Help** (`/dashboard/mcp-help`) for the in-app snippet. A curl-and-key walkthrough is on [Automating DurinDoor](../guides/automating-durindoor.mdx).
+
+## Endpoint and transport
+
+`POST /api/mcp/control` is stateless HTTP. One JSON-RPC object per POST. The handler implements POST only.
+
+| Method | Role | HTTP |
+| --- | --- | --- |
+| `initialize` | Handshake. Result includes `protocolVersion: "2024-11-05"`, `capabilities.tools`, `serverInfo.name: "durindoor-control"` | 200 |
+| `notifications/initialized` | MCP notification (no `id`) | 202 empty body |
+| `tools/list` | Registered control tools and their input schemas | 200 |
+| `tools/call` | Invoke `params.name` with `params.arguments` | 200, including JSON-RPC errors |
+
+A `tools/call` result is MCP content: `{ content: [{ type: "text", text: "<pretty JSON>" }] }`. Unknown JSON-RPC methods return `{ error: { code: -32601 } }` with HTTP 200. Parse failures are `-32700`. Invalid request is `-32600`. `tools/call` without `name` is `-32602`. Tool throws use `error.status` as the JSON-RPC code (400, 404) while HTTP stays 200. Transport and auth failures from the gate are HTTP 401 or 403.
+
+## Auth
+
+The route is classified before `LOCAL_ONLY_PATHS`, so a remote host can call it. Any of:
+
+- dashboard JWT cookie `auth_token`
+- header `x-9r-cli-token`
+- DurinDoor API key (`Authorization: Bearer`, `x-api-key`, or `?key=`)
+
+When `requireApiKey` is off, a loopback caller on the same machine may omit credentials. That skip is for CLI and MCP clients, which send no `Origin`. A request that carries an `Origin` which is not this server is refused even on loopback: the wrapper stamps trusted-peer headers on every request, including a browser's, and a page on a hostile origin would otherwise drive these tools from the victim's machine. Remote callers always authenticate, even when `requireApiKey` and `requireLogin` are off. Unauthenticated requests receive `{ error: "Unauthorized" }` with HTTP 401.
+
+A gateway key does not unlock this endpoint.
+
+<Callout type="warn">
+Do not point a browser page at this URL from another origin. Curl, Claude Code, and Cursor send no `Origin` and are the intended clients.
+</Callout>
+
+## Tools
+
+Read-only tools do not write DurinDoor state. Mutating tools do.
+
+| Tool | Mode | Input | Returns |
+| --- | --- | --- | --- |
+| `list_providers` | read | none | `{ providers: [{ id, alias, name, category, authType }] }` from built-in `AI_PROVIDERS` |
+| `list_connections` | read | none | `{ connections }` with secrets stripped and `connectionProxyUrl` dropped |
+| `toggle_connection_active` | mutate | `connectionId` (string), `isActive` (boolean) | `{ connection }` sanitized. 404 if missing |
+| `toggle_provider_active` | mutate | `providerId` (string), `isActive` (boolean) | `{ connections }` for every row of that provider. 400 unknown provider, 404 no rows |
+| `usage_stats` | read | `period` enum `today`, `24h`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`, `all` | `{ stats }` |
+| `token_saver_stats` | read | same `period` | `{ stats }` |
+| `model_list` | read | optional `kinds` array of `llm`, `image`, `tts`, `embedding`, `stt`, `imageToText`, `rerank`, `video`. Default `[llm]` | `{ models }` OpenAI list shape |
+| `list_combos` | read | none | `{ combos }` |
+| `get_combo` | read | `id` | `{ combo }`. 404 if missing |
+| `create_combo` | mutate | `name` required; optional `models`, `members`, `kind`, `capabilities`, `allowedConnectionIds` | `{ combo }` |
+| `update_combo` | mutate | `id` required; other fields optional, omitted keep stored values | `{ combo }` |
+| `delete_combo` | mutate | `id` | delete result |
+| `quota_snapshots` | read | `provider` and/or `connectionId`; optional `includeStale` boolean. At least one filter required | `{ snapshots }` |
+| `refresh_quota` | mutate | `connectionId` | `{ result, snapshots }`. 404 missing connection, 400 if the provider has no quota endpoint |
+| `list_api_keys` | read | none | `{ keys }` management view plus usage totals. Raw secret never returned |
+| `get_settings` | read | none | `{ settings }` with secrets withheld |
+| `update_settings` | mutate | `settings` object | `{ settings }` after the patch |
+
+Empty `kinds` or an unknown kind is 400. Invalid `period` is 400. Combo name rules match `POST /api/combos`.
+
+## What is withheld
+
+`list_connections` and `toggle_connection_active` reuse the client sanitizer. `apiKey`, `accessToken`, `refreshToken`, `idToken`, OAuth cookies, and `clientSecret` never leave the tool. `connectionProxyUrl` is dropped, not redacted, because it can embed credentials in shapes `new URL` does not parse.
+
+`list_api_keys` uses `toApiKeyManagementView`: masked secret, no raw `key`.
+
+`get_settings` drops `password`, `passwordSessionEpoch`, `oidcClientSecret`, and `mitmSudoEncrypted`, and redacts `user:password@` on `outboundProxyUrl`.
+
+`update_settings` strips secret keys, `AUTH_CRITICAL_SETTING_KEYS` (`exposeComboOnly`, `requireLogin`, `requireApiKey`, `authMode`, OIDC fields, `tunnelDashboardAccess`, `enableObservability`, outbound-proxy fields), and connection-scoped `claudeAutoPing` / `codexAutoPing`. An API-key caller can never satisfy `canModifySecurityCriticalSettings`. A patch whose keys are all stripped returns 400 `No updatable settings provided` rather than a silent no-op.
+
+## Client setup
+
+Each snippet sends the DurinDoor API key, not a gateway key.
+
+<Tabs items={["Claude Code", "Cursor", "Generic"]}>
+<Tab value="Claude Code">
+
+```bash
+claude mcp add --transport http durindoor-control http://localhost:20128/api/mcp/control \
+  --header "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+</Tab>
+<Tab value="Cursor">
+
+```json
+{
+  "mcpServers": {
+    "durindoor-control": {
+      "url": "http://localhost:20128/api/mcp/control",
+      "headers": {
+        "Authorization": "Bearer YOUR_DURINDOOR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+Put that in Cursor's `mcp.json`. Remote Cursor still needs a URL Cursor's cloud can reach; enable Tunnel or Cloud Endpoint first.
+
+</Tab>
+<Tab value="Generic">
+
+```bash
+curl http://localhost:20128/api/mcp/control \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+```
+
+Then `tools/list` with the same key. Call a tool with `"method":"tools/call","params":{"name":"list_combos","arguments":{}}`.
+
+</Tab>
+</Tabs>
+
+## Example prompts
+
+Ask the connected MCP client:
+
+- List my combos and their members.
+- Create a fallback combo named `coding-default` with `anthropic/claude-sonnet-4-5` then `openai/gpt-4.1`.
+- Refresh quota for connection `CONNECTION_ID`.
+
+Those map to `list_combos`, `create_combo` (`name` plus `models`), and `refresh_quota` (`connectionId`).
+
+## Limits and failure modes
+
+HTTP 401 from the gate means the key, session, or CLI token was missing or rejected, or a foreign `Origin` hit loopback. HTTP 403 on a nearby path such as `/api/mcp/control-evil` is the local-only plugin branch, not this handler.
+
+JSON-RPC 404 is an unknown tool name or a missing combo/connection. JSON-RPC 400 is bad input or a provider without a quota endpoint. `toggle_provider_active` 400 is an unknown `providerId`; 404 means that provider has no connections.
+
+Control tools do not mint API keys, reveal secrets, shut the process down, or switch the database engine. Use a dashboard session for those. Gateway `tools/call` usage rows use `provider: "mcp-gateway"`; control calls are not that surface.

@@ -574,11 +574,9 @@ export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false
   // producing invalid schemas that Google Antigravity rejects (bug #2877/#2884).
   resolveJsonSchemaRefs(cleaned);
 
-  // Phase 1: Convert and prepare
   convertConstToEnum(cleaned);
   convertEnumValuesToStrings(cleaned);
 
-  // Phase 2: Flatten complex structures
   mergeAllOf(cleaned);
   const nullableNodes = preserveNullable ? new Set() : null;
   if (nullableNodes) collectNullableNodes(cleaned, nullableNodes);

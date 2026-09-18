@@ -1,0 +1,131 @@
+---
+title: SDK examples
+description: Call DurinDoor with the OpenAI SDK, the Anthropic SDK, or curl.
+---
+
+Point the client at this process. Production listens on port `20128`. Create a key first, then put that secret in `api_key` / `apiKey`.
+
+`POST /v1/chat/completions` and `POST /v1/messages` both reject a non-JSON `Content-Type` with HTTP 415 before reading the body. Send `application/json`.
+
+When **Require API Key** is on, send the DurinDoor secret. OpenAI-shaped clients use `Authorization: Bearer`. Anthropic-shaped clients usually send `x-api-key`; DurinDoor accepts that header too.
+
+## OpenAI SDK
+
+The OpenAI client appends `/chat/completions` to `base_url` / `baseURL`. That value must already end in `/v1`, so the request lands on `/v1/chat/completions`.
+
+<Tabs items={["Node.js", "Python", "curl"]}>
+  <Tab value="Node.js">
+
+```javascript
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: "YOUR_DURINDOOR_API_KEY",
+  baseURL: "http://localhost:20128/v1",
+});
+
+const response = await client.chat.completions.create({
+  model: "coding-default",
+  messages: [{ role: "user", content: "Say hello." }],
+});
+
+console.log(response.choices[0].message.content);
+```
+
+  </Tab>
+  <Tab value="Python">
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="YOUR_DURINDOOR_API_KEY",
+    base_url="http://localhost:20128/v1",
+)
+
+response = client.chat.completions.create(
+    model="coding-default",
+    messages=[{"role": "user", "content": "Say hello."}],
+)
+
+print(response.choices[0].message.content)
+```
+
+  </Tab>
+  <Tab value="curl">
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"coding-default","messages":[{"role":"user","content":"Say hello."}]}'
+```
+
+  </Tab>
+</Tabs>
+
+Set `stream: true` on the same create call (or `"stream": true` in the JSON body) to receive SSE. The route forwards that flag into the shared chat handler.
+
+## Anthropic SDK
+
+`POST /v1/messages` is always treated as Claude format. The official Anthropic client appends `/v1/messages` to its base URL. Pass the origin only: `http://localhost:20128`. Passing `/v1` here would request `/v1/v1/messages`.
+
+<Callout type="warn">
+OpenAI `baseURL` includes `/v1`. Anthropic `baseURL` / `base_url` does not.
+</Callout>
+
+<Tabs items={["Node.js", "Python", "curl"]}>
+  <Tab value="Node.js">
+
+```javascript
+import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  apiKey: "YOUR_DURINDOOR_API_KEY",
+  baseURL: "http://localhost:20128",
+});
+
+const message = await client.messages.create({
+  model: "coding-default",
+  max_tokens: 32,
+  messages: [{ role: "user", content: "Say hello." }],
+});
+
+console.log(message.content);
+```
+
+  </Tab>
+  <Tab value="Python">
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic(
+    api_key="YOUR_DURINDOOR_API_KEY",
+    base_url="http://localhost:20128",
+)
+
+message = client.messages.create(
+    model="coding-default",
+    max_tokens=32,
+    messages=[{"role": "user", "content": "Say hello."}],
+)
+
+print(message.content)
+```
+
+  </Tab>
+  <Tab value="curl">
+
+```bash
+curl http://localhost:20128/v1/messages \
+  -H "x-api-key: YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{"model":"coding-default","max_tokens":32,"messages":[{"role":"user","content":"Say hello."}]}'
+```
+
+  </Tab>
+</Tabs>
+
+Claude-format bodies need `max_tokens`. Streaming (`stream: true`) keeps the connection alive with Anthropic ping frames while the provider is still silent.

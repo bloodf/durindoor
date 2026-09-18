@@ -1,0 +1,134 @@
+---
+title: Startup
+description: Start, stop, health-check, and restart DurinDoor on CLI, source, or Docker.
+---
+
+Pick one runtime. Production listens on port `20128` unless `PORT` is set. Source `npm run dev` listens on `20127`.
+
+| Mode | Command | Port | Bind default |
+| --- | --- | --- | --- |
+| Global CLI | `durindoor` | `20128` | `0.0.0.0` |
+| npx | `npx durindoor` | `20128` | `0.0.0.0` |
+| Source dev | `npm run dev` | `20127` | owner wrapper |
+| Source prod | `npm run build && npm start` | `20128` | `127.0.0.1` if `HOSTNAME` unset |
+| Docker | `docker run` or compose | `20128` | `0.0.0.0` in the image |
+
+`custom-server.js` pins `HOSTNAME` to `127.0.0.1` when the variable is empty, so a source production start stays on loopback. The CLI default bind is all interfaces. Docker compose sets `HOSTNAME: "0.0.0.0"`. Do not publish `0.0.0.0` on a public network without the checks in [Security](./security.mdx).
+
+## First start
+
+<Steps>
+<Step>
+Install or clone. Set `DATA_DIR` to a directory that survives restarts.
+</Step>
+<Step>
+Set `JWT_SECRET`. Fresh installs fail closed without the env var or a leftover `DATA_DIR/jwt-secret` file. Set `INITIAL_PASSWORD` before any remote login.
+</Step>
+<Step>
+Start the process. Open `http://localhost:20128/dashboard` and sign in.
+</Step>
+<Step>
+Change the dashboard password. Add a provider connection. Create a DurinDoor API key. Send one chat request.
+</Step>
+</Steps>
+
+## Commands
+
+<Tabs items={['CLI', 'source', 'Docker']}>
+<Tab value="CLI">
+
+```bash
+durindoor
+durindoor --port 8080
+durindoor --host 127.0.0.1
+durindoor --no-browser
+durindoor --skip-update
+durindoor --help
+```
+
+`--port` / `-p` and `--host` / `-H` override listen address. `--tray` runs in the system tray. `--no-browser` is parsed and listed in help.
+
+</Tab>
+<Tab value="source">
+
+```bash
+npm install --no-audit --no-fund
+npm run dev
+```
+
+Dev uses port `20127`. Production:
+
+```bash
+npm run build
+npm start
+```
+
+`npm start` runs `.next/standalone/custom-server.js`.
+
+</Tab>
+<Tab value="Docker">
+
+```bash
+docker run -d \
+  --name durindoor \
+  -p 20128:20128 \
+  -v "$HOME/.durindoor:/app/data" \
+  -e DATA_DIR=/app/data \
+  -e JWT_SECRET="$(openssl rand -hex 32)" \
+  -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \
+  ghcr.io/bloodf/durindoor:latest
+```
+
+The host path `$HOME/.durindoor` is a Docker bind example. Native default `DATA_DIR` is still `~/.9router`. Pin a version tag in production. Compose, volumes, and TLS live in [Deployment](../deployment).
+
+</Tab>
+</Tabs>
+
+## Health and smoke
+
+```bash
+curl http://localhost:20128/api/health
+```
+
+`GET /api/health` returns `{ "ok": true }`. No API key. A 200 means the HTTP server answered, not that a provider works.
+
+```bash
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "MODEL_ID_OR_COMBO",
+    "messages": [{"role": "user", "content": "Reply OK."}],
+    "max_tokens": 16
+  }'
+```
+
+## Stop and restart
+
+CLI and source: Ctrl+C. Docker: `docker stop durindoor`. Stop before a backup or upgrade. See [Data management](./data-management.mdx).
+
+Restart after changing `PORT`, `HOSTNAME`, `DATA_DIR`, `JWT_SECRET`, `API_KEY_SECRET`, proxy env, or OAuth URL overrides. Dashboard rows stored in SQLite usually apply without a restart. A Postgres cutover flips the live adapter from **Settings → Database**.
+
+## Logs
+
+```bash
+docker logs -f durindoor
+```
+
+MITM dumps, when enabled, go under `DATA_DIR/logs/mitm`. `ENABLE_REQUEST_LOGS=true` writes metadata files under `logs/` in the process working directory, not under `DATA_DIR`. Dashboard **Console log** is an in-memory ring and empties on restart.
+
+## Common failures
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Port in use | Another process owns `20128` | Stop it, or pass `--port` / `PORT` |
+| Login loops | Cookie or `JWT_SECRET` mismatch | Keep `JWT_SECRET` stable. Set `AUTH_COOKIE_SECURE=true` behind HTTPS |
+| Data gone after restart | Missing volume | Mount a volume and set `DATA_DIR=/app/data` |
+| OAuth callback fails | Public URL does not match | Set `BASE_URL` and `NEXT_PUBLIC_BASE_URL` |
+| API keys invalid after redeploy | `API_KEY_SECRET` changed | Keep the same secret across deploys |
+| Health check fails | Nothing listening | Confirm port, firewall, and published container port |

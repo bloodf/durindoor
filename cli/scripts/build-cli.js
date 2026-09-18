@@ -89,7 +89,6 @@ fs.mkdirSync(buildHomeDir, { recursive: true });
 fs.mkdirSync(path.join(buildHomeDir, "AppData", "Roaming"), { recursive: true });
 fs.mkdirSync(path.join(buildHomeDir, "AppData", "Local"), { recursive: true });
 
-// Step 0: Sync version from app/cli/package.json to app/package.json
 console.log("0️⃣  Syncing version to app/package.json...");
 const cliPkg = JSON.parse(fs.readFileSync(path.join(cliDir, "package.json"), "utf8"));
 const appPkgPath = path.join(appDir, "package.json");
@@ -102,7 +101,6 @@ if (appPkg.version !== cliPkg.version) {
   console.log(`✅ Version already synced: ${cliPkg.version}\n`);
 }
 
-// Step 1: Build app with Next.js (workspace tracing root → traced node_modules in standalone).
 // Remove any stale staged build so compiled modules never survive across runs
 // (port of decolua/9router #2748). Prevents stale-module runtime bugs.
 if (fs.existsSync(buildDistDir)) {
@@ -129,14 +127,12 @@ try {
   process.exit(1);
 }
 
-// Step 2: Clean old app/cli/app if exists
 console.log("2️⃣  Cleaning old app/cli/app...");
 if (fs.existsSync(cliAppDir)) {
   fs.rmSync(cliAppDir, { recursive: true, force: true });
 }
 console.log("✅ Cleaned\n");
 
-// Step 3: Copy Next.js standalone build to app/cli/app.
 // Newer Next.js standalone output writes server.js/package.json plus .next/, src/, and
 // node_modules/ directly under .next/standalone, but sometimes nests under a workspace
 // project subfolder (e.g. 9router/). Scan any direct subdir for server.js before falling back to app/.
@@ -221,7 +217,6 @@ if (fs.existsSync(betterDir)) {
 }
 console.log("");
 
-// Step 4: Copy static files
 console.log("4️⃣  Copying static files...");
 const staticSrc = path.join(appDir, ".next", "static");
 const staticSrcResolved = path.join(buildDistDir, "static");
@@ -233,7 +228,6 @@ if (fs.existsSync(staticSrcResolved) || fs.existsSync(staticSrc)) {
   console.log("⏭️  No static files found\n");
 }
 
-// Step 5: Copy public folder if exists
 console.log("5️⃣  Copying public folder...");
 const publicSrc = path.join(appDir, "public");
 const publicDest = path.join(cliAppDir, "public");

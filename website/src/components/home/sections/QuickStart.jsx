@@ -2,7 +2,7 @@
 
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
-import { CopyButton, Reveal, SectionHeader } from "../ui/primitives.jsx";
+import { CopyButton, Magnetic, Reveal, SectionHeader } from "../ui/primitives.jsx";
 import DeployTabs from "./DeployTabs.jsx";
 
 const CURL = `curl http://localhost:20128/v1/chat/completions \\
@@ -106,6 +106,11 @@ export default function QuickStart() {
             <div><dt>{t("API key")}</dt><dd><code>{t("your DurinDoor API key")}</code></dd></div>
             <div><dt>{t("Model")}</dt><dd><code>{t("model ID, alias, or combo")}</code></dd></div>
           </dl>
+        </Reveal>
+        <Reveal>
+          <Magnetic href="/docs/getting-started" internal className="btn btn-ghost">
+            {t("Read the docs")}
+          </Magnetic>
         </Reveal>
         <Reveal>
           <DeployTabs />

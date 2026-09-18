@@ -1,0 +1,70 @@
+---
+title: Translators
+description: OpenAI pivot, direct source-target routes, self-registration, schema constants, and RTK fail-open.
+---
+
+Requests go source format to OpenAI to target format. Response chunks go the other way. Matching source and target skip translation.
+
+The OpenAI hop drops thinking blocks, tool ids, non-base64 images, and `tool_result.is_error`. Fragile pairs need a direct route such as `claude:kiro`.
+
+## Where they live
+
+`open-sse/translator/index.js` exports `translateRequest`, `translateResponse`, and `register`. Each translator file calls `register(from, to, requestFn, responseFn)` at load.
+
+New files do nothing until they are imported at the bottom of `index.js`. Those imports are the registration list:
+
+```js
+import "./request/claude-to-kiro.js";
+import "./response/kiro-to-claude.js";
+```
+
+`register` writes into `requestRegistry` / `responseRegistry` Maps keyed `"from:to"`. The Maps are `var` so a circular import during `register()` does not hit the temporal dead zone.
+
+`initTranslators()` is a no-op kept for callers such as the chat route, which still awaits it once.
+
+## Pivot vs direct
+
+`translateRequest` looks up `${sourceFormat}:${targetFormat}` first. If that function exists, it runs and returns. Otherwise:
+
+1. If source is not OpenAI, run `${source}:${openai}`.
+2. If target is not OpenAI, run `${openai}:${target}`.
+
+`translateResponse` mirrors that with `${targetFormat}:${sourceFormat}` for the direct lookup, then target to OpenAI to source.
+
+Direct request routes in the tree today include `claude:kiro` (`request/claude-to-kiro.js`) and `claude:gemini`. Direct response routes include `kiro:claude` and `gemini:claude`. Kiro's executor already emits OpenAI-shaped chunks, so `kiro:claude` converts those chunks straight to Claude SSE.
+
+## Format and schema constants
+
+Format strings come from `open-sse/translator/formats.js` (`FORMATS.OPENAI`, `FORMATS.CLAUDE`, `FORMATS.KIRO`, and the rest). Do not hardcode `"openai"` / `"claude"` in new translators.
+
+Role, block, and finish-reason enums come from `open-sse/translator/schema/`:
+
+| Export | File | Use |
+| --- | --- | --- |
+| `ROLE`, `GEMINI_ROLE` | `schema/roles.js` | `user` / `assistant` / `tool` / `system`; Gemini uses `model` |
+| `OPENAI_BLOCK`, `CLAUDE_BLOCK`, `RESPONSES_ITEM` | `schema/blocks.js` | Content block types |
+| `OPENAI_FINISH`, `CLAUDE_STOP`, `GEMINI_FINISH` | `schema/finishReasons.js` | Stop reasons |
+| `DEFAULT_IMAGE_MIME` | `schema/defaults.js` | Image fallback |
+
+Import them from `open-sse/translator/schema/index.js`.
+
+Endpoint detection (`detectFormatByEndpoint`): `/v1/responses` is `openai-responses`, `/v1/messages` is `claude`. `/v1/chat/completions` with an `input[]` body still counts as OpenAI (Cursor CLI).
+
+## Tests
+
+Every test that calls `translateRequest` or `translateResponse` must import `tests/translator/registerAll.js` at the top of the file. That file re-imports every translator module so `register()` runs under Vitest ESM.
+
+```bash
+cd tests
+npx vitest run --config vitest.config.js translator/path-to-test.test.js
+```
+
+Use `it.fails(...)` only in `tests/translator/bugs-*.test.js` for a confirmed unfixed bug. Switch that row to `it` when the bug is fixed.
+
+## RTK fail-open
+
+RTK compresses `tool_result` bodies in place. `handleChatCore` calls `compressMessages` after translation (`open-sse/rtk/index.js`). On error the function logs, returns `null`, and leaves the body as it was.
+
+It skips Claude blocks with `is_error === true` and Kiro tool results with `status: "error"`. Blobs under 500 bytes are left alone (`MIN_COMPRESS_SIZE`). Filter panics go through `safeApply`, which returns the original text.
+
+Token-saver and Headroom behaviour for operators is on [Compression](../features/compression.mdx).

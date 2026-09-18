@@ -1,0 +1,68 @@
+---
+title: Dashboard tour
+description: One pass over the dashboard pages the Next.js app actually serves under /dashboard.
+---
+
+Open `http://localhost:20128/dashboard`. Next.js serves that tree from `src/app/(dashboard)/dashboard/`, wrapped by `src/app/(dashboard)/layout.js`. `next.config.mjs` has no `/dashboard` rewrite. `/dashboard` redirects to Usage. Sidebar order is `NAV_SECTIONS` (Monitor, Build, Optimize, Integrate, Reference), with Settings pinned at the bottom of the rail.
+
+## Monitor
+
+**Usage** (`/dashboard/usage`) is the home after that redirect. It shows token totals, cost estimates, request history, provider topology, and per-request detail (provider, model, latency, fallback).
+
+**Timeline** (`/dashboard/timeline`) is a live tail of proxy hops and SSE history. Open a row for one request's hop list.
+
+**Quota Tracker** (`/dashboard/quota`) lists provider limits, remaining capacity, cooldowns, and reset hints.
+
+**Health** (`/dashboard/health`) polls provider connection state (healthy, degraded, down, blocked, unconfigured).
+
+**Console Log** (`/dashboard/console-log`) streams server log lines in the browser.
+
+## Build
+
+**Playground** (`/dashboard/playground`) is an in-dashboard chat box against the same `/v1` path your tools use.
+
+**Combos** (`/dashboard/combos`) builds an ordered fallback chain and exposes it as one model name.
+
+**Providers** (`/dashboard/providers`) is the connection grid: OAuth, API keys, cookies, compatible nodes, and local providers. Open a row for that provider's accounts and models.
+
+**Endpoint** (`/dashboard/endpoint`) shows local, tunnel, and Tailscale URLs, plus API-auth settings for clients.
+
+**API Keys** (`/dashboard/keys`) creates, pauses, revokes, expires, and scopes DurinDoor keys. The full secret is shown once at create time.
+
+**Proxy Pools** (`/dashboard/proxy-pools`) defines outbound HTTP/SOCKS pools that provider traffic (including OAuth) can be pinned to.
+
+## Optimize
+
+**Token Saver → Statistics** (`/dashboard/token-saver`) is the compression overview. **Token Saver → Settings** (`/dashboard/token-saver/settings`) holds RTK, Headroom, and PXPIPE toggles.
+
+**Headroom** (`/dashboard/headroom`) is the Headroom token-saver UI when that sidecar is configured.
+
+**Test Savers** (`/dashboard/compression-studio`) previews compression on a sample prompt before you enable it on live traffic.
+
+## Integrate
+
+**MCP Gateway → Instances** (`/dashboard/mcp-gateway`) registers MCP servers. **MCP Gateway → Keys** (`/dashboard/mcp-gateway/keys`) mints gateway keys for those servers.
+
+**CLI Tools** (`/dashboard/cli-tools`) writes base URL, key, and model into supported coding tools. Each tool has a detail page under `/dashboard/cli-tools/<toolId>`.
+
+**Skills** (`/dashboard/skills`) copies agent-skill snippets that call this gateway as an OpenAI client.
+
+**Auto-configure** (`/dashboard/auto-configure`) probes local helpers (for example Firecrawl) and reports what it can wire without a manual form.
+
+**Media Providers** (`/dashboard/media-providers/<kind>`) covers embeddings, image, TTS, STT, and a combined web fetch/search page. Kind and provider id are nested routes, not extra sidebar entries.
+
+## Reference
+
+**API Docs** (`/dashboard/api-docs`) lists the HTTP surfaces (chat, models, images, audio, and the rest) as a catalog inside the app.
+
+**MCP Help** (`/dashboard/mcp-help`) is a short client config snippet for the MCP gateway URL and key.
+
+**Translator** (`/dashboard/translator`) is a debug workspace for request/response translation. The sidebar hides it unless the translator flag is on.
+
+## Settings
+
+**Settings** (`/dashboard/profile`) is pinned at the bottom of the rail. Password, theme, locale, and selective import/export live here. Change the dashboard password on this page after the first login.
+
+## Other routes
+
+These URLs exist but are not top-level sidebar items: provider detail (`/dashboard/providers/<id>`), timeline detail (`/dashboard/timeline/<id>`), database engine (`/dashboard/settings/database`), MITM (`/dashboard/mitm`), and PXPIPE (`/dashboard/pxpipe`). `src/app/dashboard/settings/pricing/` also serves `/dashboard/settings/pricing` without the dashboard shell.

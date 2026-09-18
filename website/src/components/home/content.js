@@ -6,22 +6,22 @@ const providerLogo = (file) => `/providers/${file}.png`;
 // Counts are visible (non-hidden) entries in ../open-sse/providers/registry/index.js,
 // grouped by `serviceKinds`. Entries without `serviceKinds` default to ["llm"]
 // (see ../src/shared/constants/providers.js). Snapshot taken for this page.
-export const REGISTRY_PROVIDER_COUNT = 237;
+export const REGISTRY_PROVIDER_COUNT = 238;
 
 // Routes are the directories under ../src/app/api/v1 plus MEDIA_PROVIDER_KINDS.
 export const SERVICE_KINDS = [
   { id: "chat", icon: "chat", label: "Chat & code", route: "/v1/chat/completions", count: 195 },
   { id: "embedding", icon: "vector", label: "Embeddings", route: "/v1/embeddings", count: 14 },
   { id: "tts", icon: "voice", label: "Text to speech", route: "/v1/audio/speech", count: 13 },
-  { id: "stt", icon: "mic", label: "Speech to text", route: "/v1/audio/transcriptions", count: 6 },
+  { id: "stt", icon: "mic", label: "Speech to text", route: "/v1/audio/transcriptions", count: 7 },
   { id: "image", icon: "image", label: "Image generation", route: "/v1/images/generations", count: 20 },
   { id: "vision", icon: "eye", label: "Vision", route: "image input", count: 12 },
   { id: "video", icon: "film", label: "Video", route: "/v1/video/generations", count: 4 },
-  { id: "search", icon: "search", label: "Web search", route: "/v1/search", count: 16 },
+  { id: "search", icon: "search", label: "Web search", route: "/v1/search", count: 17 },
   { id: "fetch", icon: "globe", label: "Web fetch", route: "/v1/web/fetch", count: 6 },
 ];
 
-// Tier order mirrors docs/providers/free.md ("Primary subscription or paid API
+// Tier order mirrors docs/providers/free-and-local.mdx ("Primary subscription or paid API
 // model → ... → Local model or free-tier model") and the combo strategies table.
 export const FALLBACK_TIERS = [
   {
@@ -47,7 +47,7 @@ export const FALLBACK_TIERS = [
   },
 ];
 
-// Default from docs/features/smart-routing.md: stickyRoundRobinLimit = 3.
+// Default from docs/features/smart-routing.mdx: stickyRoundRobinLimit = 3.
 export const STICKY_LIMIT = 3;
 
 // Logos present in ../public/providers (copied by scripts/sync-public.mjs).
@@ -61,7 +61,7 @@ export const CONSTELLATION = {
 };
 export const constellationLogo = providerLogo;
 
-// Engines documented in docs/features/compression.md and open-sse/rtk/.
+// Engines documented in docs/features/compression.mdx and open-sse/rtk/.
 export const SAVER_ENGINES = [
   { name: "RTK filters", body: "Condense tool output such as git status, git diff, ls, grep, find and build logs." },
   { name: "Caveman", body: "Rule-based prose compression with lite, full and ultra intensities." },
@@ -76,19 +76,7 @@ export const QUOTA_SAMPLE = [
   { name: "Gemini", plan: "free tier", used: 0.27, reset: "resets daily", logo: providerLogo("gemini") },
 ];
 
-// Every row is backed by README.md ("Why DurinDoor?", "What DurinDoor handles").
-export const COMPARISON = [
-  { need: "Base URL your tools point at", diy: "A different one per provider", door: "One: localhost:20128/v1" },
-  { need: "Where provider credentials live", diy: "Copied into every tool's config", door: "Your DATA_DIR, added once" },
-  { need: "A provider returns 429", diy: "The request fails", door: "Next account, then next combo member" },
-  { need: "Claude, Gemini or Kiro formats", diy: "A separate SDK or adapter each", door: "Translated from OpenAI shape" },
-  { need: "Tokens, cost and latency", diy: "Scattered across provider consoles", door: "One request log and usage view" },
-  { need: "Plan limits and reset windows", diy: "Checked by hand", door: "Quota tracker in the dashboard" },
-  { need: "Several MCP servers", diy: "Wired into each client", door: "One MCP gateway with managed keys" },
-  { need: "Source and hosting", diy: "Depends on the vendor", door: "MIT, runs on hardware you choose" },
-];
-
-// Commands from README.md "Quick start" and DOCKER.md.
+// Commands from README.md "Quick start" and docs/deployment/docker.mdx.
 export const DEPLOYMENTS = [
   {
     id: "npm",

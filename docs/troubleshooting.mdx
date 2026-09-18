@@ -1,0 +1,151 @@
+---
+title: Troubleshooting
+description: Symptom, cause, and fix for gateway start failures, chat errors, dashboard login, Docker, and MITM.
+icon: Wrench
+---
+
+Start with the local process, then the client base URL and key, then the provider connection.
+
+```bash
+curl http://localhost:20128/api/health
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+`GET /api/health` returns `{ "ok": true }` with no key. A 200 means the process answered, not that a provider works. If models fail, the key or catalog is the next check.
+
+## Health check fails
+
+Cause: nothing is accepting `PORT` (default `20128`), a firewall or unpublished Docker port is in the way, or the client omitted `/v1` on API calls.
+
+Fix: confirm DurinDoor is running. Production and the CLI use `20128`; `npm run dev` uses `20127`. Docker needs `-p 20128:20128`. Then retry the health curl. Full start table: [Startup](./operations/startup.mdx).
+
+## Port already in use
+
+Cause: another process already bound `PORT`. `custom-server.js` reads `PORT || 20128` and then loads Next's listener. The CLI readiness probe treats a closed port as `not-listening` and, after 60s, prints that the server did not become ready.
+
+Fix: stop the other process, or pass `--port` / set `PORT`. The CLI kills a leftover listener only on update and exit paths, not on a normal start.
+
+## JWT_SECRET missing
+
+Cause: dashboard cookies are signed with `loadJwtSecret()`. Env `JWT_SECRET` wins. A leftover `DATA_DIR/jwt-secret` file is reused with a warning. Fresh installs throw `JWT_SECRET environment variable is required` when neither source exists. The throw happens on sign or verify (login), not at the first line of `custom-server.js`.
+
+Fix: set `JWT_SECRET` (copy `.env.example`, or `openssl rand -hex 32`) and restart. Keep the same value across deploys. [Security](./operations/security.mdx).
+
+## Cutover stops midway
+
+Cause: `runCutover` failed after taking the in-process lock. SQLite stays live. `databaseEngineError` on **Settings → Database** holds the reason. Distinct messages: `cutover snapshot failed` (copy into `currentBackupsDir()` returned empty while `data.sqlite` exists; the flip is aborted); `Mirror row-count mismatch: …` (`COUNT(*)` after a table copy did not match); HTTP 503 `A cutover is already in flight; retry in a moment.` (second cutover or rollback holds the lock); live HTTP writes during the lock throw `database cutover in progress` (`CUTOVER_IN_FLIGHT`). `SELECT` still works. A crash after both settings writes, before `setActiveAdapter`, leaves `databaseEngine: "postgres"` on the SQLite file, so the next boot tries PG.
+
+Fix: read `databaseEngineError`. Fix the URL, cluster, disk, or permissions. Retry **Cut over to Postgres**. A leftover `data.sqlite.postgres-cutover-*` file is not an engine flip. Procedure: [Postgres](./operations/postgres.mdx).
+
+## Engine says postgres but this process is on SQLite
+
+Cause: `databaseEngine` is `postgres` but `openActiveAdapter` could not open the cluster (missing URL, connect error, migration failure). `GET /api/settings/database/engine` returns `servingFallback: true`. The Database page shows **Serving SQLite**. New writes stay on the local file and do not land on PG. The boot log can still print `engine: postgres` for the requested engine.
+
+Fix: read `databaseEngineError`, restore the URL or cluster, then restart so the one-shot fallback can try again. [Postgres](./operations/postgres.mdx).
+
+## SQLite driver fallback
+
+Cause: the Node chain is `better-sqlite3` → `node:sqlite` (Node ≥ 22.5) → `sql.js`. Each miss logs `[DB] <driver> unavailable: …`. If every adapter fails, boot throws `[DB] No SQLite driver available (bun/better/node/sql.js all failed)`. A successful open logs `[DB] Driver: … | engine: sqlite` once.
+
+Fix: the `sql.js` fallback is enough for a small install. Native `better-sqlite3` is faster; reinstall the CLI package if that binding failed. Postgres is a separate opt-in engine: [Postgres](./operations/postgres.mdx).
+
+## Invalid API key
+
+Cause: the client sent an upstream provider key, a truncated secret, a paused or expired row, or a four-part key whose HMAC no longer matches because `API_KEY_SECRET` changed. Chat returns 401 `Invalid API key` (or `Missing API key` when **Require API Key** is on). Realtime closes with code `4001` and `invalid_api_key`.
+
+Fix: mint a DurinDoor key in the dashboard and paste the whole secret. Keep `API_KEY_SECRET` stable. [API keys](./guides/api-keys.mdx).
+
+## Model not found
+
+Cause: the `model` string is unknown, or `GET /v1/models` never listed it. An unknown provider returns 404 `model_not_found` with `Unknown provider "…" in model "…"`. A shutdown catalog id returns 410 `model_shutdown`.
+
+Fix: copy an id from `/v1/models` or the dashboard picker. For a stable client string, send a combo name. [First request](./getting-started/first-request.mdx).
+
+## Provider not configured
+
+Cause: the provider id is routable, but no active credential was selected. Chat returns 404 `provider_not_configured`: `No active credentials for provider: …. Connect an account for this provider in the dashboard.`
+
+Fix: open **Providers**, add or reconnect that account, confirm it is active, then retry. [Connecting accounts](./providers/connecting-accounts.mdx).
+
+## Provider authentication or network failure
+
+Cause: upstream 401/403, a revoked OAuth grant, or a transport failure. Operator-facing text keeps a bounded diagnostic such as `fetch failed (ECONNREFUSED)`. Compatible-node validate maps that code to `Connection refused - provider node offline or unreachable`.
+
+Fix: open the connection in the dashboard and read the stored error. Reconnect OAuth, rotate the provider key, or check DNS, firewall, and that the upstream URL is reachable from this host.
+
+## Rate limit or quota skip
+
+Cause: upstream 429, an exhausted quota snapshot, or every account for that provider in cooldown. Chat can also return 503 `Provider quota capacity unavailable` when a reservation cannot be taken. A per-provider concurrency gate that never gets a slot returns 503 `Concurrency limit reached for provider "…"`.
+
+Fix: wait for the reset window shown on **Usage** and **Quota Tracker**. Add another connection or a combo fallback. [Quota tracking](./features/quota-tracking.mdx).
+
+## Request aborted
+
+Cause: the client disconnected, or the abort signal fired before dispatch. `handleChatCore` returns 499 `Request aborted`.
+
+Fix: retry. If it repeats on every call, check proxy idle timeouts and that the client is not cancelling the body.
+
+## Input exceeds context window
+
+Cause: counted input plus the output reservation is larger than the known context window. Chat returns 400 whose message starts with `input is too long`. That failure is terminal; combos do not fall through.
+
+Fix: shorten the prompt, lower `max_tokens`, or pick a model with a larger window. [Model limits](./reference/model-limits.mdx).
+
+## Translation or outbound validation failed
+
+Cause: no translator for that source/target pair, or the outbound payload failed shape checks. Clients see 400 `Failed to translate request for … → …` or `Outbound validation failed for …`.
+
+Fix: send a format the route expects (`/v1/chat/completions` vs `/v1/messages`). If one provider 400s on a tool schema, try another member in a combo or disable the extra tool.
+
+## Failed to process provider response
+
+Cause: the upstream returned a body the handler could not turn into a client response. Chat returns 502 `Failed to process provider response`.
+
+Fix: retry once. If it stays, pick another model or combo member and inspect **Usage → Details** for the sanitized upstream status.
+
+## Streaming cuts off
+
+Cause: a reverse proxy's read or send timeout closed the SSE socket, or the selected provider does not stream.
+
+Fix: raise proxy timeouts, test on localhost without the proxy, or set `"stream": false` if the client allows it. [Reverse proxy and static assets](./deployment/reverse-proxy-and-static-assets.mdx).
+
+## Dashboard login loops or is refused
+
+Cause: `JWT_SECRET` changed across restarts, the browser dropped the cookie, `AUTH_COOKIE_SECURE=true` is set without HTTPS, Origin does not match, or the built-in password `123456` is still in use. Remote login on that password returns 403 `mustChangePassword` and never issues a session cookie. Five failures from one IP lock out with 429 `Retry-After`. OIDC mode returns 403 `Password login is disabled`.
+
+Fix: keep `JWT_SECRET` stable. Behind TLS, set `AUTH_COOKIE_SECURE=true` and `X-Forwarded-Proto`. Change the dashboard password on loopback first. [Security](./operations/security.mdx).
+
+## Docker cannot reach a local model
+
+Cause: inside the container, `localhost` is the container itself. Compose publishes `20128:20128` and sets `HOSTNAME: "0.0.0.0"` so the process accepts Docker's port map.
+
+Fix: point the node `baseUrl` at `host.docker.internal` or a compose service name (`postgres18:5432` is the pattern this repo uses for sidecar reachability). Publish `-p 20128:20128`. [Docker](./deployment/docker.mdx) and [Free and local](./providers/free-and-local.mdx).
+
+## MITM Root CA, lock, or redirect errors
+
+Cause: first start cannot generate or read the Root CA; another request in this process hits `MITM server is already starting`; another process hits `MITM server is already starting (lock contention)` (`EADDRINUSE` on the start-lock port); PF, iptables, or the Windows firewall isolation step failed; or a live integer-only `.mitm.pid` remains after an upgrade. `MITM_PRIVILEGED_OPERATION_UNCERTAIN` means a sudo/UAC timeout or an interrupted redirect install left an `installing` or `uncertain` journal.
+
+On macOS and Linux the proxy listens on `127.0.0.1:8443` and an owner-scoped kernel rule redirects that user's `127.0.0.1:443` traffic. On Windows the standard-user proxy binds `127.0.0.1:443` directly.
+
+Fix:
+
+1. Run DurinDoor as a standard user. The full Node.js proxy is never elevated. Only the certificate, hosts-file, firewall, or port-redirect mutation is delegated to sudo/UAC.
+2. The redirect journal is global to the OS user, not to `DATA_DIR`: `~/.durindoor-mitm-state/redirect.json` on macOS/Linux and `%USERPROFILE%\AppData\Local\DurinDoor\mitm-state\redirect.json` on Windows.
+3. A live integer-only `.mitm.pid` came from the previous privileged-launcher design. Stop MITM with the old DurinDoor version before updating. If that is no longer possible, close DurinDoor and reboot. Never raw-kill the recorded PID because it may have been reused by an unrelated process.
+
+<Callout type="warn">
+An `installing` or `uncertain` redirect journal is a quarantine marker. Close every DurinDoor process and reboot. Reboot is the boundary that proves the unconfirmed privileged process tree has ended. Then inspect and remove only the current user's exact DurinDoor rule, verify absence, and delete the user's `redirect.json` path. Preserve `.mitm.pid`, Root CA files, and trust-rotation journals.
+</Callout>
+
+## Problems after an upgrade
+
+Cause: `DATA_DIR` was not backed up, `API_KEY_SECRET` or `JWT_SECRET` changed, or a schema migration already ran on a newer build.
+
+Fix: restore the pre-upgrade backup, keep those secrets stable, then re-check providers and keys. Procedure: [Upgrading](./operations/upgrading.mdx).
+
+## Logs
+
+Cause: the HTTP process is up but a later step failed.
+
+Fix: `docker logs durindoor` for the container. MITM dumps, when enabled, go under `DATA_DIR/logs/mitm`. `ENABLE_REQUEST_LOGS=true` writes metadata files under `logs/` in the process working directory. Dashboard **Console log** is an in-memory ring and empties on restart.

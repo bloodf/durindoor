@@ -5,7 +5,7 @@
  * Node 20.20.x (CI pin) does not support `--experimental-strip-types`, so oxlint
  * loads `./tools/oxlint/anti-slop/index.bundle.js` instead of `index.ts`.
  *
- * @see docs/development/anti-slop.md
+ * @see docs/contributing/local-development.mdx
  */
 
 import { build } from "esbuild";

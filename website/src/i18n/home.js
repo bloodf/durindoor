@@ -40,8 +40,8 @@ export function homeLocaleCookie(locale) {
 export function homeMetadata(locale) {
   const selected = resolveHomeLocale(locale);
   const t = createHomeTranslator(selected);
-  const title = t("DurinDoor — Speak, friend, and enter");
-  const description = t("One guarded gateway for every AI provider. Add credentials once, point every OpenAI-compatible tool at a single local endpoint.");
+  const title = t("DurinDoor. Speak, friend, and enter");
+  const description = t("Add credentials once. Point every OpenAI-compatible tool at http://localhost:20128/v1.");
   const openGraphLocale = { en: "en_US", "pt-BR": "pt_BR", es: "es_ES", de: "de_DE", ja: "ja_JP", "zh-CN": "zh_CN" }[selected];
   return {
     title,

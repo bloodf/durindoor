@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { readFile, access } from "node:fs/promises";
+import { readFile, access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import path from "node:path";
@@ -55,6 +55,12 @@ export const FORBIDDEN_PUBLIC_TEXT = [
   "https://9router.com",
 ];
 
+/** Task 12 section stub body. Dangling meta pages and missing description are skipped while this remains. */
+export const SECTION_STUB_BODY = "Pages in this section are being written.";
+
+const EMOJI_RE = /[\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}]/u;
+const EM_DASH = "\u2014";
+
 export function githubSlug(value) {
   let s = value
     .toLowerCase()
@@ -64,7 +70,27 @@ export function githubSlug(value) {
   return s === "" ? "" : s;
 }
 
-function stripCodeBlocks(text) {
+function posixRel(p) {
+  return p.split(path.sep).join("/");
+}
+
+export function isDocFile(file) {
+  return file.endsWith(".md") || file.endsWith(".mdx");
+}
+
+export function isDocsMdx(file) {
+  return file.startsWith("docs/") && file.endsWith(".mdx");
+}
+
+export function isDocsLegacyMd(file) {
+  return file.startsWith("docs/") && file.endsWith(".md");
+}
+
+export function isRootMd(file) {
+  return file.endsWith(".md") && !file.includes("/");
+}
+
+export function stripCodeBlocks(text) {
   const lines = text.split("\n");
   const out = [];
   let i = 0;
@@ -90,29 +116,104 @@ function stripCodeBlocks(text) {
   return out.join("\n").replace(/`[^`]*`/g, "");
 }
 
+/**
+ * Drop YAML frontmatter and MDX component trees (PascalCase tags) so `#` inside
+ * `<Cards>` / `<Callout>` is not treated as a heading.
+ */
+export function stripMdxConstructs(text) {
+  let body = text;
+  if (body.startsWith("---\n") || body.startsWith("---\r\n")) {
+    const start = body.startsWith("---\r\n") ? 5 : 4;
+    const rest = body.slice(start);
+    const endMatch = rest.match(/\r?\n---\r?\n/);
+    if (endMatch) {
+      body = rest.slice(endMatch.index + endMatch[0].length);
+    }
+  }
+  const lines = body.split("\n");
+  const out = [];
+  let i = 0;
+  const openRe = /^\s*<([A-Z][A-Za-z0-9.]*)\b/;
+  while (i < lines.length) {
+    const m = lines[i].match(openRe);
+    if (m) {
+      const tag = m[1];
+      const line = lines[i];
+      if (/\/>\s*$/.test(line) || new RegExp(`</${tag}>\\s*$`).test(line)) {
+        i++;
+        continue;
+      }
+      i++;
+      const close = new RegExp(`^\\s*</${tag}>\\s*$`);
+      while (i < lines.length && !close.test(lines[i])) i++;
+      if (i < lines.length) i++;
+      continue;
+    }
+    out.push(lines[i]);
+    i++;
+  }
+  return out.join("\n");
+}
+
+export function parseFrontmatter(text) {
+  if (!text.startsWith("---\n") && !text.startsWith("---\r\n")) return null;
+  const start = text.startsWith("---\r\n") ? 5 : 4;
+  const rest = text.slice(start);
+  const endMatch = rest.match(/\r?\n---(?:\r?\n|$)/);
+  if (!endMatch) return null;
+  const yaml = rest.slice(0, endMatch.index);
+  const fields = {};
+  for (const line of yaml.split(/\r?\n/)) {
+    const m = line.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/);
+    if (!m) continue;
+    let v = m[2].trim();
+    if (
+      (v.startsWith('"') && v.endsWith('"') && v.length >= 2) ||
+      (v.startsWith("'") && v.endsWith("'") && v.length >= 2)
+    ) {
+      v = v.slice(1, -1);
+    }
+    fields[m[1]] = v;
+  }
+  return fields;
+}
+
+export function bodyAfterFrontmatter(text) {
+  if (!text.startsWith("---\n") && !text.startsWith("---\r\n")) return text;
+  const start = text.startsWith("---\r\n") ? 5 : 4;
+  const rest = text.slice(start);
+  const endMatch = rest.match(/\r?\n---(?:\r?\n|$)/);
+  if (!endMatch) return text;
+  return rest.slice(endMatch.index + endMatch[0].length);
+}
+
+export function isSectionStub(text) {
+  if (!text) return false;
+  return bodyAfterFrontmatter(text).trim() === SECTION_STUB_BODY;
+}
+
 function* linksIn(source, text) {
-  // Markdown inline links and images: [text](url) and ![text](url)
   for (const match of text.matchAll(/!?\[([^\]]*)\]\(([^)]+)\)/g)) {
     yield { file: source, raw: match[2].trim() };
   }
-  // HTML <img src="..."> and <a href="...">
   for (const match of text.matchAll(/<(?:img|a)\b[^>]*?\b(?:src|href)=["']([^"']+)["']/gi)) {
     yield { file: source, raw: match[1].trim() };
   }
 }
 
 function resolveLink(fromFile, raw) {
-  if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return null; // scheme or mailto
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return null;
   if (raw.startsWith("#")) return { target: fromFile, anchor: raw.slice(1) };
   const [beforeHash, hash] = raw.split("#");
-  const resolved = path.normalize(path.join(path.dirname(fromFile), beforeHash));
+  const resolved = posixRel(path.normalize(path.join(path.dirname(fromFile), beforeHash)));
   return { target: resolved, anchor: hash };
 }
 
 function headingsFor(text) {
   const counts = new Map();
   const ids = new Set();
-  for (const line of text.split("\n")) {
+  const prepared = stripMdxConstructs(text);
+  for (const line of prepared.split("\n")) {
     const m = line.match(/^#{1,6}\s+(.+)$/);
     if (!m) continue;
     const slug = githubSlug(m[1]);
@@ -129,6 +230,106 @@ const isPublic = (file) => {
   return true;
 };
 
+function skipMetaPage(entry) {
+  // meta.json is parsed JSON; anything that is not already a string is not a page name.
+  if (String(entry) !== entry) return true;
+  if (entry === "---") return true;
+  if (entry.startsWith("...") || entry.startsWith("!")) return true;
+  if (entry.startsWith("[")) return true;
+  return false;
+}
+
+async function pathIsDir(root, rel) {
+  try {
+    const st = await stat(path.join(root, rel));
+    return st.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function pathIsFile(root, rel) {
+  try {
+    const st = await stat(path.join(root, rel));
+    return st.isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function walkMetaJson({
+  root,
+  dirRel,
+  fileSet,
+  contents,
+  read,
+  reachableMdx,
+  issues,
+}) {
+  const metaRel = posixRel(path.join(dirRel, "meta.json"));
+  let raw;
+  try {
+    raw = await readFile(path.join(root, metaRel), "utf8");
+  } catch {
+    if (dirRel === "docs") return;
+    issues.push(`${metaRel}: missing or invalid meta.json`);
+    return;
+  }
+  let meta;
+  try {
+    meta = JSON.parse(raw);
+  } catch {
+    issues.push(`${metaRel}: missing or invalid meta.json`);
+    return;
+  }
+  const pages = Array.isArray(meta.pages) ? meta.pages : [];
+  const pageNames = new Set();
+  const indexRel = posixRel(path.join(dirRel, "index.mdx"));
+  let indexText = contents[indexRel];
+  if (indexText === undefined) {
+    try {
+      indexText = await read(indexRel);
+    } catch {
+      indexText = "";
+    }
+  }
+  const stubSection = isSectionStub(indexText);
+
+  for (const entry of pages) {
+    if (skipMetaPage(entry)) continue;
+    pageNames.add(entry);
+    const mdxRel = posixRel(path.join(dirRel, `${entry}.mdx`));
+    const folderRel = posixRel(path.join(dirRel, entry));
+    const hasMdx = fileSet.has(mdxRel) || await pathIsFile(root, mdxRel);
+    const hasFolder = await pathIsDir(root, folderRel);
+    if (hasMdx) reachableMdx.add(mdxRel);
+    if (hasFolder) {
+      await walkMetaJson({
+        root,
+        dirRel: folderRel,
+        fileSet,
+        contents,
+        read,
+        reachableMdx,
+        issues,
+      });
+    }
+    if (!hasMdx && !hasFolder && !stubSection) {
+      issues.push(`${metaRel}: dangling pages entry '${entry}'`);
+    }
+  }
+
+  for (const file of fileSet) {
+    if (!file.endsWith(".mdx")) continue;
+    if (posixRel(path.dirname(file)) !== dirRel) continue;
+    const base = path.basename(file, ".mdx");
+    if (file === "docs/index.mdx") continue;
+    if (!pageNames.has(base)) {
+      issues.push(`${file}: not listed in ${metaRel} pages`);
+    }
+  }
+}
+
 export async function validateDocumentation({ root, files, readText }) {
   const read = readText || (async (p) => readFile(path.join(root, p), "utf8"));
   const fileSet = new Set(files);
@@ -137,22 +338,24 @@ export async function validateDocumentation({ root, files, readText }) {
   const stripped = Object.create(null);
   const headings = Object.create(null);
   const links = [];
-  const entryPoints = ["README.md", "docs/README.md"];
+  const docFiles = files.filter(isDocFile);
 
-  for (const file of files) {
+  for (const file of docFiles) {
     const original = await read(file);
     contents[file] = original;
     stripped[file] = stripCodeBlocks(original);
     headings[file] = headingsFor(stripped[file]);
   }
 
-  for (const file of files) {
+  for (const file of docFiles) {
     const text = contents[file];
     const rendered = stripped[file];
 
-    for (const asset of REQUIRED_ASSETS) {
-      if (entryPoints.includes(file) && !text.includes(asset)) {
-        issues.push(`${file}: missing ${asset}`);
+    if (file === "README.md") {
+      for (const asset of REQUIRED_ASSETS) {
+        if (!text.includes(asset)) {
+          issues.push(`${file}: missing ${asset}`);
+        }
       }
     }
 
@@ -164,10 +367,34 @@ export async function validateDocumentation({ root, files, readText }) {
       }
     }
 
-    for (const link of linksIn(file, rendered)) {
-      const resolved = resolveLink(file, link.raw);
-      if (!resolved) continue;
-      links.push({ from: file, ...resolved });
+    if (isDocsMdx(file)) {
+      const fm = parseFrontmatter(text);
+      const stub = isSectionStub(text);
+      if (!fm || !fm.title) {
+        issues.push(`${file}: missing frontmatter title`);
+      }
+      if (!stub && (!fm || !fm.description)) {
+        issues.push(`${file}: missing frontmatter description`);
+      }
+      if (rendered.includes(EM_DASH)) {
+        issues.push(`${file}: em dash (U+2014) outside code fences`);
+      }
+      if (EMOJI_RE.test(rendered)) {
+        issues.push(`${file}: emoji outside code fences`);
+      }
+      // Fumadocs only resolves page links that start with ./ or ../
+      for (const m of rendered.matchAll(/\]\((?!\.{1,2}\/|\/|https?:|#|mailto:)([^)\s]+\.mdx)/g)) {
+        issues.push(`${file}: bare relative link ${m[1]} (prefix with ./)`);
+      }
+    }
+
+    const checkLinks = !isDocsLegacyMd(file) || file === "docs/README.md";
+    if (checkLinks) {
+      for (const link of linksIn(file, rendered)) {
+        const resolved = resolveLink(file, link.raw);
+        if (!resolved) continue;
+        links.push({ from: file, ...resolved });
+      }
     }
   }
 
@@ -199,8 +426,7 @@ export async function validateDocumentation({ root, files, readText }) {
     }
   }
 
-  // Contract #8: documented root npm scripts must exist in package.json.
-  for (const file of files) {
+  for (const file of docFiles) {
     const text = contents[file];
     for (const match of text.matchAll(/`npm run ([a-z:][a-zA-Z0-9:-]*)`/g)) {
       const script = match[1];
@@ -215,20 +441,34 @@ export async function validateDocumentation({ root, files, readText }) {
     }
   }
 
-  // Contract #9: required standard community files must exist.
   for (const required of COMMUNITY_FILES) {
     if (!fileSet.has(required)) {
       issues.push(`repository: missing required community file ${required}`);
     }
   }
 
-  // Reachability from the two public entry points, walking all Markdown links.
-  const reachable = new Set();
-  const stack = [...entryPoints.filter((f) => fileSet.has(f))];
+  const docsMdx = docFiles.filter(isDocsMdx);
+  const reachableMdx = new Set();
+  if (fileSet.has("docs/index.mdx")) reachableMdx.add("docs/index.mdx");
+  if (docsMdx.length) {
+    await walkMetaJson({
+      root,
+      dirRel: "docs",
+      fileSet,
+      contents,
+      read,
+      reachableMdx,
+      issues,
+    });
+  }
+
+  const reachableRoot = new Set();
+  const rootStarts = ["README.md", "docs/README.md"].filter((f) => fileSet.has(f));
+  const stack = [...rootStarts];
   while (stack.length) {
     const current = stack.pop();
-    if (reachable.has(current)) continue;
-    reachable.add(current);
+    if (reachableRoot.has(current)) continue;
+    reachableRoot.add(current);
     for (const link of links) {
       if (link.from === current && fileSet.has(link.target)) {
         stack.push(link.target);
@@ -236,9 +476,17 @@ export async function validateDocumentation({ root, files, readText }) {
     }
   }
 
-  for (const file of files) {
-    if (isPublic(file) && !reachable.has(file)) {
-      issues.push(`${file}: public document is not reachable from README.md or docs/README.md`);
+  for (const file of docFiles) {
+    if (!isPublic(file)) continue;
+    if (isDocsMdx(file)) {
+      if (!reachableMdx.has(file)) {
+        issues.push(`${file}: public document is not reachable from docs/index.mdx through meta.json`);
+      }
+      continue;
+    }
+    if (isDocsLegacyMd(file)) continue;
+    if (isRootMd(file) && !reachableRoot.has(file)) {
+      issues.push(`${file}: public document is not reachable from README.md`);
     }
   }
 
@@ -247,9 +495,9 @@ export async function validateDocumentation({ root, files, readText }) {
 }
 
 export async function validateRepository(cwd) {
-  const { stdout } = await execFileAsync("git", ["ls-files", "-z", "--", "*.md"], { cwd });
+  const { stdout } = await execFileAsync("git", ["ls-files", "-z", "--", "*.md", "*.mdx"], { cwd });
   const files = stdout
-    ? stdout.split("\0").filter((f) => f !== "" && f.endsWith(".md"))
+    ? stdout.split("\0").filter((f) => f !== "" && (f.endsWith(".md") || f.endsWith(".mdx")))
     : [];
   return validateDocumentation({ root: cwd, files });
 }

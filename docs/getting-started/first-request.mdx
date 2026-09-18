@@ -1,0 +1,107 @@
+---
+title: First request
+description: Call /v1/chat/completions with a provider/model id, curl or an SDK, streaming, and the error envelope.
+---
+
+`POST /v1/chat/completions` is the OpenAI chat route. Next rewrites it to `/api/v1/chat/completions`. The body must be JSON, and `Content-Type` must start with `application/json`. Anything else gets 415.
+
+## Model names
+
+The `model` field is a string. A slash splits it into provider (or alias) and upstream id:
+
+```text
+provider/model
+```
+
+`openai/gpt-4.1` is provider `openai` plus model `gpt-4.1`. Registry aliases in the first segment resolve to a provider id. A string with no slash is treated as a model alias or combo name, not a provider.
+
+Other accepted values: a compatible-node id (`openai-compatible-lab/model-name`), a custom alias you defined, or a combo name from the Combos page. `GET /v1/models` lists what this instance currently exposes.
+
+## curl
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-4.1",
+    "messages": [
+      {"role": "user", "content": "Reply with one short sentence."}
+    ],
+    "max_tokens": 32
+  }'
+```
+
+Omit `stream`, or set it to anything other than `true`, and the response is a single JSON object. A body that is not parseable returns 400 with message `Invalid JSON body`. A missing or rejected key returns 401.
+
+## Node
+
+```javascript
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: "YOUR_DURINDOOR_API_KEY",
+  baseURL: "http://localhost:20128/v1",
+});
+
+const response = await client.chat.completions.create({
+  model: "openai/gpt-4.1",
+  messages: [{ role: "user", content: "Say hello." }],
+});
+
+console.log(response.choices[0].message.content);
+```
+
+## Python
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="YOUR_DURINDOOR_API_KEY",
+    base_url="http://localhost:20128/v1",
+)
+
+response = client.chat.completions.create(
+    model="openai/gpt-4.1",
+    messages=[{"role": "user", "content": "Say hello."}],
+)
+
+print(response.choices[0].message.content)
+```
+
+## Streaming
+
+Set `"stream": true` in the body. OpenAI clients stream only when that flag is exactly `true`. Some providers always stream upstream; the gateway then accumulates the provider stream and can still return a JSON body to a client that asked for it.
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -N \
+  -d '{
+    "model": "openai/gpt-4.1",
+    "stream": true,
+    "messages": [
+      {"role": "user", "content": "Count to three."}
+    ]
+  }'
+```
+
+SSE error events use the same error envelope as non-streaming failures.
+
+## Errors
+
+Non-streaming failures look like:
+
+```json
+{
+  "error": {
+    "message": "Invalid API key provided",
+    "type": "authentication_error",
+    "code": "invalid_api_key"
+  }
+}
+```
+
+`message`, `type`, and `code` are always present. Status 400 is `invalid_request_error` / `bad_request`. 401 is `authentication_error` / `invalid_api_key`. 404 is `invalid_request_error` / `model_not_found`. 429 is `rate_limit_error` / `rate_limit_exceeded`. 5xx uses `server_error` with codes such as `bad_gateway`. A 415 from a wrong `Content-Type` uses `invalid_request_error` / `unsupported_media_type`. Upstream text is sanitized (secrets and local paths stripped) before it reaches the client.

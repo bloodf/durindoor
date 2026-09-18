@@ -1,0 +1,75 @@
+---
+title: MCP gateway
+description: One JSON-RPC endpoint in front of registered MCP servers, with gateway keys, grants, and OAuth.
+---
+
+The MCP gateway merges tools from one or more upstream MCP instances into a single JSON-RPC namespace. Each caller uses a dedicated gateway key granted to specific instances (and, on the backend, to specific tools). DurinDoor can attach an OAuth access token to upstream requests for an instance.
+
+Open **Dashboard → MCP Gateway → Instances** (`/dashboard/mcp-gateway`) to register servers. Open **Dashboard → MCP Gateway → Keys** (`/dashboard/mcp-gateway/keys`) to mint keys. **Dashboard → MCP Help** (`/dashboard/mcp-help`) has a short client snippet.
+
+## Transports
+
+Both share the same JSON-RPC handler and the same key check.
+
+| Route | Method | Role |
+| --- | --- | --- |
+| `/api/mcp-gateway` | POST | Streamable HTTP. One JSON-RPC request per POST. Notifications (no `id`) return 202. |
+| `/api/mcp-gateway/sse` | GET | SSE handshake. Returns a message URL for this session. |
+| `/api/mcp-gateway/message?sessionId=` | POST | SSE companion. Missing `sessionId` is 400. |
+
+`GET /api/mcp-gateway` returns 405 with `Allow: POST`. Clients that send `Accept: text/event-stream` still get JSON on the POST path.
+
+Tool names are `<instanceSlug>__<toolName>`. `tools/call` splits on the first `__`. Disabled instances are omitted from `tools/list` and dispatch.
+
+## Keys
+
+Gateway keys are DurinDoor API-key shaped secrets (`sk-<machineId>-<keyId>-<crc8>`), stored on `mcpGatewayKeys`. They are not dashboard session cookies.
+
+Send the secret as `Authorization: Bearer …`, `x-api-key`, `x-goog-api-key`, or `?key=`. A missing or inactive key returns JSON-RPC error `gateway key missing` or `gateway key invalid` with HTTP 401.
+
+`POST /api/mcp-gateway/keys` and `GET /api/mcp-gateway/keys/<id>/reveal` are local-request only (403 otherwise). The list endpoint never returns the raw secret. Create returns it once. Reveal exists for a signed-in local dashboard session, same as DurinDoor API keys.
+
+Grant the key to instances from the Keys page. An empty grant list means the key authenticates but sees no tools.
+
+The control endpoint `POST /api/mcp/control` does not accept a gateway key. It takes a dashboard session, the CLI token, or a DurinDoor API key. Full tool list and client setup: [MCP control](./mcp-control.mdx).
+
+## Instances
+
+`GET`/`POST /api/mcp-gateway/instances` lists and creates. `GET`/`PUT`/`DELETE /api/mcp-gateway/instances/:id` reads, updates, and removes one row. `POST /api/mcp-gateway/instances/:id/test` lists upstream tools as a probe.
+
+An instance has an upstream URL, a transport (HTTP/SSE or stdio), optional fixed headers, and an optional OAuth flag. Enable it before you expect it in `tools/list`.
+
+## OAuth
+
+When `oauth: true`, the dashboard starts the flow at `/api/mcp-gateway/oauth/:id/authorize`. The callback is `/api/mcp-gateway/oauth/:id/callback`. Poll `/api/mcp-gateway/oauth/:id/status`. The upstream authorization server fetches `/api/mcp-gateway/oauth/:id/client-metadata` as the Client ID Metadata Document.
+
+Auth for these four leaves differs by who calls them. `authorize` and `status` are operator actions on the management gate, so a dashboard session, the CLI token, or a DurinDoor API key all work; an API-key client can run a complete connect flow. `client-metadata` is public, because the upstream authorization server fetches it server-to-server. `callback` keeps the dashboard login policy: it is an upstream browser redirect carrying only `code` and `state`, so it has no DurinDoor credential to present, and its CSRF defense is the server-side `state` it validates.
+
+The public origin for redirects is `MCP_GATEWAY_OAUTH_PUBLIC_URL`, then `OAUTH_PUBLIC_BASE_URL`, then an active tunnel, then forwarded proto/host. Loopback only works if that env override is set. A missing public HTTPS origin returns an error telling you to set `MCP_GATEWAY_OAUTH_PUBLIC_URL` or use the Cloudflare tunnel.
+
+The token bundle lives on the instance row (`token_endpoint`, `client_id`, `client_secret`, `resource`, `scope`, `expires_at`, `fetched_at`). Management APIs return `needsReauth`, not the tokens. Refresh uses a 60-second leeway. A 401 from an OAuth instance force-refreshes once and retries. Non-OAuth instances do not retry 401s. Concurrent forced refreshes share one in-flight promise.
+
+Token endpoints and refresh redirects go through the outbound URL guard. Cross-origin redirects drop `Authorization`, `Cookie`, and `Proxy-Authorization`.
+
+## Control endpoint
+
+`POST /api/mcp/control` is a separate JSON-RPC server for the running DurinDoor instance (combos, connections, settings, quota). Gateway callers stay on `/api/mcp-gateway` with a gateway key. Auth, every tool, client setup, and limits: [MCP control](./mcp-control.mdx). REST families and exclusions: [Management API](../reference/management-api.mdx).
+
+## Usage
+
+Every `tools/call`, ok or error, writes a usage row with `provider: "mcp-gateway"` and `model` set to the namespaced tool name. Watch it on **Dashboard → Usage**.
+
+## Worked example
+
+1. Create an instance, enable it, run **Test**. You should see a tool count.
+2. Create a gateway key and grant that instance.
+3. From the same machine:
+
+```bash
+curl http://localhost:20128/api/mcp-gateway \
+  -H "Authorization: Bearer YOUR_GATEWAY_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+```
+
+Then `tools/list` with the same key. Call a tool as `"name": "<slug>__<toolName>"`. A disabled instance or a key without that grant returns `unknown tool`.

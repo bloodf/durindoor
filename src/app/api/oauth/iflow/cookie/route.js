@@ -26,7 +26,6 @@ export async function POST(request) {
       normalizedCookie += ";";
     }
 
-    // Step 1: GET API key info to get the name
     const getResponse = await fetch("https://platform.iflow.cn/api/openapi/apikey", {
       method: "GET",
       headers: {
@@ -63,7 +62,6 @@ export async function POST(request) {
       return NextResponse.json({ error: "Missing name in API key info" }, { status: 400 });
     }
 
-    // Step 2: POST to refresh API key
     const postResponse = await fetch("https://platform.iflow.cn/api/openapi/apikey", {
       method: "POST",
       headers: {

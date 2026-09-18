@@ -1,0 +1,73 @@
+---
+title: FAQ
+description: Short answers for DurinDoor setup and runtime, with links to the page that owns each procedure.
+icon: CircleQuestionMark
+---
+
+## What is DurinDoor?
+
+A self-hosted AI gateway. You store provider credentials on this machine, then point tools at `http://localhost:20128/v1`. DurinDoor translates OpenAI-shaped calls for the upstream you configured. It does not train or host foundation models.
+
+## Why do some paths still say 9router?
+
+DurinDoor is a fork of 9router. The default data directory is still `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. The CLI binary is `durindoor`. Identifiers the runtime still honors: [Migrating from 9router](./reference/migrating-from-9router.mdx).
+
+## What is the default port?
+
+Production and the CLI bind `20128`. Source `npm run dev` binds `20127`. Commands, bind defaults, and health checks: [Startup](./operations/startup.mdx).
+
+## What base URL should clients use?
+
+OpenAI-compatible clients use `http://localhost:20128/v1`. Next rewrites `/v1/:path*` onto `/api/v1/:path*`. For a remote install, use that host's HTTPS origin instead of localhost. Curl and SDK samples: [First request](./getting-started/first-request.mdx).
+
+## Which API key should I put in client tools?
+
+A DurinDoor key from **Dashboard → API Keys**. Do not paste an upstream provider key into a client that talks to this gateway. Shapes, expiry, and scoping: [API keys](./guides/api-keys.mdx).
+
+## Can I use multiple providers at once?
+
+Yes. Add more than one connection, then send a combo name as `model`. DurinDoor tries members in order. Account fallback retries another credential for the same provider first. [Combos](./features/combos.mdx) and [Smart routing](./features/smart-routing.mdx).
+
+## Can I use local models?
+
+Yes. Add a local OpenAI- or Anthropic-compatible node, or a catalog local-router id such as `ollama-local/<model>`. Inside Docker, `localhost` is the container; point `baseUrl` at `host.docker.internal` or a compose service name. [Free and local](./providers/free-and-local.mdx).
+
+## Does DurinDoor support Claude-compatible clients?
+
+Claude-style traffic lands on `POST /v1/messages`. Claude Code sets `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` against this gateway and sends a DurinDoor key. [Claude Code](./integrations/claude-code.mdx).
+
+## Does DurinDoor support the OpenAI Responses API?
+
+`POST /v1/responses` is on the gateway. `/codex/:path*` and `/responses` rewrite onto that handler. Whether a given model works still depends on the translator path. [API](./reference/api.mdx).
+
+## Does DurinDoor support audio, image, search, and embeddings?
+
+Those are separate `/v1` families: embeddings, image generate and edit, speech, transcription, translation, search, and web fetch. The connected provider has to support that modality. Full table: [API](./reference/api.mdx).
+
+## What is a combo?
+
+A named fallback chain. The client puts the combo name in `model`. DurinDoor tries each configured member until one returns a usable response. [Combos](./features/combos.mdx).
+
+## What is account fallback?
+
+Retrying another credential for the same provider and model. Combo fallback is trying the next member in the combo list. Account fallback runs first. [Smart routing](./features/smart-routing.mdx).
+
+## Is request logging safe?
+
+Optional request logs stay off unless `ENABLE_REQUEST_LOGS=true`. When on, they write metadata under `logs/` in the process working directory, not under `DATA_DIR`. Leave the flag false except for a short debug window. [Security](./operations/security.mdx).
+
+## Can I expose DurinDoor publicly?
+
+The CLI default bind is `0.0.0.0`. Source production pins `HOSTNAME` to `127.0.0.1` when that variable is empty. Before anything other than loopback can reach `/dashboard`, set a strong `INITIAL_PASSWORD`, stable `JWT_SECRET` and `API_KEY_SECRET`, and terminate TLS in front. Checklist: [Security](./operations/security.mdx).
+
+## How do I migrate from 9router?
+
+Stop 9router, back up the data directory, start DurinDoor with the same `DATA_DIR` (or the default `~/.9router`), then check providers, keys, combos, and usage. The one-shot script is optional. [Migrating from 9router](./reference/migrating-from-9router.mdx).
+
+## Where are environment variables documented?
+
+[Environment variables](./reference/environment.mdx). `.env.example` is the starter template.
+
+## How do I contribute?
+
+[Contributing](contributing). Pull requests target `main`.

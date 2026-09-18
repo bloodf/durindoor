@@ -2,10 +2,10 @@
 
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
-import { CONSTELLATION, REGISTRY_PROVIDER_COUNT, constellationLogo } from "../content.js";
+import { CONSTELLATION, constellationLogo } from "../content.js";
 import ThreeStage from "../threeui/ThreeStage.jsx";
 import { BrandMark } from "../ui/chrome.jsx";
-import { Reveal, SectionHeader } from "../ui/primitives.jsx";
+import { DocsCta, Reveal, SectionHeader } from "../ui/primitives.jsx";
 
 const RINGS = [
   { id: "inner", radius: 20, duration: 70 },
@@ -40,14 +40,14 @@ export default function Constellation() {
         <div className="constellation-copy">
           <SectionHeader
             align="start"
-            eyebrow={t("The fellowship")}
-            title={<span id="providers-title">{t("Every provider, bound to one ring")}</span>}
-            lead={t("Connect OAuth subscriptions, API keys, web cookies, OpenAI- or Anthropic-compatible endpoints and local runtimes. Tools never learn which one answered.")}
+            eyebrow={t("Providers")}
+            title={<span id="providers-title">{t("OAuth plans, API keys, cookies, and local runtimes")}</span>}
+            lead={t("Claude Code, Codex, Gemini CLI, Kiro, Cursor, and GitHub Copilot log in through OAuth. Compatible URLs and local runtimes sit next to them.")}
           />
           <Reveal as="dl" className="constellation-facts">
             <div>
-              <dt>{t("Registry")}</dt>
-              <dd>{REGISTRY_PROVIDER_COUNT}{" "}{t("providers")}</dd>
+              <dt>{t("OAuth")}</dt>
+              <dd>{t("Claude, Codex, Gemini CLI, Kiro, Cursor, Copilot")}</dd>
             </div>
             <div>
               <dt>{t("Custom nodes")}</dt>
@@ -58,6 +58,7 @@ export default function Constellation() {
               <dd>{t("No remote account")}</dd>
             </div>
           </Reveal>
+          <DocsCta href="/docs/providers" />
         </div>
 
         <Reveal className="constellation-stage">

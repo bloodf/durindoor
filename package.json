@@ -26,6 +26,8 @@
     "check:registry-index": "node scripts/gen-registry-index.mjs --check",
     "catalog:diff": "node scripts/model-catalog-diff.mjs",
     "check:docs": "node scripts/check-docs.mjs",
+    "gen:provider-catalog": "node scripts/gen-provider-catalog.mjs",
+    "check:provider-catalog": "node scripts/gen-provider-catalog.mjs --check",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
     "test:ui": "playwright test --config playwright.config.mjs",

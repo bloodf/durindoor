@@ -1,0 +1,133 @@
+---
+title: Contributing
+description: Setup, branches, Conventional Commits, required gates, and the pull request checklist.
+icon: GitPullRequest
+---
+
+Open an issue before large changes. Pull requests target `bloodf/durindoor:main`. Do not send PRs to `decolua/9router:dev` from this fork.
+
+One focused branch per change. A behaviour change needs a doc update and a test. Pure docs and CI edits can skip tests. Read the [Code of Conduct](https://github.com/bloodf/durindoor/blob/main/CODE_OF_CONDUCT.md) and [security policy](https://github.com/bloodf/durindoor/blob/main/.github/SECURITY.md) first.
+
+<Cards>
+  <Card title="Local development" href="local-development" description="Dev server on 20127, lint, anti-slop, Storybook, and Playwright." />
+  <Card title="Architecture" href="architecture" description="Request lifecycle, combo fallback, OAuth refresh, and persistence." />
+  <Card title="Provider registry" href="provider-registry" description="Registry files, generated index, and npm run gen:registry-index." />
+  <Card title="Translators" href="translators" description="OpenAI pivot, direct routes, schema constants, and RTK fail-open." />
+  <Card title="Testing" href="testing" description="Vitest in tests/, baseline scripts, and credential-backed real runs." />
+  <Card title="Release process" href="release-process" description="Release Prepare, Release Tag, npm publish, and rollback." />
+  <Card title="Upstream sync" href="upstream-sync" description="Watch list, port(upstream) subjects, and upstream-watch.yml." />
+  <Card title="Design system" href="design-system" description="Durin DS tokens and primitives a contributor actually touches." />
+  <Card title="Provider brand assets" href="provider-brand-assets" description="Logo policy and provenance for provider marks." />
+  <Card title="Postgres migrations" href="postgres-migrations" description="SQLite-to-PG generator and check:postgres-migrations." />
+</Cards>
+
+## Requirements
+
+- Node.js `20.20.2` (`.nvmrc` and `package.json` `engines.node`)
+- npm `10.8.2` (`packageManager` and `engines.npm`)
+- Git
+
+## Setup
+
+<Steps>
+<Step>
+Pin Node, then install both packages.
+
+```bash
+nvm use
+npm ci --no-audit --no-fund
+cd tests && npm ci --no-audit --no-fund
+```
+
+The Vitest suite is a separate package under `tests/`. Root `package.json` has no `test` script.
+
+</Step>
+<Step>
+Keep runtime storage off the operator database.
+
+```bash
+export HOME="$PWD/.dev-home"
+export DATA_DIR="$PWD/.data-dev"
+mkdir -p "$HOME" "$DATA_DIR"
+```
+
+Default `DATA_DIR` is `~/.9router` (or `%APPDATA%\9router` on Windows). Do not point development commands at that tree. Leave `~/.9router` and `~/.9router-backup-*.tar` alone.
+
+</Step>
+<Step>
+Branch from current `origin/main`. Make one focused change. Add docs and tests when behaviour changes. Run the gates below. Open a pull request against `main` and fill [`.github/PULL_REQUEST_TEMPLATE.md`](https://github.com/bloodf/durindoor/blob/main/.github/PULL_REQUEST_TEMPLATE.md).
+
+</Step>
+</Steps>
+
+Postgres engine PRs also use [`.github/pr-templates/postgres-engine.md`](https://github.com/bloodf/durindoor/blob/main/.github/pr-templates/postgres-engine.md).
+
+## Commit messages
+
+[`.commitlintrc.cjs`](https://github.com/bloodf/durindoor/blob/main/.commitlintrc.cjs) extends `@commitlint/config-conventional` and adds `port`, `merge`, and `sync`.
+
+```text
+type(scope): short description
+```
+
+Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `ci`, `chore`, `revert`, `merge`, `port`, `sync`.
+
+Rules that bite:
+
+| Rule | Setting |
+| --- | --- |
+| `subject-max-length` | 100 characters of subject text (the type/scope prefix is not counted; `header-max-length` is off) |
+| `body-max-line-length` | 200 (warning) |
+| `subject-empty` / `type-empty` | error |
+| `subject-case` | off |
+
+`port` scopes used in this fork:
+
+- `port(upstream): #<N> - <title>` for 9router PR ports
+- `port(omniroute): <title>` for OmniRoute ports
+
+Upstream release-tag subjects matching `^# v\d+\.\d+\.\d+ \([^)]+\)$` skip every commitlint rule. DurinDoor `sync:` commits still have to pass.
+
+Before you push:
+
+```bash
+npx commitlint --from=origin/main --to=HEAD
+```
+
+Squash-merge uses the PR title as the commit subject. Check that title the same way:
+
+```bash
+printf '%s\n' 'docs: describe the change' | npx commitlint
+```
+
+Do not push to `main`. Force-push only on the PR branch.
+
+## Required gates
+
+```bash
+npm run lint
+npm run build
+npm run check:docs
+npm run check:agent-index
+npm run check:registry-index
+npm run catalog:diff
+cd tests && npm run test:ci
+```
+
+`npm run lint` is `eslint src` then `lint:anti-slop`. Husky `pre-commit` runs lint-staged (eslint on staged `src/**/*.{js,jsx,mjs}`) and then `lint:anti-slop` on its own. Zero oxlint diagnostics. Do not baseline them.
+
+`test:ci` must not add lines to `tests/__baseline__/known-fails.txt`. That file is empty in this tree, so every failing assertion is a regression.
+
+CI on pull requests to `main` runs `.github/workflows/ci.yml` (lint and build), `.github/workflows/test.yml` (Vitest plus the baseline gate), and `.github/workflows/commitlint.yml`.
+
+The PR body lists scope, tests, docs, and baseline impact. Reviewers check correctness, migration and credential safety, provider compatibility, tests, documentation, baseline impact, and unresolved review threads. Bot review comments are advisory; verify each concern before changing code.
+
+## Documentation
+
+Docs in this site are MDX under `docs/`. The public build lives in `website/`. Link to one canonical page instead of copying procedures. Use repository-relative links in Markdown files and `YOUR_DURINDOOR_API_KEY` / `CHANGE_ME` placeholders, never real credentials. Run `npm run check:docs`.
+
+Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX.md`. Run `npm run gen:registry-index` and `npm run gen:agent-index`. Those flows are on [Provider registry](./provider-registry.mdx). Translator work is on [Translators](./translators.mdx). The Vitest layout is on [Testing](./testing.mdx).
+
+## License
+
+By contributing, you agree that your contributions are licensed under the MIT License.

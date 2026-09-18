@@ -1,0 +1,38 @@
+---
+title: API key scoping
+description: Restrict a DurinDoor API key to a subset of provider accounts.
+---
+
+Each API key can be limited to named provider-connection rows. A key with no join rows stays unrestricted, including legacy `sk-<8 hex>` keys. You opt in by assigning at least one connection.
+
+The join table is `apiKeyProviderConnections(apiKeyId, connectionId)` (migration 014). `apiKeys.policy.allowedModels` is a separate allowlist. The two stack. There is no `apiKeys.scope` or `apiKeys.connections` column.
+
+Minting and expiry stay on [API keys](../guides/api-keys.mdx). Dashboard **API Keys** (`/dashboard/keys`) exposes the same list as **Provider accounts**. The field hint is "Leave empty for unrestricted access." An empty selection shows "No scoped accounts" and "This key can route through every provider account."
+
+## Zero-row rule
+
+Zero relation rows means every provider account. Sending `providerConnectionIds: []` deletes the rows and restores that default. Omitting the field on `PUT /api/keys/[id]` leaves the current scope.
+
+Ids are a deduplicated array of live `providerConnections.id` values. A bad shape, a missing id, or a duplicate returns HTTP 400 and writes nothing.
+
+## Atomic write
+
+`createApiKey` and `updateApiKey` accept `providerConnectionIds`. When the field is present, the key row and the join replace run in one SQLite transaction. Missing connections abort before commit.
+
+## Deletion guard
+
+Deleting a provider connection (or a provider node, which cascades) that is the last scoped account for a key would silently widen that key. The repo rejects the delete with HTTP 409 and `API_KEY_SCOPE_WOULD_BROADEN`.
+
+Clear the restriction first: dashboard keys UI, or `PUT /api/keys/[id]` with `providerConnectionIds: []`. Then retry the delete. The guard runs inside `deleteProviderConnection` and `deleteProviderConnectionsByProvider`, so single, bulk, and node deletes all hit it.
+
+## HTTP
+
+| Method | Behaviour |
+| --- | --- |
+| `GET /api/keys` | Each key includes `providerConnectionIds`. The payload also has `providerConnections`: `{ id, name, provider }` options. No credentials. |
+| `GET /api/keys/[id]` | Same shape for one key. |
+| `POST /api/keys` | Optional `providerConnectionIds`. Secret mint and machine id are unchanged. |
+| `PUT /api/keys/[id]` | Optional `providerConnectionIds`. Omit to keep, `[]` to clear. |
+| `DELETE /api/keys/[id]` | Removes the key. Join rows cascade (`ON DELETE CASCADE`). |
+
+Dashboard **API Keys** is the usual editor. Use one key per tool so a scoped leak cannot ride every account on the box.

@@ -1,0 +1,68 @@
+---
+title: Headroom
+description: Optional Headroom compression proxy, managed venv, timeout, and setup diagnostics.
+---
+
+Headroom is an optional Python compression proxy. When it is enabled and reachable, chatCore sends eligible translated requests to it. When it is down or the call fails, the gateway continues uncompressed.
+
+Open **Dashboard → Headroom** (`/dashboard/headroom`) for the proxy UI. Start, stop, extras, and timeout live on **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/settings`). Token totals are on **Dashboard → Token Saver → Statistics**.
+
+`headroomEnabled` defaults to false. `headroomUrl` defaults to `HEADROOM_URL` or `http://localhost:8787`. `headroomCompressUserMessages` defaults to false (tool results and similar blocks are the usual target). `headroomTimeoutMs` defaults to 15000. The settings API accepts whole milliseconds from 1000 through 120000. Invalid values that reach the compression layer fail safe to 15000.
+
+Headroom makes one proxy call. It rejects CCR markers, explicit error-tool results, reordered or identity-changing OpenAI messages, skipped/no-gain/conflicting token results, and candidates that shrink the serialized request by five percent or less.
+
+## Python and extras
+
+`headroom-ai` requires Python 3.10 or newer. There is no upper bound.
+
+DurinDoor installs these extras by default: `proxy` (the HTTP compression proxy), `code` (Tree-sitter AST compression), `ml` (Kompress-v2). Auto-configure asks for `headroom-ai[proxy,code,ml]`.
+
+## Managed venv
+
+DurinDoor owns `${DATA_DIR}/headroom/venv` (plus `proxy.pid`, `proxy.log`, `install.log`, and `events.jsonl` next to it). Default `DATA_DIR` is `~/.9router`. The service uses this venv so it does not depend on a user `~/.local` install and does not fight PEP 668 on a distro Python.
+
+`uv tool` and `pipx` installs are detected and reported. They are never started or modified: those environments have no `pip` for extras, and they usually live under a home directory the service user cannot use. Remove a stale tool install yourself (`uv tool uninstall headroom-ai` or `pipx uninstall headroom-ai`) after the managed venv works.
+
+Build the venv from Token Saver when the dashboard offers that repair, or by hand:
+
+```bash
+python3 -m venv "$DATA_DIR/headroom/venv"
+"$DATA_DIR/headroom/venv/bin/python" -m pip install --upgrade 'headroom-ai[proxy,code,ml]'
+```
+
+On Windows the interpreter is `Scripts\python.exe` under that venv.
+
+## Diagnostics
+
+When setup cannot continue, Token Saver names a code and a repair. Common codes:
+
+| Code | Meaning |
+| --- | --- |
+| `NO_SUPPORTED_PYTHON` | No Python 3.10+ visible to the service. |
+| `PYTHON_USER_SCOPED_ONLY` | Interpreter is only under a user home. |
+| `VENV_TOOLS_MISSING` | `venv` / `ensurepip` missing. Install `python3.<minor>-venv`. |
+| `VENV_CREATE_FAILED` | Venv create failed for another reason. |
+| `INSTALL_FAILED` / `INSTALL_TIMEOUT` | `pip install` failed or hit the safety timeout. |
+| `PEP668` | Install tried a distro-managed interpreter. Use the managed venv. |
+| `EXTRA_WHEEL_UNAVAILABLE` | No wheel for an extra on that Python minor. |
+| `NOT_INSTALLED` | No usable `headroom` binary. |
+| `EARLY_EXIT` | Proxy started and exited before ready. |
+| `EXTERNAL_PROXY` | URL is not the managed loopback proxy. |
+| `STOP_FAILED` | Could not stop the managed process. |
+| `INTERNAL_ERROR` | Unexpected setup error. |
+
+A user-scoped install on PATH is reported and not used.
+
+`POST /api/headroom/start` and `POST /api/headroom/stop` manage the process. `GET /api/headroom/status` is the probe. `POST /api/headroom/extras` installs extras. `/api/headroom/proxy/[...path]` is the dashboard reverse-proxy to the Headroom UI, using `headroomTimeoutMs`.
+
+Auto-configure: if a saved loopback URL is unreachable, it recovers to `http://localhost:8787`. After start it polls `/health`. If the new process never answers, auto-configure stops only that process and writes no enable/URL changes. A proxy that was already running is left alone.
+
+## Worked example
+
+1. Confirm a system Python 3.10+ (`python3 --version`).
+2. On Token Saver → Settings, start Headroom (or run the venv commands above).
+3. Wait until status says the proxy is reachable, then enable `headroomEnabled`.
+4. Send a large chat request. Statistics should show a Headroom token delta when the proxy accepted the body.
+5. Stop the proxy and send again. The request still completes. Logs show a Headroom skip, not a client error.
+
+If the dashboard says Python is missing while `python3` works in your shell, the service user cannot see that interpreter. Install a system Python the DurinDoor process can execute, then retry setup.

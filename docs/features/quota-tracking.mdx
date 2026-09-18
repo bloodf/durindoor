@@ -1,0 +1,70 @@
+---
+title: Quota tracking
+description: Provider snapshots, preflight skip, ranking, reservations, and Claude or Codex auto-ping.
+---
+
+DurinDoor stores two different kinds of numbers. Local usage (`usageHistory`) is what this install counted. Provider snapshots are what the upstream account reported. Routing reads snapshots. Invoices still come from the provider.
+
+Open **Dashboard → Quota Tracker** (`/dashboard/quota`) for remaining capacity, cooldowns, and reset hints. The same `ProviderLimits` widget also sits on **Dashboard → Usage**. Auto-ping toggles live on **Dashboard → Providers → (Claude or Codex connection)** and on that limits view.
+
+## What a snapshot is
+
+Schema version 7 keeps `providerQuotaSnapshots` (one current row per connection, account/resource, and dimension) and `quotaFetchStates` (last refresh outcome). A row is `bounded`, `unlimited`, or `unknown`. Missing data is not treated as unlimited or exhausted. Zero is a valid remaining amount.
+
+A snapshot is fresh while `observedAt <= now < staleAt`. Default freshness is 60 seconds, and never past an earlier reset or cooldown. Write clocks accept at most five minutes of skew.
+
+Identity is the non-secret connection id plus namespaced account, resource, dimension, and source keys. API keys, OAuth tokens, emails, and raw bodies are not used as identity.
+
+Deleting a connection cascades its quota rows. Changing an existing connection id to a different provider is rejected.
+
+## Who has a provider API
+
+These families write snapshot rows through the shared tracker (HTTPS only, 10s timeout, 1 MiB body cap, no credential-bearing URLs, redirects rejected):
+
+Gemini CLI, Antigravity / `agy`, Codex, Claude, GitHub Copilot, Cursor (WorkOS dashboard JSON, not Connect/protobuf), Kiro, Kimi Coding, GLM / GLM CN / Z.AI / GLM T, MiniMax / MiniMax CN, CodeBuddy CN, Bailian Coding Plan, Qoder, Qoder CN, Vercel AI Gateway, Crof, DeepSeek.
+
+These do not create snapshot rows: gemini API-key, qwen, iFlow, xAI, Xiaomi MiMo, Grok Web, Ollama / Ollama Cloud, Vertex billing, OpenCode variants, NanoGPT (absent from the registry). Amazon Q is represented by Kiro. Local RPM/RPD estimates and usage-history spend are not snapshots.
+
+Successful observations cache for at most 60 seconds. Equal callers share one in-flight refresh. The cache key is provider, connection id, and connection revision.
+
+## Preflight
+
+Before a chat dispatch, each account candidate is scored against persisted snapshots. The evaluator does not call the provider. Fresh `available` and `low` stay eligible. Fresh `exhausted` or `cooldown` on the exact resource is skipped. Missing, stale, unknown, malformed, and foreign-source rows fail open.
+
+Gates:
+
+- `all-required`: skip if any selected constraint blocks.
+- `any-sufficient`: eligible if any selected pool is free (Kiro, CodeBuddy, Qoder CN, DeepSeek).
+- `first-present`: use the first configured bucket that exists (Codex prefers an exact model or family bucket, then account).
+
+`scope:account` applies to every model. `model:<id>` matches an exact catalog, upstream, or configured quota-family resource. No substring matching.
+
+A later coherent success writes an empty watermark so an older in-flight 429 cannot resurrect a lock.
+
+## Ranking and reservations
+
+Schema version 8 adds `quotaReservations`. Those rows are local tickets for one physical dispatch, not provider facts. A retry or proxy-to-direct fallback releases the old ticket before taking a new one.
+
+When several accounts have comparable fresh quota, the score is 1000 points: remaining headroom 600, in-flight reservation pressure 200, health 125, configured priority 75. Ties use priority, reservation load, original order, then a hashed identity. Accounts unused for five minutes enter a starvation tier so they are not starved forever. Unknown or stale quota keeps the established order.
+
+Atomic capacity always needs one remaining request on a fresh bounded `requests:*` window. The optional routing floor (off by default, 2% remaining) only applies to fresh normalized ratios. Precedence is connection/window, then provider/window, then global.
+
+`sql.js` cannot coordinate this across processes; file-backed SQLite adapters can on one host. Separate hosts need an external coordinator.
+
+## Auto-ping
+
+Opt-in per active Claude or Codex OAuth connection. DurinDoor sends a minimal request only when the five-hour session window is ready to restart. Codex also waits when a longer blocking quota is exhausted. API-key connections and other providers are never pinged.
+
+The scheduler uses the same snapshots and tracker. A ping counts as success only after a native Claude `message_stop` or a valid Codex Responses terminal. Empty or truncated 200 streams do not update ping metadata. A request already accepted upstream cannot be recalled.
+
+## Cost
+
+Cost estimates need catalog prices and token counts. Reasoning tokens are a subset of output, not an extra charge. Treat the number as an operational hint. The provider remains the billing authority.
+
+Resetting local usage does not reset upstream quota. Back up `DATA_DIR` first if you still need the history.
+
+## Worked example
+
+Two Codex OAuth connections. The first is on a five-hour window that the Quota Tracker shows as exhausted until 18:00 UTC. Send `model: "codex/gpt-5"` (or your combo that lists that member). Preflight skips the exhausted row and dispatches the second connection. Usage shows the second account. No provider 429 is fabricated for the skip.
+
+If both are exhausted and no other combo member remains, the client sees the existing all-rate-limited response, with `Retry-After` only when every blocking account has a known deadline.

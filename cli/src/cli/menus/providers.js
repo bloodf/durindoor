@@ -592,7 +592,6 @@ async function handleAddOAuthConnection(providerId) {
   clearScreen();
   const provider = ALL_PROVIDERS[providerId];
   
-  // Step 1: Get auth URL
   showStatus("Requesting authorization URL...", "info");
   const authResult = await api.getOAuthAuthUrl(providerId);
   
@@ -614,7 +613,6 @@ async function handleAddOAuthConnection(providerId) {
     return;
   }
   
-  // Step 2: Show URL and instructions
   clearScreen();
   showHeader("🔐 OAuth Login", `Providers > ${provider.name} > Add Connection`);
   
@@ -637,7 +635,6 @@ async function handleAddOAuthConnection(providerId) {
     return;
   }
   
-  // Step 3: Parse callback URL and extract code
   let code, urlState, error;
   try {
     const url = new URL(callbackUrl.trim());
@@ -663,7 +660,6 @@ async function handleAddOAuthConnection(providerId) {
     return;
   }
   
-  // Step 4: Exchange code for tokens
   console.log();
   showStatus("Exchanging code for tokens...", "info");
   const exchangeResult = await api.exchangeOAuthCode(providerId, {
@@ -690,7 +686,6 @@ async function handleAddDeviceCodeConnection(providerId) {
   clearScreen();
   const provider = ALL_PROVIDERS[providerId];
   
-  // Step 1: Request device code
   showStatus("Requesting device code...", "info");
   const deviceResult = await api.getOAuthDeviceCode(providerId);
   
@@ -714,7 +709,6 @@ async function handleAddDeviceCodeConnection(providerId) {
     return;
   }
   
-  // Step 2: Show instructions
   clearScreen();
   const deviceUrl = verification_uri_complete || verification_uri;
   showHeader("📱 Device Login", `Providers > ${provider.name} > Add Connection`);
@@ -731,7 +725,6 @@ async function handleAddDeviceCodeConnection(providerId) {
   console.log(`  ${COLORS.dim}Waiting for authorization...${COLORS.reset}`);
   console.log();
   
-  // Step 3: Poll for token
   const maxAttempts = 60; // 5 minutes (5s interval)
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -909,7 +902,6 @@ async function handleAddCustomNode() {
   clearScreen();
   console.log("\n➕ Add Custom Provider\n");
 
-  // Step 1: Select type
   const typeChoices = CUSTOM_NODE_TYPES.map((t, i) => `  ${i + 1}. ${t}`).join("\n");
   console.log(`Select type:\n${typeChoices}\n`);
   const typeInput = await prompt("Type (1/2): ");
@@ -919,7 +911,6 @@ async function handleAddCustomNode() {
   }
   const type = CUSTOM_NODE_TYPES[typeIdx];
 
-  // Step 2: Inputs
   const name = await prompt("Name: ");
   if (!name) { showStatus("Cancelled", "warning"); await pause(); return; }
 
@@ -929,7 +920,6 @@ async function handleAddCustomNode() {
   const baseUrl = await prompt("Base URL (e.g. https://api.example.com/v1): ");
   if (!baseUrl) { showStatus("Cancelled", "warning"); await pause(); return; }
 
-  // Step 3: API type (OpenAI only)
   let apiType;
   if (type === "openai-compatible") {
     const apiTypeChoices = OPENAI_API_TYPES.map((t, i) => `  ${i + 1}. ${t}`).join("\n");

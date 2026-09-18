@@ -963,7 +963,6 @@ const PROVIDERS = {
       const registerClientUrl = `https://oidc.${region}.amazonaws.com/client/register`;
       const deviceAuthUrl = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
-      // Step 1: Register client with AWS SSO OIDC
       const registerRes = await fetch(registerClientUrl, {
         method: "POST",
         headers: {
@@ -987,7 +986,6 @@ const PROVIDERS = {
 
       const clientInfo = await registerRes.json();
 
-      // Step 2: Request device authorization
       const deviceRes = await fetch(deviceAuthUrl, {
         method: "POST",
         headers: {

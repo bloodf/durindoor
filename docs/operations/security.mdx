@@ -1,0 +1,88 @@
+---
+title: Security
+description: JWT_SECRET, passwords, API_KEY_SECRET, MACHINE_ID_SALT, rate limits, and dashboard exposure.
+---
+
+DurinDoor stores provider credentials and proxies model traffic. Treat `DATA_DIR` as a secret store.
+
+<Callout type="warn">
+Do not publish the dashboard on a public address with the built-in password `123456`. Remote login on that password returns 403 before a session cookie is issued.
+</Callout>
+
+## Secrets
+
+### JWT_SECRET
+
+Signs dashboard session cookies (HS256, 24-hour `exp` and cookie `Max-Age`). Resolution order:
+
+1. `process.env.JWT_SECRET`
+2. Existing `DATA_DIR/jwt-secret` (legacy file, warning on boot)
+3. Throw. Fresh installs do not mint that file.
+
+Changing the secret invalidates every dashboard session. Generate with `openssl rand -hex 32`.
+
+### INITIAL_PASSWORD
+
+Used only when no password hash is stored. Default is `123456`. `validateDashboardPassword` rejects that string as a new password (minimum 6 characters, not the built-in default).
+
+Remote clients that still have the built-in password never get a session cookie. A loopback login gets a five-minute, IP-bound, one-shot proof that only `POST /api/auth/change-password` accepts. Set `INITIAL_PASSWORD` or store a hash before any remote access.
+
+The login hint for the default password shows only when the effective password is still the built-in value. A stored custom hash or OIDC mode hides it.
+
+### API_KEY_SECRET
+
+HMAC secret for four-part keys `sk-<machineId>-<keyId>-<crc8>`. Order:
+
+1. `process.env.API_KEY_SECRET`
+2. `DATA_DIR/api-key-secret` minted on first boot when `DATA_DIR` is set (mode `0600`)
+3. Throw
+
+Keep it stable across deploys. A new secret makes existing four-part keys fail `parseApiKey`. Two-part `sk-<8 hex>` rows are not HMAC-bound. Full key shapes: [API keys](../guides/api-keys.mdx).
+
+### MACHINE_ID_SALT
+
+Salt for `getConsistentMachineId`. Default `endpoint-proxy-salt`. The 16-character id is embedded in new API keys and stored in `DATA_DIR/machine-id`. Changing the salt changes the derived id for new keys. Leave it alone on a running install.
+
+## Rate limits
+
+Dashboard login: five failures from one IP, then a lock of 30s, 2m, 10m, 30m. A quiet hour since the last fail resets the bucket. At most 5000 IPs are tracked. HTTP 429 includes `Retry-After`.
+
+Client IP for that limiter comes from `custom-server.js` peer proof (`x-9r-real-ip`). Without the wrapper, every caller shares the `unknown` bucket so spoofed `X-Forwarded-For` cannot rotate out of lockout. `TRUST_PROXY=true` is honoured only when that proof is present.
+
+Provider 429 backoff (account/model lock after fallback) reads `BACKOFF_BASE_MS` (default 2000), `BACKOFF_MAX_MS` (default 300000, cap 7 days), and `BACKOFF_MAX_LEVEL` (default 15). A max below the base restores the whole default schedule.
+
+## Exposing the dashboard
+
+`custom-server.js` binds `127.0.0.1` when `HOSTNAME` is unset. The CLI default bind is `0.0.0.0`. Docker compose sets `HOSTNAME: "0.0.0.0"`. Publishing that address is an operator choice.
+
+Before anything other than loopback can reach `/dashboard`:
+
+1. Set a strong `INITIAL_PASSWORD` (or a stored hash).
+2. Set stable `JWT_SECRET` and `API_KEY_SECRET`.
+3. Terminate TLS in front. Set `AUTH_COOKIE_SECURE=true` or a `https:` `BASE_URL`.
+4. Restrict who can hit the dashboard: VPN, firewall, reverse-proxy auth, or a trusted network.
+5. Mint one DurinDoor API key per tool. Do not hand provider keys to clients.
+6. Leave `ENABLE_REQUEST_LOGS=false` except for a short debug window.
+7. Back up `DATA_DIR`.
+
+`AUTH_COOKIE_SECURE=true` forces the `Secure` flag. `TRUST_PROXY=true` only when the reverse proxy overwrites forwarding headers and traffic goes through `custom-server.js`. Cross-origin login is rejected (`hasExactRequestOrigin`). Tunnel dashboard access also needs `settings.tunnelDashboardAccess === true`.
+
+If the proxy rewrites `Host` to an internal name, set `BASE_URL` and `NEXT_PUBLIC_BASE_URL` to the public origin so Origin checks match.
+
+## Management routes
+
+`GET /api/headroom/status` and `GET /api/headroom/stats` use the management API policy because they expose the configured proxy URL, managed process and circuit state, and usage statistics. Remote callers need a dashboard JWT, a machine-bound CLI token, or a DurinDoor application API key, including when `requireLogin` is false. Direct loopback requests keep open-dashboard access when login is disabled.
+
+The management control endpoint `POST /api/mcp/control` is exempt from the loopback-only MCP plugin branch. It requires a CLI token, API key, or dashboard JWT, including from a remote host. A credential-free loopback caller is accepted only while `requireApiKey` is off and only when the request carries no foreign `Origin`, so a browser page cannot drive it cross-origin. The MCP gateway (`/api/mcp-gateway`) uses gateway keys, not that local-only policy.
+
+Covered route families and exclusions: [Management API](../reference/management-api.mdx). Control tools: [MCP control](../features/mcp-control.mdx).
+
+## API keys and scoping
+
+Create separate keys, short expiry when you can, revoke unused ones. The create response is the one body that always includes the full secret. Scope a key to named provider accounts: [API key scoping](./api-key-scoping.mdx).
+
+## If a secret leaks
+
+DurinDoor API key: revoke it in the dashboard, mint a replacement, update the client, read usage.
+
+Provider credential: revoke it at the provider, update the DurinDoor connection, check the provider's billing log.

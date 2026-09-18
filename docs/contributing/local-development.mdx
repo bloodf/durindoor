@@ -1,0 +1,168 @@
+---
+title: Local development
+description: Dev server on port 20127, lint including anti-slop, Storybook, and Playwright.
+---
+
+Pin Node.js `20.20.2` and npm `10.8.2`. You also need Git, and a browser if you are changing the dashboard.
+
+## Install
+
+```bash
+nvm use
+npm ci --no-audit --no-fund
+cd tests && npm ci --no-audit --no-fund
+```
+
+## Isolate development data
+
+<Callout type="warn">
+Default `DATA_DIR` is `~/.9router`. Point `HOME` and `DATA_DIR` at disposable directories before any command that can start the app or inspect storage.
+</Callout>
+
+Do not point development commands at an operator database.
+
+```bash
+export HOME="$PWD/.dev-home"
+export DATA_DIR="$PWD/.data-dev"
+mkdir -p "$HOME" "$DATA_DIR"
+```
+
+Those directories hold credentials and databases. Keep them untracked. Delete them only after you confirm they are disposable. Default storage without `DATA_DIR` is `~/.9router`.
+
+## Run the app
+
+```bash
+npm run dev
+```
+
+`npm run dev` is `node scripts/next-owner-server.cjs --dev --port 20127`. The wrapper binds `127.0.0.1` unless `HOSTNAME` is set. Open `http://localhost:20127/dashboard`.
+
+Production from source:
+
+```bash
+npm run build
+npm start
+```
+
+`npm start` runs `.next/standalone/custom-server.js` on port `20128` unless `PORT` is set. CLI starts also use `20128`.
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| `src/app` | Next.js dashboard and API routes. |
+| `src/sse` | Client request handlers and routing entry points. |
+| `open-sse` | Provider executors, translators, modality handlers, fallback, and usage. |
+| `open-sse/providers/registry` | Provider definitions, endpoints, models, aliases, and capabilities. |
+| `src/lib/db` | Schema, migrations, repositories, and backups. |
+| `src/lib/oauth` | OAuth flows and token handling. |
+| `src/mitm` | Optional interception and certificate logic. |
+| `cli` | Published `durindoor` package. |
+| `website` | Public docs site and mocked dashboard demo. |
+| `docs` | MDX documentation for this site. |
+| `tests` | Vitest suite and fail-closed baseline gate. |
+
+## Lint and anti-slop
+
+```bash
+npm run lint
+```
+
+That command is `eslint src && npm run lint:anti-slop`. `lint:anti-slop` rebuilds the plugin and runs oxlint:
+
+```bash
+node scripts/build-anti-slop-plugin.mjs && node scripts/check-anti-slop.mjs
+```
+
+Husky `pre-commit` runs lint-staged, then `npm run lint:anti-slop`. lint-staged runs eslint with `--max-warnings=0` on staged `src/**/*.{js,jsx,mjs}`. Either step failing blocks the commit.
+
+The plugin is vendored at `tools/oxlint/anti-slop/`. It is not an npm package. oxlint loads `tools/oxlint/anti-slop/index.bundle.js`. After you edit the TypeScript sources, rebuild with `node scripts/build-anti-slop-plugin.mjs` (the first command inside `lint:anti-slop`).
+
+The gate is zero diagnostics. `scripts/check-anti-slop.mjs` reprints oxlint output and exits 1. Do not baseline. `.oxlintrc.json` sets every generic anti-slop rule to `"error"`. Effect rules stay off. Ignore patterns cover editor dirs, `.omc/`, `tools/oxlint/anti-slop/**`, `node_modules`, `.next`, coverage, and test files (`tests/**`, `**/*.{test,spec}.*`). Production sources including `src/`, `open-sse/`, `cli/`, and `scripts/` must stay clean.
+
+`typeof` is banned (`anti-slop/no-runtime-typeof`). Use `src/shared/utils/typeChecks.js` or `typeChecks.cjs`: `isString`, `isNumber`, `isBoolean`, `isFunction`, `isObject`, `isUndefined`, `isSymbol`, `isBigInt`, `isBrowser`, `runtimeTypeName`. Those helpers match ECMAScript `typeof` tags without using `typeof`.
+
+Do not put `shape` in identifier names (`anti-slop/no-shape-in-symbol-names`). Use domain words (`layout`, `payload`, `form`). For PropTypes, call `PropTypes["shape"](...)`.
+
+Refresh notes and the vendored SHA live in [tools/oxlint/anti-slop/VENDOR.md](https://github.com/bloodf/durindoor/blob/main/tools/oxlint/anti-slop/VENDOR.md). Current SHA: `6d538555cb151d4121ed51a27db81890eacf8ae9`.
+
+## Storybook
+
+```bash
+npm run storybook
+```
+
+That is `storybook dev -p 6006`. Open `http://localhost:6006`. Tokens and primitives live under `src/shared/ui/`. `npm run storybook:build` writes `storybook-static/`. Coverage against that build is `npm run check:storybook-coverage`.
+
+## Playwright
+
+`npm run test:ui` is `playwright test --config playwright.config.mjs`. A real run needs `DURIN_QA_HARD_DIR` set to an absolute path under `qa/runs`. The config throws if that variable is missing or points outside `qa/runs`.
+
+The intended runner is `tests/e2e/compose.yml`, which starts `tests/e2e/qa-child-entry.mjs`. That entry refuses to run unless `DURIN_QA_HARDENED=1`. Specs live in `tests/e2e`. Default workers: 1. Projects cover chromium, firefox, and webkit, each in dark and light, desktop and mobile.
+
+Storybook stories:
+
+```bash
+npm run test:storybook
+```
+
+That sets `DURINDOOR_QA_MODE=storybook` and runs `tests/e2e/storybook.spec.js`.
+
+## Focused tests
+
+Run Vitest from `tests/` so it picks up `vitest.config.js`:
+
+```bash
+cd tests
+npx vitest run --config vitest.config.js unit/example.test.js
+npx vitest run --config vitest.config.js translator/example.test.js
+```
+
+Translator tests that call `translateRequest` or `translateResponse` must import `translator/registerAll.js`. The CI gate and live provider runs are on [Testing](./testing.mdx).
+
+## Full checks
+
+```bash
+npm run lint
+npm run build
+npm run check:docs
+npm run check:agent-index
+npm run check:registry-index
+npm run catalog:diff
+cd tests && npm run test:ci
+```
+
+## Generated indexes
+
+After provider registry changes:
+
+```bash
+npm run gen:registry-index
+npm run check:registry-index
+```
+
+After provider or executor navigation changes:
+
+```bash
+npm run gen:agent-index
+npm run check:agent-index
+```
+
+Commit generated output when it changes. Do not hand-edit `open-sse/providers/registry/index.js` (header: `Auto-generated: static imports of all registry entries`) or `open-sse/AGENT-INDEX.md`. Details on [Provider registry](./provider-registry.mdx).
+
+## Debugging
+
+Use test data before turning these on:
+
+```bash
+LOG_LEVEL=DEBUG
+ENABLE_REQUEST_LOGS=true
+VALIDATE_OUTBOUND=false
+CURSOR_STREAM_DEBUG=1
+CURSOR_PROTOBUF_DEBUG=1
+DEBUG_MITM=1
+```
+
+`LOG_LEVEL` defaults to `INFO`. `ENABLE_REQUEST_LOGS` is on only when the value is the string `true`; request-log bodies are stored as `{ redacted: true, present, type, bytes }`, not payload text. `VALIDATE_OUTBOUND` is on unless the value is `false`. Cursor stream and protobuf logs print when those variables equal `"1"`. MITM debug logs print when `DEBUG_MITM` is set.
+
+Keep diagnostics opt-in. Disable them after diagnosis.

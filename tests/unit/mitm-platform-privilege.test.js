@@ -127,7 +127,7 @@ describe("MITM platform privilege boundaries", () => {
   });
 
   it("documents the fail-closed privileged-operation recovery contract", () => {
-    const troubleshooting = fs.readFileSync(path.join(repoRoot, "docs/troubleshooting.md"), "utf8");
+    const troubleshooting = fs.readFileSync(path.join(repoRoot, "docs/troubleshooting.mdx"), "utf8");
     expect(troubleshooting).toContain("MITM_PRIVILEGED_OPERATION_UNCERTAIN");
     expect(troubleshooting).toContain("~/.durindoor-mitm-state/redirect.json");
     expect(troubleshooting).toContain("%USERPROFILE%\\AppData\\Local\\DurinDoor\\mitm-state\\redirect.json");

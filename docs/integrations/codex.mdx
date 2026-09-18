@@ -1,0 +1,83 @@
+---
+title: Codex
+description: Point Codex CLI at DurinDoor through ~/.codex/config.toml and ~/.codex/auth.json.
+---
+
+Codex CLI is an OpenAI Responses client. DurinDoor exposes `POST /v1/responses` and `POST /v1/responses/compact`. The dashboard writes a provider slot Codex already knows as `9router`, with display name DurinDoor.
+
+You need the gateway running, a DurinDoor API key, a coding model or combo, and the `codex` CLI (`npm install -g @openai/codex`).
+
+## Dashboard apply
+
+Open **CLI Tools**, then **OpenAI Codex CLI / App** (`/dashboard/cli-tools/codex`). Apply `POST`s `/api/cli-tools/codex-settings` with `baseUrl`, `apiKey`, `model`, and optional `subagentModel`.
+
+The route reads both `~/.codex/config.toml` and `~/.codex/auth.json` before either write. A missing file is created. An existing file that cannot be parsed aborts the whole update with `refusing to overwrite it`. Fix or restore that file and Apply again. Other providers, MCP servers, policies, and ChatGPT tokens in those files stay as they were.
+
+On success it sets:
+
+- `model` to the selected id
+- `model_provider = "9router"`
+- `[model_providers.9router]` with `name = "DurinDoor"`, `base_url` (always with `/v1`), `wire_api = "responses"`
+- `[agents.subagent].model` to the subagent id, or the main model if you left subagent blank
+- `auth.json` `OPENAI_API_KEY` and `auth_mode = "apikey"`
+
+Localhost with no pasted key uses `sk_durindoor`. Reset removes the `9router` provider slot, the subagent table, and those auth fields, and clears root `model` / `model_provider` only when they still point at `9router`.
+
+## Manual config
+
+`~/.codex/config.toml`:
+
+```toml
+model = "provider/model-id"
+model_provider = "9router"
+
+[model_providers.9router]
+name = "DurinDoor"
+base_url = "http://localhost:20128/v1"
+wire_api = "responses"
+
+[agents.subagent]
+model = "provider/model-id"
+```
+
+`~/.codex/auth.json`:
+
+```json
+{
+  "auth_mode": "apikey",
+  "OPENAI_API_KEY": "YOUR_DURINDOOR_API_KEY"
+}
+```
+
+<Callout type="warn">
+Codex reads the key from `auth.json`, not from `config.toml`. Do not put `api_key` in the `9router` table.
+</Callout>
+
+To run Codex after Apply:
+
+```bash
+codex --model provider/model-id "Explain the test strategy for this project."
+```
+
+Generic OpenAI SDKs that are not Codex CLI still set `base_url` to `http://localhost:20128/v1` and the API key to the DurinDoor key. Codex CLI itself reads `base_url` from `[model_providers.9router]` and the key from `auth.json`. `OPENAI_API_KEY` lives in `auth.json`.
+
+## Responses and compact
+
+`POST /v1/responses` is the Responses API entry. An explicit `"stream": true` (or `Accept: text/event-stream`) opens an early SSE response so Codex does not drop the socket while a provider is still starting.
+
+`POST /v1/responses/compact` is the compact endpoint. The chat pipeline derives compact routing from that path. The original body and headers are preserved; the gateway does not inject a private routing field into client JSON.
+
+List models as Codex sees them: `GET /v1/models` with a Codex user-agent (`originator: codex_cli_rs` or `user-agent` matching `/codex/i`) returns `{ "models": [...] }` instead of the OpenAI `{ "object": "list", "data": [...] }` envelope. An `anthropic-version` header wins and returns the Anthropic envelope instead.
+
+## Legacy `9router` labels
+
+The provider id in `config.toml` is `9router`. That is the label Codex and this Apply path still write. `name` inside the table is `DurinDoor`. Incoming CLI configs with a `9router` section remain valid. The HTTP header `X-Msh-Platform: 9router` is also accepted.
+
+## Check it works
+
+```bash
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+Then run `codex --model provider/model-id "Reply with one short sentence."` and confirm the request on **Usage**. Invalid API key almost always means an upstream OpenAI key in `auth.json` instead of the DurinDoor key. Apply failing with `refusing to overwrite it` means `config.toml` or `auth.json` is not a parseable object.

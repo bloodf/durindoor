@@ -1,0 +1,14 @@
+{
+  "title": "Operations",
+  "description": "Startup, upgrades, data, Postgres, security, and API-key scoping.",
+  "icon": "Settings",
+  "pages": [
+    "index",
+    "startup",
+    "upgrading",
+    "data-management",
+    "postgres",
+    "security",
+    "api-key-scoping"
+  ]
+}

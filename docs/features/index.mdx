@@ -1,0 +1,19 @@
+---
+title: Features
+description: Routing, combos, quota tracking, MCP gateway and control, realtime, compression, and Headroom.
+icon: Sparkles
+---
+
+These pages cover the gateway behaviours that sit on top of a working provider connection: how a model string is resolved, how fallback chains run, how quota observations skip a spent account, and the optional sidecars (timeline, MCP, realtime, token savers, Headroom). Dashboard locations below match the sidebar in [Dashboard tour](../getting-started/dashboard-tour.mdx).
+
+<Cards>
+  <Card title="Smart routing" href="smart-routing" description="Model strings, credentials, translation, and account fallback." />
+  <Card title="Combos" href="combos" description="Named fallback chains, strategies, ceilings, and allow-lists." />
+  <Card title="Quota tracking" href="quota-tracking" description="Provider snapshots, preflight skip, ranking, and auto-ping." />
+  <Card title="Proxy timeline" href="proxy-timeline" description="Optional redacted hop log in a sidecar SQLite file." />
+  <Card title="MCP gateway" href="mcp-gateway" description="One JSON-RPC endpoint in front of registered MCP servers." />
+  <Card title="MCP control" href="mcp-control" description="JSON-RPC management tools for combos, connections, quota, and settings." />
+  <Card title="Realtime" href="realtime" description="Text WebSocket in the OpenAI Realtime shape. Audio is refused." />
+  <Card title="Compression" href="compression" description="RTK, the compression seam, Test Savers, and the bypass header." />
+  <Card title="Headroom" href="headroom" description="Optional Python compression proxy and the managed venv." />
+</Cards>

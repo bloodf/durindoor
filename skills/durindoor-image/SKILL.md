@@ -27,4 +27,4 @@ Required fields are `model` and `prompt`. Optional fields such as `n`, `size`, `
 
 JSON responses use OpenAI-compatible `data[].url` or `data[].b64_json`. The binary response mode returns image bytes.
 
-Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

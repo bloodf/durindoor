@@ -1,0 +1,19 @@
+---
+title: Reference
+description: API routes, management REST, environment variables, CLI, plugin manifests, and model limits.
+icon: FileText
+---
+
+Look up a `/v1` route, an environment variable, a CLI flag, a plugin manifest field, or a model context window. These pages follow the current source. They are not a getting-started path.
+
+The API page lists every `route.js` under `src/app/api/v1`. Clients still call `/v1/...`. Next rewrites that prefix onto `/api/v1`. Management REST under `/api/*` is a separate page. The other cards cover environment, the `durindoor` launcher, the plugin manifest, model limits, and the 9router cutover.
+
+<Cards>
+  <Card title="API" href="api" description="One row per /v1 route: method, body, streaming, providers." />
+  <Card title="Management API" href="management-api" description="Dashboard /api routes, credentials, exclusions, and curl examples." />
+  <Card title="Environment" href="environment" description="Variables from .env.example and process.env reads." />
+  <Card title="CLI" href="cli" description="durindoor launcher, flags, tray, and updates." />
+  <Card title="Provider plugin manifest" href="provider-plugin-manifest" description="GET /v1/provider-plugin-manifest JSON for sidecars." />
+  <Card title="Model limits" href="model-limits" description="Context window and max output from the resolver." />
+  <Card title="Migrating from 9router" href="migrating-from-9router" description="Legacy ids, data dir, and the one-shot cutover script." />
+</Cards>

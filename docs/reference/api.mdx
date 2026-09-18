@@ -1,0 +1,170 @@
+---
+title: API
+description: Method, path, body, streaming, and provider support for every /v1 route.
+---
+
+Point clients at `http://localhost:20128/v1`. Production listens on port `20128`. Next rewrites `/v1/:path*` to `/api/v1/:path*`, so the files live under `src/app/api/v1` while the public path stays `/v1`. A second rewrite maps `/v1/v1/:path*` onto the same handlers for clients that already put `/v1` in both the base URL and the path. `/codex/:path*` and `/responses` land on `POST /v1/responses`. `/v1beta` is a separate tree.
+
+This page has one row per `route.js` under `src/app/api/v1` (39 files). A listed route does not mean every connected provider can serve it. Pick a model id from `GET /v1/models` or `GET /v1/models/{kind}` for that capability.
+
+Key policy, minting, and lifetime caps are on [API keys](../guides/api-keys.mdx). SDK snippets are on [SDK examples](../guides/sdk-examples.mdx).
+
+## Authentication
+
+When **Require API Key** is on, handlers call `resolveClientApiKey` with `required: true`. Missing key: HTTP 401 `Missing API key`. Invalid or expired key: `Invalid API key`. Off, a missing key is local mode.
+
+Candidates, in order: `Authorization: Bearer`, `x-api-key`, `x-goog-api-key`, then the `key` query param. Anthropic-shaped clients often send `x-api-key`; that header is enough. Do not send upstream provider keys to these routes. Use a DurinDoor key from the dashboard.
+
+`POST /v1/chat/completions` and `POST /v1/messages` reject a non-JSON `Content-Type` with HTTP 415 before reading the body. Send `application/json`.
+
+## Request ids
+
+`withRequestCorrelation` stamps every wrapped response with `x-request-id`. The value is a UUID created for that request. A client `x-request-id` header is not read.
+
+JSON errors also put that id on the body: `error.request_id` for OpenAI-shaped `{ error: {...} }`, top-level `request_id` for Anthropic `{ type: "error", error: {...} }` and flat bodies. A validated upstream id, when present and different, is `error.upstream_request_id` or top-level `upstream_request_id`. It never replaces the server id. Successful JSON, binary, and SSE bodies pass through without a second parse for correlation.
+
+## Catalog
+
+`GET /v1` re-exports the models list. `GET /v1/models` returns chat/LLM rows by default (`object: "list"`). Send `anthropic-version` (header presence is enough) for the Anthropic list envelope. Codex CLI (`originator: codex_cli_rs` or a `codex` user-agent) gets `{ models: [...] }`.
+
+**Expose combos only** (Profile, Model catalog) makes `GET /v1/models` return configured combo names with `owned_by: "combo"`. Default is off. Web combos keep `kind` so search and fetch stay distinct. `HEAD /v1/models` returns 200 with an empty body so SDK probes do not wait for the full list.
+
+Capability filters live at `GET /v1/models/{kind}` for `image`, `tts`, `stt`, `embedding`, `image-to-text`, `web`, and `rerank`. `web` includes search and fetch. A single unknown segment still returns `Unknown model kind`. A provider-prefixed id (`GET /v1/models/cc/claude-sonnet-5`) returns that model object or HTTP 404 `error.code: "model_not_found"`. `HEAD` on those paths is a route probe: known kinds and provider-prefixed paths return 200 without proving the model exists.
+
+Rows keep callable `id` and `owned_by`. Presentation may add `name`, `provider_name`, `provider_alias`, and `gateway_provider`. Send `id` in requests. `GET /v1/models/info?id={alias}/{modelId}` keeps the registry `name` and only attaches those extra fields. Optional `kind` disambiguates duplicate ids. Missing `id`: 400. Unknown id: 404.
+
+The catalog handlers do not consult `requireApiKey`. Reachability of `/v1/models` is not proof that a key is valid.
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| GET, OPTIONS | `/v1` | none (same body as `/v1/models`) | no | catalog |
+| GET, HEAD, OPTIONS | `/v1/models` | none | no | connected chat models; combos when expose-combos-only is on |
+| GET, HEAD, OPTIONS | `/v1/models/{kind}` | path kind or `provider/model` | no | kind filter or one LLM id |
+| GET, HEAD, OPTIONS | `/v1/models/info` | query `id`, optional `kind` | no | registry plus search/fetch virtual ids |
+| GET, OPTIONS | `/v1/provider-plugin-manifest` | none; `Cache-Control: public, max-age=60` | no | generated from `open-sse/providers/registry` |
+
+## Chat and completions
+
+Format follows the path: `/v1/chat/completions` is OpenAI chat (a body with `input[]` still counts as OpenAI, for Cursor CLI). `/v1/messages` is always Claude. `/v1/responses` and `/v1/responses/compact` are OpenAI Responses. `handleChat` then translates to the upstream provider.
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"coding-default","messages":[{"role":"user","content":"Say hello."}],"stream":true}'
+```
+
+Claude-format requests normally end on a user turn. A trailing assistant text prefill becomes a continuation user turn. Trailing `tool_use` blocks get error `tool_result` blocks. Opt out per request with `X-9Router-Assistant-Prefill: preserve`.
+
+`POST /v1/completions` is a router shim: `prompt` (string, or a one-element array) becomes one user message, then the chat core runs. Multiple prompts return 400. Streaming SSE `chat.completion.chunk` frames are rewritten to `text_completion`. Provider-native `/v1/completions` is not a goal.
+
+`POST /v1/api/chat` runs the same chat core, then `transformToOllama` so Ollama-shaped clients can read the response. Default model name if the body omits `model`: `llama3.2`.
+
+`POST /v1/responses` with `"stream": true`, or `Accept: text/event-stream`, opens an early SSE response so slow provider setup does not drop Codex CLI. `POST /v1/messages` with `"stream": true` sends Anthropic ping frames on the same timer. Compact is detected from the `/v1/responses/compact` path; do not send `_compact` in client JSON.
+
+`POST /v1/messages/count_tokens` calls a native count on Claude-compatible providers. Anything else, including a missing model, returns `{ input_tokens, approximate: true }` from the heuristic.
+
+<Callout type="warn">
+Combos only help when every member can run the client workflow (tools, images, JSON). Mix kinds and the fallback chain fails on the first incompatible hop.
+</Callout>
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| POST, OPTIONS | `/v1/chat/completions` | JSON `model`, `messages`; 415 unless `application/json` | SSE when `stream: true` | any connected chat model or combo |
+| POST, HEAD, OPTIONS | `/v1/completions` | JSON `model`, `prompt`; extra fields pass through | SSE rewritten to `text_completion` | same chat core |
+| POST, OPTIONS | `/v1/responses` | JSON `model`, `input` (Responses shape) | SSE when `stream: true` or Accept SSE | same chat core |
+| POST, OPTIONS | `/v1/responses/compact` | same as Responses; compact from the path | same as Responses | same chat core |
+| POST, OPTIONS | `/v1/messages` | JSON `model`, `max_tokens`, `messages`; 415 unless JSON | SSE plus Anthropic pings when `stream: true` | same chat core, Claude wire format |
+| POST, OPTIONS | `/v1/api/chat` | JSON `model` (default `llama3.2`), chat body | Ollama-shaped, including stream transform | same chat core |
+| POST, OPTIONS | `/v1/messages/count_tokens` | JSON `model`, `messages` | no | native Claude-compatible count, else estimate |
+
+## Media
+
+Image generate is JSON `{ model, prompt }`. Optional `Accept: text/event-stream` and `?response_format=binary`. `sdwebui` and `comfyui` need no stored key. Image edit is multipart: `model`, `image`, `prompt`.
+
+TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`.
+
+STT and translation are multipart: `model`, `file`. Translation forwards to the provider `/audio/translations` path; providers without that analog return 400. `maxDuration` is 300 seconds on those routes.
+
+`POST /v1/audio/music` re-exports `POST /v1/music/generations`. JSON `{ model, prompt }`. `POST /v1/video/generations` is the same shape for video-capable models.
+
+`/v1/videos` is the async xAI Grok Imagine surface. `POST /v1/videos/generations`, `/edits`, `/extensions` create a job. JSON or multipart is forwarded byte-for-byte after stripping a `provider/` prefix. Default provider when the body has no prefix: `xai`. Combos are rejected. POST returns `{ request_id, status, ... }` and `x-9router-connection-id`. Poll `GET /v1/videos/{request_id}` and echo that value as `x-connection-id`. Done responses include `video.url`.
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| POST, OPTIONS | `/v1/images/generations` | JSON `model`, `prompt` | SSE if Accept SSE | image-kind models; `sdwebui`, `comfyui` no-auth |
+| POST, OPTIONS | `/v1/images/edits` | multipart `model`, `image`, `prompt` | no | image-edit models |
+| POST, OPTIONS | `/v1/audio/speech` | JSON `model`, `input`; optional `language` | no (audio bytes or JSON) | tts-kind models |
+| GET, OPTIONS | `/v1/audio/voices` | query `provider` (required), `lang` | no | listed TTS voice APIs only |
+| POST, OPTIONS | `/v1/audio/transcriptions` | multipart `model`, `file` | no | stt-kind models |
+| POST, OPTIONS | `/v1/audio/translations` | multipart `model`, `file` | no | STT providers that implement translations |
+| POST, OPTIONS | `/v1/music/generations` | JSON `model`, `prompt` | no | music-kind models |
+| POST, OPTIONS | `/v1/audio/music` | same (re-export) | no | same as music generations |
+| POST, OPTIONS | `/v1/video/generations` | JSON `model`, `prompt` | no | video-kind models |
+| POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | xAI Grok Imagine (`xai` default) |
+
+## Embeddings, rerank, and moderation
+
+JSON bodies. Embeddings need `model` and `input`. Rerank needs `model`, `query`, and `documents` (array). Moderations need `model` and `input`.
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| POST, OPTIONS | `/v1/embeddings` | JSON `model`, `input` | no | embedding-kind models |
+| POST, OPTIONS | `/v1/rerank` | JSON `model`, `query`, `documents` | no | Cohere/Jina/Voyage-style rerank models |
+| POST, OPTIONS | `/v1/moderations` | JSON `model`, `input` | no | moderation models |
+
+## Web search and fetch
+
+Provider is the model. Send `provider` or `model`. Catalog ids look like `tavily/search` and `tavily/fetch`; the handler strips the suffix when the remainder is a real search or fetch provider. Bare ids and OmniRoute aliases (`tavily-search`, `exa-search`, `serper-search`, `google-pse-search`, `linkup-search`, `searchapi-search`, `youcom-search`, `searxng-search`, `ollama-search`, `perplexity-search`) also resolve.
+
+Search body: `query` (required), plus `model` or `provider`. Fetch body: `url` (required), optional `format` and `max_characters`. Fetch failures use fallback scope `webfetch:<provider>` (for Ollama, `webfetch:ollama`), so a fetch cooldown does not lock that connection for chat.
+
+Search `searchConfig` providers in the registry today: `serper`, `youcom`, `searxng`, `linkup`, `exa`, `perplexity`, `glm`, `brave-search`, `searchapi`, `google-pse`, `tavily`, `ollama`. Fetch `fetchConfig` providers: `exa`, `tinyfish`, `jina-reader`, `tavily`, `firecrawl`, `firecrawl_custom`, `ollama`. Combos work on both routes when every member is that kind.
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| POST, OPTIONS | `/v1/search` | JSON `query` plus `model` or `provider` | no | searchConfig / searchViaChat providers and combos |
+| POST, OPTIONS | `/v1/web/fetch` | JSON `url` plus `model` or `provider`; optional `format`, `max_characters` | no | fetchConfig providers and combos |
+
+## Files and batches
+
+Local store under the data directory (`files/<id>`), not an upstream Files API. Owner is the DurinDoor API key (or `local` / operator when keys are not required). JSON POST that is not `application/json` returns 415. File upload that is not `multipart/form-data` returns 415.
+
+OpenAI batches: `{ input_file_id, endpoint, completion_window?, metadata? }`. Anthropic batches: `{ requests: [{ custom_id, params }] }`. Cancel stops scheduling, finishes the active row, then marks cancelled. Anthropic results are NDJSON `{ custom_id, result }`.
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| GET, POST, HEAD, OPTIONS | `/v1/files` | POST multipart `file`, `purpose` (default `batch`) | no | local disk |
+| GET, DELETE, HEAD, OPTIONS | `/v1/files/{id}` | none | no | local disk |
+| GET, OPTIONS | `/v1/files/{id}/content` | none | raw bytes | local disk |
+| GET, POST, HEAD, OPTIONS | `/v1/batches` | POST JSON `input_file_id`, `endpoint` | no | local executor over chat |
+| GET, OPTIONS | `/v1/batches/{id}` | none | no | local |
+| POST, OPTIONS | `/v1/batches/{id}/cancel` | none | no | local |
+| GET, POST, HEAD, OPTIONS | `/v1/messages/batches` | POST JSON `requests[]` | no | local executor, Anthropic surface |
+| GET, OPTIONS | `/v1/messages/batches/{id}` | none | no | local |
+| GET, OPTIONS | `/v1/messages/batches/{id}/results` | none | NDJSON | local |
+| POST, OPTIONS | `/v1/messages/batches/{id}/cancel` | none | no | local |
+
+## Realtime auth
+
+The WebSocket itself is not this `route.js`. `custom-server.js` upgrades `GET /v1/realtime`. This route is the loopback probe that wrapper uses because `/v1/models` does not validate keys.
+
+`GET /v1/realtime/auth`: 200 `{ ok: true }` when the key is admitted (or not required). 401 `{ error: { message, type: "invalid_request_error", code: "invalid_api_key" } }` when missing (and required), invalid, or expired. Authenticate the socket with `Authorization: Bearer` or the `openai-insecure-api-key.<key>` subprotocol. Text only; audio is refused. Event list: [Realtime](../features/realtime.mdx).
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| GET, OPTIONS | `/v1/realtime/auth` | same key headers as chat | no | none (auth probe) |
+
+## Unknown paths
+
+Unmatched `/v1/*` returns JSON `{ error: { type: "not_found", code: "unknown_route", path } }` with HTTP 404, not the dashboard HTML shell. Static and dynamic segments under `/api/v1/` still win in App Router matching.
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS | unmatched `/v1/*` | none | no | none |
+
+## Management API
+
+Dashboard REST under `/api/*` is on [Management API](./management-api.mdx). The same DurinDoor API key that calls `/v1` can call most of those routes; exclusions, redaction, and curl examples live there. MCP tools for the same work: [MCP control](../features/mcp-control.mdx).
+
+See [MCP gateway](../features/mcp-gateway.mdx) and [compression](../features/compression.mdx) for gateway features that are not `/v1` routes.

@@ -1,0 +1,62 @@
+---
+title: API key providers
+description: Add a provider API key, optional env fallbacks, and link a DurinDoor key to specific accounts.
+---
+
+Most paid APIs are API-key providers: OpenAI, Anthropic, Groq, Mistral, DeepSeek, and the rest of the `apikey` registry category. You paste the upstream secret; DurinDoor stores it on a connection and sends it as `Authorization: Bearer` or the header that provider declares (`x-api-key` for Anthropic-style transports).
+
+Open Dashboard, then Providers, then the provider. Add API Key (or Add Connection) opens the form.
+
+<Steps>
+<Step>
+Pick the provider card. Dual-auth providers (OAuth plus `authModes: ["apikey"]`) expose the same add-key dialog on that page.
+</Step>
+<Step>
+Give the connection a name. The dialog fills the first unused name in the `main`, `main-2`, `main-3` sequence. Reopening after a successful add clears secrets and provider-specific fields; a background refresh while the dialog is open does not.
+</Step>
+<Step>
+Paste the key. Cloudflare Workers AI and Snowflake Cortex also require an account id (`name|apiKey|accountId` on bulk lines). Azure wants endpoint, API version, deployment, and optional organization. Google Programmable Search needs `cx`.
+</Step>
+<Step>
+Set priority if you already have another key for this provider. Lower numbers run first under fill-first selection. Optional: default model, proxy pool, per-connection proxy URL.
+</Step>
+<Step>
+Save. `POST /api/providers` creates the row with `authType: "apikey"` (cookie providers use `cookie`). A duplicate `(provider, apikey, name)` returns HTTP 409 `PROVIDER_CONNECTION_ALREADY_EXISTS`. Validation probes time out at 10 seconds.
+</Step>
+</Steps>
+
+`ollama-local` and other `noAuth` providers may omit the key. Compatible nodes still require a value even when the upstream ignores it; use a placeholder such as `local-dev-key`. See [OpenAI-compatible nodes](./openai-compatible-nodes.mdx).
+
+Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
+
+## Env fallbacks
+
+Saved connections are the path you should use. A handful of executors still read process environment when a connection field is empty:
+
+| Variable | Used when |
+| --- | --- |
+| `OPENAI_API_KEY` | Azure executor, if the connection has no `apiKey` or `accessToken`. Not a generic OpenAI connection. |
+| `AZURE_ENDPOINT`, `AZURE_API_VERSION`, `AZURE_DEPLOYMENT`, `AZURE_ORGANIZATION` | Azure URL and headers when `providerSpecificData` omits them. API version default is `2024-10-01-preview`. |
+| `GITLAB_DUO_BASE_URL` / `GITLAB_BASE_URL` | GitLab Duo origin; default `https://gitlab.com`. |
+| `FIRECRAWL_API_KEY` | Auto-configure for the Firecrawl web-fetch connection. |
+| `CLI_DEVIN_BIN` | Override Devin CLI binary discovery. |
+| `WINDSURF_API_KEY` | Devin CLI executor, if the connection has no key or token. |
+| `CLIPROXYAPI_HOST` / `CLIPROXYAPI_PORT` | CLIProxyAPI listen address. |
+
+OAuth client overrides (`GEMINI_OAUTH_CLIENT_ID`, `ANTIGRAVITY_OAUTH_CLIENT_ID`, and their secrets) belong on [Connecting accounts](./connecting-accounts.mdx). The full operator list is [Environment variables](../reference/environment.mdx).
+
+## Scoping a DurinDoor API key to accounts
+
+A DurinDoor client key (`sk-...`) can be limited to a subset of provider connections. Zero relation rows means unrestricted: the key may use every reachable account. Assigning one or more connection ids opts into the restriction. Clearing the list restores the unrestricted default.
+
+Details, deletion guards, and the HTTP shape live in [API key scoping](../operations/api-key-scoping.mdx). Deleting a connection that is the last scoped account for a key is rejected with HTTP 409 `API_KEY_SCOPE_WOULD_BROADEN` so the key cannot silently become unrestricted.
+
+Test a saved key from the provider page. Connection tests stop after 15 seconds. Custom URLs still go through the outbound SSRF guard. Hidden registry providers cannot be created through this form; `POST /api/providers` returns `Invalid provider`.
+
+Priority is per provider. Drag-reorder on the provider page writes the full id list in one transaction to `PUT /api/providers/reorder`. Fill-first selection then uses that order. See [Connecting accounts](./connecting-accounts.mdx) for how that interacts with account fallback.
+
+Kiro's headless key flow persists `authType` as `api_key` (underscore). Quota and test routes accept both `apikey` and `api_key`. Edit Connection never shows the stored secret; paste a new value to rotate. Rotate the key at the vendor first, then update DurinDoor.
+
+Proxy fields on the add dialog are optional: `connectionProxyEnabled`, `connectionProxyUrl`, `connectionNoProxy`, and `proxyPoolId`. `__none__` means no pool. A bad pool id is rejected before the connection is written.
+
+`google-pse` requires `cx` (Programmable Search Engine id) in provider-specific data. Without it, create returns 400.

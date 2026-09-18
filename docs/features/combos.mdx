@@ -1,0 +1,85 @@
+---
+title: Combos
+description: Named fallback chains with strategies, capability ceilings, and connection allow-lists.
+---
+
+A combo is an ordered list of models exposed as one name. The client puts that name in `model`. DurinDoor tries each member until one returns a usable response or the list is exhausted.
+
+Open **Dashboard → Combos** (`/dashboard/combos`) to create, edit, copy the name, pick a strategy, set a per-member timeout, and edit the connection allow-list. Connection groups on the same page are labels only: adding a group copies current member ids into the allow-list at write time.
+
+Chat traffic that uses a combo still goes `src/sse/handlers/chat.js` → combo dispatch → `handleChatCore` per member. Usage rows keep the outer combo id and name even when a nested combo supplied the member.
+
+## Create
+
+Name rules: letters, digits, `-`, `_`, and `.`. Duplicate names return HTTP 400. `POST /api/combos` needs `name`; `models` is the ordered member list. Optional `capabilities` is a ceiling (below). Optional `allowedConnectionIds` is at most 500 ids.
+
+```json
+{
+  "name": "coding-default",
+  "models": [
+    "anthropic/claude-sonnet-4-5",
+    "openai/gpt-4.1",
+    "ollama/qwen2.5-coder"
+  ]
+}
+```
+
+Client request:
+
+```json
+{
+  "model": "coding-default",
+  "messages": [{"role": "user", "content": "Review this function."}]
+}
+```
+
+## Strategies
+
+Each combo stores a strategy under `comboStrategies[name].fallbackStrategy`. The page default is `fallback`. Global fallback when a combo has no override is `comboStrategy`, also `fallback`.
+
+| Value | Behaviour |
+| --- | --- |
+| `fallback` | Try members in the saved order. |
+| `round-robin` | Rotate the start member. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
+| `weighted` | Pick by member weight. |
+| `smart-scoring` | Reorder by quota and health scores, then fall through. |
+| `fusion` | Run members as a panel, then a judge model. Fusion has its own panel timeout, not the per-member timeout. |
+
+Per-member timeout is `timeoutMs` on the combo strategy. The dashboard field is seconds; 0 means use the fetch connect timeout (60s). Env `COMBO_MODEL_TIMEOUT_MS` is the process-wide default (0 = off).
+
+Hide-paid-models, when on, drops paid members from dispatch without rewriting the stored `models` array.
+
+## Fallback triggers
+
+A member fails through on provider errors, account cooldowns, rate limits, quota skip, missing credentials, and HTTP 200 with no usable output. SSE peek consumes a bounded prefix until the first meaningful frame, then replays those bytes; keepalive-only, `[DONE]`-only, and empty streams fall through.
+
+A malformed client body is rejected before combo dispatch. Do not expect a combo to paper over a bad request.
+
+Account fallback inside one member still runs first. If OpenAI account A 429s and account B succeeds, the combo does not move to member 2.
+
+## Capability ceiling
+
+Optional `capabilities` on create/update is an operator cap over member-derived capabilities. Empty or omitted changes nothing. Boolean keys may only turn a derived `true` off. Positive `contextWindow` and `maxOutput` only lower a known member limit; they never invent one. Nested combos keep their own ceiling, so an outer combo cannot re-expand an inner cap.
+
+Unknown keys and non-positive integers return HTTP 400. Send `null` to clear a saved ceiling.
+
+With capability-aware routing on, a request that carries images, audio, video, or PDF on the current user turn prefers a member that advertises that modality. Unsupported media fields are stripped before translation.
+
+## Allow-list
+
+Empty `allowedConnectionIds` is unrestricted: any otherwise eligible active connection may serve a member. A non-empty list is restrictive. Nested combos intersect with the parent list; the inner combo can only narrow eligibility.
+
+Groups never become dispatch units. Deleting a group does not disable its connections.
+
+## Disabled members
+
+**Dashboard → Providers → (provider) → Models** can disable a catalog id via `POST /api/models/disabled`. Matching uses the member's saved provider form and its registry/node counterpart. The stored `models` array is not mutated. Store outages fail open (members stay).
+
+## Worked example
+
+1. Create `coding-default` with two members, preferred first.
+2. Send `model: "coding-default"` to `/v1/chat/completions`.
+3. Pause the first member's connection, or pick a model that 401s.
+4. The next member should serve. Usage shows the combo name plus the member that answered.
+
+API-key `allowedCombos`, when non-empty, rejects any other combo with HTTP 403. Details: [API keys](../guides/api-keys.mdx).

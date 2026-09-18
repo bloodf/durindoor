@@ -1,0 +1,16 @@
+---
+title: Deployment
+description: Run locally, in Docker, in the cloud, or behind a reverse proxy.
+icon: Server
+---
+
+Laptop, Docker, or a VPS. Same gateway. The bind address, data path, and who can hit the dashboard change with the host.
+
+If something else terminates TLS, read the reverse-proxy page after the process is listening. Header trust and hashed `/_next/static` files live there, not in the install steps.
+
+<Cards>
+  <Card title="Laptop" href="/docs/deployment/localhost" description="npx, global CLI, source, ports, and the system tray." />
+  <Card title="Docker" href="/docs/deployment/docker" description="GHCR image tags, Compose, volumes, env, and upgrades." />
+  <Card title="VPS and cloud" href="/docs/deployment/cloud" description="systemd, HOSTNAME, and a reverse proxy in front." />
+  <Card title="Reverse proxy and static assets" href="/docs/deployment/reverse-proxy-and-static-assets" description="X-Forwarded-For trust, npm run verify:static, nginx and Caddy." />
+</Cards>

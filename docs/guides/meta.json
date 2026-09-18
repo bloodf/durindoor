@@ -1,0 +1,6 @@
+{
+  "title": "Guides",
+  "description": "API keys, model aliases, SDK examples, usage monitoring, and automation.",
+  "icon": "BookOpen",
+  "pages": ["index", "api-keys", "models-and-aliases", "sdk-examples", "monitoring-usage", "automating-durindoor"]
+}

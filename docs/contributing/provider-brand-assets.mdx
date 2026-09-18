@@ -1,0 +1,60 @@
+---
+title: Provider brand assets
+description: Identification-only rules for third-party provider logos and wordmarks in the dashboard.
+---
+
+Third-party provider logos and wordmarks exist only to identify configurable providers in DurinDoor. They remain their owners' trademarks and other proprietary rights.
+
+Maintainer authorization permits this repository to retain or add an identification-only mark for a provider that DurinDoor supports. That is not a licence determination, legal advice, or a claim that nominative use, fair use, the repository MIT licence, or any open-source licence grants rights in a third-party mark.
+
+## Rules
+
+- Use a mark only to identify its provider. Never imply sponsorship, affiliation, or endorsement.
+- Keep vendor-supplied marks unchanged. Do not recolor, redraw, animate, combine, or use them as DurinDoor branding.
+- Add only one necessary dashboard asset for one provider PR. Never bulk copy upstream or vendor asset catalogs.
+- Record traceable provenance in that PR: vendor name, exact source URL or written permission reference, retrieval date, asset filename, and any stated terms. Record vendor permission or terms when available. Absence does not by itself block a mark added under maintainer authorization.
+- Preserve attribution and notices supplied with an asset. This page and each provider's provenance record must state that third-party rights remain with their owners.
+- Maintainer authorization governs whether an identification-only mark may be retained or added. It does not establish a licence, legal doctrine, or vendor endorsement.
+
+## Runtime rendering
+
+`ProviderLogo` (`src/shared/ui/components/ProviderLogo.jsx`) is the only dashboard component that should load a provider mark. It does not import registry metadata, because that module starts runtime services.
+
+Props: `provider` (id or alias, case-insensitive), `size` (pixel box, default 28), `fallbackText`, `className`. The lookup lowercases `provider`, then applies an alias map, then reads a local `MARKS` table of id to file extension.
+
+Known files are served from `public/providers/<id>.svg`, `.png`, or `.jpg`. The `<img>` `src` is `/providers/<id>.<ext>`. `onError` switches that id to the fallback tile so a missing file does not retry.
+
+Unknown ids, and ids that failed to load, render a token-styled letter tile: `bg-dd-surface-3`, `text-dd-muted`, `rounded-dd`, one uppercase glyph (first character of `fallbackText` or the id). The accessible name is `fallbackText` or the id, via `role="img"` and `aria-label`. The tile is a fixed square; a full provider id as visible text overflows it, so the glyph stays one character.
+
+Alias map examples from the component: `cc` / `claude-code` / `anthropic` → `claude`; `cx` / `openai-codex` → `codex`; `ollama` → `ollama-local`; `grok` → `xai`; `github-copilot` → `copilot`.
+
+Registry `display.icon` is a Material Symbol name or `textIcon` fallback for places that do not use `ProviderLogo`. Adding a registry entry does not add a logo file. Adding a logo file does not add a registry entry. See [Provider registry](./provider-registry.mdx).
+
+## Adding a mark
+
+<Steps>
+<Step>
+Place one vendor-supplied file at `public/providers/{id}.svg` (or `.png` / `.jpg` when that is what the vendor published). `{id}` must match the registry id after alias resolution.
+
+</Step>
+<Step>
+Add `{id}: "svg"` (or `"png"` / `"jpg"`) to the `MARKS` object in `ProviderLogo.jsx`. Without that row the component never requests the file and always shows the letter tile.
+
+</Step>
+<Step>
+Add an `ALIASES` entry only when the dashboard already displays a different id for the same vendor. Do not invent aliases for ids that are not rendered.
+
+</Step>
+<Step>
+Put provenance in the PR body: vendor name, source URL or written permission, retrieval date, filename, stated terms. One asset per provider PR.
+
+</Step>
+</Steps>
+
+## Removal requests
+
+Rights holders may request review or removal by opening a GitHub issue at https://github.com/bloodf/durindoor/issues with provider name, affected filename or URL, ownership basis, requested action, and contact method. Maintainers will acknowledge, investigate provenance, and remove, replace with a neutral identifier, or explain the decision. Do not treat a request as authorization to disclose private material.
+
+## Existing assets
+
+This policy does not validate existing assets or authorize new bulk asset work. Issue [#769](https://github.com/bloodf/durindoor/issues/769) tracks registry ids without exact-id assets. Before proposing bulk changes, run dashboard triage and record every id as exactly one of: resolves via alias, no mark applicable, or genuinely missing. The criterion is observed runtime rendering, not filename matching. Genuinely missing marks need individual provenance under this policy. Neutral, local, and system entries need no vendor mark.

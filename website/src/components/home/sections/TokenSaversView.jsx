@@ -4,7 +4,7 @@ import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
 import { SAVER_ENGINES } from "../content.js";
 import ThreeStage from "../threeui/ThreeStage.jsx";
-import { CountUp, Reveal, SectionHeader } from "../ui/primitives.jsx";
+import { CountUp, DocsCta, Reveal, SectionHeader } from "../ui/primitives.jsx";
 
 
 function Pane({ label, meta, text, tone }) {
@@ -77,6 +77,7 @@ export default function TokenSaversView({ raw, compressed, before, after }) {
           <span>{t("Need the raw prompt for one call?")}</span>
           <code>X-DurinDoor-Token-Saver: off</code>
         </Reveal>
+        <DocsCta href="/docs/features/compression" />
       </div>
     </section>
   );

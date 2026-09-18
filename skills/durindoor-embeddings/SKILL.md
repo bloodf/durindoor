@@ -24,4 +24,4 @@ curl -X POST "$DURINDOOR_URL/v1/embeddings" \
 
 `input` accepts a string or array. Optional dimensions, encoding format, and batch limits depend on the selected model. The response uses OpenAI-compatible `data[].embedding` arrays.
 
-Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.md
+Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

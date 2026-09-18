@@ -7,17 +7,17 @@
 
 Select one (conventional commit prefix):
 
-- [ ] `feat:` — new feature
-- [ ] `fix:` — bug fix
-- [ ] `refactor:` — code change that neither fixes a bug nor adds a feature
-- [ ] `docs:` — documentation only
-- [ ] `ci:` — continuous integration / build / deployment
-- [ ] `chore:` — maintenance, tooling, or other non-code change
+- [ ] `feat:` new feature
+- [ ] `fix:` bug fix
+- [ ] `refactor:` code change that neither fixes a bug nor adds a feature
+- [ ] `docs:` documentation only
+- [ ] `ci:` continuous integration / build / deployment
+- [ ] `chore:` maintenance, tooling, or other non-code change
 
 ## Breaking changes
 
 - [ ] No
-- [ ] Yes — describe below:
+- [ ] Yes (describe below):
 
 ## Testing
 

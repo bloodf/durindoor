@@ -5,8 +5,7 @@ import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 import { motion, useScroll, useTransform } from "motion/react";
 import HeroCanvas from "./HeroCanvas.jsx";
 import { CopyButton, Magnetic } from "../ui/primitives.jsx";
-import Icon, { GitHubMark } from "../ui/Icon.jsx";
-import { GITHUB_URL } from "../data.js";
+import Icon from "../ui/Icon.jsx";
 import { isBrowser } from "@/shared/utils/typeChecks.js";
 
 const HERO_ID = "top";
@@ -52,20 +51,18 @@ export default function Hero() {
             <motion.span className="hero-word ithildin" {...rise(4)}>{t("enter.")}</motion.span>
           </h1>
 
-          <motion.p className="hero-sub" {...rise(5)}>{t("One guarded gateway for every AI provider. Add credentials once, point every OpenAI-compatible tool at a single local endpoint.")}</motion.p>
+          <motion.p className="hero-sub" {...rise(5)}>{t("Add credentials once. Point every OpenAI-compatible tool at http://localhost:20128/v1.")}</motion.p>
 
           <motion.div className="hero-ctas" {...rise(6)}>
-            <Magnetic internal href="/dashboard" className="btn btn-primary btn-large">{t("Open the live demo")}<Icon name="arrow" size={18} />
+            <Magnetic internal href="#quick-start" className="btn btn-primary btn-large">{t("Quick start")}<Icon name="arrow" size={18} />
             </Magnetic>
+            <Magnetic internal href="/docs" className="btn btn-ghost btn-large">{t("Read the docs")}</Magnetic>
             <div className="install-pill" role="group" aria-label={t("Install command")}>
               <span className="install-prompt" aria-hidden="true">$</span>
               <code>{INSTALL}</code>
               <CopyButton text={INSTALL} label={t("Install")} />
             </div>
           </motion.div>
-
-          <motion.a className="hero-github" href={GITHUB_URL} target="_blank" rel="noreferrer" {...rise(7)}>
-            <GitHubMark size={16} />{t("Star bloodf/durindoor on GitHub")}</motion.a>
         </motion.div>
 
         <motion.div className="hero-flash" style={{ opacity: flash }} aria-hidden="true" />

@@ -130,8 +130,6 @@ function reconcileOrphanedToolResults(history, currentMessage) {
     }
   }
 
-  // Phase 2: across history + currentMessage, keep results with a matching
-  // toolUse and salvage the rest as text.
   const carriers = currentMessage ? [...history, currentMessage] : history;
   for (const item of carriers) {
     const uim = item.userInputMessage;

@@ -187,7 +187,7 @@ html:has(.dd-home) body {
 .nav-inner {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   max-width: 1200px;
   height: 64px;
   margin: 0 auto;
@@ -198,24 +198,40 @@ html:has(.dd-home) body {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
   font-family: var(--home-display);
   font-weight: 700;
   font-size: 18px;
   letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.nav-panel {
+  display: contents;
+}
+
+.nav-panel-cta {
+  display: none;
 }
 
 .nav-links {
   display: flex;
-  gap: 4px;
-  margin-left: auto !important;
+  align-items: center;
+  gap: 8px;
+  margin-inline: auto;
+  flex-shrink: 0;
 }
 
 .nav-links a {
-  display: block;
-  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 8px;
   border-radius: 999px;
   color: var(--home-muted);
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
   transition: color 0.2s, background 0.2s;
 }
 
@@ -227,57 +243,247 @@ html:has(.dd-home) body {
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-/* Long locale names remain readable in the DS listbox without widening the nav. */
-.home-locale {
-  width: 144px;
-  min-width: 0;
+  gap: 8px;
+  margin-left: auto;
   flex-shrink: 0;
 }
 
-@media (max-width: 600px) {
-  .nav-inner {
-    gap: 10px;
-  }
-  .nav-brand > span,
-  .nav-actions > .nav-icon {
-    display: none;
-  }
-  .home-locale {
-    width: 112px;
-  }
-  .nav-actions {
-    gap: 6px;
-  }
-  .nav-actions .btn-small {
-    padding-inline: 10px;
-    font-size: 12px;
-  }
+.nav-actions .btn-small {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  line-height: 1;
 }
 
+.home-locale {
+  position: relative;
+  width: 68px;
+  flex-shrink: 0;
+}
+
+.home-locale-btn,
+.nav-menu-btn,
 .nav-icon {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
   border-radius: 999px;
   color: var(--home-muted);
-  transition: color 0.2s, background 0.2s;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
 }
 
+.home-locale-btn,
+.nav-menu-btn,
+.home-locale-option {
+  appearance: none;
+  margin: 0;
+  font-family: inherit;
+}
+
+.home-locale-btn {
+  gap: 6px;
+  width: 68px;
+  padding: 0 10px;
+  border: 1px solid var(--home-line-strong);
+  background: rgba(237, 230, 216, 0.04);
+  color: var(--home-text);
+  font: 600 12px/1 var(--home-sans);
+  letter-spacing: 0.06em;
+}
+
+.home-locale-code {
+  display: inline-block;
+  width: 1.6em;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.home-locale-btn:hover,
+.nav-menu-btn:hover,
 .nav-icon:hover {
   color: var(--home-text);
   background: rgba(237, 230, 216, 0.06);
 }
 
-@media (max-width: 1320px) {
-  .nav-links {
-    display: none;
+.home-locale-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 70;
+  min-width: 220px;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid var(--home-line-strong);
+  border-radius: 12px;
+  background: var(--home-panel-solid);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.home-locale-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--home-text);
+  font: 500 13px/1 var(--home-sans);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.home-locale-option:hover,
+.home-locale-option:focus-visible,
+.home-locale-option[aria-selected="true"] {
+  background: rgba(237, 230, 216, 0.08);
+}
+
+.home-locale-option .home-locale-code {
+  width: 1.6em;
+  color: var(--home-muted);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.nav-icon {
+  width: 36px;
+  border: 0;
+  background: transparent;
+}
+
+.nav-menu-btn {
+  display: none;
+  width: 36px;
+  padding: 0;
+  border: 1px solid var(--home-line-strong);
+  background: rgba(237, 230, 216, 0.04);
+}
+
+@media (min-width: 1100px) and (max-width: 1279px) {
+  .nav-inner {
+    padding-inline: 12px;
+    gap: 8px;
   }
+
+  .nav-links {
+    gap: 4px;
+  }
+
+  .nav-links a {
+    padding: 0 4px;
+  }
+
+  .nav-actions {
+    gap: 6px;
+  }
+
+  .nav-actions .btn-small {
+    padding: 0 10px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .nav-inner {
+    gap: 24px;
+  }
+
+  .nav-links a {
+    padding: 0 10px;
+  }
+}
+
+@media (max-width: 1099px) {
+  .nav-inner {
+    gap: 10px;
+  }
+
+  .nav-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    z-index: 49;
+    padding: 12px clamp(16px, 4vw, 40px) 20px;
+    background: rgba(4, 7, 5, 0.92);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border-bottom: 1px solid var(--home-line);
+    visibility: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+  }
+
+  .nav-panel.is-open {
+    visibility: visible;
+    pointer-events: auto;
+    opacity: 1;
+    transform: none;
+  }
+
+  .nav-links {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    margin-left: 0;
+  }
+
+  .nav-links a {
+    height: 40px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+
+  .nav-panel-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .nav-panel-cta .btn-small {
+    height: 36px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+
   .nav-actions {
     margin-left: auto;
+  }
+
+  .nav-action-docs,
+  .nav-action-demo,
+  .nav-icon {
+    display: none;
+  }
+
+  .nav-menu-btn {
+    display: inline-flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-nav,
+  .nav-links a,
+  .home-locale-btn,
+  .nav-menu-btn,
+  .nav-icon,
+  .nav-panel {
+    transition: none;
+  }
+
+  .nav-panel {
+    transform: none;
   }
 }
 
@@ -287,6 +493,7 @@ html:has(.dd-home) body {
   inset: 0 0 auto 0;
   height: 2px;
   z-index: 60;
+  transform: scaleX(0);
   transform-origin: 0 50%;
   background: linear-gradient(90deg, var(--home-emerald-deep), var(--home-emerald), var(--home-gold));
 }

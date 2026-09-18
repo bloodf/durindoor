@@ -1,0 +1,65 @@
+---
+title: Cline
+description: Point Cline at DurinDoor as an OpenAI provider in ~/.cline/data.
+---
+
+Cline stores provider choice in `~/.cline/data/globalState.json` and the secret in `~/.cline/data/secrets.json`. DurinDoor's Apply path sets both act and plan modes to the OpenAI provider and points the base URL at this gateway.
+
+You need VS Code with Cline (or the Cline CLI), the gateway running, a DurinDoor API key, and a chat-capable model or combo. Install notes on the card link to `https://docs.cline.bot/`.
+
+## Dashboard apply
+
+Open **CLI Tools**, then **Cline** (`/dashboard/cli-tools/cline`). Apply `POST`s `/api/cli-tools/cline-settings` with `baseUrl`, `apiKey`, and `model`.
+
+Cline wants the origin, not `/v1`. The route strips a trailing `/v1` before the write. The dashboard picker still shows `http://localhost:20128/v1`; the file ends up as `http://localhost:20128`.
+
+It then sets:
+
+- `actModeApiProvider` and `planModeApiProvider` to `"openai"`
+- `openAiBaseUrl` to that origin
+- `openAiModelId` and `planModeOpenAiModelId` to the selected model
+- `secrets.json` `openAiApiKey` to the DurinDoor key (or `sk_durindoor` on localhost when none is selected)
+
+Reset restores act/plan providers to `"cline"` and deletes those OpenAI fields plus `openAiApiKey`. Other keys in the two files stay.
+
+`GET` reports `has9Router` when either mode is `"openai"` and `openAiBaseUrl` contains `localhost`, `127.0.0.1`, or `9router`.
+
+## Manual config
+
+`~/.cline/data/globalState.json` (merge with whatever Cline already stored):
+
+```json
+{
+  "actModeApiProvider": "openai",
+  "planModeApiProvider": "openai",
+  "openAiBaseUrl": "http://localhost:20128",
+  "openAiModelId": "provider/model-id",
+  "planModeOpenAiModelId": "provider/model-id"
+}
+```
+
+`~/.cline/data/secrets.json`:
+
+```json
+{
+  "openAiApiKey": "YOUR_DURINDOOR_API_KEY"
+}
+```
+
+<Callout type="warn">
+`openAiBaseUrl` must not end with `/v1`. Connection refused with a `/v1` suffix in that field is the usual mismatch. The HTTP API you curl by hand is still `http://localhost:20128/v1`.
+</Callout>
+
+If a Cline build only offers an Ollama-style custom base URL, put the same DurinDoor origin there and verify with a small prompt.
+
+## Legacy `9router` labels
+
+Cline's JSON uses the provider id `"openai"`, not a `9router` table. The dashboard's `has9Router` flag is true when that OpenAI provider points at a local or `9router` URL. Other tools still write a `9router` section; the server accepts that label and `X-Msh-Platform: 9router`.
+
+## Check it works
+
+Send a one-line prompt in Cline. Confirm the row on **Usage**.
+
+Cline sends tool calls and large context. Every model in a combo must support the tool-call shape you need. A fallback model without tools can fail after a simple chat already succeeded.
+
+Authentication errors: the secret in `secrets.json` must be the DurinDoor key, not the upstream provider key. Slow replies: check combo fallback and upstream latency on **Usage** or request details.

@@ -1,0 +1,154 @@
+---
+title: Data management
+description: SQLite file, backups, restore, and the files that do not follow DATA_DIR.
+---
+
+Persistent state lives under `DATA_DIR`. Unset, that is `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. Docker images set `DATA_DIR=/app/data` and expect a volume there. A Unix-style path on Windows is ignored and the default is used.
+
+<Callout type="warn">
+Stop DurinDoor before a backup or restore. SQLite can be mid-write. Never delete `~/.9router` without confirming it is not the live data directory.
+</Callout>
+
+## Layout
+
+```text
+DATA_DIR/
+├── db/
+│   ├── data.sqlite
+│   ├── data.sqlite-wal
+│   ├── data.sqlite-shm
+│   ├── proxy-timeline.sqlite
+│   └── backups/
+├── auth/
+├── logs/mitm/
+├── mitm/
+├── machine-id
+├── api-key-secret
+├── jwt-secret          # legacy, read if JWT_SECRET unset
+└── durindoor-secrets.json  # legacy Postgres URL
+```
+
+`DATA_DIR/db/data.sqlite` is the main store (`currentDataFile()`). Pre-upgrade copies go in `DATA_DIR/db/backups` (`currentBackupsDir()`). Postgres cutover copies use the same backups directory with prefix `data.sqlite.postgres-cutover-`. They are not the three-directory migration safety copies. Procedure: [Postgres](./postgres.mdx). Credential directories and the SQLite files are chmod'd owner-only on POSIX (`0700` / `0600`). Windows ACLs are left alone.
+
+SQLite adapter order: Bun uses `bun:sqlite` then `sql.js`. Node uses `better-sqlite3`, then `node:sqlite` on Node 22.5+, then `sql.js`. The `sql.js` fallback exports the full image to an owner-only sibling, fsyncs, then renames over `data.sqlite`. A failed stage leaves the previous file in place.
+
+## Files that do not follow DATA_DIR
+
+Live usage is the `usageHistory` table in `data.sqlite`. `src/lib/usageDb.js` re-exports that layer.
+
+`DATA_DIR/usage.json` is a one-shot JSON import (`LEGACY_FILES.usage`). Startup can read it once, then writes a `.migrated-from-json` marker. Runtime inserts go to SQLite, not back to that JSON file.
+
+There is no `DATA_DIR/log.txt`. That name is not created.
+
+`ENABLE_REQUEST_LOGS=true` writes metadata-only session folders under `logs/` in `process.cwd()`, not under `DATA_DIR`. MITM dumps use `DATA_DIR/logs/mitm`. Dashboard **Console log** is an in-memory ring of 200 lines.
+
+If you still have a 9router tree and need provider-section labels rewritten in TOML or JSON configs, run the one-shot cutover:
+
+```bash
+node scripts/migrate-from-9router.mjs --dry-run
+node scripts/migrate-from-9router.mjs
+```
+
+It tars `~/.9router` to `~/.9router-backup-<stamp>.tar` before any move. It does not rewrite API key secrets. SQLite files are not walked. Default `--target-dir` is `~/.durindoor`. Runtime `DATA_DIR` still defaults to `~/.9router`; set `DATA_DIR` if you pointed the script at another tree.
+
+## Integrity
+
+After schema work and before the file is accepted, DurinDoor runs `PRAGMA quick_check`. Corruption reported there stops startup. The check is structural, not `PRAGMA integrity_check` or `PRAGMA foreign_key_check`. There is no automatic repair.
+
+If logs say `SQLite integrity check failed`, stop every writer. Keep `data.sqlite` plus `-wal` and `-shm`. Restore only a backup you have already verified. Lite migration backups omit `requestDetails`. Any `REINDEX`, `VACUUM`, or salvage belongs on a copy.
+
+## Backing up a host directory
+
+```bash
+docker stop durindoor
+BACKUP="$DATA_DIR.backup-$(date +%Y%m%d%H%M%S)"
+cp -a -- "$DATA_DIR" "$BACKUP"
+```
+
+`$DATA_DIR` must be an existing absolute path, not `/` and not empty. `--` stops option parsing. `-a` keeps permissions and dotfiles. Store the copy on another disk.
+
+## Restoring a host directory
+
+```bash
+docker stop durindoor
+BACKUP="$DATA_DIR.backup-YYYYMMDD"
+TARGET="$DATA_DIR"
+
+if [ -z "$TARGET" ] || [ "$TARGET" = "/" ] || [ ! -d "$TARGET" ]; then
+  echo "ERROR: TARGET must be a non-root existing directory." >&2; exit 1
+fi
+
+mv -- "$TARGET" "$TARGET.pre-restore-$(date +%Y%m%d%H%M%S)"
+cp -a -- "$BACKUP" "$TARGET"
+```
+
+Test a restore without touching production:
+
+```bash
+cp -a -- "$DATA_DIR.backup-YYYYMMDD" /tmp/durindoor-test-restore
+DATA_DIR=/tmp/durindoor-test-restore durindoor
+```
+
+Confirm providers, API keys, combos, and usage before swapping the live path.
+
+## Backing up a Docker named volume
+
+Compose names the volume `durindoor-data`. Stop first, then archive from a helper container:
+
+```bash
+docker stop durindoor
+docker run --rm \
+  -v durindoor-data:/data \
+  -v "$PWD:/backup" \
+  alpine tar czf /backup/durindoor-data-backup-$(date +%Y%m%d).tar.gz -C /data .
+```
+
+## Restoring a Docker named volume
+
+```bash
+ARCHIVE="$PWD/durindoor-data-backup-YYYYMMDD.tar.gz"
+
+if [ ! -f "$ARCHIVE" ]; then echo "Backup archive not found: $ARCHIVE"; exit 1; fi
+if ! docker run --rm -v "$PWD:/backup" alpine tar tzf "/backup/$(basename "$ARCHIVE")" >/dev/null 2>&1; then
+  echo "ERROR: Archive is not a valid tar file: $ARCHIVE"; exit 1
+fi
+
+docker stop durindoor
+docker run --rm \
+  -v durindoor-data:/data \
+  -v "$PWD:/backup" \
+  alpine tar czf /backup/durindoor-data-pre-restore-$(date +%Y%m%d%H%M%S).tar.gz -C /data .
+
+docker rm -f durindoor
+docker volume rm durindoor-data
+docker volume create durindoor-data
+docker run --rm \
+  -v durindoor-data:/data \
+  -v "$PWD:/backup" \
+  alpine tar xzf "/backup/$(basename "$ARCHIVE")" -C /data
+```
+
+`tar tzf` first. Recreate the volume so leftover files from an earlier restore cannot remain.
+
+## Copy a named volume to a host path
+
+```bash
+docker run --rm \
+  -v durindoor-data:/data \
+  -v "$HOME/.durindoor:/host" \
+  alpine cp -a /data/. /host/
+```
+
+## Uninstall
+
+```bash
+docker stop durindoor && docker rm durindoor
+docker volume rm durindoor-data
+docker rmi ghcr.io/bloodf/durindoor:latest
+```
+
+```bash
+npm uninstall -g durindoor
+```
+
+Removing `DATA_DIR` is a separate operator action. Confirm which path is live. `~/.9router` is the same directory as `DATA_DIR` when the env var is unset.

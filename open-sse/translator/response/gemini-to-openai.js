@@ -37,7 +37,7 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   // namespaced) so the request translator can replay it even when the client
   // did not round-trip the transport id (upstream c08efdbe).
   if (thoughtSignature) {
-    storeGeminiThoughtSignature(rawId, thoughtSignature, state.sessionId);
+    storeGeminiThoughtSignature(rawId, thoughtSignature, state.sessionId, state.model);
   }
   const id = encodeToolCallIdWithSignature(rawId, thoughtSignature);
   state.seenToolCallIds.add(id);
@@ -80,7 +80,7 @@ export function geminiToOpenAIResponse(chunk, state) {
   // Initialize state
   if (!state.messageId) {
     state.messageId = response.responseId || `msg_${Date.now()}`;
-    state.model = response.modelVersion || "gemini";
+    state.model = response.modelVersion || state.model || "gemini";
     state.functionIndex = 0;
     state.geminiToolCallCount = 0;
     results.push(buildChunk(chunkMeta(state), { role: ROLE.ASSISTANT }, null));

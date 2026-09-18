@@ -12,6 +12,7 @@ import { getModelTargetFormat, getModelSupportedFormats, getModelForceStream, ge
 import { PROVIDERS } from "../config/providers.js";
 import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage, getClientStatusFromError } from "../utils/error.js";
+import { checkFallbackError } from "../services/accountFallback.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { applyStatusRestatement, parseRestatedRateLimitEvidence } from "../config/upstreamStatusRestatement.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
@@ -1414,6 +1415,21 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       pxpipe: pxpipeSummary,
       status: "error"
     })).catch(() => { });
+    // Most 429s send no cooldown hint at all (e.g. Z.AI/GLM carries neither
+    // Retry-After nor a retry_after body field). Fall back to the cooldown
+    // checkFallbackError already computes from ERROR_RULES, so an
+    // OpenAI-compatible client gets a usable Retry-After instead of guessing
+    // with its own short generic backoff. Terminal states (billing/credit
+    // exhausted) still cool the account down but must not advertise a retry.
+    // Scoped to 429: other statuses (e.g. Kimi's usage-derived 403) already
+    // have their own deliberate resetsAtMs handling above, including leaving
+    // it undefined on purpose when no real reset is known.
+    if (statusCode === HTTP_STATUS.RATE_LIMITED && !Number.isFinite(resetsAtMs)) {
+      const { cooldownMs, terminal } = checkFallbackError(statusCode, message, 0);
+      if (!terminal && Number.isFinite(cooldownMs) && cooldownMs > 0) {
+        resetsAtMs = Date.now() + cooldownMs;
+      }
+    }
     const errMsg = formatProviderError(new Error(message), provider, requestedModel, statusCode);
     if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
       log?.warn?.("CHAT", `classifier upstream returned error, default-allowing: ${errMsg}`);

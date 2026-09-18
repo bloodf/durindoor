@@ -1,7 +1,7 @@
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
-import { addBufferToUsage, claudeUsageToOpenAI, filterUsageForFormat } from "../../utils/usageTracking.js";
+import { addBufferToUsage, claudeUsageToOpenAI, enrichUsageCost, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
@@ -583,7 +583,10 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }
 
     if (!isClaudeMessageResponse && translatedResponse?.usage) {
-      translatedResponse.usage = filterUsageForFormat(addBufferToUsage(translatedResponse.usage), sourceFormat);
+      translatedResponse.usage = filterUsageForFormat(
+        enrichUsageCost(addBufferToUsage(translatedResponse.usage), provider, model),
+        sourceFormat
+      );
     }
 
     // OpenAI reasoning is preserved unless the client or deployment explicitly opts out.

@@ -320,7 +320,7 @@ export function resolveOpenAiEffort(level, provider, model) {
 }
 
 // Apply unified thinking config to body in the resolved provider-native format.
-function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
+function applyFormat(fmt, body, cfg, caps, model = null, provider = null, requestedDisplay = undefined) {
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
@@ -370,15 +370,18 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null) {
         if (none && canDisable) {body.thinking = { type: "disabled" };break;}
         body.output_config = { effort: toClaudeAdaptiveEffort(eff, caps, provider) };
         // Opus 4.7/4.8/Sonnet5/Fable5/Mythos5 default thinking.display to "omitted",
-        // so explicitly request summarized to keep reasoning summary flowing to clients.
+        // so default to summarized to keep reasoning summary flowing to clients —
+        // but a client that explicitly asked for a display mode (e.g. "omitted"
+        // to suppress the summary) wins over that default.
         // Harmless on 4.6/Sonnet4.6 where "summarized" is already the default.
-        body.thinking = { type: "adaptive", display: "summarized" };
+        body.thinking = { type: "adaptive", display: requestedDisplay || "summarized" };
         break;
       }
     case "claude-budget":{
         if (none && canDisable) {body.thinking = { type: "disabled" };break;}
         const budget = toBudget(eff, caps.thinkingRange);
         body.thinking = budget === -1 ? { type: "enabled" } : { type: "enabled", budget_tokens: budget || 8192 };
+        if (requestedDisplay) body.thinking.display = requestedDisplay;
         break;
       }
     case "gemini-level":{
@@ -522,8 +525,12 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   if (!cfg) return body;
 
   const fmt = resolveFormat(targetFormat, cleanModel, provider, caps);
+  // Anthropic's `display` (summarized | omitted) decides whether thinking text
+  // comes back at all; capture what the client asked for before stripAll wipes
+  // body.thinking, so an explicit client choice survives the reformat.
+  const requestedDisplay = isString(body.thinking?.display) ? body.thinking.display : undefined;
   stripAll(body);
-  applyFormat(fmt, body, cfg, caps, cleanModel, provider);
+  applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay);
   return body;
 }
 

@@ -24,4 +24,20 @@ describe("getThinkingLevels DeepSeek v4.* dotted releases", () => {
     const levels = getThinkingLevels("deepseek", "deepseek-v4-pro-max");
     expect(levels).not.toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
   });
+
+  // Command Code resolves every DeepSeek id through its own provider default
+  // (thinkingFormat "commandcode", no disable state) — the dotted-id rule above
+  // must not hand it the generic deepseek "none" option meant for gateways that
+  // actually speak the deepseek wire format.
+  it("keeps Command Code's own effort set for a dotted id, not the generic none..max deepseek set", () => {
+    const levels = getThinkingLevels("commandcode", "deepseek/deepseek-v4.1-flash");
+    expect(levels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(levels).not.toContain("none");
+  });
+
+  it("applies the same Command Code scoping via the cmc alias", () => {
+    const levels = getThinkingLevels("cmc", "deepseek/deepseek-v4.1-flash");
+    expect(levels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(levels).not.toContain("none");
+  });
 });

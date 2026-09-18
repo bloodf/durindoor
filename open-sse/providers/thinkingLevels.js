@@ -63,11 +63,20 @@ const PATTERN_THINKING = [
   { provider: "codebuddy-cn", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
   { provider: "codebuddy-cn", pattern: "hy3*", levels: ["low", "high"] },
   { provider: "codebuddy-cn", pattern: "hy4*", levels: ["high"] },
+  // Command Code resolves every DeepSeek id (dotted or not) through its own
+  // provider default in capabilities.js (thinkingFormat "commandcode"), so the
+  // dotted rule below must not hand it the generic deepseek "none" option —
+  // Command Code's format has no disable state, only low..max. Placed before
+  // the global dotted rule so it wins first (same precedence as codebuddy-cn
+  // above).
+  { provider: "commandcode", pattern: "*deepseek-v4.*", levels: FORMAT_LEVELS.commandcode },
+  { provider: "cmc", pattern: "*deepseek-v4.*", levels: FORMAT_LEVELS.commandcode },
   // DeepSeek v4.* dotted releases (Alibaba MaaS, probed live): effort
   // low|medium|high|xhigh|max all 200 via output_config.effort; "none" is a 400
   // on the anthropic route (disable thinking instead). none kept for the picker
-  // = disable. Placed after the codebuddy-cn-scoped deepseek-v4* rule above so a
-  // dotted id on that gateway keeps its own narrower set (first-match semantics).
+  // = disable. Placed after the codebuddy-cn/commandcode-scoped deepseek-v4*
+  // rules above so those gateways keep their own narrower sets (first-match
+  // semantics).
   { pattern: "*deepseek-v4.*", levels: ["none", "low", "medium", "high", "xhigh", "max"] },
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },

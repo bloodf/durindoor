@@ -1,3 +1,50 @@
+# 4.5.0
+
+## Features
+
+- feat(api): make DurinDoor fully manageable via REST API and MCP (#879)
+
+## Fixes
+
+- fix(db): complete SQLite to PostgreSQL cutover and safe rollback (#888)
+
+## Upstream ports
+
+- port(upstream): #4148 - add an internal monitoring page with provider health and activity (#920)
+- port(upstream): aa14ef7+eafac37 - normalize Muse Free tool choice and strip prior reasoning items (#919)
+- port(upstream): 0c6ab4f - reuse one stable opencode session per identity to stop 429s (#917)
+- port(upstream): #4146 - ensure decoy tools on free-tier requests that carry custom tools (#915)
+- port(upstream): 93837af+6091ff5 - fix opencode free-tier 403 with canonical session format and cloaking (#907)
+- port(upstream): 2b65c49 - route opencode Union Alpha through the Messages API (#922)
+- port(upstream): 702b57c - route every opencode-go responses-only model to /responses (#910)
+- port(upstream): #4145 - add the ocz alias and missing OpenCode Zen catalog models (#909)
+- port(upstream): #4089 - add the ainetcafe (Kimi K3) provider (#902)
+- port(upstream): 092c84e+13b468b - retry transient Command Code stream errors and keep images (#918)
+- port(upstream): 367fc54+912ed29+3ac100d - widen DeepSeek effort range, vision flags and credit display (#914)
+- port(upstream): #4150 - show Ollama free-plan monthly usage and reset time in the quota tracker (#906)
+- port(upstream): #4154 - forward reasoning_effort to Qoder upstream models (#900)
+- port(upstream): #4078 - add a cache-affinity account strategy that pins a conversation (#904)
+- port(upstream): #4144 - add TOTP two-factor authentication for dashboard login (#913)
+- port(upstream): #4151 - add a Claude Code auto-permission classifier compat mode (#908)
+- port(upstream): 9300121 - report stream aborts after HTTP 200 in-band (#894)
+- port(upstream): #4079 - log tool call names for tool-call-only stream turns (#912)
+- port(upstream): #4074 - preserve and normalize usage.cost.total on chat completions (#901)
+- port(upstream): #4110 - preserve function-tool strict across Claude and Chat routes (#903)
+- port(upstream): #4090 - repair missing tool_call_id that makes strict upstreams reject the request (#896)
+- port(upstream): c49efdf+82b1bca+f4f06f2 - keep Kiro tool names, tool-result images and thinking display (#898)
+- port(upstream): #4143 - stop sending vendor-native thinking fields to OpenAI-compatible resellers (#897)
+- port(upstream): #4147 - forward Retry-After and stop retrying terminal billing errors (#899)
+- port(upstream): 20a43f5 - stop cooling down an account for a request-scoped 4xx (#895)
+- port(upstream): #4073 - exclude inactive connections from the model picker (#916)
+- port(upstream): bc3be0c+b3d6e08+f642295 - scope Antigravity thought signatures and sanitize system identity (#911)
+- port(upstream): #4135 - route a bare codex-auto-review model id to the Codex provider (#905)
+
+## Maintenance
+
+- docs(readme): rewrite the project README with full feature and provider coverage (#921)
+- docs(site): publish the documentation on fumadocs at /docs (#892)
+
+
 # 4.4.0
 
 ## Features

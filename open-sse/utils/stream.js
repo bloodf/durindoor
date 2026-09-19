@@ -1,7 +1,7 @@
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
-import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
+import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
@@ -367,6 +367,10 @@ export function createSSEStream(options = {}) {
   let ttftAt = null;
   /** Tool-call frames are useful output even when providers omit usage and text. */
   let hadToolCalls = false;
+  // Names only, for a readable log label — a turn that only calls tools accumulates
+  // no content and would otherwise log as "[Empty streaming response]", indistinguishable
+  // from a truncated stream. Dedup keeps a chatty multi-call turn's label short.
+  const toolCallNames = new Set();
   let sseLineCount = 0;
   let sseEmittedCount = 0;
   const eventTypeCounts = {};
@@ -374,12 +378,39 @@ export function createSSEStream(options = {}) {
   const recordCompletionData = (parsed, { summary = true, trackUsage = true, content = false } = {}) => {
     if (summary) providerSummary.ingest(parsed);
     const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
+    const openaiToolCalls = parsed.choices?.some?.((choice) => choice?.delta?.tool_calls?.length > 0 || choice?.delta?.function_call);
+    const claudeToolUseStart = parsed.type === "content_block_start" && parsed.content_block?.type === "tool_use";
+    const responsesToolCall = parsed.item?.type === "function_call" || parsed.item?.type === "custom_tool_call";
+    const geminiToolCall = geminiParts.some((part) => part?.functionCall);
+    const finalMessageToolCalls = parsed.message?.tool_calls?.length > 0;
     hadToolCalls = hadToolCalls ||
-    parsed.choices?.some?.((choice) => choice?.delta?.tool_calls?.length > 0 || choice?.delta?.function_call) ||
-    parsed.type === "content_block_start" && parsed.content_block?.type === "tool_use" ||
-    parsed.item?.type === "function_call" || parsed.item?.type === "custom_tool_call" ||
-    geminiParts.some((part) => part?.functionCall) ||
-    parsed.message?.tool_calls?.length > 0;
+    openaiToolCalls || claudeToolUseStart || responsesToolCall || geminiToolCall || finalMessageToolCalls;
+    if (openaiToolCalls) {
+      for (const choice of parsed.choices) {
+        for (const call of choice?.delta?.tool_calls || []) {
+          if (isString(call?.function?.name) && call.function.name) toolCallNames.add(call.function.name);
+        }
+        if (isString(choice?.delta?.function_call?.name) && choice.delta.function_call.name) {
+          toolCallNames.add(choice.delta.function_call.name);
+        }
+      }
+    }
+    if (claudeToolUseStart && isString(parsed.content_block?.name) && parsed.content_block.name) {
+      toolCallNames.add(parsed.content_block.name);
+    }
+    if (responsesToolCall && isString(parsed.item?.name) && parsed.item.name) {
+      toolCallNames.add(parsed.item.name);
+    }
+    if (geminiToolCall) {
+      for (const part of geminiParts) {
+        if (isString(part?.functionCall?.name) && part.functionCall.name) toolCallNames.add(part.functionCall.name);
+      }
+    }
+    if (finalMessageToolCalls) {
+      for (const call of parsed.message.tool_calls) {
+        if (isString(call?.function?.name) && call.function.name) toolCallNames.add(call.function.name);
+      }
+    }
     const extracted = extractUsage(parsed);
     if (trackUsage && extracted) usage = mergeUsage(usage, extracted);
     if (!content) return extracted;
@@ -869,12 +900,12 @@ export function createSSEStream(options = {}) {
               const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
               if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
-                parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
+                parsed.usage = filterUsageForFormat(enrichUsageCost(estimated, provider, model), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
               } else if (isFinishChunk && usage) {
                 const buffered = addBufferToUsage(usage);
-                parsed.usage = filterUsageForFormat(buffered, FORMATS.OPENAI);
+                parsed.usage = filterUsageForFormat(enrichUsageCost(buffered, provider, model), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
               } else if (idFixed || fieldsInjected) {
@@ -896,7 +927,11 @@ export function createSSEStream(options = {}) {
                 }
                 onStreamCompleteFired = true;
                 onStreamComplete(
-                  { ...getAccumulatedCompletion(), ...(hadToolCalls ? { hadToolCalls: true } : null) },
+                  {
+                    ...getAccumulatedCompletion(),
+                    ...(hadToolCalls ? { hadToolCalls: true } : null),
+                    ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null)
+                  },
                   usage,
                   ttftAt,
                   providerSummary.finalize(usage)
@@ -1065,7 +1100,11 @@ export function createSSEStream(options = {}) {
         if ((provider === "antigravity" || provider === "agy") && parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason) && onStreamComplete && !onStreamCompleteFired) {
           if (!hasValidUsage(state.usage) && totalContentLength > 0) state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
           onStreamCompleteFired = true;
-          onStreamComplete({ ...getAccumulatedCompletion(), ...(hadToolCalls ? { hadToolCalls: true } : null) }, state.usage, ttftAt, providerSummary.finalize(state.usage));
+          onStreamComplete({
+            ...getAccumulatedCompletion(),
+            ...(hadToolCalls ? { hadToolCalls: true } : null),
+            ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null)
+          }, state.usage, ttftAt, providerSummary.finalize(state.usage));
         }
 
         // Provider-specific normalization must also run in TRANSLATE mode:
@@ -1097,11 +1136,11 @@ export function createSSEStream(options = {}) {
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
             if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
               const estimated = mergeUsage(state.usage ?? item.usage, estimateUsage(body, totalContentLength, sourceFormat));
-              item.usage = filterUsageForFormat(estimated, sourceFormat); // Filter + already has buffer
+              item.usage = filterUsageForFormat(enrichUsageCost(estimated, provider, model), sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
               const buffered = addBufferToUsage(state.usage);
-              item.usage = filterUsageForFormat(buffered, sourceFormat);
+              item.usage = filterUsageForFormat(enrichUsageCost(buffered, provider, model), sourceFormat);
             }
 
             const output = formatSSE(item, sourceFormat);
@@ -1237,7 +1276,8 @@ export function createSSEStream(options = {}) {
             onStreamCompleteFired = true;
             onStreamComplete({
               ...getAccumulatedCompletion(),
-              ...(hadToolCalls ? { hadToolCalls: true } : null)
+              ...(hadToolCalls ? { hadToolCalls: true } : null),
+              ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null)
             }, usage, ttftAt, providerSummary.finalize(usage));
           }
           return;
@@ -1324,7 +1364,8 @@ export function createSSEStream(options = {}) {
           onStreamCompleteFired = true;
           onStreamComplete({
             ...getAccumulatedCompletion(),
-            ...(hadToolCalls ? { hadToolCalls: true } : null)
+            ...(hadToolCalls ? { hadToolCalls: true } : null),
+            ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null)
           }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
         }
       } catch (error) {

@@ -11,6 +11,7 @@ import {
   clampResponsesCallId,
   coerceResponsesArguments,
   coerceResponsesOutput,
+  repairMissingResponsesCallIds,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
@@ -90,7 +91,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let pendingToolResults = [];
   let pendingReasoning = "";
 
-  const inputItems = stripOrphanedToolOutputs(normalizeResponsesInput(body.input));
+  // Repair items whose `call_id` was dropped by the client BEFORE the orphan
+  // strip below: pairing an id-less function_call_output with the oldest
+  // unanswered function_call keeps a legitimate tool result instead of the
+  // strip pass discarding it as an orphan.
+  const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(normalizeResponsesInput(body.input)));
   if (!inputItems) return body;
 
   // Extract reasoning text from summary[].text or encrypted_content fallback
@@ -457,7 +462,9 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           name: name.slice(0, MAX_TOOL_NAME_LEN),
           description: String(tool.function.description || ""),
           parameters: normalizeToolParameters(tool.function.parameters),
-          strict: tool.function.strict
+          // The Responses API requires `strict` on every function tool; default to
+          // false (non-strict) instead of forwarding an undefined field.
+          strict: tool.function.strict ?? false
         };
       }
       return tool;

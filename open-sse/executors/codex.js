@@ -31,7 +31,7 @@ import { cancelAndReleaseReader, releaseReader } from "../utils/streamReader.js"
 
 // Recognized Codex effort suffixes, lowest-to-highest. Single source of truth for
 // routing normalization: transformRequest strips the suffix from the wire id.
-import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 const CODEX_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 const CODEX_SPARK_MODEL = "gpt-5.3-codex-spark";
 const CODEX_SPARK_COMPACT_THRESHOLD = 100_000;
@@ -403,8 +403,12 @@ function normalizeCodexTools(body) {
     const parameters = tool.parameters && isObject(tool.parameters) && !Array.isArray(tool.parameters) ?
     tool.parameters :
     fn?.parameters && isObject(fn.parameters) && !Array.isArray(fn.parameters) ? fn.parameters : { type: "object", properties: {} };
+    // Preserve an explicit strict flag (flat or nested under .function) across the
+    // in-place rewrite below; leave it unset when the caller never set one.
+    const strict = isBoolean(tool.strict) ? tool.strict : fn?.strict;
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
+    if (isBoolean(strict)) tool.strict = strict;
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
     tool.parameters = stripCodexUnsupportedPatterns(parameters);

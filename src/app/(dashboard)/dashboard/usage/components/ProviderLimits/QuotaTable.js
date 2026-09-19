@@ -14,6 +14,7 @@ const TONES = {
   healthy: { text: "text-dd-success", bar: "bg-dd-success", surface: "bg-dd-surface-2" },
   warning: { text: "text-dd-warning", bar: "bg-dd-warning", surface: "bg-dd-surface-2" },
   danger: { text: "text-dd-danger", bar: "bg-dd-danger", surface: "bg-dd-surface-2" },
+  credit: { text: "text-dd-info", bar: "bg-dd-info", surface: "bg-dd-surface-2" },
 };
 
 function toneFor(remaining) {
@@ -75,19 +76,26 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
       key: "remaining",
       label: "Remaining",
       render: (quota) => {
-        const tone = toneFor(quota.remaining);
+        const isCreditBalance = quota.isCreditBalance === true;
+        const tone = isCreditBalance ? TONES.credit : toneFor(quota.remaining);
         const isMerged = quota.mergeMode === MERGE_MODE.ABSOLUTE || quota.mergeMode === MERGE_MODE.PERCENTAGE;
-        const absoluteLabel = quota.mergeMode === MERGE_MODE.PERCENTAGE
+        // A DeepSeek-style credit balance is a running total, not a used/total
+        // window — no bar, no percentage, just the balance and its currency.
+        const absoluteLabel = isCreditBalance
+          ? `Credit: ${quota.total.toFixed(2)} ${quota.currency || ""}`.trim()
+          : quota.mergeMode === MERGE_MODE.PERCENTAGE
           ? `min across ${quota.accountCount} accounts`
           : `${quota.used.toLocaleString()} / ${quota.total > 0 ? quota.total.toLocaleString() : "∞"}`;
         return (
           <div className="flex flex-col gap-1">
-            <div className={`${compact ? "h-1" : "h-1.5"} overflow-hidden rounded-dd ${tone.surface}`} role="progressbar" aria-label={`${quota.name} remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={quota.remaining}>
-              <div className={`h-full rounded-dd ${tone.bar} transition-[width] motion-reduce:transition-none`} style={{ width: `${Math.min(quota.remaining, 100)}%` }} />
-            </div>
+            {isCreditBalance ? null : (
+              <div className={`${compact ? "h-1" : "h-1.5"} overflow-hidden rounded-dd ${tone.surface}`} role="progressbar" aria-label={`${quota.name} remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={quota.remaining}>
+                <div className={`h-full rounded-dd ${tone.bar} transition-[width] motion-reduce:transition-none`} style={{ width: `${Math.min(quota.remaining, 100)}%` }} />
+              </div>
+            )}
             <div className={`flex items-center justify-between ${compact ? "text-[10px]" : "text-xs"} text-dd-muted`}>
               <span className="dd-tnum">{absoluteLabel}</span>
-              <span className={`dd-tnum font-medium ${tone.text}`}>{quota.remaining}%</span>
+              <span className={`dd-tnum font-medium ${tone.text}`}>{isCreditBalance ? "" : `${quota.remaining}%`}</span>
             </div>
             {isMerged ? <span className={`${compact ? "text-[10px]" : "text-xs"} italic text-dd-subtle`}>merged across {quota.accountCount} account{quota.accountCount !== 1 ? "s" : ""}</span> : null}
           </div>

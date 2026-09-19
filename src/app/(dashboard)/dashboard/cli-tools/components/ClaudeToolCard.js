@@ -54,6 +54,8 @@ export default function ClaudeToolCard({
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [ccFilterNaming, setCcFilterNaming] = useState(false);
+  const [claudeClassifierCompat, setClaudeClassifierCompat] = useState("off");
+  const [claudeClassifierCompatLoading, setClaudeClassifierCompatLoading] = useState(false);
   const [maxContextTokens, setMaxContextTokens] = useState("");
   const hasInitializedModels = useRef(false);
 
@@ -87,6 +89,7 @@ export default function ClaudeToolCard({
   useEffect(() => {
     fetch("/api/settings").then(r => r.json()).then(data => {
       setCcFilterNaming(!!data.ccFilterNaming);
+      setClaudeClassifierCompat(["auto", "always"].includes(data.claudeClassifierCompat) ? data.claudeClassifierCompat : "off");
     }).catch(() => {});
   }, []);
 
@@ -98,6 +101,40 @@ export default function ClaudeToolCard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ccFilterNaming: value }),
     }).catch(() => {});
+  };
+
+  // "claudeClassifierCompat" gates a security-relevant default-allow short-
+  // circuit for Claude Code's auto-permission classifier, so the settings
+  // route requires proved dashboard/CLI identity to persist it (see
+  // AUTH_CRITICAL_SETTING_KEYS). An unauthenticated PATCH here is silently
+  // dropped server-side; roll the toggle back if the response is not ok so
+  // this control never displays a mode that was not actually saved.
+  const CLASSIFIER_COMPAT_MODES = ["off", "auto", "always"];
+  const CLASSIFIER_COMPAT_STYLES = {
+    off: "bg-dd-muted/10 text-dd-muted border-dd-border",
+    auto: "bg-dd-warning/10 text-dd-warning border-dd-warning/40",
+    always: "bg-dd-success/10 text-dd-success border-dd-success/40",
+  };
+
+  const handleClassifierCompatCycle = async () => {
+    const next = CLASSIFIER_COMPAT_MODES[(CLASSIFIER_COMPAT_MODES.indexOf(claudeClassifierCompat) + 1) % CLASSIFIER_COMPAT_MODES.length];
+    const previous = claudeClassifierCompat;
+    setClaudeClassifierCompat(next);
+    setClaudeClassifierCompatLoading(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeClassifierCompat: next }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const saved = await res.json();
+      setClaudeClassifierCompat(["auto", "always"].includes(saved.claudeClassifierCompat) ? saved.claudeClassifierCompat : "off");
+    } catch {
+      setClaudeClassifierCompat(previous);
+    } finally {
+      setClaudeClassifierCompatLoading(false);
+    }
   };
 
   const fetchModelAliases = async () => {
@@ -384,6 +421,26 @@ export default function ClaudeToolCard({
                       <button type="button" aria-label="About filter naming requests" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-dd outline-none focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-dd-muted text-[14px] cursor-help">info</span></button>
                     </Tooltip>
                   </div>
+                </div>
+
+                {/* Claude Code auto-permission classifier compat */}
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
+                  <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">Classifier</span>
+                  <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-dd-muted">Auto-allow classifier</span>
+                    <Tooltip text="Claude Code --permission-mode auto sends an internal security-classifier request. When routed to a cheap model that returns empty content, every gated action (Bash, Edit, WebFetch) fails closed. auto and always detect the security-monitor marker and answer that request locally with a synthetic ALLOW, without calling upstream. off never mutates traffic.">
+                      <button type="button" aria-label="About classifier compat" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-dd outline-none focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-dd-muted text-[14px] cursor-help">info</span></button>
+                    </Tooltip>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClassifierCompatCycle}
+                    disabled={claudeClassifierCompatLoading}
+                    className={`shrink-0 rounded border px-2 py-1 text-[10px] font-medium uppercase tracking-wide transition-colors disabled:opacity-50 ${CLASSIFIER_COMPAT_STYLES[claudeClassifierCompat]}`}
+                  >
+                    {claudeClassifierCompat}
+                  </button>
                 </div>
               </div>
 

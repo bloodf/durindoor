@@ -77,6 +77,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `ai21` |  | apikey | `https://api.ai21.com/studio/v1/chat/completions` |
 | `aihorde` | openai | free | `https://oai.aihorde.net/v1/chat/completions` |
 | `aimlapi` |  | apikey | `https://api.aimlapi.com/v1/chat/completions` |
+| `ainetcafe` |  | apikey | `https://microquickjs.com/v1/chat/completions` |
 | `alibaba` |  | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alibaba-cn` |  | apikey | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alicode` |  | apikey | `https://coding.dashscope.aliyuncs.com/v1/chat/completions` |

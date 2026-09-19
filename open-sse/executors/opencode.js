@@ -6,10 +6,11 @@ import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { normalizeResponsesTools, sanitizeResponsesItems } from "./opencode-go.js";
+import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 
 /**
  * OpenCode free-tier executor (upstream #4041-adjacent cluster: 93837af0 +
- * 6091ff59, plus PR #4155).
+ * 6091ff59 + 2b65c49, plus PR #4155).
  *
  * OpenCode Zen validates free-tier (no-auth) requests and 403s
  * (`FreeTierError`) unless three things hold:
@@ -26,9 +27,20 @@ import { normalizeResponsesTools, sanitizeResponsesItems } from "./opencode-go.j
  * (called from `execute`) onto a request-local credentials copy, mirroring
  * opencode-go.js: no session state lives on this singleton executor, so
  * concurrent requests never race on a shared field.
+ *
+ * Union Alpha (upstream 2b65c49) is orthogonal to all of the above: it is a
+ * routing concern (which endpoint a model's wire format needs), not a
+ * session/cloaking/streaming one. `MESSAGES_MODELS` pins it to
+ * /zen/v1/messages (Claude wire format) in `buildUrl`, and `buildHeaders`
+ * only adds `anthropic-version` on that route; every other free-tier
+ * behavior in this file (session identity, cloaking, forced streaming, the
+ * compact-endpoint guard) applies to it exactly like any other non-Muse
+ * model.
  */
 const OPENCODE_UA = "opencode/1.18.31";
-const MESSAGES_MODELS = new Set();
+// Models served by /zen/v1/messages (Claude wire format); every other model
+// stays on /chat/completions (or /responses, gated separately by /muse/).
+const MESSAGES_MODELS = new Set(["union-alpha"]);
 
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -307,7 +319,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     `${base}/zen/v1/chat/completions`;
   }
 
-  buildHeaders(credentials, stream = true, requestContext = null) {
+  buildHeaders(credentials, stream = true, requestContext = null, model = null) {
     const clientHeaders = new Headers(requestContext?.clientHeaders ?? credentials?.rawHeaders ?? {});
     const clientUa = clientHeaders.get("user-agent");
     const credentialToken = credentials?.apiKey || credentials?.accessToken || credentials?.authorization;
@@ -318,6 +330,7 @@ export class OpenCodeExecutor extends BaseExecutor {
       "x-opencode-client": clientHeaders.get("x-opencode-client") || "desktop",
       "Accept": stream ? "text/event-stream" : "*/*"
     };
+    if (MESSAGES_MODELS.has(model)) baseHeaders["anthropic-version"] = ANTHROPIC_API_VERSION;
     if (hasPaidIdentity) {
       baseHeaders.Authorization = credentialToken.startsWith?.("Bearer ") ? credentialToken : `Bearer ${credentialToken}`;
     }

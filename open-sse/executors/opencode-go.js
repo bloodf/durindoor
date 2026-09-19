@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
-import { isMuseSparkModel } from "../providers/models/helpers.js";
+import { getModelTargetFormat } from "../config/providerModels.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import {
@@ -13,15 +13,19 @@ import {
 } from "../translator/formats/responsesApi.js";
 
 /**
- * OpenCode Go executor (upstream #3819 + #3820 + #3800).
+ * OpenCode Go executor (upstream #3819 + #3820 + #3800 + 702b57c3).
  *
  * Two concerns live here:
  *
- * 1. Responses transport (upstream #3819/#3820). Muse Spark contributor models
- *    are served only by /zen/go/v1/responses, so this executor pins their URL
- *    and normalizes Responses-shaped bodies (tool declarations, call_id
- *    clamping, argument/output coercion, token caps, reasoning) before they go
- *    upstream. Dispatch is stateless (`store: false`), so replay-only stored
+ * 1. Responses transport (upstream #3819/#3820, generalized by 702b57c3).
+ *    Any registry model with targetFormat "openai-responses" (currently
+ *    Muse Spark contributor models) is served only by /zen/go/v1/responses —
+ *    routing is derived from the registry, never hardcoded to a model family,
+ *    so a future responses-only entry needs no executor change. This executor
+ *    pins the URL for those models and normalizes Responses-shaped bodies
+ *    (tool declarations, call_id clamping, argument/output coercion, token
+ *    caps, reasoning) before they go upstream. Dispatch is stateless
+ *    (`store: false`), so replay-only stored
  *    references (item ids, item_reference entries, previous_response_id) are
  *    stripped before send. The upstream body always streams; the per-model
  *    `forceStream` registry flag lets chatCore convert the SSE back to JSON
@@ -72,13 +76,12 @@ function translatedSession(sessionId, clientTool) {
   return `ses_${digest}`;
 }
 
-// Strip the thinking suffix "model(level)" so checks hit the base id.
-function baseModelId(model) {
-  return String(model || "").replace(/\([^()]+\)\s*$/, "").trim();
-}
-
+// Responses-only per the provider registry (currently muse-spark; any future
+// entry with targetFormat "openai-responses" is picked up automatically).
+// getModelTargetFormat already strips thinking suffixes via parseSuffix, so
+// "muse-spark-1.3-contributor(xhigh)" still resolves to its base entry.
 function isResponsesModel(model) {
-  return isMuseSparkModel(baseModelId(model));
+  return getModelTargetFormat("opencode-go", model) === "openai-responses";
 }
 
 // Flatten Chat Completions tool declarations into the Responses flat shape and

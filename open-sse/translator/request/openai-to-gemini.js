@@ -193,7 +193,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
             const decoded = decodeToolCallId(tc.id);
             // Session-namespaced store replay (upstream c08efdbe): a signature
             // persisted for this exact call id wins over the synthetic default.
-            const cachedSig = decoded.id ? getGeminiThoughtSignatureSync(decoded.id, sessionId) : null;
+            const cachedSig = decoded.id ? getGeminiThoughtSignatureSync(decoded.id, sessionId, model) : null;
             const functionCallPart = {
               functionCall: {
                 id: decoded.id,
@@ -440,7 +440,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
               }
             });
           } else if (block.type === CLAUDE_BLOCK.TOOL_USE) {
-            const cachedSig = block.id ? getGeminiThoughtSignatureSync(block.id, credentials?._clientSessionId) : null;
+            const cachedSig = block.id ? getGeminiThoughtSignatureSync(block.id, credentials?._clientSessionId, model) : null;
             const callSig = cachedSig || (!firstToolUseSeen ? signature : undefined);
             firstToolUseSeen = true;
 

@@ -96,6 +96,7 @@
   },
   "idToAlias": {
     "agy": "agy",
+    "ainetcafe": "ainetcafe",
     "alicode": "alicode",
     "alicode-intl": "alicode-intl",
     "alitp-intl": "alitp-intl",
@@ -170,6 +171,7 @@
   "modelKeys": [
     "ag",
     "agy",
+    "ainetcafe",
     "alicode",
     "alicode-intl",
     "alitp-intl",

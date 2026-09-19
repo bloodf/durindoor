@@ -48,10 +48,18 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
     oidcClientSecret,
     mitmSudoEncrypted,
     postgresUrl,
+    mfaSecret,
+    mfaBackupCodes,
     ...safeSettings
   } = settings;
   void postgresUrl;
+  void mfaSecret;
   safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
+  // mfaEnabled is a plain flag (safe to expose); the secret and recovery-code
+  // hashes never leave the server. Only a count is exposed so the profile UI
+  // can warn when backup codes are running low.
+  safeSettings.mfaEnabled = settings.mfaEnabled === true;
+  safeSettings.mfaBackupCodesRemaining = Array.isArray(mfaBackupCodes) ? mfaBackupCodes.length : 0;
   if (!privileged && safeSettings.outboundProxyUrl) {
     safeSettings.outboundProxyUrl = redactProxyUrlCredentials(safeSettings.outboundProxyUrl);
   }
@@ -268,6 +276,14 @@ export async function PATCH(request) {
     if (Object.prototype.hasOwnProperty.call(body, "dataRetentionEnabled")
         && !isBoolean(body.dataRetentionEnabled)) {
       return NextResponse.json({ error: "Invalid dataRetentionEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
+
+    // claudeClassifierCompat gates a default-allow short-circuit for Claude
+    // Code's auto-permission classifier (open-sse/handlers/chatCore.js); an
+    // unrecognized value must never fall through to a permissive default.
+    if (Object.prototype.hasOwnProperty.call(body, "claudeClassifierCompat")
+        && !["off", "auto", "always"].includes(body.claudeClassifierCompat)) {
+      return NextResponse.json({ error: "Invalid claudeClassifierCompat" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
     if (Object.prototype.hasOwnProperty.call(body, "dataRetentionDays")) {
       const v = body.dataRetentionDays;

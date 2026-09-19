@@ -562,7 +562,10 @@ export const PROVIDER_CAPABILITIES = {
     "big-pickle": { reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 },
     "muse-spark-1.2": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "muse-spark-1.2-contributor-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
-    "mimo-v2.5-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 }
+    "mimo-v2.5-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 },
+    // Union Alpha routes through the Claude Messages wire (see executors/opencode.js
+    // MESSAGES_MODELS), not the opencode reasoning_effort enum.
+    "union-alpha": { vision: true, contextWindow: 262144, maxOutput: 131072 }
   },
 
   oc: { "x-preview-f-free": OX_ALPHA_CAPABILITIES },

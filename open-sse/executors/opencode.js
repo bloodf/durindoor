@@ -60,7 +60,7 @@ function hasValidOpencodeVersion(ua) {
 // OpenCode free tier requires both 'bash' and 'read' in tools payload.
 // Injected as cloaked decoy tools so external CLI tools (e.g. Claude Code's Bash/Read)
 // take precedence while satisfying upstream verification.
-const OPENCODE_DECOY_CHAT_TOOLS = [
+export const OPENCODE_DECOY_CHAT_TOOLS = [
   {
     type: "function",
     function: {
@@ -79,7 +79,7 @@ const OPENCODE_DECOY_CHAT_TOOLS = [
   },
 ];
 
-const OPENCODE_DECOY_RESPONSES_TOOLS = [
+export const OPENCODE_DECOY_RESPONSES_TOOLS = [
   {
     type: "function",
     name: "bash",
@@ -101,21 +101,27 @@ const OPENCODE_DECOY_RESPONSES_TOOLS = [
 function cloakOpencodeTools(body, isResponses) {
   if (!body) return;
   if (isResponses) {
-    if (!Array.isArray(body.tools)) body.tools = [];
-    const names = new Set(body.tools.map((t) => t.name || t.function?.name));
+    const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+    if (!hasTools) body.tools = [];
+    // #4146: a malformed tool entry (null/undefined) must not throw here — treat
+    // it as unnamed so it's simply ignored by the decoy-name check below.
+    const exactNames = new Set(body.tools.map((t) => t?.name || t?.function?.name || ""));
     for (const tool of OPENCODE_DECOY_RESPONSES_TOOLS) {
-      if (!names.has(tool.name)) body.tools.push({ ...tool });
+      if (!exactNames.has(tool.name)) body.tools.push({ ...tool });
     }
-    if (!body.tool_choice) body.tool_choice = "auto";
+    // Only default tool_choice when the caller sent none: forcing "auto" onto a
+    // caller who already supplied its own tools would override their intent
+    // (e.g. an explicit "required" or a named tool_choice).
+    if (!hasTools && !body.tool_choice) body.tool_choice = "auto";
   } else {
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
     if (!hasTools) {
       body.tools = OPENCODE_DECOY_CHAT_TOOLS.map((t) => ({ ...t, function: { ...t.function } }));
       if (!body.tool_choice) body.tool_choice = "none";
     } else {
-      const names = new Set(body.tools.map((t) => t.function?.name || t.name));
+      const exactNames = new Set(body.tools.map((t) => t?.function?.name || t?.name || ""));
       for (const tool of OPENCODE_DECOY_CHAT_TOOLS) {
-        if (!names.has(tool.function.name)) {
+        if (!exactNames.has(tool.function.name)) {
           body.tools.push({ ...tool, function: { ...tool.function } });
         }
       }

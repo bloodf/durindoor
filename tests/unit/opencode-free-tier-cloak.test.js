@@ -58,9 +58,35 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
       tool_choice: "required",
     };
 
-    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
+    // Deliberately not muse-spark-1.3-contributor-free: that model has its own
+    // hard-400 quirk (port(upstream): aa14ef7) that demotes any non-auto
+    // tool_choice regardless of caller tools, which is the opposite of what
+    // this test is checking. See the dedicated test below for that model.
+    const transformed = executor.transformRequest("muse-spark-1.2-contributor-free", body, true, {});
 
     expect(transformed.tool_choice).toBe("required");
+    const names = transformed.tools.map((tool) => tool.name);
+    expect(names).toEqual(["zcode_search", ...OPENCODE_DECOY_RESPONSES_TOOLS.map((t) => t.name)]);
+  });
+
+  it("demotes a caller-supplied tool_choice to auto on muse-spark-1.3-contributor-free even with caller tools (aa14ef7 overrides #4146 for this model only)", () => {
+    // OpenCode Free returns HTTP 400 for muse-spark-1.3-contributor-free when
+    // tool_choice is anything but "auto" — a hard upstream constraint, not a
+    // preference. #4146's "don't override the caller" rule exists to avoid
+    // gratuitously discarding intent, not to send a request known to fail;
+    // the model-specific quirk (forceAutoToolChoiceModels) wins for this one
+    // id. Every other muse model keeps #4146's preservation behavior, proven
+    // by the test above.
+    const executor = new OpenCodeExecutor();
+    const body = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      tools: [{ type: "function", name: "zcode_search", description: "d", parameters: { type: "object", properties: {} } }],
+      tool_choice: "required",
+    };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
+
+    expect(transformed.tool_choice).toBe("auto");
     const names = transformed.tools.map((tool) => tool.name);
     expect(names).toEqual(["zcode_search", ...OPENCODE_DECOY_RESPONSES_TOOLS.map((t) => t.name)]);
   });

@@ -106,6 +106,20 @@ export function coerceResponsesOutput(value) {
   }
 }
 
+// Native Responses clients skip translation (sourceFormat === targetFormat), so a
+// prior-turn `reasoning` item's encrypted_content can reach an executor unvalidated
+// by this caller's account. OpenCode's pooled/rotated credentials reject it with
+// 400 "reasoning encrypted_content was not issued to this caller" (port of
+// decolua/9router eafac37d). Callers filter `body.input` with this predicate after
+// guarding for non-object/array items; it returns false to drop a reasoning item
+// outright and mutates any surviving item to scrub a stray encrypted field.
+export function stripPriorReasoningItem(item) {
+  if (item.type === "reasoning") return false;
+  delete item.encrypted_content;
+  delete item.reasoning_encrypted_content;
+  return true;
+}
+
 /**
  * Repair Responses API items whose `call_id` correlation key is missing.
  *

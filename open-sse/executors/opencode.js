@@ -313,6 +313,11 @@ function anonymousCallerIp(rawHeaders) {
   return raw && !isPrivateIp(raw) ? raw : null;
 }
 
+// Strip the thinking suffix "model(level)" so quirk checks hit the base id.
+function baseModelId(model) {
+  return String(model || "").replace(/\([^()]+\)\s*$/, "").trim();
+}
+
 export class OpenCodeExecutor extends BaseExecutor {
   constructor() {
     super("opencode", PROVIDERS.opencode);
@@ -377,8 +382,19 @@ export class OpenCodeExecutor extends BaseExecutor {
     if (/muse/i.test(model) && body) {
       body.store = false;
       normalizeResponsesTools(body);
+      // Strips prior-turn `reasoning` items and their encrypted_content (port of
+      // decolua/9router eafac37d) as part of its existing item-shape pass.
       sanitizeResponsesItems(body);
       cloakOpencodeTools(body, true);
+      // OpenCode Free 400s muse-spark-1.3-contributor-free when tool_choice is
+      // anything but "auto" (port of decolua/9router aa14ef72). cloakOpencodeTools
+      // above only defaults a missing tool_choice (and only when the caller sent
+      // no tools, #4146); this demotes an explicit non-auto one that survives
+      // cloaking regardless of whether the caller also sent tools.
+      if ("tool_choice" in body && body.tool_choice !== "auto" &&
+      this.config.quirks?.forceAutoToolChoiceModels?.includes(baseModelId(model))) {
+        body.tool_choice = "auto";
+      }
     } else if (body) {
       cloakOpencodeTools(body, false);
     }

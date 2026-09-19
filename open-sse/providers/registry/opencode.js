@@ -25,6 +25,11 @@ export default {
     // non-streaming free-tier requests. Force stream upstream; chatCore
     // aggregates the SSE back to JSON for clients that asked for JSON.
     forceStream: true,
+    // OpenCode Free 400s muse-spark-1.3-contributor-free when tool_choice is
+    // anything but "auto" (port of decolua/9router aa14ef72).
+    quirks: {
+      forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
+    },
   },
   models: [
     { id: "x-preview-f-free", name: "Ox Alpha Free", targetFormat: "openai", supportedFormats: ["openai"] },

@@ -75,9 +75,15 @@ describe("getCapabilitiesForModel", () => {
     };
 
     expect(getCapabilitiesForModel("opencode-go", "deepseek-v4-flash-vision-exp")).toMatchObject(expected);
-    expect(getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4-flash-vision-exp")).toMatchObject(expected);
-    expect(getCapabilitiesForModel("commandcode", "vendor/deepseek-v4-flash-vision-preview")).toMatchObject(expected);
     expect(getCapabilitiesForModel("opencode-go", "deepseek-v4-flash").vision).toBe(false);
+
+    // CommandCode resolves through its own provider default (added by the
+    // decolua/9router 13b468b8 port below), so it keeps vision/reasoning but
+    // reports thinkingFormat "commandcode" instead of the generic "deepseek"
+    // family format — reasoning_effort must land in params, not body.thinking.
+    const commandCodeExpected = { ...expected, thinkingFormat: "commandcode" };
+    expect(getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4-flash-vision-exp")).toMatchObject(commandCodeExpected);
+    expect(getCapabilitiesForModel("commandcode", "vendor/deepseek-v4-flash-vision-preview")).toMatchObject(commandCodeExpected);
     expect(getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4-flash").vision).toBe(false);
   });
 
@@ -263,7 +269,7 @@ describe("getCapabilitiesForModel — MiMo (<think>-tag reasoning, always-on)", 
   });
 
   it("xiaomi/mimo-v2.5-pro (vendor-prefixed) has vision", () => {
-    const caps = getCapabilitiesForModel("commandcode", "xiaomi/mimo-v2.5-pro");
+    const caps = getCapabilitiesForModel(null, "xiaomi/mimo-v2.5-pro");
     expect(caps.vision).toBe(true);
     expect(caps.thinkingFormat).toBe("deepseek");
   });
@@ -292,7 +298,7 @@ describe("getCapabilitiesForModel — Qwen max/plus vision", () => {
   });
 
   it("Qwen3.6-Max-Preview has vision (case-insensitive pattern match)", () => {
-    const caps = getCapabilitiesForModel("commandcode", "Qwen3.6-Max-Preview");
+    const caps = getCapabilitiesForModel(null, "Qwen3.6-Max-Preview");
     expect(caps.vision).toBe(true);
   });
 
@@ -338,7 +344,7 @@ describe("getCapabilitiesForModel — MiniMax M2.x vision", () => {
   });
 
   it("MiniMax-M2.7 has vision (vendor prefix MiniMaxAI/ stripped by route)", () => {
-    const caps = getCapabilitiesForModel("commandcode", "MiniMax-M2.7");
+    const caps = getCapabilitiesForModel(null, "MiniMax-M2.7");
     expect(caps.vision).toBe(true);
   });
 
@@ -528,6 +534,40 @@ describe("getCapabilitiesForModel — codebuddy-cn server-config alignment (upst
     const caps = getCapabilitiesForModel("codebuddy-cn", "kimi-k3-1");
     expect(caps.vision).toBe(true);
     expect(caps.contextWindow).toBe(1000000);
+  });
+
+  // Port of decolua/9router 13b468b8: without a provider-scoped default, the
+  // global "*deepseek-v4*" family pattern won CommandCode's deepseek/deepseek-v4.1-flash
+  // and gave it thinkingFormat "deepseek" (wrong envelope field) and no vision.
+  describe("CommandCode /alpha/generate provider default", () => {
+    it("deepseek/deepseek-v4.1-flash is vision + commandcode-format reasoning capable", () => {
+      expect(getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4.1-flash")).toMatchObject({
+        vision: true,
+        reasoning: true,
+        thinkingFormat: "commandcode",
+      });
+    });
+
+    it("MiniMaxAI/MiniMax-M3 is vision capable", () => {
+      expect(getCapabilitiesForModel("commandcode", "MiniMaxAI/MiniMax-M3").vision).toBe(true);
+    });
+
+    it("the known text-only DeepSeek V4 Flash stays non-vision but keeps commandcode reasoning", () => {
+      const caps = getCapabilitiesForModel("commandcode", "deepseek/deepseek-v4-flash");
+      expect(caps.vision).toBe(false);
+      expect(caps).toMatchObject({ reasoning: true, thinkingFormat: "commandcode" });
+    });
+
+    it("the cmc alias resolves the same provider default", () => {
+      expect(getCapabilitiesForModel("cmc", "deepseek/deepseek-v4.1-flash").thinkingFormat).toBe("commandcode");
+    });
+
+    it("does not override the existing muse-spark-1.2-contributor per-model entry", () => {
+      const caps = getCapabilitiesForModel("commandcode", "meta/muse-spark-1.2-contributor");
+      expect(caps.thinkingFormat).toBe("commandcode");
+      expect(caps.thinkingCanDisable).toBe(false);
+      expect(caps.maxOutput).toBe(32768);
+    });
   });
 });
 

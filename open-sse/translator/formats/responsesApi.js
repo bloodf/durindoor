@@ -106,6 +106,76 @@ export function coerceResponsesOutput(value) {
   }
 }
 
+// Native Responses clients skip translation (sourceFormat === targetFormat), so a
+// prior-turn `reasoning` item's encrypted_content can reach an executor unvalidated
+// by this caller's account. OpenCode's pooled/rotated credentials reject it with
+// 400 "reasoning encrypted_content was not issued to this caller" (port of
+// decolua/9router eafac37d). Callers filter `body.input` with this predicate after
+// guarding for non-object/array items; it returns false to drop a reasoning item
+// outright and mutates any surviving item to scrub a stray encrypted field.
+export function stripPriorReasoningItem(item) {
+  if (item.type === "reasoning") return false;
+  delete item.encrypted_content;
+  delete item.reasoning_encrypted_content;
+  return true;
+}
+
+/**
+ * Repair Responses API items whose `call_id` correlation key is missing.
+ *
+ * Clients that drop `call_id` when building `function_call` / `function_call_output`
+ * items (Droid, OpenCode, and other agent CLIs have been observed doing this) make
+ * the translator serialize a chat tool message as `tool_call_id: undefined`, a key
+ * `JSON.stringify` silently removes. Strict upstreams then reject the WHOLE request
+ * with 400 "missing field `tool_call_id`" (NVIDIA NIM and several OpenAI-compatible
+ * gateways) — one malformed item kills every model in a combo.
+ *
+ * Mints a deterministic id for a call missing one, and pairs an id-less output with
+ * the oldest still-unanswered call, in order. Items needing no change are returned
+ * by reference; only touched items are cloned.
+ *
+ * @param {unknown} items Normalized Responses API input array.
+ * @returns {unknown} Repaired array, or the original reference when nothing changed.
+ */
+export function repairMissingResponsesCallIds(items) {
+  if (!Array.isArray(items)) return items;
+
+  const pendingCallIds = [];
+  let changed = false;
+
+  const repaired = items.map((item) => {
+    if (!item || !isObject(item)) return item;
+
+    if (item.type === RESPONSES_ITEM.FUNCTION_CALL) {
+      if (!isString(item.name) || item.name.trim() === "") return item;
+      if (isString(item.call_id) && item.call_id) {
+        pendingCallIds.push(item.call_id);
+        return item;
+      }
+      changed = true;
+      const callId = clampResponsesCallId(undefined);
+      pendingCallIds.push(callId);
+      return { ...item, call_id: callId };
+    }
+
+    if (item.type === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+      if (isString(item.call_id) && item.call_id) {
+        const queued = pendingCallIds.indexOf(item.call_id);
+        if (queued >= 0) pendingCallIds.splice(queued, 1);
+        return item;
+      }
+      const repairedId = pendingCallIds.shift();
+      if (!repairedId) return item; // genuine orphan — no pending call to answer
+      changed = true;
+      return { ...item, call_id: repairedId };
+    }
+
+    return item;
+  });
+
+  return changed ? repaired : items;
+}
+
 /**
  * Convert OpenAI Responses API format to standard chat completions format
  * Responses API uses: { input: [...], instructions: "..." }
@@ -124,10 +194,9 @@ export function convertResponsesApiFormat(body) {
 
   // Group items by conversation turn
   let currentAssistantMsg = null;
-  let pendingToolCalls = [];
   let pendingToolResults = [];
 
-  const inputItems = normalizeResponsesInput(body.input);
+  const inputItems = repairMissingResponsesCallIds(normalizeResponsesInput(body.input));
   if (!inputItems) return body;
 
   for (const item of inputItems) {
@@ -189,12 +258,17 @@ export function convertResponsesApiFormat(body) {
         result.messages.push(currentAssistantMsg);
         currentAssistantMsg = null;
       }
-      // Add tool result
-      pendingToolResults.push({
-        role: ROLE.TOOL,
-        tool_call_id: item.call_id,
-        content: isString(item.output) ? item.output : JSON.stringify(item.output)
-      });
+      // Add tool result — repairMissingResponsesCallIds above already paired a
+      // dropped call_id with the oldest pending call; a still-missing id here is
+      // a genuine orphan (no call to answer) and is dropped rather than emitting
+      // an unpairable tool message.
+      if (item.call_id) {
+        pendingToolResults.push({
+          role: ROLE.TOOL,
+          tool_call_id: item.call_id,
+          content: isString(item.output) ? item.output : JSON.stringify(item.output)
+        });
+      }
     } else
     if (itemType === RESPONSES_ITEM.REASONING) {
       // Skip reasoning items - they are for display only

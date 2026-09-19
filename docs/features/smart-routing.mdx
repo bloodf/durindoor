@@ -31,7 +31,9 @@ After the model resolves, DurinDoor picks an active connection for that provider
 
 When the client sends a session id, round-robin pins that session to the first eligible account and stays there until the account is gone or the in-memory entry is evicted. Header keys, in order: `x-session-id`, `session-id`, `session_id`, `x-amp-thread-id`, `x-client-request-id`. Body fields `prompt_cache_key`, `session_id`, and `conversation_id` are also read. For Kiro, `x-client-request-id` is ignored so per-request ids do not break stickiness. The affinity map caps at 5,000 entries.
 
-A preferred connection id, when present and still eligible, wins over rotation.
+A third strategy, Cache Affinity, pins the same session id to an account via rendezvous (HRW) hashing instead of the round-robin sticky map: stateless, so it survives a restart, and removing an account only remaps the conversations it owned rather than reshuffling the whole pool. It reuses the identical session id derivation round-robin uses, so anything that makes round-robin sticky (headers, `prompt_cache_key`, `session_id`, `conversation_id`) also anchors Cache Affinity. A request with no derivable session id falls back to fill-first. Set it globally on **Dashboard → Settings** or per provider on **Dashboard → Providers → (provider)**; both use the same `fallbackStrategy` field as Round Robin, so no separate setting to migrate.
+
+A preferred connection id, when present and still eligible, wins over rotation or cache affinity.
 
 ## Translation
 

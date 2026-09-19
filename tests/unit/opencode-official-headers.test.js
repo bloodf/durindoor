@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { OpenCodeExecutor } from "../../open-sse/executors/opencode.js";
+import { OpenCodeExecutor, OPENCODE_SESSION_RE } from "../../open-sse/executors/opencode.js";
+
+const REQUEST_ID_RE = /^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 
 afterEach(() => {
   delete process.env.OPENCODE_DISABLE_FREE_TIER_HEADERS;
@@ -26,13 +28,13 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
 
     const headers = fetchMock.mock.calls[0][1].headers;
     expect(headers).toMatchObject({
-      "User-Agent": "opencode",
+      "User-Agent": "opencode/1.18.31",
       "x-opencode-client": "desktop",
       "x-opencode-project": "global",
       "Accept": "text/event-stream",
     });
-    expect(headers["x-opencode-request"]).toMatch(/^msg_[a-f0-9]{32}$/);
-    expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
+    expect(headers["x-opencode-request"]).toMatch(REQUEST_ID_RE);
+    expect(headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
     expect(headers["x-forwarded-for"]).toBeUndefined();
     expect(headers["x-real-ip"]).toBeUndefined();
     expect(headers["x-9r-real-ip"]).toBeUndefined();
@@ -51,12 +53,12 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     });
     const headers = fetchMock.mock.calls[0][1].headers;
     expect(headers).toMatchObject({
-      "User-Agent": "opencode",
+      "User-Agent": "opencode/1.18.31",
       "x-opencode-client": "desktop",
       "x-opencode-project": "global",
     });
-    expect(headers["x-opencode-request"]).toMatch(/^msg_[a-f0-9]{32}$/);
-    expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
+    expect(headers["x-opencode-request"]).toMatch(REQUEST_ID_RE);
+    expect(headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
   });
 
   it("uses trusted connection identity, not hostile client session input", async () => {
@@ -73,11 +75,14 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     await executor.execute(request("account-a", "different-attacker-value"));
     await executor.execute(request("account-b", "victim@example.com"));
     const [first, second, third] = fetchMock.mock.calls.map((call) => call[1].headers);
-    expect(first["x-opencode-session"]).toMatch(/^ses_[a-f0-9]{32}$/);
+    expect(first["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
     expect(first["x-opencode-session"]).not.toContain("victim");
     expect(second["x-opencode-session"]).toBe(first["x-opencode-session"]);
-    expect(second["x-opencode-request"]).not.toBe(first["x-opencode-request"]);
+    // Same identity + identical turn text (upstream 0c6ab4f9): the request id is
+    // now deliberately stable, mirroring a credential-refresh retry of one turn.
+    expect(second["x-opencode-request"]).toBe(first["x-opencode-request"]);
     expect(third["x-opencode-session"]).not.toBe(first["x-opencode-session"]);
+    expect(third["x-opencode-request"]).not.toBe(first["x-opencode-request"]);
   });
   it("binds request context session seeds to their connection", async () => {
     const fetchMock = stubFetch();
@@ -132,13 +137,13 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     });
     const headers = fetchMock.mock.calls[0][1].headers;
     expect(headers).toMatchObject({
-      "User-Agent": "opencode",
+      "User-Agent": "opencode/1.18.31",
       "x-opencode-client": "desktop",
       "x-opencode-project": "global",
       "Accept": "*/*",
     });
-    expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
-    expect(headers["x-opencode-request"]).toMatch(/^msg_[a-f0-9]{32}$/);
+    expect(headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
+    expect(headers["x-opencode-request"]).toMatch(REQUEST_ID_RE);
     expect(headers["x-opencode-session"]).not.toBe("ses_existing");
     expect(headers["x-opencode-request"]).not.toBe("msg_existing");
   });
@@ -163,12 +168,12 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     });
     const headers = fetchMock.mock.calls[0][1].headers;
     expect(headers).toMatchObject({
-      "User-Agent": "opencode",
+      "User-Agent": "opencode/1.18.31",
       "x-opencode-client": "desktop",
       "x-opencode-project": "global",
     });
-    expect(headers["x-opencode-session"]).toMatch(/^ses_[a-f0-9]+$/);
-    expect(headers["x-opencode-request"]).toMatch(/^msg_[a-f0-9]{32}$/);
+    expect(headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
+    expect(headers["x-opencode-request"]).toMatch(REQUEST_ID_RE);
     expect(headers["x-opencode-session"]).not.toBe("ses_attacker");
     expect(headers["x-opencode-request"]).not.toBe("msg_attacker");
   });

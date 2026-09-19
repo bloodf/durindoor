@@ -166,6 +166,20 @@ export const LOAD_CODE_ASSIST_METADATA = {
 export const CLAUDE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
 export const ANTIGRAVITY_DEFAULT_SYSTEM = "You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.**Absolute paths only****Proactiveness**";
 
+// Antigravity's backend flags a system prompt that exposes a competitor identity and
+// answers with a fake 429 RESOURCE_EXHAUSTED. rewriteOpenCodeBranding (antigravity.js)
+// handles the OpenCode rename and the Claude Agent SDK marker inline; these two cover
+// the remaining known identity leaks.
+// Hermes Agent's own identity line reads as a competitor system prompt to Antigravity.
+export const ANTIGRAVITY_HERMES_IDENTITY_REWRITE = {
+  from: /You are Hermes Agent,\s*(an intelligent AI assistant)(?: created by Nous Research)?\./gi,
+  to: "You are Hermes Agent. You are $1."
+};
+// Claude Code prepends this line to its system prompt. The Claude-format translator strips it,
+// but OpenAI-format clients (e.g. proxies that convert Claude Code to /v1/chat/completions)
+// pass it through, and any system text containing it gets the same fake 429.
+export const ANTIGRAVITY_BILLING_HEADER_RE = /^x-anthropic-billing-header:[^\n]*(?:\r?\n)*/gim;
+
 // Derive từ registry oauth.refreshLeadMs
 export const REFRESH_LEAD_MS = Object.fromEntries(
   Object.entries(PROVIDER_OAUTH).filter(([, o]) => o.refreshLeadMs).map(([id, o]) => [id, o.refreshLeadMs])

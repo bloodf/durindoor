@@ -48,6 +48,17 @@ function toolUseToText(name, input) {
   return `[Tool call: ${name || "unknown"}(${argStr})]`;
 }
 
+/**
+ * Kiro's CodeWhisperer API rejects tool names with characters outside
+ * `[a-zA-Z0-9_-]`. Replace only the illegal characters with `_` — consecutive
+ * underscores are legal and must survive intact (MCP-style names like
+ * `mcp__server__tool` rely on the double underscore as a separator).
+ * Mirrors the sanitizer in openai-to-kiro.js so both Kiro routes agree.
+ */
+function sanitizeKiroToolName(name) {
+  return isString(name) ? name.replace(/[^a-zA-Z0-9_-]/g, "_") : name;
+}
+
 /** Render a Claude tool_result block's content as a readable line. */
 function toolResultBlockToText(content) {
   let text = "";
@@ -111,7 +122,7 @@ function flattenClaudeToolInteractions(messages) {
  * Kiro requires alternating user/assistant turns; consecutive same-role
  * messages are merged.
  */
-function convertClaudeMessagesToKiro(messages, tools, model) {
+function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new Map()) {
   const history = [];
   let currentMessage = null;
 
@@ -126,7 +137,12 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
 
   const buildToolSpecs = () =>
   tools.map((t) => {
-    const name = t.name;
+    const originalName = t.name;
+    // Kiro rejects illegal characters in a tool name; sanitize and remember
+    // the original so the response translators can hand the client back the
+    // name it registered.
+    const name = sanitizeKiroToolName(originalName);
+    if (name !== originalName) toolNameMap.set(name, originalName);
     const description = t.description || `Tool: ${name}`;
     const schema = t.input_schema || {};
     const normalizedSchema = normalizeKiroToolSchema(schema);
@@ -200,14 +216,26 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
             pendingImages.push({ format, source: { bytes: block.source.data } });
           } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
             let resultContent = "";
+            let hasImage = false;
             if (isString(block.content)) {
               resultContent = block.content;
             } else if (Array.isArray(block.content)) {
+              // Kiro tool results are text-only; a screenshot or other image a
+              // tool returned rides along as a user image on the same turn
+              // instead of being silently dropped.
+              for (const c of block.content) {
+                if (c?.type === CLAUDE_BLOCK.IMAGE && c.source?.type === "base64") {
+                  hasImage = true;
+                  const mediaType = c.source.media_type || DEFAULT_IMAGE_MIME;
+                  const format = mediaType.split("/")[1] || mediaType;
+                  pendingImages.push({ format, source: { bytes: c.source.data } });
+                }
+              }
               resultContent =
               block.content.
               filter((c) => c.type === CLAUDE_BLOCK.TEXT).
               map((c) => c.text).
-              join("\n") || JSON.stringify(block.content);
+              join("\n") || (hasImage ? "(image attached)" : JSON.stringify(block.content));
             } else if (block.content) {
               resultContent = JSON.stringify(block.content);
             }
@@ -231,7 +259,8 @@ function convertClaudeMessagesToKiro(messages, tools, model) {
           } else if (block.type === CLAUDE_BLOCK.TOOL_USE) {
             toolUses.push({
               toolUseId: block.id,
-              name: block.name,
+              // Match the sanitized name Kiro was given in the tool spec.
+              name: sanitizeKiroToolName(block.name),
               input: block.input || {}
             });
           }
@@ -397,10 +426,12 @@ export function claudeToKiroRequest(model, body, stream, credentials, translatio
     messages = flattenClaudeToolInteractions(messages);
   }
 
+  const toolNameMap = new Map();
   const { history, currentMessage } = convertClaudeMessagesToKiro(
     messages,
     tools,
-    kiroModelId
+    kiroModelId,
+    toolNameMap
   );
 
   // Guard 2: tools present → reconcile dangling tool_results.
@@ -484,6 +515,16 @@ export function claudeToKiroRequest(model, body, stream, credentials, translatio
     if (maxTokens) payload.inferenceConfig.maxTokens = maxTokens;
     if (temperature !== undefined) payload.inferenceConfig.temperature = temperature;
     if (topP !== undefined) payload.inferenceConfig.topP = topP;
+  }
+
+  // Non-enumerable so it never reaches the wire; chatCore lifts it off the
+  // translated body and hands it to the response translator.
+  if (toolNameMap.size > 0) {
+    Object.defineProperty(payload, "_toolNameMap", {
+      value: toolNameMap,
+      enumerable: false,
+      configurable: true
+    });
   }
 
   return payload;

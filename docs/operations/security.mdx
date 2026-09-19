@@ -43,6 +43,16 @@ Keep it stable across deploys. A new secret makes existing four-part keys fail `
 
 Salt for `getConsistentMachineId`. Default `endpoint-proxy-salt`. The 16-character id is embedded in new API keys and stored in `DATA_DIR/machine-id`. Changing the salt changes the derived id for new keys. Leave it alone on a running install.
 
+## Two-factor authentication (TOTP)
+
+Optional second factor for password logins (decolua/9router#4144). Turn it on from the dashboard: Settings, Security tab, Two-factor authentication card. Enrollment requires the current password, then a valid 6-digit code from the new secret before it is stored.
+
+Login becomes two steps once enabled: `POST /api/auth/login` returns `{ mfaRequired: true }` and sets a short-lived, httpOnly `mfa_pending` cookie (5 minutes) instead of a session. `POST /api/auth/mfa/verify` trades a valid TOTP code, or a backup code, for the real `auth_token` session cookie. Both steps share the same login rate limiter (5 fails, then 30s/2m/10m/30m lockout) and require an exact request Origin, matching password login.
+
+Ten single-use backup codes are generated at enrollment and shown once, bcrypt-hashed at rest. Each recovers the account if the authenticator device is lost; using one does not disable MFA, it only substitutes for a TOTP code on that one login. Losing the authenticator and every backup code means `POST /api/auth/mfa/disable` (which itself requires a live second factor) cannot run; recovery then requires a database edit clearing `mfaEnabled`/`mfaSecret`/`mfaBackupCodes` from the `settings` row, or the DurinDoor CLI's password-reset flow followed by a fresh enrollment.
+
+`mfaSecret` and `mfaBackupCodes` are stored in the same settings row as the password hash. They never round-trip through `GET/PATCH /api/settings` (only a boolean `mfaEnabled` and a `mfaBackupCodesRemaining` count are exposed there) and are writable only through `/api/auth/mfa/{setup,enable,disable}`, each of which re-verifies the current password.
+
 ## Rate limits
 
 Dashboard login: five failures from one IP, then a lock of 30s, 2m, 10m, 30m. A quiet hour since the last fail resets the bucket. At most 5000 IPs are tracked. HTTP 429 includes `Retry-After`.

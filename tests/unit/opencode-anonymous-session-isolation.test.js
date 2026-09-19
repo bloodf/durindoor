@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { OpenCodeExecutor, OPENCODE_SESSION_RE } from "../../open-sse/executors/opencode.js";
+import { OpenCodeExecutor, OPENCODE_REQUEST_RE, OPENCODE_SESSION_RE } from "../../open-sse/executors/opencode.js";
 
 // HIGH finding on the opencode free-tier stack: every no-auth caller shares
 // the literal connectionId "noauth" (src/sse/services/auth.js
@@ -26,11 +26,34 @@ describe("OpenCodeExecutor anonymous session isolation", () => {
     expect(a._opencodeSession).not.toBe(b._opencodeSession);
   });
 
+  // #917: x-opencode-request is derived from the session id, so the peer-IP
+  // isolation above must carry through to it too, not just to the session —
+  // otherwise two anonymous callers on different IPs would get different
+  // sessions but the identical request id on their first ("hi") turn.
+  it("gives two anonymous callers on different public IPs different request ids too, for the identical turn text", () => {
+    const executor = new OpenCodeExecutor();
+    const body = { messages: [{ role: "user", content: "hi" }] };
+    const a = executor.prepareRequestCredentials({ body, credentials: anonymousCredentials("203.0.113.10") });
+    const b = executor.prepareRequestCredentials({ body, credentials: anonymousCredentials("198.51.100.20") });
+    expect(a._opencodeRequest).toMatch(OPENCODE_REQUEST_RE);
+    expect(a._opencodeRequest).not.toBe(b._opencodeRequest);
+    expect(a._opencodeSession).not.toBe(b._opencodeSession);
+  });
+
   it("is stable for the same anonymous caller (same public IP) across requests", () => {
     const executor = new OpenCodeExecutor();
     const first = executor.prepareRequestCredentials({ credentials: anonymousCredentials("203.0.113.10") });
     const second = executor.prepareRequestCredentials({ credentials: anonymousCredentials("203.0.113.10") });
     expect(first._opencodeSession).toBe(second._opencodeSession);
+  });
+
+  it("is stable for the same anonymous caller (same public IP), same request id on a retry", () => {
+    const executor = new OpenCodeExecutor();
+    const body = () => ({ messages: [{ role: "user", content: "run the deploy" }] });
+    const first = executor.prepareRequestCredentials({ body: body(), credentials: anonymousCredentials("203.0.113.10") });
+    const retry = executor.prepareRequestCredentials({ body: body(), credentials: anonymousCredentials("203.0.113.10") });
+    expect(first._opencodeSession).toBe(retry._opencodeSession);
+    expect(first._opencodeRequest).toBe(retry._opencodeRequest);
   });
 
   it("documents the residual collision: two anonymous callers sharing one public IP still share a session", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { OpenCodeExecutor, OPENCODE_SESSION_RE } from "../../open-sse/executors/opencode.js";
+import { OpenCodeExecutor, OPENCODE_SESSION_RE, OPENCODE_DECOY_RESPONSES_TOOLS } from "../../open-sse/executors/opencode.js";
 
 describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
   it("cloaks Responses requests even when the client already supplies tools", () => {
@@ -48,6 +48,42 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     const names = transformed.tools.map((tool) => tool.function.name);
     expect(names).toEqual(["bash", "read"]);
     expect(transformed.tool_choice).toBe("none");
+  });
+
+  it("does not override a caller-supplied tool_choice on Responses requests that already carry tools (#4146)", () => {
+    const executor = new OpenCodeExecutor();
+    const body = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      tools: [{ type: "function", name: "zcode_search", description: "d", parameters: { type: "object", properties: {} } }],
+      tool_choice: "required",
+    };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
+
+    expect(transformed.tool_choice).toBe("required");
+    const names = transformed.tools.map((tool) => tool.name);
+    expect(names).toEqual(["zcode_search", ...OPENCODE_DECOY_RESPONSES_TOOLS.map((t) => t.name)]);
+  });
+
+  it("still defaults tool_choice to auto on Responses requests with no caller tools (#4146)", () => {
+    const executor = new OpenCodeExecutor();
+    const body = { input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }] };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
+
+    expect(transformed.tool_choice).toBe("auto");
+  });
+
+  it("ignores a malformed tool entry instead of throwing (#4146)", () => {
+    const executor = new OpenCodeExecutor();
+    const responsesBody = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      tools: [null, { type: "function", name: "zcode_search", parameters: { type: "object", properties: {} } }],
+    };
+    expect(() => executor.transformRequest("muse-spark-1.3-contributor-free", responsesBody, true, {})).not.toThrow();
+
+    const chatBody = { messages: [{ role: "user", content: "hi" }], tools: [undefined, { type: "function", function: { name: "custom_tool" } }] };
+    expect(() => executor.transformRequest("big-pickle", chatBody, true, {})).not.toThrow();
   });
 
   it("forces stream:true for free-tier dispatch", () => {

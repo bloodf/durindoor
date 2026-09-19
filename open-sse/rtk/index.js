@@ -304,6 +304,33 @@ export function normalizeTokenSaverEvent(event) {
   };
 }
 
+// Storage projection only: normalization above remains the sole coercion and
+// state-gating implementation, shared by live writes and migration backfills.
+export function tokenSaverEventColumns(event) {
+  const e = normalizeTokenSaverEvent(event);
+  return {
+    rtkRequestsWithHits: e.rtk.requestsWithHits,
+    rtkHits: e.rtk.hits,
+    rtkBytesBefore: e.rtk.bytesBefore,
+    rtkBytesAfter: e.rtk.bytesAfter,
+    rtkBytesSaved: e.rtk.bytesSaved,
+    hrTokensBefore: e.headroom.tokensBefore,
+    hrTokensAfter: e.headroom.tokensAfter,
+    hrTokensSaved: e.headroom.tokensSaved,
+    hrBodyBytesBefore: e.headroom.bodyBytesBefore,
+    hrBodyBytesAfter: e.headroom.bodyBytesAfter,
+    hrPhantomSavings: e.headroom.phantomSavings,
+    pxApplied: e.pxpipe.applied,
+    pxTokensBeforeEst: e.pxpipe.tokensBeforeEst,
+    pxTokensAfterEst: e.pxpipe.tokensAfterEst,
+    pxTokensSavedEst: e.pxpipe.tokensSavedEst,
+    pxImageCount: e.pxpipe.imageCount,
+    totalActualBytesSaved: e.totals.actualBytesSaved,
+    hrState: e.headroom.state,
+    hrSkipReason: e.headroom.state === "skipped" ? e.headroom.diagnostic || "other-skip" : null,
+  };
+}
+
 function emptyTokenSaverAggregate() {
   return {
     requestsObserved: 0,

@@ -39,12 +39,18 @@ describe("dialects/postgres/translate — column definitions", () => {
     expect(translateColumnDef("name", "TEXT PRIMARY KEY")).toBe("TEXT PRIMARY KEY");
   });
 
-  it("leaves INTEGER DEFAULT 0/1 columns unchanged (booleans stay as 0/1)", () => {
+  it("widens INTEGER to BIGINT while keeping 0/1 flag semantics", () => {
+    // SQLite INTEGER is signed 64-bit; PG INTEGER is 32-bit. Mapping them
+    // one-to-one overflowed a real deployment (apiKeyUsageTotals.totalTokens
+    // reached 60,526,220,870 and the cutover aborted with "out of range for
+    // type integer"). The values themselves are unchanged — flags stay 0/1 —
+    // and the adapter registers an int8 parser so they come back as numbers
+    // rather than strings, keeping `row.isActive === 1` true.
     expect(translateColumnDef("isActive", "INTEGER DEFAULT 1")).toBe(
-      "INTEGER DEFAULT 1"
+      "BIGINT DEFAULT 1"
     );
     expect(translateColumnDef("enabled", "INTEGER DEFAULT 0")).toBe(
-      "INTEGER DEFAULT 0"
+      "BIGINT DEFAULT 0"
     );
   });
 });
@@ -70,8 +76,8 @@ describe("dialects/postgres/translate — CREATE TABLE", () => {
     expect(createSql).toContain('CREATE TABLE IF NOT EXISTS "providerConnections"');
     expect(createSql).toContain('"id" TEXT PRIMARY KEY');
     expect(createSql).toContain('"provider" TEXT NOT NULL');
-    expect(createSql).toContain('"priority" INTEGER');
-    expect(createSql).toContain('"isActive" INTEGER DEFAULT 1');
+    expect(createSql).toContain('"priority" BIGINT');
+    expect(createSql).toContain('"isActive" BIGINT DEFAULT 1');
     expect(createSql).toContain('"data" TEXT NOT NULL');
     expect(createSql).toContain('"createdAt" TEXT NOT NULL');
     expect(createSql).toContain('"updatedAt" TEXT NOT NULL');
@@ -105,12 +111,15 @@ describe("dialects/postgres/translate — indexes", () => {
     );
   });
 
-  it("preserves UNIQUE indexes (WHERE clause is preserved verbatim)", () => {
+  it("quotes identifiers in a UNIQUE index's partial WHERE clause", () => {
+    // The WHERE predicate used to be copied verbatim, so `usageEventId` reached
+    // PG folded to `usageeventid` and the index creation failed.
     const out = translateIndex(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON usageHistory(usageEventId) WHERE usageEventId IS NOT NULL"
     );
-    expect(out).toMatch(/^CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON "usageHistory"\("usageEventId"\)/);
-    expect(out).toContain("WHERE usageEventId IS NOT NULL");
+    expect(out).toBe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON "usageHistory"("usageEventId") WHERE "usageEventId" IS NOT NULL'
+    );
   });
 });
 

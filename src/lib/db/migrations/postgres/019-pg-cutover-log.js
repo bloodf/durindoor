@@ -8,20 +8,20 @@ const migration = {
   name: "pg-cutover-log",
   up(adapter) {
     adapter.exec(
-      `CREATE TABLE IF NOT EXISTS pgCutoverLog (
+      `CREATE TABLE IF NOT EXISTS "pgCutoverLog" (
         id BIGSERIAL PRIMARY KEY,
         at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         type TEXT NOT NULL CHECK (type IN ('cutover', 'rollback', 'test')),
-        ok BOOLEAN NOT NULL,
-        durationMs INTEGER,
-        schemaVersion INTEGER,
-        tablesMigrated INTEGER,
-        rowsMigrated INTEGER,
-        errorCode TEXT,
-        errorMessage TEXT
+        ok BIGINT NOT NULL,
+        "durationMs" BIGINT,
+        "schemaVersion" BIGINT,
+        "tablesMigrated" BIGINT,
+        "rowsMigrated" BIGINT,
+        "errorCode" TEXT,
+        "errorMessage" TEXT
       )`
     );
-    adapter.exec(`CREATE INDEX IF NOT EXISTS idx_pgcl_at ON pgCutoverLog(at DESC)`);
+    adapter.exec(`CREATE INDEX IF NOT EXISTS idx_pgcl_at ON "pgCutoverLog"(at DESC)`);
   },
 };
 

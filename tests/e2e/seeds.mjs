@@ -273,7 +273,7 @@ async function seedLocalUsage(connection) {
 
 /** Persist a tracked observation so R29 never depends on prior chat-flow telemetry. */
 async function seedTokenSaverEvent() {
-  const [{ normalizeTokenSaverEvent }, { toLocalDateKey }] = await Promise.all([
+  const [{ normalizeTokenSaverEvent, tokenSaverEventColumns }, { toLocalDateKey }] = await Promise.all([
     import("../../open-sse/rtk/index.js"),
     import("../../src/lib/usagePeriods.js"),
   ]);
@@ -282,9 +282,11 @@ async function seedTokenSaverEvent() {
   const event = normalizeTokenSaverEvent({
     rtk: { requestsWithHits: 1, hits: 1, bytesBefore: 512, bytesAfter: 256, bytesSaved: 256 },
   });
+  const columns = tokenSaverEventColumns(event);
+  const names = Object.keys(columns);
   return db.run(
-    "INSERT INTO tokenSaverEvents(timestamp, dateKey, data) VALUES (?, ?, ?)",
-    [now.toISOString(), toLocalDateKey(now), JSON.stringify(event)],
+    `INSERT INTO tokenSaverEvents(timestamp, dateKey, data, ${names.join(", ")}) VALUES (?, ?, ?, ${names.map(() => "?").join(", ")})`,
+    [now.toISOString(), toLocalDateKey(now), JSON.stringify(event), ...Object.values(columns)],
   ).lastInsertRowid;
 }
 

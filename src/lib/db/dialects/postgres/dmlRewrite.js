@@ -14,6 +14,61 @@ export function quoteIdent(name) {
   return `"${String(name).replace(/"/g, '""')}"`;
 }
 
+/**
+ * Quote every bare camelCase identifier in a SQL fragment.
+ *
+ * PostgreSQL folds unquoted identifiers to lower case; SQLite does not. The
+ * repos emit SQLite-shaped SQL against a camelCase schema (`SELECT * FROM
+ * apiKeys`), which reaches PG as `apikeys` and fails with `relation "apikeys"
+ * does not exist`. Quoting here — at the single point every statement passes
+ * through on its way to PG — keeps the repos dialect-agnostic.
+ *
+ * Skips single-quoted string literals (so a value that merely looks like an
+ * identifier is untouched) and identifiers that are already quoted.
+ * All-lowercase words are left alone: folding is a no-op for them, and quoting
+ * them would only add churn. Shared with the DDL translator so both paths
+ * follow exactly one rule.
+ */
+export function quoteCamelIdents(fragment) {
+  if (!fragment) return fragment;
+  const text = String(fragment);
+  let out = "";
+  let i = 0;
+  let inSingle = false;
+  let inDouble = false;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inSingle) {
+      out += ch;
+      if (ch === "'") {
+        if (text[i + 1] === "'") out += text[++i];
+        else inSingle = false;
+      }
+      i += 1;
+      continue;
+    }
+    if (inDouble) {
+      out += ch;
+      if (ch === '"') inDouble = false;
+      i += 1;
+      continue;
+    }
+    if (ch === "'") { inSingle = true; out += ch; i += 1; continue; }
+    if (ch === '"') { inDouble = true; out += ch; i += 1; continue; }
+    if (/[A-Za-z_]/.test(ch)) {
+      let j = i;
+      while (j < text.length && /[A-Za-z0-9_]/.test(text[j])) j += 1;
+      const word = text.slice(i, j);
+      out += /^[a-z]+[A-Z][A-Za-z0-9_]*$/.test(word) ? quoteIdent(word) : word;
+      i = j;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
 function splitSqlByComma(list) {
   return String(list)
     .split(",")
@@ -98,5 +153,8 @@ export function rewriteSqliteDml(sql) {
     }
   }
 
-  return out;
+  // Quote last, over the finished statement, so the conflict targets and
+  // `excluded.<col>` references this function just synthesised are covered by
+  // the same rule as the caller's original SQL.
+  return quoteCamelIdents(out);
 }

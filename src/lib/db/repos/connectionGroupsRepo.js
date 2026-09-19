@@ -105,17 +105,30 @@ export async function validateConnectionIds(ids) {
 export async function getConnectionGroups() {
   const db = await getAdapter();
   const groups = db.all(`SELECT * FROM connectionGroups ORDER BY name COLLATE NOCASE ASC`);
-  return groups.map((g) => {
-    const members = db.all(`SELECT connectionId FROM connectionGroupMembers WHERE groupId = ?`, [g.id]).map((r) => r.connectionId);
-    return { ...rowToGroup(g), connectionIds: members };
-  });
+  if (groups.length === 0) return [];
+  // Memberships are operator-managed groups x connections. Fetching them once
+  // avoids both N queries and an unbounded IN placeholder list.
+  // Explicit ordering keeps member arrays stable across database query plans.
+  const members = db.all(
+    `SELECT groupId, connectionId FROM connectionGroupMembers ORDER BY createdAt ASC, connectionId ASC`
+  );
+  const membersByGroup = new Map();
+  for (const { groupId, connectionId } of members) {
+    let ids = membersByGroup.get(groupId);
+    if (!ids) membersByGroup.set(groupId, (ids = []));
+    ids.push(connectionId);
+  }
+  return groups.map((g) => ({
+    ...rowToGroup(g),
+    connectionIds: membersByGroup.get(g.id) || []
+  }));
 }
 
 export async function getConnectionGroupById(id) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM connectionGroups WHERE id = ?`, [id]);
   if (!row) return null;
-  const members = db.all(`SELECT connectionId FROM connectionGroupMembers WHERE groupId = ?`, [id]).map((r) => r.connectionId);
+  const members = db.all(`SELECT connectionId FROM connectionGroupMembers WHERE groupId = ? ORDER BY createdAt ASC, connectionId ASC`, [id]).map((r) => r.connectionId);
   return { ...rowToGroup(row), connectionIds: members };
 }
 
@@ -123,7 +136,7 @@ export async function getConnectionGroupByName(name) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM connectionGroups WHERE name = ?`, [name]);
   if (!row) return null;
-  const members = db.all(`SELECT connectionId FROM connectionGroupMembers WHERE groupId = ?`, [row.id]).map((r) => r.connectionId);
+  const members = db.all(`SELECT connectionId FROM connectionGroupMembers WHERE groupId = ? ORDER BY createdAt ASC, connectionId ASC`, [row.id]).map((r) => r.connectionId);
   return { ...rowToGroup(row), connectionIds: members };
 }
 

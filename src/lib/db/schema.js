@@ -2,7 +2,10 @@ import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 18;
+// 19 is intentionally skipped: it is reserved for the PostgreSQL-only
+// `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
+// shared version to carry the same name in both migration sets.
+export const SCHEMA_VERSION = 20;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -260,6 +263,7 @@ export const TABLES = {
     },
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_uh_ts ON usageHistory(timestamp DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_uh_ts_dims ON usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint)",
       "CREATE INDEX IF NOT EXISTS idx_uh_provider ON usageHistory(provider)",
       "CREATE INDEX IF NOT EXISTS idx_uh_model ON usageHistory(model)",
       "CREATE INDEX IF NOT EXISTS idx_uh_conn ON usageHistory(connectionId)",
@@ -283,10 +287,30 @@ export const TABLES = {
       timestamp: "TEXT NOT NULL",
       dateKey: "TEXT NOT NULL",
       data: "TEXT NOT NULL",
+      rtkRequestsWithHits: "REAL NOT NULL DEFAULT 0",
+      rtkHits: "REAL NOT NULL DEFAULT 0",
+      rtkBytesBefore: "REAL NOT NULL DEFAULT 0",
+      rtkBytesAfter: "REAL NOT NULL DEFAULT 0",
+      rtkBytesSaved: "REAL NOT NULL DEFAULT 0",
+      hrTokensBefore: "REAL NOT NULL DEFAULT 0",
+      hrTokensAfter: "REAL NOT NULL DEFAULT 0",
+      hrTokensSaved: "REAL NOT NULL DEFAULT 0",
+      hrBodyBytesBefore: "REAL NOT NULL DEFAULT 0",
+      hrBodyBytesAfter: "REAL NOT NULL DEFAULT 0",
+      hrPhantomSavings: "INTEGER NOT NULL DEFAULT 0",
+      pxApplied: "INTEGER NOT NULL DEFAULT 0",
+      pxTokensBeforeEst: "REAL NOT NULL DEFAULT 0",
+      pxTokensAfterEst: "REAL NOT NULL DEFAULT 0",
+      pxTokensSavedEst: "REAL NOT NULL DEFAULT 0",
+      pxImageCount: "REAL NOT NULL DEFAULT 0",
+      totalActualBytesSaved: "REAL NOT NULL DEFAULT 0",
+      hrState: "TEXT NOT NULL DEFAULT 'disabled'",
+      hrSkipReason: "TEXT",
     },
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_tse_ts ON tokenSaverEvents(timestamp)",
       "CREATE INDEX IF NOT EXISTS idx_tse_date ON tokenSaverEvents(dateKey)",
+      "CREATE INDEX IF NOT EXISTS idx_tse_date_state ON tokenSaverEvents(dateKey, hrState)",
     ],
   },
   requestDetails: {

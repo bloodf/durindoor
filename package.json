@@ -33,7 +33,8 @@
     "test:ui": "playwright test --config playwright.config.mjs",
     "test:storybook": "DURINDOOR_QA_MODE=storybook playwright test --config playwright.config.mjs tests/e2e/storybook.spec.js",
     "check:storybook-coverage": "node scripts/check-storybook-coverage.mjs --manifest tests/e2e/storybook-surfaces.json --index storybook-static/index.json --mode final",
-    "check:postgres-migrations": "node scripts/check-postgres-migrations.mjs"
+    "check:postgres-migrations": "node scripts/check-postgres-migrations.mjs",
+    "bench:db": "node scripts/bench-db-queries.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1132.0",

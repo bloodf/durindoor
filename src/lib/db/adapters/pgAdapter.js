@@ -21,6 +21,10 @@ import { isFunction } from "../../../shared/utils/typeChecks.js";
 
 const { Client } = pg;
 
+// The async client path must agree with the synchronous worker and SQLite.
+pg.types.setTypeParser(20, Number);
+pg.types.setTypeParser(1700, Number);
+
 const AUTINCREMENT_TABLES = new Map([
   ["usageHistory", "id"],
   ["tokenSaverEvents", "id"],

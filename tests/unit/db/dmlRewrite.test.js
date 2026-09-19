@@ -9,7 +9,9 @@ describe("dialects/postgres/dmlRewrite", () => {
 
   it("rewrites INSERT OR IGNORE to ON CONFLICT DO NOTHING", () => {
     const out = rewriteSqliteDml("INSERT OR IGNORE INTO usageHistory(timestamp) VALUES(?)");
-    expect(out).toMatch(/^INSERT INTO usageHistory\(timestamp\) VALUES\(\?\)/);
+    // The table is quoted now: PG folds bare identifiers to lower case, so
+    // `usageHistory` would arrive as `usagehistory` and the statement fails.
+    expect(out).toMatch(/^INSERT INTO "usageHistory"\(timestamp\) VALUES\(\?\)/);
     expect(out).toContain("ON CONFLICT DO NOTHING");
   });
 

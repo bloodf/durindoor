@@ -6,6 +6,11 @@
 const { parentPort, workerData } = require("node:worker_threads");
 const pg = require("pg");
 
+// Match SQLite's JS-number contract for 64-bit integers and SUM(bigint).
+// In particular, flags must remain numbers for strict `=== 1` consumers.
+pg.types.setTypeParser(20, Number);
+pg.types.setTypeParser(1700, Number);
+
 const STATUS = 0;
 const LENGTH = 1;
 const HEADER_BYTES = 8;

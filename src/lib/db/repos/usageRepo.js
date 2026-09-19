@@ -16,7 +16,7 @@ import {
 "../../usagePeriods.js";
 import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
 import { getCommittedTokenCount } from "../helpers/committedTokens.js";
-import { normalizeTokenSaverEvent, aggregateTokenSaverEvents } from "open-sse/rtk/index.js";
+import { normalizeTokenSaverEvent, aggregateTokenSaverEvents, tokenSaverEventColumns } from "open-sse/rtk/index.js";
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 function maskApiKey(key) {
@@ -884,31 +884,43 @@ export async function getUsageStats(period = "all", opts = {}) {
     const overlayParams = overlayCutoff ?
     [overlayCutoff.toISOString(), now.toISOString()] :
     [now.toISOString()];
-    const loadLastUsed = (dimensions) => db.all(
-      `SELECT MAX(timestamp) AS timestamp, ${dimensions.join(", ")}
+    const lastUsedRows = db.all(
+      `SELECT MAX(timestamp) AS timestamp, provider, model, connectionId, apiKey, endpoint
          FROM usageHistory
         WHERE ${overlayCutoff ? "timestamp >= ? AND " : ""}timestamp <= ?
-        GROUP BY ${dimensions.join(", ")}
-        ORDER BY ${dimensions.join(", ")}`,
+        GROUP BY provider, model, connectionId, apiKey, endpoint`,
       overlayParams
     );
-    for (const e of loadLastUsed(["provider", "model"])) {
+    // Collapse before resolving public identities (which hash keys) or parsing
+    // dates: those operations should run once per coarse group, not once per
+    // combination of account, key and endpoint.
+    const views = [new Map(), new Map(), new Map(), new Map()];
+    for (const row of lastUsedRows) {
+      const base = JSON.stringify([row.provider, row.model]);
+      const keys = [base, `${base}:${JSON.stringify(row.connectionId)}`, `${base}:${JSON.stringify(row.apiKey)}`, `${base}:${JSON.stringify(row.endpoint)}`];
+      for (let i = 0; i < views.length; i++) {
+        const previous = views[i].get(keys[i]);
+        // MAX(timestamp) compares stored text, exactly as the former SQL did.
+        if (!previous || row.timestamp > previous.timestamp) views[i].set(keys[i], row);
+      }
+    }
+    for (const e of views[0].values()) {
       const ts = e.timestamp;
       const modelKey = e.provider ? `${e.model} (${e.provider})` : e.model;
       if (stats.byModel[modelKey] && new Date(ts) > new Date(stats.byModel[modelKey].lastUsed)) stats.byModel[modelKey].lastUsed = ts;
     }
-    for (const e of loadLastUsed(["provider", "model", "connectionId"])) {
+    for (const e of views[1].values()) {
       if (!e.connectionId) continue;
       const accountName = connectionMap[e.connectionId] || `Account ${e.connectionId.slice(0, 8)}...`;
       const accountKey = `${e.model} (${e.provider} - ${accountName})`;
       if (stats.byAccount[accountKey] && new Date(e.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = e.timestamp;
     }
-    for (const e of loadLastUsed(["provider", "model", "apiKey"])) {
+    for (const e of views[2].values()) {
       const identity = getPublicApiKeyIdentity(e.apiKey, getApiKeyStatsKey(e.apiKey, e.model, e.provider, identitySalt));
       const apiKeyKey = `${identity.id}|${e.model}|${e.provider || "unknown"}`;
       if (stats.byApiKey[apiKeyKey] && new Date(e.timestamp) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = e.timestamp;
     }
-    for (const e of loadLastUsed(["provider", "model", "endpoint"])) {
+    for (const e of views[3].values()) {
       const endpoint = e.endpoint || "Unknown";
       const endpointKey = `${endpoint}|${e.model}|${e.provider || "unknown"}`;
       if (stats.byEndpoint[endpointKey] && new Date(e.timestamp) > new Date(stats.byEndpoint[endpointKey].lastUsed)) stats.byEndpoint[endpointKey].lastUsed = e.timestamp;
@@ -1391,9 +1403,12 @@ export async function recordTokenSaverEvent(event, now = new Date()) {
     // normalizeTokenSaverEvent strips/allowlists diagnostics (no raw URLs or
     // upstream error text) and coerces unknown fields to safe zeros, so the
     // public API can never write attacker-controlled data into the dashboard.
+    const normalized = normalizeTokenSaverEvent(event);
+    const columns = tokenSaverEventColumns(normalized);
+    const names = Object.keys(columns);
     db.run(
-      `INSERT INTO ${TOKEN_SAVER_TABLE} (timestamp, dateKey, data) VALUES (?, ?, ?)`,
-      [ts.toISOString(), toLocalDateKey(ts), stringifyJson(normalizeTokenSaverEvent(event))]
+      `INSERT INTO ${TOKEN_SAVER_TABLE} (timestamp, dateKey, data, ${names.join(", ")}) VALUES (?, ?, ?, ${names.map(() => "?").join(", ")})`,
+      [ts.toISOString(), toLocalDateKey(ts), stringifyJson(normalized), ...Object.values(columns)]
     );
   });
   tokenSaverWriteChain = run.catch(() => {});
@@ -1406,10 +1421,8 @@ export async function recordTokenSaverEvent(event, now = new Date()) {
 }
 
 /**
- * Aggregate token-saver events over a usage period by folding stored
- * per-request event rows through the pure aggregator. Empty window → zeroed
- * aggregate. Only event-row JSON is passed (never an aggregate), so
- * requestsObserved counts one per logical request.
+ * Aggregate pre-normalized numeric columns in SQL, transferring only daily
+ * totals and bounded diagnostic counts, never per-request JSON.
  *
  * Period predicates mirror getUsageStats so every visible period option is
  * correct:
@@ -1429,38 +1442,87 @@ export async function getTokenSaverStats(period = "7d", now = new Date()) {
     const db = await getAdapter();
     now = now instanceof Date ? now : new Date(now);
     const nowIso = now.toISOString();
-    let rows;
+    let where = "timestamp <= ?";
+    let params = [nowIso];
     if (period === "today") {
       const midnight = new Date(now);midnight.setHours(0, 0, 0, 0);
-      rows = db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE timestamp >= ? AND timestamp <= ?`, [midnight.toISOString(), nowIso]);
+      where = "timestamp >= ? AND timestamp <= ?";
+      params = [midnight.toISOString(), nowIso];
     } else if (period === "24h") {
       const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      rows = db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE timestamp >= ? AND timestamp <= ?`, [since.toISOString(), nowIso]);
-    } else if (period === "all") {
-      rows = db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE timestamp <= ?`, [nowIso]);
-    } else {
+      where = "timestamp >= ? AND timestamp <= ?";
+      params = [since.toISOString(), nowIso];
+    } else if (period !== "all") {
       const cutoff = getUsageCalendarCutoff(period, now);
-      rows = cutoff ?
-      db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE dateKey >= ? AND timestamp <= ?`, [toLocalDateKey(cutoff), nowIso]) :
-      db.all(`SELECT dateKey, data FROM ${TOKEN_SAVER_TABLE} WHERE timestamp <= ?`, [nowIso]);
+      if (cutoff) {
+        where = "dateKey >= ? AND timestamp <= ?";
+        params = [toLocalDateKey(cutoff), nowIso];
+      }
     }
-    const agg = aggregateTokenSaverEvents(rows.map((r) => parseJson(r.data, null)).filter(Boolean));
-    // Daily points for the overview chart: group the same window's events by
-    // local dateKey and fold each day. Ordered by date. Bounded periods are
-    // zero-filled to a contiguous calendar range so the chart doesn't connect
-    // sparse observations; "all" stays observed-only to avoid an unbounded
-    // array (24h spans today + yesterday, the rolling window's observed dates).
+    const rows = db.all(
+      `SELECT dateKey, COUNT(*) AS requestsObserved,
+        SUM(rtkRequestsWithHits) AS rtkRequestsWithHits,
+        SUM(rtkHits) AS rtkHits,
+        SUM(rtkBytesBefore) AS rtkBytesBefore,
+        SUM(rtkBytesAfter) AS rtkBytesAfter,
+        SUM(rtkBytesSaved) AS rtkBytesSaved,
+        SUM(hrTokensBefore) AS hrTokensBefore,
+        SUM(hrTokensAfter) AS hrTokensAfter,
+        SUM(hrTokensSaved) AS hrTokensSaved,
+        SUM(hrBodyBytesBefore) AS hrBodyBytesBefore,
+        SUM(hrBodyBytesAfter) AS hrBodyBytesAfter,
+        SUM(hrPhantomSavings) AS hrPhantomSavings,
+        SUM(pxApplied) AS pxApplied,
+        SUM(pxTokensBeforeEst) AS pxTokensBeforeEst,
+        SUM(pxTokensAfterEst) AS pxTokensAfterEst,
+        SUM(pxTokensSavedEst) AS pxTokensSavedEst,
+        SUM(pxImageCount) AS pxImageCount,
+        SUM(totalActualBytesSaved) AS totalActualBytesSaved,
+        SUM(CASE WHEN hrState = 'compressed' THEN 1 ELSE 0 END) AS compressed,
+        SUM(CASE WHEN hrState = 'skipped' THEN 1 ELSE 0 END) AS skipped,
+        SUM(CASE WHEN hrState = 'disabled' THEN 1 ELSE 0 END) AS disabled
+       FROM ${TOKEN_SAVER_TABLE} WHERE ${where} GROUP BY dateKey`,
+      params
+    );
+    const agg = aggregateTokenSaverEvents([]);
     const byDay = new Map();
-    for (const r of rows) {
-      const ev = parseJson(r.data, null);
-      if (!ev) continue;
-      // Ignore rows with a corrupt/imported dateKey — they'd poison the chart.
-      if (!isString(r.dateKey) || !/^\d{4}-\d{2}-\d{2}$/.test(r.dateKey)) continue;
-      if (!byDay.has(r.dateKey)) byDay.set(r.dateKey, []);
-      byDay.get(r.dateKey).push(ev);
+    for (const row of rows) {
+      const n = (key) => Number(row[key] ?? 0);
+      const day = {
+        requestsObserved: n("requestsObserved"),
+        rtk: {
+          requestsWithHits: n("rtkRequestsWithHits"), hits: n("rtkHits"),
+          bytesBefore: n("rtkBytesBefore"), bytesAfter: n("rtkBytesAfter"), bytesSaved: n("rtkBytesSaved"),
+        },
+        headroom: {
+          compressed: n("compressed"), skipped: n("skipped"), disabled: n("disabled"),
+          tokensBefore: n("hrTokensBefore"), tokensAfter: n("hrTokensAfter"), tokensSaved: n("hrTokensSaved"),
+          bodyBytesBefore: n("hrBodyBytesBefore"), bodyBytesAfter: n("hrBodyBytesAfter"), phantomSavings: n("hrPhantomSavings"),
+        },
+        pxpipe: {
+          applied: n("pxApplied"), tokensBeforeEst: n("pxTokensBeforeEst"), tokensAfterEst: n("pxTokensAfterEst"),
+          tokensSavedEst: n("pxTokensSavedEst"), imageCount: n("pxImageCount"),
+        },
+        totals: { actualBytesSaved: n("totalActualBytesSaved") },
+      };
+      agg.requestsObserved += day.requestsObserved;
+      for (const group of ["rtk", "headroom", "pxpipe", "totals"]) {
+        for (const [key, value] of Object.entries(day[group])) agg[group][key] += value;
+      }
+      // Corrupt imported date keys contribute totals, but never chart points.
+      if (isString(row.dateKey) && /^\d{4}-\d{2}-\d{2}$/.test(row.dateKey)) byDay.set(row.dateKey, day);
     }
+    for (const row of db.all(
+      `SELECT hrSkipReason, COUNT(*) AS count FROM ${TOKEN_SAVER_TABLE}
+       WHERE ${where} AND hrState = 'skipped' GROUP BY hrSkipReason`,
+      params
+    )) {
+      agg.headroom.skipReasons[row.hrSkipReason || "other-skip"] = Number(row.count ?? 0);
+    }
+    // Bounded windows retain their contiguous zero-filled chart axis;
+    // all-time remains observed-only.
     const foldDay = (dateKey) => {
-      const day = aggregateTokenSaverEvents(byDay.get(dateKey) || []);
+      const day = byDay.get(dateKey) || aggregateTokenSaverEvents([]);
       return {
         dateKey,
         actualBytesSaved: day.totals.actualBytesSaved,

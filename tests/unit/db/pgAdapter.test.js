@@ -129,7 +129,8 @@ describe("adapters/pgAdapter — lastInsertRowid via RETURNING", () => {
     const { adapter, calls } = await makeAdapter({ url: "postgres://u@h/db" });
     const r = await adapter.run("INSERT INTO usageHistory(timestamp) VALUES(?)", ["2026-09-09"]);
     const last = calls[calls.length - 1];
-    expect(last.sql).toBe('INSERT INTO usageHistory(timestamp) VALUES($1) RETURNING "id"');
+    // Table name is quoted by the rewriter so PG does not fold it to lower case.
+    expect(last.sql).toBe('INSERT INTO "usageHistory"(timestamp) VALUES($1) RETURNING "id"');
     expect(r.changes).toBe(1);
     expect(r.lastInsertRowid).toBe(42);
   });

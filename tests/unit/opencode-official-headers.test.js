@@ -78,8 +78,11 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     expect(first["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
     expect(first["x-opencode-session"]).not.toContain("victim");
     expect(second["x-opencode-session"]).toBe(first["x-opencode-session"]);
-    expect(second["x-opencode-request"]).not.toBe(first["x-opencode-request"]);
+    // Same identity + identical turn text (upstream 0c6ab4f9): the request id is
+    // now deliberately stable, mirroring a credential-refresh retry of one turn.
+    expect(second["x-opencode-request"]).toBe(first["x-opencode-request"]);
     expect(third["x-opencode-session"]).not.toBe(first["x-opencode-session"]);
+    expect(third["x-opencode-request"]).not.toBe(first["x-opencode-request"]);
   });
   it("binds request context session seeds to their connection", async () => {
     const fetchMock = stubFetch();

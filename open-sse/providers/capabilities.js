@@ -104,6 +104,17 @@ function hasUnpublishedOutput(provider, model) {
 export const MODEL_CAPABILITIES = {
   /** DeepSeek V4 Flash Vision's exact bare and vendor-prefixed IDs share this override. */
   "deepseek-v4-flash-vision-exp": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+  /**
+   * V4.1-Flash is natively multimodal (models.dev lists opencode-go/deepseek-v4.1-flash
+   * with modalities.input ["text","image"]); the retired v4-flash / vision-exp ids route
+   * to it upstream, so the live V4.1 ids carry the same image capability as the exp id
+   * above. "deepseek-flash" is the GA id on the DeepSeek API; it previously fell through
+   * to the generic *deepseek* pattern, whose 128K/64K limits are kept here. The repeated
+   * fields are deliberate: an exact entry short-circuits the pattern table, so a
+   * vision-only delta would drop them.
+   */
+  "deepseek-v4.1-flash": { vision: true, reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 384000 },
+  "deepseek-flash": { vision: true, reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 128000, maxOutput: 64000 },
 
   /** Kimi Code docs: canonical K3 supports 1M on Allegretto+ and can disable thinking. */
   k3: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 262144 },
@@ -802,7 +813,11 @@ export const PATTERN_CAPABILITIES = [
 // ── DeepSeek (thinking.enabled + reasoning_effort; r1 = thinking-only) ─
 /** Match vendor-prefixed vision variants before the text-only V4 family fallback. */
 { pattern: "*deepseek-v4*vision*", caps: { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 } },
-{ pattern: "*deepseek-v4*", caps: { reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 } },
+// v4.1+ dotted releases have real image input (probed live on Alibaba MaaS: correct
+// color read from a PNG). v4-pro / v4-flash-0731 accept image blocks but ignore them
+// (answered "Unknown"), so vision stays scoped to the dotted v4.* ids below them.
+{ pattern: "*deepseek-v4.*", caps: { vision: true, reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*deepseek-v4*", caps: { reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 384000 } },
 { pattern: "*reasoner*", caps: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 } },
 { pattern: "*deepseek-r*", caps: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 } },
 { pattern: "*deepseek-chat*", caps: { contextWindow: 128000 } },
@@ -1050,6 +1065,44 @@ function sanitizeModelLimits(caps) {
   return caps.maxOutput < caps.contextWindow ? caps : { ...caps, maxOutput: undefined };
 }
 
+// Mirrors Command Code CLI's `isKnownTextOnlyModel` (no image input). New models
+// default to vision; only this denylist stays text-only (port of decolua/9router 13b468b8).
+const COMMANDCODE_TEXT_ONLY = new Set([
+  "deepseek/deepseek-v4-pro",
+  "deepseek/deepseek-v4-flash",
+  "deepseek/deepseek-v4-flash-fast",
+  "zai-org/glm-5.3",
+  "zai-org/glm-5.2",
+  "zai-org/glm-5.2-fast",
+  "zai-org/glm-5.1",
+  "zai-org/glm-5",
+  "minimaxai/minimax-m2.7",
+  "minimax/minimax-m2.7-free",
+  "minimaxai/minimax-m2.5",
+  "xiaomi/mimo-v2.5-pro",
+  "qwen/qwen3.6-max-preview",
+  "qwen/qwen3.7-max",
+  "meituan/longcat-2.0:free",
+  "stepfun/step-3.5-flash",
+  "tencent/hy4-preview",
+  "tencent/hy3",
+  "tencent/hy3-paid",
+  "nvidia/nemotron-3-ultra-550b-a55b",
+  "poolside/laguna-s-2.1-free",
+  "inclusionai/ling-3.0-flash-free",
+  "inclusionai/ling-3.0-flash-sante:free",
+]);
+
+function isCommandCodeTextOnly(model) {
+  const key = String(model || "").toLowerCase();
+  if (COMMANDCODE_TEXT_ONLY.has(key)) return true;
+  for (const id of COMMANDCODE_TEXT_ONLY) {
+    const base = id.includes("/") ? id.slice(id.lastIndexOf("/") + 1) : id;
+    if (key === base || key.endsWith("/" + base)) return true;
+  }
+  return false;
+}
+
 /**
  * Resolve capabilities for a model using the 4-step fallback chain,
  * merged over DEFAULT_CAPABILITIES so the result is always complete.
@@ -1087,6 +1140,21 @@ export function getCapabilitiesForModel(provider, model) {
       const normalizedBase = normalizeModelId(baseModel);
       if (providerCaps?.[normalized]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalized] });
       if (providerCaps?.[normalizedBase]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedBase] });
+    }
+    // Command Code's wire is /alpha/generate for every model it lists, so the
+    // global family patterns below (e.g. "*deepseek-v4*" -> thinkingFormat
+    // "deepseek", vision false) must not win here: they'd send reasoning_effort
+    // to the wrong envelope field and hide vision on models that support it.
+    // Reached only when no exact per-model override matched above.
+    if (provider === "commandcode" || provider === "cmc") {
+      return finalize({
+        ...DEFAULT_CAPABILITIES,
+        reasoning: true,
+        thinkingFormat: "commandcode",
+        vision: !isCommandCodeTextOnly(normalizedModel),
+        contextWindow: 1000000,
+        maxOutput: 384000,
+      });
     }
   }
 

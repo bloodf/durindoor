@@ -61,6 +61,7 @@
     "pg": "^8.13.0",
     "pg-query-stream": "^4.10.0",
     "pxpipe-proxy": "0.13.2",
+    "qrcode": "^1.5.4",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-is": "^16.13.1",

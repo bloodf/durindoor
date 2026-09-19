@@ -46,16 +46,22 @@ describe("OpenCodeExecutor Muse Free tool_choice normalization", () => {
     }
   });
 
-  it("leaves an explicit auto untouched; absent gets the cluster's own auto default", () => {
+  it("leaves an explicit auto untouched regardless of caller tools", () => {
     const autoOut = new OpenCodeExecutor().transformRequest(FREE_13, responsesBody(FREE_13, "auto"), true, {});
     expect(autoOut.tool_choice).toBe("auto");
+  });
 
-    // #907's cloakOpencodeTools defaults any missing tool_choice to "auto" on
-    // Responses requests unconditionally — this quirk's own force only ever
-    // needs to act on an EXPLICIT non-auto value, so the two behaviors don't
-    // fight; the caller ends up at "auto" either way.
-    const absentOut = new OpenCodeExecutor().transformRequest(FREE_13, responsesBody(FREE_13, undefined), true, {});
-    expect(absentOut.tool_choice).toBe("auto");
+  it("absent tool_choice composes with #4146's own hasTools-gated default", () => {
+    // #4146 (decolua/9607 #915) narrowed cloakOpencodeTools's own default to
+    // `!hasTools && !body.tool_choice`, so it only fills in "auto" when the
+    // caller sent no tools of its own — this quirk's force only ever acts on
+    // an EXPLICIT non-auto value, so the two compose without fighting:
+    const noToolsBody = { model: FREE_13, input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }] };
+    const noToolsOut = new OpenCodeExecutor().transformRequest(FREE_13, noToolsBody, true, {});
+    expect(noToolsOut.tool_choice).toBe("auto"); // #4146's own default fires (no caller tools)
+
+    const withToolsOut = new OpenCodeExecutor().transformRequest(FREE_13, responsesBody(FREE_13, undefined), true, {});
+    expect("tool_choice" in withToolsOut).toBe(false); // #4146's default does NOT fire (caller sent tools)
   });
 
   it.each([

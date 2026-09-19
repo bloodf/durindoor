@@ -6,10 +6,11 @@ import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { normalizeResponsesTools, sanitizeResponsesItems } from "./opencode-go.js";
+import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 
 /**
  * OpenCode free-tier executor (upstream #4041-adjacent cluster: 93837af0 +
- * 6091ff59 + 0c6ab4f9, plus PR #4155).
+ * 6091ff59 + 0c6ab4f9 + 2b65c49, plus PR #4155).
  *
  * OpenCode Zen validates free-tier (no-auth) requests and 403s
  * (`FreeTierError`) unless three things hold:
@@ -42,9 +43,31 @@ import { normalizeResponsesTools, sanitizeResponsesItems } from "./opencode-go.j
  * real CLI's stable per-turn id. `x-opencode-request` is now derived the
  * same way as the session (hash of session + last user message text), so
  * retries of one turn share an id and a new turn gets a new one.
+ *
+ * Anonymous (no-auth) callers all share the literal connectionId "noauth",
+ * so the session source alone can be identical across unrelated callers on a
+ * first turn — see `anonymousCallerIp`. The peer IP, when available and
+ * public, is folded into the single `hashInput` that `canonicalSessionId`
+ * consumes, so different anonymous callers land on different sessions; this
+ * is a mitigation, not a full fix (documented on `anonymousCallerIp`).
+ * `deriveRequestId` seeds on the resulting `session` (not a second parallel
+ * hashInput), so an anonymous caller's `x-opencode-request` inherits the
+ * same per-IP isolation as its `x-opencode-session` with one derivation to
+ * keep in sync, not two.
+ *
+ * Union Alpha (upstream 2b65c49) is orthogonal to all of the above: it is a
+ * routing concern (which endpoint a model's wire format needs), not a
+ * session/cloaking/streaming one. `MESSAGES_MODELS` pins it to
+ * /zen/v1/messages (Claude wire format) in `buildUrl`, and `buildHeaders`
+ * only adds `anthropic-version` on that route; every other free-tier
+ * behavior in this file (session identity, cloaking, forced streaming, the
+ * compact-endpoint guard) applies to it exactly like any other non-Muse
+ * model.
  */
 const OPENCODE_UA = "opencode/1.18.31";
-const MESSAGES_MODELS = new Set();
+// Models served by /zen/v1/messages (Claude wire format); every other model
+// stays on /chat/completions (or /responses, gated separately by /muse/).
+const MESSAGES_MODELS = new Set(["union-alpha"]);
 
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 export const OPENCODE_REQUEST_RE = /^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
@@ -186,9 +209,9 @@ function lastUserText(body) {
 // session plus the last user message so credential-refresh retries of the
 // same turn reuse the same id; a body with no readable user text (or a new
 // turn) falls back to a fresh random id. Seeding on the final session id
-// (not the raw hashInput) means an anonymous caller's request id inherits
-// whatever isolation the session already has — including the peer-IP fold-in
-// below — with no separate derivation to keep in sync.
+// (not a second parallel hashInput) means an anonymous caller's request id
+// inherits whatever isolation the session already has — including the
+// peer-IP fold-in below — with no separate derivation to keep in sync.
 function deriveRequestId(sessionId, body) {
   const text = lastUserText(body);
   if (!text) return generateRequestId();
@@ -367,7 +390,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     `${base}/zen/v1/chat/completions`;
   }
 
-  buildHeaders(credentials, stream = true, requestContext = null) {
+  buildHeaders(credentials, stream = true, requestContext = null, model = null) {
     const clientHeaders = new Headers(requestContext?.clientHeaders ?? credentials?.rawHeaders ?? {});
     const clientUa = clientHeaders.get("user-agent");
     const credentialToken = credentials?.apiKey || credentials?.accessToken || credentials?.authorization;
@@ -378,6 +401,7 @@ export class OpenCodeExecutor extends BaseExecutor {
       "x-opencode-client": clientHeaders.get("x-opencode-client") || "desktop",
       "Accept": stream ? "text/event-stream" : "*/*"
     };
+    if (MESSAGES_MODELS.has(model)) baseHeaders["anthropic-version"] = ANTHROPIC_API_VERSION;
     if (hasPaidIdentity) {
       baseHeaders.Authorization = credentialToken.startsWith?.("Bearer ") ? credentialToken : `Bearer ${credentialToken}`;
     }

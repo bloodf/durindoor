@@ -5,6 +5,7 @@ import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { HTTP_STATUS, SSE_KEEPALIVE_MS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
+import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { ANTHROPIC_PING_FRAME } from "../../utils/earlyStreamKeepalive.js";
 import { createTerminalTracker } from "../../utils/streamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
@@ -140,9 +141,18 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
-  const onAbortTerminal = isResponsesPassthrough ? buildAbortedResponsesTerminalBytes : null;
   const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
   const terminalTracker = createTerminalTracker(emittedFormat);
+  // createTerminalTracker only covers OPENAI/OPENAI_RESPONSES/CLAUDE — every other
+  // emitted format (Gemini-family, Ollama, Kiro, Commandcode, Cursor) has no EOF
+  // recovery, so a watchdog abort/lost connection closed the stream with no
+  // terminal frame at all. Report it in-band instead so those clients can tell a
+  // truncated reply from a finished one.
+  const onAbortTerminal = isResponsesPassthrough
+    ? buildAbortedResponsesTerminalBytes
+    : terminalTracker
+      ? null
+      : (message) => buildStreamErrorBytes(HTTP_STATUS.GATEWAY_TIMEOUT, message, emittedFormat);
   // Keepalives are client protocol bytes, so select them from emittedFormat
   // after translation. Feeding an Anthropic ping into the provider stream can
   // make translators swallow or misparse it.
@@ -237,7 +247,11 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
       total: Date.now() - requestStartTime
     };
-    const safeContent = contentObj?.content || "[Empty streaming response]";
+    const toolCallNames = contentObj?.toolCallNames || [];
+    // Tool calls carry no accumulated content, so a tool-call-only turn would otherwise
+    // log as "[Empty streaming response]" — indistinguishable from a truncated stream.
+    const safeContent = contentObj?.content
+      || (toolCallNames.length ? `[Tool calls: ${toolCallNames.join(", ")}]` : "[Empty streaming response]");
     const safeThinking = contentObj?.thinking || null;
 
     saveRequestDetail(buildRequestDetail({
@@ -247,7 +261,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       request: extractRequestConfig(body, stream),
       providerRequest: finalBody || translatedBody || null,
       providerResponse: summary?.providerResponse ?? safeContent,
-      response: { content: safeContent, thinking: safeThinking, type: "streaming" },
+      response: { content: safeContent, thinking: safeThinking, tool_calls: toolCallNames, type: "streaming" },
       pxpipe,
       status: "success"
     }, { id: streamDetailId })).catch((err) => {

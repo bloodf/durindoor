@@ -40,6 +40,13 @@ describe("OpenCodeExecutor anonymous session isolation", () => {
     expect(a._opencodeSession).not.toBe(b._opencodeSession);
   });
 
+  it("is stable for the same anonymous caller (same public IP) across requests", () => {
+    const executor = new OpenCodeExecutor();
+    const first = executor.prepareRequestCredentials({ credentials: anonymousCredentials("203.0.113.10") });
+    const second = executor.prepareRequestCredentials({ credentials: anonymousCredentials("203.0.113.10") });
+    expect(first._opencodeSession).toBe(second._opencodeSession);
+  });
+
   it("is stable for the same anonymous caller (same public IP), same request id on a retry", () => {
     const executor = new OpenCodeExecutor();
     const body = () => ({ messages: [{ role: "user", content: "run the deploy" }] });
@@ -47,13 +54,6 @@ describe("OpenCodeExecutor anonymous session isolation", () => {
     const retry = executor.prepareRequestCredentials({ body: body(), credentials: anonymousCredentials("203.0.113.10") });
     expect(first._opencodeSession).toBe(retry._opencodeSession);
     expect(first._opencodeRequest).toBe(retry._opencodeRequest);
-  });
-
-  it("is stable for the same anonymous caller (same public IP) across requests", () => {
-    const executor = new OpenCodeExecutor();
-    const first = executor.prepareRequestCredentials({ credentials: anonymousCredentials("203.0.113.10") });
-    const second = executor.prepareRequestCredentials({ credentials: anonymousCredentials("203.0.113.10") });
-    expect(first._opencodeSession).toBe(second._opencodeSession);
   });
 
   it("documents the residual collision: two anonymous callers sharing one public IP still share a session", () => {

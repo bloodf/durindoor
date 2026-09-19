@@ -190,10 +190,10 @@ describe("openaiToCommandCodeRequest — tools schema conversion", () => {
 
     expect(out.params.messages[0].content).toEqual([
       { type: "text", text: "compare" },
-      { type: "image", image: "data:image/png;base64,BBBB" },
-      { type: "image", image: "https://example.com/reference.png" },
-      { type: "image", image: "https://example.com/source.png" },
-      { type: "image", image: "data:image/webp;base64,CCCC" },
+      { type: "image", image: "data:image/png;base64,BBBB", mimeType: "image/png" },
+      { type: "image", image: "https://example.com/reference.png", mimeType: "image/png" },
+      { type: "image", image: "https://example.com/source.png", mimeType: "image/png" },
+      { type: "image", image: "data:image/webp;base64,CCCC", mimeType: "image/webp" },
     ]);
   });
 
@@ -240,5 +240,65 @@ describe("openaiToCommandCodeRequest — Muse reasoning", () => {
     }, true);
 
     expect(out.params.max_tokens).toBe(32768);
+  });
+});
+
+// Port of decolua/9router 092c84ea: CommandCode's /alpha/generate schema pairs a
+// tool-call block with a preceding reasoning block; without one, retried turns
+// hit transient stream errors.
+describe("openaiToCommandCodeRequest — reasoning block precedes tool calls", () => {
+  it("emits a placeholder reasoning block for a tool-calling turn with no reasoning text", () => {
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [
+        { role: "user", content: "run it" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c1", type: "function", function: { name: "run", arguments: "{}" } }],
+        },
+      ],
+    }, true);
+
+    const assistant = out.params.messages.find((m) => m.role === "assistant");
+    expect(assistant.content[0]).toEqual({ type: "reasoning", text: " " });
+    expect(assistant.content.some((b) => b.type === "tool-call")).toBe(true);
+  });
+
+  it("uses the real reasoning text when present alongside tool calls", () => {
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [
+        { role: "user", content: "run it" },
+        {
+          role: "assistant",
+          content: null,
+          reasoning_content: "deciding what to run",
+          tool_calls: [{ id: "c1", type: "function", function: { name: "run", arguments: "{}" } }],
+        },
+      ],
+    }, true);
+
+    const assistant = out.params.messages.find((m) => m.role === "assistant");
+    expect(assistant.content[0]).toEqual({ type: "reasoning", text: "deciding what to run" });
+  });
+
+  it("also reads the thought/reasoning field aliases", () => {
+    const viaThought = openaiToCommandCodeRequest(MODEL, {
+      messages: [{ role: "user", content: "u" }, { role: "assistant", content: "a", thought: "via thought" }],
+    }, true);
+    expect(viaThought.params.messages[1].content[0]).toEqual({ type: "reasoning", text: "via thought" });
+
+    const viaReasoning = openaiToCommandCodeRequest(MODEL, {
+      messages: [{ role: "user", content: "u" }, { role: "assistant", content: "a", reasoning: "via reasoning" }],
+    }, true);
+    expect(viaReasoning.params.messages[1].content[0]).toEqual({ type: "reasoning", text: "via reasoning" });
+  });
+
+  it("emits no reasoning block for a plain text turn with neither reasoning nor tool calls", () => {
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [{ role: "user", content: "u" }, { role: "assistant", content: "plain answer" }],
+    }, true);
+
+    const assistant = out.params.messages.find((m) => m.role === "assistant");
+    expect(assistant.content.some((b) => b.type === "reasoning")).toBe(false);
   });
 });

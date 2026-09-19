@@ -55,4 +55,23 @@ describe("prefetchRemoteImages", () => {
     expect(n).toBe(1);
     expect(body.messages[0].content[0].source.type).toBe("base64");
   });
+
+  // Port of decolua/9router 13b468b8: Command Code's /alpha/generate only accepts
+  // inline base64/data-URI images, so a bare http(s) URL must be inlined first.
+  it("openai source -> commandcode target: converts remote URL to base64", async () => {
+    const body = { messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "https://x/a.png" } }] }] };
+    const n = await prefetchRemoteImages(body, FORMATS.OPENAI, FORMATS.COMMANDCODE);
+    expect(n).toBe(1);
+    expect(body.messages[0].content[0].image_url.url.startsWith("data:image/png;base64,")).toBe(true);
+    expect(fetchImageAsBase64).toHaveBeenCalled();
+  });
+
+  it("claude source -> commandcode target: source.url -> base64", async () => {
+    const body = { messages: [{ role: "user", content: [
+      { type: "image", source: { type: "url", url: "https://x/a.png" } },
+    ] }] };
+    const n = await prefetchRemoteImages(body, FORMATS.CLAUDE, FORMATS.COMMANDCODE);
+    expect(n).toBe(1);
+    expect(body.messages[0].content[0].source.type).toBe("base64");
+  });
 });

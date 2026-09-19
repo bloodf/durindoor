@@ -537,6 +537,12 @@ export default function ProviderDetailPage() {
     saveProviderStrategy("round-robin", value);
   };
 
+  const handleCacheAffinityToggle = (enabled) => {
+    const strategy = enabled ? "cache-affinity" : null;
+    setProviderStrategy(strategy);
+    saveProviderStrategy(strategy, providerStickyLimit);
+  };
+
   const saveThinkingConfig = async (mode) => {
     try {
       const settingsRes = await fetch("/api/settings", { cache: "no-store" });
@@ -1834,6 +1840,11 @@ export default function ProviderDetailPage() {
                 
                   </div>
               }
+                <span className="text-xs text-dd-muted font-medium ml-2">Cache Affinity</span>
+                <Toggle
+                ariaLabel="Toggle cache affinity"
+                checked={providerStrategy === "cache-affinity"}
+                onChange={handleCacheAffinityToggle} />
               </div>
               {/* Per-provider concurrency limit */}
               <div className="flex items-center gap-2">

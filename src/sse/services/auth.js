@@ -13,7 +13,7 @@ import { describeProviderError } from "open-sse/utils/error.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import {
   buildQuotaResourceKeys,
@@ -150,6 +150,29 @@ function getSessionAffinity(providerId, sessionId) {
 
 export function resetProviderSessionAffinity() {
   sessionAffinityState.clear();
+}
+
+/**
+ * Cache-affinity account selection: rendezvous (HRW) hashing on the same
+ * conversation-stable `sessionId` round-robin uses for sticky sessions
+ * (`resolveClientSessionId` in open-sse/utils/sessionManager.js). Unlike
+ * round-robin's sticky map, this is stateless — nothing to persist, survives
+ * restarts, and removing an account only remaps the keys it owned instead of
+ * reshuffling every conversation. Every connection is scored against the key
+ * and the highest wins; ties (astronomically rare) break on connection id for
+ * determinism.
+ */
+function pickByCacheAffinity(key, connections) {
+  let best = null;
+  let bestScore = "";
+  for (const c of connections) {
+    const score = createHash("sha256").update(`${key}\0${c.id}`).digest("hex");
+    if (!best || score > bestScore || (score === bestScore && String(c.id) < String(best.id))) {
+      best = c;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 const affinityCleanup = setInterval(() => {
@@ -712,6 +735,14 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const stickyConnection = stickyConnectionId ?
     availableConnections.find((c) => c.id === stickyConnectionId) :
     null;
+    // Cache-affinity picks a connection ahead of quota ranking too, mirroring
+    // round-robin's sticky pin: a conversation that already has an account
+    // must keep it (for the provider prompt cache) even when quota fairness
+    // would otherwise reorder the pool. No sessionId (e.g. a client that sends
+    // none) falls through to fill-first below, same as upstream's contract.
+    const cacheAffinityConnection = strategy === "cache-affinity" && sessionId ?
+    pickByCacheAffinity(sessionId, availableConnections) :
+    null;
 
     // Pin to preferred connection if specified and available
     if (preferredConnectionId) {
@@ -725,6 +756,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // skip strategy
     } else if (stickyConnection) {connection = stickyConnection;
       log.debug("AUTH", `${provider} | session-sticky ${sessionId.slice(0, 8)} → ${connection.id?.slice(0, 8)}`);
+      connection = (await updateProviderConnection(connection.id, {
+        lastUsedAt: new Date().toISOString()
+      })) || connection;
+    } else if (cacheAffinityConnection) {
+      connection = cacheAffinityConnection;
+      log.debug("AUTH", `${provider} | cache-affinity ${sessionId.slice(0, 8)} → ${connection.id?.slice(0, 8)}`);
       connection = (await updateProviderConnection(connection.id, {
         lastUsedAt: new Date().toISOString()
       })) || connection;
@@ -782,7 +819,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         }
       }
     } else {
-      // Default: fill-first (already sorted by priority in getProviderConnections)
+      // Default: fill-first (already sorted by priority in getProviderConnections).
+      // Also the fallback for cache-affinity when the request carries no sessionId.
       connection = availableConnections[0];
     }
 

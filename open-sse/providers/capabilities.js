@@ -104,6 +104,17 @@ function hasUnpublishedOutput(provider, model) {
 export const MODEL_CAPABILITIES = {
   /** DeepSeek V4 Flash Vision's exact bare and vendor-prefixed IDs share this override. */
   "deepseek-v4-flash-vision-exp": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 },
+  /**
+   * V4.1-Flash is natively multimodal (models.dev lists opencode-go/deepseek-v4.1-flash
+   * with modalities.input ["text","image"]); the retired v4-flash / vision-exp ids route
+   * to it upstream, so the live V4.1 ids carry the same image capability as the exp id
+   * above. "deepseek-flash" is the GA id on the DeepSeek API; it previously fell through
+   * to the generic *deepseek* pattern, whose 128K/64K limits are kept here. The repeated
+   * fields are deliberate: an exact entry short-circuits the pattern table, so a
+   * vision-only delta would drop them.
+   */
+  "deepseek-v4.1-flash": { vision: true, reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 384000 },
+  "deepseek-flash": { vision: true, reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 128000, maxOutput: 64000 },
 
   /** Kimi Code docs: canonical K3 supports 1M on Allegretto+ and can disable thinking. */
   k3: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 262144 },
@@ -799,7 +810,11 @@ export const PATTERN_CAPABILITIES = [
 // ── DeepSeek (thinking.enabled + reasoning_effort; r1 = thinking-only) ─
 /** Match vendor-prefixed vision variants before the text-only V4 family fallback. */
 { pattern: "*deepseek-v4*vision*", caps: { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 } },
-{ pattern: "*deepseek-v4*", caps: { reasoning: true, thinkingFormat: "deepseek", contextWindow: 1000000, maxOutput: 384000 } },
+// v4.1+ dotted releases have real image input (probed live on Alibaba MaaS: correct
+// color read from a PNG). v4-pro / v4-flash-0731 accept image blocks but ignore them
+// (answered "Unknown"), so vision stays scoped to the dotted v4.* ids below them.
+{ pattern: "*deepseek-v4.*", caps: { vision: true, reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*deepseek-v4*", caps: { reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 384000 } },
 { pattern: "*reasoner*", caps: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 } },
 { pattern: "*deepseek-r*", caps: { reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 128000 } },
 { pattern: "*deepseek-chat*", caps: { contextWindow: 128000 } },

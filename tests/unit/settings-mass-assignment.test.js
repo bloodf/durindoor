@@ -107,6 +107,7 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
     ["outboundProxyUrl", "value-for-outboundProxyUrl"],
     ["outboundNoProxy", "value-for-outboundNoProxy"],
     ["exposeComboOnly", true],
+    ["claudeClassifierCompat", "always"],
   ])("drops unauthenticated mass assignment of %s", async (key, value) => {
     await PATCH({
       json: async () => ({ [key]: value }),
@@ -141,6 +142,7 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
         outboundProxyEnabled: true,
         outboundProxyUrl: "http://proxy.local:8080",
         exposeComboOnly: true,
+        claudeClassifierCompat: "auto",
       }),
     });
 
@@ -154,6 +156,7 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
       outboundProxyEnabled: true,
       outboundProxyUrl: "http://proxy.local:8080",
       exposeComboOnly: true,
+      claudeClassifierCompat: "auto",
     }));
   });
 
@@ -170,6 +173,18 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
 
     const persisted = mocks.updateSettings.mock.calls[0][0];
     expect(persisted).toEqual({ requireLogin: true });
+  });
+
+  it("rejects an unrecognized claudeClassifierCompat value even for an authenticated caller", async () => {
+    mocks.canModifySecurityCriticalSettings.mockResolvedValue(true);
+
+    const response = await PATCH({
+      json: async () => ({ claudeClassifierCompat: "on" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: "Invalid claudeClassifierCompat" });
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
   it("does not strip non-critical settings for unauthenticated callers", async () => {

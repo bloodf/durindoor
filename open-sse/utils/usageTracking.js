@@ -3,6 +3,7 @@
  */
 
 import { FORMATS } from "../translator/formats.js";
+import { getPricingForModel, calculateCostFromTokens } from "../providers/pricing.js";
 
 // Legacy per-chunk usage console line; off by default (superseded by "📊 done")
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -249,6 +250,31 @@ export function canonicalizeUsage(usage) {
 }
 
 /**
+ * Ensure usage.cost_usd is set before a response reaches the client. Prefers
+ * a provider-reported cost (already normalized into cost_usd by normalizeUsage/
+ * extractUsage, e.g. OpenRouter's bare `usage.cost`); falls back to estimating
+ * from MODEL_PRICING via the token counts already on `usage`. No-op when cost
+ * is already present or no pricing entry matches the model.
+ *
+ * @param {object} usage
+ * @param {string} provider
+ * @param {string} model
+ * @returns {object} usage, with cost_usd added when it could be determined
+ */
+export function enrichUsageCost(usage, provider, model) {
+  if (!usage || !isObject(usage)) return usage;
+  if (Number.isFinite(Number(usage.cost_usd)) || Number.isFinite(Number(usage.cost_in_usd))) return usage;
+
+  const pricing = getPricingForModel(provider, model);
+  if (!pricing) return usage;
+
+  const cost = calculateCostFromTokens(canonicalizeUsage(usage) || usage, pricing);
+  if (!Number.isFinite(cost) || cost <= 0) return usage;
+
+  return { ...usage, cost_usd: cost };
+}
+
+/**
  * Convert Claude's cache-exclusive input accounting to OpenAI's convention,
  * where prompt_tokens INCLUDES cached and newly-cached input tokens (#2658).
  * Anthropic thinking is already included in output_tokens; expose its count as
@@ -373,6 +399,8 @@ export function extractUsage(chunk) {
       total_tokens: chunk.usage.total_tokens,
       cached_tokens: chunk.usage.prompt_tokens_details?.cached_tokens || chunk.usage.prompt_cache_hit_tokens,
       reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens,
+      // OpenRouter reports cost as a bare USD number on usage; same unit as cost_usd.
+      cost_usd: Number.isFinite(Number(chunk.usage.cost)) ? Number(chunk.usage.cost) : chunk.usage.cost_usd,
       cost_in_usd: chunk.usage.cost_in_usd,
       cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
       prompt_tokens_details: chunk.usage.prompt_tokens_details,

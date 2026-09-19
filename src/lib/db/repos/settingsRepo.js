@@ -44,6 +44,13 @@ const DEFAULT_SETTINGS = {
   oidcClientSecret: "",
   oidcScopes: "openid profile email",
   oidcLoginLabel: "Sign in with OIDC",
+  // TOTP dashboard 2FA (decolua/9router#4144). mfaSecret/mfaBackupCodes are
+  // credentials -- see SECRET_SETTING_KEYS in settingsPatchAuth.js and the
+  // GET/PATCH redaction in the settings route; they must never round-trip
+  // through the generic settings API.
+  mfaEnabled: false,
+  mfaSecret: "",
+  mfaBackupCodes: [],
   passwordSessionEpoch: "initial",
   enableObservability: true,
   enableProxyTimeline: false,
@@ -277,6 +284,49 @@ export async function updateSettingsWithPasswordEpoch(updates, expectedEpoch) {
   });
   if (!matched) throw new PasswordEpochMismatchError();
   return mergeWithDefaults(next);
+}
+
+/**
+ * Atomically match a candidate MFA backup code against the currently stored
+ * hashes and, on a match, remove only that one hash -- read, match, and write
+ * inside a single transaction (decolua/9router#4144 TOCTOU fix).
+ *
+ * The naive version (getSettings, then an async bcrypt.compare loop, then
+ * updateSettings) reads the array before the compare loop's await points and
+ * writes after them, so two concurrent verifications can both match the same
+ * pre-write array and each independently persist their own "minus one hash"
+ * result -- the loser's write clobbers the winner's, and the consumed code
+ * is still valid. Reading fresh state inside the same transaction that
+ * performs the write closes that window.
+ *
+ * `matchFn` MUST be synchronous (see backupCodes.js `findBackupCodeHashIndexSync`):
+ * an `await` inside the transaction body would reopen exactly this race.
+ *
+ * @param {string} candidate raw user input, not yet normalized
+ * @param {(candidate: string, hashes: string[]) => number} matchFn returns the matching index, or -1
+ * @returns {Promise<{ matched: boolean, backupCodesRemaining: number }>}
+ */
+export async function consumeBackupCodeAtomic(candidate, matchFn) {
+  const db = await getAdapter();
+  let result = { matched: false, backupCodesRemaining: 0 };
+  db.transaction(() => {
+    const row = db.get(`SELECT data FROM settings WHERE id = 1`);
+    const current = migrateObservabilityKeys(row ? parseJson(row.data, {}) : {});
+    const hashes = Array.isArray(current.mfaBackupCodes) ? current.mfaBackupCodes : [];
+    const index = matchFn(candidate, hashes);
+    if (index === -1) {
+      result = { matched: false, backupCodesRemaining: hashes.length };
+      return;
+    }
+    const remaining = hashes.slice(0, index).concat(hashes.slice(index + 1));
+    const next = migrateObservabilityKeys({ ...current, mfaBackupCodes: remaining });
+    db.run(
+      `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+      [stringifyJson(next)]
+    );
+    result = { matched: true, backupCodesRemaining: remaining.length };
+  });
+  return result;
 }
 
 export async function isCloudEnabled() {

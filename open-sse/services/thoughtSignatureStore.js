@@ -23,6 +23,24 @@ const signatureKv = makeKv(SCOPE);
 const memorySignatures = new Map();
 let pruneCounter = 0;
 
+/**
+ * Model family that produced / will consume a signature. Antigravity serves Gemini and Claude
+ * models behind the same API, and each backend only accepts its own signatures: a Claude
+ * signature replayed to Gemini fails with 400 "Corrupted thought signature." (and vice versa).
+ */
+export function signatureFamily(model) {
+  const m = isString(model) ? model.toLowerCase() : "";
+  if (!m) return null;
+  if (m.includes("claude")) return "claude";
+  if (m.includes("gemini")) return "gemini";
+  return m;
+}
+
+// Entries stored before families were recorded (no `family`) stay usable for any model.
+function isCompatible(entry, family) {
+  return !entry.family || !family || entry.family === family;
+}
+
 function pruneMemoryExpired() {
   const now = Date.now();
   for (const [key, value] of memorySignatures.entries()) {
@@ -75,13 +93,15 @@ async function maybePrunePersisted() {
 }
 
 /**
- * Store a thought signature for a tool_call_id with optional sessionId namespace (RAM + SQLite async)
+ * Store a thought signature for a tool_call_id with optional sessionId namespace (RAM + SQLite async).
+ * `model` is the model that produced the signature; lookups for another model family skip it.
  */
-export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = null) {
+export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = null, model = null) {
   if (!isString(toolCallId) || !toolCallId) return;
   if (!isString(signature) || !signature) return;
 
   const now = Date.now();
+  const family = signatureFamily(model);
   pruneMemoryExpired();
 
   const keys = [];
@@ -93,12 +113,14 @@ export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = n
   for (const k of keys) {
     memorySignatures.set(k, {
       signature,
+      family,
       expiresAt: now + MEMORY_TTL_MS,
     });
 
     // Async persist to SQLite kv table without blocking
     signatureKv.set(k, {
       signature,
+      family,
       createdAt: now,
       expiresAt: now + PERSISTED_TTL_MS,
     }).catch(() => {});
@@ -108,23 +130,25 @@ export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = n
 }
 
 /**
- * Retrieve a thought signature by tool_call_id (RAM first, then SQLite fallback)
+ * Retrieve a thought signature by tool_call_id (RAM first, then SQLite fallback).
+ * `model` is the target model; signatures produced by another model family are ignored.
  */
-export async function getGeminiThoughtSignature(toolCallId, sessionId = null) {
+export async function getGeminiThoughtSignature(toolCallId, sessionId = null, model = null) {
   if (!isString(toolCallId) || !toolCallId) return null;
 
+  const family = signatureFamily(model);
   pruneMemoryExpired();
 
   if (isString(sessionId) && sessionId) {
     const sessionKey = `${sessionId}:${toolCallId}`;
     const sessionEntry = memorySignatures.get(sessionKey);
-    if (sessionEntry && sessionEntry.expiresAt > Date.now()) {
+    if (sessionEntry && sessionEntry.expiresAt > Date.now() && isCompatible(sessionEntry, family)) {
       return sessionEntry.signature;
     }
   }
 
   const entry = memorySignatures.get(toolCallId);
-  if (entry && entry.expiresAt > Date.now()) {
+  if (entry && entry.expiresAt > Date.now() && isCompatible(entry, family)) {
     return entry.signature;
   }
 
@@ -132,9 +156,10 @@ export async function getGeminiThoughtSignature(toolCallId, sessionId = null) {
     if (isString(sessionId) && sessionId) {
       const sessionKey = `${sessionId}:${toolCallId}`;
       const sessionRow = await signatureKv.get(sessionKey);
-      if (sessionRow && isString(sessionRow.signature) && (!sessionRow.expiresAt || sessionRow.expiresAt > Date.now())) {
+      if (sessionRow && isString(sessionRow.signature) && (!sessionRow.expiresAt || sessionRow.expiresAt > Date.now()) && isCompatible(sessionRow, family)) {
         memorySignatures.set(sessionKey, {
           signature: sessionRow.signature,
+          family: sessionRow.family || null,
           expiresAt: Date.now() + MEMORY_TTL_MS,
         });
         return sessionRow.signature;
@@ -147,8 +172,10 @@ export async function getGeminiThoughtSignature(toolCallId, sessionId = null) {
         signatureKv.remove(toolCallId).catch(() => {});
         return null;
       }
+      if (!isCompatible(row, family)) return null;
       memorySignatures.set(toolCallId, {
         signature: row.signature,
+        family: row.family || null,
         expiresAt: Date.now() + MEMORY_TTL_MS,
       });
       return row.signature;
@@ -161,22 +188,24 @@ export async function getGeminiThoughtSignature(toolCallId, sessionId = null) {
 }
 
 /**
- * Synchronous get from RAM cache only (for sync translators)
+ * Synchronous get from RAM cache only (for sync translators).
+ * `model` is the target model; signatures produced by another model family are ignored.
  */
-export function getGeminiThoughtSignatureSync(toolCallId, sessionId = null) {
+export function getGeminiThoughtSignatureSync(toolCallId, sessionId = null, model = null) {
   if (!isString(toolCallId) || !toolCallId) return null;
+  const family = signatureFamily(model);
   pruneMemoryExpired();
 
   if (isString(sessionId) && sessionId) {
     const sessionKey = `${sessionId}:${toolCallId}`;
     const sessionEntry = memorySignatures.get(sessionKey);
-    if (sessionEntry && sessionEntry.expiresAt > Date.now()) {
+    if (sessionEntry && sessionEntry.expiresAt > Date.now() && isCompatible(sessionEntry, family)) {
       return sessionEntry.signature;
     }
   }
 
   const entry = memorySignatures.get(toolCallId);
-  if (entry && entry.expiresAt > Date.now()) {
+  if (entry && entry.expiresAt > Date.now() && isCompatible(entry, family)) {
     return entry.signature;
   }
   return null;

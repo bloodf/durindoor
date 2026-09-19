@@ -16,7 +16,7 @@ import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { stripThinkingSuffix } from "../concerns/thinkingUnified.js";
-import { encodeDataUri } from "../concerns/image.js";
+import { encodeDataUri, parseDataUri } from "../concerns/image.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function flattenText(content) {
@@ -47,9 +47,15 @@ function toContentBlocks(content) {
         } else if (part.type === OPENAI_BLOCK.IMAGE_URL || part.type === OPENAI_BLOCK.IMAGE) {
           /** Preserve remote, data-URI, and source-shaped images in CommandCode's native multimodal block. */
           const sourceUrl = part.source?.type === "url" ? part.source.url : null;
-          const sourceData = part.source?.type === "base64" && isString(part.source.media_type) && isString(part.source.data) ? encodeDataUri(part.source.media_type, part.source.data) : null;
+          const sourceMediaType = part.source?.type === "base64" && isString(part.source.media_type) ? part.source.media_type : null;
+          const sourceData = sourceMediaType && isString(part.source.data) ? encodeDataUri(sourceMediaType, part.source.data) : null;
           const url = isString(part.image_url) ? part.image_url : part.image_url?.url || part.image || part.url || sourceUrl || sourceData;
-          if (url) blocks.push({ type: "image", image: url });
+          if (url) {
+            // /alpha/generate's live schema pairs an image with its mimeType; derive
+            // it from whichever source matched instead of leaving it unset.
+            const mimeType = sourceMediaType || parseDataUri(url)?.mimeType || "image/png";
+            blocks.push({ type: "image", image: url, mimeType });
+          }
         } else if (isString(part.text)) {
           blocks.push({ type: OPENAI_BLOCK.TEXT, text: part.text });
         }
@@ -96,11 +102,16 @@ function convertMessages(messages = []) {
 
     if (role === ROLE.ASSISTANT) {
       const blocks = [];
-      const text = flattenText(m.content);
-      // Preserve reasoning_content as a reasoning block (CommandCode/AI SDK v5 supports this)
-      if (m.reasoning_content) {
-        blocks.push({ type: "reasoning", text: m.reasoning_content });
+      // Preserve reasoning as a leading reasoning block (CommandCode/AI SDK v5
+      // supports this). A tool-calling turn needs one even with no reasoning
+      // text of its own — CommandCode's /alpha/generate schema pairs tool
+      // calls with a preceding reasoning block, and its absence produced
+      // transient stream errors on retried turns (port of decolua/9router 092c84ea).
+      const reasoningText = [m.reasoning_content, m.thought, m.reasoning].find(isString);
+      if (reasoningText || (Array.isArray(m.tool_calls) && m.tool_calls.length > 0)) {
+        blocks.push({ type: "reasoning", text: reasoningText || " " });
       }
+      const text = flattenText(m.content);
       if (text) blocks.push({ type: OPENAI_BLOCK.TEXT, text });
       if (Array.isArray(m.tool_calls)) {
         for (const tc of m.tool_calls) {

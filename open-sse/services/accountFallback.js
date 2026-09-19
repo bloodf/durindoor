@@ -33,17 +33,19 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * Check if error should trigger account fallback (switch to next account)
  * Config-driven: terminal status rules win before text rules, then remaining
  * ERROR_RULES match top-to-bottom. Known account/quota text rules take
- * precedence otherwise; deterministic 400/422 client failures do not rotate.
+ * precedence otherwise; deterministic request-scoped 4xx client failures do not rotate.
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
  * @param {string} provider - Optional provider ID for provider-specific rules
  * @param {Headers|object|null} headers - Optional upstream response headers
  * @param {unknown} structuredError - Optional parsed upstream error body
- * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object }}
+ * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object, terminal?: boolean }}
  *   `rateLimitEvidence` is present only on an explicit quota-exhausted 429,
  *   so markAccountUnavailable can persist state:"exhausted" instead of an
- *   ordinary cooldown.
+ *   ordinary cooldown. `terminal` marks a state retrying cannot fix
+ *   (billing/credit exhausted) — the account still cools down, but callers
+ *   must not advertise a client-facing Retry-After for it.
  */
 export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null) {
   const normalizedText = errorText ?
@@ -159,7 +161,7 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
       }
-      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs, terminal: rule.terminal };
     }
 
     // Pattern-based rule: regex match, for phrases the model name sits inside
@@ -170,7 +172,7 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
       }
-      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs, terminal: rule.terminal };
     }
 
     // Status-based rule: match HTTP status code
@@ -180,11 +182,20 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
       }
-      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs, terminal: rule.terminal };
     }
   }
 
-  if (status === 400 || status === 422) {
+  // Request-scoped client errors that matched no rule above: a 4xx caused by the
+  // request itself (context overflow, malformed body, unsupported parameter) says
+  // nothing about the credential, so cooling the account down only removes a
+  // healthy connection from rotation. With a single connection it is worse: every
+  // later request in the window fails with a copy of this very error, which hides
+  // the real cause from the caller and makes unrelated sessions look like they hit
+  // the same limit. Hand the upstream error back for this request instead.
+  // Account-scoped statuses (401/402/403/404/429) already returned above via
+  // their ERROR_RULES status match, so they never reach this fallthrough.
+  if (status >= 400 && status < 500) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
 

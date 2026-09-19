@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 236 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 237 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -15,6 +15,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | AI21 Labs | `ai21` | apikey | 2 | [site](https://www.ai21.com) |
 | AI Horde | `aihorde` | apikey | 0 | [site](https://aihorde.net) |
 | AI/ML API | `aimlapi` | apikey | 6 | [site](https://aimlapi.com) |
+| ainetcafe | `ainetcafe` | apikey | 4 | [site](https://ainetcafe.com/k3/) |
 | Alibaba | `alibaba` | apikey | 12 | [site](https://bailian.console.alibabacloud.com/) |
 | Alibaba DashScope CN | `alibaba-cn` | apikey | 12 | [site](https://dashscope.aliyuncs.com) |
 | Alibaba | `alicode` | apikey | 8 | [site](https://bailian.console.aliyun.com) |
@@ -183,7 +184,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | OpenAI | `openai` | apikey | 38 | [site](https://platform.openai.com) |
 | OpenCode Free | `opencode` | none | 1 |  |
 | OpenCode Go | `opencode-go` | apikey | 18 | [site](https://opencode.ai/auth) |
-| OpenCode Zen | `opencode-zen` | apikey | 40 | [site](https://opencode.ai/zen) |
+| OpenCode Zen | `opencode-zen` | apikey | 57 | [site](https://opencode.ai/zen) |
 | OpenRouter | `openrouter` | freeTier | 18 | [site](https://openrouter.ai) |
 | Perplexity | `perplexity` | apikey | 2 | [site](https://www.perplexity.ai) |
 | Perplexity Agent | `perplexity-agent` | apikey | 11 | [site](https://www.perplexity.ai) |

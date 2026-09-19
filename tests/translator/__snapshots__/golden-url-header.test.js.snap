@@ -153,6 +153,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > aimlapi → headers 
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > ainetcafe → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > alibaba → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -3692,6 +3711,13 @@ exports[`GOLDEN buildUrl (default executor providers) > aimlapi → url (stream 
 {
   "nonStream": "https://api.aimlapi.com/v1/chat/completions",
   "stream": "https://api.aimlapi.com/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > ainetcafe → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://microquickjs.com/v1/chat/completions",
+  "stream": "https://microquickjs.com/v1/chat/completions",
 }
 `;
 

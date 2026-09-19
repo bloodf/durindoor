@@ -162,3 +162,75 @@ describe("CommandCode HTTP-200 error preflight", () => {
     await response.body.cancel("test complete");
   });
 });
+
+describe("CommandCode retries a transient stream error (port of decolua/9router 092c84ea)", () => {
+  it("retries once when the preflight classifies a 503 and succeeds on the next attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      const executeSpy = vi.spyOn(BaseExecutor.prototype, "execute");
+      executeSpy.mockResolvedValueOnce({
+        response: responseFromChunks([ndjson({
+          type: "error",
+          error: { message: "Model is overloaded", statusCode: 503 },
+        })]),
+      });
+      executeSpy.mockResolvedValueOnce({
+        response: responseFromChunks([
+          ndjson({ type: "start" }),
+          ndjson({ type: "text-delta", text: "Recovered from overload" }),
+          ndjson({ type: "finish" }),
+        ]),
+      });
+
+      const pending = new CommandCodeExecutor().execute({ model: "test-model" });
+      await vi.runAllTimersAsync();
+      const result = await pending;
+
+      expect(executeSpy).toHaveBeenCalledTimes(2);
+      expect(result.response.status).toBe(200);
+      expect(result.response.ok).toBe(true);
+      const body = await result.response.text();
+      expect(body).toContain("Recovered from overload");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not retry a non-retryable status like 422", async () => {
+    const executeSpy = vi.spyOn(BaseExecutor.prototype, "execute").mockResolvedValue({
+      response: responseFromChunks([ndjson({
+        type: "error",
+        error: { message: "Bad request", statusCode: 422 },
+      })]),
+    });
+
+    const result = await new CommandCodeExecutor().execute({ model: "test-model" });
+
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    expect(result.response.status).toBe(422);
+  });
+
+  it("gives up after exhausting retries and returns the last failure", async () => {
+    vi.useFakeTimers();
+    try {
+      // A fresh Response per call: reusing one across retries would hand the
+      // second attempt an already-consumed stream (spurious empty success).
+      const executeSpy = vi.spyOn(BaseExecutor.prototype, "execute").mockImplementation(async () => ({
+        response: responseFromChunks([ndjson({
+          type: "error",
+          error: { message: "Model is overloaded", statusCode: 503 },
+        })]),
+      }));
+
+      const pending = new CommandCodeExecutor().execute({ model: "test-model" });
+      await vi.runAllTimersAsync();
+      const result = await pending;
+
+      // Initial attempt + 2 retries = 3 total calls.
+      expect(executeSpy).toHaveBeenCalledTimes(3);
+      expect(result.response.status).toBe(503);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

@@ -24,6 +24,7 @@ export default {
   },
   models: [
     { id: "x-preview-f-free", name: "Ox Alpha Free", targetFormat: "openai", supportedFormats: ["openai"] },
+    { id: "union-alpha", name: "Union Alpha Free", targetFormat: "claude" },
   ],
   modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" },
   passthroughModels: true,

@@ -20,6 +20,8 @@ export default function LoginPage() {
   const [passwordChangeProof, setPasswordChangeProof] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [nextPath, setNextPath] = useState("/dashboard");
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
 
   useEffect(() => {
     if (retryAfter <= 0) return undefined;
@@ -73,10 +75,37 @@ export default function LoginPage() {
         setMustChange(true);
         return;
       }
+      // Password accepted but a second factor is still owed -- no session yet.
+      if (data.mfaRequired) {
+        setMfaRequired(true);
+        setPassword("");
+        return;
+      }
       if (res.ok) { window.location.assign(nextPath); return; }
       setError(data.error || "Invalid password");
       if (data.resetHint) setResetHint(data.resetHint);
       if (data.retryAfter) setRetryAfter(Number(data.retryAfter));
+    } catch (err) {
+      setError("An error occurred. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Login step 2: exchange a TOTP or backup code for the real session.
+  const handleMfaSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/mfa/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: mfaCode }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) { window.location.assign(nextPath); return; }
+      setError(data.error || "Invalid code");
+      setMfaCode("");
+      if (data.retryAfter) setRetryAfter(Number(data.retryAfter));
+      // Pending window expired -- fall back to step 1 rather than stranding the user.
+      if (res.status === 401 && /expired/i.test(data.error || "")) setMfaRequired(false);
     } catch (err) {
       setError("An error occurred. Please try again.");
     } finally {
@@ -143,6 +172,11 @@ export default function LoginPage() {
       handleLogin={handleLogin}
       handleSetNewPassword={handleSetNewPassword}
       handleOidcLogin={handleOidcLogin}
+      mfaRequired={mfaRequired}
+      mfaCode={mfaCode}
+      setMfaCode={setMfaCode}
+      handleMfaSubmit={handleMfaSubmit}
+      onBackToPassword={() => { setMfaRequired(false); setMfaCode(""); setError(""); }}
     />
   );
 }

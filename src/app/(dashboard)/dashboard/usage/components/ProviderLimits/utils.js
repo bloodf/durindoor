@@ -935,7 +935,9 @@ export function parseQuotaData(provider, data) {
         break;
 
       case "deepseek":
-        // Credit balance — remainingPercentage only (no absolute remaining).
+        // Credit balance: DeepSeek's total_balance is a running prepaid balance,
+        // not a used/total request window, so QuotaTable renders it as a
+        // currency figure instead of a 0/total percentage bar.
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({
@@ -943,14 +945,16 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
-              remainingPercentage: quota.remainingPercentage
+              remainingPercentage: quota.remainingPercentage,
+              isCreditBalance: quota.isCreditBalance ?? true,
+              currency: quota.currency || (name.includes("(") ? name.slice(name.indexOf("(") + 1, name.indexOf(")")) : "USD")
             });
           });
         }
         break;
 
       case "ollama":
-        // Session (5h) / Weekly (7d) usage from ollama.com/api/usage. Carries
+        // Session (5h) / Weekly (7d) / Monthly usage from ollama.com/api/usage. Carries
         // remainingPercentage only — the API reports a ratio, not an absolute
         // remaining count, and the bar reads the percentage.
         if (data.quotas) {

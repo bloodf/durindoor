@@ -669,6 +669,7 @@ describe("dashboard guard management API auth", () => {
     ["PATCH", "/api/providers/conn-1"],
     ["GET", "/api/usage/stats"],
     ["PATCH", "/api/usage/reset"],
+    ["GET", "/api/monitoring"],
   ]) {
     it(`rejects remote unauthenticated ${method} ${path} when requireLogin=false`, async () => {
       const response = await proxy(request(path, { host: "router.example.com" }, method));

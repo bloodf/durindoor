@@ -60,6 +60,10 @@ export const NAV_SECTIONS = [
     label: "Monitor",
     entries: [
       { type: "item", href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
+      // Runtime status, 24h activity, and provider request/error rates —
+      // complements Health below, which probes provider connectivity rather
+      // than reading recorded traffic.
+      { type: "item", href: "/dashboard/monitoring", label: "Monitoring", icon: "monitoring" },
       { type: "item", href: "/dashboard/timeline", label: "Timeline", icon: "timeline" },
       { type: "item", href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
       { type: "item", href: "/dashboard/health", label: "Health", icon: "monitor_heart" },

@@ -25,6 +25,7 @@ import EndpointRow from "./components/EndpointRow";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
 import StatusAlert from "./components/StatusAlert";
+import MonitoringStrip from "./components/MonitoringStrip";
 import { isBrowser } from "@/shared/utils/typeChecks.js";
 
 function CardSkeleton() {
@@ -982,6 +983,9 @@ export default function EndpointPageClient({ localPort = 20128 }) {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Activity: in-flight requests, provider health, recent requests */}
+      <MonitoringStrip />
 
       {/* Enable Tunnel Modal */}
       <Modal

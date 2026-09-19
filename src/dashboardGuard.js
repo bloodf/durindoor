@@ -79,6 +79,7 @@ const MANAGEMENT_API_PATHS = [
   "/api/connection-groups",
   "/api/models",
   "/api/usage",
+  "/api/monitoring",
   "/api/timeline",
   "/api/oauth",
   "/api/cloud",

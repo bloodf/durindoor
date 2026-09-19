@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/localDb";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
-import { isUsingDefaultPassword, setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
+import { isUsingDefaultPassword, setDashboardAuthCookie, setMfaPendingCookie } from "@/lib/auth/dashboardSession";
+import { isMfaEnabled } from "@/lib/auth/mfa";
 import { issuePasswordChangeProof } from "@/lib/auth/passwordChangeProof";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { hasExactRequestOrigin, hasTrustedLocalOrigin } from "@/lib/auth/requestOrigin";
@@ -98,6 +99,21 @@ export async function POST(request) {
         return NextResponse.json({ error: "Login state changed, please retry" }, { status: 409, headers: NO_STORE_HEADERS });
       }
       const cookieStore = await cookies();
+
+      // Password is only the first factor. When MFA is on, hand back a
+      // short-lived pending token instead of a session -- it carries no
+      // `authenticated` claim, so it cannot reach the dashboard on its own.
+      // Deliberately do NOT clear the failure counter here: the login is not
+      // complete, and resetting it would hand an attacker a fresh lockout
+      // budget for brute-forcing the second factor.
+      if (isMfaEnabled(currentSettings)) {
+        await setMfaPendingCookie(cookieStore, request);
+        return NextResponse.json(
+          { success: false, mfaRequired: true, mustChangePassword: false },
+          { headers: NO_STORE_HEADERS }
+        );
+      }
+
       try {
         await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: settings.passwordSessionEpoch ?? "initial" }, settings.passwordSessionEpoch ?? "initial");
         recordSuccess(ip);

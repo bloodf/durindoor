@@ -65,6 +65,15 @@ describe("OpenCodeGoExecutor routing + sanitization", () => {
     })).toBe("https://opencode.ai/zen/go/v1/responses");
   });
 
+  it("routes thinking-suffixed muse-spark variants to /responses (upstream 702b57c3)", () => {
+    const ex = new OpenCodeGoExecutor();
+    expect(ex.buildUrl(`${MODEL}(high)`)).toBe("https://opencode.ai/zen/go/v1/responses");
+    // A stale runtimeTransport pointing at chat/completions must not win either.
+    expect(ex.buildUrl(`${MODEL}(xhigh)`, true, 0, {
+      runtimeTransport: { baseUrl: "https://opencode.ai/zen/go/v1/chat/completions" },
+    })).toBe("https://opencode.ai/zen/go/v1/responses");
+  });
+
   it("leaves non-muse models on the default/runtime transport", () => {
     const ex = new OpenCodeGoExecutor();
     expect(ex.buildUrl("kimi-k2.6")).toBe("https://opencode.ai/zen/go/v1/chat/completions");

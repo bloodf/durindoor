@@ -3,8 +3,11 @@ import { openaiToKiroRequest } from "../../open-sse/translator/request/openai-to
 import { kiroToClaudeResponse } from "../../open-sse/translator/response/kiro-to-claude.js";
 import { kiroToOpenAIResponse } from "../../open-sse/translator/response/kiro-to-openai.js";
 
+// Kiro accepts consecutive underscores; only characters outside
+// [a-zA-Z0-9_-] get sanitized (port of upstream fix(kiro): preserve
+// underscores in tool names and restore sanitized names in responses).
 const sanitizedName = "codex_app_send_message_to_thread";
-const originalName = "codex_app__send_message_to_thread";
+const originalName = "codex.app/send_message_to_thread";
 const toolNameMap = new Map([[sanitizedName, originalName]]);
 
 describe("Kiro tool names and Claude cache usage", () => {
@@ -24,6 +27,22 @@ describe("Kiro tool names and Claude cache usage", () => {
     const tools = result.conversationState.currentMessage.userInputMessage.userInputMessageContext.tools;
     expect(tools[0].toolSpecification.name).toBe(sanitizedName);
     expect(result._toolNameMap).toEqual(toolNameMap);
+  });
+
+  it("does not collapse legal consecutive underscores like mcp__server__tool", () => {
+    const mcpName = "mcp__gitea__search_repos";
+    const result = openaiToKiroRequest("claude-sonnet-4.6", {
+      messages: [{ role: "user", content: "Search repos" }],
+      tools: [{
+        type: "function",
+        function: { name: mcpName, description: "Search Gitea", parameters: { type: "object", properties: {} } },
+      }],
+    }, true, {});
+
+    const tools = result.conversationState.currentMessage.userInputMessage.userInputMessageContext.tools;
+    expect(tools[0].toolSpecification.name).toBe(mcpName);
+    // The name was already legal — no map entry, no mangled separator.
+    expect(result._toolNameMap).toBeUndefined();
   });
 
   it("restores original tool names in OpenAI and Claude response translators", () => {

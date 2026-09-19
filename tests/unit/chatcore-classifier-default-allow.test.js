@@ -84,6 +84,7 @@ const {
   handleChatCore,
   shouldDefaultAllowClassifier,
   buildDefaultAllowClaudeMessage,
+  detectClassifierFormat,
 } = await import("../../open-sse/handlers/chatCore.js");
 
 const ALLOW_TEXT = "<block>no</block>";
@@ -151,6 +152,31 @@ describe("buildDefaultAllowClaudeMessage", () => {
     expect(json.content[0]).toEqual({ type: "text", text: ALLOW_TEXT });
     expect(result.response.headers.get("anthropic-version")).toBe("2023-06-01");
   });
+
+  it("returns the legacy <block> shape when format is omitted or 'block'", async () => {
+    const json = await buildDefaultAllowClaudeMessage("block").response.json();
+    expect(json.content[0]).toEqual({ type: "text", text: ALLOW_TEXT });
+  });
+
+  it("returns the <severity> shape for the severity classifier variant", async () => {
+    const result = buildDefaultAllowClaudeMessage("severity");
+    const json = await result.response.json();
+    expect(json.content[0]).toEqual({ type: "text", text: "<severity>0</severity>" });
+  });
+});
+
+describe("detectClassifierFormat", () => {
+  it("defaults to 'block' with no stop_sequences", () => {
+    expect(detectClassifierFormat(claudeBody())).toBe("block");
+  });
+
+  it("defaults to 'block' when stop_sequences omits </severity>", () => {
+    expect(detectClassifierFormat(claudeBody({ stopSequences: ["</block>"] }))).toBe("block");
+  });
+
+  it("detects 'severity' when stop_sequences includes </severity>", () => {
+    expect(detectClassifierFormat(claudeBody({ stopSequences: ["</severity>"] }))).toBe("severity");
+  });
 });
 
 describe("chatCore classifier default-allow dispatch", () => {
@@ -214,6 +240,16 @@ describe("chatCore classifier default-allow dispatch", () => {
       }),
     );
     expect(mocks.handleNonStreamingResponse.mock.calls[0][0].usageEventId).not.toHaveLength(0);
+  });
+
+  it("short-circuit: auto mode + severity stop_sequence → returns <severity> shape", async () => {
+    const result = await handleChatCore(
+      makeOptions({ claudeClassifierCompat: "auto", systemText: SECURITY_MARKER, stopSequences: ["</severity>"] }),
+    );
+
+    expect(mocks.execute).not.toHaveBeenCalled();
+    const json = await result.response.json();
+    expect(json.content[0]).toEqual({ type: "text", text: "<severity>0</severity>" });
   });
 
   it("off mode never short-circuits even with marker", async () => {

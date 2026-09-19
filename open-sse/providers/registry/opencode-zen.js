@@ -2,6 +2,11 @@ export default {
   id: "opencode-zen",
   priority: 41,
   alias: "opencode-zen",
+  // Short alias upstream uses for this provider (port(upstream): #4145); kept
+  // as an additional lookup token rather than replacing `alias` so existing
+  // "opencode-zen" configs keep working.
+  aliases: ["ocz"],
+  uiAlias: "ocz",
   display: {
     name: "OpenCode Zen",
     icon: "opencode.svg",
@@ -43,14 +48,34 @@ export default {
     { id: "claude-opus-4-5", name: "Claude Opus 4.5", targetFormat: "claude" },
     { id: "claude-opus-4-6", name: "Claude Opus 4.6", targetFormat: "claude" },
     { id: "claude-opus-4-7", name: "Claude Opus 4.7", targetFormat: "claude" },
+    // Additive catalog entries from port(upstream): #4145. Only ids the
+    // existing executor's own model-id regexes already route correctly are
+    // added here — see the commit message for what was deferred and why.
+    { id: "claude-fable-5", name: "Claude Fable 5", targetFormat: "claude" },
+    { id: "claude-fable-5-1", name: "Claude Fable 5.1", targetFormat: "claude" },
+    { id: "claude-opus-5", name: "Claude Opus 5", targetFormat: "claude" },
+    { id: "claude-sonnet-5", name: "Claude Sonnet 5", targetFormat: "claude" },
+    { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", targetFormat: "openai-responses" },
+    { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", targetFormat: "openai-responses" },
+    { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", targetFormat: "openai-responses" },
     { id: "grok-build-0.1", name: "Grok Build 0.1" },
+    { id: "grok-4.5", name: "Grok 4.5" },
+    { id: "grok-4.6", name: "Grok 4.6" },
     { id: "glm-5", name: "GLM-5" },
     { id: "glm-5.1", name: "GLM-5.1" },
+    { id: "glm-5.2", name: "GLM-5.2" },
+    { id: "glm-5.3", name: "GLM-5.3" },
+    { id: "glm-5.3-flash", name: "GLM-5.3 Flash" },
     { id: "minimax-m3", name: "MiniMax M3", contextLength: 1048576, supportsVision: true },
     { id: "minimax-m2.5", name: "MiniMax M2.5" },
     { id: "minimax-m2.7", name: "MiniMax M2.7" },
     { id: "kimi-k2.5", name: "Kimi K2.5" },
     { id: "kimi-k2.6", name: "Kimi K2.6" },
+    { id: "kimi-k2.7-code", name: "Kimi K2.7 Code" },
+    { id: "kimi-k3", name: "Kimi K3" },
+    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+    { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision Exp" },
     { id: "qwen3.5-plus", name: "Qwen3.5 Plus", targetFormat: "claude", supportsVision: false, strip: ["image"] },
     { id: "qwen3.6-plus", name: "Qwen3.6 Plus", targetFormat: "claude", supportsVision: false, strip: ["image"] },
     { id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free", supportsReasoning: true },

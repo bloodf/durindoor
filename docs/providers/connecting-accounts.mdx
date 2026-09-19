@@ -43,7 +43,7 @@ Set `GEMINI_OAUTH_CLIENT_ID` / `GEMINI_OAUTH_CLIENT_SECRET` and `ANTIGRAVITY_OAU
 
 ## Multiple accounts and priority
 
-Each new connection gets `priority` equal to one more than the current max for that provider, unless you set it. `getProviderConnections` sorts by that number, lowest first. The default selector is fill-first: it takes the first eligible row in that order. Round-robin is a settings strategy; it still breaks ties with priority when `lastUsedAt` is missing.
+Each new connection gets `priority` equal to one more than the current max for that provider, unless you set it. `getProviderConnections` sorts by that number, lowest first. The default selector is fill-first: it takes the first eligible row in that order. Round-robin and Cache Affinity are settings strategies; round-robin still breaks ties with priority when `lastUsedAt` is missing, and Cache Affinity pins by conversation instead of rotating. See [Smart routing](../features/smart-routing.mdx).
 
 You can pin a preferred connection id. Session-sticky round-robin remembers the last account for a session. Quota preflight can skip an account that is already exhausted and pick the next one.
 

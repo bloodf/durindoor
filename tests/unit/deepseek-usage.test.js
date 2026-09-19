@@ -80,6 +80,9 @@ describe("getUsageForProvider(deepseek)", () => {
       used: 0,
       total: 12.5,
       remainingPercentage: 100,
+      unlimited: false,
+      isCreditBalance: true,
+      currency: "USD",
     });
     expect(usage.quotas["Balance (USD)"].remaining).toBeUndefined();
     // Zero CNY still listed so user sees currency row
@@ -87,6 +90,8 @@ describe("getUsageForProvider(deepseek)", () => {
       used: 0,
       total: 0,
       remainingPercentage: 0,
+      isCreditBalance: true,
+      currency: "CNY",
     });
   });
 
@@ -145,5 +150,25 @@ describe("parseQuotaData(deepseek)", () => {
       total: 12.5,
       remainingPercentage: 100,
     });
+  });
+
+  it("marks balance rows as a credit balance and derives currency from the name", () => {
+    const rows = parseQuotaData("deepseek", {
+      plan: "DeepSeek",
+      quotas: {
+        "Balance (USD)": { used: 0, total: 12.5, remainingPercentage: 100 },
+      },
+    });
+    expect(rows[0]).toMatchObject({ isCreditBalance: true, currency: "USD" });
+  });
+
+  it("prefers an explicit currency field over the one parsed from the row name", () => {
+    const rows = parseQuotaData("deepseek", {
+      plan: "DeepSeek",
+      quotas: {
+        "Balance (USD)": { used: 0, total: 12.5, remainingPercentage: 100, currency: "EUR" },
+      },
+    });
+    expect(rows[0].currency).toBe("EUR");
   });
 });

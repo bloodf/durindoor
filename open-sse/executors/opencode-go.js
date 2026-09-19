@@ -88,7 +88,8 @@ function isResponsesModel(model) {
 // non-function declarations (freeform `custom` tools, `namespace` tools) pass
 // through intact — rewriting them as functions would destroy their input format
 // and subtool semantics (mirrors codex.js normalizeCodexTools).
-function normalizeResponsesTools(body) {
+// Exported for reuse by opencode.js (same Responses-endpoint constraints).
+export function normalizeResponsesTools(body) {
   if (!Array.isArray(body.tools)) return;
   const validNames = new Set();
   body.tools = body.tools.filter((tool) => {
@@ -149,7 +150,8 @@ function normalizeResponsesTools(body) {
 // Last line of defense for native Responses clients (sourceFormat === targetFormat
 // skips translation): coerce items in place so malformed tool payloads 400 here
 // with a clear shape instead of upstream as InputValidationError.
-function sanitizeResponsesItems(body) {
+// Exported for reuse by opencode.js (same Responses-endpoint constraints).
+export function sanitizeResponsesItems(body) {
   if (!Array.isArray(body.input)) return;
   body.input = body.input.filter((item) => {
     if (!item || !isObject(item) || Array.isArray(item)) return true;

@@ -87,8 +87,10 @@ describe("no-auth provider credential selection", () => {
     });
 
     expectNoPublicAuthorization(noAuthHeaders);
-    expect(noAuthHeaders["User-Agent"]).toBe("opencode");
-    expect(noAuthHeaders["x-opencode-session"]).toMatch(/^ses_[a-f0-9]{32}$/);
+    // Zen free tier 403s (FreeTierError) on a bare "opencode" UA or a
+    // non-canonical session id — see open-sse/executors/opencode.js.
+    expect(noAuthHeaders["User-Agent"]).toBe("opencode/1.18.31");
+    expect(noAuthHeaders["x-opencode-session"]).toMatch(/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
     expect(savedHeaders.Authorization).toBe("Bearer sk-real-key");
   });
 

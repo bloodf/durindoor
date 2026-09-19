@@ -21,6 +21,10 @@ export default {
       "x-opencode-client": "desktop",
     },
     noAuth: true,
+    // Upstream #4041-adjacent cluster: Zen 403s (FreeTierError) on
+    // non-streaming free-tier requests. Force stream upstream; chatCore
+    // aggregates the SSE back to JSON for clients that asked for JSON.
+    forceStream: true,
   },
   models: [
     { id: "x-preview-f-free", name: "Ox Alpha Free", targetFormat: "openai", supportedFormats: ["openai"] },

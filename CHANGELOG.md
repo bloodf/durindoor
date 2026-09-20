@@ -1,3 +1,35 @@
+# 4.6.0
+
+## Breaking
+
+- `GET /api/usage/history` now returns `{ rows, total, limit, offset }` instead of the full usage-stats object, and honours `limit`/`offset` (default 50, max 200). It previously ignored pagination entirely and returned stats. No in-repo consumer existed. (#925)
+
+## Performance
+
+- perf(db): aggregate usage metrics in SQL instead of folding them in JavaScript (#924)
+- perf(db): keep every usage page under 2s at 365 days of data (#925)
+
+  Measured on a 365-day dataset (3,467,500 rows per event table): `usage/stats(all)` 13,511ms -> 428ms, `usage/history` 13,512ms -> 54ms, `tokenSaver(all)` 6,274ms -> 36ms on SQLite. On PostgreSQL, `stats(all)`, `chart(all)` and `history` previously failed outright with `PG result too large for sync bridge` and now return in 796ms / 530ms / 124ms.
+
+  The `lastUsed` overlay and the token-saver totals are now served from per-day summary tables maintained on write, read as interior days plus a bounded scan of only the partial boundary days so local-calendar cutoffs and future-dated rows behave exactly as before. Monitoring and the per-connection quota cards use SQL summaries instead of reducing raw history in JS.
+
+- `npm run bench:db` gains `--days`, `--rows-per-day`, `--data-dir`, `--seed-only` and `--budget-ms`, so the 2s budget is enforced rather than asserted.
+
+## Fixes
+
+- fix(db): the PostgreSQL engine can now bootstrap a fresh cluster. Composite primary keys, column `CHECK` bodies, `REFERENCES` targets, partial-index `WHERE` clauses, generated migration SQL and all runtime DML quote camelCase identifiers, which PostgreSQL otherwise folds to lower case. Migrations previously failed at 007. (#924)
+- fix(db): widen SQLite `INTEGER` to PostgreSQL `BIGINT` and decode int8/numeric as numbers. A 64-bit token counter overflowed 32-bit `INTEGER`, and `node-postgres` returning int8 as strings made `row.isActive === 1` false, failing every request with `Invalid API key`. (#924)
+- fix(db): page the daily rollup read so it cannot exceed the 8 MiB PostgreSQL sync bridge. (#925)
+- fix(db): `SCHEMA_VERSION` was not bumped for migration 020. (#925)
+- fix(db): `getConnectionGroups` issued one membership query per group. (#924)
+- fix(tunnel): stop probing absent tailscale sockets on the event loop. `GET /api/tunnel/status` took ~10.1s on healthy hosts because two `execSync` calls each burned a 5s timeout against a socket path that does not exist on system-managed Tailscale installs, blocking the event loop for every concurrent request. Now 80ms. (#926)
+
+## Notes
+
+- Monitoring health now uses a consistent rolling 7 days for requests, errors and `lastUsed`, instead of mixing a calendar window for requests with a rolling one for errors. The panel is labelled "last 7 days".
+- Membership lists from `getConnectionGroups` are now ordered deterministically by `createdAt`, then `connectionId`. The previous order was whatever the query planner returned and already differed between SQLite and PostgreSQL.
+
+
 # 4.5.0
 
 ## Features

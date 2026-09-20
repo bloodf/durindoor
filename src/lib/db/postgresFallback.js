@@ -91,11 +91,26 @@ export async function writeSettingsViaTransientSqlite(updates) {
  */
 async function readClusterInfo(adapter) {
   try {
+    // `server_version*` exist on every supported major and are required. The
+    // rest are capability hints, and some are version-gated: `io_method` is
+    // PostgreSQL 18+, so on 16/17 that SHOW throws. Letting it reject the whole
+    // read made this return null, which openActiveAdapter treats as "cluster
+    // unusable" — it then silently serves the pre-cutover SQLite file while
+    // settings still say postgres, so live writes split across two databases.
+    // Probe optional settings individually; an unknown parameter just means
+    // "capability not available on this major".
     const versionNum = await adapter.get("SHOW server_version_num");
     const versionStr = await adapter.get("SHOW server_version");
-    const ioMethod = await adapter.get("SHOW io_method");
-    const walLevel = await adapter.get("SHOW wal_level");
-    const logLockWaits = await adapter.get("SHOW log_lock_waits");
+    const optionalSetting = async (setting) => {
+      try {
+        return await adapter.get(`SHOW ${setting}`);
+      } catch {
+        return null;
+      }
+    };
+    const ioMethod = await optionalSetting("io_method");
+    const walLevel = await optionalSetting("wal_level");
+    const logLockWaits = await optionalSetting("log_lock_waits");
     return {
       serverVersionNum: versionNum ? versionNum.server_version_num : 0,
       serverVersion: versionStr ? versionStr.server_version : "unknown",
@@ -107,6 +122,9 @@ async function readClusterInfo(adapter) {
     return null;
   }
 }
+
+/** Exposed for tests: the cluster probe decides whether PG is usable at boot. */
+export const readClusterInfoForTest = readClusterInfo;
 
 /**
  * Open the active adapter. Reads `settings.databaseEngine` and either

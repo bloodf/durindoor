@@ -1,3 +1,13 @@
+# 4.6.1
+
+## Fixes
+
+- fix(db): do not treat PostgreSQL 16/17 as an unusable cluster. `readClusterInfo` issued `SHOW io_method`, which only exists on PostgreSQL 18. On 16/17 that throws, the whole probe returned `null`, and `openActiveAdapter` interpreted that as "cluster unusable" — it recorded `databaseEngineError` and silently served the pre-cutover SQLite file while settings still said `postgres`, so new writes landed in a different database than the one the operator cut over to. Optional capability settings are now probed individually and an unknown parameter degrades to `null`.
+
+  Verified against a real PostgreSQL 17.11 cluster: migrations 020-022 apply, schema version 22, and the boot probe returns a usable cluster with `ioMethod: null`.
+
+  Anyone running 4.6.0 on PostgreSQL below 18 should upgrade before writing, and check `GET /api/settings/database/engine` for `servingFallback: true`.
+
 # 4.6.0
 
 ## Breaking

@@ -659,7 +659,24 @@ export async function listUsageHistoryPage({ limit = 50, offset = 0, filters = {
   return { rows: rows.map(mapUsageHistoryRow), total };
 }
 
-function loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
+function* readDailyPages(adapter, where, params) {
+  // The PostgreSQL sync bridge caps each result at 8 MiB. Eight days leaves
+  // ample headroom for ~0.5 MiB heavy daily blobs; never fetch a year's JSON
+  // in one message (365-day benchmarks already exceeded 10 MiB).
+  const pageSize = 8;
+  let after = null;
+  for (;;) {
+    const rows = adapter.all(
+      `SELECT dateKey, data FROM usageDaily WHERE ${where}${after == null ? "" : " AND dateKey > ?"} ORDER BY dateKey ASC LIMIT ?`,
+      [...params, ...(after == null ? [] : [after]), pageSize]
+    );
+    yield* rows;
+    if (rows.length < pageSize) return;
+    after = rows[rows.length - 1].dateKey;
+  }
+}
+
+function* loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
   const todayKey = toLocalDateKey(now);
   const params = [];
   let lowerBound = "";
@@ -671,10 +688,7 @@ function loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
     params.push(toLocalDateKey(cutoff));
   }
   params.push(todayKey);
-  const rows = adapter.all(
-    `SELECT dateKey, data FROM usageDaily WHERE ${lowerBound}dateKey < ? ORDER BY dateKey ASC`,
-    params
-  );
+  yield* readDailyPages(adapter, `${lowerBound}dateKey < ?`, params);
 
   // The current day is reconstructed from bounded history so a future-dated
   // imported row cannot contaminate any calendar-period aggregate.
@@ -683,31 +697,26 @@ function loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
   const todayRows = aggregateUsageWindow(adapter, startOfToday.toISOString(), now.toISOString());
   if (todayRows.length > 0) {
     const day = aggregateRowsToDay(todayRows, identitySalt);
-    rows.push({ dateKey: todayKey, data: stringifyJson(day) });
+    yield { dateKey: todayKey, data: stringifyJson(day) };
   }
-  return rows;
 }
 
 // Like loadDaysInRange but bounded by explicit inclusive local date keys
 // (YYYY-MM-DD) instead of a rolling day count. Used by the usage page's custom
 // calendar range. `endKey` >= today reconstructs the current day from live
 // history (usageDaily has no row for today yet), matching loadDaysInRange.
-function loadDaysInDateRange(adapter, startKey, endKey, identitySalt, now = new Date()) {
+function* loadDaysInDateRange(adapter, startKey, endKey, identitySalt, now = new Date()) {
   const todayKey = toLocalDateKey(now);
-  const rows = adapter.all(
-    `SELECT dateKey, data FROM usageDaily WHERE dateKey >= ? AND dateKey <= ? AND dateKey < ? ORDER BY dateKey ASC`,
-    [startKey, endKey, todayKey]
-  );
+  yield* readDailyPages(adapter, "dateKey >= ? AND dateKey <= ? AND dateKey < ?", [startKey, endKey, todayKey]);
   if (endKey >= todayKey && startKey <= todayKey) {
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
     const todayRows = aggregateUsageWindow(adapter, startOfToday.toISOString(), now.toISOString());
     if (todayRows.length > 0) {
       const day = aggregateRowsToDay(todayRows, identitySalt);
-      rows.push({ dateKey: todayKey, data: stringifyJson(day) });
+      yield { dateKey: todayKey, data: stringifyJson(day) };
     }
   }
-  return rows;
 }
 
 export async function getUsageStats(period = "all", opts = {}) {
@@ -1217,10 +1226,18 @@ export async function getChartData(period = "7d", timeZone) {
   }
 
   const fixedDays = getChartDayBucketCount(period);
-  const dayRows = loadDaysInRange(db, fixedDays, identitySalt, nowDate).
-  filter((row) => {
-    try {localDateFromKey(row.dateKey);return true;} catch {return false;}
-  });
+  // Keep only chart scalars after each paged blob is decoded, not every
+  // model/account/key dimension retained in the daily JSON.
+  const dayRows = [];
+  for (const row of loadDaysInRange(db, fixedDays, identitySalt, nowDate)) {
+    try { localDateFromKey(row.dateKey); } catch { continue; }
+    const day = parseJson(row.data, {});
+    dayRows.push({ dateKey: row.dateKey, day: {
+      promptTokens: day.promptTokens, completionTokens: day.completionTokens,
+      cachedTokens: day.cachedTokens, reasoningTokens: day.reasoningTokens,
+      cacheCreationTokens: day.cacheCreationTokens, cost: day.cost,
+    } });
+  }
   const todayKey = toLocalDateKey(nowDate);
   let firstDate;
   if (fixedDays != null) {
@@ -1259,7 +1276,7 @@ export async function getChartData(period = "7d", timeZone) {
     const ordinal = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
     const index = Math.floor((ordinal - firstOrdinal) / bucketSize);
     if (index < 0 || index >= buckets.length || row.dateKey > todayKey) continue;
-    const day = parseJson(row.data, {});
+    const day = row.day;
     buckets[index].tokens += (day.promptTokens || 0) + (day.completionTokens || 0);
     buckets[index].cachedTokens += day.cachedTokens || 0;
     buckets[index].reasoningTokens += day.reasoningTokens || 0;

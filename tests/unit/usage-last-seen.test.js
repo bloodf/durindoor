@@ -107,3 +107,34 @@ it("preserves the latest account model metadata across interleaved grouped rows"
   const stats = await repo.getUsageStats("7d");
   expect(Object.values(stats.byAccount).map(({ rawModel, requests }) => ({ rawModel, requests }))).toEqual([{ rawModel: "first", requests: 3 }]);
 });
+
+it("streams daily JSON larger than the PostgreSQL bridge budget without changing stats or charts", async () => {
+  const byModel = {};
+  for (let i = 0; i < 1000; i++) byModel[`model-${i}|provider`] = {
+    rawModel: `model-${i}`, provider: "provider", requests: 1, promptTokens: 1,
+    completionTokens: 2, cachedTokens: 3, reasoningTokens: 4, cacheCreationTokens: 5, cost: 0.25,
+  };
+  const totals = { requests: 1000, promptTokens: 1000, completionTokens: 2000, cachedTokens: 3000, reasoningTokens: 4000, cacheCreationTokens: 5000, cost: 250 };
+  const data = JSON.stringify({ ...totals, byProvider: { provider: totals }, byModel });
+  expect(Buffer.byteLength(data) * 64).toBeGreaterThan(8 * 1024 * 1024);
+  for (let i = 0; i < 64; i++) {
+    const dateKey = new Date(Date.UTC(2026, 5, 1 + i)).toISOString().slice(0, 10);
+    db.run("INSERT INTO usageDaily(dateKey,data) VALUES (?,?)", [dateKey, data]);
+  }
+  // Exercise the real repository against SQLite, imposing the same response
+  // size failure as PostgreSQL's synchronous worker bridge.
+  const all = db.all.bind(db);
+  vi.spyOn(db, "all").mockImplementation((sql, params) => {
+    const rows = all(sql, params);
+    if (Buffer.byteLength(JSON.stringify(rows)) > 8 * 1024 * 1024) throw new Error("PG result too large for sync bridge");
+    return rows;
+  });
+  const stats = await repo.getUsageStats("all");
+  expect([stats.totalRequests, stats.totalPromptTokens, stats.totalCompletionTokens, stats.totalCost]).toEqual([64000, 64000, 128000, 16000]);
+  expect(Object.keys(stats.byModel)).toEqual(Object.keys(byModel).map(key => key.replace("|provider", " (provider)")));
+  expect(stats.byModel["model-0 (provider)"].requests).toBe(64);
+  const custom = await repo.getUsageStats("all", { startDate: "2026-06-10", endDate: "2026-07-10" });
+  expect(custom.totalRequests).toBe(31000);
+  const chart = await repo.getChartData("all", "UTC");
+  expect(chart.reduce((sum, point) => sum + point.tokens, 0)).toBe(192000);
+});

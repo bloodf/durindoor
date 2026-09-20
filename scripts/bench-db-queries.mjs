@@ -139,7 +139,8 @@ async function seed(db, usage, opts) {
       return value;
     };
     db.transaction(() => {
-      for (const row of db.all("SELECT dateKey, data FROM usageDaily")) {
+      for (const { dateKey } of db.all("SELECT dateKey FROM usageDaily")) {
+        const row = db.get("SELECT dateKey, data FROM usageDaily WHERE dateKey = ?", [dateKey]);
         db.run("UPDATE usageDaily SET data = ? WHERE dateKey = ?", [JSON.stringify(multiply(JSON.parse(row.data))), row.dateKey]);
       }
       db.run("UPDATE _meta SET value = ? WHERE key = 'totalRequestsLifetime'", [String(rows)]);
@@ -192,17 +193,24 @@ async function measure(engine, db, opts, usage, groups) {
   ];
   const results = [];
   for (const [operation, run] of operations) {
-    await run(); // One untimed warmup; all recorded samples are warm-cache calls.
-    const samples = [];
-    for (let n = 0; n < opts.iterations; n++) {
-      const start = performance.now();
-      await run();
-      samples.push(performance.now() - start);
+    try {
+      await run(); // One untimed warmup; all recorded samples are warm-cache calls.
+      const samples = [];
+      for (let n = 0; n < opts.iterations; n++) {
+        const start = performance.now();
+        await run();
+        samples.push(performance.now() - start);
+      }
+      const sorted = [...samples].sort((a, b) => a - b);
+      const middle = Math.floor(sorted.length / 2);
+      results.push({ engine, driver: db.driver, operation, min: sorted[0], median: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2, p95: sorted[Math.ceil(sorted.length * 0.95) - 1], samples });
+      console.error(`${engine} ${operation}: median=${results.at(-1).median.toFixed(3)}ms`);
+    } catch (error) {
+      const message = error.message.replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "[redacted PostgreSQL URL]");
+      results.push({ engine, driver: db.driver, operation, error: message });
+      console.error(`FAILED OPERATION: ${engine} ${operation}: ${message}`);
+      process.exitCode = 1;
     }
-    const sorted = [...samples].sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    results.push({ engine, driver: db.driver, operation, min: sorted[0], median: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2, p95: sorted[Math.ceil(sorted.length * 0.95) - 1], samples });
-    console.error(`${engine} ${operation}: median=${results.at(-1).median.toFixed(3)}ms`);
   }
   return { results, seeded };
 }
@@ -267,13 +275,15 @@ async function main() {
     const overBudget = results.filter((r) => r.median > opts.budgetMs);
     for (const r of overBudget) console.error(`OVER BUDGET: ${r.engine} ${r.operation}: median ${r.median.toFixed(3)}ms > ${opts.budgetMs}ms`);
     if (overBudget.length) process.exitCode = 1;
-    else if (!postgresError) console.error(`PASS: all measured medians <= ${opts.budgetMs}ms`);
+    else if (!postgresError && !results.some((r) => r.error)) console.error(`PASS: all measured medians <= ${opts.budgetMs}ms`);
     if (opts.json) output(JSON.stringify({ rowsPerTable: opts.rows, days: opts.days, rowsPerDay: opts.days ? opts.rowsPerDay : null, seeds, budgetMs: opts.budgetMs, overBudget: overBudget.map(({ engine, operation, median }) => ({ engine, operation, median })), iterations: opts.iterations, seed: "0x51a7c0de", now: epoch, timezone: "UTC", warmupIterations: 1, postgresSkipped: !pgUrl || opts.engine === "sqlite", postgresError, unit: "ms", results }, null, 2));
     else {
       output(`Rows per event table: ${opts.rows}; days: ${opts.days || "legacy 35-day distribution"}; rows/day: ${opts.days ? opts.rowsPerDay : "variable"}; iterations: ${opts.iterations}; budget: ${opts.budgetMs}ms; fixed clock: ${epoch}; UTC; one warmup; milliseconds.\n`);
       for (const [engine, seed] of Object.entries(seeds)) output(`${engine} synthetic fixture: ${JSON.stringify(seed)}\n`);
       output("| Engine (driver) | Operation | Min (ms) | Median (ms) | p95 (ms) |\n| --- | --- | ---: | ---: | ---: |");
-      for (const r of results) output(`| ${r.engine} (${r.driver}) | ${r.operation} | ${r.min.toFixed(3)} | ${r.median.toFixed(3)} | ${r.p95.toFixed(3)} |`);
+      for (const r of results) output(r.error
+        ? `| ${r.engine} (${r.driver}) | ${r.operation}: FAILED (${r.error}) | — | — | — |`
+        : `| ${r.engine} (${r.driver}) | ${r.operation} | ${r.min.toFixed(3)} | ${r.median.toFixed(3)} | ${r.p95.toFixed(3)} |`);
     }
   } finally {
     try { await db?.close(); } finally {

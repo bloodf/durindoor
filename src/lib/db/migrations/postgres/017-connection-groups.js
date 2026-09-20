@@ -9,7 +9,7 @@ const migration = {
   up(adapter) {
     adapter.exec(
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event
-         ON usageHistory(usageEventId) WHERE usageEventId IS NOT NULL`
+         ON "usageHistory"("usageEventId") WHERE "usageEventId" IS NOT NULL`
     );
   },
 };

@@ -58,6 +58,60 @@ afterEach(() => {
 });
 
 describe("connection groups API", () => {
+  it("lists deterministically ordered memberships with constant calls as groups grow", async () => {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const { getConnectionGroupById, getConnectionGroupByName } = await import("@/lib/db/repos/connectionGroupsRepo.js");
+    const db = await getAdapter();
+    const now = "2026-09-04T00:00:00.000Z";
+    const later = "2026-09-05T00:00:00.000Z";
+    db.run(
+      `INSERT INTO providerConnections(id, provider, authType, name, isActive, data, createdAt, updatedAt)
+       VALUES(?, ?, ?, ?, 1, ?, ?, ?)`,
+      ["connection-three", "openai", "api_key", "Third account", "{}", now, now]
+    );
+    const expected = [];
+    const counts = [];
+    const all = vi.spyOn(db, "all");
+    const get = vi.spyOn(db, "get");
+    try {
+      expect(await (await collectionRoute.GET()).json()).toEqual({ groups: [] });
+      for (let i = 0; i < 20; i++) {
+        const id = `group-${i}`;
+        const name = `${i % 2 ? "Alpha" : "zebra"} ${String(i).padStart(2, "0")}`;
+        const connectionIds = i === 2 ? [] : ["connection-two", "connection-three", "connection-one"];
+        db.run(
+          `INSERT INTO connectionGroups(id, name, description, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?)`,
+          [id, name, null, now, now]
+        );
+        for (const connectionId of connectionIds) {
+          db.run(
+            `INSERT INTO connectionGroupMembers(groupId, connectionId, createdAt) VALUES(?, ?, ?)`,
+            [id, connectionId, connectionId === "connection-one" ? later : now]
+          );
+        }
+        expected.push({
+          id, name, description: null, createdAt: now, updatedAt: now,
+          connectionIds: i === 2 ? [] : ["connection-three", "connection-two", "connection-one"],
+        });
+        if (i !== 1 && i !== 19) continue;
+        expected.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+        all.mockClear();
+        get.mockClear();
+        const response = await collectionRoute.GET();
+        expect(response.status).toBe(200);
+        counts.push(all.mock.calls.length + get.mock.calls.length);
+        expect(counts.at(-1)).toBe(2);
+        expect(await response.json()).toEqual({ groups: expected });
+      }
+      expect(counts).toEqual([2, 2]);
+      expect(await getConnectionGroupById(expected[0].id)).toEqual(expected[0]);
+      expect(await getConnectionGroupByName(expected[0].name)).toEqual(expected[0]);
+    } finally {
+      all.mockRestore();
+      get.mockRestore();
+    }
+  });
+
   it("creates, lists, replaces membership, and deletes without orphaning connections", async () => {
     const create = await collectionRoute.POST(request("http://localhost/api/connection-groups", "POST", {
       name: "Production",

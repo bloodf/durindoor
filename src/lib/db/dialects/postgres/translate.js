@@ -41,7 +41,7 @@
 //   - It does not introduce 18+ features (AIO, skip scan, parallel GIN
 //     hints). The capability gate enables those at runtime.
 
-import { quoteIdent } from "./dmlRewrite.js";
+import { quoteIdent, quoteCamelIdents } from "./dmlRewrite.js";
 
 const BOOLEAN_COLUMNS = new Set([
   "isActive",
@@ -61,6 +61,7 @@ const BOOLEAN_COLUMNS = new Set([
 function looksLikeBooleanFlag(columnName) {
   return BOOLEAN_COLUMNS.has(columnName);
 }
+
 
 /**
  * Translate a single column definition string (the part after the column
@@ -86,11 +87,27 @@ export function translateColumnDef(columnName, def) {
       .trim();
   }
 
+  // SQLite INTEGER is signed 64-bit, including counters and 0/1 flags.
+  // Preserve that range on PG; the adapter decodes int8 as JS numbers.
+  out = out.replace(/^INTEGER\b/i, "BIGINT");
+
   // datetime('now') → CURRENT_TIMESTAMP
   out = out.replace(/datetime\('now'\)/gi, "CURRENT_TIMESTAMP");
 
   // REAL → DOUBLE PRECISION
   out = out.replace(/^REAL\b/i, "DOUBLE PRECISION");
+
+  // A column CHECK may reference its own (camelCase) column, and a foreign key
+  // names a camelCase table/column. Both are emitted verbatim, so quote the
+  // identifiers inside them or PG folds them to lower case and the DDL fails.
+  out = out.replace(
+    /CHECK\s*\(([^)]*(?:\([^)]*\)[^)]*)*)\)/gi,
+    (_full, body) => `CHECK (${quoteCamelIdents(body)})`
+  );
+  out = out.replace(
+    /REFERENCES\s+("?)([A-Za-z_][A-Za-z0-9_]*)\1\s*\(\s*("?)([A-Za-z_][A-Za-z0-9_]*)\3\s*\)/gi,
+    (_full, _q1, table, _q2, column) => `REFERENCES ${quoteIdent(table)} (${quoteIdent(column)})`
+  );
 
   return out.trim();
 }
@@ -108,7 +125,10 @@ export function translateCreateTable(tableName, def) {
   const columns = Object.entries(def.columns || {}).map(([colName, colDef]) => {
     return `${quoteIdent(colName)} ${translateColumnDef(colName, colDef)}`;
   });
-  if (def.primaryKey) columns.push(def.primaryKey);
+  // A composite `PRIMARY KEY (a, b)` is declared as raw SQL on the table def and
+  // was previously appended unquoted, which is why a fresh PG bootstrap died on
+  // `column "connectionid" named in key does not exist`.
+  if (def.primaryKey) columns.push(quoteCamelIdents(def.primaryKey));
   const createSql = `CREATE TABLE IF NOT EXISTS ${quoteIdent(tableName)} (${columns.join(", ")})`;
   const indexSqls = (def.indexes || []).map(translateIndex).filter(Boolean);
   return { createSql, indexSqls };
@@ -140,7 +160,9 @@ export function translateIndex(idxSql) {
   });
   const tableIdent = table.replace(/^["`]|["`]$/g, "");
   const head = `CREATE ${unique || ""}INDEX IF NOT EXISTS ${name} ON ${quoteIdent(tableIdent)}(${cols.join(", ")})`.replace(/\s+/g, " ").trim();
-  return whereClause ? `${head} ${whereClause.trim()}` : head;
+  // Partial-index predicates (`WHERE comboId IS NOT NULL`) are passed through
+  // verbatim and need the same identifier quoting as the indexed columns.
+  return whereClause ? `${head} ${quoteCamelIdents(whereClause.trim())}` : head;
 }
 
 /**

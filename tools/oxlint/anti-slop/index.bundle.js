@@ -1,4 +1,4 @@
-// ../wt-sqlmetrics/node_modules/@oxlint/plugins/index.js
+// node_modules/@oxlint/plugins/index.js
 function defineRule(rule) {
   return rule;
 }

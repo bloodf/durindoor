@@ -23,15 +23,47 @@ const migration = {
     for (const name of Object.keys(usageTokenColumns())) {
       if (!existing.has(name)) db.exec(`ALTER TABLE "usageHistory" ADD COLUMN "${name}" ${pg ? "DOUBLE PRECISION" : "REAL"} NOT NULL DEFAULT 0`);
     }
+    // Row-at-a-time is microseconds on SQLite but a round trip per row through
+    // the synchronous worker bridge on PostgreSQL, which is an outage at this
+    // table's size (764k rows on a real install, and migrations run before the
+    // server accepts requests). Batch the PG writes into one statement per
+    // page; SQLite keeps the simple path because `UPDATE ... FROM (VALUES ...)`
+    // with column aliases is not dependable across its adapter fallbacks.
+    const tokenNames = Object.keys(usageTokenColumns());
+    const writePage = (rows) => {
+      const project = (row) => {
+        let tokens;
+        try { tokens = JSON.parse(row.tokens); } catch { tokens = {}; }
+        return usageTokenColumns(tokens);
+      };
+      if (!pg) {
+        for (const row of rows) {
+          db.run(
+            "UPDATE usageHistory SET cachedTokens = ?, reasoningTokens = ?, cacheCreationTokens = ? WHERE id = ?",
+            [...Object.values(project(row)), row.id]
+          );
+        }
+        return;
+      }
+      // Explicit casts: a bare parameter inside VALUES has no inferable type.
+      const tuple = `(CAST(? AS BIGINT), ${tokenNames.map(() => "CAST(? AS DOUBLE PRECISION)").join(", ")})`;
+      const params = [];
+      for (const row of rows) {
+        const values = project(row);
+        params.push(row.id, ...tokenNames.map((name) => values[name]));
+      }
+      db.run(
+        `UPDATE "usageHistory" AS t SET ${tokenNames.map((name) => `"${name}" = v."${name}"`).join(", ")} ` +
+        `FROM (VALUES ${rows.map(() => tuple).join(", ")}) AS v(id, ${tokenNames.map((name) => `"${name}"`).join(", ")}) ` +
+        "WHERE t.id = v.id",
+        params
+      );
+    };
     let lastId = 0;
     for (;;) {
       const rows = db.all("SELECT id, tokens FROM usageHistory WHERE id > ? ORDER BY id LIMIT 500", [lastId]);
       if (!rows.length) break;
-      for (const row of rows) {
-        let tokens;
-        try { tokens = JSON.parse(row.tokens); } catch { tokens = {}; }
-        db.run("UPDATE usageHistory SET cachedTokens = ?, reasoningTokens = ?, cacheCreationTokens = ? WHERE id = ?", [...Object.values(usageTokenColumns(tokens)), row.id]);
-      }
+      writePage(rows);
       lastId = rows[rows.length - 1].id;
     }
     backfillUsageLastSeen(db);

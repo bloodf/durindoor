@@ -1,3 +1,15 @@
+# 4.6.3
+
+## Fixes
+
+- fix(db): batch the migration backfills on PostgreSQL. Migrations 020 and 021 wrote one `UPDATE` per row. On SQLite that is microseconds per row, but on PostgreSQL every statement is a round trip through the synchronous worker bridge, and migrations run *before* the server accepts requests — so a real install with 594k `tokenSaverEvents` and 764k `usageHistory` rows was still migrating after ten minutes with no HTTP listener.
+
+  PostgreSQL now gets one `UPDATE ... FROM (VALUES ...)` per 500-row page. SQLite deliberately keeps the simple per-row path, because `UPDATE ... FROM` with column aliases is not dependable across the better-sqlite3 / node:sqlite / sql.js adapters the project falls back through.
+
+  Rehearsed against a restore of a real production database (594,193 token-saver events, 764,579 usage rows): **862s → 244s**, with identical backfilled values (`SUM(rtkBytesSaved) = 4402865753`) before and after the change.
+
+  The migration is transactional, so an interrupted upgrade still rolls back cleanly to the previous schema version.
+
 # 4.6.2
 
 ## Fixes

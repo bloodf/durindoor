@@ -1,3 +1,15 @@
+# 4.6.2
+
+## Fixes
+
+- fix(db): resolve the PostgreSQL sync worker in the packaged build. `resolveWorkerPath` used `fileURLToPath(new URL("./pgSyncWorker.cjs", import.meta.url))`. Webpack replaces `new URL(...)` with a shim object that is not a real `URL`, so `fileURLToPath` threw `The "path" argument must be of type string or an instance of URL. Received an instance of URL`. The PG adapter could not start its worker, `openActiveAdapter` treated the cluster as unusable, and the packaged server silently served the pre-cutover SQLite file while settings still said `postgres`.
+
+  Only the packaged build was affected: unbundled, `new URL(...)` really is a `URL`, so source-level tests and `npm run dev` could not reproduce it. Candidates are now probed against the filesystem, which holds for both shapes.
+
+  Verified by booting the packaged `custom-server.js` against a real PostgreSQL 17 cluster: migrations 001-022 apply and the boot log reads `[DB] Driver: pg | engine: postgres`. On 4.6.0 and 4.6.1 the same boot logged `Driver: better-sqlite3 | engine: postgres` — the silent fallback.
+
+  Anyone on 4.6.0 or 4.6.1 with PostgreSQL should upgrade and check `GET /api/settings/database/engine` for `servingFallback: true`.
+
 # 4.6.1
 
 ## Fixes

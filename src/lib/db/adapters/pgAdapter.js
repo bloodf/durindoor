@@ -15,6 +15,8 @@
 
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
+import path from "node:path";
 import pg from "pg";
 import { rewriteSqliteDml } from "../dialects/postgres/dmlRewrite.js";
 import { isFunction } from "../../../shared/utils/typeChecks.js";
@@ -31,16 +33,41 @@ const AUTINCREMENT_TABLES = new Map([
   ["pgCutoverLog", "id"],
 ]);
 
-// Resolved lazily: webpack rewrites `import.meta.url` when it bundles this
-// module, and `fileURLToPath` then rejects the value it produces. At module
-// scope that turns a mere import into a build-time crash ("Failed to collect
-// page data"), even for routes that never open a PG connection. Resolving on
-// first use keeps the failure inside the call that actually needs a worker.
+// Resolving the worker asset has to survive bundling. Webpack rewrites
+// `import.meta.url` and replaces `new URL(...)` with a shim object that is NOT
+// a real URL, so `fileURLToPath` rejects it with "The 'path' argument must be
+// of type string or an instance of URL. Received an instance of URL". That
+// threw inside the PG adapter, so openActiveAdapter treated the cluster as
+// unusable and silently served the pre-cutover SQLite file while settings
+// still said postgres.
+//
+// Source-level tests cannot catch this: unbundled, `new URL(...)` really is a
+// URL and the first candidate works. Try each candidate and require the file
+// to exist on disk — the only check that holds for both the unbundled and the
+// packaged shapes.
 let workerPath = null;
 function resolveWorkerPath() {
   if (workerPath) return workerPath;
-  workerPath = fileURLToPath(new URL("./pgSyncWorker.cjs", import.meta.url));
-  return workerPath;
+  const candidates = [];
+
+  // Unbundled (dev, tests, plain node): a genuine file: URL.
+  try {
+    candidates.push(fileURLToPath(new URL("./pgSyncWorker.cjs", import.meta.url)));
+  } catch {
+    // Bundled: the shim is not a URL. Fall through to the packaged layout.
+  }
+
+  // Packaged: the CLI build ships the worker with its own source tree, and the
+  // server runs with the app directory as its working directory.
+  candidates.push(path.join(process.cwd(), "src/lib/db/adapters/pgSyncWorker.cjs"));
+
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      workerPath = candidate;
+      return workerPath;
+    }
+  }
+  throw new Error(`[DB][pg] could not locate pgSyncWorker.cjs (tried: ${candidates.join(", ")})`);
 }
 const SAB_BYTES = 8 * 1024 * 1024;
 const HEADER_BYTES = 8;

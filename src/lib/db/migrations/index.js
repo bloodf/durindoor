@@ -20,8 +20,10 @@ import m016 from "./016-combo-capabilities.js";
 import m017 from "./017-connection-groups.js";
 import m018 from "./018-api-key-groups.js";
 import m020 from "./020-token-saver-aggregates.js";
+import m021 from "./021-usage-last-seen.js";
+import m022 from "./022-token-saver-daily.js";
 
-export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014, m015, m016, m017, m018, m020].sort(
+export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014, m015, m016, m017, m018, m020, m021, m022].sort(
   (a, b) => a.version - b.version
 );
 

@@ -94,7 +94,12 @@ vi.mock("../../open-sse/rtk/ponytail.js", () => ({
   injectPonytail: vi.fn(),
 }));
 
-vi.mock("../../open-sse/rtk/index.js", () => ({
+/** Spread the real module first, for the same reason as the headroom mock below:
+ * production code legitimately gains new exports here (the token-saver metric
+ * projection, for one), and a closed mock turns that into an unrelated failure
+ * across every test in this file. */
+vi.mock("../../open-sse/rtk/index.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   compressMessages: vi.fn(() => null),
   formatRtkLog: vi.fn(() => ""),
   // chatCore imports this for the per-request bypass header (#2609); default enabled.

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// Usage: node scripts/bench-db-queries.mjs [--rows 50000] [--iterations 5] [--json]
-// Set DURINDOOR_PG_URL to additionally benchmark PostgreSQL. Its role needs
-// CREATEDB; only a randomly named scratch database receives migrations/data.
-// --allow-prod permits using database "durindoor" as the administrative connection,
-// NOT benchmarking or modifying its tables. Seed/setup/warmup are not timed.
-import { mkdtemp, rm, realpath } from "node:fs/promises";
+// Usage: node scripts/bench-db-queries.mjs [--rows 50000 | --days 365]
+//   [--rows-per-day 9500] [--budget-ms 2000] [--iterations 5] [--engine both|sqlite|pg] [--json]
+//   [--data-dir <new-path> --engine sqlite] [--seed-only]
+// DURINDOOR_PG_URL optionally selects a disposable PostgreSQL server. Its role
+// needs CREATEDB; database durindoor is always refused, even as an admin target.
+// Seed/setup/warmup are excluded from timings. Medians enforce the budget.
+import { mkdtemp, mkdir, rm, realpath, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -17,24 +18,39 @@ const output = console.log.bind(console);
 console.log = console.error.bind(console);
 
 function options(argv) {
-  const result = { rows: 50000, iterations: 5, json: false, allowProd: false };
+  const result = { rows: 50000, days: null, rowsPerDay: 9500, budgetMs: 2000, iterations: 5, engine: "both", json: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--json") result.json = true;
-    else if (arg === "--allow-prod") result.allowProd = true;
-    else if (arg === "--rows" || arg === "--iterations") {
+    else if (arg === "--seed-only") result.seedOnly = true;
+    else if (arg === "--data-dir") {
+      if (!argv[i + 1] || argv[i + 1].startsWith("--")) throw new Error("--data-dir needs a path");
+      result.dataDir = path.resolve(argv[++i]);
+    }
+    else if (arg === "--engine") {
+      result.engine = argv[++i];
+      if (!["both", "sqlite", "pg"].includes(result.engine)) throw new Error("--engine must be both, sqlite, or pg");
+    }
+    else if (["--rows", "--days", "--rows-per-day", "--budget-ms", "--iterations"].includes(arg)) {
       const n = Number(argv[++i]);
       if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`${arg} needs a positive integer`);
-      result[arg.slice(2)] = n;
+      result[({ "--rows-per-day": "rowsPerDay", "--budget-ms": "budgetMs" })[arg] || arg.slice(2)] = n;
     } else throw new Error(`Unknown option: ${arg}`);
   }
+  if (result.days != null) {
+    if (argv.includes("--rows")) throw new Error("--rows and --days are mutually exclusive");
+    result.rows = result.days * result.rowsPerDay;
+    if (!Number.isSafeInteger(result.rows)) throw new Error("Seed row count exceeds safe integer range");
+  } else if (argv.includes("--rows-per-day")) throw new Error("--rows-per-day requires --days");
+  if (result.dataDir && result.engine !== "sqlite") throw new Error("--data-dir requires --engine sqlite");
+  if (result.seedOnly && !result.dataDir) throw new Error("--seed-only requires --data-dir");
   return result;
 }
 
-async function guard(opts) {
-  if (process.env.DATA_DIR) {
-    const supplied = path.resolve(process.env.DATA_DIR);
-    const canonical = await realpath(supplied).catch(() => supplied);
+async function guard(dataDir) {
+  for (const value of [process.env.DATA_DIR, dataDir].filter(Boolean)) {
+    const supplied = path.resolve(value);
+    const canonical = await realpath(supplied).catch(async () => path.join(await realpath(path.dirname(supplied)), path.basename(supplied)));
     const protectedPath = "/opt/cortexos/.durindoor";
     if ([supplied, canonical].some((p) => p === protectedPath || p.startsWith(`${protectedPath}/`))) {
       throw new Error("Refusing protected DATA_DIR /opt/cortexos/.durindoor before any database connection");
@@ -47,9 +63,9 @@ async function guard(opts) {
   const database = decodeURIComponent(url.pathname.slice(1) || url.username);
   if (!database) throw new Error("PostgreSQL URL must identify a database");
   // pg connection-string query parameters can override the URL path.
-  const names = [database, url.searchParams.get("database"), url.searchParams.get("dbname")];
-  if (names.includes("durindoor") && !opts.allowProd) {
-    throw new Error("Refusing PostgreSQL database durindoor without --allow-prod before any database connection");
+  const names = [database, ...url.searchParams.getAll("database"), ...url.searchParams.getAll("dbname")];
+  if (names.includes("durindoor")) {
+    throw new Error("Refusing PostgreSQL database durindoor before any database connection");
   }
   return url;
 }
@@ -65,7 +81,15 @@ function freezeClock() {
   };
 }
 
-async function seed(db, usage, rows) {
+async function seed(db, usage, opts) {
+  const { rows, days, rowsPerDay } = opts;
+  // Seed representative events through production writes, then replicate their
+  // multiplicities in SQL. This avoids millions of JSON read/modify/write cycles
+  // during setup without inventing daily-rollup or materialized-view semantics.
+  let representatives = days ? Math.min(100, rowsPerDay) : rows;
+  while (days && rowsPerDay % representatives !== 0) representatives--;
+  const factor = days ? rowsPerDay / representatives : 1;
+  const writes = days ? days * representatives : rows;
   let state = 0x51a7c0de;
   const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 2 ** 32; };
   db.transaction(() => {
@@ -83,52 +107,130 @@ async function seed(db, usage, rows) {
       }
     }
   });
-  // Exercise real write paths so daily rollups and any newly materialized metrics
-  // use exactly production normalization, not a benchmark's imitation of it.
-  for (let i = 0; i < rows; i++) {
-    const day = i % 35;
+  for (let i = 0; i < writes; i++) {
+    const day = days ? Math.floor(i / representatives) : i % 35;
+    const dimension = days ? i % 574 : i % 1000;
     const timestamp = new Date(Date.now() - day * 86400000 - Math.floor(random() * 43200000));
     const prompt = 100 + Math.floor(random() * 4000);
     const completion = 10 + Math.floor(random() * 500);
-    await usage.saveRequestUsage({ timestamp: timestamp.toISOString(), provider: `provider-${i % 4}`, model: `model-${i % 8}`, connectionId: `connection-${i % 1000}`, apiKey: `synthetic-key-${i % 8}`, endpoint: "/v1/chat/completions", status: i % 20 ? "ok" : "error", tokens: { prompt_tokens: prompt, completion_tokens: completion, cached_tokens: i % 3 ? 20 : 0 } });
+    await usage.saveRequestUsage({ timestamp: timestamp.toISOString(), provider: `provider-${dimension % 4}`, model: `model-${dimension % 8}`, connectionId: `connection-${dimension}`, apiKey: `synthetic-key-${dimension % 8}`, endpoint: "/v1/chat/completions", status: i % 20 ? "ok" : "error", tokens: { prompt_tokens: prompt, completion_tokens: completion, cached_tokens: i % 3 ? 20 : 0 } });
     await usage.recordTokenSaverEvent({ rtk: { requestsWithHits: 1, hits: i % 5, bytesBefore: 4000, bytesAfter: 3000, bytesSaved: 1000 }, headroom: { state: ["compressed", "skipped", "disabled"][i % 3], tokensBefore: prompt, tokensAfter: prompt - 50, tokensSaved: 50, bodyBytesBefore: 4000, bodyBytesAfter: 3800 }, pxpipe: { applied: i % 2, tokensBeforeEst: 100, tokensAfterEst: 80, tokensSavedEst: 20, imageCount: i % 4 } }, timestamp);
+    if (days && (i + 1) % (representatives * 30) === 0) console.error(`Seed ${db.driver}: ${Math.floor((i + 1) / representatives)}/${days} days of representatives`);
+  }
+  if (factor > 1) {
+    db.exec("CREATE TEMP TABLE benchCopies (n INTEGER NOT NULL, clock TEXT NOT NULL)");
+    db.transaction(() => {
+      for (let n = 1; n < factor; n++) {
+        const clock = new Date(Date.parse("2026-01-15T00:00:00.000Z") + Math.floor(random() * 43200000)).toISOString().slice(10, 19);
+        db.run("INSERT INTO benchCopies(n, clock) VALUES(?, ?)", [n, clock]);
+      }
+    });
+    for (const table of ["usageHistory", "tokenSaverEvents"]) {
+      const columns = Object.keys(db.get(`SELECT * FROM ${table} LIMIT 1`)).filter((column) => column !== "id");
+      const quoted = columns.map((column) => `"${column}"`).join(", ");
+      const sourceMaxId = db.get(`SELECT MAX(id) AS id FROM ${table}`).id;
+      // Bounded INSERTs avoid the adapter's per-query deadline on multi-million
+      // row fixtures. Pin source ids so later batches cannot replicate replicas.
+      for (let copy = 1; copy < factor; copy++) {
+        db.run(`INSERT INTO ${table} (${quoted}) SELECT ${columns.map((column) => column === "timestamp" ? `SUBSTR(source.timestamp, 1, 10) || benchCopies.clock || SUBSTR(source.timestamp, 20)` : `source."${column}"`).join(", ")} FROM ${table} AS source CROSS JOIN benchCopies WHERE source.id <= ? AND benchCopies.n = ?`, [sourceMaxId, copy]);
+      }
+    }
+    // The rollup blob is a tree of numeric leaves keyed by dimension. Branch on
+    // the shape each case actually handles — finite number, array, object —
+    // rather than narrowing a representation with `typeof`.
+    const multiply = (value) => {
+      if (Number.isFinite(value)) return value * factor;
+      if (Array.isArray(value)) return value.map(multiply);
+      if (value instanceof Object) {
+        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, multiply(item)]));
+      }
+      return value;
+    };
+    db.transaction(() => {
+      for (const { dateKey } of db.all("SELECT dateKey FROM usageDaily")) {
+        const row = db.get("SELECT dateKey, data FROM usageDaily WHERE dateKey = ?", [dateKey]);
+        db.run("UPDATE usageDaily SET data = ? WHERE dateKey = ?", [JSON.stringify(multiply(JSON.parse(row.data))), row.dateKey]);
+      }
+      db.run("UPDATE _meta SET value = ? WHERE key = 'totalRequestsLifetime'", [String(rows)]);
+    });
+    db.exec("DROP TABLE benchCopies");
+  }
+  // Bulk fixture generation bypasses write-maintained summaries; rebuild using
+  // the actual migration, not a benchmark-specific approximation of its schema.
+  const migrations = new URL("../src/lib/db/migrations/", import.meta.url);
+  const migrationFiles = await readdir(migrations);
+  const summaryMigration = migrationFiles.find((name) => name.startsWith("021-") && name.endsWith(".js"));
+  if (summaryMigration) (await import(new URL(summaryMigration, migrations))).backfillUsageLastSeen(db);
+  if (migrationFiles.includes("token-saver-daily-schema.js")) {
+    const { backfillTokenSaverDaily } = await import(new URL("token-saver-daily-schema.js", migrations));
+    db.transaction(() => backfillTokenSaverDaily(db));
   }
   for (const table of ["usageHistory", "tokenSaverEvents"]) {
     assert.equal(Number(db.get(`SELECT COUNT(*) AS n FROM ${table}`).n), rows, `${table} seed write failed`);
   }
+  const distribution = db.get("SELECT MIN(timestamp) AS earliest, MAX(timestamp) AS latest, COUNT(DISTINCT SUBSTR(timestamp, 1, 10)) AS days FROM usageHistory");
+  const dimensionCount = Number(db.get("SELECT COUNT(*) AS n FROM (SELECT provider, model, connectionId, apiKey, endpoint FROM usageHistory GROUP BY provider, model, connectionId, apiKey, endpoint) AS dimensions").n);
+  if (days) {
+    assert.equal(Number(distribution.days), days, "seed must span exactly the requested UTC dates");
+    assert.equal(dimensionCount, Math.min(writes, 574), "seed dimension cardinality changed");
+  }
+  console.error(`Seed verified: ${JSON.stringify({ rowsPerTable: rows, representativeWrites: writes, multiplicity: factor, dimensionCount, ...distribution })}`);
   db.exec("ANALYZE");
+  return { rowsPerTable: rows, representativeWrites: writes, multiplicity: factor, dimensionCount, synthetic: true, construction: "Real representative writes; SQL replication with deterministic within-day timestamp jitter; scaled daily aggregates; migration summary backfill", ...distribution };
 }
 
 async function measure(engine, db, opts, usage, groups) {
   console.error(`Seeding ${engine}: ${opts.rows} rows per event table, 50 groups x 20 members`);
-  await seed(db, usage, opts.rows);
+  const seeded = await seed(db, usage, opts);
   assert.equal((await usage.getTokenSaverStats("all")).requestsObserved, opts.rows);
+  if (opts.seedOnly) return { results: [], seeded };
   const operations = [
-    ...["today", "7d", "30d"].map((period) => [`getUsageStats('${period}')`, () => usage.getUsageStats(period)]),
+    ...["today", "7d", "30d", "all"].map((period) => [`getUsageStats('${period}')`, () => usage.getUsageStats(period)]),
     ...["7d", "all"].map((period) => [`getTokenSaverStats('${period}')`, () => usage.getTokenSaverStats(period)]),
-    ["getChartData('7d')", () => usage.getChartData("7d")],
+    ...["7d", "all"].map((period) => [`getChartData('${period}')`, () => usage.getChartData(period)]),
+    // The baseline history route delegates to full stats; the candidate replaces
+    // that dependency with a bounded SQL page. These are repository-path timings,
+    // not HTTP/browser timings (no network, authentication, or rendering included).
+    ["history(limit=50)", async () => {
+      if (!usage.listUsageHistoryPage) return usage.getUsageStats("all");
+      const page = await usage.listUsageHistoryPage({ limit: 50, offset: 0, filters: {} });
+      assert.equal(page.rows.length, Math.min(50, opts.rows), "history page must remain bounded");
+      assert.equal(page.total, opts.rows, "history total must count the full seed");
+      return page;
+    }],
     ["getConnectionGroups()", () => groups.getConnectionGroups()],
   ];
   const results = [];
   for (const [operation, run] of operations) {
-    await run(); // One untimed warmup; all recorded samples are warm-cache calls.
-    const samples = [];
-    for (let n = 0; n < opts.iterations; n++) {
-      const start = performance.now();
-      await run();
-      samples.push(performance.now() - start);
+    try {
+      await run(); // One untimed warmup; all recorded samples are warm-cache calls.
+      const samples = [];
+      for (let n = 0; n < opts.iterations; n++) {
+        const start = performance.now();
+        await run();
+        samples.push(performance.now() - start);
+      }
+      const sorted = [...samples].sort((a, b) => a - b);
+      const middle = Math.floor(sorted.length / 2);
+      results.push({ engine, driver: db.driver, operation, min: sorted[0], median: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2, p95: sorted[Math.ceil(sorted.length * 0.95) - 1], samples });
+      console.error(`${engine} ${operation}: median=${results.at(-1).median.toFixed(3)}ms`);
+    } catch (error) {
+      const message = error.message.replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "[redacted PostgreSQL URL]");
+      results.push({ engine, driver: db.driver, operation, error: message });
+      console.error(`FAILED OPERATION: ${engine} ${operation}: ${message}`);
+      process.exitCode = 1;
     }
-    const sorted = [...samples].sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    results.push({ engine, driver: db.driver, operation, min: sorted[0], median: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2, p95: sorted[Math.ceil(sorted.length * 0.95) - 1], samples });
   }
-  return results;
+  return { results, seeded };
 }
 
 async function main() {
   const opts = options(process.argv.slice(2));
-  const pgUrl = await guard(opts); // No imports with DB side effects before guards.
-  const dir = await mkdtemp(path.join(tmpdir(), "durindoor-bench-"));
+  const pgUrl = await guard(opts.dataDir); // No imports with DB side effects before guards.
+  if (opts.engine === "pg" && !pgUrl) throw new Error("--engine pg requires DURINDOOR_PG_URL");
+  // Exclusive creation refuses existing datasets, including symlink destinations.
+  const dir = opts.dataDir || await mkdtemp(path.join(tmpdir(), "durindoor-bench-"));
+  if (opts.dataDir) await mkdir(dir);
   process.env.DATA_DIR = dir;
   freezeClock();
   register(new URL("./alias-loader.mjs", import.meta.url));
@@ -140,12 +242,19 @@ async function main() {
     const { runMigrationOnce } = await import("../src/lib/db/migrate.js");
     const usage = await import("../src/lib/db/repos/usageRepo.js");
     const groups = await import("../src/lib/db/repos/connectionGroupsRepo.js");
-    db = await driver.openSqliteAdapter(path.join(dir, "data.sqlite"));
-    driver.setActiveAdapter(db);
-    await runMigrationOnce(db);
-    const results = await measure("SQLite", db, opts, usage, groups);
+    const results = [];
+    const seeds = {};
+    if (opts.engine !== "pg") {
+      if (opts.dataDir) await mkdir(path.join(dir, "db"));
+      db = await driver.openSqliteAdapter(path.join(dir, ...(opts.dataDir ? ["db"] : []), "data.sqlite"));
+      driver.setActiveAdapter(db);
+      await runMigrationOnce(db);
+      const sqlite = await measure("SQLite", db, opts, usage, groups);
+      results.push(...sqlite.results);
+      seeds.SQLite = sqlite.seeded;
+    }
     let postgresError = null;
-    if (pgUrl) {
+    if (pgUrl && opts.engine !== "sqlite") {
       try {
         const { Client } = await import("pg");
         admin = new Client({ connectionString: pgUrl.href });
@@ -157,33 +266,45 @@ async function main() {
         isolated.pathname = `/${scratch}`;
         isolated.searchParams.delete("database");
         isolated.searchParams.delete("dbname");
+        await db?.close();
         const { createPostgresAdapter } = await import("../src/lib/db/adapters/pgAdapter.js");
         const pg = await createPostgresAdapter({ url: isolated.href });
         driver.setActiveAdapter(pg);
         db = pg;
         await runMigrationOnce(db);
-        results.push(...await measure("PostgreSQL", db, opts, usage, groups));
+        const measured = await measure("PostgreSQL", db, opts, usage, groups);
+        results.push(...measured.results);
+        seeds.PostgreSQL = measured.seeded;
       } catch (error) {
         postgresError = error.message.replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "[redacted PostgreSQL URL]");
-        console.error(`PostgreSQL benchmark unavailable: ${postgresError}. SQLite results are retained.`);
+        console.error(`PostgreSQL benchmark unavailable: ${postgresError}. Completed measurements are retained.`);
         // Requested PG verification failed: preserve useful output without a false green.
         process.exitCode = 1;
       }
     } else {
-      console.error("PostgreSQL skipped: DURINDOOR_PG_URL is not set (SQLite benchmark completed).");
+      console.error(`PostgreSQL skipped: ${opts.engine === "sqlite" ? "--engine sqlite selected" : "DURINDOOR_PG_URL is not set"}.`);
     }
-    if (opts.json) output(JSON.stringify({ rowsPerTable: opts.rows, iterations: opts.iterations, seed: "0x51a7c0de", now: epoch, timezone: "UTC", warmupIterations: 1, postgresSkipped: !pgUrl, postgresError, unit: "ms", results }, null, 2));
+    const overBudget = results.filter((r) => r.median > opts.budgetMs);
+    for (const r of overBudget) console.error(`OVER BUDGET: ${r.engine} ${r.operation}: median ${r.median.toFixed(3)}ms > ${opts.budgetMs}ms`);
+    if (overBudget.length) process.exitCode = 1;
+    else if (!postgresError && !results.some((r) => r.error)) console.error(opts.seedOnly ? `Seed retained at ${dir}; no timings collected` : `PASS: all measured medians <= ${opts.budgetMs}ms`);
+    if (opts.json) output(JSON.stringify({ rowsPerTable: opts.rows, days: opts.days, rowsPerDay: opts.days ? opts.rowsPerDay : null, seeds, budgetMs: opts.budgetMs, overBudget: overBudget.map(({ engine, operation, median }) => ({ engine, operation, median })), iterations: opts.seedOnly ? 0 : opts.iterations, seed: "0x51a7c0de", now: epoch, timezone: "UTC", warmupIterations: opts.seedOnly ? 0 : 1, dataDir: opts.dataDir || null, seedOnly: !!opts.seedOnly, postgresSkipped: !pgUrl || opts.engine === "sqlite", postgresError, unit: "ms", results }, null, 2));
     else {
-      output(`Rows per event table: ${opts.rows}; iterations: ${opts.iterations}; fixed clock: ${epoch}; UTC; one warmup; milliseconds.\n`);
+      output(`Rows per event table: ${opts.rows}; days: ${opts.days || "legacy 35-day distribution"}; rows/day: ${opts.days ? opts.rowsPerDay : "variable"}; iterations: ${opts.seedOnly ? 0 : opts.iterations}; budget: ${opts.budgetMs}ms; fixed clock: ${epoch}; UTC; ${opts.seedOnly ? "seed only, no warmup or timings" : "one warmup; milliseconds"}.\n`);
+      for (const [engine, seed] of Object.entries(seeds)) output(`${engine} synthetic fixture: ${JSON.stringify(seed)}\n`);
       output("| Engine (driver) | Operation | Min (ms) | Median (ms) | p95 (ms) |\n| --- | --- | ---: | ---: | ---: |");
-      for (const r of results) output(`| ${r.engine} (${r.driver}) | ${r.operation} | ${r.min.toFixed(3)} | ${r.median.toFixed(3)} | ${r.p95.toFixed(3)} |`);
+      for (const r of results) output(r.error
+        ? `| ${r.engine} (${r.driver}) | ${r.operation}: FAILED (${r.error}) | — | — | — |`
+        : `| ${r.engine} (${r.driver}) | ${r.operation} | ${r.min.toFixed(3)} | ${r.median.toFixed(3)} | ${r.p95.toFixed(3)} |`);
     }
   } finally {
     try { await db?.close(); } finally {
       try {
-        if (scratch) await admin.query(`DROP DATABASE "${scratch}"`);
+        // A timed-out worker query may outlive adapter.close(); FORCE terminates
+        // only sessions in this invocation's randomly named disposable database.
+        if (scratch) await admin.query(`DROP DATABASE "${scratch}" WITH (FORCE)`);
       } finally {
-        try { await admin?.end(); } finally { await rm(dir, { recursive: true, force: true }); }
+        try { await admin?.end(); } finally { if (!opts.dataDir) await rm(dir, { recursive: true, force: true }); }
       }
     }
   }

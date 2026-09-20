@@ -2,7 +2,7 @@
 import "open-sse/index.js";
 
 import { getProviderConnectionById } from "@/lib/localDb";
-import { getUsageHistory } from "@/lib/db/repos/usageRepo.js";
+import { getConnectionUsageSummary } from "@/lib/db/repos/monitoringUsageRepo.js";
 import { getUsageForProvider } from "open-sse/services/usage.js";
 import { fetchGrokCliCreditsConfig } from "open-sse/services/usage/grok-cli.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -153,10 +153,11 @@ export async function GET(request, { params }) {
  */
 async function aggregateLocalUsage(connection, label) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const rows = await getUsageHistory({ provider: connection.provider, startDate: since });
-  const filtered = rows.filter((r) => !connection.id || r.connectionId === connection.id);
+  const totals = await getConnectionUsageSummary({
+    provider: connection.provider, connectionId: connection.id, startDate: since,
+  });
 
-  if (!filtered.length) {
+  if (!totals.requests) {
     return {
       message: `${label} connected. No requests recorded in the last 30 days.`,
       quotas: {},
@@ -164,25 +165,6 @@ async function aggregateLocalUsage(connection, label) {
     };
   }
 
-  const totals = filtered.reduce(
-    (acc, r) => {
-      const t = r.tokens || {};
-      acc.prompt += Number(t.prompt_tokens || t.promptTokens || 0);
-      acc.completion += Number(t.completion_tokens || t.completionTokens || 0);
-      acc.cost += Number(r.cost) || 0;
-      acc.requests += 1;
-      return acc;
-    },
-    { prompt: 0, completion: 0, cost: 0, requests: 0 }
-  );
-
-  const byModel = {};
-  for (const r of filtered) {
-    const t = r.tokens || {};
-    const used = (Number(t.prompt_tokens || t.promptTokens || 0)) + (Number(t.completion_tokens || t.completionTokens || 0));
-    if (!byModel[r.model]) byModel[r.model] = 0;
-    byModel[r.model] += used;
-  }
 
   // Cumulative aggregates have no cap, so the progress bar is meaningless.
   // Mark them as unlimited + remaining: 100 so the dashboard renders the
@@ -203,7 +185,7 @@ async function aggregateLocalUsage(connection, label) {
     },
   };
 
-  for (const [model, used] of Object.entries(byModel)) {
+  for (const [model, used] of Object.entries(totals.byModel)) {
     quotas[model + ' (30d)'] = {
       used,
       total: 0,

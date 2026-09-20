@@ -3,7 +3,8 @@ import fs from "node:fs";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { getDataDir } from "@/lib/dataDir";
 import { DATA_FILE } from "@/lib/db/paths";
-import { getUsageStats, getActiveRequests, getRecentLogs, getUsageHistory } from "@/lib/db/index.js";
+import { getActiveRequests, getRecentLogs } from "@/lib/db/index.js";
+import { getMonitoringUsage } from "@/lib/db/repos/monitoringUsageRepo.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
@@ -22,10 +23,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export async function GET() {
   const startedAt = Date.now();
 
-  const [runtime, activity, health] = await Promise.all([
+  const [runtime, usage, recent] = await Promise.all([
     collectRuntime(),
-    collectActivity(),
-    collectProviderHealth(),
+    getMonitoringUsage({
+      activityStart: new Date(startedAt - DAY_MS).toISOString(),
+      healthStart: new Date(startedAt - 7 * DAY_MS).toISOString(),
+      now: new Date(startedAt).toISOString(),
+    }).catch(() => ({ today: null, successRate: null, health: [] })),
+    collectRecent(),
   ]);
 
   return NextResponse.json({
@@ -34,8 +39,8 @@ export async function GET() {
     latencyMs: Date.now() - startedAt,
     version: APP_CONFIG?.version || "unknown",
     runtime,
-    activity,
-    health,
+    activity: { today: usage.today, successRate: usage.successRate, recent },
+    health: usage.health,
   });
 }
 
@@ -89,49 +94,12 @@ async function collectRuntime() {
   return out;
 }
 
-/** 24h activity summary from the usage DB. */
-async function collectActivity() {
-  const out = {
-    today: null,
-    successRate: null,
-    recent: [],
-  };
-
+/** Only the twenty log lines rendered by the activity strip are requested. */
+async function collectRecent() {
   try {
-    const stats = await getUsageStats("24h");
-    if (stats) {
-      out.today = {
-        requests: stats.totalRequests || 0,
-        promptTokens: stats.totalPromptTokens || 0,
-        completionTokens: stats.totalCompletionTokens || 0,
-        cachedTokens: stats.totalCachedTokens || 0,
-        cost: stats.totalCost || 0,
-        providers: Object.keys(stats.byProvider || {}).length,
-        models: Object.keys(stats.byModel || {}).length,
-      };
-    }
-  } catch { /* stats unavailable */ }
-
-  try {
-    // getUsageStats' byProvider entries only carry requests/tokens/cost, no
-    // error counts, so the success rate is computed from the raw history
-    // rows instead, bounded to the last 24h so this stays a small scan.
-    const rows = await getUsageHistory({ startDate: new Date(Date.now() - DAY_MS).toISOString() });
-    const list = Array.isArray(rows) ? rows : [];
-    const errs = list.filter((r) => !isOkStatus(r.status)).length;
-    if (list.length > 0) {
-      out.successRate = Number((((list.length - errs) / list.length) * 100).toFixed(1));
-    }
-  } catch { /* history unavailable */ }
-
-  try {
-    // getRecentLogs returns pre-formatted strings, not objects:
-    //   "dd-mm-yyyy HH:MM:SS | model | PROVIDER | account | prompt | completion | status"
     const logs = await getRecentLogs(20);
-    out.recent = (Array.isArray(logs) ? logs : []).slice(0, 20).map(parseLogLine);
-  } catch { /* logs unavailable */ }
-
-  return out;
+    return logs.map(parseLogLine);
+  } catch { return []; }
 }
 
 /** parseLogLine turns one getRecentLogs() line into an object for the UI. */
@@ -151,68 +119,6 @@ function parseLogLine(line) {
   };
 }
 
-/** Per-provider health over the last 7 days: requests, errors, last used. */
-async function collectProviderHealth() {
-  const providers = [];
-
-  try {
-    const stats = await getUsageStats("7d");
-    const byProvider = stats?.byProvider || {};
-
-    // Error counts and last-used timestamps aren't on byProvider; read them
-    // from usageHistory directly, bounded to the same 7d window so a 10s
-    // dashboard poll never scans the full table.
-    const { errors: errMap, lastUsed: lastMap } = await providerActivityIndex();
-
-    for (const [id, data] of Object.entries(byProvider)) {
-      const requests = Number(data?.requests ?? 0);
-      const errors = errMap[id] || 0;
-      providers.push({
-        id,
-        name: data?.name || id,
-        requests,
-        errors,
-        successRate:
-          requests > 0
-            ? Number((((requests - errors) / requests) * 100).toFixed(1))
-            : null,
-        lastUsed: lastMap[id] || "",
-        cost: Number(data?.cost || 0),
-      });
-    }
-  } catch { /* stats unavailable */ }
-
-  providers.sort((a, b) => b.requests - a.requests);
-  return providers.slice(0, 50);
-}
-
-/**
- * Per-provider error count and last-used timestamp from usageHistory,
- * bounded to the last 7 days to match collectProviderHealth()'s window.
- */
-async function providerActivityIndex() {
-  const errors = {};
-  const lastUsed = {};
-  try {
-    const rows = await getUsageHistory({ startDate: new Date(Date.now() - 7 * DAY_MS).toISOString() });
-    for (const r of Array.isArray(rows) ? rows : []) {
-      const id = r.provider || "";
-      if (!isOkStatus(r.status)) errors[id] = (errors[id] || 0) + 1;
-
-      const t = r.timestamp || "";
-      if (t && (!lastUsed[id] || String(t) > String(lastUsed[id]))) {
-        lastUsed[id] = t;
-      }
-    }
-  } catch { /* table unavailable */ }
-  return { errors, lastUsed };
-}
-
-/** A request status counts as success when empty, "ok", "success", or "200". */
-function isOkStatus(status) {
-  const s = String(status ?? "ok").toLowerCase();
-  return s === "" || s === "ok" || s === "success" || s === "200";
-}
 
 function formatBytes(bytes) {
   if (!bytes || bytes < 0) return "-";

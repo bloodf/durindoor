@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { aggregateTokenSaverEvents } from "../../open-sse/rtk/index.js";
 import migration from "../../src/lib/db/migrations/020-token-saver-aggregates.js";
+import { backfillTokenSaverDaily } from "../../src/lib/db/migrations/token-saver-daily-schema.js";
 
 const now = new Date(2026, 6, 14, 12);
 const dateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -73,7 +74,7 @@ describe("portable SQL usage metrics", { timeout: 20000 }, () => {
     for (const period of ["today", "24h", "7d", "30d", "all"]) {
       expect(await repo.getTokenSaverStats(period, now), period).toEqual(expectedStats(fixtures, period));
     }
-    db.run("DELETE FROM tokenSaverEvents");
+    await repo.resetUsageHistory("all");
     for (const period of ["today", "24h", "7d", "all"]) expect(await repo.getTokenSaverStats(period, now)).toEqual(expectedStats([], period));
   });
 
@@ -97,6 +98,7 @@ describe("portable SQL usage metrics", { timeout: 20000 }, () => {
     for (const { at, event } of fixtures) db.run("INSERT INTO tokenSaverEvents(timestamp, dateKey, data) VALUES (?, ?, ?)", [at.toISOString(), dateKey(at), JSON.stringify(event)]);
     migration.up(db);
     migration.up(db);
+    backfillTokenSaverDaily(db);
     expect(await repo.getTokenSaverStats("all", now)).toEqual(expectedStats(fixtures, "all"));
     expect(db.all("SELECT data FROM tokenSaverEvents ORDER BY id").map((r) => r.data)).toEqual(fixtures.map(({ event }) => JSON.stringify(event)));
   });

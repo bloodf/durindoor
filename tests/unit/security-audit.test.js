@@ -21,19 +21,49 @@ describe("AUDIT-002: API key masking", () => {
     expect(source).toContain("function maskApiKey");
   });
 
-  it("getUsageHistory should use apiKeyMasked instead of apiKey", () => {
-    const source = fs.readFileSync(
-      path.resolve(repoRoot, "src/lib/db/repos/usageRepo.js"),
-      "utf-8"
-    );
-    // The REST response should use apiKeyMasked
-    expect(source).toContain("apiKeyMasked: maskApiKey(r.apiKey)");
-    // The return mapping in getUsageHistory should not have raw apiKey
-    // (The internal ring buffer still uses apiKey: r.apiKey for internal state - that's fine)
-    const historyReturn = source.match(/return rows\.map\(\(r\)\s*=>\s*\(\{[\s\S]*?\}\)\);/);
-    expect(historyReturn).not.toBeNull();
-    expect(historyReturn[0]).toContain("apiKeyMasked");
-    expect(historyReturn[0]).not.toContain("apiKey: r.apiKey");
+  // Asserts the observable contract rather than the source text: whatever shape
+  // the readers are refactored into, no history row may carry a raw key. The
+  // previous version matched a `return rows.map((r) => ({...}))` literal, so it
+  // broke when both readers were consolidated onto one mapper — a refactor that
+  // strengthened masking rather than weakening it.
+  it("never exposes a raw API key from either history reader", async () => {
+    const os = await import("node:os");
+    const secret = "sk-supersecret-raw-key-value";
+    const oldDataDir = process.env.DATA_DIR;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "security-audit-"));
+    process.env.DATA_DIR = dir;
+    delete global._dbAdapter;
+    vi.resetModules();
+    try {
+      await import("@/lib/db/index.js");
+      const repo = await import("@/lib/db/repos/usageRepo.js");
+      await repo.saveRequestUsage({
+        timestamp: new Date().toISOString(),
+        provider: "openai",
+        model: "gpt-4",
+        apiKey: secret,
+        tokens: { prompt_tokens: 1, completion_tokens: 1 },
+      });
+
+      const pages = [
+        await repo.getUsageHistory(),
+        (await repo.listUsageHistoryPage({ limit: 50, offset: 0 })).rows,
+      ];
+      for (const rows of pages) {
+        expect(rows.length).toBeGreaterThan(0);
+        for (const row of rows) {
+          expect(JSON.stringify(row)).not.toContain(secret);
+          expect(row.apiKey).toBeUndefined();
+          expect(row).toHaveProperty("apiKeyMasked");
+        }
+      }
+    } finally {
+      try { global._dbAdapter?.instance?.close?.(); } catch { /* already closed */ }
+      delete global._dbAdapter;
+      if (oldDataDir === undefined) delete process.env.DATA_DIR;
+      else process.env.DATA_DIR = oldDataDir;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("getUsageStats should use apiKeyMasked in byApiKey entries", () => {

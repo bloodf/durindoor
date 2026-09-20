@@ -18,6 +18,8 @@ import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
 import { getCommittedTokenCount } from "../helpers/committedTokens.js";
 import { normalizeTokenSaverEvent, aggregateTokenSaverEvents, tokenSaverEventColumns } from "open-sse/rtk/index.js";
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { usageTokenColumns } from "../migrations/usage-token-columns.js";
+import { TOKEN_SAVER_SUM_COLUMNS, TOKEN_SAVER_DAILY_COLUMNS, TOKEN_SAVER_AGGREGATES, backfillTokenSaverDaily } from "../migrations/token-saver-daily-schema.js";
 
 function maskApiKey(key) {
   if (!key || !isString(key)) return null;
@@ -102,7 +104,7 @@ function scheduleStatsEvent(event, delayMs = 150) {
 
 function addToCounter(target, key, values) {
   if (!target[key]) target[key] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
-  target[key].requests += values.requests || 1;
+  target[key].requests += values.requests ?? 1;
   target[key].promptTokens += values.promptTokens || 0;
   target[key].completionTokens += values.completionTokens || 0;
   target[key].cachedTokens += values.cachedTokens || 0;
@@ -115,16 +117,11 @@ function addToCounter(target, key, values) {
 function aggregateEntryToDay(day, entry, identitySalt) {
   const promptTokens = entry.tokens?.prompt_tokens || entry.tokens?.input_tokens || 0;
   const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
-  const cachedTokens = entry.tokens?.cached_tokens || entry.tokens?.cache_read_input_tokens || 0;
-  const reasoningTokens = entry.tokens?.reasoning_tokens ||
-  entry.tokens?.completion_tokens_details?.reasoning_tokens ||
-  entry.tokens?.output_tokens_details?.reasoning_tokens ||
-  0;
-  const cacheCreationTokens = entry.tokens?.cache_creation_input_tokens || 0;
+  const { cachedTokens, reasoningTokens, cacheCreationTokens } = usageTokenColumns(entry.tokens);
   const cost = entry.cost || 0;
-  const vals = { promptTokens, completionTokens, cachedTokens, reasoningTokens, cacheCreationTokens, cost };
+  const vals = { requests: entry.requests ?? 1, promptTokens, completionTokens, cachedTokens, reasoningTokens, cacheCreationTokens, cost };
 
-  day.requests = (day.requests || 0) + 1;
+  day.requests = (day.requests || 0) + (entry.requests ?? 1);
   day.promptTokens = (day.promptTokens || 0) + promptTokens;
   day.completionTokens = (day.completionTokens || 0) + completionTokens;
   day.cachedTokens = (day.cachedTokens || 0) + cachedTokens;
@@ -419,6 +416,83 @@ export async function getActiveRequests() {
   return { activeRequests, activeSessions: await getActiveSessions(), recentRequests, errorProvider, pending: pendingRequests };
 }
 
+function aggregateChartWindow(db, startTime, endTime, bucketMs, bucketCount) {
+  const params = [];
+  const cases = [];
+  for (let i = 1; i < bucketCount; i++) {
+    cases.push(`WHEN timestamp < ? THEN ${i - 1}`);
+    params.push(new Date(startTime + i * bucketMs).toISOString());
+  }
+  params.push(new Date(startTime).toISOString(), new Date(endTime).toISOString());
+  return db.all(`SELECT CASE ${cases.join(" ")} ELSE ${bucketCount - 1} END AS bucket,
+    SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens,
+    SUM(cachedTokens) AS cachedTokens, SUM(reasoningTokens) AS reasoningTokens,
+    SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost
+    FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? GROUP BY bucket`, params);
+}
+
+function aggregateUsageWindow(db, start, end) {
+  return db.all(`SELECT provider, model, connectionId, apiKey, endpoint,
+      MAX(timestamp) AS timestamp, MAX(id) AS lastId, COUNT(*) AS requests,
+      SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens,
+      SUM(cachedTokens) AS cachedTokens, SUM(reasoningTokens) AS reasoningTokens,
+      SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost
+    FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?
+    GROUP BY provider, model, connectionId, apiKey, endpoint ORDER BY MIN(id) ASC`, [start, end]).map((row) => ({
+      ...row, requests: Number(row.requests), tokens: {
+        prompt_tokens: Number(row.promptTokens), completion_tokens: Number(row.completionTokens),
+        cached_tokens: Number(row.cachedTokens), reasoning_tokens: Number(row.reasoningTokens),
+        cache_creation_input_tokens: Number(row.cacheCreationTokens),
+      },
+    }));
+}
+
+function aggregateRowsToDay(rows, identitySalt) {
+  const day = {};
+  const latestAccount = new Map();
+  for (const row of rows) {
+    aggregateEntryToDay(day, row, identitySalt);
+    // Keep first-seen key order, but preserve the old last-write metadata
+    // when one connection appears under several model/provider groups.
+    if (row.connectionId && Number(row.lastId) > (Number(latestAccount.get(row.connectionId)?.lastId) || 0)) latestAccount.set(row.connectionId, row);
+  }
+  for (const [connectionId, row] of latestAccount) {
+    Object.assign(day.byAccount[connectionId], { rawModel: row.model, provider: row.provider });
+  }
+  return day;
+}
+
+function upsertLastSeen(db, entry) {
+  db.run(
+    `INSERT INTO usageLastSeen(dateKey, provider, model, connectionId, apiKey, endpoint, lastUsed)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (dateKey, provider, model, connectionId, apiKey, endpoint) DO UPDATE SET
+       lastUsed = CASE WHEN excluded.lastUsed > usageLastSeen.lastUsed THEN excluded.lastUsed ELSE usageLastSeen.lastUsed END`,
+    [entry.timestamp.slice(0, 10), entry.provider || "", entry.model || "", entry.connectionId || "", entry.apiKey || "", entry.endpoint || "", entry.timestamp]
+  );
+}
+
+function readLastSeen(db, cutoff, end) {
+  const endIso = end.toISOString();
+  const endDay = endIso.slice(0, 10);
+  const startIso = cutoff?.toISOString();
+  const startDay = startIso?.slice(0, 10);
+  const dims = "provider, model, connectionId, apiKey, endpoint";
+  const normalizedDims = ["provider", "model", "connectionId", "apiKey", "endpoint"].map((k) => `COALESCE(${k}, '') AS ${k}`).join(", ");
+  const parts = [`SELECT lastUsed AS timestamp, ${dims} FROM usageLastSeen WHERE dateKey < ?${startDay ? " AND dateKey > ?" : ""}`];
+  const params = [endDay, ...(startDay ? [startDay] : [])];
+  // UTC interior days are summarized; only the partial boundary days touch
+  // raw history. This preserves local-calendar cutoffs and same-day future data.
+  if (startDay && startDay < endDay) {
+    parts.push(`SELECT MAX(timestamp) AS timestamp, ${normalizedDims} FROM usageHistory WHERE timestamp >= ? AND timestamp < ? GROUP BY ${dims}`);
+    params.push(startIso, new Date(Date.parse(`${startDay}T00:00:00.000Z`) + 86400000).toISOString());
+  }
+  parts.push(`SELECT MAX(timestamp) AS timestamp, ${normalizedDims} FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? GROUP BY ${dims}`);
+  params.push(startDay === endDay ? startIso : `${endDay}T00:00:00.000Z`, endIso);
+  const publicDims = ["provider", "model", "connectionId", "apiKey", "endpoint"].map((k) => `NULLIF(${k}, '') AS ${k}`).join(", ");
+  return db.all(`SELECT MAX(timestamp) AS timestamp, ${publicDims} FROM (${parts.join(" UNION ALL ")}) AS bounded GROUP BY ${dims}`, params);
+}
+
 export async function saveRequestUsage(entry) {
   try {
     const db = await getAdapter();
@@ -444,26 +518,37 @@ export async function saveRequestUsage(entry) {
     db.transaction(() => {
       // Idempotency: only when the caller supplies a real event id.
       if (entry.usageEventId) {
-        const existing = db.get(`SELECT id, endpoint FROM usageHistory WHERE usageEventId = ?`, [entry.usageEventId]);
+        const existing = db.get(`SELECT * FROM usageHistory WHERE usageEventId = ?`, [entry.usageEventId]);
         if (existing) {
           if (!existing.endpoint && entry.endpoint) {
             db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [entry.endpoint, existing.id]);
+            // Endpoint enrichment moves a row between dimension groups.
+            db.run(`DELETE FROM usageLastSeen WHERE dateKey = ? AND provider = ? AND model = ? AND connectionId = ? AND apiKey = ? AND endpoint = ?`,
+              [existing.timestamp.slice(0, 10), existing.provider || "", existing.model || "", existing.connectionId || "", existing.apiKey || "", existing.endpoint || ""]);
+            const previous = db.get(`SELECT MAX(timestamp) AS timestamp FROM usageHistory
+              WHERE timestamp >= ? AND timestamp < ? AND COALESCE(provider, '') = ? AND COALESCE(model, '') = ?
+              AND COALESCE(connectionId, '') = ? AND COALESCE(apiKey, '') = ? AND COALESCE(endpoint, '') = ?`,
+              [`${existing.timestamp.slice(0, 10)}T00:00:00.000Z`, new Date(Date.parse(`${existing.timestamp.slice(0, 10)}T00:00:00.000Z`) + 86400000).toISOString(),
+                existing.provider || "", existing.model || "", existing.connectionId || "", existing.apiKey || "", existing.endpoint || ""]);
+            if (previous?.timestamp) upsertLastSeen(db, { ...existing, timestamp: previous.timestamp });
+            upsertLastSeen(db, { ...existing, endpoint: entry.endpoint });
           }
           return;
         }
       }
 
       const insert = db.run(
-        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId, comboId, comboName) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId, comboId, comboName, cachedTokens, reasoningTokens, cacheCreationTokens) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
         entry.timestamp, entry.provider || null, entry.model || null,
         entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
         promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
         stringifyJson(tokens), stringifyJson({}), entry.usageEventId || null,
-        entry.comboId || null, entry.comboName || null]
+        entry.comboId || null, entry.comboName || null, ...Object.values(usageTokenColumns(tokens))]
 
       );
       if ((insert?.changes ?? 0) === 0) return;
+      upsertLastSeen(db, entry);
 
       const dateKey = toLocalDateKey(entry.timestamp);
       const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
@@ -528,7 +613,11 @@ export async function getUsageHistory(filter = {}) {
     params
   );
 
-  return rows.map((r) => ({
+  return rows.map(mapUsageHistoryRow);
+}
+
+function mapUsageHistoryRow(r) {
+  return {
     timestamp: r.timestamp, provider: r.provider, model: r.model,
     connectionId: r.connectionId, apiKeyMasked: maskApiKey(r.apiKey), endpoint: r.endpoint,
     cost: r.cost, status: r.status,
@@ -541,10 +630,53 @@ export async function getUsageHistory(filter = {}) {
     },
     comboId: r.comboId,
     comboName: r.comboName
-  }));
+  };
 }
 
-function loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
+/** A bounded history page; both filtering and pagination stay in SQL. */
+export async function listUsageHistoryPage({ limit = 50, offset = 0, filters = {} } = {}) {
+  const db = await getAdapter();
+  const pageLimit = Number.isFinite(Number(limit)) ? Math.min(200, Math.max(1, Math.trunc(Number(limit)))) : 50;
+  const pageOffset = Number.isFinite(Number(offset)) ? Math.max(0, Math.trunc(Number(offset))) : 0;
+  const conds = [];
+  const params = [];
+  for (const column of ["provider", "model", "status", "connectionId"]) {
+    if (filters[column] != null && filters[column] !== "") {
+      conds.push(`${column} = ?`);
+      params.push(filters[column]);
+    }
+  }
+  if (filters.startDate) { conds.push("timestamp >= ?"); params.push(new Date(filters.startDate).toISOString()); }
+  if (filters.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filters.endDate).toISOString()); }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const total = Number(db.get(`SELECT COUNT(*) AS total FROM usageHistory ${where}`, params)?.total || 0);
+  const rows = db.all(
+    `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens,
+            promptTokens, completionTokens, comboId, comboName
+       FROM usageHistory ${where} ORDER BY id DESC LIMIT ? OFFSET ?`,
+    [...params, pageLimit, pageOffset]
+  );
+  return { rows: rows.map(mapUsageHistoryRow), total };
+}
+
+function* readDailyPages(adapter, where, params) {
+  // The PostgreSQL sync bridge caps each result at 8 MiB. Eight days leaves
+  // ample headroom for ~0.5 MiB heavy daily blobs; never fetch a year's JSON
+  // in one message (365-day benchmarks already exceeded 10 MiB).
+  const pageSize = 8;
+  let after = null;
+  for (;;) {
+    const rows = adapter.all(
+      `SELECT dateKey, data FROM usageDaily WHERE ${where}${after == null ? "" : " AND dateKey > ?"} ORDER BY dateKey ASC LIMIT ?`,
+      [...params, ...(after == null ? [] : [after]), pageSize]
+    );
+    yield* rows;
+    if (rows.length < pageSize) return;
+    after = rows[rows.length - 1].dateKey;
+  }
+}
+
+function* loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
   const todayKey = toLocalDateKey(now);
   const params = [];
   let lowerBound = "";
@@ -556,71 +688,35 @@ function loadDaysInRange(adapter, maxDays, identitySalt, now = new Date()) {
     params.push(toLocalDateKey(cutoff));
   }
   params.push(todayKey);
-  const rows = adapter.all(
-    `SELECT dateKey, data FROM usageDaily WHERE ${lowerBound}dateKey < ? ORDER BY dateKey ASC`,
-    params
-  );
+  yield* readDailyPages(adapter, `${lowerBound}dateKey < ?`, params);
 
   // The current day is reconstructed from bounded history so a future-dated
   // imported row cannot contaminate any calendar-period aggregate.
   const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
-  const todayRows = adapter.all(
-    `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens,
-            completionTokens, cost, status, tokens
-       FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? ORDER BY id ASC`,
-    [startOfToday.toISOString(), now.toISOString()]
-  );
+  const todayRows = aggregateUsageWindow(adapter, startOfToday.toISOString(), now.toISOString());
   if (todayRows.length > 0) {
-    const day = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
-    for (const row of todayRows) {
-      const tokens = parseJson(row.tokens, {});
-      aggregateEntryToDay(day, {
-        ...row,
-        tokens: {
-          prompt_tokens: row.promptTokens || 0,
-          completion_tokens: row.completionTokens || 0,
-          ...tokens
-        }
-      }, identitySalt);
-    }
-    rows.push({ dateKey: todayKey, data: stringifyJson(day) });
+    const day = aggregateRowsToDay(todayRows, identitySalt);
+    yield { dateKey: todayKey, data: stringifyJson(day) };
   }
-  return rows;
 }
 
 // Like loadDaysInRange but bounded by explicit inclusive local date keys
 // (YYYY-MM-DD) instead of a rolling day count. Used by the usage page's custom
 // calendar range. `endKey` >= today reconstructs the current day from live
 // history (usageDaily has no row for today yet), matching loadDaysInRange.
-function loadDaysInDateRange(adapter, startKey, endKey, identitySalt, now = new Date()) {
+function* loadDaysInDateRange(adapter, startKey, endKey, identitySalt, now = new Date()) {
   const todayKey = toLocalDateKey(now);
-  const rows = adapter.all(
-    `SELECT dateKey, data FROM usageDaily WHERE dateKey >= ? AND dateKey <= ? AND dateKey < ? ORDER BY dateKey ASC`,
-    [startKey, endKey, todayKey]
-  );
+  yield* readDailyPages(adapter, "dateKey >= ? AND dateKey <= ? AND dateKey < ?", [startKey, endKey, todayKey]);
   if (endKey >= todayKey && startKey <= todayKey) {
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
-    const todayRows = adapter.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens,
-              completionTokens, cost, status, tokens
-         FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? ORDER BY id ASC`,
-      [startOfToday.toISOString(), now.toISOString()]
-    );
+    const todayRows = aggregateUsageWindow(adapter, startOfToday.toISOString(), now.toISOString());
     if (todayRows.length > 0) {
-      const day = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
-      for (const row of todayRows) {
-        const tokens = parseJson(row.tokens, {});
-        aggregateEntryToDay(day, {
-          ...row,
-          tokens: { prompt_tokens: row.promptTokens || 0, completion_tokens: row.completionTokens || 0, ...tokens }
-        }, identitySalt);
-      }
-      rows.push({ dateKey: todayKey, data: stringifyJson(day) });
+      const day = aggregateRowsToDay(todayRows, identitySalt);
+      yield { dateKey: todayKey, data: stringifyJson(day) };
     }
   }
-  return rows;
 }
 
 export async function getUsageStats(period = "all", opts = {}) {
@@ -743,14 +839,14 @@ export async function getUsageStats(period = "all", opts = {}) {
     stats.last10Minutes.push(bucketMap[ts]);
   }
   const recent10 = db.all(
-    `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?`,
+    `SELECT SUBSTR(timestamp, 1, 16) AS timestamp, COUNT(*) AS requests, SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens, SUM(cost) AS cost FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? GROUP BY SUBSTR(timestamp, 1, 16)`,
     [tenMinutesAgo.toISOString(), now.toISOString()]
   );
   for (const r of recent10) {
-    const tt = new Date(r.timestamp).getTime();
+    const tt = new Date(`${r.timestamp}:00.000Z`).getTime();
     const minuteStart = Math.floor(tt / 60000) * 60000;
     if (bucketMap[minuteStart]) {
-      bucketMap[minuteStart].requests++;
+      bucketMap[minuteStart].requests += Number(r.requests);
       bucketMap[minuteStart].promptTokens += r.promptTokens || 0;
       bucketMap[minuteStart].completionTokens += r.completionTokens || 0;
       bucketMap[minuteStart].cost += r.cost || 0;
@@ -877,20 +973,11 @@ export async function getUsageStats(period = "all", opts = {}) {
       }
     }
 
-    // Overlay precise lastUsed timestamps without materializing every request.
-    // The lower bound matches the same local-calendar cutoff as the rollup;
-    // the upper bound excludes future-dated imported rows.
-    const overlayCutoff = maxDays == null ? null : getUsageCalendarCutoff(period, now);
-    const overlayParams = overlayCutoff ?
-    [overlayCutoff.toISOString(), now.toISOString()] :
-    [now.toISOString()];
-    const lastUsedRows = db.all(
-      `SELECT MAX(timestamp) AS timestamp, provider, model, connectionId, apiKey, endpoint
-         FROM usageHistory
-        WHERE ${overlayCutoff ? "timestamp >= ? AND " : ""}timestamp <= ?
-        GROUP BY provider, model, connectionId, apiKey, endpoint`,
-      overlayParams
-    );
+    // Exact period bounds, with raw history restricted to partial UTC days.
+    const overlayCutoff = hasCustomRange ? localDateFromKey(customStart) : maxDays == null ? null : getUsageCalendarCutoff(period, now);
+    const customEndExclusive = hasCustomRange ? addLocalCalendarDays(localDateFromKey(customEnd), 1) : null;
+    const overlayEnd = customEndExclusive && customEndExclusive <= now ? new Date(customEndExclusive.getTime() - 1) : now;
+    const lastUsedRows = readLastSeen(db, overlayCutoff, overlayEnd);
     // Collapse before resolving public identities (which hash keys) or parsing
     // dates: those operations should run once per coarse group, not once per
     // combination of account, key and endpoint.
@@ -935,14 +1022,10 @@ export async function getUsageStats(period = "all", opts = {}) {
     } else {
       cutoff = new Date(now.getTime() - PERIOD_MS["24h"]).toISOString();
     }
-    const filtered = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens
-         FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?`,
-      [cutoff, now.toISOString()]
-    );
+    const filtered = aggregateUsageWindow(db, cutoff, now.toISOString());
 
     for (const r of filtered) {
-      const tokens = parseJson(r.tokens, {}) || {};
+      const tokens = r.tokens;
       const promptTokens = tokens.prompt_tokens || 0;
       const completionTokens = tokens.completion_tokens || 0;
       const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
@@ -962,7 +1045,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       stats.totalCost += entryCost;
 
       if (!stats.byProvider[r.provider]) stats.byProvider[r.provider] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
-      stats.byProvider[r.provider].requests++;
+      stats.byProvider[r.provider].requests += r.requests;
       stats.byProvider[r.provider].promptTokens += promptTokens;
       stats.byProvider[r.provider].completionTokens += completionTokens;
       stats.byProvider[r.provider].cachedTokens += cachedTokens;
@@ -974,7 +1057,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       if (!stats.byModel[modelKey]) {
         stats.byModel[modelKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, lastUsed: r.timestamp };
       }
-      stats.byModel[modelKey].requests++;
+      stats.byModel[modelKey].requests += r.requests;
       stats.byModel[modelKey].promptTokens += promptTokens;
       stats.byModel[modelKey].completionTokens += completionTokens;
       stats.byModel[modelKey].cachedTokens += cachedTokens;
@@ -989,7 +1072,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         if (!stats.byAccount[accountKey]) {
           stats.byAccount[accountKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, connectionId: r.connectionId, accountName, lastUsed: r.timestamp };
         }
-        stats.byAccount[accountKey].requests++;
+        stats.byAccount[accountKey].requests += r.requests;
         stats.byAccount[accountKey].promptTokens += promptTokens;
         stats.byAccount[accountKey].completionTokens += completionTokens;
         stats.byAccount[accountKey].cachedTokens += cachedTokens;
@@ -1008,7 +1091,7 @@ export async function getUsageStats(period = "all", opts = {}) {
           stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
-        ake.requests++;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
+        ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       } else {
         const akKey = getApiKeyStatsKey(null, r.model, r.provider, identitySalt);
@@ -1016,7 +1099,7 @@ export async function getUsageStats(period = "all", opts = {}) {
           stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
-        ake.requests++;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
+        ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       }
 
@@ -1026,7 +1109,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byEndpoint[epKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, endpoint, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, lastUsed: r.timestamp };
       }
       const epe = stats.byEndpoint[epKey];
-      epe.requests++;epe.promptTokens += promptTokens;epe.completionTokens += completionTokens;epe.cachedTokens += cachedTokens;epe.reasoningTokens += reasoningTokens;epe.cacheCreationTokens += cacheCreationTokens;epe.cost += entryCost;
+      epe.requests += r.requests;epe.promptTokens += promptTokens;epe.completionTokens += completionTokens;epe.cachedTokens += cachedTokens;epe.reasoningTokens += reasoningTokens;epe.cacheCreationTokens += cacheCreationTokens;epe.cost += entryCost;
       if (new Date(r.timestamp) > new Date(epe.lastUsed)) epe.lastUsed = r.timestamp;
     }
   }
@@ -1106,25 +1189,14 @@ export async function getChartData(period = "7d", timeZone) {
       reasoningTokens: 0, cacheCreationTokens: 0, cost: 0
     }));
 
-    const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?`,
-      [new Date(startTime).toISOString(), nowDate.toISOString()]
-    );
+    const rows = aggregateChartWindow(db, startTime, Math.min(now, endTime - 1), bucketMs, bucketCount);
     for (const r of rows) {
-      const t = new Date(r.timestamp).getTime();
-      if (t < startTime || t > now || t >= endTime) continue;
-      const idx = Math.floor((t - startTime) / bucketMs);
-      if (idx >= 0 && idx < bucketCount) {
-        const tokens = parseJson(r.tokens, {});
-        buckets[idx].tokens += (r.promptTokens || 0) + (r.completionTokens || 0);
-        buckets[idx].cachedTokens += tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
-        buckets[idx].reasoningTokens += tokens.reasoning_tokens ||
-        tokens.completion_tokens_details?.reasoning_tokens ||
-        tokens.output_tokens_details?.reasoning_tokens ||
-        0;
-        buckets[idx].cacheCreationTokens += tokens.cache_creation_input_tokens || 0;
-        buckets[idx].cost += r.cost || 0;
-      }
+      const bucket = buckets[Number(r.bucket)];
+      bucket.tokens = Number(r.promptTokens || 0) + Number(r.completionTokens || 0);
+      bucket.cachedTokens = Number(r.cachedTokens || 0);
+      bucket.reasoningTokens = Number(r.reasoningTokens || 0);
+      bucket.cacheCreationTokens = Number(r.cacheCreationTokens || 0);
+      bucket.cost = Number(r.cost || 0);
     }
     return buckets;
   }
@@ -1141,32 +1213,31 @@ export async function getChartData(period = "7d", timeZone) {
       reasoningTokens: 0, cacheCreationTokens: 0, cost: 0
     }));
 
-    const rows = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?`,
-      [new Date(startTime).toISOString(), nowDate.toISOString()]
-    );
+    const rows = aggregateChartWindow(db, startTime, now, bucketMs, bucketCount);
     for (const r of rows) {
-      const t = new Date(r.timestamp).getTime();
-      if (t < startTime || t > now) continue;
-      const idx = Math.min(Math.floor((t - startTime) / bucketMs), bucketCount - 1);
-      const tokens = parseJson(r.tokens, {});
-      buckets[idx].tokens += (r.promptTokens || 0) + (r.completionTokens || 0);
-      buckets[idx].cachedTokens += tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
-      buckets[idx].reasoningTokens += tokens.reasoning_tokens ||
-      tokens.completion_tokens_details?.reasoning_tokens ||
-      tokens.output_tokens_details?.reasoning_tokens ||
-      0;
-      buckets[idx].cacheCreationTokens += tokens.cache_creation_input_tokens || 0;
-      buckets[idx].cost += r.cost || 0;
+      const bucket = buckets[Number(r.bucket)];
+      bucket.tokens = Number(r.promptTokens || 0) + Number(r.completionTokens || 0);
+      bucket.cachedTokens = Number(r.cachedTokens || 0);
+      bucket.reasoningTokens = Number(r.reasoningTokens || 0);
+      bucket.cacheCreationTokens = Number(r.cacheCreationTokens || 0);
+      bucket.cost = Number(r.cost || 0);
     }
     return buckets;
   }
 
   const fixedDays = getChartDayBucketCount(period);
-  const dayRows = loadDaysInRange(db, fixedDays, identitySalt, nowDate).
-  filter((row) => {
-    try {localDateFromKey(row.dateKey);return true;} catch {return false;}
-  });
+  // Keep only chart scalars after each paged blob is decoded, not every
+  // model/account/key dimension retained in the daily JSON.
+  const dayRows = [];
+  for (const row of loadDaysInRange(db, fixedDays, identitySalt, nowDate)) {
+    try { localDateFromKey(row.dateKey); } catch { continue; }
+    const day = parseJson(row.data, {});
+    dayRows.push({ dateKey: row.dateKey, day: {
+      promptTokens: day.promptTokens, completionTokens: day.completionTokens,
+      cachedTokens: day.cachedTokens, reasoningTokens: day.reasoningTokens,
+      cacheCreationTokens: day.cacheCreationTokens, cost: day.cost,
+    } });
+  }
   const todayKey = toLocalDateKey(nowDate);
   let firstDate;
   if (fixedDays != null) {
@@ -1205,7 +1276,7 @@ export async function getChartData(period = "7d", timeZone) {
     const ordinal = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
     const index = Math.floor((ordinal - firstOrdinal) / bucketSize);
     if (index < 0 || index >= buckets.length || row.dateKey > todayKey) continue;
-    const day = parseJson(row.data, {});
+    const day = row.day;
     buckets[index].tokens += (day.promptTokens || 0) + (day.completionTokens || 0);
     buckets[index].cachedTokens += day.cachedTokens || 0;
     buckets[index].reasoningTokens += day.reasoningTokens || 0;
@@ -1239,25 +1310,10 @@ const VALID_RESET_PERIODS = new Set(["5m", "1h", "3h", "6h", "12h", "1d", "7d", 
 function rebuildDailyKeyInTx(db, dateKey, identitySalt) {
   const start = localDateFromKey(dateKey);
   const end = addLocalCalendarDays(start, 1);
-  const rows = db.all(
-    `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens,
-            completionTokens, cost, status, tokens
-       FROM usageHistory WHERE timestamp >= ? AND timestamp < ? AND timestamp <= ? ORDER BY id ASC`,
-    [start.toISOString(), end.toISOString(), new Date().toISOString()]
-  );
+  const rows = aggregateUsageWindow(db, start.toISOString(), new Date(Math.min(end.getTime() - 1, Date.now())).toISOString());
   db.run(`DELETE FROM usageDaily WHERE dateKey = ?`, [dateKey]);
   if (rows.length === 0) return;
-  const day = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
-  for (const row of rows) {
-    aggregateEntryToDay(day, {
-      ...row,
-      tokens: {
-        prompt_tokens: row.promptTokens || 0,
-        completion_tokens: row.completionTokens || 0,
-        ...parseJson(row.tokens, {})
-      }
-    }, identitySalt);
-  }
+  const day = aggregateRowsToDay(rows, identitySalt);
   db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?)`, [dateKey, stringifyJson(day)]);
 }
 
@@ -1274,12 +1330,19 @@ function pruneUsageBeforeInTx(db, cutoffMs, identitySalt) {
 
   // Delete usageHistory entries older than the cutoff (keep recent data within the period)
   db.run(`DELETE FROM usageHistory WHERE timestamp < ?`, [cutoffIso]);
+  db.run(`DELETE FROM usageLastSeen WHERE lastUsed < ?`, [cutoffIso]);
 
   // Delete usageDaily entries older than the cutoff
   db.run(`DELETE FROM usageDaily WHERE dateKey < ?`, [cutoffKey]);
   // Keep token-saver telemetry consistent with the usage windows it is
   // reported alongside (Codex P2 on #306).
   db.run(`DELETE FROM tokenSaverEvents WHERE timestamp < ?`, [cutoffIso]);
+  const utcCutoffDay = cutoffIso.slice(0, 10);
+  db.run("DELETE FROM tokenSaverDaily WHERE dateKey <= ?", [utcCutoffDay]);
+  db.run("DELETE FROM tokenSaverDailyReasons WHERE dateKey <= ?", [utcCutoffDay]);
+  backfillTokenSaverDaily(db, "WHERE timestamp >= ? AND timestamp < ?", [
+    cutoffIso, new Date(Date.parse(`${utcCutoffDay}T00:00:00.000Z`) + 86400000).toISOString(),
+  ]);
   rebuildDailyKeyInTx(db, cutoffKey, identitySalt);
 
   // Recalculate totalRequestsLifetime from remaining history
@@ -1315,8 +1378,11 @@ export async function resetUsageHistory(period) {
     if (period === "all") {
       // Delete everything
       db.run(`DELETE FROM usageHistory`);
+      db.run(`DELETE FROM usageLastSeen`);
       db.run(`DELETE FROM usageDaily`);
       db.run(`DELETE FROM tokenSaverEvents`);
+      db.run("DELETE FROM tokenSaverDaily");
+      db.run("DELETE FROM tokenSaverDailyReasons");
       db.run(`DELETE FROM _meta WHERE key = 'totalRequestsLifetime'`);
     } else {
       pruneUsageBeforeInTx(db, Date.now() - RESET_PERIOD_MS[period], identitySalt);
@@ -1406,10 +1472,22 @@ export async function recordTokenSaverEvent(event, now = new Date()) {
     const normalized = normalizeTokenSaverEvent(event);
     const columns = tokenSaverEventColumns(normalized);
     const names = Object.keys(columns);
-    db.run(
-      `INSERT INTO ${TOKEN_SAVER_TABLE} (timestamp, dateKey, data, ${names.join(", ")}) VALUES (?, ?, ?, ${names.map(() => "?").join(", ")})`,
-      [ts.toISOString(), toLocalDateKey(ts), stringifyJson(normalized), ...Object.values(columns)]
-    );
+    db.transaction(() => {
+      db.run(
+        `INSERT INTO ${TOKEN_SAVER_TABLE} (timestamp, dateKey, data, ${names.join(", ")}) VALUES (?, ?, ?, ${names.map(() => "?").join(", ")})`,
+        [ts.toISOString(), toLocalDateKey(ts), stringifyJson(normalized), ...Object.values(columns)]
+      );
+      const values = [1, ...TOKEN_SAVER_SUM_COLUMNS.map((name) => columns[name]), ...["compressed", "skipped", "disabled"].map((state) => columns.hrState === state ? 1 : 0)];
+      db.run(`INSERT INTO tokenSaverDaily(dateKey, localDateKey, ${TOKEN_SAVER_DAILY_COLUMNS.join(", ")})
+        VALUES (?, ?, ${values.map(() => "?").join(", ")})
+        ON CONFLICT (dateKey, localDateKey) DO UPDATE SET ${TOKEN_SAVER_DAILY_COLUMNS.map((name) => `${name} = tokenSaverDaily.${name} + excluded.${name}`).join(", ")}`,
+        [ts.toISOString().slice(0, 10), toLocalDateKey(ts), ...values]);
+      if (columns.hrState === "skipped") {
+        db.run(`INSERT INTO tokenSaverDailyReasons(dateKey, localDateKey, hrSkipReason, count) VALUES (?, ?, ?, 1)
+          ON CONFLICT (dateKey, localDateKey, hrSkipReason) DO UPDATE SET count = tokenSaverDailyReasons.count + excluded.count`,
+          [ts.toISOString().slice(0, 10), toLocalDateKey(ts), columns.hrSkipReason || ""]);
+      }
+    });
   });
   tokenSaverWriteChain = run.catch(() => {});
   try {await run;} catch (e) {console.warn("[usageRepo] recordTokenSaverEvent failed:", e.message);return;}
@@ -1459,31 +1537,33 @@ export async function getTokenSaverStats(period = "7d", now = new Date()) {
         params = [toLocalDateKey(cutoff), nowIso];
       }
     }
-    const rows = db.all(
-      `SELECT dateKey, COUNT(*) AS requestsObserved,
-        SUM(rtkRequestsWithHits) AS rtkRequestsWithHits,
-        SUM(rtkHits) AS rtkHits,
-        SUM(rtkBytesBefore) AS rtkBytesBefore,
-        SUM(rtkBytesAfter) AS rtkBytesAfter,
-        SUM(rtkBytesSaved) AS rtkBytesSaved,
-        SUM(hrTokensBefore) AS hrTokensBefore,
-        SUM(hrTokensAfter) AS hrTokensAfter,
-        SUM(hrTokensSaved) AS hrTokensSaved,
-        SUM(hrBodyBytesBefore) AS hrBodyBytesBefore,
-        SUM(hrBodyBytesAfter) AS hrBodyBytesAfter,
-        SUM(hrPhantomSavings) AS hrPhantomSavings,
-        SUM(pxApplied) AS pxApplied,
-        SUM(pxTokensBeforeEst) AS pxTokensBeforeEst,
-        SUM(pxTokensAfterEst) AS pxTokensAfterEst,
-        SUM(pxTokensSavedEst) AS pxTokensSavedEst,
-        SUM(pxImageCount) AS pxImageCount,
-        SUM(totalActualBytesSaved) AS totalActualBytesSaved,
-        SUM(CASE WHEN hrState = 'compressed' THEN 1 ELSE 0 END) AS compressed,
-        SUM(CASE WHEN hrState = 'skipped' THEN 1 ELSE 0 END) AS skipped,
-        SUM(CASE WHEN hrState = 'disabled' THEN 1 ELSE 0 END) AS disabled
-       FROM ${TOKEN_SAVER_TABLE} WHERE ${where} GROUP BY dateKey`,
-      params
-    );
+    let rows;
+    let reasonRows;
+    if (period === "today" || period === "24h") {
+      rows = db.all(`SELECT dateKey, ${TOKEN_SAVER_AGGREGATES} FROM ${TOKEN_SAVER_TABLE} WHERE ${where} GROUP BY dateKey`, params);
+      reasonRows = db.all(`SELECT hrSkipReason, COUNT(*) AS count FROM ${TOKEN_SAVER_TABLE}
+        WHERE ${where} AND hrState = 'skipped' GROUP BY hrSkipReason`, params);
+    } else {
+      // UTC keys bound the read; persisted local keys retain the existing
+      // chart buckets, including imported keys that differ from timestamps.
+      const utcDay = nowIso.slice(0, 10);
+      const localCutoff = period === "all" ? null : toLocalDateKey(getUsageCalendarCutoff(period, now));
+      const summaryWhere = `dateKey < ?${localCutoff ? " AND localDateKey >= ?" : ""}`;
+      const rawWhere = `timestamp >= ? AND timestamp <= ?${localCutoff ? " AND dateKey >= ?" : ""}`;
+      const boundedParams = [utcDay, ...(localCutoff ? [localCutoff] : []),
+        `${utcDay}T00:00:00.000Z`, nowIso, ...(localCutoff ? [localCutoff] : [])];
+      rows = db.all(`SELECT dateKey, ${TOKEN_SAVER_DAILY_COLUMNS.map((name) => `SUM(${name}) AS ${name}`).join(", ")}
+        FROM (
+          SELECT localDateKey AS dateKey, ${TOKEN_SAVER_DAILY_COLUMNS.join(", ")} FROM tokenSaverDaily WHERE ${summaryWhere}
+          UNION ALL
+          SELECT dateKey, ${TOKEN_SAVER_AGGREGATES} FROM tokenSaverEvents WHERE ${rawWhere} GROUP BY dateKey
+        ) AS bounded GROUP BY dateKey`, boundedParams);
+      reasonRows = db.all(`SELECT hrSkipReason, SUM(count) AS count FROM (
+          SELECT hrSkipReason, count FROM tokenSaverDailyReasons WHERE ${summaryWhere}
+          UNION ALL
+          SELECT hrSkipReason, COUNT(*) AS count FROM tokenSaverEvents WHERE ${rawWhere} AND hrState = 'skipped' GROUP BY hrSkipReason
+        ) AS bounded GROUP BY hrSkipReason`, boundedParams);
+    }
     const agg = aggregateTokenSaverEvents([]);
     const byDay = new Map();
     for (const row of rows) {
@@ -1512,11 +1592,7 @@ export async function getTokenSaverStats(period = "7d", now = new Date()) {
       // Corrupt imported date keys contribute totals, but never chart points.
       if (isString(row.dateKey) && /^\d{4}-\d{2}-\d{2}$/.test(row.dateKey)) byDay.set(row.dateKey, day);
     }
-    for (const row of db.all(
-      `SELECT hrSkipReason, COUNT(*) AS count FROM ${TOKEN_SAVER_TABLE}
-       WHERE ${where} AND hrState = 'skipped' GROUP BY hrSkipReason`,
-      params
-    )) {
+    for (const row of reasonRows) {
       agg.headroom.skipReasons[row.hrSkipReason || "other-skip"] = Number(row.count ?? 0);
     }
     // Bounded windows retain their contiguous zero-filled chart axis;

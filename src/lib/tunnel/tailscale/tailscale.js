@@ -46,6 +46,35 @@ const runningCache = { value: false, fetchedAt: 0, refreshing: false };
 const loggedInCache = { value: false, fetchedAt: 0, refreshing: false };
 const funnelUrlCache = { value: null, port: null, fetchedAt: 0, refreshing: false };
 
+// Socket candidates to try, in order: this app's own tailscaled, the system
+// daemon, then no --socket at all.
+//
+// Probing a socket that does not exist costs the FULL command timeout before
+// the CLI gives up, and the app-local socket is absent on every
+// system-managed Tailscale install. That made `status` + `funnel status` burn
+// two timeouts on a perfectly healthy host: measured at 10.1s on production,
+// where the system socket answers the same commands in 12-19ms. Because these
+// are execSync, that also blocked the event loop for the whole 10s and stalled
+// every other request through the gateway.
+//
+// Existence is cheap to check and exact for a unix socket, so skip candidates
+// that cannot possibly answer. The bare [] candidate is always kept: it lets
+// the CLI apply its own default, which is the right behaviour on Windows and
+// on installs using a non-standard socket path.
+function socketCandidates() {
+  const candidates = [SOCKET_FLAG, SYSTEM_SOCKET_FLAG];
+  const reachable = candidates.filter((flag) => {
+    const socketPath = flag[1];
+    if (!socketPath) return false;
+    try {
+      return fs.existsSync(socketPath);
+    } catch {
+      return false;
+    }
+  });
+  return [...reachable, []];
+}
+
 function fallbackBin() {
   if (fs.existsSync(TAILSCALE_BIN)) return TAILSCALE_BIN;
   if (IS_WINDOWS && fs.existsSync(WINDOWS_TAILSCALE_BIN)) return WINDOWS_TAILSCALE_BIN;
@@ -137,7 +166,7 @@ function bgRefreshLoggedIn() {
 
 // Probe `status --json` over custom then system socket. Resolves parsed JSON or null. Never blocks event loop.
 async function probeStatusAsync(bin) {
-  for (const socketArgs of [SOCKET_FLAG, SYSTEM_SOCKET_FLAG]) {
+  for (const socketArgs of socketCandidates()) {
     try {
       const { stdout } = await execAsync(`"${bin}" ${socketArgs.join(" ")} status --json`, {
         windowsHide: true, env: { ...process.env, PATH: EXTENDED_PATH }, timeout: PROBE_TIMEOUT_MS
@@ -246,10 +275,14 @@ function bgRefreshFunnelUrl(port) {
 function execTailscaleJsonSync(subArgs) {
   const bin = getTailscaleBin();
   if (!bin) return null;
-  for (const socketArgs of [SOCKET_FLAG, SYSTEM_SOCKET_FLAG, []]) {
+  for (const socketArgs of socketCandidates()) {
     try {
       const out = execSync(`"${bin}" ${socketArgs.join(" ")} ${subArgs}`, {
-        encoding: "utf8", windowsHide: true, env: { ...process.env, PATH: EXTENDED_PATH }, timeout: 5000
+        encoding: "utf8", windowsHide: true, env: { ...process.env, PATH: EXTENDED_PATH },
+        // Was 5000. A reachable daemon answers in ~12-19ms; this budget only
+        // ever elapses when the socket cannot reply, and it does so on the
+        // event loop, so keep it tight and consistent with the async probes.
+        timeout: PROBE_TIMEOUT_MS
       });
       return JSON.parse(out);
     } catch {/* try next socket */}

@@ -1,11 +1,12 @@
 import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
+import { TOKEN_SAVER_DAILY_TABLES } from "./migrations/token-saver-daily-schema.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
 // 19 is intentionally skipped: it is reserved for the PostgreSQL-only
 // `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
 // shared version to carry the same name in both migration sets.
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 22;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -251,6 +252,9 @@ export const TABLES = {
       endpoint: "TEXT",
       promptTokens: "INTEGER DEFAULT 0",
       completionTokens: "INTEGER DEFAULT 0",
+      cachedTokens: "REAL NOT NULL DEFAULT 0",
+      reasoningTokens: "REAL NOT NULL DEFAULT 0",
+      cacheCreationTokens: "REAL NOT NULL DEFAULT 0",
       cost: "REAL DEFAULT 0",
       status: "TEXT",
       tokens: "TEXT",
@@ -270,6 +274,19 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_uh_combo ON usageHistory(comboId) WHERE comboId IS NOT NULL",
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON usageHistory(usageEventId) WHERE usageEventId IS NOT NULL",
     ],
+  },
+  usageLastSeen: {
+    columns: {
+      dateKey: "TEXT NOT NULL",
+      provider: "TEXT NOT NULL",
+      model: "TEXT NOT NULL",
+      connectionId: "TEXT NOT NULL",
+      apiKey: "TEXT NOT NULL",
+      endpoint: "TEXT NOT NULL",
+      lastUsed: "TEXT NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (dateKey, provider, model, connectionId, apiKey, endpoint)",
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_uls_date ON usageLastSeen(dateKey)"],
   },
   usageDaily: {
     columns: {
@@ -313,6 +330,7 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_tse_date_state ON tokenSaverEvents(dateKey, hrState)",
     ],
   },
+  ...TOKEN_SAVER_DAILY_TABLES,
   requestDetails: {
     columns: {
       id: "TEXT PRIMARY KEY",

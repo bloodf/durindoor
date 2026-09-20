@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getProviderConnectionById: vi.fn(),
   getUsageHistory: vi.fn(),
+  getConnectionUsageSummary: vi.fn(),
   getUsageForProvider: vi.fn(),
   fetchGrokCliCreditsConfig: vi.fn(),
   resolveConnectionProxyConfig: vi.fn(),
@@ -16,6 +17,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("open-sse/index.js", () => ({}));
 vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: mocks.getProviderConnectionById }));
 vi.mock("@/lib/db/repos/usageRepo.js", () => ({ getUsageHistory: mocks.getUsageHistory }));
+// The route now aggregates the 30d quota cards in SQL instead of folding raw
+// history in JS, so the summary repo is the collaborator to stub.
+vi.mock("@/lib/db/repos/monitoringUsageRepo.js", () => ({
+  getConnectionUsageSummary: mocks.getConnectionUsageSummary,
+}));
 vi.mock("open-sse/services/usage.js", () => ({ getUsageForProvider: mocks.getUsageForProvider }));
 vi.mock("open-sse/services/usage/grok-cli.js", () => ({
   fetchGrokCliCreditsConfig: mocks.fetchGrokCliCreditsConfig,
@@ -53,10 +59,19 @@ describe("xAI SuperGrok weekly quota in the usage route", () => {
     mocks.resolveConnectionProxyConfig.mockResolvedValue({});
     mocks.getProviderConnectionById.mockResolvedValue(xaiConnection());
     mocks.refreshAndUpdateCredentials.mockImplementation(async (c) => ({ connection: c, refreshed: false }));
-    // One local request so aggregateLocalUsage produces rows too.
+    // One local request so the 30d quota cards are produced. The route reads
+    // this as a SQL summary now; the numbers match the single history row that
+    // used to be folded in JS, so the assertions below are unchanged.
     mocks.getUsageHistory.mockResolvedValue([
       { connectionId: "conn-xai", model: "grok-4.6", cost: 0.25, tokens: { prompt_tokens: 100, completion_tokens: 50 } },
     ]);
+    mocks.getConnectionUsageSummary.mockResolvedValue({
+      requests: 1,
+      prompt: 100,
+      completion: 50,
+      cost: 0.25,
+      byModel: { "grok-4.6": 150 },
+    });
   });
 
   it("surfaces the real Weekly SuperGrok row when GetGrokCreditsConfig resolves", async () => {

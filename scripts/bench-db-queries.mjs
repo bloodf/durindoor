@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Usage: node scripts/bench-db-queries.mjs [--rows 50000 | --days 365]
 //   [--rows-per-day 9500] [--budget-ms 2000] [--iterations 5] [--engine both|sqlite|pg] [--json]
+//   [--data-dir <new-path> --engine sqlite] [--seed-only]
 // DURINDOOR_PG_URL optionally selects a disposable PostgreSQL server. Its role
 // needs CREATEDB; database durindoor is always refused, even as an admin target.
 // Seed/setup/warmup are excluded from timings. Medians enforce the budget.
-import { mkdtemp, rm, realpath, readdir } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, realpath, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -21,6 +22,11 @@ function options(argv) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--json") result.json = true;
+    else if (arg === "--seed-only") result.seedOnly = true;
+    else if (arg === "--data-dir") {
+      if (!argv[i + 1] || argv[i + 1].startsWith("--")) throw new Error("--data-dir needs a path");
+      result.dataDir = path.resolve(argv[++i]);
+    }
     else if (arg === "--engine") {
       result.engine = argv[++i];
       if (!["both", "sqlite", "pg"].includes(result.engine)) throw new Error("--engine must be both, sqlite, or pg");
@@ -36,13 +42,15 @@ function options(argv) {
     result.rows = result.days * result.rowsPerDay;
     if (!Number.isSafeInteger(result.rows)) throw new Error("Seed row count exceeds safe integer range");
   } else if (argv.includes("--rows-per-day")) throw new Error("--rows-per-day requires --days");
+  if (result.dataDir && result.engine !== "sqlite") throw new Error("--data-dir requires --engine sqlite");
+  if (result.seedOnly && !result.dataDir) throw new Error("--seed-only requires --data-dir");
   return result;
 }
 
-async function guard() {
-  if (process.env.DATA_DIR) {
-    const supplied = path.resolve(process.env.DATA_DIR);
-    const canonical = await realpath(supplied).catch(() => supplied);
+async function guard(dataDir) {
+  for (const value of [process.env.DATA_DIR, dataDir].filter(Boolean)) {
+    const supplied = path.resolve(value);
+    const canonical = await realpath(supplied).catch(async () => path.join(await realpath(path.dirname(supplied)), path.basename(supplied)));
     const protectedPath = "/opt/cortexos/.durindoor";
     if ([supplied, canonical].some((p) => p === protectedPath || p.startsWith(`${protectedPath}/`))) {
       throw new Error("Refusing protected DATA_DIR /opt/cortexos/.durindoor before any database connection");
@@ -55,7 +63,7 @@ async function guard() {
   const database = decodeURIComponent(url.pathname.slice(1) || url.username);
   if (!database) throw new Error("PostgreSQL URL must identify a database");
   // pg connection-string query parameters can override the URL path.
-  const names = [database, url.searchParams.get("database"), url.searchParams.get("dbname")];
+  const names = [database, ...url.searchParams.getAll("database"), ...url.searchParams.getAll("dbname")];
   if (names.includes("durindoor")) {
     throw new Error("Refusing PostgreSQL database durindoor before any database connection");
   }
@@ -175,6 +183,7 @@ async function measure(engine, db, opts, usage, groups) {
   console.error(`Seeding ${engine}: ${opts.rows} rows per event table, 50 groups x 20 members`);
   const seeded = await seed(db, usage, opts);
   assert.equal((await usage.getTokenSaverStats("all")).requestsObserved, opts.rows);
+  if (opts.seedOnly) return { results: [], seeded };
   const operations = [
     ...["today", "7d", "30d", "all"].map((period) => [`getUsageStats('${period}')`, () => usage.getUsageStats(period)]),
     ...["7d", "all"].map((period) => [`getTokenSaverStats('${period}')`, () => usage.getTokenSaverStats(period)]),
@@ -217,9 +226,11 @@ async function measure(engine, db, opts, usage, groups) {
 
 async function main() {
   const opts = options(process.argv.slice(2));
-  const pgUrl = await guard(); // No imports with DB side effects before guards.
+  const pgUrl = await guard(opts.dataDir); // No imports with DB side effects before guards.
   if (opts.engine === "pg" && !pgUrl) throw new Error("--engine pg requires DURINDOOR_PG_URL");
-  const dir = await mkdtemp(path.join(tmpdir(), "durindoor-bench-"));
+  // Exclusive creation refuses existing datasets, including symlink destinations.
+  const dir = opts.dataDir || await mkdtemp(path.join(tmpdir(), "durindoor-bench-"));
+  if (opts.dataDir) await mkdir(dir);
   process.env.DATA_DIR = dir;
   freezeClock();
   register(new URL("./alias-loader.mjs", import.meta.url));
@@ -234,7 +245,8 @@ async function main() {
     const results = [];
     const seeds = {};
     if (opts.engine !== "pg") {
-      db = await driver.openSqliteAdapter(path.join(dir, "data.sqlite"));
+      if (opts.dataDir) await mkdir(path.join(dir, "db"));
+      db = await driver.openSqliteAdapter(path.join(dir, ...(opts.dataDir ? ["db"] : []), "data.sqlite"));
       driver.setActiveAdapter(db);
       await runMigrationOnce(db);
       const sqlite = await measure("SQLite", db, opts, usage, groups);
@@ -275,10 +287,10 @@ async function main() {
     const overBudget = results.filter((r) => r.median > opts.budgetMs);
     for (const r of overBudget) console.error(`OVER BUDGET: ${r.engine} ${r.operation}: median ${r.median.toFixed(3)}ms > ${opts.budgetMs}ms`);
     if (overBudget.length) process.exitCode = 1;
-    else if (!postgresError && !results.some((r) => r.error)) console.error(`PASS: all measured medians <= ${opts.budgetMs}ms`);
-    if (opts.json) output(JSON.stringify({ rowsPerTable: opts.rows, days: opts.days, rowsPerDay: opts.days ? opts.rowsPerDay : null, seeds, budgetMs: opts.budgetMs, overBudget: overBudget.map(({ engine, operation, median }) => ({ engine, operation, median })), iterations: opts.iterations, seed: "0x51a7c0de", now: epoch, timezone: "UTC", warmupIterations: 1, postgresSkipped: !pgUrl || opts.engine === "sqlite", postgresError, unit: "ms", results }, null, 2));
+    else if (!postgresError && !results.some((r) => r.error)) console.error(opts.seedOnly ? `Seed retained at ${dir}; no timings collected` : `PASS: all measured medians <= ${opts.budgetMs}ms`);
+    if (opts.json) output(JSON.stringify({ rowsPerTable: opts.rows, days: opts.days, rowsPerDay: opts.days ? opts.rowsPerDay : null, seeds, budgetMs: opts.budgetMs, overBudget: overBudget.map(({ engine, operation, median }) => ({ engine, operation, median })), iterations: opts.seedOnly ? 0 : opts.iterations, seed: "0x51a7c0de", now: epoch, timezone: "UTC", warmupIterations: opts.seedOnly ? 0 : 1, dataDir: opts.dataDir || null, seedOnly: !!opts.seedOnly, postgresSkipped: !pgUrl || opts.engine === "sqlite", postgresError, unit: "ms", results }, null, 2));
     else {
-      output(`Rows per event table: ${opts.rows}; days: ${opts.days || "legacy 35-day distribution"}; rows/day: ${opts.days ? opts.rowsPerDay : "variable"}; iterations: ${opts.iterations}; budget: ${opts.budgetMs}ms; fixed clock: ${epoch}; UTC; one warmup; milliseconds.\n`);
+      output(`Rows per event table: ${opts.rows}; days: ${opts.days || "legacy 35-day distribution"}; rows/day: ${opts.days ? opts.rowsPerDay : "variable"}; iterations: ${opts.seedOnly ? 0 : opts.iterations}; budget: ${opts.budgetMs}ms; fixed clock: ${epoch}; UTC; ${opts.seedOnly ? "seed only, no warmup or timings" : "one warmup; milliseconds"}.\n`);
       for (const [engine, seed] of Object.entries(seeds)) output(`${engine} synthetic fixture: ${JSON.stringify(seed)}\n`);
       output("| Engine (driver) | Operation | Min (ms) | Median (ms) | p95 (ms) |\n| --- | --- | ---: | ---: | ---: |");
       for (const r of results) output(r.error
@@ -292,7 +304,7 @@ async function main() {
         // only sessions in this invocation's randomly named disposable database.
         if (scratch) await admin.query(`DROP DATABASE "${scratch}" WITH (FORCE)`);
       } finally {
-        try { await admin?.end(); } finally { await rm(dir, { recursive: true, force: true }); }
+        try { await admin?.end(); } finally { if (!opts.dataDir) await rm(dir, { recursive: true, force: true }); }
       }
     }
   }

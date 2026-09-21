@@ -30,6 +30,7 @@ export default {
     { format: "openai-responses-oauth", baseUrl: "https://api.x.ai/v1/responses" },
   ],
   models: [
+    { id: "grok-4.7", name: "Grok 4.7" },
     { id: "grok-4.6", name: "Grok 4.6" },
     { id: "grok-4.5", name: "Grok 4.5" },
     { id: "grok-4.3", name: "Grok 4.3" },
@@ -45,6 +46,7 @@ export default {
     // xAI renamed grok-code-fast-1; retain the catalog id as a wire alias so
     // existing user configs keep working without duplicating model behavior.
     { id: "grok-code-fast-1", name: "Grok Code Fast 1 (alias)", upstreamModelId: "grok-build-0.1" },
+    // xAI retires this slug on 2026-11-02 and serves it with grok-imagine-image-2.0.
     { id: "grok-imagine-image-quality", name: "Grok Imagine Image Quality", params: ["n","response_format"], kind: "image" },
     { id: "grok-imagine-image-2.0", name: "Grok Imagine Image 2.0", params: ["n","response_format"], kind: "image" },
     { id: "grok-imagine-image", name: "Grok Imagine Image", params: ["n","response_format"], kind: "image" },
@@ -60,7 +62,7 @@ export default {
     usage: true,
   },
   searchViaChat: {
-    defaultModel: "grok-4.6",
+    defaultModel: "grok-4.7",
     endpoint: "https://api.x.ai/v1/responses",
     pricingUrl: "https://x.ai/api#pricing",
   },

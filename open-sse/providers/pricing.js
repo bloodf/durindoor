@@ -329,6 +329,11 @@ export const PROVIDER_PRICING = {
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 }
   },
+  // xAI serves grok-code-fast-1 as an alias of grok-build-0.1 and bills it at
+  // the Grok Build rates. https://docs.x.ai/developers/models/grok-build-0.1
+  xai: {
+    "grok-code-fast-1": { input: 1.00, output: 2.00, cached: 0.20, reasoning: 2.00, cache_creation: 1.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 },
+  },
   // TokenRouter — free-tier model only. Upstream decolua/9router@6efb9790 adds
   // z-ai/glm-5.3-free at 0 pricing. The fuller TokenRouter rate table arrives
   // with the earlier upstream pricing commit (41588bea), not yet ported.
@@ -439,17 +444,22 @@ export const PATTERN_PRICING = [
 // --- Grok ---
 { pattern: "grok-code-*", pricing: { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 } },
 
-// Grok 4.5/4.6 publish exact rates and a long-context tier that applies to
-// requests *reaching* 200k prompt tokens, not only those exceeding it.
-// https://docs.x.ai/developers/pricing
+// Current xAI API models publish exact rates and a long-context tier that
+// applies to requests *reaching* 200k prompt tokens, not only those exceeding it.
+// https://docs.x.ai/developers/models
 // Reasoning is a subset of output here, so it carries the plain output rate.
-// 4.5 and 4.6 differ only in the cached rate ($0.30 vs $0.50).
 // Patterns are anchored to the variant boundary so a future `grok-4.55`
 // cannot inherit 4.5 rates from a greedy suffix match.
-{ pattern: "grok-4.5", pricing: { input: 2.00, output: 6.00, cached: 0.30, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
-{ pattern: "grok-4.5-*", pricing: { input: 2.00, output: 6.00, cached: 0.30, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.7", pricing: { input: 2.00, output: 6.00, cached: 0.50, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.7-*", pricing: { input: 2.00, output: 6.00, cached: 0.50, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
 { pattern: "grok-4.6", pricing: { input: 2.00, output: 6.00, cached: 0.50, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
 { pattern: "grok-4.6-*", pricing: { input: 2.00, output: 6.00, cached: 0.50, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.5", pricing: { input: 2.00, output: 6.00, cached: 0.30, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.5-*", pricing: { input: 2.00, output: 6.00, cached: 0.30, reasoning: 6.00, cache_creation: 2.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.3", pricing: { input: 1.25, output: 2.50, cached: 0.20, reasoning: 2.50, cache_creation: 1.25, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.20", pricing: { input: 1.25, output: 2.50, cached: 0.20, reasoning: 2.50, cache_creation: 1.25, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-4.20-*", pricing: { input: 1.25, output: 2.50, cached: 0.20, reasoning: 2.50, cache_creation: 1.25, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
+{ pattern: "grok-build-0.1", pricing: { input: 1.00, output: 2.00, cached: 0.20, reasoning: 2.00, cache_creation: 1.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
 
 { pattern: "grok-*", pricing: { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 } },
 

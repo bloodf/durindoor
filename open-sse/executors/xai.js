@@ -27,7 +27,7 @@ export class XaiExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
-    const DENY_REASONING = ["grok-build", "grok-composer-2.5-fast"];
+    const DENY_REASONING = ["grok-build", "grok-composer-2.5-fast", "non-reasoning"];
     const ALLOW_REASONING = ["grok-4", "grok-4.3", "grok-3"];
 
     let out = { ...body };

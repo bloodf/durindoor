@@ -1,6 +1,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, OPENAI_FINISH } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, OPENAI_FINISH, CLAUDE_STOP } from "../schema/index.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { toOpenAIUsage } from "../concerns/usage.js";
 import { reasoningDelta } from "../concerns/reasoning.js";
@@ -176,6 +176,14 @@ export function claudeToOpenAIResponse(chunk, state) {
 
         if (chunk.delta?.stop_reason) {
           state.finishReason = convertStopReason(chunk.delta.stop_reason);
+          // A refusal produces no content blocks at all. Surface Anthropic's own
+          // explanation as the message text so the client shows *why* the turn is
+          // empty instead of a blank reply.
+          const refusalNote = chunk.delta.stop_reason === CLAUDE_STOP.REFUSAL && chunk.delta.stop_details?.explanation;
+          if (refusalNote) {
+            results.push(createChunk(state, { content: refusalNote }));
+            state.contentEmitted = true;
+          }
           pushSyntheticContentIfEmpty(state, results);
           const finalChunk = createChunk(state, {}, state.finishReason);
 

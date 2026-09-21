@@ -46,6 +46,9 @@ describe("toOpenAIFinish - claude", () => {
     ["end_turn", "stop"],
     ["max_tokens", "length"],
     ["tool_use", "tool_calls"],
+    ["stop_sequence", "stop"],
+    ["refusal", "content_filter"],
+    ["unknown_xyz", "stop"],
   ])("%s -> %s", (input, expected) => {
     expect(toOpenAIFinish(input, "claude")).toBe(expected);
   });
@@ -67,6 +70,9 @@ describe("fromOpenAIFinish round-trip - claude", () => {
   it("length -> max_tokens", () => {
     expect(fromOpenAIFinish("length", "claude")).toBe("max_tokens");
   });
+  it("content_filter -> refusal", () => {
+    expect(fromOpenAIFinish("content_filter", "claude")).toBe("refusal");
+  });
 });
 
 describe("enum literals (catch drift)", () => {
@@ -80,6 +86,7 @@ describe("enum literals (catch drift)", () => {
     expect(CLAUDE_STOP.END_TURN).toBe("end_turn");
     expect(CLAUDE_STOP.MAX_TOKENS).toBe("max_tokens");
     expect(CLAUDE_STOP.TOOL_USE).toBe("tool_use");
+    expect(CLAUDE_STOP.REFUSAL).toBe("refusal");
   });
   it("GEMINI_FINISH literals", () => {
     expect(GEMINI_FINISH.STOP).toBe("STOP");

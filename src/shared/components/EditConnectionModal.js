@@ -189,6 +189,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
           provider: connection.provider,
           apiKey: formData.apiKey,
           sessionToken: awsData.sessionToken.trim() || undefined,
+          connectionId: connection.id,
           ...(providerSpecificData ? { providerSpecificData } : null)
         })
       });
@@ -226,6 +227,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
                 provider: connection.provider,
                 apiKey: formData.apiKey,
                 sessionToken: awsData.sessionToken.trim() || undefined,
+                connectionId: connection.id,
                 ...(providerSpecificData ? { providerSpecificData } : null)
               })
             });
@@ -238,6 +240,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             setValidating(false);
           }
         }
+        // An AWS edit that swaps credentials also clears the profile, so saving a key that failed
+        // the check would drop a working SSO setup for a bad paste.
+        if (!isValid && usesAwsCredentialForm) return;
         if (isValid) {
           updates.testStatus = "active";
           updates.lastError = null;

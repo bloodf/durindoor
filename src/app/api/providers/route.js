@@ -29,6 +29,17 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "sessionToken"]
 );
 
+/**
+ * The session token to store for a new AWS connection. A client written for 9router may still
+ * send it inside providerSpecificData; normalization drops that plaintext copy, so it is lifted
+ * into the encrypted field here instead of being lost.
+ */
+function awsSessionToken(sessionToken, providerSpecificData) {
+  const nested = providerSpecificData?.sessionToken;
+  const value = isString(sessionToken) && sessionToken.trim() ? sessionToken : nested;
+  return isString(value) && value.trim() ? value.trim() : undefined;
+}
+
 function sanitizeProviderConnection(connection) {
   const providerSpecificData = connection.providerSpecificData ?
   Object.fromEntries(
@@ -225,7 +236,8 @@ export async function POST(request) {
     // Bedrock's `profile`, where the credential lives in the local AWS config and there is no
     // key to paste. Without this, following such a provider's own setup notice returns 400.
     const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
-    const hasApiKeySubstitute = !!(apiKeySubstitute && body.providerSpecificData?.[apiKeySubstitute]);
+    const substituteValue = apiKeySubstitute ? body.providerSpecificData?.[apiKeySubstitute] : null;
+    const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
     if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !hasApiKeySubstitute) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
@@ -311,7 +323,7 @@ export async function POST(request) {
         authType: isWebCookieProvider ? "cookie" : "apikey",
         name: connectionName,
         apiKey: apiKey || "",
-        sessionToken: usesAwsCredentials && isString(sessionToken) && sessionToken.trim() ? sessionToken.trim() : undefined,
+        sessionToken: usesAwsCredentials ? awsSessionToken(sessionToken, body.providerSpecificData) : undefined,
         priority: priority || 1,
         globalPriority: globalPriority || null,
         defaultModel: defaultModel || null,

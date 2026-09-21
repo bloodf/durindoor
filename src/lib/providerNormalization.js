@@ -46,6 +46,15 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
     }
   }
 
+  if (AI_PROVIDERS[provider]?.credentialForm === "aws") {
+    // The STS session token is a secret kept in the encrypted top-level connection field, never
+    // in plaintext providerSpecificData. A blank profile is dropped so it cannot stand in for a key.
+    delete next.sessionToken;
+    const profile = isString(next.profile) ? next.profile.trim() : "";
+    if (profile) next.profile = profile;else
+    delete next.profile;
+  }
+
   if (provider === "ollama-local") {
     const baseUrl = (
     next.baseUrl ||

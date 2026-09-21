@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BEDROCK_CREDENTIAL_MODE } from "../../open-sse/config/bedrock.js";
 import {
   buildBedrockClientAuth,
@@ -43,8 +46,10 @@ describe("Bedrock credential mode detection", () => {
       providerSpecificData: { profile: "my-sso-profile", accessKeyId: "AKIAEXAMPLE" },
     };
     expect(detectBedrockCredentialMode(credentials)).toBe(BEDROCK_CREDENTIAL_MODE.PROFILE);
-    // Only `profile`: passing static keys alongside would pin them and defeat SSO refresh.
-    expect(buildBedrockClientAuth(credentials)).toEqual({ profile: "my-sso-profile" });
+    // Only the profile's provider: passing static keys alongside would pin them and defeat SSO refresh.
+    const auth = buildBedrockClientAuth(credentials);
+    expect(Object.keys(auth)).toEqual(["credentials"]);
+    expect(auth.credentials).toBeTypeOf("function");
   });
 
   it("ignores a whitespace-only profile instead of selecting an empty profile mode", () => {
@@ -127,7 +132,7 @@ describe("BedrockExecutor credential handling", () => {
     const client = new BedrockExecutor().createClient({
       providerSpecificData: { profile: "my-sso-profile", region: "us-west-2" },
     });
-    expect(client.config.profile).toBe("my-sso-profile");
+    expect(client.config.profile).toBeUndefined();
     expect(client.config.token).toBeUndefined();
     expect(await client.config.region()).toBe("us-west-2");
   });
@@ -235,5 +240,62 @@ describe("buildAwsConnectionEdit", () => {
       awsData: { ...blank, accessKeyId: "ASIANEW", sessionToken: "secret-token" },
     });
     expect(JSON.stringify(providerSpecificData)).not.toContain("secret-token");
+  });
+});
+
+describe("Bedrock profile resolves only the named profile", () => {
+  const saved = {};
+  const ENV = ["AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE"];
+  let dir;
+
+  beforeEach(() => {
+    for (const key of ENV) saved[key] = process.env[key];
+    dir = mkdtempSync(join(tmpdir(), "bedrock-profile-"));
+    writeFileSync(join(dir, "config"), "[profile team]\nregion = us-east-1\n");
+    writeFileSync(join(dir, "credentials"), "[team]\naws_access_key_id = AKIATEAM\naws_secret_access_key = team-secret\n");
+    process.env.AWS_CONFIG_FILE = join(dir, "config");
+    process.env.AWS_SHARED_CREDENTIALS_FILE = join(dir, "credentials");
+    // Ambient server credentials that a fallback chain would pick up.
+    process.env.AWS_ACCESS_KEY_ID = "AKIASERVER";
+    process.env.AWS_SECRET_ACCESS_KEY = "server-secret";
+    delete process.env.AWS_PROFILE;
+  });
+
+  afterEach(() => {
+    for (const key of ENV) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("resolves the configured profile's own keys", async () => {
+    const { credentials } = buildBedrockClientAuth({ providerSpecificData: { profile: "team" } });
+    const resolved = await credentials();
+    expect(resolved.accessKeyId).toBe("AKIATEAM");
+  });
+
+  it("fails for a missing profile instead of falling back to the server's credentials", async () => {
+    const { credentials } = buildBedrockClientAuth({ providerSpecificData: { profile: "missing" } });
+    await expect(credentials()).rejects.toMatchObject({ name: "CredentialsProviderError" });
+  });
+
+  it("returns a generic 401 message and keeps the provider's detail out of the response", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const failure = Object.assign(new Error("Profile missing could not be found in /home/ops/.aws/config"), {
+      name: "CredentialsProviderError",
+    });
+    const executor = new BedrockExecutor(() => ({ send: async () => { throw failure; } }));
+    const result = await executor.execute({
+      model: "anthropic.claude-sonnet-4-5",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { providerSpecificData: { profile: "missing" } },
+    });
+    expect(result.response.status).toBe(401);
+    const text = await result.response.text();
+    expect(text).not.toContain("/home/ops/.aws/config");
+    expect(text).toContain("could not be resolved");
+    warn.mockRestore();
   });
 });

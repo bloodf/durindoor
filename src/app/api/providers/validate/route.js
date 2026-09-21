@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProviderNodeById } from "@/models";
+import { getProviderConnectionById, getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
@@ -12,7 +12,7 @@ import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
-import { isUndefined } from "../../../../shared/utils/typeChecks.js";
+import { isString, isUndefined } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 
@@ -169,6 +169,26 @@ async function exchangeGigaChatApiKey(apiKey) {
   return token?.access_token || null;
 }
 
+/**
+ * The session token to validate AWS static keys with. The edit form never receives the stored
+ * token, so when it leaves the field blank and keeps the saved access key id, the stored token is
+ * used; otherwise an unchanged temporary (ASIA...) key would always fail the check. Operator only,
+ * and only for the same provider and access key id the token was saved with.
+ */
+async function resolveProbeSessionToken(request, provider, connectionId, sessionToken, providerSpecificData) {
+  if (isString(sessionToken) && sessionToken.trim()) return sessionToken;
+  if (AI_PROVIDERS[provider]?.credentialForm !== "aws" || !isString(connectionId) || !connectionId) return sessionToken;
+  if (!(await isOperatorRequest(request))) return sessionToken;
+  const connection = await getProviderConnectionById(connectionId);
+  const savedKeyId = connection?.providerSpecificData?.accessKeyId;
+  const incomingKeyId = providerSpecificData?.accessKeyId;
+  if (connection?.provider !== provider || !isString(savedKeyId) || !isString(incomingKeyId) ||
+  !savedKeyId.trim() || savedKeyId.trim() !== incomingKeyId.trim()) {
+    return sessionToken;
+  }
+  return connection.sessionToken || connection.providerSpecificData?.sessionToken || sessionToken;
+}
+
 // POST /api/providers/validate - Validate API key with provider
 export async function POST(request) {
   try {
@@ -192,7 +212,8 @@ export async function POST(request) {
     // Same exemption as the create route: a provider can name a providerSpecificData field that
     // replaces the API key (Bedrock's `profile`), so validating that setup must not 400.
     const apiKeySubstitute = providerInfo.apiKeyOptionalWith;
-    const hasApiKeySubstitute = !!(apiKeySubstitute && providerSpecificData?.[apiKeySubstitute]);
+    const substituteValue = apiKeySubstitute ? providerSpecificData?.[apiKeySubstitute] : null;
+    const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
     if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !hasApiKeySubstitute) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
@@ -864,7 +885,8 @@ export async function POST(request) {
 
         default:{
             // Generic registry probe covers OpenAI-compatible and Claude-format providers.
-            const registryResult = await probeRegistryProvider(provider, apiKey, fetchValidationProbe, providerSpecificData || {}, { sessionToken });
+            const probeSessionToken = await resolveProbeSessionToken(request, provider, body.connectionId, sessionToken, providerSpecificData);
+            const registryResult = await probeRegistryProvider(provider, apiKey, fetchValidationProbe, providerSpecificData || {}, { sessionToken: probeSessionToken });
             if (!registryResult) {
               return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
             }

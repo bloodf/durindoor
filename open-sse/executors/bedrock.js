@@ -368,9 +368,18 @@ export function statusFromError(error) {
   return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502;
 }
 
+// A credential provider's own message can name local config paths, profile contents or
+// credential_process output, so clients get this instead and the detail stays in the server log.
+const CREDENTIAL_PROVIDER_MESSAGE =
+  "AWS credentials for this connection could not be resolved. Check the profile, and for SSO " +
+  "run `aws sso login` on the server.";
+
 function errorBody(error, fallback = "Bedrock request failed") {
   const status = statusFromError(error);
-  const message = isString(error?.message) && error.message ? error.message : fallback;
+  const isCredentialProviderError = CREDENTIAL_PROVIDER_ERRORS.has(error?.name);
+  if (isCredentialProviderError) console.warn(`[bedrock] credential resolution failed: ${error.message}`);
+  const message = isCredentialProviderError ? CREDENTIAL_PROVIDER_MESSAGE :
+  isString(error?.message) && error.message ? error.message : fallback;
   return {
     error: {
       message,

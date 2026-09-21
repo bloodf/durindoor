@@ -77,6 +77,10 @@ export async function validateBedrockSignedProvider({ apiKey, providerSpecificDa
     return { valid: true, status: 200 };
   } catch (error) {
     const status = bedrockErrorStatus(error);
+    // AccessDeniedException comes after AWS accepted the signature: the key is real and IAM
+    // denies this model (not enabled, or a policy scoped to other models). Bad keys, bad
+    // signatures and expired tokens arrive as other 403 names.
+    if (error?.name === "AccessDeniedException") return { valid: true, status };
     if (AUTH_FAILURE_STATUSES.has(status)) {
       return { valid: false, status, error: "Invalid AWS credentials" };
     }

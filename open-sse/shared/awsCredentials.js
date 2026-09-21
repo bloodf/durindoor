@@ -3,6 +3,7 @@ import {
   BEDROCK_PROFILE_PATTERN } from
 "../config/bedrock.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { fromIni } from "@aws-sdk/credential-provider-ini";
 
 /**
  * AWS credential resolution for the Bedrock provider.
@@ -58,10 +59,12 @@ function profileClientAuth(data) {
       "letters, digits, underscore, dot, colon or hyphen, up to 64 characters."
     );
   }
-  // `profile` on the client config behaves like AWS_PROFILE for this client alone, so the
-  // default node credential chain resolves against it: shared config, SSO token cache,
-  // GetRoleCredentials, source_profile chaining and automatic refresh all come for free.
-  return { profile };
+  // fromIni resolves exactly this profile: shared config, SSO token cache, GetRoleCredentials,
+  // source_profile chaining and credential_process, with caching and refresh. It is used on its
+  // own rather than as `profile` on the client config, because that selects the default chain,
+  // which moves on to web identity, ECS and IMDS when the profile fails to resolve. On an AWS
+  // host that would sign as the server's own role instead of failing.
+  return { credentials: fromIni({ profile }) };
 }
 
 function staticClientAuth(credentials, data) {

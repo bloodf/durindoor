@@ -206,7 +206,12 @@ export async function POST(request) {
     if (isHiddenProvider(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
-    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider) {
+    // A provider may declare a providerSpecificData field that stands in for an API key, e.g.
+    // Bedrock's `profile`, where the credential lives in the local AWS config and there is no
+    // key to paste. Without this, following such a provider's own setup notice returns 400.
+    const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
+    const hasApiKeySubstitute = !!(apiKeySubstitute && body.providerSpecificData?.[apiKeySubstitute]);
+    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !hasApiKeySubstitute) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
     const rawConnectionName = name || displayName || AI_PROVIDERS[provider]?.name;

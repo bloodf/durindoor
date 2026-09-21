@@ -29,6 +29,24 @@ Save. `POST /api/providers` creates the row with `authType: "apikey"` (cookie pr
 
 Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
 
+## Amazon Bedrock credentials
+
+Bedrock is the one API-key provider that accepts three credential shapes. Pick the region where your models are enabled, then fill in exactly one of these in the AWS Credentials block:
+
+| Mode | What you enter | Refresh |
+| --- | --- | --- |
+| Profile (SSO) | AWS Profile only, API Key left empty | Automatic, the AWS SDK re-resolves the profile |
+| Static AWS keys | AWS secret access key in API Key, key id in Access Key ID, Session Token for temporary `ASIA...` keys | None, paste new keys when they expire |
+| Bedrock API key | The Bedrock API key in API Key on its own | None |
+
+A profile takes precedence over everything else, and static AWS keys are selected by the presence of an Access Key ID. A connection that only carries an API Key keeps behaving exactly as before.
+
+Profile mode is the recommended path. Name a profile from `~/.aws/config`, save the connection with an empty API Key, then run `aws sso login --profile <name>`. DurinDoor never reads or stores the SSO token: the AWS SDK resolves it from the local token cache on each request and refreshes it on expiry, so the saved connection holds nothing secret. `source_profile` role chaining and `credential_process` profiles resolve the same way.
+
+Saving a profile-only connection skips the usual API-key requirement, so `POST /api/providers` and the validate probe both accept an empty key. The validate probe still has no credential to send, so such a connection saves with test status `unknown`; test it from the provider page after `aws sso login`.
+
+A temporary access key (`ASIA...`) saved without a session token is rejected up front with HTTP 401 rather than failing later as a signature mismatch.
+
 ## Env fallbacks
 
 Saved connections are the path you should use. A handful of executors still read process environment when a connection field is empty:

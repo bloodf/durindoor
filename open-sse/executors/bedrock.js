@@ -10,6 +10,7 @@ import {
   buildBedrockNativeConverseUrl,
   resolveBedrockRegion } from
 "../config/bedrock.js";
+import { buildBedrockClientAuth } from "../shared/awsCredentials.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const encoder = new TextEncoder();
@@ -395,12 +396,19 @@ export class BedrockExecutor extends BaseExecutor {
     };
   }
 
+  /**
+   * Build a client for this connection's credential mode: a Bedrock API key as a bearer token,
+   * static AWS keys, or a named local AWS profile whose SSO session the SDK resolves and
+   * refreshes on its own.
+   *
+   * @param {object} credentials - Connection credentials.
+   * @returns {BedrockRuntimeClient}
+   */
   createClient(credentials) {
     if (this.clientFactory) return this.clientFactory(credentials);
     return new BedrockRuntimeClient({
       region: resolveBedrockRegion(credentials?.providerSpecificData),
-      token: { token: credentials.apiKey },
-      authSchemePreference: ["httpBearerAuth"],
+      ...buildBedrockClientAuth(credentials),
       maxAttempts: 1
     });
   }
@@ -410,18 +418,9 @@ export class BedrockExecutor extends BaseExecutor {
     body = this.clampCustomMaxOutput({ ...body }, requestContext);
     const url = this.buildUrl(model, stream, 0, credentials);
     const headers = this.buildHeaders(credentials);
-    if (!credentials?.apiKey) {
-      return {
-        response: new Response(JSON.stringify(errorBody({ name: "MissingCredentials", message: "Missing Bedrock API key", status: 401 })), {
-          status: 401,
-          headers: { "Content-Type": "application/json" }
-        }),
-        url,
-        headers,
-        transformedBody: null
-      };
-    }
-
+    // No API-key precheck here: a connection may authenticate with an AWS profile or static AWS
+    // keys instead, so what counts as "configured" is decided by createClient below. Its
+    // credential errors carry status 401 and land in the same catch as any upstream failure.
     const transformedBody = openAIToBedrockConverse(model, body);
     try {
       const client = this.createClient(credentials);

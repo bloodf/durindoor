@@ -98,6 +98,17 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(normalizeResponsesInput(body.input)));
   if (!inputItems) return body;
 
+  // Custom (freeform) tool names declared on this request, hoisted above the
+  // item loop below so coerceResponsesArguments can tell a custom tool's raw
+  // body apart from an ordinary function's malformed JSON (upstream #4208 review).
+  const customToolNames = new Set(
+    Array.isArray(body.tools) ?
+    body.tools.
+    filter((tool) => tool?.type === "custom" && isString(tool.name) && tool.name.trim() !== "").
+    map((tool) => tool.name) :
+    []
+  );
+
   // Extract reasoning text from summary[].text or encrypted_content fallback
   const extractReasoningText = (item) => {
     if (Array.isArray(item.summary)) {
@@ -173,7 +184,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           // Codex replays raw streamed args verbatim; non-JSON strings (partial
           // fragments / freeform text) must be coerced or upstream rejects the
           // chat/completions body with "function.arguments must be valid JSON".
-          arguments: coerceResponsesArguments(item.arguments, item.name)
+          // A declared custom tool's raw body is preserved as JSON instead of
+          // dropped (customToolNames, collected from body.tools above).
+          arguments: coerceResponsesArguments(item.arguments, item.name, customToolNames.has(item.name))
         }
       });
     } else
@@ -223,8 +236,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   /**
    * Preserve custom-tool identity across Chat Completions lowering so buffered
    * response routes can restore Responses semantics (upstream PR #3373).
+   * (customToolNames collected earlier, above the item loop.)
    */
-  const customToolNames = new Set();
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools.
     flatMap((tool) => {

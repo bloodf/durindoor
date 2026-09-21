@@ -94,4 +94,18 @@ describe("Responses to Chat: malformed arguments coerced at translation", () => 
     const assistant = result.messages.find((m) => m.tool_calls);
     expect(assistant.tool_calls[0].function.arguments).toBe('{"city":"SF"}');
   });
+
+  // Any declared Responses "custom" tool (not just apply_patch) must keep its
+  // raw freeform body instead of losing it to "{}" (#4208 review follow-up).
+  it("declared custom tool's raw body wrapped as JSON input, not dropped to {}", () => {
+    const result = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "gpt-4o", {
+      tools: [{ type: "custom", name: "draft_note" }],
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+        { type: "function_call", call_id: "call_note", name: "draft_note", arguments: "remember to feed the cat" },
+      ],
+    });
+    const assistant = result.messages.find((m) => m.tool_calls);
+    expect(assistant.tool_calls[0].function.arguments).toBe(JSON.stringify({ input: "remember to feed the cat" }));
+  });
 });

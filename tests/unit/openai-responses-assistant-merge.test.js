@@ -9,8 +9,6 @@
 import { describe, it, expect } from "vitest";
 import { openaiResponsesToOpenAIRequest } from "../../open-sse/translator/request/openai-responses.js";
 
-// output_text/input_text are converted to Chat Completions text blocks.
-const text = (t) => [{ type: "text", text: t }];
 const asInput = (t) => [{ type: "output_text", text: t }];
 
 const turn = () => [
@@ -43,8 +41,10 @@ describe("responses→openai assistant turn merging", () => {
     const [assistant] = assistants;
     expect(assistant.tool_calls).toHaveLength(2);
     expect(assistant.tool_calls.map((tc) => tc.id)).toEqual(["call_1", "call_2"]);
-    // The visible text is kept, not dropped in favour of content: null.
-    expect(assistant.content).toEqual(text("Let me check the project layout first."));
+    // The visible text is kept, not dropped in favour of content: null. A
+    // text-only content array collapses to a string, matching the shape a
+    // plain assistant message without tool_calls would carry.
+    expect(assistant.content).toBe("Let me check the project layout first.");
   });
 
   it("attaches reasoning that arrives after the message to the same turn", () => {
@@ -102,7 +102,7 @@ describe("responses→openai assistant turn merging", () => {
 
     const assistants = out.messages.filter((m) => m.role === "assistant");
     expect(assistants).toHaveLength(1);
-    expect(assistants[0].content).toEqual(text("done"));
+    expect(assistants[0].content).toBe("done");
     expect(assistants[0].tool_calls).toHaveLength(1);
   });
 });

@@ -45,6 +45,67 @@ describe("Codex CLI Responses → OpenAI", () => {
     // A bare file_id is not a valid image URL
     expect(img?.image_url?.url === "file-abc").toBe(false);
   });
+
+  // The unit-level openaiResponsesToOpenAIRequest test only checks the merged
+  // shape before filterToOpenAIFormat runs. On the real wire path,
+  // filterToOpenAIFormat returns an assistant message untouched whenever
+  // tool_calls is non-empty, so a text-only content array never gets
+  // collapsed to a string and ships as `[{type:"text",...}]`. String-only
+  // thinking backends reject that shape.
+  it("collapses assistant text content to a string when tool_calls are present", () => {
+    const out = R2O({
+      input: [
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "checking now" }] },
+        { type: "function_call", call_id: "call_1", name: "exec_command", arguments: "{}" },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(assistant.content).toBe("checking now");
+  });
+
+  // A turn can carry more than one assistant `message` item (text, then a
+  // tool call, then more text). Only the first non-null content used to
+  // survive; the second was silently dropped.
+  it("keeps text from a second assistant message on the same turn", () => {
+    const out = R2O({
+      input: [
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "first" }] },
+        { type: "function_call", call_id: "call_1", name: "exec_command", arguments: "{}" },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "second" }] },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(assistant.content).toBe("first\nsecond");
+  });
+
+  // A skipped (nameless) function_call never becomes a tool_calls entry, so
+  // its function_call_output must not survive either — otherwise a lone
+  // "tool" message references a tool_call_id nothing in the request declared.
+  it("drops the tool output that answers a skipped nameless call", () => {
+    const out = R2O({
+      input: [
+        { type: "function_call", call_id: "c1", name: "", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: "ignored" },
+      ],
+    });
+    expect(out.messages.find((m) => m.role === "tool")).toBeUndefined();
+    expect(out.messages.find((m) => m.role === "assistant")).toBeUndefined();
+  });
+
+  // A turn with only reasoning (its one tool call was skipped as nameless)
+  // must not ship content:null — OpenAI-shaped APIs reject that combination.
+  it("normalizes content to an empty string when only reasoning survives a turn", () => {
+    const out = R2O({
+      input: [
+        { type: "reasoning", summary: [{ type: "summary_text", text: "thinking" }] },
+        { type: "function_call", call_id: "c1", name: "  ", arguments: "{}" },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(assistant).toBeDefined();
+    expect(assistant.content).toBe("");
+    expect(assistant.reasoning_content).toBe("thinking");
+  });
 });
 
 describe("OpenAI → Codex Responses (reverse)", () => {

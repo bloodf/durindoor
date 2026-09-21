@@ -14,6 +14,7 @@ import {
   repairMissingResponsesCallIds,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+import { collapseTextParts } from "../concerns/message.js";
 
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
@@ -90,6 +91,25 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let currentAssistantMsg = null;
   let pendingToolResults = [];
   let pendingReasoning = "";
+  // call_ids skipped at FUNCTION_CALL time (nameless, #444) never get a
+  // tool_calls entry. Their function_call_output must be dropped too, or the
+  // "tool" message that follows references a tool_call_id that does not
+  // exist in the assistant turn — OpenAI-shaped APIs reject that pairing.
+  const skippedCallIds = new Set();
+
+  // Responses can split visible assistant text across more than one
+  // `message` item on the same turn (e.g. text, then a tool call, then more
+  // text). Append instead of keeping only the first non-null content.
+  const appendAssistantContent = (msg, content) => {
+    if (content == null) return;
+    if (msg.content == null) {
+      msg.content = content;
+      return;
+    }
+    const existing = Array.isArray(msg.content) ? msg.content : [{ type: OPENAI_BLOCK.TEXT, text: msg.content }];
+    const incoming = Array.isArray(content) ? content : [{ type: OPENAI_BLOCK.TEXT, text: content }];
+    msg.content = [...existing, ...incoming];
+  };
 
   // Repair items whose `call_id` was dropped by the client BEFORE the orphan
   // strip below: pairing an id-less function_call_output with the oldest
@@ -125,13 +145,24 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       pendingReasoning = "";
     }
     if (!currentAssistantMsg.tool_calls?.length) delete currentAssistantMsg.tool_calls;
+    // A text-only content array (no tool calls survived, or every call was
+    // nameless) must ship as a string. filterToOpenAIFormat only collapses
+    // array content for messages WITHOUT tool_calls, and a real tool_calls
+    // array skips that pass entirely, so collapse it here instead.
+    if (Array.isArray(currentAssistantMsg.content)) {
+      currentAssistantMsg.content = collapseTextParts(currentAssistantMsg.content);
+    }
     // A turn whose tool calls were all skipped (nameless, #444) is left with no
     // content and no tool_calls. Pushing it would send `{role:"assistant",
     // content:null}`, which OpenAI-shaped APIs reject just like the empty
-    // tool_calls array this replaces. Keep it only if reasoning still rides on it.
-    if (currentAssistantMsg.content == null && !currentAssistantMsg.tool_calls && !currentAssistantMsg.reasoning_content) {
-      currentAssistantMsg = null;
-      return;
+    // tool_calls array this replaces. Keep it only if reasoning still rides on it,
+    // and normalize content to "" in that case, since content:null is still rejected.
+    if (currentAssistantMsg.content == null && !currentAssistantMsg.tool_calls) {
+      if (!currentAssistantMsg.reasoning_content) {
+        currentAssistantMsg = null;
+        return;
+      }
+      currentAssistantMsg.content = "";
     }
     result.messages.push(currentAssistantMsg);
     currentAssistantMsg = null;
@@ -160,7 +191,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       // assistant message (see flushAssistant above).
       if (item.role === ROLE.ASSISTANT) {
         if (currentAssistantMsg) {
-          if (currentAssistantMsg.content == null) currentAssistantMsg.content = content;
+          appendAssistantContent(currentAssistantMsg, content);
         } else {
           currentAssistantMsg = { role: ROLE.ASSISTANT, content, tool_calls: [] };
         }
@@ -189,7 +220,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         };
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
-      if (!item.name || !isString(item.name) || item.name.trim() === "") continue;
+      if (!item.name || !isString(item.name) || item.name.trim() === "") {
+        if (isString(item.call_id)) skippedCallIds.add(item.call_id);
+        continue;
+      }
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
@@ -200,6 +234,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       });
     } else
     if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+      // The call this output answers was skipped (nameless, #444) and never
+      // became a tool_calls entry — drop the output too rather than emit an
+      // orphaned "tool" message with no matching tool_call_id.
+      if (skippedCallIds.has(item.call_id)) continue;
       // Flush assistant message first if exists
       flushAssistant();
       // Flush any pending tool results first

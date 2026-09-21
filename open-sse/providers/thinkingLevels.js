@@ -17,6 +17,8 @@ const L = {
   opencode: ["none", "low", "medium", "high", "max"],
 };
 
+const GROK_EFFORTS = ["low", "medium", "high", "xhigh"];
+
 // thinkingFormat → valid selectable levels (source of truth for UI options).
 const FORMAT_LEVELS = {
   openai: L.openai,
@@ -81,6 +83,11 @@ const PATTERN_THINKING = [
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
+  // xAI publishes only low/medium/high/xhigh for Grok 4.5-4.7; reasoning cannot
+  // be disabled. https://docs.x.ai/developers/models/grok-4.7
+  { pattern: "*grok-4.7*", levels: GROK_EFFORTS },
+  { pattern: "*grok-4.6*", levels: GROK_EFFORTS },
+  { pattern: "*grok-4.5*", levels: GROK_EFFORTS },
   // Qoder's private chat wire accepts reasoning_effort levels through the
   // parameters block. Keep max distinct from xhigh instead of applying the
   // generic OpenAI max→xhigh clamp.

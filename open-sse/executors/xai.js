@@ -48,6 +48,7 @@ export class XaiExecutor extends BaseExecutor {
 
     if (isDenied) {
       delete out.reasoning_effort;
+      delete out.reasoning;
     } else if (isAllowed && (body.reasoning_effort || modelEffort)) {
       out.reasoning_effort = body.reasoning_effort || modelEffort;
     }

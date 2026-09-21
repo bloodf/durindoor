@@ -617,7 +617,11 @@ export function buildJevState(body, charBudget = JEV_STATE_CHAR_BUDGET) {
 
   for (const m of userOnly(body.messages)) pushText(textOf(m.content)); // openai / claude / hermes / ollama
   if (isString(body.input)) pushText(body.input); // responses, string form
-  for (const it of userOnly(body.input)) pushText(textOf(it.content)); // responses, item list
+  // Responses tool calls and reasoning carry no role but are model output, so
+  // they end the previous turn too; otherwise earlier user turns would leak.
+  const input = Array.isArray(body.input) ? body.input : [];
+  const lastModelItem = input.findLastIndex((it) => it?.type === "reasoning" || /_call$/.test(it?.type || ""));
+  for (const it of userOnly(input.slice(lastModelItem + 1))) pushText(textOf(it.content)); // responses, item list
   const contents = body.contents || body.request?.contents; // gemini / antigravity
   // Gemini lets a single-turn request omit the role; functionResponse parts carry no `text`.
   for (const c of trailingUserItems(contents)) if (!c?.role || c.role === "user") pushText(textOf(c.parts));

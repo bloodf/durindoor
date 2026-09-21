@@ -89,6 +89,23 @@ describe("buildJevState", () => {
     expect(buildJevState(body)).toBe("responses ask");
   });
 
+  it("a Responses tool loop ends the turn at the model's last item", () => {
+    const body = { input: [
+      { type: "message", role: "user", content: [{ type: "input_text", text: "Weather in Paris?" }] },
+      { type: "function_call", call_id: "call_1", name: "get_weather", arguments: '{"city":"Paris"}' },
+      { type: "function_call_output", call_id: "call_1", output: '{"temp":"20C"}' },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "Summarize in one short sentence." }] },
+    ] };
+    expect(buildJevState(body)).toBe("Summarize in one short sentence.");
+    const afterReasoning = { input: [
+      { role: "user", content: "old turn" },
+      { type: "reasoning", summary: [] },
+      { type: "custom_tool_call", call_id: "c2", name: "x", input: "{}" },
+      { type: "custom_tool_call_output", call_id: "c2", output: "SECRET" },
+    ] };
+    expect(buildJevState(afterReasoning)).toBe("");
+  });
+
   it("reads a Responses string input, inside the budget", () => {
     expect(buildJevState({ input: "string ask" })).toBe("string ask");
     expect(buildJevState({ input: "y".repeat(9000) }, 4000)).toHaveLength(4000);

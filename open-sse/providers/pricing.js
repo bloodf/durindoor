@@ -533,23 +533,36 @@ export function formatCost(cost) {
   return `$${cost.toFixed(2)}`;
 }
 
+/** Zero-valued breakdown; also the shape every caller can rely on. */
+const ZERO_COST_BREAKDOWN = Object.freeze({
+  inputCost: 0, cachedCost: 0, cacheCreationCost: 0,
+  outputCost: 0, reasoningCost: 0, totalCost: 0
+});
+
 /**
- * Calculate cost from tokens and pricing
- * @param {object} tokens
- * @param {object} pricing
- * @returns {number} cost in dollars
+ * Split a request cost into the categories the usage dashboard displays, each
+ * priced at its own rate. The dashboard used to divide one blended total by
+ * token share, which made cached input look as expensive as fresh input and
+ * shrank output to a rounding error on cache-heavy traffic.
+ *
+ * When usage carries a provider-reported cost there are no rates to split it
+ * with, so the components stay zero and only `totalCost` is populated.
+ *
+ * @param {object} tokens - Canonical usage counters
+ * @param {object} pricing - Per-million rates for the resolved model
+ * @returns {{inputCost:number,cachedCost:number,cacheCreationCost:number,outputCost:number,reasoningCost:number,totalCost:number}}
  */
-export function calculateCostFromTokens(tokens, pricing) {
-  if (!tokens) return 0;
+export function calculateCostBreakdown(tokens, pricing) {
+  if (!tokens) return ZERO_COST_BREAKDOWN;
 
   const directCost = tokens.cost_usd ?? tokens.cost_in_usd;
-  if (Number.isFinite(Number(directCost)) && Number(directCost) >= 0) return Number(directCost);
-  if (Number.isFinite(Number(tokens.cost_in_usd_ticks)) && Number(tokens.cost_in_usd_ticks) >= 0) {
-    return Number(tokens.cost_in_usd_ticks) / 1_000_000_000_000;
+  if (Number.isFinite(Number(directCost)) && Number(directCost) >= 0) {
+    return { ...ZERO_COST_BREAKDOWN, totalCost: Number(directCost) };
   }
-  if (!pricing) return 0;
-
-  let cost = 0;
+  if (Number.isFinite(Number(tokens.cost_in_usd_ticks)) && Number(tokens.cost_in_usd_ticks) >= 0) {
+    return { ...ZERO_COST_BREAKDOWN, totalCost: Number(tokens.cost_in_usd_ticks) / 1_000_000_000_000 };
+  }
+  if (!pricing) return ZERO_COST_BREAKDOWN;
 
   const inputTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
   const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
@@ -563,15 +576,18 @@ export function calculateCostFromTokens(tokens, pricing) {
   // row may opt into an inclusive comparison. Both multipliers default to 1,
   // so a row without a tier is unaffected.
   const overLongContext = pricing.longContextInclusive ?
-    inputTokens >= pricing.longContextThreshold :
-    inputTokens > pricing.longContextThreshold;
+  inputTokens >= pricing.longContextThreshold :
+  inputTokens > pricing.longContextThreshold;
   const inputMultiplier = overLongContext ? pricing.longContextInputMultiplier || 1 : 1;
   const outputMultiplier = overLongContext ? pricing.longContextOutputMultiplier || 1 : 1;
-  cost += nonCachedInput * (pricing.input * inputMultiplier / 1000000);
 
-  if (cachedTokens > 0) {
-    cost += cachedTokens * ((pricing.cached || pricing.input) * inputMultiplier / 1000000);
-  }
+  const inputCost = nonCachedInput * (pricing.input * inputMultiplier / 1000000);
+  const cachedCost = cachedTokens > 0 ?
+  cachedTokens * ((pricing.cached || pricing.input) * inputMultiplier / 1000000) :
+  0;
+  const cacheCreationCost = cacheCreationTokens > 0 ?
+  cacheCreationTokens * ((pricing.cache_creation || pricing.input) * inputMultiplier / 1000000) :
+  0;
 
   const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
   const reasoningTokens = tokens.reasoning_tokens || 0;
@@ -582,14 +598,23 @@ export function calculateCostFromTokens(tokens, pricing) {
   Math.min(outputTokens, reasoningTokens) :
   reasoningTokens;
   const visibleOutputTokens = Math.max(0, outputTokens - billedReasoningTokens);
-  cost += visibleOutputTokens * (pricing.output * outputMultiplier / 1000000);
-  if (billedReasoningTokens > 0) {
-    cost += billedReasoningTokens * ((pricing.reasoning || pricing.output) * outputMultiplier / 1000000);
-  }
+  const outputCost = visibleOutputTokens * (pricing.output * outputMultiplier / 1000000);
+  const reasoningCost = billedReasoningTokens > 0 ?
+  billedReasoningTokens * ((pricing.reasoning || pricing.output) * outputMultiplier / 1000000) :
+  0;
 
-  if (cacheCreationTokens > 0) {
-    cost += cacheCreationTokens * ((pricing.cache_creation || pricing.input) * inputMultiplier / 1000000);
-  }
+  return {
+    inputCost, cachedCost, cacheCreationCost, outputCost, reasoningCost,
+    totalCost: inputCost + cachedCost + cacheCreationCost + outputCost + reasoningCost
+  };
+}
 
-  return cost;
+/**
+ * Calculate cost from tokens and pricing
+ * @param {object} tokens
+ * @param {object} pricing
+ * @returns {number} cost in dollars
+ */
+export function calculateCostFromTokens(tokens, pricing) {
+  return calculateCostBreakdown(tokens, pricing).totalCost;
 }

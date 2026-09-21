@@ -26,10 +26,9 @@ function sortData(dataMap, pendingMap = {}, sortBy, sortOrder) {
   map(([key, data]) => {
     const totalTokens = (data.promptTokens || 0) + (data.completionTokens || 0);
     const totalCost = data.cost || 0;
-    // ponytail: cost split is a token-share allocation of the (rate-accurate)
-    // server total, not a per-rate recompute. cached is a subset of prompt, so
-    // peel it out of the input share. Upgrade to a stored per-component cost
-    // breakdown if exact cached-rate cost display is needed.
+    // Cost categories are priced at their own rates server-side, where pricing
+    // lives; allocateUsageCost falls back to a token-share split only for
+    // buckets whose model has no pricing entry.
     const allocation = allocateUsageCost(data);
     return { ...data, key, totalTokens, totalCost, ...allocation, pending: pendingMap[key] || 0 };
   }).

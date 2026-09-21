@@ -18,6 +18,7 @@ import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
 import { getCommittedTokenCount } from "../helpers/committedTokens.js";
 import { normalizeTokenSaverEvent, aggregateTokenSaverEvents, tokenSaverEventColumns } from "open-sse/rtk/index.js";
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { deriveLatencyRates } from "../../../shared/utils/usageFormat.js";
 import { usageTokenColumns } from "../migrations/usage-token-columns.js";
 import { TOKEN_SAVER_SUM_COLUMNS, TOKEN_SAVER_DAILY_COLUMNS, TOKEN_SAVER_AGGREGATES, backfillTokenSaverDaily } from "../migrations/token-saver-daily-schema.js";
 
@@ -102,6 +103,28 @@ function scheduleStatsEvent(event, delayMs = 150) {
   statsEmitTimers[key]?.unref?.();
 }
 
+/**
+ * Latency is summed everywhere and divided once, at the end. Rows written
+ * before timing existed carry tokens but no duration, so counting their tokens
+ * against other rows' time would invent throughput that never happened: carry
+ * the sample counts so the daily rollup and the live query divide by the same
+ * subset they multiplied.
+ *
+ * @param {object} target - Accumulator that gains the latency sums
+ * @param {object} source - Row or bucket contributing latency
+ * @param {number} [completionTokens=0] - Output tokens of `source`, used when it carries no `timedCompletionTokens`
+ */
+function addLatency(target, source, completionTokens = 0) {
+  const latencyMs = Number(source.latencyMs) || 0;
+  const ttftMs = Number(source.ttftMs) || 0;
+  target.latencyMs = (target.latencyMs || 0) + latencyMs;
+  target.ttftMs = (target.ttftMs || 0) + ttftMs;
+  target.latencySamples = (target.latencySamples || 0) + (Number(source.latencySamples) || (latencyMs > 0 ? 1 : 0));
+  target.ttftSamples = (target.ttftSamples || 0) + (Number(source.ttftSamples) || (ttftMs > 0 ? 1 : 0));
+  target.timedCompletionTokens = (target.timedCompletionTokens || 0) +
+  (Number(source.timedCompletionTokens) || (latencyMs > 0 ? completionTokens : 0));
+}
+
 function addToCounter(target, key, values) {
   if (!target[key]) target[key] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
   target[key].requests += values.requests ?? 1;
@@ -111,6 +134,7 @@ function addToCounter(target, key, values) {
   target[key].reasoningTokens += values.reasoningTokens || 0;
   target[key].cacheCreationTokens += values.cacheCreationTokens || 0;
   target[key].cost += values.cost || 0;
+  addLatency(target[key], values, values.completionTokens || 0);
   if (values.meta) Object.assign(target[key], values.meta);
 }
 
@@ -119,7 +143,13 @@ function aggregateEntryToDay(day, entry, identitySalt) {
   const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
   const { cachedTokens, reasoningTokens, cacheCreationTokens } = usageTokenColumns(entry.tokens);
   const cost = entry.cost || 0;
-  const vals = { requests: entry.requests ?? 1, promptTokens, completionTokens, cachedTokens, reasoningTokens, cacheCreationTokens, cost };
+  const vals = {
+    requests: entry.requests ?? 1, promptTokens, completionTokens, cachedTokens, reasoningTokens, cacheCreationTokens, cost,
+    latencyMs: entry.latencyMs || 0, ttftMs: entry.ttftMs || 0,
+    latencySamples: entry.latencySamples, ttftSamples: entry.ttftSamples,
+    timedCompletionTokens: entry.timedCompletionTokens
+  };
+  addLatency(day, vals, completionTokens);
 
   day.requests = (day.requests || 0) + (entry.requests ?? 1);
   day.promptTokens = (day.promptTokens || 0) + promptTokens;
@@ -416,6 +446,25 @@ export async function getActiveRequests() {
   return { activeRequests, activeSessions: await getActiveSessions(), recentRequests, errorProvider, pending: pendingRequests };
 }
 
+// Latency sums shared by the chart and stats windows. `latencySamples` counts
+// only rows that were actually timed, so the rate divides by the same subset
+// whose tokens it multiplied. Portable across SQLite and PostgreSQL.
+const LATENCY_SUM_SQL = `SUM(latencyMs) AS latencyMs, SUM(ttftMs) AS ttftMs,
+  SUM(CASE WHEN latencyMs > 0 THEN 1 ELSE 0 END) AS latencySamples,
+  SUM(CASE WHEN ttftMs > 0 THEN 1 ELSE 0 END) AS ttftSamples,
+  SUM(CASE WHEN latencyMs > 0 THEN completionTokens ELSE 0 END) AS timedCompletionTokens`;
+
+/** Coerce the driver-specific numeric types of {@link LATENCY_SUM_SQL} to numbers. */
+function latencyFromRow(row) {
+  return {
+    latencyMs: Number(row.latencyMs || 0),
+    ttftMs: Number(row.ttftMs || 0),
+    latencySamples: Number(row.latencySamples || 0),
+    ttftSamples: Number(row.ttftSamples || 0),
+    timedCompletionTokens: Number(row.timedCompletionTokens || 0)
+  };
+}
+
 function aggregateChartWindow(db, startTime, endTime, bucketMs, bucketCount) {
   const params = [];
   const cases = [];
@@ -427,7 +476,8 @@ function aggregateChartWindow(db, startTime, endTime, bucketMs, bucketCount) {
   return db.all(`SELECT CASE ${cases.join(" ")} ELSE ${bucketCount - 1} END AS bucket,
     SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens,
     SUM(cachedTokens) AS cachedTokens, SUM(reasoningTokens) AS reasoningTokens,
-    SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost
+    SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost,
+    ${LATENCY_SUM_SQL}
     FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? GROUP BY bucket`, params);
 }
 
@@ -436,10 +486,11 @@ function aggregateUsageWindow(db, start, end) {
       MAX(timestamp) AS timestamp, MAX(id) AS lastId, COUNT(*) AS requests,
       SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens,
       SUM(cachedTokens) AS cachedTokens, SUM(reasoningTokens) AS reasoningTokens,
-      SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost
+      SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost,
+      ${LATENCY_SUM_SQL}
     FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?
     GROUP BY provider, model, connectionId, apiKey, endpoint ORDER BY MIN(id) ASC`, [start, end]).map((row) => ({
-      ...row, requests: Number(row.requests), tokens: {
+      ...row, ...latencyFromRow(row), requests: Number(row.requests), tokens: {
         prompt_tokens: Number(row.promptTokens), completion_tokens: Number(row.completionTokens),
         cached_tokens: Number(row.cachedTokens), reasoning_tokens: Number(row.reasoningTokens),
         cache_creation_input_tokens: Number(row.cacheCreationTokens),
@@ -504,6 +555,10 @@ export async function saveRequestUsage(entry) {
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
     const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
+    // Stored on the usage row itself so throughput aggregates per model,
+    // account and key without joining requestDetails. 0 means "not timed".
+    const latencyMs = Math.max(0, Math.round(entry.latencyMs || 0));
+    const ttftMs = Math.max(0, Math.round(entry.ttftMs || 0));
 
     let inserted = false;
 
@@ -538,13 +593,14 @@ export async function saveRequestUsage(entry) {
       }
 
       const insert = db.run(
-        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId, comboId, comboName, cachedTokens, reasoningTokens, cacheCreationTokens) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId, comboId, comboName, cachedTokens, reasoningTokens, cacheCreationTokens, latencyMs, ttftMs) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
         entry.timestamp, entry.provider || null, entry.model || null,
         entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
         promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
         stringifyJson(tokens), stringifyJson({}), entry.usageEventId || null,
-        entry.comboId || null, entry.comboName || null, ...Object.values(usageTokenColumns(tokens))]
+        entry.comboId || null, entry.comboName || null, ...Object.values(usageTokenColumns(tokens)),
+        latencyMs, ttftMs]
 
       );
       if ((insert?.changes ?? 0) === 0) return;
@@ -556,7 +612,7 @@ export async function saveRequestUsage(entry) {
         requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
         byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {}
       };
-      aggregateEntryToDay(day, entry, identitySalt);
+      aggregateEntryToDay(day, { ...entry, latencyMs, ttftMs }, identitySalt);
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 
       // Resolve the stored secret to its stable row id inside the same
@@ -883,6 +939,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       stats.totalReasoningTokens += day.reasoningTokens || 0;
       stats.totalCacheCreationTokens += day.cacheCreationTokens || 0;
       stats.totalCost += day.cost || 0;
+      addLatency(stats, day, day.completionTokens || 0);
 
       for (const [prov, p] of Object.entries(day.byProvider || {})) {
         if (!stats.byProvider[prov]) stats.byProvider[prov] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
@@ -893,6 +950,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byProvider[prov].reasoningTokens += p.reasoningTokens || 0;
         stats.byProvider[prov].cacheCreationTokens += p.cacheCreationTokens || 0;
         stats.byProvider[prov].cost += p.cost || 0;
+        addLatency(stats.byProvider[prov], p, p.completionTokens || 0);
       }
 
       for (const [mk, m] of Object.entries(day.byModel || {})) {
@@ -910,6 +968,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byModel[statsKey].reasoningTokens += m.reasoningTokens || 0;
         stats.byModel[statsKey].cacheCreationTokens += m.cacheCreationTokens || 0;
         stats.byModel[statsKey].cost += m.cost || 0;
+        addLatency(stats.byModel[statsKey], m, m.completionTokens || 0);
         if (dateKey > (stats.byModel[statsKey].lastUsed || "")) stats.byModel[statsKey].lastUsed = dateKey;
       }
 
@@ -929,6 +988,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byAccount[accountKey].reasoningTokens += a.reasoningTokens || 0;
         stats.byAccount[accountKey].cacheCreationTokens += a.cacheCreationTokens || 0;
         stats.byAccount[accountKey].cost += a.cost || 0;
+        addLatency(stats.byAccount[accountKey], a, a.completionTokens || 0);
         if (dateKey > (stats.byAccount[accountKey].lastUsed || "")) stats.byAccount[accountKey].lastUsed = dateKey;
       }
 
@@ -951,6 +1011,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byApiKey[statsKey].reasoningTokens += ak.reasoningTokens || 0;
         stats.byApiKey[statsKey].cacheCreationTokens += ak.cacheCreationTokens || 0;
         stats.byApiKey[statsKey].cost += ak.cost || 0;
+        addLatency(stats.byApiKey[statsKey], ak, ak.completionTokens || 0);
         if (dateKey > (stats.byApiKey[statsKey].lastUsed || "")) stats.byApiKey[statsKey].lastUsed = dateKey;
       }
 
@@ -969,6 +1030,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byEndpoint[epKey].reasoningTokens += ep.reasoningTokens || 0;
         stats.byEndpoint[epKey].cacheCreationTokens += ep.cacheCreationTokens || 0;
         stats.byEndpoint[epKey].cost += ep.cost || 0;
+        addLatency(stats.byEndpoint[epKey], ep, ep.completionTokens || 0);
         if (dateKey > (stats.byEndpoint[epKey].lastUsed || "")) stats.byEndpoint[epKey].lastUsed = dateKey;
       }
     }
@@ -1043,6 +1105,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       stats.totalReasoningTokens += reasoningTokens;
       stats.totalCacheCreationTokens += cacheCreationTokens;
       stats.totalCost += entryCost;
+      addLatency(stats, r, completionTokens);
 
       if (!stats.byProvider[r.provider]) stats.byProvider[r.provider] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
       stats.byProvider[r.provider].requests += r.requests;
@@ -1052,6 +1115,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       stats.byProvider[r.provider].reasoningTokens += reasoningTokens;
       stats.byProvider[r.provider].cacheCreationTokens += cacheCreationTokens;
       stats.byProvider[r.provider].cost += entryCost;
+      addLatency(stats.byProvider[r.provider], r, completionTokens);
 
       const modelKey = r.provider ? `${r.model} (${r.provider})` : r.model;
       if (!stats.byModel[modelKey]) {
@@ -1064,6 +1128,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       stats.byModel[modelKey].reasoningTokens += reasoningTokens;
       stats.byModel[modelKey].cacheCreationTokens += cacheCreationTokens;
       stats.byModel[modelKey].cost += entryCost;
+      addLatency(stats.byModel[modelKey], r, completionTokens);
       if (new Date(r.timestamp) > new Date(stats.byModel[modelKey].lastUsed)) stats.byModel[modelKey].lastUsed = r.timestamp;
 
       if (r.connectionId) {
@@ -1079,6 +1144,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byAccount[accountKey].reasoningTokens += reasoningTokens;
         stats.byAccount[accountKey].cacheCreationTokens += cacheCreationTokens;
         stats.byAccount[accountKey].cost += entryCost;
+        addLatency(stats.byAccount[accountKey], r, completionTokens);
         if (new Date(r.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = r.timestamp;
       }
 
@@ -1092,6 +1158,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         }
         const ake = stats.byApiKey[akKey];
         ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
+        addLatency(ake, r, completionTokens);
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       } else {
         const akKey = getApiKeyStatsKey(null, r.model, r.provider, identitySalt);
@@ -1100,6 +1167,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         }
         const ake = stats.byApiKey[akKey];
         ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
+        addLatency(ake, r, completionTokens);
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       }
 
@@ -1110,14 +1178,104 @@ export async function getUsageStats(period = "all", opts = {}) {
       }
       const epe = stats.byEndpoint[epKey];
       epe.requests += r.requests;epe.promptTokens += promptTokens;epe.completionTokens += completionTokens;epe.cachedTokens += cachedTokens;epe.reasoningTokens += reasoningTokens;epe.cacheCreationTokens += cacheCreationTokens;epe.cost += entryCost;
+      addLatency(epe, r, completionTokens);
       if (new Date(r.timestamp) > new Date(epe.lastUsed)) epe.lastUsed = r.timestamp;
     }
   }
 
   stats.totalRequests = Object.values(stats.byProvider).reduce((sum, p) => sum + (p.requests || 0), 0);
+
+  await applyCostBreakdowns(stats);
+
+  // Summed latency becomes rates exactly once, here, so the daily rollup and
+  // the live-history path cannot drift apart.
+  Object.assign(stats, deriveLatencyRates(stats));
+  // How many requests actually carried timing. The rates above describe this
+  // subset, so the UI can say so instead of implying the whole period was timed.
+  stats.timedRequests = stats.latencySamples || 0;
+  for (const bucket of ["byProvider", "byModel", "byAccount", "byApiKey", "byEndpoint"]) {
+    for (const entry of Object.values(stats[bucket])) Object.assign(entry, deriveLatencyRates(entry));
+  }
+
   // Aggregate Token Saver telemetry for the dashboard (port of 9router #2562).
   stats.tokenSaver = await getTokenSaverStats(period);
   return stats;
+}
+
+const BUCKET_COST_FIELDS = ["inputCost", "cachedCost", "cacheCreationCost", "outputCost", "reasoningCost"];
+
+/**
+ * Price one aggregated bucket's tokens at their own rates, then scale the
+ * result to the cost already stored for that bucket.
+ *
+ * The stored total stays authoritative: it was computed per request and can
+ * include provider-reported costs and long-context tiers that a summed bucket
+ * no longer shows. Scaling keeps the categories in the right proportion to one
+ * another while the column total still matches the billed figure.
+ *
+ * @param {object} entry - Dimension bucket carrying summed token counters and `cost`
+ * @param {object|null} pricing - Rates for the bucket's model, or null when unknown
+ * @param {(tokens: object, pricing: object) => object} calc - `calculateCostBreakdown`
+ * @returns {object|null} The five cost fields, or null when no split can be derived
+ */
+function splitBucketCost(entry, pricing, calc) {
+  if (!pricing) return null;
+  const ratedCost = calc({
+    prompt_tokens: entry.promptTokens || 0,
+    completion_tokens: entry.completionTokens || 0,
+    cached_tokens: entry.cachedTokens || 0,
+    cache_creation_input_tokens: entry.cacheCreationTokens || 0,
+    reasoning_tokens: entry.reasoningTokens || 0
+  }, pricing);
+  if (!(ratedCost.totalCost > 0)) return null;
+  const scale = (entry.cost || 0) / ratedCost.totalCost;
+  const split = {};
+  for (const field of BUCKET_COST_FIELDS) split[field] = ratedCost[field] * scale;
+  return split;
+}
+
+/**
+ * Attach a per-rate cost split to every dimension bucket.
+ *
+ * The dashboard used to divide each total by token share on the client, which
+ * priced cached input like fresh input and collapsed output to a rounding
+ * error on cache-heavy traffic. Pricing lives on the server, so the split is
+ * derived here; buckets whose model has no pricing entry are left alone and
+ * the client falls back to its token-share allocation.
+ *
+ * Provider totals are summed from the model buckets rather than priced again,
+ * because a provider row spans several models with different rates.
+ *
+ * @param {object} stats - Mutated in place
+ */
+async function applyCostBreakdowns(stats) {
+  const [{ getPricingForModel }, { calculateCostBreakdown }] = await Promise.all([
+  import("./pricingRepo.js"),
+  import("open-sse/providers/pricing.js")]
+  );
+
+  // One await per distinct provider|model, not one per bucket.
+  const pricingCache = new Map();
+  const pricingFor = async (provider, model) => {
+    const key = `${provider}|${model}`;
+    if (!pricingCache.has(key)) {
+      let pricing = null;
+      try {pricing = provider && model ? await getPricingForModel(provider, model) : null;} catch {}
+      pricingCache.set(key, pricing);
+    }
+    return pricingCache.get(key);
+  };
+
+  for (const bucket of ["byModel", "byAccount", "byApiKey", "byEndpoint"]) {
+    for (const entry of Object.values(stats[bucket])) {
+      const split = splitBucketCost(entry, await pricingFor(entry.rawProvider, entry.rawModel), calculateCostBreakdown);
+      if (!split) continue;
+      Object.assign(entry, split);
+      if (bucket !== "byModel") continue;
+      const provider = stats.byProvider[entry.rawProvider];
+      if (provider) for (const field of BUCKET_COST_FIELDS) provider[field] = (provider[field] || 0) + split[field];
+    }
+  }
 }
 
 function isValidTimeZone(timeZone) {
@@ -1186,7 +1344,7 @@ export async function getChartData(period = "7d", timeZone) {
     });
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({
       label: labelFn(startTime + i * bucketMs), tokens: 0, cachedTokens: 0,
-      reasoningTokens: 0, cacheCreationTokens: 0, cost: 0
+      reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, tps: null
     }));
 
     const rows = aggregateChartWindow(db, startTime, Math.min(now, endTime - 1), bucketMs, bucketCount);
@@ -1197,6 +1355,7 @@ export async function getChartData(period = "7d", timeZone) {
       bucket.reasoningTokens = Number(r.reasoningTokens || 0);
       bucket.cacheCreationTokens = Number(r.cacheCreationTokens || 0);
       bucket.cost = Number(r.cost || 0);
+      bucket.tps = deriveLatencyRates(latencyFromRow(r)).avgTps;
     }
     return buckets;
   }
@@ -1210,7 +1369,7 @@ export async function getChartData(period = "7d", timeZone) {
     const startTime = now - bucketCount * bucketMs;
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({
       label: labelFn(startTime + i * bucketMs), tokens: 0, cachedTokens: 0,
-      reasoningTokens: 0, cacheCreationTokens: 0, cost: 0
+      reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, tps: null
     }));
 
     const rows = aggregateChartWindow(db, startTime, now, bucketMs, bucketCount);
@@ -1221,6 +1380,7 @@ export async function getChartData(period = "7d", timeZone) {
       bucket.reasoningTokens = Number(r.reasoningTokens || 0);
       bucket.cacheCreationTokens = Number(r.cacheCreationTokens || 0);
       bucket.cost = Number(r.cost || 0);
+      bucket.tps = deriveLatencyRates(latencyFromRow(r)).avgTps;
     }
     return buckets;
   }
@@ -1236,6 +1396,9 @@ export async function getChartData(period = "7d", timeZone) {
       promptTokens: day.promptTokens, completionTokens: day.completionTokens,
       cachedTokens: day.cachedTokens, reasoningTokens: day.reasoningTokens,
       cacheCreationTokens: day.cacheCreationTokens, cost: day.cost,
+      latencyMs: day.latencyMs, ttftMs: day.ttftMs,
+      latencySamples: day.latencySamples, ttftSamples: day.ttftSamples,
+      timedCompletionTokens: day.timedCompletionTokens,
     } });
   }
   const todayKey = toLocalDateKey(nowDate);
@@ -1267,7 +1430,14 @@ export async function getChartData(period = "7d", timeZone) {
       cachedTokens: 0,
       reasoningTokens: 0,
       cacheCreationTokens: 0,
-      cost: 0
+      cost: 0,
+      // Latency sums live on the bucket only long enough to become `tps` below;
+      // a multi-day bucket may merge several days, so the rate is derived once
+      // after every contributing day has been added.
+      latencyMs: 0,
+      ttftMs: 0,
+      timedCompletionTokens: 0,
+      tps: null
     };
   });
 
@@ -1282,7 +1452,11 @@ export async function getChartData(period = "7d", timeZone) {
     buckets[index].reasoningTokens += day.reasoningTokens || 0;
     buckets[index].cacheCreationTokens += day.cacheCreationTokens || 0;
     buckets[index].cost += day.cost || 0;
+    buckets[index].latencyMs += day.latencyMs || 0;
+    buckets[index].ttftMs += day.ttftMs || 0;
+    buckets[index].timedCompletionTokens += day.timedCompletionTokens || 0;
   }
+  for (const bucket of buckets) bucket.tps = deriveLatencyRates(bucket).avgTps;
   return buckets;
 }
 

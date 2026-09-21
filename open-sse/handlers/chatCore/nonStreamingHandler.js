@@ -534,7 +534,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
     const usage = extractUsageFromResponse(responseBody);
     appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
 
     if (!hasUsefulContent(translatedResponse)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });

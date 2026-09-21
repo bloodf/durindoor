@@ -273,7 +273,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
      * request body without altering client-facing response usage.
      */
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, label: "STREAM USAGE", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
 
     if (
@@ -323,7 +323,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // Partial provider/estimated usage is billable even when client cancellation
     // prevents transform flush. Mark it cancelled so persistence cannot convert
     // chatCore's asynchronously finalized error session back to done.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model }).replace(/^DONE /, "CANCELLED "));
   };
 

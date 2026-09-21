@@ -13,7 +13,7 @@ import {
   coerceResponsesOutput,
   repairMissingResponsesCallIds,
 } from "../formats/responsesApi.js";
-import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 
 import { isString } from "../../../src/shared/utils/typeChecks.js";
@@ -102,7 +102,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // text). Append instead of keeping only the first non-null content.
   const appendAssistantContent = (msg, content) => {
     if (content == null) return;
-    if (msg.content == null) {
+    // An empty or whitespace-only string carries no text to keep — replace it
+    // rather than wrapping it as a blank text part, which would join into
+    // "\nsecond" instead of "second".
+    const hasExistingText = !(isString(msg.content) && msg.content.trim() === "");
+    if (msg.content == null || !hasExistingText) {
       msg.content = content;
       return;
     }
@@ -147,10 +151,19 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     if (!currentAssistantMsg.tool_calls?.length) delete currentAssistantMsg.tool_calls;
     // A text-only content array (no tool calls survived, or every call was
     // nameless) must ship as a string. filterToOpenAIFormat only collapses
-    // array content for messages WITHOUT tool_calls, and a real tool_calls
-    // array skips that pass entirely, so collapse it here instead.
+    // array content (and drops non-whitelisted parts like refusal/input_file)
+    // for messages WITHOUT tool_calls, and a real tool_calls array skips that
+    // pass entirely, so both steps run here instead.
     if (Array.isArray(currentAssistantMsg.content)) {
-      currentAssistantMsg.content = collapseTextParts(currentAssistantMsg.content);
+      const whitelisted = currentAssistantMsg.content.filter((part) => VALID_OPENAI_CONTENT_TYPES.includes(part?.type));
+      currentAssistantMsg.content = collapseTextParts(whitelisted);
+      // collapseTextParts([]) returns [] as-is (its guard requires length > 0),
+      // so an empty-after-filter array survives as `{content:[]}` next to
+      // tool_calls. Normalize it to null here so the check below treats it
+      // the same as a turn that never got any content.
+      if (Array.isArray(currentAssistantMsg.content) && currentAssistantMsg.content.length === 0) {
+        currentAssistantMsg.content = null;
+      }
     }
     // A turn whose tool calls were all skipped (nameless, #444) is left with no
     // content and no tool_calls. Pushing it would send `{role:"assistant",
@@ -224,6 +237,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         if (isString(item.call_id)) skippedCallIds.add(item.call_id);
         continue;
       }
+      // A named call reusing a call_id an earlier nameless call skipped is a
+      // real tool call now — un-skip the id so its function_call_output is
+      // not dropped as if it still answered the discarded call.
+      skippedCallIds.delete(item.call_id);
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,

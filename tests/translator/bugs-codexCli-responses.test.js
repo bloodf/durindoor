@@ -106,6 +106,70 @@ describe("Codex CLI Responses → OpenAI", () => {
     expect(assistant.content).toBe("");
     expect(assistant.reasoning_content).toBe("thinking");
   });
+
+  // collapseTextParts([]) returns [] as-is (its guard requires length > 0), so
+  // an assistant message whose content array is already empty ships as
+  // `{content:[], tool_calls:[...]}` once a tool call is present. Array
+  // content next to tool_calls must be null, not an empty array.
+  it("normalizes an empty content array to null when tool_calls are present", () => {
+    const out = R2O({
+      input: [
+        { type: "message", role: "assistant", content: [] },
+        { type: "function_call", call_id: "call_1", name: "exec_command", arguments: "{}" },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(Array.isArray(assistant.content)).toBe(false);
+  });
+
+  // A "refusal" or other non-whitelisted part sitting beside text in an
+  // assistant turn with tool_calls skips filterToOpenAIFormat's whitelist
+  // filter (that pass returns early whenever tool_calls is non-empty), so it
+  // used to survive on the wire next to the collapsed text.
+  it("drops non-whitelisted content parts from a tool-calling assistant turn", () => {
+    const out = R2O({
+      input: [
+        { type: "message", role: "assistant", content: [
+          { type: "refusal", refusal: "no" },
+          { type: "output_text", text: "checking now" },
+        ] },
+        { type: "function_call", call_id: "call_1", name: "exec_command", arguments: "{}" },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(assistant.content).toBe("checking now");
+  });
+
+  // A call_id that a nameless (skipped) function_call used can be reused by a
+  // later NAMED function_call. That named call is real and gets a tool_calls
+  // entry, so its function_call_output must survive too, not be dropped as
+  // if it still answered the discarded nameless call.
+  it("keeps the tool output for a call_id reused by a later named call", () => {
+    const out = R2O({
+      input: [
+        { type: "function_call", call_id: "c1", name: "", arguments: "{}" },
+        { type: "function_call", call_id: "c1", name: "exec_command", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: "ran" },
+      ],
+    });
+    const toolMsg = out.messages.find((m) => m.role === "tool");
+    expect(toolMsg).toBeDefined();
+    expect(toolMsg.content).toBe("ran");
+  });
+
+  // An assistant turn that starts with an empty-string content (a plain
+  // string content item, not an array) must be REPLACED by later text, not
+  // wrapped as a blank text part and joined — that produced a leading "\n".
+  it("replaces an empty-string content instead of joining a blank line", () => {
+    const out = R2O({
+      input: [
+        { type: "message", role: "assistant", content: "" },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "second" }] },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(assistant.content).toBe("second");
+  });
 });
 
 describe("OpenAI → Codex Responses (reverse)", () => {

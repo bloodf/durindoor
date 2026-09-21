@@ -3,7 +3,7 @@ import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.j
 import { CLAUDE_BLOCK, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { FORMATS } from "../formats.js";
-import { coerceResponsesArguments } from "../formats/responsesApi.js";
+import { coerceResponsesArguments, buildDeclaredToolTypes, resolveDeclaredCustom } from "../formats/responsesApi.js";
 
 // Tool call helper functions for translator
 
@@ -252,6 +252,13 @@ function resolveToolResultId(rawId, pendingIds, fallbackId) {
 export function ensureToolCallIds(body) {
   if (!body || !isObject(body) || !Array.isArray(body.messages)) return body;
 
+  // Declared tool types on this request, so a raw custom-tool body the
+  // Responses stream stored (openai-responses.js:651) survives chat replay
+  // instead of being coerced to "{}" like this file did before (upstream
+  // #4208 review, round 2). A name this request declares as an ordinary
+  // function — even "apply_patch" — is never freeform-wrapped.
+  const declaredToolTypes = buildDeclaredToolTypes(body.tools);
+
   let pendingIds = [];
 
   for (let i = 0; i < body.messages.length; i++) {
@@ -278,7 +285,11 @@ export function ensureToolCallIds(body) {
          * fragment or freeform-text string trips upstream's "must be valid JSON" 400).
          */
         if (tc.function && isObject(tc.function)) {
-          tc.function.arguments = coerceResponsesArguments(tc.function.arguments, tc.function.name);
+          tc.function.arguments = coerceResponsesArguments(
+            tc.function.arguments,
+            tc.function.name,
+            resolveDeclaredCustom(declaredToolTypes, tc.function.name)
+          );
         }
       }
     }

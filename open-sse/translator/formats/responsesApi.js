@@ -66,6 +66,30 @@ export function clampResponsesCallId(id) {
   return id.length > MAX_RESPONSES_CALL_ID_LEN ? id.substring(0, MAX_RESPONSES_CALL_ID_LEN) : id;
 }
 
+// Build a name -> "custom" | "function" lookup from a request's declared
+// tools[], accepting both tool shapes seen across translators: Responses-flat
+// ({type, name}) and Chat-Completions-nested ({type:"function", function:{name}}).
+// Callers pass the result to coerceResponsesArguments so a name match wins
+// over the apply_patch legacy fallback (upstream #4208 review, round 2).
+export function buildDeclaredToolTypes(tools) {
+  const declared = new Map();
+  if (!Array.isArray(tools)) return declared;
+  for (const tool of tools) {
+    if (!tool) continue;
+    const name = tool.type === "function" && isObject(tool.function) ? tool.function.name : tool.name;
+    if (isString(name) && name.trim() !== "") declared.set(name, tool.type === "custom" ? "custom" : "function");
+  }
+  return declared;
+}
+
+// Resolve a tool name against buildDeclaredToolTypes()'s output: true when
+// declared "custom", false when declared as an ordinary function (including
+// "apply_patch"), undefined when the request never declares this name at all.
+export function resolveDeclaredCustom(declaredToolTypes, toolName) {
+  if (!declaredToolTypes || !declaredToolTypes.has(toolName)) return undefined;
+  return declaredToolTypes.get(toolName) === "custom";
+}
+
 // Single-stringify: objects → JSON once; valid JSON strings pass through untouched;
 // anything else (partial fragments, empty) falls back to "{}" instead of
 // double-encoding and tripping upstream InputValidationError.
@@ -77,11 +101,15 @@ export function clampResponsesCallId(id) {
 // replay, so it gets wrapped as { input: <raw text> } instead - the same shape
 // the request translator already gives custom tools (see the
 // `tool.type === "custom"` branch in request/openai-responses.js). Ordinary
-// malformed/truncated function JSON still falls back to "{}". Pass
-// `isCustomTool` when the caller has the request's declared tool types
-// (customToolNames / isCustomToolByState); callers without that state fall
-// back to the apply_patch name check (upstream #4208 review).
-export function coerceResponsesArguments(value, toolName, isCustomTool = false) {
+// malformed/truncated function JSON still falls back to "{}".
+//
+// `declaredCustom` is a tri-state, not a boolean: pass `true`/`false` when the
+// caller resolved the name against buildDeclaredToolTypes() (a "function"
+// declaration always wins, even for the name "apply_patch" — matches
+// isCustomToolByState in response/openai-responses.js). Leave it `undefined`
+// only when the caller has no declared-tools state at all, which falls back
+// to the apply_patch name check for legacy Codex compatibility.
+export function coerceResponsesArguments(value, toolName, declaredCustom) {
   if (value === undefined || value === null || value === "") return "{}";
   if (!isString(value)) {
     try {
@@ -94,7 +122,10 @@ export function coerceResponsesArguments(value, toolName, isCustomTool = false) 
     JSON.parse(value);
     return value;
   } catch {
-    if (isCustomTool || toolName === "apply_patch") return JSON.stringify({ input: value });
+    if (declaredCustom === true) return JSON.stringify({ input: value });
+    if (declaredCustom === false) return "{}";
+    if (toolName === "apply_patch") return JSON.stringify({ input: value });
+    console.warn(`[Translator] Non-JSON tool call arguments for "${toolName || "(unnamed)"}" coerced to "{}" — not a declared custom/apply_patch tool`);
     return "{}";
   }
 }

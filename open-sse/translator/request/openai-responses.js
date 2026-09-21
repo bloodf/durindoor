@@ -111,25 +111,38 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     return "";
   };
 
+  // Responses splits one assistant turn into a message item plus separate
+  // function_call items; Chat Completions models that as a SINGLE assistant
+  // message carrying content + tool_calls + reasoning_content. Emitting them as
+  // two consecutive assistant messages makes thinking-mode upstreams reject the
+  // whole request as soon as tools are declared. Reasoning is attached at flush
+  // time (not at creation) so a reasoning item that arrives after the message
+  // item — Codex emits the message first — still lands on the turn it belongs to.
+  const flushAssistant = () => {
+    if (!currentAssistantMsg) return;
+    if (pendingReasoning) {
+      currentAssistantMsg.reasoning_content = pendingReasoning;
+      pendingReasoning = "";
+    }
+    if (!currentAssistantMsg.tool_calls?.length) delete currentAssistantMsg.tool_calls;
+    // A turn whose tool calls were all skipped (nameless, #444) is left with no
+    // content and no tool_calls. Pushing it would send `{role:"assistant",
+    // content:null}`, which OpenAI-shaped APIs reject just like the empty
+    // tool_calls array this replaces. Keep it only if reasoning still rides on it.
+    if (currentAssistantMsg.content == null && !currentAssistantMsg.tool_calls && !currentAssistantMsg.reasoning_content) {
+      currentAssistantMsg = null;
+      return;
+    }
+    result.messages.push(currentAssistantMsg);
+    currentAssistantMsg = null;
+  };
+
   for (const item of inputItems) {
     // Determine item type - Droid CLI sends role-based items without 'type' field
     // Fallback: if no type but has role property, treat as message
     const itemType = item.type || (item.role ? RESPONSES_ITEM.MESSAGE : null);
 
     if (itemType === RESPONSES_ITEM.MESSAGE) {
-      // Flush any pending assistant message with tool calls
-      if (currentAssistantMsg) {
-        result.messages.push(currentAssistantMsg);
-        currentAssistantMsg = null;
-      }
-      // Flush pending tool results
-      if (pendingToolResults.length > 0) {
-        for (const tr of pendingToolResults) {
-          result.messages.push(tr);
-        }
-        pendingToolResults = [];
-      }
-
       // Convert content: input_text → text, output_text → text, input_image → image_url
       const content = Array.isArray(item.content) ?
       item.content.map((c) => {
@@ -142,13 +155,29 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         return c;
       }) :
       item.content;
-      const msg = { role: item.role, content };
-      // Attach buffered reasoning to assistant turn (required by xiaomi-mimo thinking mode)
-      if (item.role === ROLE.ASSISTANT && pendingReasoning) {
-        msg.reasoning_content = pendingReasoning;
+
+      // Assistant content joins the pending turn instead of starting a second
+      // assistant message (see flushAssistant above).
+      if (item.role === ROLE.ASSISTANT) {
+        if (currentAssistantMsg) {
+          if (currentAssistantMsg.content == null) currentAssistantMsg.content = content;
+        } else {
+          currentAssistantMsg = { role: ROLE.ASSISTANT, content, tool_calls: [] };
+        }
+        continue;
+      }
+
+      // Flush any pending assistant message with tool calls
+      flushAssistant();
+      // Flush pending tool results
+      if (pendingToolResults.length > 0) {
+        for (const tr of pendingToolResults) {
+          result.messages.push(tr);
+        }
+        pendingToolResults = [];
       }
       pendingReasoning = "";
-      result.messages.push(msg);
+      result.messages.push({ role: item.role, content });
     } else
     if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
       // Start or append to assistant message with tool_calls
@@ -158,10 +187,6 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           content: null,
           tool_calls: []
         };
-        if (pendingReasoning) {
-          currentAssistantMsg.reasoning_content = pendingReasoning;
-          pendingReasoning = "";
-        }
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
       if (!item.name || !isString(item.name) || item.name.trim() === "") continue;
@@ -176,10 +201,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     } else
     if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
       // Flush assistant message first if exists
-      if (currentAssistantMsg) {
-        result.messages.push(currentAssistantMsg);
-        currentAssistantMsg = null;
-      }
+      flushAssistant();
       // Flush any pending tool results first
       if (pendingToolResults.length > 0) {
         for (const tr of pendingToolResults) {
@@ -203,9 +225,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   }
 
   // Flush remaining
-  if (currentAssistantMsg) {
-    result.messages.push(currentAssistantMsg);
-  }
+  flushAssistant();
   if (pendingToolResults.length > 0) {
     for (const tr of pendingToolResults) {
       result.messages.push(tr);

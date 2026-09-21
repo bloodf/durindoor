@@ -287,6 +287,7 @@ export async function projectProviderCredentials(connection, quotaPreflight = nu
     accessToken: connection.accessToken,
     refreshToken: connection.refreshToken,
     idToken: connection.idToken,
+    sessionToken: connection.sessionToken,
     expiresAt: connection.expiresAt,
     expiresIn: connection.expiresIn,
     lastRefreshAt: connection.lastRefreshAt,

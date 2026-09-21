@@ -4,6 +4,10 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { assertOutboundUrlAllowed, getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
+import { ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
+import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
+import { BedrockExecutor, statusFromError as bedrockErrorStatus } from "open-sse/executors/bedrock.js";
+import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const CHAT_PROBE_ACCEPT_STATUSES = new Set([400, 422, 429]);
@@ -17,6 +21,7 @@ const SPECIALTY_VALIDATORS = {
   // "devin-cli" LLM provider (ACP stdio), which has its own executor.
   // Ported from OmniRoute #6894 (diegosouzapw#6142, parity with `jules`).
   devin: validateDevinCloudAgentProvider,
+  bedrock: validateBedrockSignedProvider,
 };
 
 /**
@@ -48,6 +53,36 @@ export async function validateDevinCloudAgentProvider({ apiKey, fetcher = fetch 
   }
   if (response.ok) return { valid: true, status: response.status };
   return { valid: false, status: response.status, error: `Provider validation failed (HTTP ${response.status ?? "unknown"})` };
+}
+
+/**
+ * Bedrock with static AWS keys or a local AWS profile. The generic probe would send `apiKey` as a
+ * bearer token, and in these modes that is the IAM secret access key (or nothing, for a profile).
+ * Instead this signs a Converse call with an empty message list through the same client the
+ * executor builds: AWS checks the signature before the body, so a ValidationException proves the
+ * credentials work without running any inference. Returns null for a Bedrock API key connection
+ * so it keeps the generic bearer probe.
+ *
+ * The SDK client does not route through the connection proxy; neither does the executor.
+ */
+export async function validateBedrockSignedProvider({ apiKey, providerSpecificData, sessionToken, clientFactory = null }) {
+  const credentials = { apiKey, sessionToken, providerSpecificData };
+  if (detectBedrockCredentialMode(credentials) === BEDROCK_CREDENTIAL_MODE.API_KEY) return null;
+  try {
+    const client = new BedrockExecutor(clientFactory).createClient(credentials);
+    await client.send(
+      new ConverseCommand({ modelId: getDefaultModel("bedrock"), messages: [] }),
+      { abortSignal: AbortSignal.timeout(10000) },
+    );
+    return { valid: true, status: 200 };
+  } catch (error) {
+    const status = bedrockErrorStatus(error);
+    if (AUTH_FAILURE_STATUSES.has(status)) {
+      return { valid: false, status, error: "Invalid AWS credentials" };
+    }
+    if (CHAT_PROBE_ACCEPT_STATUSES.has(status)) return { valid: true, status };
+    return { valid: false, status, error: getChatProbeError(status) };
+  }
 }
 
 function getChatProbeError(status) {
@@ -223,9 +258,11 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
   };
 }
 
-export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, providerSpecificData = {}) {
+export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, providerSpecificData = {}, { sessionToken } = {}) {
   const specialty = SPECIALTY_VALIDATORS[provider];
-  if (specialty) return specialty({ apiKey, fetcher, providerSpecificData });
+  // A specialty validator returning null hands the connection back to the generic probe.
+  const specialtyResult = specialty ? await specialty({ apiKey, fetcher, providerSpecificData, sessionToken }) : null;
+  if (specialtyResult) return specialtyResult;
   const probe = buildRegistryProviderProbe(provider, apiKey, providerSpecificData);
   if (!probe) return null;
   if (probe.accepts === "always") return { valid: true, status: 200 };

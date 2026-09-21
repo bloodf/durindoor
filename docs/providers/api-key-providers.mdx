@@ -43,7 +43,13 @@ A profile takes precedence over everything else, and static AWS keys are selecte
 
 Profile mode is the recommended path. Name a profile from `~/.aws/config`, save the connection with an empty API Key, then run `aws sso login --profile <name>`. DurinDoor never reads or stores the SSO token: the AWS SDK resolves it from the local token cache on each request and refreshes it on expiry, so the saved connection holds nothing secret. `source_profile` role chaining and `credential_process` profiles resolve the same way.
 
-Saving a profile-only connection skips the usual API-key requirement, so `POST /api/providers` and the validate probe both accept an empty key. The validate probe still has no credential to send, so such a connection saves with test status `unknown`; test it from the provider page after `aws sso login`.
+Saving a profile-only connection skips the usual API-key requirement, so `POST /api/providers` and the validate probe both accept an empty key. The profile is resolved as the user running DurinDoor, and a profile can run a `credential_process` command, so setting one is limited to operators (the dashboard or the CLI token). An application API key gets HTTP 403 from `POST /api/providers`, `PUT /api/providers/<id>`, and `POST /api/providers/validate` when the request names a profile. A profile name must match `^[A-Za-z0-9_.:-]{1,64}$`; anything else gets HTTP 400.
+
+Check, Test and the health monitor verify profile and static-key connections with a SigV4-signed Converse call that carries no messages. AWS checks the signature before the body, so a `ValidationException` means the credentials work and no inference runs. The IAM secret access key is never sent as a bearer token. A Bedrock API key connection keeps the bearer probe.
+
+The session token is stored in its own encrypted connection field, like the API key, and no provider API response returns it. Editing a connection with the session token field left blank keeps the saved token, unless you change the Access Key ID or clear it. Typing a new API key in the edit form clears a saved profile, since the profile would otherwise keep taking precedence.
+
+A missing or expired SSO session is reported as HTTP 401 `auth_error`, so run `aws sso login` again when you see it.
 
 A temporary access key (`ASIA...`) saved without a session token is rejected up front with HTTP 401 rather than failing later as a signature mismatch.
 

@@ -22,7 +22,9 @@ export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
 "refreshToken",
 "apiKey",
 "idToken",
-"firecrawlHeaders"]
+"firecrawlHeaders",
+// STS session token for temporary AWS keys (Bedrock static-key mode).
+"sessionToken"]
 );
 
 const OPTIONAL_FIELDS = [
@@ -30,7 +32,7 @@ const OPTIONAL_FIELDS = [
 "accessToken", "refreshToken", "expiresAt", "tokenType",
 "scope", "projectId", "apiKey", "testStatus", "firecrawlHeaders",
 "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
-"consecutiveUseCount", "idToken", "lastRefreshAt"];
+"consecutiveUseCount", "idToken", "lastRefreshAt", "sessionToken"];
 
 const MODEL_LOCK_PREFIX = "modelLock_";
 

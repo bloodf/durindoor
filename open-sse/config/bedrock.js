@@ -43,8 +43,8 @@ export function buildBedrockNativeConverseUrl(region, modelId, stream = false) {
 // apiKey  — a Bedrock API key sent as a bearer token. The original DurinDoor behaviour and
 //           still the default when nothing else is configured.
 // static  — AWS SigV4 from keys the connection carries: `apiKey` holds the AWS secret access
-//           key, `providerSpecificData.accessKeyId` the key id, and `sessionToken` is set when
-//           they came from STS. Selected by the presence of an access key id, so an existing
+//           key, `providerSpecificData.accessKeyId` the key id, and the encrypted top-level
+//           `sessionToken` is set when they came from STS. Selected by the presence of an access key id, so an existing
 //           bearer-token connection can never be reinterpreted as one of these.
 // profile — the connection names a local AWS profile and nothing else. The AWS SDK resolves it,
 //           which is what makes `aws sso login --profile X` work: it reads ~/.aws/config, follows

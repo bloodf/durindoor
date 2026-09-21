@@ -13,6 +13,8 @@ import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } fr
 import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 import { isUndefined } from "../../../../shared/utils/typeChecks.js";
+import { isOperatorRequest } from "@/dashboardGuard";
+import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -172,10 +174,21 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
-    const { apiKey, providerSpecificData } = body;
+    const { apiKey, sessionToken, providerSpecificData } = body;
 
     const providerInfo = AI_PROVIDERS[provider] || {};
     const isNoAuth = providerInfo.noAuth === true;
+    if (providerInfo.credentialForm === "aws") {
+      // Validating a profile makes the AWS SDK resolve it as the server user, which can run a
+      // credential_process. Same operator-only gate as creating one.
+      const awsProfile = checkBedrockProfileInput(providerSpecificData);
+      if (awsProfile.error) {
+        return NextResponse.json({ error: awsProfile.error }, { status: 400 });
+      }
+      if (awsProfile.profile && !(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "AWS profile connections can only be set up from the dashboard or CLI" }, { status: 403 });
+      }
+    }
     // Same exemption as the create route: a provider can name a providerSpecificData field that
     // replaces the API key (Bedrock's `profile`), so validating that setup must not 400.
     const apiKeySubstitute = providerInfo.apiKeyOptionalWith;
@@ -851,7 +864,7 @@ export async function POST(request) {
 
         default:{
             // Generic registry probe covers OpenAI-compatible and Claude-format providers.
-            const registryResult = await probeRegistryProvider(provider, apiKey, fetchValidationProbe, providerSpecificData || {});
+            const registryResult = await probeRegistryProvider(provider, apiKey, fetchValidationProbe, providerSpecificData || {}, { sessionToken });
             if (!registryResult) {
               return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
             }

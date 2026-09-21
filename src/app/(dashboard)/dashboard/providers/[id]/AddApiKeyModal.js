@@ -106,7 +106,6 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       const data = region ? { region } : {};
       if (awsData.profile.trim()) data.profile = awsData.profile.trim();
       if (awsData.accessKeyId.trim()) data.accessKeyId = awsData.accessKeyId.trim();
-      if (awsData.sessionToken.trim()) data.sessionToken = awsData.sessionToken.trim();
       return Object.keys(data).length ? data : undefined;
     }
     if (providerRegions && region) {
@@ -118,6 +117,10 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   // One place decides whether the credential requirement is met. The Save button's disabled
   // state and handleSubmit's early return both read it; encoding the rule twice is what would
   // let Save look clickable while silently doing nothing for a profile-only connection.
+  // The STS session token is a secret: it travels as its own top-level field, which the server
+  // stores encrypted, never inside the plaintext providerSpecificData.
+  const sessionToken = usesAwsCredentialForm && awsData.sessionToken.trim() ? awsData.sessionToken.trim() : undefined;
+
   const apiKeySatisfied = () =>
   !!formData.apiKey ||
   !!(apiKeyOptionalWith && buildProviderSpecificData()?.[apiKeyOptionalWith]);
@@ -129,7 +132,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       const res = await fetch("/api/providers/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, apiKey: formData.apiKey, providerSpecificData: buildProviderSpecificData() })
+        body: JSON.stringify({ provider, apiKey: formData.apiKey, sessionToken, providerSpecificData: buildProviderSpecificData() })
       });
       const data = await res.json();
       setValidationResult(data.valid ? "success" : "failed");
@@ -158,7 +161,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         const res = await fetch("/api/providers/validate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey: formData.apiKey, providerSpecificData: buildProviderSpecificData() })
+          body: JSON.stringify({ provider, apiKey: formData.apiKey, sessionToken, providerSpecificData: buildProviderSpecificData() })
         });
         const data = await res.json();
         isValid = !!data.valid;
@@ -172,6 +175,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       await onSave({
         name: formData.name || (isOllamaLocal ? "Ollama Local" : isLocalWhisper ? "Local Whisper" : ""),
         apiKey: formData.apiKey,
+        sessionToken,
         defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,
         priority: formData.priority,
         proxyPoolId: formData.proxyPoolId === NONE_PROXY_POOL_VALUE ? null : formData.proxyPoolId,

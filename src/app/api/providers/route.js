@@ -15,6 +15,7 @@ import { isFunction, isString } from "../../../shared/utils/typeChecks.js";
 import { PROVIDER_MODELS_CONFIG } from "./[id]/models/modelsConfig.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
+import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,9 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "qwenCloudCookie",
 "alibabaConsoleCookie",
 "cookie",
-"QWEN_CLOUD_COOKIE"]
+"QWEN_CLOUD_COOKIE",
+// Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
+"sessionToken"]
 );
 
 function sanitizeProviderConnection(connection) {
@@ -41,6 +44,7 @@ function sanitizeProviderConnection(connection) {
     refreshToken: undefined,
     idToken: undefined,
     firecrawlHeaders: undefined,
+    sessionToken: undefined,
     ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
   };
 }
@@ -173,7 +177,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
-    const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly } = body;
+    const { apiKey, sessionToken, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly } = body;
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
@@ -205,6 +209,17 @@ export async function POST(request) {
     }
     if (isHiddenProvider(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    }
+    const usesAwsCredentials = AI_PROVIDERS[provider]?.credentialForm === "aws";
+    const awsProfile = usesAwsCredentials ? checkBedrockProfileInput(body.providerSpecificData) : { profile: "" };
+    if (awsProfile.error) {
+      return NextResponse.json({ error: awsProfile.error }, { status: 400 });
+    }
+    // A stored profile is resolved by the AWS SDK as the server user, which can run a
+    // credential_process from ~/.aws/config. Binding one is an operator action, never something
+    // an application API key may do.
+    if (awsProfile.profile && !(await isOperatorRequest(request))) {
+      return NextResponse.json({ error: "AWS profile connections can only be set up from the dashboard or CLI" }, { status: 403 });
     }
     // A provider may declare a providerSpecificData field that stands in for an API key, e.g.
     // Bedrock's `profile`, where the credential lives in the local AWS config and there is no
@@ -296,6 +311,7 @@ export async function POST(request) {
         authType: isWebCookieProvider ? "cookie" : "apikey",
         name: connectionName,
         apiKey: apiKey || "",
+        sessionToken: usesAwsCredentials && isString(sessionToken) && sessionToken.trim() ? sessionToken.trim() : undefined,
         priority: priority || 1,
         globalPriority: globalPriority || null,
         defaultModel: defaultModel || null,

@@ -67,7 +67,10 @@ function profileClientAuth(data) {
 function staticClientAuth(credentials, data) {
   const accessKeyId = trimmed(data.accessKeyId);
   const secretAccessKey = trimmed(credentials?.apiKey);
-  const sessionToken = trimmed(data.sessionToken);
+  // The session token is a secret, so it is stored as a top-level encrypted connection field.
+  // providerSpecificData is plaintext; the fallback only reads rows written by 9router, which
+  // kept it there.
+  const sessionToken = trimmed(credentials?.sessionToken) || trimmed(data.sessionToken);
 
   if (!secretAccessKey) {
     throw credentialError(
@@ -99,6 +102,27 @@ function apiKeyClientAuth(credentials) {
     );
   }
   return { token: { token: apiKey }, authSchemePreference: ["httpBearerAuth"] };
+}
+
+/**
+ * Check a profile name arriving at an API boundary, before it is stored or handed to the SDK.
+ *
+ * The executor validates again at use, but a stored profile is resolved by the AWS SDK as the
+ * server user (SSO cache, `source_profile`, `credential_process`), so the routes also refuse a
+ * malformed one up front and decide who may set one at all.
+ *
+ * @param {object} providerSpecificData - Incoming providerSpecificData.
+ * @returns {{ profile: string, error?: string }} The trimmed profile ("" when none), or an error.
+ */
+export function checkBedrockProfileInput(providerSpecificData) {
+  const raw = asRecord(providerSpecificData).profile;
+  if (raw === undefined || raw === null) return { profile: "" };
+  if (!isString(raw)) return { profile: "", error: "AWS profile must be a string" };
+  const profile = raw.trim();
+  if (profile && !BEDROCK_PROFILE_PATTERN.test(profile)) {
+    return { profile: "", error: "Invalid AWS profile name" };
+  }
+  return { profile };
 }
 
 /**

@@ -357,7 +357,13 @@ function createOpenAIStreamFromBedrock(stream, model) {
   });
 }
 
-function statusFromError(error) {
+// Errors the SDK's credential and token providers throw before any request is sent: an expired
+// or missing SSO session, an unknown profile, a failing credential_process. They carry no HTTP
+// status, and without this they would surface as a 502 upstream error instead of an auth one.
+const CREDENTIAL_PROVIDER_ERRORS = new Set(["CredentialsProviderError", "TokenProviderError"]);
+
+export function statusFromError(error) {
+  if (CREDENTIAL_PROVIDER_ERRORS.has(error?.name)) return 401;
   const status = Number(error?.$metadata?.httpStatusCode || error?.statusCode || error?.status);
   return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502;
 }

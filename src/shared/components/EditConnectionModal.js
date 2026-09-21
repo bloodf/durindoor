@@ -16,6 +16,7 @@ import {
   isGooglePseProvider,
   normalizeGooglePseCx } from
 "@/shared/utils/googlePseProviderSpecificData";
+import { buildAwsConnectionEdit } from "@/shared/utils/awsConnectionEdit";
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
   const [formData, setFormData] = useState({
@@ -33,6 +34,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const [googlePseData, setGooglePseData] = useState({ cx: "" });
   const [codexFingerprintMode, setCodexFingerprintMode] = useState("session");
   const [region, setRegion] = useState("");
+  const [awsData, setAwsData] = useState({ profile: "", accessKeyId: "", sessionToken: "" });
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [validating, setValidating] = useState(false);
@@ -82,6 +84,13 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         const savedRegion = connection.providerSpecificData?.region || providerCfg.defaultRegion || providerCfg.regions[0]?.id || "";
         setRegion(savedRegion);
       }
+      // Saved AWS fields are loaded so the edit form shows which mode is active. The session
+      // token is a secret the API never returns, so it always starts blank.
+      setAwsData({
+        profile: connection.providerSpecificData?.profile || "",
+        accessKeyId: connection.providerSpecificData?.accessKeyId || "",
+        sessionToken: ""
+      });
       setTestResult(null);
       setValidationResult(null);
     }
@@ -103,6 +112,13 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   connection?.provider?.startsWith("openai-compatible-responses-");
 
   const providerRegions = connection ? AI_PROVIDERS?.[connection.provider]?.regions || null : null;
+  const usesAwsCredentialForm = AI_PROVIDERS?.[connection?.provider]?.credentialForm === "aws";
+  const buildAwsEdit = () => buildAwsConnectionEdit({
+    savedData: connection?.providerSpecificData,
+    awsData,
+    apiKey: formData.apiKey,
+    region
+  });
   // Build providerSpecificData for region-aware providers
   const buildRegionSpecificData = () => {
     if (providerRegions && region) return { ...(connection?.providerSpecificData || {}), region };
@@ -126,6 +142,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     }
     if (isCodexOAuth) {
       return { ...connection.providerSpecificData, codexFingerprintMode };
+    }
+    if (usesAwsCredentialForm) {
+      return buildAwsEdit().providerSpecificData;
     }
     if (providerRegions) {
       return buildRegionSpecificData();
@@ -169,6 +188,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         body: JSON.stringify({
           provider: connection.provider,
           apiKey: formData.apiKey,
+          sessionToken: awsData.sessionToken.trim() || undefined,
           ...(providerSpecificData ? { providerSpecificData } : null)
         })
       });
@@ -205,6 +225,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
               body: JSON.stringify({
                 provider: connection.provider,
                 apiKey: formData.apiKey,
+                sessionToken: awsData.sessionToken.trim() || undefined,
                 ...(providerSpecificData ? { providerSpecificData } : null)
               })
             });
@@ -235,6 +256,11 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         updates.providerSpecificData = providerSpecificData;
       }
 
+      if (usesAwsCredentialForm) {
+        const { sessionToken } = buildAwsEdit();
+        if (sessionToken !== undefined) updates.sessionToken = sessionToken;
+      }
+
       await onSave(updates);
     } finally {
       setSaving(false);
@@ -258,6 +284,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         {isAzure ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">Azure OpenAI Configuration</h3><div className="flex flex-col gap-3"><Input label="Azure Endpoint" value={azureData.azureEndpoint} onChange={(e) => setAzureData({ ...azureData, azureEndpoint: e.target.value })} placeholder="https://your-resource.openai.azure.com" hint="Your Azure OpenAI resource endpoint URL" /><Input label="Deployment Name" value={azureData.deployment} onChange={(e) => setAzureData({ ...azureData, deployment: e.target.value })} placeholder="gpt-4" hint="Deployment name in Azure resource" /><Input label="API Version" value={azureData.apiVersion} onChange={(e) => setAzureData({ ...azureData, apiVersion: e.target.value })} placeholder="2024-10-01-preview" hint="Azure OpenAI API version to use" /><Input label="Organization" value={azureData.organization} onChange={(e) => setAzureData({ ...azureData, organization: e.target.value })} placeholder="Organization ID" hint="Required for billing" /></div></section> : null}
         {isCodexOAuth ? <Field label="OAuth fingerprint mode"><Select value={codexFingerprintMode} onChange={setCodexFingerprintMode} options={[{ value: "off", label: "Off — preserve client identity" }, { value: "device", label: "Device — stable installation" }, { value: "session", label: "Session — stable account session (recommended)" }, { value: "full", label: "Full — stable account thread" }]} aria-label="OAuth fingerprint mode" /></Field> : null}
         {providerRegions ? <Field label="Region"><Select value={region} onChange={setRegion} options={providerRegions.map((r) => ({ value: r.id, label: r.label }))} aria-label="Region" /></Field> : null}
+        {usesAwsCredentialForm ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">AWS Credentials</h3><div className="flex flex-col gap-3"><Input label="AWS Profile (SSO)" value={awsData.profile} onChange={(e) => setAwsData({ ...awsData, profile: e.target.value })} placeholder="my-sso-profile" hint={formData.apiKey && awsData.profile.trim() ? "Saving with a new API key clears this profile." : "Takes precedence over any key. Clear it to use static keys or a Bedrock API key."} /><Input label="Access Key ID (static AWS keys only)" value={awsData.accessKeyId} onChange={(e) => setAwsData({ ...awsData, accessKeyId: e.target.value })} placeholder="AKIA..." hint="Put the secret access key in the API Key field. Clear this to use a Bedrock API key." /><Input label="Session Token (temporary ASIA... keys only)" type="password" autoComplete="off" value={awsData.sessionToken} onChange={(e) => setAwsData({ ...awsData, sessionToken: e.target.value })} placeholder="Enter new session token" hint="Leave blank to keep the current token. Changing the access key id replaces it." /></div></section> : null}
         {isResponsesConnection ? <Toggle checked={formData.openaiStoreEnabled === true} onChange={(openaiStoreEnabled) => setFormData({ ...formData, openaiStoreEnabled })} label="OpenAI Responses store" description="Allow this connection to retain Responses API state for continuation." /> : null}
         {requiresAccountId ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">{accountIdProviderLabel}</h3><Input label="Account ID" value={cloudflareData.accountId} onChange={(e) => setCloudflareData({ accountId: e.target.value })} placeholder={connection?.provider === "snowflake" ? "org-account" : "abc123def456..."} hint={connection?.provider === "snowflake" ? "Snowflake account identifier, for example org-account" : "Find Account ID in right sidebar of dash.cloudflare.com"} /></section> : null}
         {!isCompatible && !isAzure && !requiresAccountId ? <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" icon="network_check" onClick={handleTest} loading={testing}>Test Connection</Button>{testResult ? <Badge tone={testResult === "success" ? "success" : "danger"}>{testResult === "success" ? "Valid" : "Failed"}</Badge> : null}</div> : null}

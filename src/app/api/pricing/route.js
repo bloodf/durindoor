@@ -10,6 +10,7 @@ import { isNumber, isObject } from "../../../shared/utils/typeChecks.js";
 const PRICING_FIELDS = new Set(["input", "output", "cached", "reasoning", "cache_creation"]);
 const READ_ONLY_TIER_FIELDS = new Set([
   "longContextThreshold",
+  "longContextInclusive",
   "longContextInputMultiplier",
   "longContextOutputMultiplier",
 ]);

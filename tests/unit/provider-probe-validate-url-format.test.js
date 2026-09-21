@@ -30,4 +30,18 @@ describe("registry-declared validateUrl honored regardless of chat format", () =
     expect(probe.fallback).toBeDefined();
     expect(probe.fallback.url).toBe("https://api.tokenrouter.com/v1/chat/completions");
   });
+
+  /**
+   * Ollama Cloud's registry `validateUrl` (https://ollama.com/api/tags) is a
+   * public model listing that returns 200 regardless of the bearer key, so
+   * honoring it with `accepts: "ok"` would mark any bad key "valid" (a
+   * fail-open health probe). `buildRegistryProviderProbe` must NOT build a
+   * validateUrl-based probe for "ollama"; it must fall through to `null`
+   * (unprobed), exactly as it did before validateUrl was honored ahead of the
+   * openai-only gate.
+   */
+  it("does not build a validateUrl probe for the ollama format", () => {
+    const probe = buildRegistryProviderProbe("ollama", "bad-key");
+    expect(probe).toBeNull();
+  });
 });

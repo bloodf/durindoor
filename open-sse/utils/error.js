@@ -126,9 +126,19 @@ const STRUCTURED_QUOTA_EXHAUSTION_CODES = new Set([
 // exhausted (e.g. check quota)."), which is not a quota signal at all. This
 // list must stay narrow to the machine-readable markers only.
 const ANTIGRAVITY_QUOTA_SIGNAL_MARKERS = ["RATE_LIMIT_EXCEEDED", "QUOTA_EXHAUSTED", "Individual quota reached"];
+// Antigravity's generic content-triggered 429 uses this exact boilerplate
+// sentence regardless of cause; it happens to satisfy EXPLICIT_QUOTA_TEXT
+// ("exhausted" ... "quota") even though it carries none of the markers above.
+// Left unguarded, that false "exhausted" state gets persisted as a runtime
+// snapshot and benches a healthy model/account on the next preflight check.
+const ANTIGRAVITY_CONTENT_REJECTION_TEXT = "Resource has been exhausted (e.g. check quota).";
 
 function hasAntigravityQuotaSignal(bodyText) {
   return isString(bodyText) && ANTIGRAVITY_QUOTA_SIGNAL_MARKERS.some((marker) => bodyText.includes(marker));
+}
+
+function isAntigravityContentRejection(bodyText) {
+  return isString(bodyText) && bodyText.includes(ANTIGRAVITY_CONTENT_REJECTION_TEXT) && !hasAntigravityQuotaSignal(bodyText);
 }
 
 function boundedAbsoluteReset(value, now, maxDelayMs) {
@@ -290,8 +300,9 @@ export function parseRateLimitEvidence({
   if (Number(status) !== 429) return null;
   const clock = Number(now);
   const safeNow = Number.isFinite(clock) ? clock : Date.now();
-  const explicitQuota = EXPLICIT_QUOTA_TEXT.test(String(bodyText || "")) ||
-  hasStructuredQuotaExhaustion(bodyText);
+  const explicitQuota = !isAntigravityContentRejection(bodyText) && (
+  EXPLICIT_QUOTA_TEXT.test(String(bodyText || "")) ||
+  hasStructuredQuotaExhaustion(bodyText));
 
   let resetAtMs = boundedAbsoluteReset(executorResetAtMs, safeNow, maxDelayMs);
   let source = resetAtMs ? "executor" : null;

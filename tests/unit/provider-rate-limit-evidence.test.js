@@ -190,6 +190,10 @@ describe("bounded 429 evidence parsing", () => {
 
     expect(parsed.message).toBe("Rate limit exceeded");
     expect(parsed.antigravityQuotaSignal).toBe(false);
+    // The boilerplate sentence itself matches EXPLICIT_QUOTA_TEXT ("exhausted"
+    // ... "quota"), so without the content-rejection carve-out this would
+    // wrongly persist state:"exhausted" and bench a healthy model.
+    expect(parsed.rateLimitEvidence).toMatchObject({ state: "cooldown", resetAtMs: null });
   });
 
   it("bounds stalled and oversized provider error bodies", async () => {

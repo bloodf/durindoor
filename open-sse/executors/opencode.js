@@ -85,7 +85,10 @@ const LAST_TEXT_MAX_LEN = 600;
 // OpenCode Zen requires User-Agent: opencode/<major>.<minor>[.<patch>] with
 // major.minor >= 1.17 — anything older 426s, anything unversioned 403s.
 function hasValidOpencodeVersion(ua) {
-  const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
+  // Token-bounded: a bare "opencode/X.Y[.Z]" segment, not a substring of a
+  // longer token like "not-opencode/1.18.31" or "opencode/1.18.31extra" -
+  // either would let a header Zen never emitted pass through unchanged.
+  const m = String(ua || "").match(/(?:^|\s)opencode\/(\d+)\.(\d+)(?:\.(\d+))?(?=\s|$)/i);
   if (!m) return false;
   const major = parseInt(m[1], 10);
   const minor = parseInt(m[2], 10);
@@ -121,13 +124,26 @@ export const OPENCODE_DECOY_RESPONSES_TOOLS = OPENCODE_FINGERPRINT_TOOLS.map((na
   parameters: { type: "object", properties: {} }
 }));
 
+// Claude Messages wire-shaped decoys for MESSAGES_MODELS (union-alpha):
+// {name, input_schema}, not the OpenAI {type, function} envelope.
+export const OPENCODE_DECOY_CLAUDE_TOOLS = OPENCODE_FINGERPRINT_TOOLS.map((name) => ({
+  name,
+  description: OPENCODE_DECOY_DESCRIPTION,
+  input_schema: { type: "object", properties: {} }
+}));
+
 // #4155: cloak decoy tools unconditionally, even when the caller already
 // supplied its own tools — the free tier requires the fingerprint quartet on
 // every request, not only tool-less ones. A real client tool of the same name
-// is left untouched (only missing decoys are appended).
-function cloakOpencodeTools(body, isResponses) {
+// is left untouched (only missing decoys are appended). `format` is
+// "responses" | "claude" | "chat" — MESSAGES_MODELS (union-alpha) is a Claude
+// Messages body and must get Claude-shaped tools and a Claude tool_choice,
+// never the OpenAI Chat envelope the "chat" branch writes; a mixed body of
+// Claude `input_schema` tools plus OpenAI `function` tools, or a string
+// tool_choice, is rejected by /zen/v1/messages.
+function cloakOpencodeTools(body, format) {
   if (!body) return;
-  if (isResponses) {
+  if (format === "responses") {
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
     if (!hasTools) body.tools = [];
     // #4146: a malformed tool entry (null/undefined) must not throw here — treat
@@ -140,6 +156,14 @@ function cloakOpencodeTools(body, isResponses) {
     // caller who already supplied its own tools would override their intent
     // (e.g. an explicit "required" or a named tool_choice).
     if (!hasTools && !body.tool_choice) body.tool_choice = "auto";
+  } else if (format === "claude") {
+    const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+    if (!hasTools) body.tools = [];
+    const exactNames = new Set(body.tools.map((t) => t?.name || ""));
+    for (const tool of OPENCODE_DECOY_CLAUDE_TOOLS) {
+      if (!exactNames.has(tool.name)) body.tools.push({ ...tool });
+    }
+    if (!hasTools && !body.tool_choice) body.tool_choice = { type: "none" };
   } else {
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
     if (!hasTools) {
@@ -381,13 +405,19 @@ export class OpenCodeExecutor extends BaseExecutor {
       // Strips prior-turn `reasoning` items and their encrypted_content (port of
       // decolua/9router eafac37d) as part of its existing item-shape pass.
       sanitizeResponsesItems(body);
-      cloakOpencodeTools(body, true);
+      cloakOpencodeTools(body, "responses");
       // Upstream #4128: the real client pins its Responses prompt cache to the
       // session it is running under. Mirror that with the same canonical
       // session id, so repeated turns of one conversation share a cache entry.
       // Only ever fills a missing value: a caller-supplied key wins.
       const session = credentials?.[SESSION_FIELD];
-      if (session && (body.prompt_cache_key === undefined || body.prompt_cache_key === null || body.prompt_cache_key === "")) {
+      // A whitespace-only key ("   ") is still caller-supplied by the null
+      // check above but is not a usable cache key — Zen can 400 on a blank
+      // one. Treat trim-empty the same as missing so the session pin runs.
+      const hasUsableCacheKey = isString(body.prompt_cache_key) ?
+      body.prompt_cache_key.trim() !== "" :
+      body.prompt_cache_key !== undefined && body.prompt_cache_key !== null;
+      if (session && !hasUsableCacheKey) {
         body.prompt_cache_key = session;
       }
       // OpenCode Free 400s muse-spark-1.3-contributor-free when tool_choice is
@@ -400,7 +430,7 @@ export class OpenCodeExecutor extends BaseExecutor {
         body.tool_choice = "auto";
       }
     } else if (body) {
-      cloakOpencodeTools(body, false);
+      cloakOpencodeTools(body, MESSAGES_MODELS.has(model) ? "claude" : "chat");
     }
     const transformed = injectReasoningContent({ provider: this.provider, model, body });
     /** Muse Responses rejects every Chat and Responses token-cap spelling. */

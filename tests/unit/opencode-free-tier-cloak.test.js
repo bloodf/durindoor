@@ -142,6 +142,35 @@ describe("OpenCodeExecutor free-tier client identity (#4128)", () => {
     expect(headers["User-Agent"]).toMatch(/(^|\s)opencode\/1\.(1[7-9]|[2-9]\d)/);
   });
 
+  it("does not forward a client UA that only contains opencode/X.Y as a substring", () => {
+    // "not-opencode/1.18.31" and "opencode/1.18.31extra" both contain a
+    // digit-for-digit match of the version regex if it isn't token-bounded,
+    // but neither is a string Zen's real client ever sends; forwarding it
+    // unchanged would ship a fingerprint Zen has never seen instead of
+    // falling back to the known-good literal.
+    const executor = new OpenCodeExecutor();
+    const spoofed = executor.buildHeaders(
+      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "not-opencode/1.18.31" } },
+      true, null, "big-pickle"
+    );
+    expect(spoofed["User-Agent"]).toBe(OPENCODE_UA);
+
+    const trailing = executor.buildHeaders(
+      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "opencode/1.18.31extra" } },
+      true, null, "big-pickle"
+    );
+    expect(trailing["User-Agent"]).toBe(OPENCODE_UA);
+  });
+
+  it("still forwards a genuine opencode/X.Y client UA unchanged", () => {
+    const executor = new OpenCodeExecutor();
+    const headers = executor.buildHeaders(
+      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "opencode/1.17.0" } },
+      true, null, "big-pickle"
+    );
+    expect(headers["User-Agent"]).toBe("opencode/1.17.0");
+  });
+
   it("pins prompt_cache_key to the canonical session on Muse Responses requests", () => {
     const executor = new OpenCodeExecutor();
     const credentials = executor.prepareRequestCredentials({
@@ -179,6 +208,19 @@ describe("OpenCodeExecutor free-tier client identity (#4128)", () => {
     const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, credentials);
 
     expect(transformed.prompt_cache_key).toBe("caller-key");
+  });
+
+  it("treats a whitespace-only caller prompt_cache_key as missing and pins the session", () => {
+    const executor = new OpenCodeExecutor();
+    const credentials = executor.prepareRequestCredentials({ credentials: { connectionId: "conn-a" } });
+    const body = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      prompt_cache_key: "   ",
+    };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, credentials);
+
+    expect(transformed.prompt_cache_key).toBe(credentials._opencodeSession);
   });
 
   it("leaves prompt_cache_key alone on the Chat Completions route", () => {

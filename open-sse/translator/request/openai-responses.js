@@ -170,7 +170,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         type: OPENAI_BLOCK.FUNCTION,
         function: {
           name: item.name,
-          arguments: item.arguments
+          // Codex replays raw streamed args verbatim; non-JSON strings (partial
+          // fragments / freeform text) must be coerced or upstream rejects the
+          // chat/completions body with "function.arguments must be valid JSON".
+          arguments: coerceResponsesArguments(item.arguments)
         }
       });
     } else

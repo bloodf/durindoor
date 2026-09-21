@@ -3,6 +3,7 @@ import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.j
 import { CLAUDE_BLOCK, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { FORMATS } from "../formats.js";
+import { coerceResponsesArguments } from "../formats/responsesApi.js";
 
 // Tool call helper functions for translator
 
@@ -270,13 +271,14 @@ export function ensureToolCallIds(body) {
         if (!tc.type) {
           tc.type = "function";
         }
-        /** Normalize empty and structured arguments for decolua/9router#3310. */
+        /**
+         * Normalize arguments for decolua/9router#3310 and #4208: stringify objects,
+         * validate JSON strings, fall back malformed/freeform strings to "{}" instead
+         * of forwarding them verbatim (Codex replays raw streamed args, and a partial
+         * fragment or freeform-text string trips upstream's "must be valid JSON" 400).
+         */
         if (tc.function && isObject(tc.function)) {
-          if (tc.function.arguments == null || tc.function.arguments === "") {
-            tc.function.arguments = "{}";
-          } else if (!isString(tc.function.arguments)) {
-            tc.function.arguments = JSON.stringify(tc.function.arguments);
-          }
+          tc.function.arguments = coerceResponsesArguments(tc.function.arguments);
         }
       }
     }

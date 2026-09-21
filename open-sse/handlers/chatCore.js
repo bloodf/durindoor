@@ -901,9 +901,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const baseModel = isString(cleanModel) && cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel;
   /** Read the server-owned cache without letting client-shared capabilities import it. */
   // OpenRouter's public catalog is account-independent, so it is cached per provider.
-  const liveLimits = getCachedLiveLimits(provider, cleanModel, credentials) ||
-  getCachedLiveLimits(provider, baseModel, credentials) || (
-  provider === "openrouter" ? getOpenRouterModelCapabilities(cleanModel) : null);
+  const cachedLiveLimits = getCachedLiveLimits(provider, cleanModel, credentials) ||
+  getCachedLiveLimits(provider, baseModel, credentials);
+  const catalogLimits = !cachedLiveLimits && provider === "openrouter" ? getOpenRouterModelCapabilities(cleanModel) : null;
+  const liveLimits = cachedLiveLimits || catalogLimits;
   const preflightLimits = resolveModelLimits(provider, cleanModel, requestContext?.modelCapabilities, credentials, liveLimits);
   if (preflightLimits.known && Number.isFinite(preflightLimits.contextWindow) && preflightLimits.contextWindow > 0) {
     // Always reserve the output ceiling chosen by resolveModelLimits. It has
@@ -917,7 +918,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         maxOutput: preflightLimits.maxOutput
       }
     };
-    const reservation = executor.resolveEffectiveOutputReservation?.(translatedBody, reservationContext) ?? 0;
+    // OpenRouter's catalog max_completion_tokens is a ceiling, not a default:
+    // it often sits near the window (29491 of 32768), so charging it to a
+    // request that names no output limit would reject ordinary prompts. Only
+    // an explicit client value (clamped to the ceiling) is reserved there.
+    const catalogCeilingOnly = catalogLimits && preflightLimits.maxOutput === catalogLimits.maxOutput;
+    const explicitOutput = executor.resolveEffectiveOutputReservation?.(translatedBody, { ...requestContext, modelCapabilities: {} }) ?? 0;
+    const reservation = catalogCeilingOnly && !explicitOutput ? 0 :
+    executor.resolveEffectiveOutputReservation?.(translatedBody, reservationContext) ?? 0;
     // Prefer the provider's own /messages/count_tokens when it exposes one —
     // the 4-chars-per-token heuristic is only a fallback, and rejecting on a
     // bad count is worse than not rejecting at all. countInputTokens itself

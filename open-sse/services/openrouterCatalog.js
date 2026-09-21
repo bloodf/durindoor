@@ -38,7 +38,9 @@ const isZeroPrice = (price) => (isNumber(price) || isString(price) && price.trim
 
 export function isOpenRouterFreeModel(entry) {
   if (!isRecord(entry) || !isString(entry.id) || !entry.id.endsWith(":free")) return false;
-  const prices = isRecord(entry.pricing) ? Object.values(entry.pricing) : [];
+  // Only scalar fee fields are prices; nested records such as
+  // `pricing.overrides` describe per-provider variants, not this variant's fee.
+  const prices = isRecord(entry.pricing) ? Object.values(entry.pricing).filter((p) => !isRecord(p)) : [];
   return prices.length > 0 && prices.every(isZeroPrice);
 }
 

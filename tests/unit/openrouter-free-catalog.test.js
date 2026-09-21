@@ -28,6 +28,7 @@ import {
   resolveOpenRouterModels,
 } from "../../open-sse/services/openrouterCatalog.js";
 import { resolveModelLimits } from "../../open-sse/providers/capabilities.js";
+import { getKnownContextWindow } from "../../open-sse/services/combo/contextRequirements.js";
 import { applyVisionBridgeReroute } from "../../open-sse/services/model.js";
 import { stripUnsupportedModalities } from "../../open-sse/translator/concerns/modality.js";
 import { FILTERS } from "../../src/app/api/providers/suggested-models/filters.js";
@@ -91,6 +92,9 @@ describe("isOpenRouterFreeModel", () => {
     expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: {} })).toBe(false);
     expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: { prompt: "", completion: "0" } })).toBe(false);
     expect(isOpenRouterFreeModel(null)).toBe(false);
+    // Live rows carry nested `pricing.overrides` records; they are not this variant's fee.
+    expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: { prompt: "0", completion: "0", overrides: { "some-provider": { prompt: "0.1" } } } })).toBe(true);
+    expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: { overrides: {} } })).toBe(false);
   });
 });
 
@@ -259,6 +263,15 @@ describe("discovered capabilities reach routing", () => {
       capabilities: caps,
     });
     expect(result.rerouted).toBe(false);
+  });
+
+  it("combo context filtering uses the published window over family patterns", async () => {
+    // Static `*glm-5*` says 200000; the catalog publishes 32768.
+    expect(getKnownContextWindow(`openrouter/${GLM_FREE_TEXT.id}`)).toBe(32768);
+    const caps = await loadCustomCapabilities("openrouter", GLM_FREE_TEXT.id, "openrouter");
+    const map = new Map([[`openrouter/${GLM_FREE_TEXT.id}`, caps]]);
+    expect(getKnownContextWindow(`openrouter/${GLM_FREE_TEXT.id}`, map)).toBe(32768);
+    expect(getKnownContextWindow("openrouter/unknown/model:free")).not.toBe(32768);
   });
 
   it("context-limit preflight resolves the published window as a live limit", () => {

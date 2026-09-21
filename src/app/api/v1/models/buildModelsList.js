@@ -19,6 +19,7 @@ import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveClineModels } from "open-sse/services/clineModels.js";
+import { resolveOpenRouterModels } from "open-sse/services/openrouterCatalog.js";
 import {
   resolveLiveAnthropicModels,
   resolveLiveCloudflareModels,
@@ -134,7 +135,8 @@ const LIVE_MODEL_UNION_PROVIDERS = new Set([
 "minimax",
 "minimax-cn",
 "glm",
-"glm-cn"]
+"glm-cn",
+"openrouter"]
 );
 async function liveResolverOptions(conn) {
   const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
@@ -269,6 +271,13 @@ const LIVE_MODEL_RESOLVERS = {
     filter((m) => isString(m.id)).
     map((m) => ({ id: m.id, ...(isString(m.name) ? { name: m.name } : null) }));
     return models.length ? { models } : null;
+  },
+  // Without an explicit selection, list OpenRouter's free models; with one,
+  // the whole public catalog only enriches the selected IDs' capabilities.
+  openrouter: async (conn) => {
+    const enabled = isRecord(conn.providerSpecificData) ? conn.providerSpecificData.enabledModels : null;
+    const models = await resolveOpenRouterModels({ freeOnly: !(Array.isArray(enabled) && enabled.length > 0) });
+    return models?.length ? { models } : null;
   },
   cline: async (conn) => {
     const models = await resolveClineModels(conn, await liveResolverOptions(conn));

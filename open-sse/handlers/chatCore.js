@@ -48,6 +48,7 @@ import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadr
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
+import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
@@ -899,8 +900,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // fallback chain is skipped for a request no other model would accept.
   const baseModel = isString(cleanModel) && cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel;
   /** Read the server-owned cache without letting client-shared capabilities import it. */
+  // OpenRouter's public catalog is account-independent, so it is cached per provider.
   const liveLimits = getCachedLiveLimits(provider, cleanModel, credentials) ||
-  getCachedLiveLimits(provider, baseModel, credentials);
+  getCachedLiveLimits(provider, baseModel, credentials) || (
+  provider === "openrouter" ? getOpenRouterModelCapabilities(cleanModel) : null);
   const preflightLimits = resolveModelLimits(provider, cleanModel, requestContext?.modelCapabilities, credentials, liveLimits);
   if (preflightLimits.known && Number.isFinite(preflightLimits.contextWindow) && preflightLimits.contextWindow > 0) {
     // Always reserve the output ceiling chosen by resolveModelLimits. It has

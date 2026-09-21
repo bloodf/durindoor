@@ -1,4 +1,5 @@
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getOpenRouterModelCapabilities, warmOpenRouterCatalog } from "open-sse/services/openrouterCatalog.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
@@ -58,10 +59,28 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
         return resolveCustomCapabilities(provider, model, node.prefix, customModels);
       }
     }
-    return null;
+    return resolveOpenRouterCapabilities(provider, model);
   } catch {
     return null;
   }
+}
+
+/**
+ * OpenRouter publishes per-model modalities, tool support and limits in its
+ * public catalog. Merge the cached entry over the static table so vision
+ * stripping, Vision Bridge and combo capability routing see the real model.
+ * Limits stay out of `customKeys`: chatCore reads them as live limits.
+ * A cold cache warms in the background and this request uses static caps.
+ */
+function resolveOpenRouterCapabilities(provider, model) {
+  if (provider !== "openrouter" || !isString(model)) return null;
+  warmOpenRouterCatalog();
+  const { cleanModel } = parseSuffix(model);
+  const live = getOpenRouterModelCapabilities(String(cleanModel));
+  if (!live) return null;
+  const merged = { ...getCapabilitiesForModel(provider, String(cleanModel)), ...live };
+  Object.defineProperty(merged, "customKeys", { value: new Set(), enumerable: false });
+  return merged;
 }
 
 // Re-export from open-sse with localDb integration

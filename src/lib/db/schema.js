@@ -266,6 +266,14 @@ export const TABLES = {
       // rows written before this existed keep contributing tokens but no rate.
       latencyMs: "INTEGER NOT NULL DEFAULT 0",
       ttftMs: "INTEGER NOT NULL DEFAULT 0",
+      // Per-rate split of `cost`, priced at insert where the request's own
+      // long-context tier is known. NULL on rows written before this existed
+      // and on provider-reported costs, which carry no rates to split with.
+      inputCost: "REAL",
+      cachedCost: "REAL",
+      cacheCreationCost: "REAL",
+      outputCost: "REAL",
+      reasoningCost: "REAL",
       // Set only for requests dispatched through a combo after issue #747.
       // Existing rows remain NULL; never backfilled/inferred.
       comboId: "TEXT",

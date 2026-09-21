@@ -19,7 +19,7 @@ import { getCommittedTokenCount } from "../helpers/committedTokens.js";
 import { normalizeTokenSaverEvent, aggregateTokenSaverEvents, tokenSaverEventColumns } from "open-sse/rtk/index.js";
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 import { deriveLatencyRates } from "../../../shared/utils/usageFormat.js";
-import { USAGE_COST_FIELDS, allocateUsageCost } from "../../../shared/utils/usageCostAllocation.js";
+import { USAGE_COST_FIELDS } from "../../../shared/utils/usageCostAllocation.js";
 import { usageTokenColumns } from "../migrations/usage-token-columns.js";
 import { TOKEN_SAVER_SUM_COLUMNS, TOKEN_SAVER_DAILY_COLUMNS, TOKEN_SAVER_AGGREGATES, backfillTokenSaverDaily } from "../migrations/token-saver-daily-schema.js";
 
@@ -131,8 +131,40 @@ export function addLatency(target, source, completionTokens = 0) {
   sampleOr(source.timedCompletionTokens, latencyMs > ttftMs ? completionTokens : 0);
 }
 
+const UNSPLIT_FIELDS = ["promptTokens", "completionTokens", "cachedTokens", "reasoningTokens", "cacheCreationTokens", "cost"];
+
+/**
+ * Carry the per-rate cost split from `source` into `target`. Call it before
+ * `source` is added to `target`'s token and cost counters.
+ *
+ * Usage rows store their split at insert, where each request's own tier is
+ * known. Rows written before that, or whose cost the provider reported, have no
+ * split; their tokens and cost collect in `target.unsplit` so the read path can
+ * price that remainder separately, or decline to split it.
+ *
+ * @param {object} target - Dimension counter being accumulated
+ * @param {object} source - Row, entry or counter with token counters and `cost`
+ */
+export function addCostSplit(target, source) {
+  const hasSplit = source.inputCost !== undefined && source.inputCost !== null;
+  // A counter summed before splits were stored holds only unsplit cost.
+  if (hasSplit && target.inputCost === undefined && !target.unsplit && Number(target.cost) > 0) {
+    target.unsplit = {};
+    for (const field of UNSPLIT_FIELDS) target.unsplit[field] = Number(target[field]) || 0;
+  }
+  if (hasSplit) {
+    for (const field of USAGE_COST_FIELDS) target[field] = (target[field] || 0) + (Number(source[field]) || 0);
+  }
+  const rest = hasSplit ? source.unsplit : source;
+  if (!rest || !(Number(rest.cost) > 0)) return;
+  target.unsplit ||= {};
+  for (const field of UNSPLIT_FIELDS) target.unsplit[field] = (target.unsplit[field] || 0) + (Number(rest[field]) || 0);
+  if (rest.mixed) target.unsplit.mixed = true;
+}
+
 function addToCounter(target, key, values) {
   if (!target[key]) target[key] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
+  addCostSplit(target[key], values);
   target[key].requests += values.requests ?? 1;
   target[key].promptTokens += values.promptTokens || 0;
   target[key].completionTokens += values.completionTokens || 0;
@@ -153,7 +185,8 @@ export function aggregateEntryToDay(day, entry, identitySalt) {
     requests: entry.requests ?? 1, promptTokens, completionTokens, cachedTokens, reasoningTokens, cacheCreationTokens, cost,
     latencyMs: entry.latencyMs || 0, ttftMs: entry.ttftMs || 0,
     latencySamples: entry.latencySamples, ttftSamples: entry.ttftSamples,
-    timedCompletionTokens: entry.timedCompletionTokens
+    timedCompletionTokens: entry.timedCompletionTokens,
+    ...Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, entry[field]]))
   };
   addLatency(day, vals, completionTokens);
 
@@ -177,12 +210,10 @@ export function aggregateEntryToDay(day, entry, identitySalt) {
   addToCounter(day.byModel, modelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
 
   if (entry.connectionId) {
-    // The daily account blob is keyed by connection only, so it can mix models.
-    // `singleModel` records whether it still holds one; legacy blobs lack the
-    // flag and read as mixed, which keeps them off the per-rate cost split.
-    const prev = day.byAccount[entry.connectionId];
-    const singleModel = !prev || prev.singleModel === true && prev.rawModel === entry.model && prev.provider === entry.provider;
-    addToCounter(day.byAccount, entry.connectionId, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, singleModel } });
+    // One counter per connection and model, as the live path groups them.
+    // Blobs saved before this used the bare connection id and mixed models.
+    const accountKey = `${entry.connectionId}|${entry.model}|${entry.provider || ""}`;
+    addToCounter(day.byAccount, accountKey, { ...vals, meta: { connectionId: entry.connectionId, rawModel: entry.model, provider: entry.provider } });
   }
 
   const akModelKey = getApiKeyStatsKey(entry.apiKey, entry.model, entry.provider, identitySalt);
@@ -254,21 +285,34 @@ export async function getRecentlyActiveConnectionIds(withinMs, now = Date.now())
   return ids;
 }
 
+/**
+ * Price one request, keeping the per-rate split next to the total.
+ *
+ * `split` is null when the components do not make up the total, which is the
+ * case for a provider-reported cost: there are no rates to divide it with.
+ *
+ * @returns {Promise<{cost: number, split: object|null}>}
+ */
 async function calculateCost(provider, model, tokens) {
-  if (!tokens) return 0;
+  if (!tokens) return { cost: 0, split: null };
   try {
-    const { calculateCostFromTokens } = await import("open-sse/providers/pricing.js");
-    if (!provider || !model) return calculateCostFromTokens(tokens, null);
+    const { calculateCostBreakdown } = await import("open-sse/providers/pricing.js");
     const { getPricingForModel } = await import("./pricingRepo.js");
-    const pricing = await getPricingForModel(provider, model);
+    const pricing = provider && model ? await getPricingForModel(provider, model) : null;
 
     // Delegate the actual math to the single source of truth (avoids the two
     // copies drifting apart — see open-sse/providers/pricing.js for the
     // cache-inclusive prompt_tokens convention this assumes).
-    return calculateCostFromTokens(tokens, pricing);
+    const breakdown = calculateCostBreakdown(tokens, pricing);
+    // Summed in the same order as `totalCost`, so a rate-derived total matches exactly.
+    const componentSum = USAGE_COST_FIELDS.reduce((sum, field) => sum + breakdown[field], 0);
+    const split = componentSum === breakdown.totalCost ?
+    Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, breakdown[field]])) :
+    null;
+    return { cost: breakdown.totalCost, split };
   } catch (e) {
     console.error("Error calculating cost:", e);
-    return 0;
+    return { cost: 0, split: null };
   }
 }
 
@@ -492,15 +536,18 @@ function aggregateChartWindow(db, startTime, endTime, bucketMs, bucketCount) {
     FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? GROUP BY bucket`, params);
 }
 
+// Rows without a stored split group apart from rows with one, so every
+// group's split sums are either complete or NULL, never a partial total.
 function aggregateUsageWindow(db, start, end) {
   return db.all(`SELECT provider, model, connectionId, apiKey, endpoint,
-      MAX(timestamp) AS timestamp, MAX(id) AS lastId, COUNT(*) AS requests,
+      MAX(timestamp) AS timestamp, COUNT(*) AS requests,
       SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens,
       SUM(cachedTokens) AS cachedTokens, SUM(reasoningTokens) AS reasoningTokens,
       SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost,
+      ${USAGE_COST_FIELDS.map((field) => `SUM(${field}) AS ${field}`).join(", ")},
       ${LATENCY_SUM_SQL}
     FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?
-    GROUP BY provider, model, connectionId, apiKey, endpoint ORDER BY MIN(id) ASC`, [start, end]).map((row) => ({
+    GROUP BY provider, model, connectionId, apiKey, endpoint, (inputCost IS NULL) ORDER BY MIN(id) ASC`, [start, end]).map((row) => ({
       ...row, ...latencyFromRow(row), requests: Number(row.requests), tokens: {
         prompt_tokens: Number(row.promptTokens), completion_tokens: Number(row.completionTokens),
         cached_tokens: Number(row.cachedTokens), reasoning_tokens: Number(row.reasoningTokens),
@@ -511,16 +558,7 @@ function aggregateUsageWindow(db, start, end) {
 
 function aggregateRowsToDay(rows, identitySalt) {
   const day = {};
-  const latestAccount = new Map();
-  for (const row of rows) {
-    aggregateEntryToDay(day, row, identitySalt);
-    // Keep first-seen key order, but preserve the old last-write metadata
-    // when one connection appears under several model/provider groups.
-    if (row.connectionId && Number(row.lastId) > (Number(latestAccount.get(row.connectionId)?.lastId) || 0)) latestAccount.set(row.connectionId, row);
-  }
-  for (const [connectionId, row] of latestAccount) {
-    Object.assign(day.byAccount[connectionId], { rawModel: row.model, provider: row.provider });
-  }
+  for (const row of rows) aggregateEntryToDay(day, row, identitySalt);
   return day;
 }
 
@@ -561,7 +599,9 @@ export async function saveRequestUsage(entry) {
     const identitySalt = getOrCreateUsageIdentitySalt(db);
 
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
-    entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
+    const { cost, split } = await calculateCost(entry.provider, entry.model, entry.tokens);
+    entry.cost = cost;
+    const costSplit = split || Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, null]));
 
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
@@ -604,14 +644,14 @@ export async function saveRequestUsage(entry) {
       }
 
       const insert = db.run(
-        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId, comboId, comboName, cachedTokens, reasoningTokens, cacheCreationTokens, latencyMs, ttftMs) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, usageEventId, comboId, comboName, cachedTokens, reasoningTokens, cacheCreationTokens, latencyMs, ttftMs, ${USAGE_COST_FIELDS.join(", ")}) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
         entry.timestamp, entry.provider || null, entry.model || null,
         entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
         promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
         stringifyJson(tokens), stringifyJson({}), entry.usageEventId || null,
         entry.comboId || null, entry.comboName || null, ...Object.values(usageTokenColumns(tokens)),
-        latencyMs, ttftMs]
+        latencyMs, ttftMs, ...USAGE_COST_FIELDS.map((field) => costSplit[field])]
 
       );
       if ((insert?.changes ?? 0) === 0) return;
@@ -623,7 +663,7 @@ export async function saveRequestUsage(entry) {
         requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
         byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {}
       };
-      aggregateEntryToDay(day, { ...entry, latencyMs, ttftMs }, identitySalt);
+      aggregateEntryToDay(day, { ...entry, latencyMs, ttftMs, ...costSplit }, identitySalt);
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 
       // Resolve the stored secret to its stable row id inside the same
@@ -972,6 +1012,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         if (!stats.byModel[statsKey]) {
           stats.byModel[statsKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel, provider: providerDisplayName, rawProvider: provider, lastUsed: dateKey };
         }
+        addCostSplit(stats.byModel[statsKey], m);
         stats.byModel[statsKey].requests += m.requests || 0;
         stats.byModel[statsKey].promptTokens += m.promptTokens || 0;
         stats.byModel[statsKey].completionTokens += m.completionTokens || 0;
@@ -983,7 +1024,8 @@ export async function getUsageStats(period = "all", opts = {}) {
         if (dateKey > (stats.byModel[statsKey].lastUsed || "")) stats.byModel[statsKey].lastUsed = dateKey;
       }
 
-      for (const [connId, a] of Object.entries(day.byAccount || {})) {
+      for (const [dayKey, a] of Object.entries(day.byAccount || {})) {
+        const connId = a.connectionId || dayKey;
         const accountName = connectionMap[connId] || `Account ${connId.slice(0, 8)}...`;
         const rawModel = a.rawModel || "";
         const provider = a.provider || "";
@@ -992,6 +1034,10 @@ export async function getUsageStats(period = "all", opts = {}) {
         if (!stats.byAccount[accountKey]) {
           stats.byAccount[accountKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel, provider: providerDisplayName, rawProvider: provider, connectionId: connId, accountName, lastUsed: dateKey };
         }
+        addCostSplit(stats.byAccount[accountKey], a);
+        // A blob saved under the bare connection id may hold several models'
+        // tokens, so no single model's rates can split its cost.
+        if (!a.connectionId && Number(a.cost) > 0) stats.byAccount[accountKey].unsplit.mixed = true;
         stats.byAccount[accountKey].requests += a.requests || 0;
         stats.byAccount[accountKey].promptTokens += a.promptTokens || 0;
         stats.byAccount[accountKey].completionTokens += a.completionTokens || 0;
@@ -1000,7 +1046,6 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byAccount[accountKey].cacheCreationTokens += a.cacheCreationTokens || 0;
         stats.byAccount[accountKey].cost += a.cost || 0;
         addLatency(stats.byAccount[accountKey], a, a.completionTokens || 0);
-        if (a.singleModel !== true) stats.byAccount[accountKey].mixedModels = true;
         if (dateKey > (stats.byAccount[accountKey].lastUsed || "")) stats.byAccount[accountKey].lastUsed = dateKey;
       }
 
@@ -1016,6 +1061,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         if (!stats.byApiKey[statsKey]) {
           stats.byApiKey[statsKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel, provider: providerDisplayName, rawProvider: provider, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
         }
+        addCostSplit(stats.byApiKey[statsKey], ak);
         stats.byApiKey[statsKey].requests += ak.requests || 0;
         stats.byApiKey[statsKey].promptTokens += ak.promptTokens || 0;
         stats.byApiKey[statsKey].completionTokens += ak.completionTokens || 0;
@@ -1035,6 +1081,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         if (!stats.byEndpoint[epKey]) {
           stats.byEndpoint[epKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, endpoint, rawModel, provider: providerDisplayName, rawProvider: provider, lastUsed: dateKey };
         }
+        addCostSplit(stats.byEndpoint[epKey], ep);
         stats.byEndpoint[epKey].requests += ep.requests || 0;
         stats.byEndpoint[epKey].promptTokens += ep.promptTokens || 0;
         stats.byEndpoint[epKey].completionTokens += ep.completionTokens || 0;
@@ -1133,6 +1180,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       if (!stats.byModel[modelKey]) {
         stats.byModel[modelKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, lastUsed: r.timestamp };
       }
+      addCostSplit(stats.byModel[modelKey], r);
       stats.byModel[modelKey].requests += r.requests;
       stats.byModel[modelKey].promptTokens += promptTokens;
       stats.byModel[modelKey].completionTokens += completionTokens;
@@ -1149,6 +1197,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         if (!stats.byAccount[accountKey]) {
           stats.byAccount[accountKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, connectionId: r.connectionId, accountName, lastUsed: r.timestamp };
         }
+        addCostSplit(stats.byAccount[accountKey], r);
         stats.byAccount[accountKey].requests += r.requests;
         stats.byAccount[accountKey].promptTokens += promptTokens;
         stats.byAccount[accountKey].completionTokens += completionTokens;
@@ -1169,6 +1218,7 @@ export async function getUsageStats(period = "all", opts = {}) {
           stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked, keyName, apiKeyKey, lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
+        addCostSplit(ake, r);
         ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
         addLatency(ake, r, completionTokens);
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
@@ -1178,6 +1228,7 @@ export async function getUsageStats(period = "all", opts = {}) {
           stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, apiKeyMasked: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
+        addCostSplit(ake, r);
         ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
         addLatency(ake, r, completionTokens);
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
@@ -1189,6 +1240,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byEndpoint[epKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, endpoint, rawModel: r.model, provider: providerDisplayName, rawProvider: r.provider, lastUsed: r.timestamp };
       }
       const epe = stats.byEndpoint[epKey];
+      addCostSplit(epe, r);
       epe.requests += r.requests;epe.promptTokens += promptTokens;epe.completionTokens += completionTokens;epe.cachedTokens += cachedTokens;epe.reasoningTokens += reasoningTokens;epe.cacheCreationTokens += cacheCreationTokens;epe.cost += entryCost;
       addLatency(epe, r, completionTokens);
       if (new Date(r.timestamp) > new Date(epe.lastUsed)) epe.lastUsed = r.timestamp;
@@ -1215,56 +1267,52 @@ export async function getUsageStats(period = "all", opts = {}) {
 }
 
 /**
- * Price one aggregated bucket's tokens at their own rates, then scale the
- * result to the cost already stored for that bucket.
+ * Price the part of a bucket that has no stored split, then scale the result
+ * to the cost recorded for that part.
  *
- * The stored total stays authoritative: it was computed per request and can
- * include provider-reported costs and long-context tiers that a summed bucket
- * no longer shows. Scaling keeps the categories in the right proportion to one
- * another while the column total still matches the billed figure.
+ * Summed tokens cannot say which requests crossed a long-context tier. With no
+ * tier, or one that scales input and output alike, the ratios do not depend on
+ * that, so scaling to the stored cost is exact. With unequal multipliers they
+ * do, so no split is derived.
  *
- * @param {object} entry - Dimension bucket carrying summed token counters and `cost`
+ * @param {object} rest - Summed token counters and `cost` of the unsplit rows
  * @param {object|null} pricing - Rates for the bucket's model, or null when unknown
  * @param {(tokens: object, pricing: object) => object} calc - `calculateCostBreakdown`
  * @returns {object|null} The five cost fields, or null when no split can be derived
  */
-function splitBucketCost(entry, pricing, calc) {
-  if (!pricing) return null;
-  // The long-context tier is a per-request threshold. Summed bucket tokens
-  // cross it when no single request did, and unequal input/output multipliers
-  // would then skew the ratios, so rate the bucket at base prices; the tier's
-  // effect on the absolute figure is already in the stored total.
-  // ponytail: a bucket made wholly of tiered requests with unequal multipliers
-  // is still split at base ratios; store per-row cost components if that matters.
+function splitUnsplitCost(rest, pricing, calc) {
+  if (!pricing || rest.mixed) return null;
+  const tiered = Number.isFinite(pricing.longContextThreshold) &&
+  (pricing.longContextInputMultiplier || 1) !== (pricing.longContextOutputMultiplier || 1);
+  if (tiered) return null;
   const ratedCost = calc({
-    prompt_tokens: entry.promptTokens || 0,
-    completion_tokens: entry.completionTokens || 0,
-    cached_tokens: entry.cachedTokens || 0,
-    cache_creation_input_tokens: entry.cacheCreationTokens || 0,
-    reasoning_tokens: entry.reasoningTokens || 0
+    prompt_tokens: rest.promptTokens || 0,
+    completion_tokens: rest.completionTokens || 0,
+    cached_tokens: rest.cachedTokens || 0,
+    cache_creation_input_tokens: rest.cacheCreationTokens || 0,
+    reasoning_tokens: rest.reasoningTokens || 0
   }, { ...pricing, longContextThreshold: Infinity });
   if (!(ratedCost.totalCost > 0)) return null;
-  const scale = (entry.cost || 0) / ratedCost.totalCost;
+  const scale = (rest.cost || 0) / ratedCost.totalCost;
   const split = {};
   for (const field of USAGE_COST_FIELDS) split[field] = ratedCost[field] * scale;
   return split;
 }
 
 /**
- * Attach a per-rate cost split to every dimension bucket.
+ * Finish the per-rate cost split of every dimension bucket.
  *
  * The dashboard used to divide each total by token share on the client, which
  * priced cached input like fresh input and collapsed output to a rounding
- * error on cache-heavy traffic. Pricing lives on the server, so the split is
- * derived here; buckets whose model has no pricing entry are left alone and
- * the client falls back to its token-share allocation. Daily account buckets
- * that mixed several models are left alone too: one model's rates cannot price
- * them.
+ * error on cache-heavy traffic. Each usage row now stores its own split, so a
+ * bucket's split is the sum of its rows'. Rows without one are priced here when
+ * that is exact (see {@link splitUnsplitCost}); otherwise the bucket publishes
+ * no split and the client falls back to its token-share allocation.
  *
  * Provider totals are summed from the model buckets rather than priced again,
- * because a provider row spans several models with different rates. Unpriced
- * models join that sum by token share, so the provider columns still add up to
- * the provider's cost.
+ * because a provider row spans several models with different rates. A provider
+ * publishes a split only when every one of its models has one, so its columns
+ * always add up to its cost.
  *
  * @param {object} stats - Mutated in place
  * @param {(provider: string, model: string) => Promise<object|null>} [lookupPricing] - Defaults to the pricing repo
@@ -1293,21 +1341,34 @@ export async function applyCostBreakdowns(stats, lookupPricing) {
     }
   };
 
+  const bucketSplit = async (entry) => {
+    // Unsplit rows with a cost land in `rest`, so anything else sums exactly.
+    const rest = entry.unsplit;
+    const split = {};
+    for (const field of USAGE_COST_FIELDS) split[field] = entry[field] || 0;
+    if (!rest) return split;
+    const restSplit = splitUnsplitCost(rest, await pricingFor(entry.rawProvider, entry.rawModel), calculateCostBreakdown);
+    if (!restSplit) return null;
+    for (const field of USAGE_COST_FIELDS) split[field] += restSplit[field];
+    return split;
+  };
+
   const providerSplits = {};
   for (const bucket of ["byModel", "byAccount", "byApiKey", "byEndpoint"]) {
     for (const entry of Object.values(stats[bucket])) {
-      const split = entry.mixedModels ? null : splitBucketCost(entry, await pricingFor(entry.rawProvider, entry.rawModel), calculateCostBreakdown);
+      const split = await bucketSplit(entry);
+      // Partial sums must not reach the client, where they would read as a split.
+      delete entry.unsplit;
+      for (const field of USAGE_COST_FIELDS) delete entry[field];
       if (split) Object.assign(entry, split);
       if (bucket !== "byModel" || !stats.byProvider[entry.rawProvider]) continue;
-      const acc = providerSplits[entry.rawProvider] ||= { priced: false, split: {} };
-      const share = split || allocateUsageCost(entry);
-      if (split) acc.priced = true;
-      for (const field of USAGE_COST_FIELDS) acc.split[field] = (acc.split[field] || 0) + share[field];
+      const acc = providerSplits[entry.rawProvider] ||= { complete: true, split: {} };
+      if (!split) acc.complete = false;
+      else for (const field of USAGE_COST_FIELDS) acc.split[field] = (acc.split[field] || 0) + split[field];
     }
   }
-  // A provider with no priced model keeps the client's token-share fallback.
-  for (const [provider, { priced, split }] of Object.entries(providerSplits)) {
-    if (priced) Object.assign(stats.byProvider[provider], split);
+  for (const [provider, { complete, split }] of Object.entries(providerSplits)) {
+    if (complete) Object.assign(stats.byProvider[provider], split);
   }
 }
 

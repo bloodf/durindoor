@@ -3,7 +3,8 @@
 // aggregation, so these exercise it directly: the category columns must add up
 // to the bucket's recorded cost on every dimension.
 import { describe, expect, it, vi } from "vitest";
-import { addLatency, aggregateEntryToDay, applyCostBreakdowns } from "@/lib/db/repos/usageRepo.js";
+import { calculateCostBreakdown } from "open-sse/providers/pricing.js";
+import { addCostSplit, addLatency, aggregateEntryToDay, applyCostBreakdowns } from "@/lib/db/repos/usageRepo.js";
 import { USAGE_COST_FIELDS } from "@/shared/utils/usageCostAllocation.js";
 
 const cheap = { input: 1, cached: 0.1, output: 2 };
@@ -19,74 +20,109 @@ function emptyStats() {
 
 const splitSum = (entry) => USAGE_COST_FIELDS.reduce((sum, field) => sum + entry[field], 0);
 
-describe("aggregateEntryToDay account model tracking", () => {
-  const entry = (model) => ({ provider: "openai", model, connectionId: "conn-1", tokens: { prompt_tokens: 10, completion_tokens: 5 }, cost: 0.1 });
+describe("aggregateEntryToDay account buckets", () => {
+  const entry = (model, cost) => ({ provider: "openai", model, connectionId: "conn-1", tokens: { prompt_tokens: 10, completion_tokens: 5 }, cost });
 
-  it("keeps a connection that served one model marked single-model", () => {
+  it("keeps one counter per connection and model", () => {
     const day = {};
-    aggregateEntryToDay(day, entry("a"));
-    aggregateEntryToDay(day, entry("a"));
-    expect(day.byAccount["conn-1"].singleModel).toBe(true);
+    aggregateEntryToDay(day, entry("a", 0.1));
+    aggregateEntryToDay(day, entry("b", 0.4));
+    aggregateEntryToDay(day, entry("a", 0.1));
+
+    const a = day.byAccount["conn-1|a|openai"];
+    const b = day.byAccount["conn-1|b|openai"];
+    expect(a).toMatchObject({ requests: 2, connectionId: "conn-1", rawModel: "a" });
+    expect(a.cost).toBeCloseTo(0.2, 12);
+    expect(b).toMatchObject({ requests: 1, connectionId: "conn-1", rawModel: "b" });
+    expect(b.cost).toBeCloseTo(0.4, 12);
+  });
+});
+
+describe("addCostSplit", () => {
+  const split = (inputCost, outputCost) => ({ inputCost, cachedCost: 0, cacheCreationCost: 0, outputCost, reasoningCost: 0 });
+
+  it("sums stored splits and parks rows without one in the remainder", () => {
+    const target = {};
+    addCostSplit(target, { promptTokens: 10, completionTokens: 5, cost: 3, ...split(1, 2) });
+    addCostSplit(target, { promptTokens: 7, completionTokens: 1, cost: 0.5, inputCost: null });
+    expect(target).toMatchObject({ inputCost: 1, outputCost: 2 });
+    expect(target.unsplit).toMatchObject({ promptTokens: 7, completionTokens: 1, cost: 0.5 });
   });
 
-  it("marks a connection that served two models as mixed", () => {
-    const day = {};
-    aggregateEntryToDay(day, entry("a"));
-    aggregateEntryToDay(day, entry("b"));
-    aggregateEntryToDay(day, entry("a"));
-    expect(day.byAccount["conn-1"].singleModel).toBe(false);
-  });
-
-  it("treats a legacy blob without the flag as mixed", () => {
-    const day = { byAccount: { "conn-1": { requests: 1, promptTokens: 1, completionTokens: 1, cost: 0.1, rawModel: "a", provider: "openai" } } };
-    aggregateEntryToDay(day, entry("a"));
-    expect(day.byAccount["conn-1"].singleModel).toBe(false);
+  it("moves a counter summed before splits existed into the remainder", () => {
+    const counter = { requests: 2, promptTokens: 40, completionTokens: 20, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0.8 };
+    addCostSplit(counter, { cost: 1, ...split(0.25, 0.75) });
+    expect(counter.unsplit).toMatchObject({ promptTokens: 40, completionTokens: 20, cost: 0.8 });
+    expect(counter.inputCost).toBe(0.25);
   });
 });
 
 describe("applyCostBreakdowns", () => {
   const lookup = async (provider, model) => ({ cheap, dear }[model] || null);
+  const tiered = { ...cheap, longContextThreshold: 500, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 };
 
-  it("leaves a mixed-model account bucket to the client fallback", async () => {
+  it("publishes the stored per-request split of tiered traffic, not base ratios", async () => {
+    // One request above the tier, one below, priced where each tier was known.
+    const big = calculateCostBreakdown({ prompt_tokens: 900, completion_tokens: 100 }, tiered);
+    const small = calculateCostBreakdown({ prompt_tokens: 100, completion_tokens: 400 }, tiered);
+    const day = {};
+    for (const [tokens, parts] of [[{ prompt_tokens: 900, completion_tokens: 100 }, big], [{ prompt_tokens: 100, completion_tokens: 400 }, small]]) {
+      aggregateEntryToDay(day, { provider: "openai", model: "tiered", tokens, cost: parts.totalCost, ...parts });
+    }
     const stats = emptyStats();
-    stats.byAccount.mixed = bucket({ cost: 1, rawModel: "dear", rawProvider: "openai", mixedModels: true });
-    stats.byAccount.single = bucket({ cost: 1, rawModel: "dear", rawProvider: "openai" });
-    await applyCostBreakdowns(stats, lookup);
+    const counter = day.byModel["tiered|openai"];
+    stats.byModel.m = { cost: 0, rawModel: "tiered", rawProvider: "openai" };
+    addCostSplit(stats.byModel.m, counter);
+    stats.byModel.m.cost = counter.cost;
+    await applyCostBreakdowns(stats, async () => tiered);
 
-    expect(stats.byAccount.mixed.inputCost).toBeUndefined();
-    expect(splitSum(stats.byAccount.single)).toBeCloseTo(1, 12);
+    expect(stats.byModel.m.inputCost).toBeCloseTo(big.inputCost + small.inputCost, 15);
+    expect(stats.byModel.m.outputCost).toBeCloseTo(big.outputCost + small.outputCost, 15);
+    expect(stats.byModel.m.unsplit).toBeUndefined();
   });
 
-  it("sums provider columns to the provider cost when a model is unpriced", async () => {
+  it("publishes no split when unsplit rows meet unequal long-context multipliers", async () => {
     const stats = emptyStats();
-    stats.byProvider.openai = bucket({ promptTokens: 2000, completionTokens: 1000, cachedTokens: 400, cost: 3 });
-    stats.byModel.priced = bucket({ cost: 1, rawModel: "cheap", rawProvider: "openai" });
-    stats.byModel.unpriced = bucket({ cost: 2, rawModel: "mystery", rawProvider: "openai" });
-    await applyCostBreakdowns(stats, lookup);
-
-    expect(stats.byModel.unpriced.inputCost).toBeUndefined();
-    expect(splitSum(stats.byProvider.openai)).toBeCloseTo(3, 12);
+    stats.byModel.m = bucket({ cost: 1, rawModel: "tiered", rawProvider: "openai", unsplit: { ...bucket(), cost: 1 } });
+    await applyCostBreakdowns(stats, async () => tiered);
+    expect(stats.byModel.m.inputCost).toBeUndefined();
   });
 
-  it("publishes no provider split when none of its models is priced", async () => {
+  it("prices unsplit rows of an untiered model and adds the stored split", async () => {
     const stats = emptyStats();
-    stats.byProvider.openai = bucket({ cost: 2 });
-    stats.byModel.unpriced = bucket({ cost: 2, rawModel: "mystery", rawProvider: "openai" });
+    stats.byModel.m = bucket({ cost: 1.5, rawModel: "dear", rawProvider: "openai", inputCost: 0.1, cachedCost: 0, cacheCreationCost: 0, outputCost: 0.4, reasoningCost: 0, unsplit: { ...bucket(), cost: 1 } });
+    await applyCostBreakdowns(stats, lookup);
+    expect(splitSum(stats.byModel.m)).toBeCloseTo(1.5, 12);
+    // Remainder at dear rates: 800 fresh * 10, 200 cached * 1, 500 output * 40.
+    expect(stats.byModel.m.inputCost).toBeCloseTo(0.1 + 8000 / 28200, 12);
+  });
+
+  it("leaves a legacy account blob that may mix models to the client fallback", async () => {
+    const stats = emptyStats();
+    stats.byAccount.a = bucket({ cost: 1, rawModel: "dear", rawProvider: "openai", unsplit: { ...bucket(), cost: 1, mixed: true } });
+    await applyCostBreakdowns(stats, lookup);
+    expect(stats.byAccount.a.inputCost).toBeUndefined();
+  });
+
+  it("keeps the provider on the fallback when one model has cost it cannot split", async () => {
+    const stats = emptyStats();
+    stats.byProvider.openai = bucket({ cost: 3 });
+    stats.byModel.priced = bucket({ cost: 1, rawModel: "cheap", rawProvider: "openai", inputCost: 0.5, cachedCost: 0, cacheCreationCost: 0, outputCost: 0.5, reasoningCost: 0 });
+    // A provider-reported cost with no tokens to price it by.
+    stats.byModel.reported = { requests: 1, promptTokens: 0, completionTokens: 0, cost: 2, rawModel: "cheap", rawProvider: "openai", unsplit: { promptTokens: 0, completionTokens: 0, cost: 2 } };
     await applyCostBreakdowns(stats, lookup);
 
+    expect(stats.byModel.reported.inputCost).toBeUndefined();
     expect(stats.byProvider.openai.inputCost).toBeUndefined();
   });
 
-  it("splits at base ratios when summed tokens cross a per-request long-context tier", async () => {
-    const tiered = { ...cheap, longContextThreshold: 500, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 };
+  it("sums provider columns from its models when every model is split", async () => {
     const stats = emptyStats();
-    stats.byModel.m = bucket({ cost: 1, rawModel: "tiered", rawProvider: "openai" });
-    await applyCostBreakdowns(stats, async () => tiered);
-
-    const m = stats.byModel.m;
-    // Base rates: 800 fresh * 1 + 200 cached * 0.1 : 500 output * 2.
-    expect(m.inputCost / m.outputCost).toBeCloseTo(800 / 1000, 12);
-    expect(splitSum(m)).toBeCloseTo(1, 12);
+    stats.byProvider.openai = bucket({ cost: 3 });
+    stats.byModel.a = bucket({ cost: 1, rawModel: "cheap", rawProvider: "openai", inputCost: 0.5, cachedCost: 0, cacheCreationCost: 0, outputCost: 0.5, reasoningCost: 0 });
+    stats.byModel.b = bucket({ cost: 2, rawModel: "dear", rawProvider: "openai", unsplit: { ...bucket(), cost: 2 } });
+    await applyCostBreakdowns(stats, lookup);
+    expect(splitSum(stats.byProvider.openai)).toBeCloseTo(3, 12);
   });
 
   it("logs a failed pricing lookup and retries it instead of caching no pricing", async () => {
@@ -95,8 +131,8 @@ describe("applyCostBreakdowns", () => {
       .mockRejectedValueOnce(new Error("db locked"))
       .mockResolvedValue(cheap);
     const stats = emptyStats();
-    stats.byModel.m = bucket({ cost: 1, rawModel: "cheap", rawProvider: "openai" });
-    stats.byEndpoint.e = bucket({ cost: 1, rawModel: "cheap", rawProvider: "openai" });
+    stats.byModel.m = bucket({ cost: 1, rawModel: "cheap", rawProvider: "openai", unsplit: { ...bucket(), cost: 1 } });
+    stats.byEndpoint.e = bucket({ cost: 1, rawModel: "cheap", rawProvider: "openai", unsplit: { ...bucket(), cost: 1 } });
     await applyCostBreakdowns(stats, failing);
 
     expect(errorSpy).toHaveBeenCalled();

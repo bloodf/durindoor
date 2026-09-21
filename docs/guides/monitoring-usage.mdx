@@ -42,9 +42,9 @@ Request-log lines shown by `/api/usage/request-logs` are derived from `usageHist
 
 ## Cost split and speed
 
-Every cost column is priced at its own rate. The server resolves pricing for a row's model, prices fresh input, cached reads, cache writes, visible output, and reasoning separately, then scales that split so the columns still add up to the estimated total already recorded for the request. A model with no pricing entry falls back to a token-share split, which spreads the total by token count and so reads as a share of spend rather than a rate.
+Every cost column is priced at its own rate. The server resolves pricing for a row's model, prices fresh input, cached reads, cache writes, visible output, and reasoning separately, then scales that split so the columns still add up to the estimated total already recorded for the request. A model with no pricing entry falls back to a token-share split, which spreads the total by token count and so reads as a share of spend rather than a rate. Provider rows sum their models' splits, with any unpriced model joining by token share. On 7-day and longer windows an account row that served several models in one day also falls back to token share, since no single model's rates fit it.
 
-Output speed divides output tokens by decode time, the call duration minus time to first token, so a slow first token does not read as slow generation. Rows recorded before timing existed carry `latencyMs = 0`; they still count toward tokens and cost but are left out of every rate, and the overview card says how many requests in the period were timed.
+Output speed divides output tokens by decode time, the call duration minus time to first token, so a slow first token does not read as slow generation. Non-streaming calls have no first token to time, so their whole duration counts as decode. Rows recorded before timing existed carry `latencyMs = 0`; they still count toward tokens and cost but are left out of every rate, and the overview card says how many requests in the period were timed.
 
 ## Console log
 

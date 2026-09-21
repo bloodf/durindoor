@@ -273,7 +273,9 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
      * request body without altering client-facing response usage.
      */
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency, label: "STREAM USAGE", silent: true });
+    // The TTFT fallback above keeps request logs readable, but stored usage
+    // needs one "not measured" value: 0, as the other handlers write.
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
 
     if (

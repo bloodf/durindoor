@@ -19,6 +19,7 @@ import { getCommittedTokenCount } from "../helpers/committedTokens.js";
 import { normalizeTokenSaverEvent, aggregateTokenSaverEvents, tokenSaverEventColumns } from "open-sse/rtk/index.js";
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 import { deriveLatencyRates } from "../../../shared/utils/usageFormat.js";
+import { USAGE_COST_FIELDS, allocateUsageCost } from "../../../shared/utils/usageCostAllocation.js";
 import { usageTokenColumns } from "../migrations/usage-token-columns.js";
 import { TOKEN_SAVER_SUM_COLUMNS, TOKEN_SAVER_DAILY_COLUMNS, TOKEN_SAVER_AGGREGATES, backfillTokenSaverDaily } from "../migrations/token-saver-daily-schema.js";
 
@@ -114,15 +115,20 @@ function scheduleStatsEvent(event, delayMs = 150) {
  * @param {object} source - Row or bucket contributing latency
  * @param {number} [completionTokens=0] - Output tokens of `source`, used when it carries no `timedCompletionTokens`
  */
-function addLatency(target, source, completionTokens = 0) {
+export function addLatency(target, source, completionTokens = 0) {
   const latencyMs = Number(source.latencyMs) || 0;
   const ttftMs = Number(source.ttftMs) || 0;
+  // A stored sample count of 0 is a real measurement; only a missing one means
+  // `source` is a single row whose own timing decides.
+  const sampleOr = (value, fallback) => value === undefined || value === null ? fallback : Number(value) || 0;
   target.latencyMs = (target.latencyMs || 0) + latencyMs;
   target.ttftMs = (target.ttftMs || 0) + ttftMs;
-  target.latencySamples = (target.latencySamples || 0) + (Number(source.latencySamples) || (latencyMs > 0 ? 1 : 0));
-  target.ttftSamples = (target.ttftSamples || 0) + (Number(source.ttftSamples) || (ttftMs > 0 ? 1 : 0));
+  target.latencySamples = (target.latencySamples || 0) + sampleOr(source.latencySamples, latencyMs > 0 ? 1 : 0);
+  target.ttftSamples = (target.ttftSamples || 0) + sampleOr(source.ttftSamples, ttftMs > 0 ? 1 : 0);
+  // Tokens count toward throughput only when the row has decode time to divide
+  // them by; a row whose whole duration is TTFT would otherwise add tokens for free.
   target.timedCompletionTokens = (target.timedCompletionTokens || 0) +
-  (Number(source.timedCompletionTokens) || (latencyMs > 0 ? completionTokens : 0));
+  sampleOr(source.timedCompletionTokens, latencyMs > ttftMs ? completionTokens : 0);
 }
 
 function addToCounter(target, key, values) {
@@ -138,7 +144,7 @@ function addToCounter(target, key, values) {
   if (values.meta) Object.assign(target[key], values.meta);
 }
 
-function aggregateEntryToDay(day, entry, identitySalt) {
+export function aggregateEntryToDay(day, entry, identitySalt) {
   const promptTokens = entry.tokens?.prompt_tokens || entry.tokens?.input_tokens || 0;
   const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
   const { cachedTokens, reasoningTokens, cacheCreationTokens } = usageTokenColumns(entry.tokens);
@@ -171,7 +177,12 @@ function aggregateEntryToDay(day, entry, identitySalt) {
   addToCounter(day.byModel, modelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
 
   if (entry.connectionId) {
-    addToCounter(day.byAccount, entry.connectionId, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
+    // The daily account blob is keyed by connection only, so it can mix models.
+    // `singleModel` records whether it still holds one; legacy blobs lack the
+    // flag and read as mixed, which keeps them off the per-rate cost split.
+    const prev = day.byAccount[entry.connectionId];
+    const singleModel = !prev || prev.singleModel === true && prev.rawModel === entry.model && prev.provider === entry.provider;
+    addToCounter(day.byAccount, entry.connectionId, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, singleModel } });
   }
 
   const akModelKey = getApiKeyStatsKey(entry.apiKey, entry.model, entry.provider, identitySalt);
@@ -447,12 +458,12 @@ export async function getActiveRequests() {
 }
 
 // Latency sums shared by the chart and stats windows. `latencySamples` counts
-// only rows that were actually timed, so the rate divides by the same subset
-// whose tokens it multiplied. Portable across SQLite and PostgreSQL.
+// only rows that were actually timed, and throughput tokens only rows with
+// decode time, so the rate divides by the same subset whose tokens it multiplied. Portable across SQLite and PostgreSQL.
 const LATENCY_SUM_SQL = `SUM(latencyMs) AS latencyMs, SUM(ttftMs) AS ttftMs,
   SUM(CASE WHEN latencyMs > 0 THEN 1 ELSE 0 END) AS latencySamples,
   SUM(CASE WHEN ttftMs > 0 THEN 1 ELSE 0 END) AS ttftSamples,
-  SUM(CASE WHEN latencyMs > 0 THEN completionTokens ELSE 0 END) AS timedCompletionTokens`;
+  SUM(CASE WHEN latencyMs > ttftMs THEN completionTokens ELSE 0 END) AS timedCompletionTokens`;
 
 /** Coerce the driver-specific numeric types of {@link LATENCY_SUM_SQL} to numbers. */
 function latencyFromRow(row) {
@@ -989,6 +1000,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byAccount[accountKey].cacheCreationTokens += a.cacheCreationTokens || 0;
         stats.byAccount[accountKey].cost += a.cost || 0;
         addLatency(stats.byAccount[accountKey], a, a.completionTokens || 0);
+        if (a.singleModel !== true) stats.byAccount[accountKey].mixedModels = true;
         if (dateKey > (stats.byAccount[accountKey].lastUsed || "")) stats.byAccount[accountKey].lastUsed = dateKey;
       }
 
@@ -1202,8 +1214,6 @@ export async function getUsageStats(period = "all", opts = {}) {
   return stats;
 }
 
-const BUCKET_COST_FIELDS = ["inputCost", "cachedCost", "cacheCreationCost", "outputCost", "reasoningCost"];
-
 /**
  * Price one aggregated bucket's tokens at their own rates, then scale the
  * result to the cost already stored for that bucket.
@@ -1220,17 +1230,23 @@ const BUCKET_COST_FIELDS = ["inputCost", "cachedCost", "cacheCreationCost", "out
  */
 function splitBucketCost(entry, pricing, calc) {
   if (!pricing) return null;
+  // The long-context tier is a per-request threshold. Summed bucket tokens
+  // cross it when no single request did, and unequal input/output multipliers
+  // would then skew the ratios, so rate the bucket at base prices; the tier's
+  // effect on the absolute figure is already in the stored total.
+  // ponytail: a bucket made wholly of tiered requests with unequal multipliers
+  // is still split at base ratios; store per-row cost components if that matters.
   const ratedCost = calc({
     prompt_tokens: entry.promptTokens || 0,
     completion_tokens: entry.completionTokens || 0,
     cached_tokens: entry.cachedTokens || 0,
     cache_creation_input_tokens: entry.cacheCreationTokens || 0,
     reasoning_tokens: entry.reasoningTokens || 0
-  }, pricing);
+  }, { ...pricing, longContextThreshold: Infinity });
   if (!(ratedCost.totalCost > 0)) return null;
   const scale = (entry.cost || 0) / ratedCost.totalCost;
   const split = {};
-  for (const field of BUCKET_COST_FIELDS) split[field] = ratedCost[field] * scale;
+  for (const field of USAGE_COST_FIELDS) split[field] = ratedCost[field] * scale;
   return split;
 }
 
@@ -1241,40 +1257,57 @@ function splitBucketCost(entry, pricing, calc) {
  * priced cached input like fresh input and collapsed output to a rounding
  * error on cache-heavy traffic. Pricing lives on the server, so the split is
  * derived here; buckets whose model has no pricing entry are left alone and
- * the client falls back to its token-share allocation.
+ * the client falls back to its token-share allocation. Daily account buckets
+ * that mixed several models are left alone too: one model's rates cannot price
+ * them.
  *
  * Provider totals are summed from the model buckets rather than priced again,
- * because a provider row spans several models with different rates.
+ * because a provider row spans several models with different rates. Unpriced
+ * models join that sum by token share, so the provider columns still add up to
+ * the provider's cost.
  *
  * @param {object} stats - Mutated in place
+ * @param {(provider: string, model: string) => Promise<object|null>} [lookupPricing] - Defaults to the pricing repo
  */
-async function applyCostBreakdowns(stats) {
+export async function applyCostBreakdowns(stats, lookupPricing) {
   const [{ getPricingForModel }, { calculateCostBreakdown }] = await Promise.all([
   import("./pricingRepo.js"),
   import("open-sse/providers/pricing.js")]
   );
+  const lookup = lookupPricing || getPricingForModel;
 
-  // One await per distinct provider|model, not one per bucket.
+  // One await per distinct provider|model, not one per bucket. A failed lookup
+  // is logged and not cached, so a transient error does not stick for the call.
   const pricingCache = new Map();
   const pricingFor = async (provider, model) => {
+    if (!provider || !model) return null;
     const key = `${provider}|${model}`;
-    if (!pricingCache.has(key)) {
-      let pricing = null;
-      try {pricing = provider && model ? await getPricingForModel(provider, model) : null;} catch {}
+    if (pricingCache.has(key)) return pricingCache.get(key);
+    try {
+      const pricing = await lookup(provider, model);
       pricingCache.set(key, pricing);
+      return pricing;
+    } catch (error) {
+      console.error(`[usage] pricing lookup failed for ${key}:`, error?.message || error);
+      return null;
     }
-    return pricingCache.get(key);
   };
 
+  const providerSplits = {};
   for (const bucket of ["byModel", "byAccount", "byApiKey", "byEndpoint"]) {
     for (const entry of Object.values(stats[bucket])) {
-      const split = splitBucketCost(entry, await pricingFor(entry.rawProvider, entry.rawModel), calculateCostBreakdown);
-      if (!split) continue;
-      Object.assign(entry, split);
-      if (bucket !== "byModel") continue;
-      const provider = stats.byProvider[entry.rawProvider];
-      if (provider) for (const field of BUCKET_COST_FIELDS) provider[field] = (provider[field] || 0) + split[field];
+      const split = entry.mixedModels ? null : splitBucketCost(entry, await pricingFor(entry.rawProvider, entry.rawModel), calculateCostBreakdown);
+      if (split) Object.assign(entry, split);
+      if (bucket !== "byModel" || !stats.byProvider[entry.rawProvider]) continue;
+      const acc = providerSplits[entry.rawProvider] ||= { priced: false, split: {} };
+      const share = split || allocateUsageCost(entry);
+      if (split) acc.priced = true;
+      for (const field of USAGE_COST_FIELDS) acc.split[field] = (acc.split[field] || 0) + share[field];
     }
+  }
+  // A provider with no priced model keeps the client's token-share fallback.
+  for (const [provider, { priced, split }] of Object.entries(providerSplits)) {
+    if (priced) Object.assign(stats.byProvider[provider], split);
   }
 }
 

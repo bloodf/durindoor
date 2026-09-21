@@ -72,7 +72,9 @@ nothing downstream changes. `TYPESAFE_API_BASE` overrides the endpoint.
 
 Only the text of `user` messages in the current turn is sent, capped at 4000
 characters. System and developer prompts, tool and function messages, tool
-results, and earlier turns never leave DurinDoor. The call has one 3s deadline
+results, and earlier turns never leave DurinDoor. Only chat requests (chat completions,
+messages, responses, Gemini) are classified; TTS, image, search and fetch combos
+always use the local heuristic. The call has one 3s deadline
 covering the response headers and body, and it is cancelled when the client
 disconnects. A timeout, network error, HTTP error, or unreadable body opens a 30s
 circuit breaker; after the cooldown one request probes the service again. It fails open: no key, a timeout, an HTTP error, an unparseable body, an

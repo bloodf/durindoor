@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { buildJevState, classifyTask, reorderByTaskWeight } from "../../open-sse/services/combo.js";
+import { buildJevState, classifyTask, handleComboChat, reorderByTaskWeight } from "../../open-sse/services/combo.js";
 import { classifyTier, resetJevBreaker } from "../../open-sse/services/jevClassifier.js";
 import { JEV_TIERS, JEV_TIER_TO_TASK_LEVEL } from "../../open-sse/config/jev.js";
 
@@ -290,5 +290,41 @@ describe("classifyTier", () => {
     const r = await classifyTier({ ...baseOpts, log: spyLog, fetchImpl: vi.fn(async () => jevOk({ choice: "MEDIUM", confidence: 0.99 })) });
     expect(JSON.stringify(r)).not.toContain("test-key");
     expect(lines.join("\n")).not.toContain("test-key");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleComboChat — only the chat path opts into Jev
+// ---------------------------------------------------------------------------
+describe("handleComboChat Jev opt-in", () => {
+  beforeEach(() => resetJevBreaker());
+
+  async function runSmartCombo(extra) {
+    const fetchSpy = vi.fn(async () => jevOk({ choice: "MEDIUM", confidence: 0.99 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.stubEnv("TYPESAFE_API_KEY", "test-key");
+    try {
+      await handleComboChat({
+        body: { model: "tts-combo", input: "read this secret AKIAIOSFODNN7EXAMPLE" },
+        models: ["a/one", "b/two"],
+        handleSingleModel: async () => new Response("ok", { status: 200 }),
+        log,
+        comboName: "tts-combo",
+        comboStrategy: "smart",
+        ...extra,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+    return fetchSpy;
+  }
+
+  it("a TTS-style combo call never sends the speech text to Jev", async () => {
+    expect(await runSmartCombo({})).not.toHaveBeenCalled();
+  });
+
+  it("the chat path (jevClassify) still asks Jev", async () => {
+    expect(await runSmartCombo({ jevClassify: true })).toHaveBeenCalledTimes(1);
   });
 });

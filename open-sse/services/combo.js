@@ -1331,6 +1331,9 @@ export async function handleComboChat({
   comboStrategy,
   comboStickyLimit = 1,
   autoSwitch = true,
+  // Only the chat handler opts in. TTS, image, search and fetch bodies are not
+  // a user chat turn (a TTS `input` is the utterance), so they never go to Jev.
+  jevClassify = false,
   comboTimeoutMs = 0,
   quotaRanker = null,
   signal = null,
@@ -1433,7 +1436,7 @@ export async function handleComboChat({
     // Optional Jev upgrade: when TYPESAFE_API_KEY is configured the judged tier
     // replaces the keyword/size heuristic level. Fail-open, so an unconfigured,
     // slow, broken or unsure classifier leaves the heuristic level in place.
-    const judged = await classifyTaskLevelWithJev(body, log, signal);
+    const judged = jevClassify ? await classifyTaskLevelWithJev(body, log, signal) : null;
     if (judged && judged.level !== task.level) {
       task = { ...task, level: judged.level, weight: taskWeight(judged.level), reasons: [`jev:${judged.tier}`] };
     }

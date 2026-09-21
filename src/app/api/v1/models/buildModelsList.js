@@ -658,12 +658,14 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     const psd = isRecord(conn?.providerSpecificData) ? conn.providerSpecificData : {};
 
     // The dashboard writes the allowlist under the provider's storage alias
-    // (its static alias, or the provider id for compatible providers) — never
+    // (getProviderAlias: uiAlias || alias, or the provider id for compatible
+    // providers; e.g. DeepSeek stores under `ds`, not registry `deepseek`) — never
     // under a connection's custom output prefix. Checking the output prefix
     // first let a custom prefix that collided with another provider's static
     // alias pull that other provider's allowlist. Keep the prefix out of the
     // lookup key entirely.
     const candidates = [
+      enabledByAlias[getProviderAlias(providerId)],
       enabledByAlias[staticAlias],
       enabledByAlias[providerId],
       psd.enabledModels,
@@ -678,6 +680,11 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     }
     return [];
   };
+
+  // Same storage-key rule for the static and keyless readers, whose `alias`
+  // is the registry alias (the output prefix), not the dashboard key.
+  const storedAllowlist = (providerId, alias) =>
+    [getProviderAlias(providerId), alias].map((key) => enabledByAlias[key]).find((v) => Array.isArray(v) && v.length > 0);
 
   const activeConnectionByProvider = new Map();
   for (const conn of connections) {
@@ -741,7 +748,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
   const addStaticProviderModels = (providerId, alias, { hasCredentials = false } = {}) => {
     if (!providerMatchesKinds(providerId, kindFilter)) return;
-    const enabledModels = enabledByAlias[alias];
+    const enabledModels = storedAllowlist(providerId, alias);
     const hasAllowlist = Array.isArray(enabledModels) && enabledModels.length > 0;
     for (const model of PROVIDER_MODELS[alias] ?? []) {
       if (!kindFilter.includes(modelKind(model))) continue;
@@ -782,7 +789,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     // Keyless catalogs honour the same visible-model allowlist as connected
     // providers: without this, a saved allowlist for a noAuth provider (e.g.
     // AI Horde) is silently ignored whenever live discovery succeeds.
-    const allowlist = enabledByAlias[alias];
+    const allowlist = storedAllowlist(providerId, alias);
     const hasAllowlist = Array.isArray(allowlist) && allowlist.length > 0;
 
     try {

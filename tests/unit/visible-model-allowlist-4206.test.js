@@ -111,6 +111,31 @@ describe("visible-model allowlist enforcement", () => {
     expect(ids).not.toContain("qiniu/blocked-model");
   });
 
+  it("reads the allowlist under the dashboard storage key when it differs from the registry alias", async () => {
+    // DeepSeek: registry alias `deepseek`, dashboard key (uiAlias) `ds`.
+    stubBase({
+      connections: [{ id: "conn-ds", provider: "deepseek", apiKey: "dk", isActive: true, providerSpecificData: {} }],
+      enabledModels: { ds: ["deepseek-chat"] },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: "deepseek-chat" }, { id: "deepseek-reasoner" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+
+    const ids = (await buildModelsList([LLM_KIND])).map((m) => m.id).filter((id) => id.startsWith("ds/"));
+
+    expect(ids).toEqual(["ds/deepseek-chat"]);
+  });
+
+  it("reads a keyless provider's allowlist under its dashboard storage key", async () => {
+    // DuckDuckGo Web: registry alias `ddgw`, dashboard key (uiAlias) `ddg`.
+    stubBase({ enabledModels: { ddg: ["gpt-4o-mini"] } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
+
+    const ids = (await buildModelsList([LLM_KIND])).map((m) => m.id).filter((id) => id.startsWith("ddgw/"));
+
+    expect(ids).toEqual(["ddgw/gpt-4o-mini"]);
+  });
+
   it("fails the request instead of silently serving an unrestricted catalog when the allowlist can't be read", async () => {
     stubBase();
     mocks.getEnabledModels.mockRejectedValue(new Error("db unavailable"));

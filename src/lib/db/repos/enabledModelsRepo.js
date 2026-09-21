@@ -11,6 +11,7 @@ import { isString } from "../../../shared/utils/typeChecks.js";
 // registry the dashboard renders is a subset of what the account can actually
 // use, so a blacklist built from it can never hide catalog-only ids.
 const SCOPE = "enabledModels";
+const DISABLED_SCOPE = "disabledModels";
 
 export async function getEnabledModels() {
   const db = await getAdapter();
@@ -29,6 +30,11 @@ export async function getEnabledByProvider(providerAlias) {
 // Sets (or clears, when ids is empty) the allowlist for one provider alias.
 // Blank/duplicate ids are dropped so the stored list matches what /v1/models
 // compares against.
+//
+// /v1/models applies the disabled-model blacklist on top of this allowlist, so
+// a non-empty allowlist also drops its ids from that alias's blacklist. Both
+// writes share one transaction: a failed allowlist write must not leave those
+// ids already un-blacklisted.
 export async function setEnabledModels(providerAlias, ids) {
   if (!providerAlias) return;
   const db = await getAdapter();
@@ -40,6 +46,16 @@ export async function setEnabledModels(providerAlias, ids) {
     if (list.length === 0) {
       db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [SCOPE, providerAlias]);
       return;
+    }
+    const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [DISABLED_SCOPE, providerAlias]);
+    if (row) {
+      const allowed = new Set(list);
+      const disabled = (parseJson(row.value, []) || []).filter((id) => !allowed.has(id));
+      if (disabled.length === 0) {
+        db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [DISABLED_SCOPE, providerAlias]);
+      } else {
+        db.run(`UPDATE kv SET value = ? WHERE scope = ? AND key = ?`, [stringifyJson(disabled), DISABLED_SCOPE, providerAlias]);
+      }
     }
     db.run(
       `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,

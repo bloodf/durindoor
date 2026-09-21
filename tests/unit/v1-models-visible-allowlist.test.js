@@ -153,8 +153,23 @@ describe("PUT /api/models/enabled", () => {
 
     // /v1/models applies the blacklist after the allowlist, so a whitelisted id
     // that stays blacklisted would silently remain hidden.
+    // setEnabledModels clears those ids from the blacklist in the same
+    // transaction; a separate enableModels write could commit alone.
     expect(mocks.setEnabledModels).toHaveBeenCalledWith("gh", ["gpt-5.4"]);
-    expect(mocks.enableModels).toHaveBeenCalledWith("gh", ["gpt-5.4"]);
+    expect(mocks.enableModels).not.toHaveBeenCalled();
+  });
+
+  it("leaves the blacklist alone when the allowlist write fails", async () => {
+    mocks.setEnabledModels.mockRejectedValue(new Error("write failed"));
+    const { PUT } = await import("../../src/app/api/models/enabled/route.js");
+
+    const response = await PUT(new Request("http://localhost/api/models/enabled", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerAlias: "gh", ids: ["gpt-5.4"] }),
+    }));
+    expect(response.status).toBe(500);
+    expect(mocks.enableModels).not.toHaveBeenCalled();
   });
 
   it("does not touch the blacklist when the allowlist is cleared", async () => {
@@ -168,5 +183,33 @@ describe("PUT /api/models/enabled", () => {
     expect(response.status).toBe(200);
     expect(mocks.setEnabledModels).toHaveBeenCalledWith("gh", []);
     expect(mocks.enableModels).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET/DELETE /api/models/enabled alias trimming", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.setEnabledModels.mockResolvedValue(undefined);
+    mocks.getEnabledModels.mockResolvedValue({ ds: ["deepseek-chat"] });
+  });
+
+  it("trims the query alias on GET", async () => {
+    const { GET } = await import("../../src/app/api/models/enabled/route.js");
+    const response = await GET(new Request("http://localhost/api/models/enabled?providerAlias=%20ds%20"));
+    expect(await response.json()).toEqual({ ids: ["deepseek-chat"] });
+  });
+
+  it("trims the query alias on DELETE", async () => {
+    const { DELETE } = await import("../../src/app/api/models/enabled/route.js");
+    const response = await DELETE(new Request("http://localhost/api/models/enabled?providerAlias=%20ds%20", { method: "DELETE" }));
+    expect(response.status).toBe(200);
+    expect(mocks.setEnabledModels).toHaveBeenCalledWith("ds", []);
+  });
+
+  it("rejects a blank query alias", async () => {
+    const { GET, DELETE } = await import("../../src/app/api/models/enabled/route.js");
+    expect((await GET(new Request("http://localhost/api/models/enabled?providerAlias=%20"))).status).toBe(400);
+    expect((await DELETE(new Request("http://localhost/api/models/enabled?providerAlias=%20", { method: "DELETE" }))).status).toBe(400);
+    expect(mocks.setEnabledModels).not.toHaveBeenCalled();
   });
 });

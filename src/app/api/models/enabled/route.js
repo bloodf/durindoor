@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getEnabledModels, setEnabledModels } from "@/lib/enabledModelsDb";
-import { enableModels } from "@/lib/disabledModelsDb";
 import { isString } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
@@ -9,9 +8,13 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const providerAlias = searchParams.get("providerAlias");
+    const rawAlias = searchParams.get("providerAlias");
     const all = await getEnabledModels();
-    if (providerAlias) return NextResponse.json({ ids: all[providerAlias] || [] });
+    if (rawAlias !== null) {
+      const providerAlias = rawAlias.trim();
+      if (!providerAlias) return NextResponse.json({ error: "providerAlias required" }, { status: 400 });
+      return NextResponse.json({ ids: all[providerAlias] || [] });
+    }
     return NextResponse.json({ enabled: all });
   } catch (error) {
     console.log("Error fetching enabled models:", error);
@@ -30,19 +33,11 @@ export async function PUT(request) {
       return NextResponse.json({ error: "providerAlias and ids[] required" }, { status: 400 });
     }
 
-    // Trim here so the key used to clear the blacklist below matches the
-    // trimmed form setEnabledModels stores; a padded id would otherwise pass
-    // this filter but fail to match the stored blacklist entry, leaving the
-    // model disabled even after allowlisting it.
     const cleaned = ids.filter((id) => isString(id) && id.trim() !== "").map((id) => id.trim());
 
-    // /v1/models applies the disabled-model blacklist on top of this allowlist,
-    // so a whitelisted id that is also blacklisted would silently stay hidden.
-    // Saving an allowlist therefore drops those ids from the blacklist first:
-    // if this throws, the allowlist write below never runs, so we never end up
-    // with a stored allowlist whose matching blacklist entries weren't cleared.
-    if (cleaned.length > 0) await enableModels(providerAlias, cleaned);
-    await setEnabledModels(providerAlias, ids);
+    // setEnabledModels also drops these ids from the disabled-model blacklist
+    // (which /v1/models applies on top of the allowlist), in one transaction.
+    await setEnabledModels(providerAlias, cleaned);
 
     return NextResponse.json({ success: true, ids: cleaned });
   } catch (error) {
@@ -55,7 +50,7 @@ export async function PUT(request) {
 export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const providerAlias = searchParams.get("providerAlias");
+    const providerAlias = (searchParams.get("providerAlias") ?? "").trim();
     if (!providerAlias) {
       return NextResponse.json({ error: "providerAlias required" }, { status: 400 });
     }

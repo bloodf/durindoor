@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { OpenCodeExecutor, OPENCODE_SESSION_RE, OPENCODE_DECOY_RESPONSES_TOOLS } from "../../open-sse/executors/opencode.js";
+import { OpenCodeExecutor, OPENCODE_SESSION_RE, OPENCODE_DECOY_RESPONSES_TOOLS, OPENCODE_UA } from "../../open-sse/executors/opencode.js";
+
+// Upstream #4188: the free-tier gate wants all four of the official CLI's
+// file-search tools, not just the bash/read pair the fork shipped before.
+const OPENCODE_FINGERPRINT_NAMES = ["bash", "glob", "grep", "read"];
 
 describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
   it("cloaks Responses requests even when the client already supplies tools", () => {
@@ -20,10 +24,9 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
 
     const names = transformed.tools.map((tool) => tool.name);
     expect(names).toContain("zcode_search");
-    expect(names).toContain("bash");
-    expect(names).toContain("read");
-    expect(names.filter((n) => n === "bash")).toHaveLength(1);
-    expect(names.filter((n) => n === "read")).toHaveLength(1);
+    for (const decoy of OPENCODE_FINGERPRINT_NAMES) {
+      expect(names.filter((n) => n === decoy)).toHaveLength(1);
+    }
     expect(transformed.store).toBe(false);
   });
 
@@ -38,15 +41,16 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
 
     const names = transformed.tools.map((tool) => tool.function.name);
     expect(names).toContain("custom_tool");
-    expect(names).toContain("bash");
-    expect(names).toContain("read");
+    for (const decoy of OPENCODE_FINGERPRINT_NAMES) {
+      expect(names).toContain(decoy);
+    }
   });
 
   it("still injects the full decoy set when no tools are supplied", () => {
     const executor = new OpenCodeExecutor();
     const transformed = executor.transformRequest("big-pickle", { messages: [] }, true, {});
     const names = transformed.tools.map((tool) => tool.function.name);
-    expect(names).toEqual(["bash", "read"]);
+    expect(names).toEqual(OPENCODE_FINGERPRINT_NAMES);
     expect(transformed.tool_choice).toBe("none");
   });
 
@@ -58,11 +62,11 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
       tool_choice: "required",
     };
 
-    // Deliberately not muse-spark-1.3-contributor-free: that model has its own
-    // hard-400 quirk (port(upstream): aa14ef7) that demotes any non-auto
-    // tool_choice regardless of caller tools, which is the opposite of what
-    // this test is checking. See the dedicated test below for that model.
-    const transformed = executor.transformRequest("muse-spark-1.2-contributor-free", body, true, {});
+    // Deliberately not a Muse Spark contributor model: 1.2 and 1.3 both carry
+    // the hard-400 quirk (port(upstream): aa14ef7 + #4165) that demotes any
+    // non-auto tool_choice regardless of caller tools, which is the opposite of
+    // what this test is checking. See the dedicated test below for that quirk.
+    const transformed = executor.transformRequest("muse-spark-2.0-contributor-free", body, true, {});
 
     expect(transformed.tool_choice).toBe("required");
     const names = transformed.tools.map((tool) => tool.name);
@@ -126,6 +130,64 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     const executor = new OpenCodeExecutor();
     expect(() => executor.transformRequest("big-pickle", { messages: [] }, false, {}, { compact: true }))
       .toThrow(/compact-responses/i);
+  });
+});
+
+describe("OpenCodeExecutor free-tier client identity (#4128)", () => {
+  it("advertises the full official-client User-Agent, not a bare version token", () => {
+    const executor = new OpenCodeExecutor();
+    const headers = executor.buildHeaders({ id: "noauth", connectionId: "noauth" }, true, null, "big-pickle");
+    expect(headers["User-Agent"]).toBe(OPENCODE_UA);
+    // The gate still has to read a >= 1.17 opencode version out of it.
+    expect(headers["User-Agent"]).toMatch(/(^|\s)opencode\/1\.(1[7-9]|[2-9]\d)/);
+  });
+
+  it("pins prompt_cache_key to the canonical session on Muse Responses requests", () => {
+    const executor = new OpenCodeExecutor();
+    const credentials = executor.prepareRequestCredentials({
+      credentials: { connectionId: "conn-a" },
+      providerSessionId: "conversation-1",
+      clientTool: "claude",
+    });
+    const body = { input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }] };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, credentials);
+
+    expect(transformed.prompt_cache_key).toBe(credentials._opencodeSession);
+    expect(transformed.prompt_cache_key).toMatch(OPENCODE_SESSION_RE);
+  });
+
+  it("reuses one prompt_cache_key across turns of the same conversation", () => {
+    const executor = new OpenCodeExecutor();
+    const keyFor = (text) => {
+      const args = { credentials: { connectionId: "conn-a" }, providerSessionId: "conversation-1", clientTool: "claude" };
+      const credentials = executor.prepareRequestCredentials(args);
+      const body = { input: [{ type: "message", role: "user", content: [{ type: "input_text", text }] }] };
+      return executor.transformRequest("muse-spark-1.3-contributor-free", body, true, credentials).prompt_cache_key;
+    };
+    expect(keyFor("turn one")).toBe(keyFor("turn two"));
+  });
+
+  it("never overwrites a caller-supplied prompt_cache_key", () => {
+    const executor = new OpenCodeExecutor();
+    const credentials = executor.prepareRequestCredentials({ credentials: { connectionId: "conn-a" } });
+    const body = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      prompt_cache_key: "caller-key",
+    };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, credentials);
+
+    expect(transformed.prompt_cache_key).toBe("caller-key");
+  });
+
+  it("leaves prompt_cache_key alone on the Chat Completions route", () => {
+    const executor = new OpenCodeExecutor();
+    const credentials = executor.prepareRequestCredentials({ credentials: { connectionId: "conn-a" } });
+
+    const transformed = executor.transformRequest("big-pickle", { messages: [] }, true, credentials);
+
+    expect(transformed.prompt_cache_key).toBeUndefined();
   });
 });
 

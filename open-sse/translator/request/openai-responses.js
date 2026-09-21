@@ -165,11 +165,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
       if (!item.name || !isString(item.name) || item.name.trim() === "") continue;
+      // Replayed namespace calls carry `{ name, namespace }`; re-qualify them so history
+      // matches the expanded `{namespace}.{subtool}` declaration (and its alias).
+      const namespace = isString(item.namespace) && item.namespace ? item.namespace : "";
+      const qualifiedName = namespace && !item.name.startsWith(`${namespace}.`) ? `${namespace}.${item.name}` : item.name;
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
         function: {
-          name: item.name,
+          name: qualifiedName,
           arguments: item.arguments
         }
       });

@@ -252,6 +252,44 @@ describe("Responses tool-name aliasing + restoration (#4200)", () => {
     expect(added.namespace).toBeUndefined();
   });
 
+  it("restores an aliased name behind a provider-injected prefix", async () => {
+    const body = { tools: [COLLAB_NAMESPACE] };
+    const { translated, aliases } = translateForOpenAIProvider(body);
+    const { added, done } = await streamedItems(body, `functions.${translated.tools[0].function.name}`, aliases);
+    for (const item of [added, done]) {
+      expect(item).toMatchObject({ name: "spawn_agent", namespace: "collaboration" });
+    }
+  });
+
+  it("restores the namespace on Gemini-family stream:false responses", () => {
+    const body = { tools: [COLLAB_NAMESPACE] };
+    const gemini = { candidates: [{ content: { parts: [{ functionCall: { id: "call_1", name: "collaboration.spawn_agent", args: {} } }] }, finishReason: "STOP" }] };
+    const out = translateNonStreamingResponse(gemini, FORMATS.GEMINI, FORMATS.OPENAI_RESPONSES, { requestBody: body });
+    const call = out.output.find((item) => item.type === "function_call");
+    expect(call).toMatchObject({ name: "spawn_agent", namespace: "collaboration" });
+  });
+
+  it("frames a prefixed declared custom tool as custom_tool_call in the stream", async () => {
+    const body = { tools: [{ type: "custom", name: "apply_patch", description: "patch" }] };
+    const { added, done } = await streamedItems(body, "functions.apply_patch");
+    for (const item of [added, done]) {
+      expect(item).toMatchObject({ type: "custom_tool_call", name: "apply_patch" });
+    }
+  });
+
+  it("re-qualifies a replayed { name, namespace } call so history matches the declaration", () => {
+    const { translated } = translateForOpenAIProvider({
+      input: [
+        ...userInput,
+        { type: "function_call", call_id: "c1", name: "spawn_agent", namespace: "collaboration", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: "ok" },
+      ],
+      tools: [COLLAB_NAMESPACE],
+    });
+    const historyCall = translated.messages.flatMap((m) => m.tool_calls || [])[0];
+    expect(historyCall.function.name).toBe(translated.tools[0].function.name);
+  });
+
   it("forwards a non-string provider name without throwing", () => {
     const state = initState(FORMATS.OPENAI_RESPONSES, { tools: [COLLAB_NAMESPACE] });
     expect(resolveResponsesToolName(state, 42)).toEqual({ name: 42 });

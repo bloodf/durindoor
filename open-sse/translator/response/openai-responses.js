@@ -368,7 +368,8 @@ export function resolveResponsesToolName(state, name) {
     return { name };
   }
 
-  const rest = name.slice(dot + 1);
+  // The provider may prefix the upstream alias (`functions.<alias>`), so restore the remainder too.
+  const rest = restoreResponsesToolName(state, name.slice(dot + 1));
   const injected = splitNamespacedName(state, rest);
   if (injected) return injected;
   if (isDeclaredFlatTool(state, rest)) return { name: rest };
@@ -420,7 +421,7 @@ function emitToolCall(state, emit, tc) {
         type: "custom_tool_call",
         input: "",
         call_id: refCallId,
-        name: refName,
+        name: resolveResponsesToolName(state, refName).name,
         status: "in_progress"
       } :
       {
@@ -469,7 +470,9 @@ function emitToolCall(state, emit, tc) {
   }
 }
 function isCustomToolByState(state, tcIdx, funcName) {
-  const name = state.funcNames[tcIdx] || funcName || "";
+  // Classify by the resolved name so an injected prefix (`functions.apply_patch`)
+  // frames the same way the buffered projector does.
+  const name = resolveResponsesToolName(state, state.funcNames[tcIdx] || funcName || "").name || "";
   const declaredType = state.toolTypes?.[name] || "";
   return declaredType === "custom" || name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name);
 }
@@ -518,7 +521,7 @@ function closeToolCall(state, emit, idx) {
           type: "custom_tool_call",
           input: rawInput,
           call_id: callId,
-          name: state.funcNames[idx] || "",
+          name: resolveResponsesToolName(state, state.funcNames[idx] || "").name,
           status: "completed"
         }
       });

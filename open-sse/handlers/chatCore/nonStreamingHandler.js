@@ -343,7 +343,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
       result.usage = toOpenAIUsage(usage, "gemini");
     }
     return sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE ?
-    projectCompletionToClientFormat(result, sourceFormat, { ...options, customToolNames }) :
+    projectCompletionToClientFormat(result, sourceFormat, projectionOptions()) :
     result;
   }
 

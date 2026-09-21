@@ -54,6 +54,46 @@ describe("buildJevState", () => {
     expect(buildJevState(body, 4000)).toHaveLength(4000);
   });
 
+  it("never sends system/developer prompts or tool messages (OpenAI tool loop)", () => {
+    const secret = "AKIAIOSFODNN7EXAMPLE";
+    const body = { messages: [
+      { role: "system", content: `deploy key ${secret} ` + "s".repeat(5000) },
+      { role: "developer", content: `also ${secret}` },
+      { role: "user", content: "rotate the credentials" },
+      { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "env", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "c1", content: `AWS_SECRET=${secret}` },
+      { role: "function", name: "env", content: `AWS_SECRET=${secret}` },
+    ] };
+    expect(buildJevState(body)).toBe("");
+    // A leading system prompt must not crowd the user ask out of the budget.
+    const withAsk = { messages: [body.messages[0], { role: "user", content: "rotate the credentials" }] };
+    expect(buildJevState(withAsk)).toBe("rotate the credentials");
+  });
+
+  it("skips Claude tool_result blocks in the user turn", () => {
+    const body = { messages: [
+      { role: "user", content: [
+        { type: "tool_result", tool_use_id: "t1", text: "SECRET=hunter2", content: "SECRET=hunter2" },
+        { type: "text", text: "now fix it" },
+      ] },
+    ] };
+    expect(buildJevState(body)).toBe("now fix it");
+  });
+
+  it("skips Responses tool outputs and system items", () => {
+    const body = { input: [
+      { role: "system", content: "SECRET=hunter2" },
+      { type: "function_call_output", call_id: "c1", output: "SECRET=hunter2" },
+      { role: "user", content: [{ type: "input_text", text: "responses ask" }] },
+    ] };
+    expect(buildJevState(body)).toBe("responses ask");
+  });
+
+  it("reads a Responses string input, inside the budget", () => {
+    expect(buildJevState({ input: "string ask" })).toBe("string ask");
+    expect(buildJevState({ input: "y".repeat(9000) }, 4000)).toHaveLength(4000);
+  });
+
   it("returns '' for an empty/absent ask", () => {
     expect(buildJevState({ messages: [] })).toBe("");
     expect(buildJevState({})).toBe("");
@@ -94,6 +134,7 @@ describe("classifyTier", () => {
     state: "write a function",
     log,
     apiKey: "test-key",
+    baseUrl: "https://api.typesafe.ai",
     fetchImpl: vi.fn(async () => jevOk({ choice: "MEDIUM", confidence: 0.99 })),
   };
 
@@ -113,7 +154,7 @@ describe("classifyTier", () => {
 
   it("fails open (null) when no API key is configured", async () => {
     const fetchImpl = vi.fn();
-    const r = await classifyTier({ ...baseOpts, apiKey: undefined, fetchImpl });
+    const r = await classifyTier({ ...baseOpts, apiKey: "", fetchImpl });
     expect(r).toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -180,6 +221,63 @@ describe("classifyTier", () => {
     const r = await classifyTier({ ...baseOpts, fetchImpl: probe, timeoutMs: 50, now: () => clock });
     expect(probe).toHaveBeenCalledTimes(1);
     expect(r?.tier).toBe("COMPLEX");
+  });
+
+  it("a failed half-open probe re-trips instead of latching the breaker shut", async () => {
+    let clock = 0;
+    const abortErr = Object.assign(new Error("aborted"), { name: "AbortError" });
+    await classifyTier({ ...baseOpts, fetchImpl: vi.fn(() => Promise.reject(abortErr)), now: () => clock });
+
+    clock += 31000;
+    const probe500 = vi.fn(async () => jevHttp(500));
+    expect(await classifyTier({ ...baseOpts, fetchImpl: probe500, now: () => clock })).toBeNull();
+    expect(probe500).toHaveBeenCalledTimes(1);
+
+    // Re-tripped: skipped inside the new cooldown, probed again after it.
+    const skipped = vi.fn();
+    await classifyTier({ ...baseOpts, fetchImpl: skipped, now: () => clock + 1000 });
+    expect(skipped).not.toHaveBeenCalled();
+    clock += 31000;
+    const probe2 = vi.fn(async () => jevOk({ choice: "MEDIUM", confidence: 0.99 }));
+    expect((await classifyTier({ ...baseOpts, fetchImpl: probe2, now: () => clock }))?.tier).toBe("MEDIUM");
+  });
+
+  it("a low-confidence probe closes the breaker (the service answered)", async () => {
+    let clock = 0;
+    const abortErr = Object.assign(new Error("aborted"), { name: "AbortError" });
+    await classifyTier({ ...baseOpts, fetchImpl: vi.fn(() => Promise.reject(abortErr)), now: () => clock });
+    clock += 31000;
+    const unsure = vi.fn(async () => jevOk({ choice: "MEDIUM", confidence: 0.2 }));
+    expect(await classifyTier({ ...baseOpts, minConfidence: 0.5, fetchImpl: unsure, now: () => clock })).toBeNull();
+
+    const next = vi.fn(async () => jevOk({ choice: "SIMPLE", confidence: 0.99 }));
+    expect((await classifyTier({ ...baseOpts, fetchImpl: next, now: () => clock + 1 }))?.tier).toBe("SIMPLE");
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("the deadline covers a 200 whose body never finishes, and trips the breaker", async () => {
+    const stalled = vi.fn(async () => ({ ok: true, status: 200, json: () => new Promise(() => {}) }));
+    const started = Date.now();
+    const r = await classifyTier({ ...baseOpts, fetchImpl: stalled, timeoutMs: 30 });
+    expect(r).toBeNull();
+    expect(Date.now() - started).toBeLessThan(1000);
+    const after = vi.fn();
+    await classifyTier({ ...baseOpts, fetchImpl: after });
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it("a client abort cancels the call without tripping the breaker", async () => {
+    const ac = new AbortController();
+    const hanging = vi.fn((url, init) => {
+      expect(init.signal.aborted).toBe(false);
+      return new Promise(() => {});
+    });
+    const pending = classifyTier({ ...baseOpts, fetchImpl: hanging, timeoutMs: 5000, signal: ac.signal });
+    ac.abort();
+    expect(await pending).toBeNull();
+    expect(hanging.mock.calls[0][1].signal.aborted).toBe(true);
+    const next = vi.fn(async () => jevOk({ choice: "MEDIUM", confidence: 0.99 }));
+    expect((await classifyTier({ ...baseOpts, fetchImpl: next }))?.tier).toBe("MEDIUM");
   });
 
   it("never leaks the API key into the returned object or the logs", async () => {

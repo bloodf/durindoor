@@ -35,40 +35,43 @@ const NOOP_LOG = { info() {}, warn() {}, debug() {} };
 
 /**
  * Process-local circuit breaker. Skips Jev calls for a cooldown after a
- * timeout, then lets exactly one request probe recovery. Not coordinated across
+ * failure (timeout, network error, non-200, unreadable body), then lets exactly
+ * one request probe recovery. Any readable body closes it again, even a
+ * low-confidence or unknown-tier answer, because the service itself answered.
+ * Every probe ends in `tripBreaker` or `closeBreaker` (or `releaseProbe` on a
+ * client abort), so `probing` can never stick. Not coordinated across
  * workers; each process protects its own latency budget.
- * @type {{ openUntil: number, halfOpen: boolean }}
+ * @type {{ openUntil: number, probing: boolean }}
  */
-const breaker = { openUntil: 0, halfOpen: false };
+const breaker = { openUntil: 0, probing: false };
 
 /** Test/reset hook: clear breaker state. */
 export function resetJevBreaker() {
   breaker.openUntil = 0;
-  breaker.halfOpen = false;
+  breaker.probing = false;
 }
 
-/** Is the breaker currently open (and not yet probing)? */
+/** Should this call be skipped? Claims the half-open probe slot when free. */
 function breakerOpen(now) {
   if (breaker.openUntil === 0) return false;
-  if (now >= breaker.openUntil) {
-    // Cooldown elapsed — allow exactly one probe (half-open).
-    if (!breaker.halfOpen) {
-      breaker.halfOpen = true;
-      return false;
-    }
-    return true;
-  }
-  return true;
+  if (now < breaker.openUntil || breaker.probing) return true;
+  breaker.probing = true;
+  return false;
 }
 
 function tripBreaker(now, cooldownMs) {
   breaker.openUntil = now + cooldownMs;
-  breaker.halfOpen = false;
+  breaker.probing = false;
 }
 
 function closeBreaker() {
   breaker.openUntil = 0;
-  breaker.halfOpen = false;
+  breaker.probing = false;
+}
+
+/** Client went away mid-probe: free the slot without judging the service. */
+function releaseProbe() {
+  breaker.probing = false;
 }
 
 /**
@@ -82,7 +85,8 @@ function closeBreaker() {
  * @param {string} [opts.model] - defaults to JEV_DEFAULT_MODEL
  * @param {object} [opts.criteria] - tier criteria; defaults to JEV_DEFAULT_CRITERIA
  * @param {string} [opts.instructions] - defaults to JEV_DEFAULT_INSTRUCTIONS
- * @param {number} [opts.timeoutMs] - defaults to JEV_TIMEOUT_MS
+ * @param {number} [opts.timeoutMs] - defaults to JEV_TIMEOUT_MS; one deadline covers headers AND body
+ * @param {AbortSignal} [opts.signal] - client request signal; aborting it cancels the call
  * @param {number} [opts.minConfidence] - defaults to JEV_MIN_CONFIDENCE
  * @param {boolean} [opts.breakerEnabled=true]
  * @param {function} [opts.fetchImpl=fetch] - injectable for tests
@@ -102,6 +106,7 @@ export async function classifyTier(opts = {}) {
     timeoutMs = JEV_TIMEOUT_MS,
     minConfidence = JEV_MIN_CONFIDENCE,
     breakerEnabled = true,
+    signal = null,
     fetchImpl = (...args) => fetch(...args),
     now = () => Date.now(),
   } = opts;
@@ -129,37 +134,54 @@ export async function classifyTier(opts = {}) {
     questions: { tier: { type: "choice", instructions, criteria } },
   };
 
-  let res;
+  // One controller spans headers and body, so a 200 whose body stalls still
+  // hits the deadline. The client signal is linked in, and the controller is
+  // always aborted at the end, which also cancels an unread (non-200) body.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    res = await fetchImpl(`${baseUrl}${JEV_ENDPOINT_PATH}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    const isTimeout = e?.name === "AbortError";
-    if (isTimeout && breakerEnabled) tripBreaker(now(), JEV_BREAKER_COOLDOWN_MS);
-    log.warn?.("JEV", isTimeout ? "classifier timed out — fail-open" : `classifier fetch error — fail-open: ${e?.message || e}`);
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-
-  if (!res || res.status !== 200) {
-    log.warn?.("JEV", `classifier HTTP ${res?.status} — fail-open`);
-    return null;
-  }
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const onClientAbort = () => controller.abort();
+  signal?.addEventListener?.("abort", onClientAbort, { once: true });
+  if (signal?.aborted) controller.abort();
+  const aborted = new Promise((_, reject) => {
+    controller.signal.addEventListener("abort", () => reject(new DOMException("Jev call aborted", "AbortError")), { once: true });
+  });
+  aborted.catch(() => {});
 
   let json;
   try {
-    json = isFunction(res.json) ? await res.json() : null;
+    const res = await Promise.race([
+      fetchImpl(`${baseUrl}${JEV_ENDPOINT_PATH}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      }),
+      aborted,
+    ]);
+    if (!res || res.status !== 200) throw new Error(`classifier HTTP ${res?.status}`);
+    json = await Promise.race([isFunction(res.json) ? res.json() : null, aborted]);
+    if (!isObject(json)) throw new Error("classifier unparseable response");
   } catch (e) {
-    log.warn?.("JEV", `classifier unparseable response — fail-open: ${e?.message || e}`);
+    if (!timedOut && signal?.aborted) {
+      if (breakerEnabled) releaseProbe();
+      log.debug?.("JEV", "client aborted — classifier skipped");
+      return null;
+    }
+    if (breakerEnabled) tripBreaker(now(), JEV_BREAKER_COOLDOWN_MS);
+    log.warn?.("JEV", timedOut ? "classifier timed out — fail-open" : `${e?.message || e} — fail-open`);
     return null;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener?.("abort", onClientAbort);
+    controller.abort();
   }
+
+  // The service answered: close the breaker whatever the answer says.
+  if (breakerEnabled) closeBreaker();
 
   const answer = json?.answers?.tier;
   const tier = answer?.choice;
@@ -174,9 +196,6 @@ export async function classifyTier(opts = {}) {
     log.info?.("JEV", `low confidence (${confidence}) for tier ${tier} — keeping heuristic level`);
     return null;
   }
-
-  // Successful classification — close a half-open breaker.
-  if (breakerEnabled) closeBreaker();
 
   const usage = json?.usage || {};
   const spendUsd =

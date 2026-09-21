@@ -588,9 +588,12 @@ export function detectRequiredCapabilities(body) {
 /**
  * Build the bounded `state` string the Jev classifier judges.
  *
- * Only the current user turn is used — never the whole transcript or
- * tool_result blobs — and it reuses trailingUserItems so "the current ask"
- * means the same thing here as it does for the capability auto-switch.
+ * Only text the user typed in the current turn is sent to the third-party
+ * classifier: `role: "user"` items from the trailing run (trailingUserItems, so
+ * "the current ask" means the same as for the capability auto-switch). System
+ * and developer prompts, `tool` / `function` messages, Claude `tool_result`
+ * blocks and Responses tool outputs never leave the process, since they can
+ * carry secrets. A Responses `input` string is the ask itself.
  *
  * @param {object} body - client request body (OpenAI/Claude/Gemini/Responses)
  * @param {number} [charBudget]
@@ -608,13 +611,16 @@ export function buildJevState(body, charBudget = JEV_STATE_CHAR_BUDGET) {
   const textOf = (content) => {
     if (isString(content)) return content;
     if (!Array.isArray(content)) return "";
-    return content.filter((c) => isString(c?.text)).map((c) => c.text).join("\n");
+    return content.filter((c) => c?.type !== "tool_result" && isString(c?.text)).map((c) => c.text).join("\n");
   };
+  const userOnly = (items) => trailingUserItems(items).filter((it) => it?.role === "user");
 
-  for (const m of trailingUserItems(body.messages)) pushText(textOf(m?.content)); // openai / claude / hermes / ollama
-  for (const it of trailingUserItems(body.input)) pushText(textOf(it?.content)); // responses
+  for (const m of userOnly(body.messages)) pushText(textOf(m.content)); // openai / claude / hermes / ollama
+  if (isString(body.input)) pushText(body.input); // responses, string form
+  for (const it of userOnly(body.input)) pushText(textOf(it.content)); // responses, item list
   const contents = body.contents || body.request?.contents; // gemini / antigravity
-  for (const c of trailingUserItems(contents)) pushText(textOf(c?.parts));
+  // Gemini lets a single-turn request omit the role; functionResponse parts carry no `text`.
+  for (const c of trailingUserItems(contents)) if (!c?.role || c.role === "user") pushText(textOf(c.parts));
 
   return parts.join("\n").slice(0, charBudget);
 }
@@ -627,12 +633,13 @@ export function buildJevState(body, charBudget = JEV_STATE_CHAR_BUDGET) {
  *
  * @param {object} body - client request body
  * @param {object} log
+ * @param {AbortSignal|null} signal - client request signal, cancels the call on disconnect
  * @returns {Promise<{level: string, tier: string, confidence: number}|null>}
  */
-async function classifyTaskLevelWithJev(body, log) {
+async function classifyTaskLevelWithJev(body, log, signal) {
   const state = buildJevState(body);
   if (!state) return null;
-  const classified = await classifyTier({ state, log });
+  const classified = await classifyTier({ state, log, signal });
   if (!classified) return null;
   const level = JEV_TIER_TO_TASK_LEVEL[classified.tier];
   if (!level) return null;
@@ -1426,7 +1433,7 @@ export async function handleComboChat({
     // Optional Jev upgrade: when TYPESAFE_API_KEY is configured the judged tier
     // replaces the keyword/size heuristic level. Fail-open, so an unconfigured,
     // slow, broken or unsure classifier leaves the heuristic level in place.
-    const judged = await classifyTaskLevelWithJev(body, log);
+    const judged = await classifyTaskLevelWithJev(body, log, signal);
     if (judged && judged.level !== task.level) {
       task = { ...task, level: judged.level, weight: taskWeight(judged.level), reasons: [`jev:${judged.tier}`] };
     }

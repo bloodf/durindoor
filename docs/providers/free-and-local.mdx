@@ -61,7 +61,7 @@ Upstream gates the free tier on the request looking like the official OpenCode c
 
 - A full official-client `User-Agent`, a canonical `ses_...` session id, and a stable `x-opencode-request` per turn are sent on every free-tier dispatch.
 - The four file-search tools the official client always declares (`bash`, `glob`, `grep`, `read`) are appended to the `tools` payload of every request, on both the Chat Completions and the Responses route. They are cloaked: their description tells the model they are unusable, and a tool you send under the same name always wins, so your own tool set is never altered.
-- Muse Responses requests get a `prompt_cache_key` pinned to the session, so the turns of one conversation share an upstream prompt cache. A `prompt_cache_key` you send yourself is left alone.
+- Muse Responses requests get a `prompt_cache_key` pinned to the session, so the turns of one conversation share an upstream prompt cache. A `prompt_cache_key` you send yourself is left alone, unless it is blank or whitespace-only, which is treated as missing and replaced with the session id.
 
 Both Muse Spark contributor models (`muse-spark-1.2-contributor-free` and `muse-spark-1.3-contributor-free`) reject any `tool_choice` other than `auto` with HTTP 400, so DurinDoor demotes an explicit one for those two ids.
 

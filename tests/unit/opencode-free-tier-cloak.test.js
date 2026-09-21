@@ -140,6 +140,11 @@ describe("OpenCodeExecutor free-tier client identity (#4128)", () => {
     expect(headers["User-Agent"]).toBe(OPENCODE_UA);
     // The gate still has to read a >= 1.17 opencode version out of it.
     expect(headers["User-Agent"]).toMatch(/(^|\s)opencode\/1\.(1[7-9]|[2-9]\d)/);
+    // Pin the ai-sdk and runtime tokens as literal strings, independent of the
+    // OPENCODE_UA constant: a regression that shrinks the constant back to a
+    // bare "opencode/<version>" must not stay green here.
+    expect(headers["User-Agent"]).toContain("ai-sdk/provider-utils/4.0.40");
+    expect(headers["User-Agent"]).toContain("runtime/bun/1.3.14");
   });
 
   it("does not forward a client UA that only contains opencode/X.Y as a substring", () => {

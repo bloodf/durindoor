@@ -23,6 +23,7 @@ import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatu
 import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
+import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 
 // Upstream #10258: reject parsed JSON that isn't a plain record (primitives,
@@ -541,7 +542,15 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     appendLog({ tokens: usage, status: "200 OK" });
     saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
 
-    if (!hasUsefulContent(translatedResponse)) {
+    // A Claude-native refusal (stop_reason "refusal") is a finished turn even when
+    // its only content is an optional, possibly null/blank explanation string.
+    // Same-format passthrough (targetFormat === sourceFormat === Claude) returns
+    // responseBody untouched above, and the OpenAI-pivot round trip for other
+    // client formats intentionally does not round-trip "refusal" back out of
+    // "content_filter" (see fromOpenAIFinish) — check the raw provider body here
+    // so neither path is mistaken for a retryable empty-content gateway fault.
+    const isNativeClaudeRefusal = responseBody?.stop_reason === CLAUDE_STOP.REFUSAL;
+    if (!isNativeClaudeRefusal && !hasUsefulContent(translatedResponse)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
       return createErrorResult(

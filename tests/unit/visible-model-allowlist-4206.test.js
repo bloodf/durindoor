@@ -136,6 +136,15 @@ describe("visible-model allowlist enforcement", () => {
     expect(ids).toEqual(["ddgw/gpt-4o-mini"]);
   });
 
+  it("reads a keyless provider's allowlist stored under its provider id", async () => {
+    stubBase({ enabledModels: { "duckduckgo-web": ["gpt-4o-mini"] } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
+
+    const ids = (await buildModelsList([LLM_KIND])).map((m) => m.id).filter((id) => id.startsWith("ddgw/"));
+
+    expect(ids).toEqual(["ddgw/gpt-4o-mini"]);
+  });
+
   it("fails the request instead of silently serving an unrestricted catalog when the allowlist can't be read", async () => {
     stubBase();
     mocks.getEnabledModels.mockRejectedValue(new Error("db unavailable"));

@@ -75,6 +75,8 @@ export default function ProviderDetailPage() {
   const [codexPlans, setCodexPlans] = useState({});
   const [providerApiKeyConnectionNames, setProviderApiKeyConnectionNames] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [enabledModelIds, setEnabledModelIds] = useState([]);
+  const [showVisibleModels, setShowVisibleModels] = useState(false);
 
   useEffect(() => {
     currentProviderIdRef.current = providerId;
@@ -85,6 +87,10 @@ export default function ProviderDetailPage() {
     setConnections([]);
     setCodexPlans({});
     setProviderApiKeyConnectionNames([]);
+    // The visible-models modal saves under the provider it was opened for;
+    // close it and drop the old allowlist count so neither carries over.
+    setShowVisibleModels(false);
+    setEnabledModelIds([]);
     setLoading(true);
   }, [providerId]);
   const [providerNode, setProviderNode] = useState(null);
@@ -157,8 +163,6 @@ export default function ProviderDetailPage() {
   const [modelsFetchedAt, setModelsFetchedAt] = useState(null);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
-  const [enabledModelIds, setEnabledModelIds] = useState([]);
-  const [showVisibleModels, setShowVisibleModels] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
   const [oneByOneRunning, setOneByOneRunning] = useState(false);
@@ -294,14 +298,18 @@ export default function ProviderDetailPage() {
 
   // Visible-model allowlist for this provider (empty = no restriction).
   const fetchEnabledModels = useCallback(async () => {
+    const requestProviderId = providerId;
     try {
       const res = await fetch(`/api/models/enabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" });
       const data = await res.json();
+      // A response for a provider the page has since switched away from must
+      // not overwrite the current provider's banner.
+      if (currentProviderIdRef.current !== requestProviderId) return;
       if (res.ok) setEnabledModelIds(data.ids || []);
     } catch (error) {
       console.log("Error fetching enabled models:", error);
     }
-  }, [providerStorageAlias]);
+  }, [providerId, providerStorageAlias]);
 
   const handleDisableModel = async (modelId) => {
     try {
@@ -2271,6 +2279,7 @@ export default function ProviderDetailPage() {
 
       {showVisibleModels && !isCompatible &&
       <VisibleModelsModal
+        key={providerStorageAlias}
         isOpen
         onClose={() => setShowVisibleModels(false)}
         providerId={providerId}
@@ -2279,6 +2288,7 @@ export default function ProviderDetailPage() {
         customModels={customModels}
         disabledModelIds={disabledModelIds}
         onSaved={(ids) => {
+          if (currentProviderIdRef.current !== providerId) return;
           setEnabledModelIds(ids);
           fetchDisabledModels();
         }} />

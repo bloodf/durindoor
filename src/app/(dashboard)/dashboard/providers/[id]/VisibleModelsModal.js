@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal } from "@/shared/components";
-import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
+import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { isString } from "../../../../../shared/utils/typeChecks.js";
 
 // Pick the models a provider exposes on /v1/models ("visible models" allowlist).
@@ -28,8 +28,6 @@ export default function VisibleModelsModal({
   const [available, setAvailable] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
   const [search, setSearch] = useState("");
-  // The page mounts this modal only while it is open, so fresh state already
-  // means "loading" — no setState needed at the top of the fetch effect.
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -48,6 +46,9 @@ export default function VisibleModelsModal({
     let cancelled = false;
 
     (async () => {
+      // A refetch (new provider, connections, or blacklist) must lock Save
+      // until it resolves, or Save would write the previous selection.
+      setLoading(true);
       let current = [];
       let failed = false;
       try {
@@ -97,9 +98,9 @@ export default function VisibleModelsModal({
           push(id, name, { live: true });
         }
       }
+      // Every kind: /v1/models applies the allowlist to embedding, image,
+      // TTS, ... rows too, so hiding them here would drop them on first save.
       for (const model of getModelsByProviderId(providerId) || []) {
-        const kind = getModelKind(model, "llm");
-        if (kind && kind !== "llm") continue;
         push(model.id, model.name);
       }
       // Allowlisted ids that no longer show up in any catalog stay listed, so
@@ -125,13 +126,16 @@ export default function VisibleModelsModal({
 
   // Custom models are merged into /v1/models after the allowlist, so they are
   // always visible — showing them as toggleable would be a lie.
-  const customRows = useMemo(
-    () => (customModels || [])
-      .filter((m) => m.providerAlias === providerAlias && (m.kind || m.type || "llm") === "llm")
+  // Match the aliases /v1/models accepts for custom rows: storage alias,
+  // registry alias, provider id, and the first active connection's prefix.
+  const customRows = useMemo(() => {
+    const prefix = (connections || []).find((c) => c.isActive !== false)?.providerSpecificData?.prefix;
+    const aliases = new Set([providerAlias, providerId, PROVIDER_ID_TO_ALIAS[providerId], isString(prefix) ? prefix.trim() : ""]);
+    return (customModels || [])
+      .filter((m) => aliases.has(m.providerAlias))
       .map((m) => ({ id: String(m.id).trim(), name: m.name || m.id }))
-      .filter((m) => m.id),
-    [customModels, providerAlias]
-  );
+      .filter((m) => m.id);
+  }, [customModels, connections, providerAlias, providerId]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -180,7 +184,7 @@ export default function VisibleModelsModal({
           <span className="material-symbols-outlined shrink-0 text-primary" style={{ fontSize: "14px" }}>info</span>
           <span>
             Only the checked models are exposed on <code className="font-mono">/v1/models</code>. Leave
-            everything unchecked to expose all of them. Custom models are always exposed.
+            everything unchecked to expose all of them. Custom models and web search/fetch endpoints are always exposed.
           </span>
         </div>
 

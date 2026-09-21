@@ -684,7 +684,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   // Same storage-key rule for the static and keyless readers, whose `alias`
   // is the registry alias (the output prefix), not the dashboard key.
   const storedAllowlist = (providerId, alias) =>
-    [getProviderAlias(providerId), alias].map((key) => enabledByAlias[key]).find((v) => Array.isArray(v) && v.length > 0);
+    [getProviderAlias(providerId), alias, providerId].map((key) => enabledByAlias[key]).find((v) => Array.isArray(v) && v.length > 0);
 
   const activeConnectionByProvider = new Map();
   for (const conn of connections) {

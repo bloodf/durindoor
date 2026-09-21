@@ -37,6 +37,7 @@ vi.mock("@/lib/localDb", () => ({
   getModelAliases: mocks.getModelAliases,
   getSettings: mocks.getSettings,
 }));
+vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: mocks.getDisabledModels }));
 vi.mock("@/lib/db/repos/settingsRepo", () => ({ getSettings: mocks.getSettings }));
 vi.mock("@/sse/services/tokenRefresh", () => ({ updateProviderCredentials: vi.fn() }));

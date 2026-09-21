@@ -98,3 +98,58 @@ describe("VisibleModelsModal defaults", () => {
     expect(document.body.textContent).toContain("Could not load the current allowlist");
   });
 });
+
+describe("VisibleModelsModal round-3 review fixes", () => {
+  const saveButton = () => Array.from(document.querySelectorAll("button"))
+    .find((btn) => btn.textContent.trim() === "Save");
+
+  it("locks Save while a refetch for a new provider is in flight", async () => {
+    let pending = false;
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      if (String(url).includes("/api/models/enabled")) {
+        if (pending) return new Promise(() => {});
+        return { ok: true, json: async () => ({ ids: [] }) };
+      }
+      return { ok: true, json: async () => ({ models: [] }) };
+    }));
+
+    await render(React.createElement(VisibleModelsModal, baseProps()));
+    await flush();
+    expect(saveButton().disabled).toBe(false);
+
+    pending = true;
+    await render(React.createElement(VisibleModelsModal, baseProps({ providerId: "deepseek", providerAlias: "ds" })));
+    await flush();
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it("lists non-LLM registry models so a save cannot drop them", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      if (String(url).includes("/api/models/enabled")) return { ok: true, json: async () => ({ ids: [] }) };
+      return { ok: true, json: async () => ({ models: [] }) };
+    }));
+
+    await render(React.createElement(VisibleModelsModal, baseProps({ providerId: "openai", providerAlias: "openai" })));
+    await flush();
+
+    const ids = Array.from(document.querySelectorAll("label code")).map((el) => el.textContent);
+    expect(ids).toEqual(expect.arrayContaining(["dall-e-3", "text-embedding-3-small", "tts-1", "whisper-1"]));
+  });
+
+  it("shows custom models stored under the registry alias as always exposed", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      if (String(url).includes("/api/models/enabled")) return { ok: true, json: async () => ({ ids: [] }) };
+      return { ok: true, json: async () => ({ models: [] }) };
+    }));
+
+    await render(React.createElement(VisibleModelsModal, baseProps({
+      providerId: "deepseek",
+      providerAlias: "ds",
+      customModels: [{ providerAlias: "deepseek", id: "my-deepseek-custom" }],
+    })));
+    await flush();
+
+    expect(document.body.textContent).toContain("Always exposed");
+    expect(document.body.textContent).toContain("my-deepseek-custom");
+  });
+});

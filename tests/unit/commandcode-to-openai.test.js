@@ -1,11 +1,10 @@
 /**
  * Unit tests for open-sse/translator/response/commandcode-to-openai.js
  *
- * Verified live against upstream stream (curl, 2026-05-07):
- *  - tool-input-start: { id, toolName }   (id, NOT toolCallId)
- *  - tool-input-delta: { id, delta }      (id, NOT toolCallId; delta, NOT inputTextDelta)
- *  - tool-input-end:   { id }
- *  - tool-call (final): { toolCallId, toolName, input }
+ * Match reference protocol (port of decolua/9router #4224): provisional
+ * tool-input-* deltas are never executable on their own — only the
+ * authoritative "tool-call" event is buffered, and every buffered call is
+ * replayed once "finish" arrives.
  */
 
 import { describe, it, expect } from "vitest";
@@ -46,21 +45,13 @@ describe("commandcode-to-openai — reasoning-delta", () => {
 });
 
 describe("commandcode-to-openai — tool-input-* with id field (live schema)", () => {
-  it("registers tool index using event.id (NOT toolCallId)", () => {
+  it("does not emit provisional tool input", () => {
     const { chunks } = feed([
       { type: "tool-input-start", id: "call_X", toolName: "Bash" },
       { type: "tool-input-delta", id: "call_X", delta: "{\"cmd" },
       { type: "tool-input-delta", id: "call_X", delta: "\":\"ls\"}" },
     ]);
-
-    // First chunk emits tool_calls with id
-    const startChunk = chunks[0].choices[0].delta.tool_calls[0];
-    expect(startChunk.id).toBe("call_X");
-    expect(startChunk.function.name).toBe("Bash");
-
-    // Subsequent deltas accumulate arguments
-    expect(chunks[1].choices[0].delta.tool_calls[0].function.arguments).toBe("{\"cmd");
-    expect(chunks[2].choices[0].delta.tool_calls[0].function.arguments).toBe("\":\"ls\"}");
+    expect(chunks).toHaveLength(0);
   });
 
   it("ignores tool-input-delta when id is unknown (no prior start)", () => {
@@ -72,21 +63,25 @@ describe("commandcode-to-openai — tool-input-* with id field (live schema)", (
 });
 
 describe("commandcode-to-openai — final tool-call event", () => {
-  it("does NOT re-emit tool_calls when tool-input-* deltas already fired", () => {
+  it("uses the final authoritative input instead of provisional input", () => {
     const { chunks } = feed([
       { type: "tool-input-start", id: "call_Y", toolName: "Write" },
-      { type: "tool-input-delta", id: "call_Y", delta: "{\"file\":\"a\"}" },
-      { type: "tool-call", toolCallId: "call_Y", toolName: "Write", input: { file: "a" } },
+      { type: "tool-input-delta", id: "call_Y", delta: "{\"file\":\"draft\"}" },
+      { type: "tool-call", toolCallId: "call_Y", toolName: "Write", input: { file: "final" } },
+      { type: "finish", finishReason: "tool-calls" },
     ]);
-    // Should be exactly 2 chunks (start + delta), no duplicate from final tool-call
     expect(chunks.length).toBe(2);
+    const tc = chunks[0].choices[0].delta.tool_calls[0];
+    expect(tc.function.arguments).toBe(JSON.stringify({ file: "final" }));
+    expect(chunks[1].choices[0].finish_reason).toBe("tool_calls");
   });
 
-  it("emits a consolidated tool_calls when only the final tool-call event arrives", () => {
+  it("emits a consolidated tool call at finish", () => {
     const { chunks } = feed([
       { type: "tool-call", toolCallId: "call_Z", toolName: "Read", input: { path: "/x" } },
+      { type: "finish", finishReason: "tool-calls" },
     ]);
-    expect(chunks.length).toBe(1);
+    expect(chunks.length).toBe(2);
     const tc = chunks[0].choices[0].delta.tool_calls[0];
     expect(tc.id).toBe("call_Z");
     expect(tc.function.name).toBe("Read");
@@ -99,6 +94,7 @@ describe("commandcode-to-openai — finish", () => {
     const { chunks } = feed([
       { type: "tool-input-start", id: "call_F", toolName: "Bash" },
       { type: "tool-input-delta", id: "call_F", delta: "{}" },
+      { type: "tool-call", toolCallId: "call_F", toolName: "Bash", input: {} },
       { type: "finish-step", finishReason: "tool-calls" },
       { type: "finish" },
     ]);
@@ -115,42 +111,23 @@ describe("commandcode-to-openai — finish", () => {
     const last = chunks[chunks.length - 1];
     expect(last.usage).toEqual({ prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 });
   });
+
+  it("rejects a tool finish without an authoritative call", () => {
+    const state = {};
+    commandCodeToOpenAIResponse(JSON.stringify({ type: "tool-input-start", id: "c1", toolName: "bash" }), state);
+    commandCodeToOpenAIResponse(JSON.stringify({ type: "tool-input-delta", id: "c1", delta: '{"command":"partial"}' }), state);
+    expect(() => commandCodeToOpenAIResponse(
+      JSON.stringify({ type: "finish", finishReason: "tool-calls" }),
+      state,
+    )).toThrow("no valid tool call");
+  });
 });
 
 describe("commandcode-to-openai — error event", () => {
-  it("stringifies object errors so client sees readable message", () => {
-    const { chunks } = feed([
+  it("throws a readable transport error", () => {
+    expect(() => feed([
       { type: "error", error: { type: "server_error", message: "Boom" } },
-    ]);
-    const text = chunks[0].choices[0].delta.content;
-    expect(text).toContain("Boom");
-    expect(text).not.toContain("[object Object]");
-  });
-
-  it("opens a first-event error with the assistant role and a stop chunk", () => {
-    const { chunks } = feed([{ type: "error", error: "boom" }]);
-
-    expect(chunks[0].choices[0].delta.role).toBe("assistant");
-    expect(chunks[1].choices[0].finish_reason).toBe("stop");
-  });
-
-  it("omits the role from an error after content", () => {
-    const { chunks } = feed([
-      { type: "text-delta", text: "hi" },
-      { type: "error", error: "boom" },
-    ]);
-
-    expect(chunks[1].choices[0].delta).toEqual({ content: "\n\n[CommandCode error: boom]" });
-  });
-
-  it("emits the assistant role exactly once when text follows an error", () => {
-    const { chunks } = feed([
-      { type: "error", error: "boom" },
-      { type: "text-delta", text: "hi" },
-    ]);
-
-    expect(chunks.filter((chunk) => chunk.choices[0].delta.role === "assistant")).toHaveLength(1);
-    expect(chunks[2].choices[0].delta).toEqual({ content: "hi" });
+    ])).toThrow(/Boom/);
   });
 });
 
@@ -168,18 +145,22 @@ describe("commandcode-to-openai — state pre-populated by initState (Responses 
       JSON.stringify({ type: "tool-call", toolCallId: "call_a", toolName: "Read", input: { path: "x" } }),
       state
     );
+    expect(out).toBeNull();
 
-    expect(out?.[0]?.choices[0].delta.tool_calls[0].id).toBe("call_a");
+    const finished = commandCodeToOpenAIResponse(JSON.stringify({ type: "finish", finishReason: "tool-calls" }), state);
+    expect(finished?.[0]?.choices[0].delta.tool_calls[0].id).toBe("call_a");
   });
 
-  it("is idempotent — re-feeding the same tool-call event is a no-op", () => {
+  it("ignores a duplicate authoritative call for the same id", () => {
     const state = initState(FORMATS.OPENAI_RESPONSES);
     const chunk = JSON.stringify({ type: "tool-call", toolCallId: "call_a", toolName: "Read", input: { path: "x" } });
 
     commandCodeToOpenAIResponse(chunk, state);
     const second = commandCodeToOpenAIResponse(chunk, state);
-
     expect(second).toBeNull();
+
+    const finished = commandCodeToOpenAIResponse(JSON.stringify({ type: "finish", finishReason: "tool-calls" }), state);
+    expect(finished[0].choices[0].delta.tool_calls).toHaveLength(1);
   });
 
   it("advances the tool index for a second distinct tool call", () => {
@@ -188,12 +169,13 @@ describe("commandcode-to-openai — state pre-populated by initState (Responses 
       JSON.stringify({ type: "tool-call", toolCallId: "call_a", toolName: "Read", input: { path: "x" } }),
       state
     );
-    const out2 = commandCodeToOpenAIResponse(
+    commandCodeToOpenAIResponse(
       JSON.stringify({ type: "tool-call", toolCallId: "call_b", toolName: "Grep", input: { pattern: "y" } }),
       state
     );
+    const finished = commandCodeToOpenAIResponse(JSON.stringify({ type: "finish", finishReason: "tool-calls" }), state);
 
-    expect(out2[0].choices[0].delta.tool_calls[0].index).toBe(1);
+    expect(finished[1].choices[0].delta.tool_calls[0].index).toBe(1);
   });
 
   it("still handles a text-delta under pre-init state", () => {

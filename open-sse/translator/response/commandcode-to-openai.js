@@ -21,8 +21,6 @@ import { ROLE, OPENAI_BLOCK, OPENAI_FINISH } from "../schema/index.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { toOpenAIUsage } from "../concerns/usage.js";
 import { reasoningDelta } from "../concerns/reasoning.js";
-import { fallbackToolCallId } from "../concerns/toolCall.js";
-import { toOpenAIFinish } from "../concerns/finishReason.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function ensureState(state, model) {
@@ -30,12 +28,11 @@ function ensureState(state, model) {
   state.created ??= Math.floor(Date.now() / 1000);
   state.model = state.model || model || "commandcode";
   state.chunkIndex ??= 0;
-  state.toolIndex ??= 0;
-  state.toolIndexById ??= new Map();
-  state.openTools ??= new Set();
-  state.openText ??= false;
-  state.finishReason ??= null;
-  state.usage ??= null;
+  state.commandCodeToolCalls ??= [];
+  state.commandCodeToolCallIds ??= new Set();
+  state.commandCodeFinishReason ??= null;
+  state.commandCodeUsage ??= null;
+  state.commandCodeFinished ??= false;
 }
 
 function makeChunk(state, delta, finishReason = null) {
@@ -46,7 +43,65 @@ function makeChunk(state, delta, finishReason = null) {
   );
 }
 
-const mapFinishReason = (reason) => toOpenAIFinish(reason, "commandcode");
+/**
+ * CommandCode's reference protocol only guarantees a finish reason it
+ * recognizes; an unrecognized one means the wire contract drifted and a
+ * silent fallback would hide that from the client. Match reference protocol
+ * (port of decolua/9router #4224): throw instead of guessing.
+ */
+function mapFinishReason(reason) {
+  switch (String(reason || "").trim()) {
+    case "stop":
+    case "end":
+    case "end_turn":
+      return OPENAI_FINISH.STOP;
+    case "tool-calls":
+    case "tool_calls":
+    case "tool_use":
+    case "function_call":
+      return OPENAI_FINISH.TOOL_CALLS;
+    case "max_tokens":
+    case "max_output_tokens":
+    case "length":
+      return OPENAI_FINISH.LENGTH;
+    case "content-filter":
+    case "content_filter":
+      return OPENAI_FINISH.CONTENT_FILTER;
+    default:
+      throw new Error(`CommandCode finish event has unsupported reason ${JSON.stringify(reason || "")}`);
+  }
+}
+
+/** Extract and validate the authoritative JSON input of a "tool-call" event. */
+function toolArguments(event) {
+  const hasInput = Object.prototype.hasOwnProperty.call(event, "input");
+  const hasArgs = Object.prototype.hasOwnProperty.call(event, "args");
+  const hasArguments = Object.prototype.hasOwnProperty.call(event, "arguments");
+  if (!hasInput && !hasArgs && !hasArguments) {
+    throw new Error("CommandCode tool-call event is missing input");
+  }
+
+  const input = hasInput ? event.input : hasArgs ? event.args : event.arguments;
+  if (input == null) throw new Error("CommandCode tool-call input must be a JSON object");
+
+  let parsed = input;
+  let encoded;
+  if (isString(input)) {
+    encoded = input.trim();
+    try {
+      parsed = JSON.parse(encoded);
+    } catch {
+      throw new Error("CommandCode tool-call input must be one complete JSON object");
+    }
+  } else {
+    encoded = JSON.stringify(input);
+  }
+
+  if (!parsed || !isObject(parsed) || Array.isArray(parsed)) {
+    throw new Error("CommandCode tool-call input must be a JSON object");
+  }
+  return encoded;
+}
 
 export function commandCodeToOpenAIResponse(chunk, state) {
   if (!chunk) return null;
@@ -82,7 +137,6 @@ export function commandCodeToOpenAIResponse(chunk, state) {
         if (!text) break;
         const delta = state.chunkIndex === 0 ? { role: ROLE.ASSISTANT, content: text } : { content: text };
         state.chunkIndex++;
-        state.openText = true;
         out.push(makeChunk(state, delta));
         break;
       }
@@ -95,87 +149,64 @@ export function commandCodeToOpenAIResponse(chunk, state) {
         out.push(makeChunk(state, delta));
         break;
       }
-    case "tool-input-start":{
-        const id = event.id || event.toolCallId || fallbackToolCallId(state.toolIndex);
-        let idx = state.toolIndexById.get(id);
-        if (idx == null) {
-          idx = state.toolIndex++;
-          state.toolIndexById.set(id, idx);
-        }
-        state.openTools.add(id);
-        const delta = {
-          ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : null),
-          tool_calls: [{
-            index: idx,
-            id,
-            type: OPENAI_BLOCK.FUNCTION,
-            function: { name: event.toolName || "", arguments: "" }
-          }]
-        };
-        state.chunkIndex++;
-        out.push(makeChunk(state, delta));
-        break;
-      }
-    case "tool-input-delta":{
-        const id = event.id || event.toolCallId;
-        const idx = state.toolIndexById.get(id);
-        if (idx == null) break;
-        const delta = {
-          tool_calls: [{
-            index: idx,
-            function: { arguments: event.delta || event.inputTextDelta || "" }
-          }]
-        };
-        out.push(makeChunk(state, delta));
-        break;
-      }
+    case "tool-input-start":
+    case "tool-input-delta":
+    case "tool-input-end":
+    case "tool-input-available":
+    case "tool-error":
+      // Provisional telemetry, never executable on its own. Wait for the
+      // authoritative "tool-call" event, as the official Command Code CLI does.
+      break;
     case "tool-call":{
-        // Final consolidated tool call — only emit if we never saw tool-input-* deltas.
-        const id = event.toolCallId;
-        if (state.toolIndexById.has(id)) break;
-        const idx = state.toolIndex++;
-        state.toolIndexById.set(id, idx);
-        const argsStr = isString(event.input) ? event.input : JSON.stringify(event.input ?? {});
-        const delta = {
-          ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : null),
-          tool_calls: [{
-            index: idx,
-            id,
-            type: OPENAI_BLOCK.FUNCTION,
-            function: { name: event.toolName || "", arguments: argsStr }
-          }]
-        };
-        state.chunkIndex++;
-        out.push(makeChunk(state, delta));
+        const id = event.toolCallId || event.id || "";
+        const name = event.toolName || "";
+        if (!id) throw new Error("CommandCode tool-call event is missing an id");
+        if (!name) throw new Error(`CommandCode tool-call ${id} is missing a name`);
+        if (state.commandCodeToolCallIds.has(id)) break;
+        state.commandCodeToolCallIds.add(id);
+        state.commandCodeToolCalls.push({ id, name, arguments: toolArguments(event) });
         break;
       }
     case "finish-step":{
-        state.finishReason = mapFinishReason(event.finishReason);
-        if (event.usage) state.usage = event.usage;
+        if (event.finishReason) state.commandCodeFinishReason = event.finishReason;
+        if (event.usage) state.commandCodeUsage = event.usage;
         break;
       }
     case "finish":{
-        const finishReason = state.finishReason || mapFinishReason(event.finishReason || "stop");
+        if (state.commandCodeFinished) break;
+        let finishReason = mapFinishReason(event.finishReason || event.rawFinishReason || state.commandCodeFinishReason);
+        if (finishReason === OPENAI_FINISH.TOOL_CALLS && state.commandCodeToolCalls.length === 0) {
+          throw new Error("CommandCode finished with tool_calls but supplied no valid tool call");
+        }
+        for (let index = 0; index < state.commandCodeToolCalls.length; index++) {
+          const call = state.commandCodeToolCalls[index];
+          const delta = {
+            ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : null),
+            tool_calls: [{
+              index,
+              id: call.id,
+              type: OPENAI_BLOCK.FUNCTION,
+              function: { name: call.name, arguments: call.arguments }
+            }]
+          };
+          state.chunkIndex++;
+          out.push(makeChunk(state, delta));
+        }
+        if (state.commandCodeToolCalls.length > 0 && finishReason !== OPENAI_FINISH.LENGTH) {
+          finishReason = OPENAI_FINISH.TOOL_CALLS;
+        }
         const finalChunk = makeChunk(state, {}, finishReason);
-        const totalUsage = event.totalUsage || state.usage;
+        const totalUsage = event.totalUsage || state.commandCodeUsage;
         const usage = toOpenAIUsage(totalUsage, "commandcode");
         if (usage) finalChunk.usage = usage;
         out.push(finalChunk);
+        state.commandCodeFinished = true;
         break;
       }
     case "error":{
-        state.finishReason = OPENAI_FINISH.STOP;
         const errVal = event.error ?? event.message ?? "unknown";
         const errStr = isString(errVal) ? errVal : JSON.stringify(errVal);
-        const errText = `\n\n[CommandCode error: ${errStr}]`;
-        /** Open the first client-visible delta with its required assistant role. */
-        const delta = state.chunkIndex === 0
-          ? { role: ROLE.ASSISTANT, content: errText }
-          : { content: errText };
-        state.chunkIndex++;
-        out.push(makeChunk(state, delta));
-        out.push(makeChunk(state, {}, OPENAI_FINISH.STOP));
-        break;
+        throw new Error(`CommandCode upstream error: ${errStr}`);
       }
     // Silently ignore: start, start-step, reasoning-start, reasoning-end, text-start, text-end,
     // provider-metadata, message-metadata, etc. They carry no client-visible content.

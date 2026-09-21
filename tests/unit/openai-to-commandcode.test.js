@@ -21,8 +21,9 @@ describe("openaiToCommandCodeRequest — basic envelope", () => {
       messages: [{ role: "user", content: "hi" }],
     }, true);
 
-    expect(out).toHaveProperty("threadId");
+    expect(out).not.toHaveProperty("threadId");
     expect(out).toHaveProperty("memory");
+    expect(out).toMatchObject({ taste: "", skills: null, permissionMode: "standard" });
     expect(out).toHaveProperty("config");
     expect(out).toHaveProperty("params");
     expect(out.params.model).toBe(MODEL);
@@ -158,6 +159,7 @@ describe("openaiToCommandCodeRequest — tools schema conversion", () => {
 
     const t = out.params.tools[0];
     expect(t.name).toBe("weather");
+    expect(t.type).toBe("function");
     expect(t.input_schema).toBeDefined();
     expect(t.input_schema.type).toBe("object");
     expect(t.function).toBeUndefined();
@@ -197,11 +199,11 @@ describe("openaiToCommandCodeRequest — tools schema conversion", () => {
     ]);
   });
 
-  it("does not include tools field when input has none", () => {
+  it("uses an empty tools list when input has none", () => {
     const out = openaiToCommandCodeRequest(MODEL, {
       messages: [{ role: "user", content: "hi" }],
     }, true);
-    expect(out.params.tools).toBeUndefined();
+    expect(out.params.tools).toEqual([]);
   });
 });
 
@@ -243,11 +245,12 @@ describe("openaiToCommandCodeRequest — Muse reasoning", () => {
   });
 });
 
-// Port of decolua/9router 092c84ea: CommandCode's /alpha/generate schema pairs a
-// tool-call block with a preceding reasoning block; without one, retried turns
-// hit transient stream errors.
+// Match reference protocol (port of decolua/9router #4224): the previous
+// forced-placeholder reasoning block (port of 9router 092c84ea) is superseded
+// by matching CommandCode's actual wire contract (headers, envelope shape) —
+// a tool call no longer needs a synthetic reasoning block to precede it.
 describe("openaiToCommandCodeRequest — reasoning block precedes tool calls", () => {
-  it("emits a placeholder reasoning block for a tool-calling turn with no reasoning text", () => {
+  it("emits no reasoning block for a tool-calling turn with no reasoning text", () => {
     const out = openaiToCommandCodeRequest(MODEL, {
       messages: [
         { role: "user", content: "run it" },
@@ -260,7 +263,7 @@ describe("openaiToCommandCodeRequest — reasoning block precedes tool calls", (
     }, true);
 
     const assistant = out.params.messages.find((m) => m.role === "assistant");
-    expect(assistant.content[0]).toEqual({ type: "reasoning", text: " " });
+    expect(assistant.content.some((b) => b.type === "reasoning")).toBe(false);
     expect(assistant.content.some((b) => b.type === "tool-call")).toBe(true);
   });
 

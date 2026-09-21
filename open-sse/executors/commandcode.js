@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { commandCodeToOpenAIResponse } from "../translator/response/commandcode-to-openai.js";
@@ -31,7 +30,6 @@ COMMANDCODE_EVENT.MESSAGE_METADATA]
  * CommandCodeExecutor — talks to https://api.commandcode.ai/alpha/generate
  *
  * Auth: Bearer <user_xxx> API key (stored as the connection's apiKey).
- * Adds the per-request `x-session-id` header expected by CommandCode upstream.
  *
  * Upstream returns AI SDK v5 NDJSON (one JSON event per line, no `data:` prefix).
  * We translate each event to an OpenAI chat.completion.chunk and emit it as SSE so
@@ -55,8 +53,7 @@ export class CommandCodeExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true) {
     const headers = {
       "Content-Type": "application/json",
-      ...(this.config.headers || {}),
-      "x-session-id": randomUUID()
+      ...(this.config.headers || {})
     };
 
     const token = credentials?.apiKey || credentials?.accessToken;
@@ -329,6 +326,7 @@ export function wrapNdjsonAsOpenAISse(originalResponse, model) {
       }
     },
     flush(controller) {
+      buffer += decoder.decode();
       const trimmed = buffer.trim();
       if (trimmed) processLine(trimmed, controller);
       if (!state.rawTerminalSeen && !state.failureSeen) {

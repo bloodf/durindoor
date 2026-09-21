@@ -107,7 +107,7 @@ describe("CommandCode HTTP-200 error preflight", () => {
     const chunks = [
       ndjson({ type: "start" }),
       ndjson({ type: "text-delta", text: "hello" }),
-      ndjson({ type: "finish" }),
+      ndjson({ type: "finish", finishReason: "stop" }),
     ];
 
     const response = await preflightCommandCodeResponse(responseFromChunks(chunks));
@@ -163,6 +163,19 @@ describe("CommandCode HTTP-200 error preflight", () => {
   });
 });
 
+describe("CommandCode reference protocol compatibility (port of decolua/9router #4224)", () => {
+  it("uses the current official CLI identity headers and drops the per-request session id", () => {
+    const headers = new CommandCodeExecutor().buildHeaders({ apiKey: "user_test" });
+    expect(headers).toMatchObject({
+      Authorization: "Bearer user_test",
+      "x-command-code-version": "1.54.2",
+      "x-cli-environment": "production",
+      "User-Agent": "cli",
+    });
+    expect(headers["x-session-id"]).toBeUndefined();
+  });
+});
+
 describe("CommandCode retries a transient stream error (port of decolua/9router 092c84ea)", () => {
   it("retries once when the preflight classifies a 503 and succeeds on the next attempt", async () => {
     vi.useFakeTimers();
@@ -178,7 +191,7 @@ describe("CommandCode retries a transient stream error (port of decolua/9router 
         response: responseFromChunks([
           ndjson({ type: "start" }),
           ndjson({ type: "text-delta", text: "Recovered from overload" }),
-          ndjson({ type: "finish" }),
+          ndjson({ type: "finish", finishReason: "stop" }),
         ]),
       });
 

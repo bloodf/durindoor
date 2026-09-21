@@ -155,6 +155,10 @@ function convertMessages(messages = []) {
   return { messages: out, system: systemTexts.join("\n\n") };
 }
 
+/**
+ * The CLI's toWireTools sends plain {name, description, input_schema}. A preset
+ * `type` makes the gateway skip its input_schema rewrite, so parameters are lost.
+ */
 function convertTools(tools) {
   if (!Array.isArray(tools) || tools.length === 0) return [];
   const result = [];
@@ -162,14 +166,12 @@ function convertTools(tools) {
     if (!t) continue;
     if (t.type === OPENAI_BLOCK.FUNCTION && t.function) {
       result.push({
-        type: OPENAI_BLOCK.FUNCTION,
         name: t.function.name,
         description: t.function.description,
         input_schema: t.function.parameters || { type: "object" }
       });
     } else if (t.name && (t.input_schema || t.parameters)) {
       result.push({
-        type: OPENAI_BLOCK.FUNCTION,
         name: t.name,
         description: t.description,
         input_schema: t.input_schema || t.parameters
@@ -194,12 +196,15 @@ export function openaiToCommandCodeRequest(model, body, stream /* , credentials 
   };
 
   if (system) params.system = system;
+  // The CLI forwards temperature only when the caller set it; top_p has no wire field.
+  if (body.temperature != null) params.temperature = body.temperature;
 
   const today = new Date().toISOString().slice(0, 10);
 
   return {
     memory: "",
-    taste: "",
+    // The 1.54 envelope types taste as a nullable object; a string is rejected.
+    taste: null,
     skills: null,
     permissionMode: "standard",
     config: {

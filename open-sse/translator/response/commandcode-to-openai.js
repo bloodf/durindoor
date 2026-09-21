@@ -199,7 +199,8 @@ export function commandCodeToOpenAIResponse(chunk, state) {
         if (calls.length > 0 && finishReason !== OPENAI_FINISH.LENGTH) {
           finishReason = OPENAI_FINISH.TOOL_CALLS;
         }
-        const finalChunk = makeChunk(state, {}, finishReason);
+        // A filtered turn can drop the only chunk that carried the role.
+        const finalChunk = makeChunk(state, state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : {}, finishReason);
         const totalUsage = event.totalUsage || state.commandCodeUsage;
         const usage = toOpenAIUsage(totalUsage, "commandcode");
         if (usage) finalChunk.usage = usage;

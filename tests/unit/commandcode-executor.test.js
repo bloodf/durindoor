@@ -265,6 +265,24 @@ describe("CommandCode stream wrapper failure handling", () => {
     }
   });
 
+  it("labels the wrapped body as SSE whatever the upstream content type", async () => {
+    const upstream = responseFromChunks([ndjson({ type: "text-delta", text: "hi" }), ndjson({ type: "finish", finishReason: "stop" })]);
+    upstream.headers.set("Content-Length", "99");
+    const response = wrapNdjsonAsOpenAISse(upstream, "cc-model");
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+    expect(response.headers.has("content-length")).toBe(false);
+    expect(await response.text()).toContain("[DONE]");
+  });
+
+  it("fails a stream that ends on finish-step without finish, as the CLI does", async () => {
+    const text = await wrap([
+      { type: "tool-call", toolCallId: "call_3", toolName: "Read", input: { path: "a" } },
+      { type: "finish-step", finishReason: "tool-calls" },
+    ]);
+    expect(text).toContain("CommandCode stream ended before finish");
+    expect(text).not.toContain("tool_calls");
+  });
+
   it("emits an SSE comment while tool input is buffered", async () => {
     const text = await wrap([
       { type: "tool-input-start", id: "call_2", toolName: "Write" },

@@ -251,7 +251,8 @@ describe("Responses custom tools through the Command Code envelope (port of deco
       input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Run pwd" }] }],
     }, true, null, "commandcode");
 
-    expect(out.params.tools[0]).toMatchObject({ type: "function", name: CUSTOM_NAME });
+    expect(out.params.tools[0]).toMatchObject({ name: CUSTOM_NAME });
+    expect(out.params.tools[0]).not.toHaveProperty("type");
     expect(out._customToolNames).toEqual([CUSTOM_NAME]);
   });
 });

@@ -360,10 +360,15 @@ export function wrapNdjsonAsOpenAISse(originalResponse, model) {
   });
 
   const newBody = originalResponse.body.pipeThrough(transform);
+  // The body is now SSE; an upstream x-ndjson type would make the stream handler
+  // treat it as an error page, and the upstream length no longer applies.
+  const headers = new Headers(originalResponse.headers);
+  headers.set("Content-Type", "text/event-stream");
+  headers.delete("Content-Length");
   return new Response(newBody, {
     status: originalResponse.status,
     statusText: originalResponse.statusText,
-    headers: originalResponse.headers
+    headers
   });
 }
 

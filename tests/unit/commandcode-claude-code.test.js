@@ -41,11 +41,12 @@ describe("Claude Code through Command Code", () => {
 
     expect(request).toMatchObject({
       memory: "",
-      taste: "",
+      taste: null,
       skills: null,
       permissionMode: "standard",
     });
-    expect(request.params.tools[0]).toMatchObject({ type: "function", name: "Bash" });
+    expect(request.params.tools[0]).toEqual(expect.objectContaining({ name: "Bash" }));
+    expect(request.params.tools[0]).not.toHaveProperty("type");
     const toolResult = request.params.messages.find((message) => message.role === "tool");
     expect(toolResult.content[0]).toMatchObject({
       type: "tool-result",

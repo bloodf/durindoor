@@ -23,7 +23,7 @@ describe("openaiToCommandCodeRequest — basic envelope", () => {
 
     expect(out).not.toHaveProperty("threadId");
     expect(out).toHaveProperty("memory");
-    expect(out).toMatchObject({ taste: "", skills: null, permissionMode: "standard" });
+    expect(out).toMatchObject({ taste: null, skills: null, permissionMode: "standard" });
     expect(out).toHaveProperty("config");
     expect(out).toHaveProperty("params");
     expect(out.params.model).toBe(MODEL);
@@ -159,11 +159,19 @@ describe("openaiToCommandCodeRequest — tools schema conversion", () => {
 
     const t = out.params.tools[0];
     expect(t.name).toBe("weather");
-    expect(t.type).toBe("function");
+    expect(t).not.toHaveProperty("type");
     expect(t.input_schema).toBeDefined();
     expect(t.input_schema.type).toBe("object");
     expect(t.function).toBeUndefined();
     expect(t.parameters).toBeUndefined();
+  });
+
+  it("forwards temperature only when the caller set it, and never top_p", () => {
+    const base = { messages: [{ role: "user", content: "hi" }] };
+    expect(openaiToCommandCodeRequest(MODEL, base, true).params).not.toHaveProperty("temperature");
+    const out = openaiToCommandCodeRequest(MODEL, { ...base, temperature: 0, top_p: 0.5 }, true);
+    expect(out.params.temperature).toBe(0);
+    expect(out.params).not.toHaveProperty("top_p");
   });
 
   it("preserves description on converted tool", () => {

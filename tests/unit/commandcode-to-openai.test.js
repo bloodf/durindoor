@@ -204,5 +204,6 @@ describe("commandcode-to-openai — review hardening", () => {
     ]);
     expect(chunks.some((chunk) => chunk.choices[0].delta.tool_calls)).toBe(false);
     expect(chunks.at(-1).choices[0].finish_reason).toBe("content_filter");
+    expect(chunks.at(-1).choices[0].delta.role).toBe("assistant");
   });
 });

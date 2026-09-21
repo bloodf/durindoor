@@ -13,6 +13,8 @@ Claude Code and Codex use an authorization-code flow with PKCE. The dashboard op
 
 Some providers pin a loopback callback port. If the dashboard is not on a loopback host, the OAuth modal may run the callback on the server instead of in the browser tab.
 
+OrcaRouter runs the same PKCE shape out of band. DurinDoor is self-hosted, so its address and port differ per deployment and a registered loopback redirect is not reliably reachable; the authorize URL carries `callback_url=oob`, OrcaRouter shows the code on its consent page, and you paste it back into the modal. The code exchange posts to `https://www.orcarouter.ai/api/v1/auth/keys`. That is a different origin from inference, which stays on `https://api.orcarouter.ai/v1`. Set `ORCA_AUTH_BASE_URL`, `ORCA_API_BASE_URL`, or the shared `ORCA_BASE_URL` to point a self-hosted install elsewhere; a remote origin must be HTTPS, and plain HTTP is accepted only for loopback.
+
 ## Device code
 
 GitHub, Qwen, Kiro, Grok CLI, Qoder, Kimi Coding, Kilo Code, and CodeBuddy CN request a device code from `/api/oauth/[provider]/device-code`. You open the verification URL, enter the user code, and DurinDoor polls until the provider issues tokens.
@@ -38,6 +40,8 @@ Cookie-backed providers send whatever the upstream web app would send. Do not pu
 DurinDoor stores `refreshToken` and related metadata on the connection. On request, `open-sse/services/oauthCredentialManager.js` refreshes when the access token is inside the provider's lead window. `open-sse/services/tokenRefresh.js` owns the per-provider grant (Claude JSON, GitHub form post, Google, Codex, Kiro, iFlow, GitLab Duo, and others). A background pass (`src/sse/services/backgroundTokenRefresh.js`) also selects active OAuth connections whose access token expires inside `max(provider lead, BACKGROUND_REFRESH_LEAD_MS)`.
 
 Refresh can fail. Qoder's upstream refresh endpoint returns 403 for this flow; the dashboard tells you to log in again. Cursor, Windsurf, Trae, and imported Devin tokens have no public refresh. An unrecoverable grant (`invalid_grant`, reused refresh token) needs a reconnect.
+
+OrcaRouter is never refreshed. Its PKCE login issues a durable API key rather than an access/refresh pair, and OrcaRouter publishes no refresh grant, so `tokenRefresh.js` refuses the provider outright instead of falling through to the generic grant. When the relay rejects the key with 401 or 403, the exact connection that made that request is marked `needsReauth` and you sign in again. A late failure that presented a key you have already replaced is ignored.
 
 Set `GEMINI_OAUTH_CLIENT_ID` / `GEMINI_OAUTH_CLIENT_SECRET` and `ANTIGRAVITY_OAUTH_CLIENT_ID` / `ANTIGRAVITY_OAUTH_CLIENT_SECRET` only when you run your own OAuth app. The defaults live in `open-sse/providers/shared.js`.
 
@@ -68,6 +72,6 @@ Some registry entries set `hidden: true` because the generic add form cannot col
 
 ## Dual-auth providers
 
-A few OAuth-category providers also accept an API key (`authModes` includes `apikey`). CodeBuddy CN and xAI are in that set. Use Connect for OAuth, or add a key on the same provider page.
+A few OAuth-category providers also accept an API key (`authModes` includes `apikey`). CodeBuddy CN, xAI, and OrcaRouter are in that set. Use Connect for OAuth, or add a key on the same provider page. The OrcaRouter modal shows both as tabs, and either path ends as the same `sk-orca-` key on one connection. The provider page also carries a capability-scoped model picker backed by `GET https://api.orcarouter.ai/v1/models`; when that call fails, the list falls back to a small verified seed and is labelled as offline rather than shown as live discovery.
 
 Drag-reorder on the provider page persists the full connection id list through `PUT /api/providers/reorder`. The body must be exactly that provider's ids, no extras and none missing, or the route returns 409 and writes nothing.

@@ -92,7 +92,10 @@
     "bb": "blackbox",
     "blackbox": "blackbox",
     "tm": "tokenmarket",
-    "tokenmarket": "tokenmarket"
+    "tokenmarket": "tokenmarket",
+    "orca": "orcarouter",
+    "orcarouter": "orcarouter",
+    "orca-router": "orcarouter"
   },
   "idToAlias": {
     "agy": "agy",
@@ -152,6 +155,7 @@
     "opencode": "oc",
     "opencode-go": "opencode-go",
     "openrouter": "openrouter",
+    "orcarouter": "orca",
     "perplexity": "perplexity",
     "perplexity-web": "perplexity-web",
     "qoder": "qd",
@@ -235,6 +239,7 @@
     "openrouter",
     "openrouter-tts-models",
     "openrouter-tts-voices",
+    "orca",
     "perplexity",
     "perplexity-web",
     "qd",

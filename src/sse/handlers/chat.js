@@ -1327,6 +1327,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           rateLimitEvidence: fallbackEvidence,
           headers: resultHeaders,
           errorBody: resultErrorBody,
+          // The credential this attempt actually presented, so a durable-key
+          // provider can mark exactly the generation that was rejected.
+          usedCredential: credentials.accessToken || credentials.apiKey || null,
           signal: requestSignal
         }
       );

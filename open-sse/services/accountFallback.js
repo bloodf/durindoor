@@ -257,6 +257,41 @@ export function isRecoverableCloudCodeProject403(provider, status, errorText = "
 }
 
 /**
+ * Providers whose credential is durable (an API key, not a refreshable token).
+ * A rejected credential is terminal: it must be reauthenticated, never refreshed.
+ * @param {string|null} providerId
+ * @returns {boolean}
+ */
+export function isDurableCredentialProvider(providerId) {
+  return providerId === "orcarouter";
+}
+
+/**
+ * Reauth fields for a rejected durable credential.
+ *
+ * Returns null when the caller cannot prove which credential was rejected, or
+ * when the stored credential is no longer the one that failed — a late failure
+ * from an old request must never flag a credential the user has since replaced
+ * by signing in again.
+ * @param {object|null} conn - The stored connection row
+ * @param {string|null} usedCredential - The credential the rejected request presented
+ * @param {number|string|null} status - Upstream HTTP status
+ * @returns {{ needsReauth: boolean, reauthReason: string, reauthAt: string }|null}
+ */
+export function durableCredentialReauthFields(conn, usedCredential, status) {
+  if (!conn) return null;
+  const code = Number(status);
+  if (code !== 401 && code !== 403) return null;
+  if (!isString(usedCredential) || !usedCredential) return null;
+  if (conn.accessToken !== usedCredential && conn.apiKey !== usedCredential) return null;
+  return {
+    needsReauth: true,
+    reauthReason: "credential_rejected",
+    reauthAt: new Date().toISOString()
+  };
+}
+
+/**
  * Check if account is currently unavailable (cooldown not expired)
  */
 export function isAccountUnavailable(unavailableUntil) {

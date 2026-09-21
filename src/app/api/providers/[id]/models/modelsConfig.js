@@ -8,7 +8,69 @@ import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import {
+  discoverOrcaRouterModels,
+  resolveApiBase,
+  ORCAROUTER_CAPABILITIES,
+  ORCAROUTER_MODALITIES,
+  ORCAROUTER_ID } from
+"open-sse/providers/orcarouterCatalog.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
+
+/**
+ * OrcaRouter — resolve one capability's catalog for this account.
+ *
+ * Keeps the API key server-side: the browser only ever receives model metadata.
+ * `capability` is read from the request query, so a text picker and a multimodal
+ * picker can ask for different, already-filtered lists. `modality` narrows that
+ * list further for entry points that actually upload a non-text part.
+ *
+ * @param {object} connection - The stored provider connection
+ * @param {string|null} requestUrl - The incoming request URL, for its query string
+ * @returns {Promise<{models?: Array<object>, source?: string, degraded?: boolean, warning?: string, error?: string, status?: number}>}
+ */
+async function resolveOrcaRouterModels(connection, requestUrl) {
+  const params = new URL(requestUrl || "http://localhost/").searchParams;
+  const capability = params.get("capability") || "chat";
+  if (!ORCAROUTER_CAPABILITIES.includes(capability)) {
+    return { error: `Unsupported capability: ${capability}`, status: 400 };
+  }
+  // Modality is enforced server-side so the browser never has to know which
+  // models declare, say, image input — an undeclared capability fails closed.
+  const modality = params.get("modality") || null;
+  if (modality && !ORCAROUTER_MODALITIES.includes(modality)) {
+    return { error: `Unsupported modality: ${modality}`, status: 400 };
+  }
+
+  const apiKey = connection.accessToken || connection.apiKey;
+  const apiBase = connection.providerSpecificData?.baseUrl || resolveApiBase(process.env);
+  const result = await discoverOrcaRouterModels({ apiKey, apiBase, capability, modality });
+
+  const models = result.models.map((m) => {
+    const entry = {
+      id: m.id,
+      name: m.name,
+      inputModalities: m.inputModalities,
+      endpointTypes: m.endpointTypes,
+      reasoning: m.reasoning
+    };
+    if (m.contextLength !== null) entry.contextLength = m.contextLength;
+    // Defensive: a catalog entry only carries effort levels when the upstream
+    // record declared them, so never assume the array exists.
+    if (m.reasoningEfforts?.length) entry.reasoningEfforts = m.reasoningEfforts;
+    return entry;
+  });
+
+  const resolved = {
+    models,
+    // `source` lets the UI label a degraded catalog instead of silently showing
+    // the cold-start seed as if it were live discovery.
+    source: result.source,
+    degraded: result.degraded
+  };
+  if (result.error) resolved.warning = `catalog fallback: ${result.error}`;
+  return resolved;
+}
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -444,5 +506,10 @@ export const PROVIDER_MODELS_CONFIG = {
       const data = await response.json();
       return { models: parseOpenAIStyleModels(data) };
     }
+  },
+  // OrcaRouter's catalog is capability-scoped (`?capability=`), so it needs the
+  // resolver form rather than a registry-level modelsFetcher. The key stays here.
+  [ORCAROUTER_ID]: {
+    customResolver: (connection, proxyOptions, requestUrl) => resolveOrcaRouterModels(connection, requestUrl)
   }
 };

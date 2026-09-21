@@ -248,6 +248,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `opencode-go` |  | apikey | `https://opencode.ai/zen/go/v1/chat/completions` |
 | `opencode-zen` | openai | apikey | `https://opencode.ai/zen/v1/chat/completions` |
 | `openrouter` |  | freeTier | `https://openrouter.ai/api/v1/chat/completions` |
+| `orcarouter` | openai | oauth | `https://api.orcarouter.ai/v1/chat/completions` |
 | `perplexity` |  | apikey | `https://api.perplexity.ai/chat/completions` |
 | `perplexity-agent` | openai-responses | apikey | `https://api.perplexity.ai/v1/responses` |
 | `perplexity-web` | perplexity-web | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |

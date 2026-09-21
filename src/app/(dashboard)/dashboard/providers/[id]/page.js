@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
 import Select from "@/shared/ui/components/Select.jsx";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 
@@ -91,6 +91,7 @@ export default function ProviderDetailPage() {
   const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);
   const proxyPoolsReady = proxyPoolsReadyForProvider === providerId;
   const [showOAuthModal, setShowOAuthModal] = useState(false);
+  const [selectedOrcaModel, setSelectedOrcaModel] = useState("");
   // When set, the open OAuth modal replaces this existing connection in place
   // (the Reconnect flow) instead of creating a new row. Cleared on close/success.
   const [reconnectConnectionId, setReconnectConnectionId] = useState(null);
@@ -254,8 +255,15 @@ export default function ProviderDetailPage() {
   "Grok Build OAuth" :
   providerId === "grok-cli" ?
   "Grok CLI Device Login" :
+  providerId === "orcarouter" ?
+  "OrcaRouter - Auth" :
   "OAuth";
-  const apiKeyConnectionLabel = providerId === "xai" ? "xAI API Key" : "API Key";
+  const apiKeyConnectionLabel =
+  providerId === "xai" ?
+  "xAI API Key" :
+  providerId === "orcarouter" ?
+  "OrcaRouter - API" :
+  "API Key";
   // Resolve suffix "(level)" for a model when a thinking level is picked and the model supports it.
   // Upstream decolua/9router#2534: "none" suppresses the suffix (explicit strip, not a level label).
   const resolveThinkingSuffix = (modelId, customCaps) => {
@@ -2062,6 +2070,17 @@ export default function ProviderDetailPage() {
         {!!modelsTestError &&
         <p className="text-xs text-dd-danger mb-3 break-words">{modelsTestError}</p>
         }
+        {providerId === "orcarouter" &&
+        <div className="mb-4 rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-3">
+            <p className="mb-2 text-xs font-medium text-dd-text">Model catalog</p>
+            <OrcaModelDropdown
+            connectionIds={connections.filter((conn) => conn.isActive !== false).map((conn) => conn.id)}
+            selectedModel={selectedOrcaModel}
+            onSelect={setSelectedOrcaModel}
+            onClear={() => setSelectedOrcaModel("")} />
+
+          </div>
+        }
         {renderModelsSection()}
       </Card>
 
@@ -2080,6 +2099,13 @@ export default function ProviderDetailPage() {
       providerId === "cursor" ?
       <CursorAuthModal
         isOpen={showOAuthModal}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)} /> :
+
+      providerId === "orcarouter" ?
+      <OrcaRouterAuthModal
+        isOpen={showOAuthModal}
+        providerInfo={providerInfo}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)} /> :
 

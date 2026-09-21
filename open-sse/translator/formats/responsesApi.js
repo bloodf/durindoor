@@ -66,18 +66,24 @@ export function clampResponsesCallId(id) {
   return id.length > MAX_RESPONSES_CALL_ID_LEN ? id.substring(0, MAX_RESPONSES_CALL_ID_LEN) : id;
 }
 
-// Build a name -> "custom" | "function" lookup from a request's declared
-// tools[], accepting both tool shapes seen across translators: Responses-flat
-// ({type, name}) and Chat-Completions-nested ({type:"function", function:{name}}).
-// Callers pass the result to coerceResponsesArguments so a name match wins
-// over the apply_patch legacy fallback (upstream #4208 review, round 2).
+// Build a name -> declared tool type ("custom", "function", ...) lookup from
+// a request's declared tools[]. Mirrors initState's toolTypes resolution
+// (translator/index.js) exactly: `function.name` wins over a flat `name`
+// regardless of `type` — a Responses "custom" tool can still nest its name
+// under `function` ({type:"custom", function:{name}}, see
+// tests/translator/port-6937-responses-toolcall-shape.test.js). Optional
+// chaining on `tool.function?.name` also means a null/non-object `function`
+// field never throws (upstream #4208 review, round 3) — no isObject check
+// needed. Callers pass the result to coerceResponsesArguments so a name
+// match wins over the apply_patch legacy fallback.
 export function buildDeclaredToolTypes(tools) {
   const declared = new Map();
   if (!Array.isArray(tools)) return declared;
   for (const tool of tools) {
     if (!tool) continue;
-    const name = tool.type === "function" && isObject(tool.function) ? tool.function.name : tool.name;
-    if (isString(name) && name.trim() !== "") declared.set(name, tool.type === "custom" ? "custom" : "function");
+    const type = isString(tool.type) ? tool.type : "";
+    const name = isString(tool.function?.name) ? tool.function.name : isString(tool.name) ? tool.name : "";
+    if (name && type) declared.set(name, type);
   }
   return declared;
 }
@@ -123,9 +129,13 @@ export function coerceResponsesArguments(value, toolName, declaredCustom) {
     return value;
   } catch {
     if (declaredCustom === true) return JSON.stringify({ input: value });
-    if (declaredCustom === false) return "{}";
-    if (toolName === "apply_patch") return JSON.stringify({ input: value });
-    console.warn(`[Translator] Non-JSON tool call arguments for "${toolName || "(unnamed)"}" coerced to "{}" — not a declared custom/apply_patch tool`);
+    if (toolName === "apply_patch" && declaredCustom !== false) return JSON.stringify({ input: value });
+    // Every remaining path drops non-empty, non-JSON text: a declared function
+    // whose parser choked (truncation), or a name with no declared/legacy
+    // custom status. Both look identical to a genuine empty call afterward,
+    // so log here — this is the last point where the raw text still exists.
+    const why = declaredCustom === false ? "declared as a function, arguments must be JSON" : "not a declared custom/apply_patch tool";
+    console.warn(`[Translator] Non-JSON tool call arguments for "${toolName || "(unnamed)"}" coerced to "{}" — ${why}`);
     return "{}";
   }
 }

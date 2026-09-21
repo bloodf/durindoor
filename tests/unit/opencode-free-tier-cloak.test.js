@@ -46,6 +46,60 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     }
   });
 
+  // #4128 round-3 review: the decoy quartet is always lowercase, but a
+  // Claude Code caller declares TitleCase names (Bash/Glob/Grep/Read). The
+  // response path renames a called decoy's lowercase name back to TitleCase
+  // (claudeCodeToolRemapper's TOOL_RENAME_MAP), so a model call of the
+  // unusable "bash" decoy would be delivered to the client indistinguishable
+  // from a real "Bash" call. Skip the decoy whenever the caller already sent
+  // its case-insensitive equivalent, on every format.
+  it("does not add a duplicate lowercase decoy when the caller already sent the TitleCase equivalent (Chat Completions)", () => {
+    const executor = new OpenCodeExecutor();
+    const body = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "Bash", parameters: { type: "object", properties: {} } } }],
+    };
+
+    const transformed = executor.transformRequest("big-pickle", body, true, {});
+
+    const names = transformed.tools.map((tool) => tool.function.name);
+    expect(names.filter((n) => n.toLowerCase() === "bash")).toHaveLength(1);
+    expect(names).toContain("Bash");
+    // The other three decoys still get injected.
+    for (const decoy of ["glob", "grep", "read"]) {
+      expect(names).toContain(decoy);
+    }
+  });
+
+  it("does not add a duplicate lowercase decoy when the caller already sent the TitleCase equivalent (Responses)", () => {
+    const executor = new OpenCodeExecutor();
+    const body = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      tools: [{ type: "function", name: "Read", description: "d", parameters: { type: "object", properties: {} } }],
+      tool_choice: "auto",
+    };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
+
+    const names = transformed.tools.map((tool) => tool.name);
+    expect(names.filter((n) => n.toLowerCase() === "read")).toHaveLength(1);
+    expect(names).toContain("Read");
+  });
+
+  it("does not add a duplicate lowercase decoy when the caller already sent the TitleCase equivalent (Claude Messages, Union Alpha)", () => {
+    const executor = new OpenCodeExecutor();
+    const body = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ name: "Grep", description: "d", input_schema: { type: "object", properties: {} } }],
+    };
+
+    const transformed = executor.transformRequest("union-alpha", body, true, {});
+
+    const names = transformed.tools.map((tool) => tool.name);
+    expect(names.filter((n) => n.toLowerCase() === "grep")).toHaveLength(1);
+    expect(names).toContain("Grep");
+  });
+
   it("still injects the full decoy set when no tools are supplied", () => {
     const executor = new OpenCodeExecutor();
     const transformed = executor.transformRequest("big-pickle", { messages: [] }, true, {});

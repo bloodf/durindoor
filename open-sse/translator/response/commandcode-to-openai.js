@@ -163,8 +163,10 @@ export function commandCodeToOpenAIResponse(chunk, state) {
         if (!id) throw new Error("CommandCode tool-call event is missing an id");
         if (!name) throw new Error(`CommandCode tool-call ${id} is missing a name`);
         if (state.commandCodeToolCallIds.has(id)) break;
+        // Validate before reserving the id so a rejected call never shadows a later valid one.
+        const args = toolArguments(event);
         state.commandCodeToolCallIds.add(id);
-        state.commandCodeToolCalls.push({ id, name, arguments: toolArguments(event) });
+        state.commandCodeToolCalls.push({ id, name, arguments: args });
         break;
       }
     case "finish-step":{
@@ -178,8 +180,10 @@ export function commandCodeToOpenAIResponse(chunk, state) {
         if (finishReason === OPENAI_FINISH.TOOL_CALLS && state.commandCodeToolCalls.length === 0) {
           throw new Error("CommandCode finished with tool_calls but supplied no valid tool call");
         }
-        for (let index = 0; index < state.commandCodeToolCalls.length; index++) {
-          const call = state.commandCodeToolCalls[index];
+        // A filtered turn stays non-executable: drop buffered calls, keep content_filter.
+        const calls = finishReason === OPENAI_FINISH.CONTENT_FILTER ? [] : state.commandCodeToolCalls;
+        for (let index = 0; index < calls.length; index++) {
+          const call = calls[index];
           const delta = {
             ...(state.chunkIndex === 0 ? { role: ROLE.ASSISTANT } : null),
             tool_calls: [{
@@ -192,7 +196,7 @@ export function commandCodeToOpenAIResponse(chunk, state) {
           state.chunkIndex++;
           out.push(makeChunk(state, delta));
         }
-        if (state.commandCodeToolCalls.length > 0 && finishReason !== OPENAI_FINISH.LENGTH) {
+        if (calls.length > 0 && finishReason !== OPENAI_FINISH.LENGTH) {
           finishReason = OPENAI_FINISH.TOOL_CALLS;
         }
         const finalChunk = makeChunk(state, {}, finishReason);

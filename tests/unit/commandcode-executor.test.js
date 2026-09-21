@@ -12,6 +12,7 @@ import {
   inspectAndWrapCommandCodeResponse,
   parseCommandCodeError,
   preflightCommandCodeResponse,
+  wrapNdjsonAsOpenAISse,
 } from "../../open-sse/executors/commandcode.js";
 
 const encoder = new TextEncoder();
@@ -245,5 +246,35 @@ describe("CommandCode retries a transient stream error (port of decolua/9router 
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("CommandCode stream wrapper failure handling", () => {
+  const wrap = (events) =>
+    wrapNdjsonAsOpenAISse(new Response(events.map((event) => `${JSON.stringify(event)}\n`).join("")), "cc-model").text();
+
+  it("turns a rejected finish into a stream_error instead of truncating the body", async () => {
+    for (const events of [
+      [{ type: "text-delta", text: "hi" }, { type: "finish" }],
+      [{ type: "text-delta", text: "hi" }, { type: "finish", finishReason: "other" }],
+      [{ type: "tool-call", toolCallId: "call_1", toolName: "Read", input: "[1]" }, { type: "finish", finishReason: "tool-calls" }],
+    ]) {
+      const text = await wrap(events);
+      expect(text).toContain("stream_error");
+      expect(text).not.toContain("[DONE]");
+    }
+  });
+
+  it("emits an SSE comment while tool input is buffered", async () => {
+    const text = await wrap([
+      { type: "tool-input-start", id: "call_2", toolName: "Write" },
+      { type: "tool-input-delta", id: "call_2", delta: "{" },
+      { type: "tool-call", toolCallId: "call_2", toolName: "Write", input: { path: "a" } },
+      { type: "finish", finishReason: "tool-calls" },
+    ]);
+    expect(text.startsWith(": commandcode tool input\n\n")).toBe(true);
+    expect(text.match(/^: /gm)).toHaveLength(1);
+    expect(text).toContain('"finish_reason":"tool_calls"');
+    expect(text).toContain("[DONE]");
   });
 });

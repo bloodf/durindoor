@@ -185,3 +185,24 @@ describe("commandcode-to-openai — state pre-populated by initState (Responses 
     expect(out[0].choices[0].delta.content).toBe("hello");
   });
 });
+
+describe("commandcode-to-openai — review hardening", () => {
+  it("does not reserve a tool-call id whose input failed validation", () => {
+    const state = {};
+    const bad = { type: "tool-call", toolCallId: "call_x", toolName: "Read", input: "not json" };
+    expect(() => commandCodeToOpenAIResponse(JSON.stringify(bad), state)).toThrow(/complete JSON object/);
+    const good = { ...bad, input: { file_path: "/tmp/a" } };
+    commandCodeToOpenAIResponse(JSON.stringify(good), state);
+    const out = commandCodeToOpenAIResponse(JSON.stringify({ type: "finish", finishReason: "tool-calls" }), state);
+    expect(out[0].choices[0].delta.tool_calls[0]).toMatchObject({ id: "call_x", function: { arguments: '{"file_path":"/tmp/a"}' } });
+  });
+
+  it("keeps a content-filtered turn non-executable", () => {
+    const { chunks } = feed([
+      { type: "tool-call", toolCallId: "call_f", toolName: "Bash", input: { command: "rm -rf /" } },
+      { type: "finish", finishReason: "content-filter" },
+    ]);
+    expect(chunks.some((chunk) => chunk.choices[0].delta.tool_calls)).toBe(false);
+    expect(chunks.at(-1).choices[0].finish_reason).toBe("content_filter");
+  });
+});

@@ -12,7 +12,7 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
-import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
+import { DEFAULT_MAX_TOKENS, HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { stripThinkingSuffix } from "../concerns/thinkingUnified.js";
 import { encodeDataUri, parseDataUri } from "../concerns/image.js";
@@ -65,6 +65,13 @@ function toContentBlocks(content) {
   return [{ type: OPENAI_BLOCK.TEXT, text: String(content) }];
 }
 
+/** A malformed client history is the caller's fault: chatCore answers these with 400, not 500. */
+function invalidRequest(message) {
+  const error = new Error(message);
+  error.statusCode = HTTP_STATUS.BAD_REQUEST;
+  return error;
+}
+
 /** Parse an assistant tool-call's arguments; a malformed payload must fail loud, never silently drop input. */
 function parseToolInput(value, callId) {
   if (value == null || value === "") return {};
@@ -74,12 +81,12 @@ function parseToolInput(value, callId) {
     try {
       input = JSON.parse(value);
     } catch (error) {
-      throw new Error(`assistant tool call ${callId || "<unknown>"} has invalid arguments: ${error.message}`);
+      throw invalidRequest(`assistant tool call ${callId || "<unknown>"} has invalid arguments: ${error.message}`);
     }
   }
 
   if (!input || !isObject(input) || Array.isArray(input)) {
-    throw new Error(`assistant tool call ${callId || "<unknown>"} arguments must be a JSON object`);
+    throw invalidRequest(`assistant tool call ${callId || "<unknown>"} arguments must be a JSON object`);
   }
   return input;
 }
@@ -102,8 +109,8 @@ function convertMessages(messages = []) {
     if (role === ROLE.TOOL) {
       const toolCallId = m.tool_call_id || "";
       const toolName = m.name || toolNames.get(toolCallId) || "";
-      if (!toolCallId) throw new Error("tool message requires tool_call_id");
-      if (!toolName) throw new Error(`cannot resolve tool name for tool_call_id ${toolCallId}`);
+      if (!toolCallId) throw invalidRequest("tool message requires tool_call_id");
+      if (!toolName) throw invalidRequest(`cannot resolve tool name for tool_call_id ${toolCallId}`);
       const value = isString(m.content) ? m.content : flattenText(m.content);
       out.push({
         role: ROLE.TOOL,
@@ -127,8 +134,8 @@ function convertMessages(messages = []) {
         for (const tc of m.tool_calls) {
           const fn = tc.function || {};
           const id = tc.id || "";
-          if (!id) throw new Error("assistant tool call requires a non-empty id");
-          if (!fn.name) throw new Error(`assistant tool call ${id} requires a non-empty function name`);
+          if (!id) throw invalidRequest("assistant tool call requires a non-empty id");
+          if (!fn.name) throw invalidRequest(`assistant tool call ${id} requires a non-empty function name`);
           toolNames.set(id, fn.name);
           blocks.push({
             type: "tool-call",

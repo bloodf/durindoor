@@ -43,11 +43,36 @@ Each combo stores a strategy under `comboStrategies[name].fallbackStrategy`. The
 | `round-robin` | Rotate the start member. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
 | `weighted` | Pick by member weight. |
 | `smart-scoring` | Reorder by quota and health scores, then fall through. |
+| `smart` | Judge how hard the current ask is, then try the best-matched member first. Aliases: `task`, `task-aware`, `auto`. |
 | `fusion` | Run members as a panel, then a judge model. Fusion has its own panel timeout, not the per-member timeout. |
 
 Per-member timeout is `timeoutMs` on the combo strategy. The dashboard field is seconds; 0 means use the fetch connect timeout (60s). Env `COMBO_MODEL_TIMEOUT_MS` is the process-wide default (0 = off).
 
 Hide-paid-models, when on, drops paid members from dispatch without rewriting the stored `models` array.
+
+## Complexity-aware routing
+
+The `smart` strategy scores every member against how hard the current user turn
+looks, then puts the best match first. The rest of the combo keeps its order, so
+the fallback ladder is unchanged. Capability-aware routing still wins: a request
+carrying images prefers a member that advertises vision even when the complexity
+score would have picked another member.
+
+By default the difficulty judgement is a local heuristic over prompt size,
+message count, tool count, requested output tokens, reasoning effort, and a few
+keyword classes. It produces one of four levels: `light`, `standard`, `heavy`,
+`critical`.
+
+Setting `TYPESAFE_API_KEY` swaps that heuristic for the TypeSafe Jev classifier,
+a decision model that returns a calibrated tier (`SIMPLE`, `MEDIUM`, `COMPLEX`,
+`REASONING`) for the current ask. The tier maps onto the same four levels, so
+nothing downstream changes. `TYPESAFE_API_BASE` overrides the endpoint.
+
+Only the current user turn is sent, capped at 4000 characters, never the whole
+transcript and never tool results. The call has a 3s deadline and a 30s circuit
+breaker. It fails open: no key, a timeout, an HTTP error, an unparseable body, an
+unknown tier, or a confidence below 0.5 all leave the local heuristic level in
+place, and the combo dispatches exactly as it would without the classifier.
 
 ## Fallback triggers
 

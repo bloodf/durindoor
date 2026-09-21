@@ -12,6 +12,8 @@ import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { HTTP_STATUS, STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
+import { classifyTier } from "./jevClassifier.js";
+import { JEV_STATE_CHAR_BUDGET, JEV_TIER_TO_TASK_LEVEL } from "../config/jev.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -581,6 +583,60 @@ export function detectRequiredCapabilities(body) {
   if (effort && String(effort).toLowerCase() !== "none") required.add("reasoning");
 
   return required;
+}
+
+/**
+ * Build the bounded `state` string the Jev classifier judges.
+ *
+ * Only the current user turn is used — never the whole transcript or
+ * tool_result blobs — and it reuses trailingUserItems so "the current ask"
+ * means the same thing here as it does for the capability auto-switch.
+ *
+ * @param {object} body - client request body (OpenAI/Claude/Gemini/Responses)
+ * @param {number} [charBudget]
+ * @returns {string} state text (may be "")
+ */
+export function buildJevState(body, charBudget = JEV_STATE_CHAR_BUDGET) {
+  if (!body || !isObject(body)) return "";
+  const parts = [];
+  const pushText = (t) => {
+    if (isString(t) && t.trim()) parts.push(t.trim());
+  };
+
+  // Plain string, or any block that carries a `text` field: covers OpenAI
+  // `text`, the Responses API's `input_text`, and Gemini parts alike.
+  const textOf = (content) => {
+    if (isString(content)) return content;
+    if (!Array.isArray(content)) return "";
+    return content.filter((c) => isString(c?.text)).map((c) => c.text).join("\n");
+  };
+
+  for (const m of trailingUserItems(body.messages)) pushText(textOf(m?.content)); // openai / claude / hermes / ollama
+  for (const it of trailingUserItems(body.input)) pushText(textOf(it?.content)); // responses
+  const contents = body.contents || body.request?.contents; // gemini / antigravity
+  for (const c of trailingUserItems(contents)) pushText(textOf(c?.parts));
+
+  return parts.join("\n").slice(0, charBudget);
+}
+
+/**
+ * Judge the request's complexity tier with Jev and translate it to a task level.
+ *
+ * Fail-open: returns null whenever the classifier is unconfigured, slow, broken
+ * or unsure, and the caller then keeps the local heuristic level.
+ *
+ * @param {object} body - client request body
+ * @param {object} log
+ * @returns {Promise<{level: string, tier: string, confidence: number}|null>}
+ */
+async function classifyTaskLevelWithJev(body, log) {
+  const state = buildJevState(body);
+  if (!state) return null;
+  const classified = await classifyTier({ state, log });
+  if (!classified) return null;
+  const level = JEV_TIER_TO_TASK_LEVEL[classified.tier];
+  if (!level) return null;
+  return { level, tier: classified.tier, confidence: classified.confidence };
 }
 
 function isTaskRoutingStrategy(strategy) {
@@ -1366,7 +1422,14 @@ export async function handleComboChat({
 
   // Task-aware reordering (smart/task strategies) runs after context sort.
   if (autoSwitch && isTaskRoutingStrategy(comboStrategy)) {
-    const task = classifyTask(body);
+    let task = classifyTask(body);
+    // Optional Jev upgrade: when TYPESAFE_API_KEY is configured the judged tier
+    // replaces the keyword/size heuristic level. Fail-open, so an unconfigured,
+    // slow, broken or unsure classifier leaves the heuristic level in place.
+    const judged = await classifyTaskLevelWithJev(body, log);
+    if (judged && judged.level !== task.level) {
+      task = { ...task, level: judged.level, weight: taskWeight(judged.level), reasons: [`jev:${judged.tier}`] };
+    }
     const taskReordered = reorderByTaskWeight(rotatedModels, task, required, capabilitiesMap);
     if (taskReordered[0] !== rotatedModels[0]) {
       const reasons = Array.isArray(task.reasons) && task.reasons.length ? ` (${task.reasons.join(", ")})` : "";

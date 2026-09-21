@@ -1068,6 +1068,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // row changed after it was loaded, so a key saved by a concurrent re-login is
   // never stamped as rejected.
   if (isDurableCredentialProvider(resolveProviderId(provider))) {
+    // A late failure from a key the user has since replaced says nothing about
+    // the stored key: no status, lock, or backoff lands on the replacement.
+    const usedCredential = context?.usedCredential ?? null;
+    if (conn && usedCredential && conn.accessToken !== usedCredential && conn.apiKey !== usedCredential) {
+      return { shouldFallback: true, cooldownMs: 0 };
+    }
     const reauthFields = durableCredentialReauthFields(conn, context?.usedCredential ?? null, status, errorText);
     if (reauthFields) {
       const clearLocks = Object.fromEntries(

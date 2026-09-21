@@ -3,14 +3,21 @@
 /**
  * The saved API-key row to replace, if there is one. Only `apikey` rows are
  * replaced in place; an OAuth row keeps its own key and is renewed by signing
- * in again.
+ * in again, so the modal never shows an OAuth key as the one a paste replaces.
+ * @param {Array<object>|null} connections - `GET /api/providers` connections
+ * @returns {object|null}
+ */
+export function orcaApiKeyTarget(connections) {
+  return (Array.isArray(connections) ? connections : []).
+  find((c) => c?.provider === "orcarouter" && c.authType === "apikey") || null;
+}
+
+/**
  * @param {Array<object>|null} connections - `GET /api/providers` connections
  * @returns {string|null}
  */
 export function orcaApiKeyTargetId(connections) {
-  const conn = (Array.isArray(connections) ? connections : []).
-  find((c) => c?.provider === "orcarouter" && c.authType === "apikey");
-  return conn?.id || null;
+  return orcaApiKeyTarget(connections)?.id || null;
 }
 
 /**

@@ -122,11 +122,9 @@ const orcarouter = {
     if (!res.ok) {
       // 403 covers unknown/expired/already-used codes and a verifier that does
       // not match the stored challenge; 400 is a challenge-method downgrade.
-      // Never echo the response body — it can carry credential material.
-      const detail = payload?.error_description || payload?.error || payload?.message;
-      throw new Error(
-        `OrcaRouter authorization failed (${status})${detail ? `: ${detail}` : ""}`
-      );
+      // Never echo the response body, not even its error text: the route
+      // returns this message to the client.
+      throw new Error(`OrcaRouter authorization failed (${status})`);
     }
 
     const key = readKeyField(payload);

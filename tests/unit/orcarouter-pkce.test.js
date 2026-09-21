@@ -163,7 +163,7 @@ describe("orcarouter exchange step", () => {
     try {
       await expect(
         orcarouter.exchangeToken({ ...orcarouter.config, authBase: server.base }, "c", "oob", "v")
-      ).rejects.toThrow(/403/);
+      ).rejects.toThrow(/^OrcaRouter authorization failed \(403\)$/);
     } finally {
       await server.close();
     }
@@ -194,7 +194,8 @@ describe("orcarouter exchange step", () => {
         .exchangeToken({ ...orcarouter.config, authBase: server.base }, "c", "oob", "v")
         .catch((e) => { message = e.message; });
       expect(message).toMatch(/400/);
-      expect(message).toMatch(/mismatch/);
+      // The upstream error text is not passed through to the client.
+      expect(message).not.toMatch(/mismatch/);
       // The verifier argument must never leak into an error message.
       expect(message).not.toContain("code_verifier");
     } finally {

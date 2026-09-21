@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 import Button from "./Button";
 import Input from "./Input";
 import Modal from "./Modal";
-import { orcaApiKeySaveRequest, orcaApiKeyTargetId } from "@/shared/utils/orcaApiKeySave";
+import { orcaApiKeySaveRequest, orcaApiKeyTarget } from "@/shared/utils/orcaApiKeySave";
 
 const AUTH_BASE = "https://www.orcarouter.ai";
 
@@ -91,10 +91,12 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
         if (!res.ok) return;
         const data = await res.json();
         const connections = data.connections || [];
-        const conn = connections.find((c) => c.provider === "orcarouter" && c.keyHint);
+        // The stored key shown is the one a pasted key replaces, never a
+        // PKCE sign-in's key, which a paste leaves in place.
+        const conn = orcaApiKeyTarget(connections);
         if (!cancelled) {
-          setStoredKey(conn ? { keyHint: conn.keyHint, name: conn.name, createdAt: conn.createdAt } : null);
-          setApiKeyTargetId(orcaApiKeyTargetId(connections));
+          setStoredKey(conn?.keyHint ? { keyHint: conn.keyHint, name: conn.name, createdAt: conn.createdAt } : null);
+          setApiKeyTargetId(conn?.id || null);
         }
       } catch {
         if (!cancelled) setStoredKey(null);

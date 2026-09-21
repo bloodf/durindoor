@@ -266,7 +266,11 @@ export function isDurableCredentialProvider(providerId) {
   return providerId === "orcarouter";
 }
 
-const DURABLE_CREDENTIAL_AUTH_FAILURE = /invalid[\s_-]*(api[\s_-]*)?key|(api[\s_-]*)?key[\s\S]{0,40}(invalid|revoked|expired|disabled)|revoked|unauthori[sz]ed|unauthenticated|authentication failed/i;
+// A 403 quarantines only when it names the key itself as rejected ("invalid
+// API key", "invalid_api_key", "API key has been revoked"). Words like
+// "unauthorized" or "disabled" alone also appear in model-permission 403s,
+// which must not take a working key out of rotation.
+const DURABLE_CREDENTIAL_AUTH_FAILURE = /\b(invalid|incorrect|revoked|expired|disabled)[\s_-]+(api[\s_-]+)?key\b|\bkey\s+(is\s+|has\s+been\s+|was\s+)?(invalid|revoked|expired|disabled|deactivated)\b/i;
 
 function isDurableCredentialAuthFailure(errorText) {
   return isString(errorText) && DURABLE_CREDENTIAL_AUTH_FAILURE.test(errorText);

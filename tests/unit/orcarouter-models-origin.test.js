@@ -5,7 +5,7 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: fetchMock.prox
 
 const { PROVIDER_MODELS_CONFIG } = await import("../../src/app/api/providers/[id]/models/modelsConfig.js");
 const { mergeOrcaCatalogResults } = await import("../../src/shared/utils/orcaCatalogPicker.js");
-const { orcaApiKeySaveRequest, orcaApiKeyTargetId } = await import("../../src/shared/utils/orcaApiKeySave.js");
+const { orcaApiKeySaveRequest, orcaApiKeyTarget, orcaApiKeyTargetId } = await import("../../src/shared/utils/orcaApiKeySave.js");
 
 function okCatalog() {
   return new Response(JSON.stringify({ data: [{ id: "openai/gpt-5.5", supported_endpoint_types: ["openai"] }] }), {
@@ -93,5 +93,23 @@ describe("OrcaRouter API-key save", () => {
     const id = orcaApiKeyTargetId([{ id: "oauth-1", provider: "orcarouter", authType: "oauth" }]);
     expect(id).toBeNull();
     expect(orcaApiKeySaveRequest(id, "sk-orca-new")).toMatchObject({ url: "/api/providers", method: "POST" });
+  });
+
+  it("never offers a PKCE sign-in's key as the stored key a paste replaces", () => {
+    // The modal shows this row's keyHint under "Saving a new key replaces it".
+    expect(orcaApiKeyTarget([
+      { id: "oauth-1", provider: "orcarouter", authType: "oauth", keyHint: "sk-o...9f3a" },
+    ])).toBeNull();
+    expect(orcaApiKeyTarget([
+      { id: "oauth-1", provider: "orcarouter", authType: "oauth", keyHint: "sk-o...9f3a" },
+      { id: "key-1", provider: "orcarouter", authType: "apikey", keyHint: "sk-o...b21c" },
+    ])).toMatchObject({ id: "key-1", keyHint: "sk-o...b21c" });
+  });
+
+  it("the connect modal takes its stored key from the replace target", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync(new URL("../../src/shared/components/OrcaRouterAuthModal.js", import.meta.url), "utf8");
+    expect(src).toContain("orcaApiKeyTarget(connections)");
+    expect(src).not.toMatch(/c\.provider === "orcarouter" && c\.keyHint/);
   });
 });

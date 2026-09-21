@@ -23,6 +23,7 @@
  * rather than `down`.
  */
 import { PROVIDERS } from "open-sse/config/providers.js";
+import { resolveApiBase as resolveOrcaRouterApiBase } from "open-sse/providers/orcarouterCatalog.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import {
   guardedProbeFetch,
@@ -280,7 +281,11 @@ export async function probeConnectionHealth(connection, opts = {}) {
     // route through it, so fall back to a guarded `${baseUrl}/models` probe that
     // IS proxy-aware rather than bypassing the saved egress.
     if (proxied) {
-      const baseUrl = connection.providerSpecificData?.baseUrl || cfg?.validateUrl || cfg?.baseUrl;
+      // OrcaRouter keys only ever go to the configured API base, never to a
+      // client-supplied connection baseUrl.
+      const baseUrl = connection.provider === "orcarouter" ?
+      `${resolveOrcaRouterApiBase(process.env)}/v1` :
+      connection.providerSpecificData?.baseUrl || cfg?.validateUrl || cfg?.baseUrl;
       if (baseUrl) {
         const url = String(baseUrl).replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
         const modelsUrl = url.endsWith("/models") ? url : `${url}/models`;

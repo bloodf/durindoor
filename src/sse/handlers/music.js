@@ -57,7 +57,7 @@ async function handleMusicGenerationHandler(request) {
     const result = await handleMusicGenerationCore({ provider, model, body, credentials });
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null });
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;

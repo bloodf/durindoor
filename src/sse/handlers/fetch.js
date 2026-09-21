@@ -283,7 +283,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
     });
 
     if (result.success) {
-      await clearAccountError(credentials.connectionId, credentials, null, { webFetch: true });
+      await clearAccountError(credentials.connectionId, credentials, null, { webFetch: true, usedCredential: credentials.accessToken || credentials.apiKey || null });
       const response = new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });

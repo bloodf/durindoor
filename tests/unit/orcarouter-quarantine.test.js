@@ -82,10 +82,8 @@ describe("OrcaRouter rejected-key quarantine", () => {
       "orca-a", 401, "Invalid API key", "orcarouter", "openai/gpt-5.5", null,
       { usedCredential: "sk-orca-previous" },
     );
-    for (const [, patch] of dbMocks.updateProviderConnection.mock.calls) {
-      expect(patch.testStatus).not.toBe("reauth_required");
-      expect(patch.isActive).not.toBe(false);
-    }
+    // Nothing at all is written onto the replacement key: no status, no lock.
+    expect(dbMocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
   it("keeps a quota or permission 403 on the normal cooldown path", async () => {
@@ -97,5 +95,40 @@ describe("OrcaRouter rejected-key quarantine", () => {
       expect(patch.testStatus).not.toBe("reauth_required");
       expect(patch.needsReauth).toBeUndefined();
     }
+  });
+
+  // OpenAI-style bodies as OrcaRouter returns them.
+  const MODEL_PERMISSION_403 = [
+    JSON.stringify({ error: { message: "Unauthorized model: openai/o3-pro is not enabled for this organization", type: "permission_error", code: "model_not_allowed" } }),
+    JSON.stringify({ error: { message: "This API key cannot use openai/o3-pro: model disabled by your organization admin", type: "permission_error", code: "model_not_allowed" } }),
+  ];
+  const REVOKED_KEY_403 = [
+    JSON.stringify({ error: { message: "API key has been revoked", type: "authentication_error", code: "invalid_api_key" } }),
+    JSON.stringify({ error: { message: "Incorrect API key provided: sk-orca-****1234", type: "invalid_request_error", code: "invalid_api_key" } }),
+  ];
+
+  it.each(MODEL_PERMISSION_403)("keeps a model-permission 403 key in rotation: %s", async (body) => {
+    await markAccountUnavailable(
+      "orca-a", 403, body, "orcarouter", "openai/o3-pro", null,
+      { usedCredential: "sk-orca-current" },
+    );
+    for (const [, patch] of dbMocks.updateProviderConnection.mock.calls) {
+      expect(patch.testStatus).not.toBe("reauth_required");
+      expect(patch.isActive).not.toBe(false);
+      expect(patch.needsReauth).toBeUndefined();
+    }
+  });
+
+  it.each(REVOKED_KEY_403)("quarantines a revoked-key 403: %s", async (body) => {
+    await markAccountUnavailable(
+      "orca-a", 403, body, "orcarouter", "openai/gpt-5.5", null,
+      { usedCredential: "sk-orca-current" },
+    );
+    expect(dbMocks.updateProviderConnection).toHaveBeenCalledTimes(1);
+    expect(dbMocks.updateProviderConnection.mock.calls[0][1]).toMatchObject({
+      testStatus: "reauth_required",
+      isActive: false,
+      needsReauth: true,
+    });
   });
 });

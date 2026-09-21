@@ -205,3 +205,26 @@ describe("orcarouter revoked-key lifecycle", () => {
     expect(after.keyHint).not.toContain("9999");
   });
 });
+
+describe("orcarouter sign-in after quarantine", () => {
+  it("puts the quarantined row back in rotation when the same user signs in again", async () => {
+    const conn = await persistViaPkce({ key: "sk-orca-quarantined-1", userId: "3003" });
+    await repos.updateProviderConnection(conn.id, {
+      ...durableCredentialReauthFields(conn, "sk-orca-quarantined-1", 401),
+      testStatus: "reauth_required",
+      isActive: false,
+    });
+
+    const { saveOAuthConnection } = await import("@/lib/oauth/flowCompletion.js");
+    const mapped = orcarouter.mapTokens({ key: "sk-orca-fresh-login-1", scope: "api", userId: "3003" });
+    const saved = await saveOAuthConnection("orcarouter", mapped, null);
+
+    expect(saved.id).toBe(conn.id);
+    const active = await repos.getProviderConnections({ provider: "orcarouter", isActive: true });
+    const row = active.find((c) => c.id === conn.id);
+    expect(row).toBeDefined();
+    expect(row.apiKey).toBe("sk-orca-fresh-login-1");
+    expect(row.testStatus).toBe("active");
+    expect(row.needsReauth).toBe(false);
+  });
+});

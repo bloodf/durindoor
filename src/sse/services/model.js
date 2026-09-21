@@ -44,7 +44,7 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
   try {
     const customModels = await getCustomModels();
     const direct = resolveCustomCapabilities(provider, model, requestPrefix, customModels);
-    if (direct) return direct;
+    if (direct) return resolveOpenRouterCapabilities(provider, model, direct);
     // Compatible-provider nodes store custom rows under the node PREFIX as
     // providerAlias, while getModelInfo resolves to the internal node id. A
     // bare alias (requestPrefix null) or id-addressed request would miss the
@@ -59,7 +59,7 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
         return resolveCustomCapabilities(provider, model, node.prefix, customModels);
       }
     }
-    return resolveOpenRouterCapabilities(provider, model);
+    return resolveOpenRouterCapabilities(provider, model, null);
   } catch {
     return null;
   }
@@ -69,17 +69,20 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
  * OpenRouter publishes per-model modalities, tool support and limits in its
  * public catalog. Merge the cached entry over the static table so vision
  * stripping, Vision Bridge and combo capability routing see the real model.
- * Limits stay out of `customKeys`: chatCore reads them as live limits.
+ * A custom model row's explicit keys still win, and only those stay in
+ * `customKeys`: chatCore reads the catalog limits as live limits.
  * A cold cache warms in the background and this request uses static caps.
  */
-function resolveOpenRouterCapabilities(provider, model) {
-  if (provider !== "openrouter" || !isString(model)) return null;
+function resolveOpenRouterCapabilities(provider, model, custom) {
+  if (provider !== "openrouter" || !isString(model)) return custom;
   warmOpenRouterCatalog();
   const { cleanModel } = parseSuffix(model);
   const live = getOpenRouterModelCapabilities(String(cleanModel));
-  if (!live) return null;
-  const merged = { ...getCapabilitiesForModel(provider, String(cleanModel)), ...live };
-  Object.defineProperty(merged, "customKeys", { value: new Set(), enumerable: false });
+  if (!live) return custom;
+  const keys = custom?.customKeys instanceof Set ? custom.customKeys : new Set();
+  const operator = Object.fromEntries([...keys].map((key) => [key, custom[key]]));
+  const merged = { ...getCapabilitiesForModel(provider, String(cleanModel)), ...live, ...operator };
+  Object.defineProperty(merged, "customKeys", { value: new Set(keys), enumerable: false });
   return merged;
 }
 

@@ -297,6 +297,16 @@ describe("chatCore ingress context-limit preflight", () => {
       expect(result.error).toMatch(/\+ 0 output reservation/);
     });
 
+    it("still reserves an operator maxOutput that equals the catalog ceiling", async () => {
+      mocks.countInputTokens.mockResolvedValue({ tokens: 10_000, approximate: true });
+      const modelCapabilities = { maxOutput: CEILING };
+      Object.defineProperty(modelCapabilities, "customKeys", { value: new Set(["maxOutput"]), enumerable: false });
+      const options = openrouter();
+      const result = await handleChatCore({ ...options, modelCapabilities });
+      expect(result).toMatchObject({ success: false, status: 400 });
+      expect(result.error).toMatch(new RegExp(`\\+ ${CEILING} output reservation`));
+    });
+
     it("reserves an explicit max_tokens clamped to the published ceiling", async () => {
       mocks.countInputTokens.mockResolvedValue({ tokens: WINDOW - CEILING + 1, approximate: true });
       const result = await handleChatCore(openrouter({ max_tokens: 100_000 }));

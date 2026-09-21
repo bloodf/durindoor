@@ -922,7 +922,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     // it often sits near the window (29491 of 32768), so charging it to a
     // request that names no output limit would reject ordinary prompts. Only
     // an explicit client value (clamped to the ceiling) is reserved there.
-    const catalogCeilingOnly = catalogLimits && preflightLimits.maxOutput === catalogLimits.maxOutput;
+    // Mirror resolveModelLimits: an operator maxOutput (a customKeys entry, or
+    // caps with no marker) wins over the catalog and is reserved as usual.
+    const callerCaps = requestContext?.modelCapabilities;
+    const operatorOutput = Number.isFinite(callerCaps?.maxOutput) && callerCaps.maxOutput > 0 && (
+    !(callerCaps.customKeys instanceof Set) || callerCaps.customKeys.has("maxOutput"));
+    const catalogCeilingOnly = catalogLimits && !operatorOutput;
     const explicitOutput = executor.resolveEffectiveOutputReservation?.(translatedBody, { ...requestContext, modelCapabilities: {} }) ?? 0;
     const reservation = catalogCeilingOnly && !explicitOutput ? 0 :
     executor.resolveEffectiveOutputReservation?.(translatedBody, reservationContext) ?? 0;

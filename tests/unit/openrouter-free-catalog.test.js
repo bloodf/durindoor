@@ -92,9 +92,11 @@ describe("isOpenRouterFreeModel", () => {
     expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: {} })).toBe(false);
     expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: { prompt: "", completion: "0" } })).toBe(false);
     expect(isOpenRouterFreeModel(null)).toBe(false);
-    // Live rows carry nested `pricing.overrides` records; they are not this variant's fee.
-    expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: { prompt: "0", completion: "0", overrides: { "some-provider": { prompt: "0.1" } } } })).toBe(true);
-    expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: { overrides: {} } })).toBe(false);
+    // Live rows carry a nested `pricing.overrides` array; it is not this variant's fee.
+    const overrides = [{ provider: "some-provider", prompt: "0.1" }];
+    expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: { prompt: "0", completion: "0", overrides } })).toBe(true);
+    expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: { prompt: "0", completion: "0", overrides: { x: "0.1" } } })).toBe(true);
+    expect(isOpenRouterFreeModel({ ...GEMMA_FREE, pricing: { overrides } })).toBe(false);
   });
 });
 
@@ -240,6 +242,15 @@ describe("discovered capabilities reach routing", () => {
     ]);
     const caps = await loadCustomCapabilities("openrouter", GEMMA_FREE.id, "openrouter");
     expect(caps.vision).toBe(false);
+  });
+
+  it("a custom row overlays only its own keys on the discovered capabilities", async () => {
+    mocks.getCustomModels.mockResolvedValue([
+      { id: GEMMA_FREE.id, providerAlias: "openrouter", capabilities: { maxOutput: 1000 } },
+    ]);
+    const caps = await loadCustomCapabilities("openrouter", GEMMA_FREE.id, "openrouter");
+    expect(caps).toMatchObject({ vision: true, videoInput: true, contextWindow: 262144, maxOutput: 1000 });
+    expect([...caps.customKeys]).toEqual(["maxOutput"]);
   });
 
   it("keeps images for a vision model and strips them for a text-only one", async () => {

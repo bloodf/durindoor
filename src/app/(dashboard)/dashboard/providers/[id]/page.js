@@ -2077,6 +2077,10 @@ export default function ProviderDetailPage() {
         {!!modelsTestError &&
         <p className="text-xs text-dd-danger mb-3 break-words">{modelsTestError}</p>
         }
+        {/* buildModelsList publishes compatible-provider catalogs from their
+            custom/alias ids only and never applies this allowlist to them, so
+            the control would silently do nothing for these providers. */}
+        {!isCompatible &&
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" icon="visibility" onClick={() => setShowVisibleModels(true)}>
             Visible models{enabledModelIds.length > 0 ? ` (${enabledModelIds.length})` : ""}
@@ -2087,6 +2091,7 @@ export default function ProviderDetailPage() {
             "All models are exposed on /v1/models"}
           </span>
         </div>
+        }
         {renderModelsSection()}
       </Card>
 
@@ -2264,7 +2269,7 @@ export default function ProviderDetailPage() {
         onSuccess={fetchConnections} />
       }
 
-      {showVisibleModels &&
+      {showVisibleModels && !isCompatible &&
       <VisibleModelsModal
         isOpen
         onClose={() => setShowVisibleModels(false)}

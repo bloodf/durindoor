@@ -33,6 +33,10 @@ export default function VisibleModelsModal({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Save must stay disabled until the current allowlist loads: saving on a
+  // failed GET would overwrite the stored allowlist with whatever this open
+  // happened to fetch, wiping the user's real selection.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const activeConnectionIds = useMemo(
     () => (connections || []).filter((c) => c.isActive !== false && c.id).map((c) => c.id),
@@ -45,15 +49,21 @@ export default function VisibleModelsModal({
 
     (async () => {
       let current = [];
+      let failed = false;
       try {
         const res = await fetch(
           `/api/models/enabled?providerAlias=${encodeURIComponent(providerAlias)}`,
           { cache: "no-store" }
         );
         if (res.ok) current = (await res.json()).ids || [];
+        else failed = true;
       } catch {
-        // Treat as "no allowlist" — the modal still works, it just starts from
-        // the currently visible set.
+        failed = true;
+      }
+      if (cancelled) return undefined;
+      setLoadFailed(failed);
+      if (failed) {
+        setError("Could not load the current allowlist. Reopen to try again.");
       }
 
       const liveLists = await Promise.all(
@@ -96,10 +106,13 @@ export default function VisibleModelsModal({
       // saving cannot silently drop them.
       for (const id of current) push(id, id, { stale: true });
 
-      const disabledSet = new Set(disabledModelIds || []);
-      const defaults = current.length > 0
-        ? current
-        : rows.filter((row) => !row.isCustom && !disabledSet.has(row.id)).map((row) => row.id);
+      // With no stored allowlist, default to nothing selected — matching the
+      // "unchecked = no restriction" semantics this modal documents. Defaulting
+      // to every row loaded here would let an untouched Save persist whatever
+      // this fetch happened to see as a permanent allowlist, silently hiding
+      // any model missing from this load (a new upstream model, a failed
+      // connection catalog) forever after.
+      const defaults = current;
 
       setAvailable(rows);
       setSelected(new Set(defaults));
@@ -256,7 +269,7 @@ export default function VisibleModelsModal({
           </span>
           <div className="flex gap-2">
             <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={handleSave} loading={saving} disabled={loading}>
+            <Button variant="primary" size="sm" onClick={handleSave} loading={saving} disabled={loading || loadFailed}>
               Save
             </Button>
           </div>

@@ -638,12 +638,12 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
   const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && (disabledByAlias[alias] ?? []).includes(modelId);
 
-  let enabledByAlias = {};
-  try {
-    enabledByAlias = await getEnabledModels();
-  } catch (e) {
-    console.log("Could not fetch enabled models");
-  }
+  // Unlike the other optional lookups above, a failed read here cannot fail
+  // soft: an empty map means "no provider is restricted", so silently
+  // swallowing the error would serve a provider's full catalog on a request
+  // that should have been allowlist-restricted. Let the caller's route
+  // handler turn this into a 500 instead.
+  const enabledByAlias = await getEnabledModels();
 
   // Visible-model allowlist for one provider. The provider page writes it per
   // alias (`/api/models/enabled`); a hand-set
@@ -656,14 +656,14 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   const resolveEnabledModels = (providerId, conn) => {
     const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
     const psd = isRecord(conn?.providerSpecificData) ? conn.providerSpecificData : {};
-    const outputAlias = (
-      (isString(psd.prefix) ? psd.prefix : undefined) ||
-      getProviderAlias(providerId) ||
-      staticAlias
-    ).trim();
 
+    // The dashboard writes the allowlist under the provider's storage alias
+    // (its static alias, or the provider id for compatible providers) — never
+    // under a connection's custom output prefix. Checking the output prefix
+    // first let a custom prefix that collided with another provider's static
+    // alias pull that other provider's allowlist. Keep the prefix out of the
+    // lookup key entirely.
     const candidates = [
-      enabledByAlias[outputAlias],
       enabledByAlias[staticAlias],
       enabledByAlias[providerId],
       psd.enabledModels,
@@ -779,6 +779,12 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       return;
     }
 
+    // Keyless catalogs honour the same visible-model allowlist as connected
+    // providers: without this, a saved allowlist for a noAuth provider (e.g.
+    // AI Horde) is silently ignored whenever live discovery succeeds.
+    const allowlist = enabledByAlias[alias];
+    const hasAllowlist = Array.isArray(allowlist) && allowlist.length > 0;
+
     try {
       const live = await resolveLiveOpenAIModels({
         id: "noauth",
@@ -799,6 +805,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       for (const liveModel of live.models) {
         const modelId = liveModel.id;
         if (!isString(modelId) || !modelId.trim() || isDisabled(alias, modelId)) continue;
+        if (hasAllowlist && !allowlist.includes(modelId)) continue;
         if (hidePaidModels && isPaidModel(`${alias}/${modelId}`)) continue;
         const kind = liveModel.kind || liveModel.type || inferKindFromUnknownModelId(modelId);
         if (!kindFilter.includes(kind)) continue;
@@ -1087,7 +1094,11 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           if (fullModel.startsWith(`${providerId}/`)) return fullModel.slice(providerId.length + 1);
           return fullModel;
         }).
-        filter((modelId) => isString(modelId) && modelId.trim() !== "");
+        filter((modelId) => isString(modelId) && modelId.trim() !== "").
+        // An allowlist restricts what /v1/models publishes for this provider;
+        // an alias pointed at an id outside it must not re-expose that id.
+        // Custom models keep their separate always-visible exception.
+        filter((modelId) => !hasExplicitEnabledModels || enabledModels.includes(modelId));
         const compatiblePublicIds = isCompatibleProvider ? getCompatiblePublicIds({
           customModelIds,
           modelAliases,

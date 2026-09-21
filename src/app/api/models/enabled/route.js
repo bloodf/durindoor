@@ -24,17 +24,25 @@ export async function GET(request) {
 // which means "no restriction, every model the provider exposes is visible".
 export async function PUT(request) {
   try {
-    const { providerAlias, ids } = await request.json();
+    const { providerAlias: rawAlias, ids } = await request.json();
+    const providerAlias = isString(rawAlias) ? rawAlias.trim() : "";
     if (!providerAlias || !Array.isArray(ids)) {
       return NextResponse.json({ error: "providerAlias and ids[] required" }, { status: 400 });
     }
-    await setEnabledModels(providerAlias, ids);
+
+    // Trim here so the key used to clear the blacklist below matches the
+    // trimmed form setEnabledModels stores; a padded id would otherwise pass
+    // this filter but fail to match the stored blacklist entry, leaving the
+    // model disabled even after allowlisting it.
+    const cleaned = ids.filter((id) => isString(id) && id.trim() !== "").map((id) => id.trim());
 
     // /v1/models applies the disabled-model blacklist on top of this allowlist,
     // so a whitelisted id that is also blacklisted would silently stay hidden.
-    // Saving an allowlist therefore drops those ids from the blacklist.
-    const cleaned = ids.filter((id) => isString(id) && id.trim() !== "");
+    // Saving an allowlist therefore drops those ids from the blacklist first:
+    // if this throws, the allowlist write below never runs, so we never end up
+    // with a stored allowlist whose matching blacklist entries weren't cleared.
     if (cleaned.length > 0) await enableModels(providerAlias, cleaned);
+    await setEnabledModels(providerAlias, ids);
 
     return NextResponse.json({ success: true, ids: cleaned });
   } catch (error) {

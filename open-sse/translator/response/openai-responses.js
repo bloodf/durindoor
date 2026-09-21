@@ -314,14 +314,85 @@ function closeMessage(state, emit, idx) {
     });
   }
 }
-function splitToolName(state, name) {
+/** Split a dotted `{namespace}.{subtool}` name using the exact map built at initState. */
+function splitNamespacedName(state, name) {
   const namespace = state.toolNamespaces?.[name];
-  if (!namespace) return { name };
+  if (!namespace) return null;
   const prefix = `${namespace}.`;
   return {
     name: name.startsWith(prefix) ? name.slice(prefix.length) : name,
     namespace
   };
+}
+
+/** Flat declared tool names and namespace-container names, derived from state built
+ * at initState (translator/index.js) — no extra per-response scan of the request body. */
+function declaredToolNames(state) {
+  if (state._declaredToolNames) return state._declaredToolNames;
+  const names = new Set();
+  const namespaces = new Set();
+  for (const [name, type] of Object.entries(state.toolTypes || {})) {
+    if (type === "namespace") namespaces.add(name);else
+    names.add(name);
+  }
+  for (const dotted of Object.keys(state.toolNamespaces || {})) {
+    const dot = dotted.lastIndexOf(".");
+    if (dot > -1) names.add(dotted.slice(dot + 1));
+  }
+  state._declaredToolNames = { names, namespaces };
+  return state._declaredToolNames;
+}
+
+function warnUnresolvedToolName(state, emitted, reason) {
+  state._warnedToolNames ||= new Set();
+  if (state._warnedToolNames.has(emitted)) return;
+  state._warnedToolNames.add(emitted);
+  console.warn(`[RESPONSES] unresolved tool-call name "${emitted}" (${reason}) — forwarding unchanged`);
+}
+
+/**
+ * Namespace tools are expanded into sanitized dotted names (`collaboration__spawn_agent`)
+ * on the request side. Restore the namespace here so the client router can route the call.
+ *
+ * Providers also sometimes inject prefixes the client never declared (e.g. returning
+ * `functions.exec` for a plain declared `exec` tool). Those are canonicalized against the
+ * names this request actually declared — never against a hardcoded alias table.
+ * Unresolvable names are logged once and forwarded unchanged (never dropped).
+ */
+function splitToolName(state, name) {
+  // 1. Exact dotted/flat match against a namespace this request declared.
+  const exact = splitNamespacedName(state, name);
+  if (exact) return exact;
+
+  // 2. Reverse a name sanitized on the way out (dots -> "__") back to its dotted form.
+  const restored = state.toolNameMap?.get(name);
+  if (restored && restored !== name) {
+    return splitNamespacedName(state, restored) || { name: restored };
+  }
+
+  if (!name.includes(".")) return { name };
+
+  // 3. Provider-injected prefix: canonicalize by matching each dotted suffix against a
+  // name this request declared (e.g. `functions.exec` -> declared `exec`).
+  const { names, namespaces } = declaredToolNames(state);
+  const parts = name.split(".");
+  for (let i = 0; i < parts.length; i++) {
+    const candidate = parts.slice(i).join(".");
+    if (!names.has(candidate)) continue;
+    const ns = state.toolNamespaces?.[`${parts[i - 1] || ""}.${candidate}`] ||
+    (i > 0 && namespaces.has(parts[i - 1]) ? parts[i - 1] : null);
+    return ns ? { name: candidate, namespace: ns } : { name: candidate };
+  }
+
+  // 4. Bare declared namespace name with no sub-tool: nothing to route to.
+  if (namespaces.has(name)) {
+    warnUnresolvedToolName(state, name, "emitted bare namespace name without a sub-tool");
+    return { name };
+  }
+
+  // 5. No declared match -> forward unchanged.
+  warnUnresolvedToolName(state, name, "no declared tool name matches");
+  return { name };
 }
 
 

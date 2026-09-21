@@ -135,14 +135,19 @@ function exhaustedQuotaSnapshot(connectionId, provider, model, resetAt) {
 }
 
 function antigravityFailure(options, status = 429, extra = {}) {
-  // Default error text names a real quota marker so existing strike-breaker
-  // scenarios keep simulating a genuine optimistic-quota 429, not a
-  // content-triggered one (see the dedicated content-429 test below).
-  const error = status === 429 ? "RATE_LIMIT_EXCEEDED" : `HTTP ${status}`;
+  // parseUpstreamError redacts every 429 body to this exact message before
+  // chat.js ever sees `result.error` (open-sse/utils/error.js); the real
+  // signal chat.js reads is `antigravityQuotaSignal`, which parseUpstreamError
+  // derives from the raw body separately. Default it true for 429s so
+  // existing strike-breaker scenarios keep simulating a genuine
+  // optimistic-quota 429, not a content-triggered one (see the dedicated
+  // content-429 test below).
+  const error = status === 429 ? "[429]: Rate limit exceeded" : `HTTP ${status}`;
   return {
     success: false,
     status,
     error,
+    antigravityQuotaSignal: status === 429,
     response: new Response(error, { status }),
     attemptStartedAt: options.onProviderAttempt(),
     ...extra,
@@ -803,7 +808,10 @@ describe("chat quota fallback orchestration", () => {
     mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
     mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
     mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options, 429, {
-      error: "Resource has been exhausted (e.g. check quota)",
+      // Content-triggered 429s get the identical redacted message in
+      // production; antigravityQuotaSignal false is what actually
+      // distinguishes them from a real quota 429.
+      antigravityQuotaSignal: false,
     }));
 
     await handleChat(request(`antigravity/${model}`));

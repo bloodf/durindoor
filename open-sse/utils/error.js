@@ -120,6 +120,16 @@ const STRUCTURED_QUOTA_EXHAUSTION_CODES = new Set([
 "quota_exceeded",
 "usage_limit_reached"]
 );
+// Antigravity's own reason codes for a real quota 429, distinct from the
+// generic EXPLICIT_QUOTA_TEXT sentence match above: that regex also matches
+// Antigravity's content-triggered rejection prose ("Resource has been
+// exhausted (e.g. check quota)."), which is not a quota signal at all. This
+// list must stay narrow to the machine-readable markers only.
+const ANTIGRAVITY_QUOTA_SIGNAL_MARKERS = ["RATE_LIMIT_EXCEEDED", "QUOTA_EXHAUSTED", "Individual quota reached"];
+
+function hasAntigravityQuotaSignal(bodyText) {
+  return isString(bodyText) && ANTIGRAVITY_QUOTA_SIGNAL_MARKERS.some((marker) => bodyText.includes(marker));
+}
 
 function boundedAbsoluteReset(value, now, maxDelayMs) {
   const reset = Number(value);
@@ -456,6 +466,10 @@ export async function parseUpstreamError(response, executor = null, options = {}
     executorResetAtMs: executorParsed?.resetsAtMs,
     now: options?.now ?? Date.now()
   });
+  // Computed from the raw body before the 429 message gets redacted below, so
+  // callers can gate provider-specific behavior (e.g. Antigravity's strike
+  // breaker) on the real reason code instead of the client-facing message.
+  const antigravityQuotaSignal = effectiveStatus === 429 && hasAntigravityQuotaSignal(bodyText);
   if (executorParsed) {
     const parsedMessage = executorParsed.message || DEFAULT_ERROR_MESSAGES[effectiveStatus] || `Upstream error: ${effectiveStatus}`;
     // A 429 evidence object is the bounded authority, including an intentional
@@ -472,7 +486,8 @@ export async function parseUpstreamError(response, executor = null, options = {}
       message: effectiveStatus === 429 ? DEFAULT_ERROR_MESSAGES[429] : sanitizeErrorMessage(parsedMessage),
       resetsAtMs: normalizedResetAtMs,
       errorBody: effectiveStatus === 429 ? undefined : executorParsed.errorBody,
-      rateLimitEvidence
+      rateLimitEvidence,
+      antigravityQuotaSignal
     };
   }
 
@@ -501,7 +516,8 @@ export async function parseUpstreamError(response, executor = null, options = {}
     message: response.status === 429 ? DEFAULT_ERROR_MESSAGES[429] : sanitizeErrorMessage(finalMessage),
     resetsAtMs: rateLimitEvidence?.resetAtMs,
     errorBody: response.status === 429 ? undefined : errorBody,
-    rateLimitEvidence
+    rateLimitEvidence,
+    antigravityQuotaSignal
   };
 }
 

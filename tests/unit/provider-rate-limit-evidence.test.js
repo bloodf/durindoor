@@ -167,6 +167,31 @@ describe("bounded 429 evidence parsing", () => {
     expect(JSON.stringify(parsed)).not.toContain("super-secret");
   });
 
+  it("flags a real Antigravity quota 429 while still redacting the client-facing message", async () => {
+    const body = JSON.stringify({
+      error: {
+        status: "RESOURCE_EXHAUSTED",
+        message: "Individual quota reached",
+        details: [{ reason: "RATE_LIMIT_EXCEEDED" }],
+      },
+    });
+    const parsed = await parseUpstreamError(new Response(body, { status: 429 }));
+
+    expect(parsed.message).toBe("Rate limit exceeded");
+    expect(parsed.antigravityQuotaSignal).toBe(true);
+    expect(JSON.stringify(parsed)).not.toContain("RATE_LIMIT_EXCEEDED");
+  });
+
+  it("does not flag a content-triggered Antigravity 429 as a quota signal", async () => {
+    const body = JSON.stringify({
+      error: { message: "Resource has been exhausted (e.g. check quota)." },
+    });
+    const parsed = await parseUpstreamError(new Response(body, { status: 429 }));
+
+    expect(parsed.message).toBe("Rate limit exceeded");
+    expect(parsed.antigravityQuotaSignal).toBe(false);
+  });
+
   it("bounds stalled and oversized provider error bodies", async () => {
     const cancel = vi.fn();
     const stalled = new Response(new ReadableStream({

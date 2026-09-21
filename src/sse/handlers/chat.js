@@ -1268,8 +1268,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       const antigravityProvider = provider === "antigravity" || provider === "agy";
       const authoritativeResetAt = Number(result.rateLimitEvidence?.resetAtMs);
-      const authoritativeReset = Number.isFinite(result.resetsAtMs) ||
-      Number.isFinite(authoritativeResetAt) && authoritativeResetAt > Date.now();
+      // chatCore fills result.resetsAtMs with a generic local cooldown (e.g. 2s)
+      // for ANY 429 that arrives without a reset hint, including content-triggered
+      // ones. That value is a client-side guess, not upstream evidence, so it must
+      // never count as authoritative here — only a real upstream reset timestamp
+      // (rateLimitEvidence.resetAtMs) does. Using the local fallback would make
+      // every antigravity 429 look "authoritative" and defeat the strike breaker.
+      const authoritativeReset = Number.isFinite(authoritativeResetAt) && authoritativeResetAt > Date.now();
       if (antigravityProvider && result.status === 429 && authoritativeReset) {
         clearAntigravity429Strikes(credentials.connectionId, model);
       }

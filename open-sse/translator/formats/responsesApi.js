@@ -69,7 +69,15 @@ export function clampResponsesCallId(id) {
 // Single-stringify: objects → JSON once; valid JSON strings pass through untouched;
 // anything else (partial fragments, empty) falls back to "{}" instead of
 // double-encoding and tripping upstream InputValidationError.
-export function coerceResponsesArguments(value) {
+//
+// apply_patch is the one well-known custom (freeform) tool: its "arguments" is
+// raw patch text, never JSON, by design (upstream #4208 review). Losing that text
+// to "{}" silently drops the patch body on chat replay, so it gets wrapped as
+// { input: <raw text> } instead - the same shape the request translator already
+// gives custom tools (see the `tool.type === "custom"` branch in
+// request/openai-responses.js). Ordinary malformed/truncated function JSON still
+// falls back to "{}".
+export function coerceResponsesArguments(value, toolName) {
   if (value === undefined || value === null || value === "") return "{}";
   if (!isString(value)) {
     try {
@@ -82,6 +90,7 @@ export function coerceResponsesArguments(value) {
     JSON.parse(value);
     return value;
   } catch {
+    if (toolName === "apply_patch") return JSON.stringify({ input: value });
     return "{}";
   }
 }

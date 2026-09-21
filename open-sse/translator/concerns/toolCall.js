@@ -278,7 +278,7 @@ export function ensureToolCallIds(body) {
          * fragment or freeform-text string trips upstream's "must be valid JSON" 400).
          */
         if (tc.function && isObject(tc.function)) {
-          tc.function.arguments = coerceResponsesArguments(tc.function.arguments);
+          tc.function.arguments = coerceResponsesArguments(tc.function.arguments, tc.function.name);
         }
       }
     }

@@ -173,7 +173,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           // Codex replays raw streamed args verbatim; non-JSON strings (partial
           // fragments / freeform text) must be coerced or upstream rejects the
           // chat/completions body with "function.arguments must be valid JSON".
-          arguments: coerceResponsesArguments(item.arguments)
+          arguments: coerceResponsesArguments(item.arguments, item.name)
         }
       });
     } else
@@ -433,7 +433,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           type: RESPONSES_ITEM.FUNCTION_CALL,
           call_id: clampResponsesCallId(tc.id),
           name: name.slice(0, MAX_TOOL_NAME_LEN),
-          arguments: coerceResponsesArguments(tc.function?.arguments)
+          arguments: coerceResponsesArguments(tc.function?.arguments, name)
         });
       }
     }

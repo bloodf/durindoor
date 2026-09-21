@@ -49,6 +49,23 @@ describe("ensureToolCallIds: arguments JSON coercion", () => {
     ensureToolCallIds(body);
     expect(body.messages[0].tool_calls[0].function.arguments).toBe('{"city":"SF"}');
   });
+
+  // apply_patch is the freeform custom tool (#4208 review): its raw patch text must
+  // survive a chat replay instead of collapsing to "{}" and losing the patch body.
+  it("apply_patch raw patch body wrapped as JSON input, not dropped to {}", () => {
+    const body = {
+      messages: [
+        {
+          role: "assistant",
+          tool_calls: [
+            { id: "call_1", type: "function", function: { name: "apply_patch", arguments: "*** Begin Patch" } },
+          ],
+        },
+      ],
+    };
+    ensureToolCallIds(body);
+    expect(body.messages[0].tool_calls[0].function.arguments).toBe(JSON.stringify({ input: "*** Begin Patch" }));
+  });
 });
 
 // ---------- Responses to Chat translator ----------

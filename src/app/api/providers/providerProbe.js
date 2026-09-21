@@ -140,6 +140,36 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
     };
   }
 
+  // A registry-declared validateUrl is a dedicated key-check endpoint (the same
+  // lookup providers/validate/route.js performs), independent of the chat
+  // transport format. Honor it before the openai-only gate below so formats
+  // like "openai-responses" (e.g. perplexity-agent) get a working connection
+  // test instead of falling through to "Provider test not supported". The
+  // chat-body fallback only makes sense for the plain openai format.
+  if (cfg.validateUrl) {
+    const probe = {
+      url: cfg.validateUrl,
+      options: { headers, signal: AbortSignal.timeout(8000) },
+      accepts: "ok",
+    };
+    if (cfg.format === "openai") {
+      probe.fallback = {
+        url: baseUrl,
+        options: {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model: getDefaultModel(provider) || "test",
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1,
+          }),
+          signal: AbortSignal.timeout(10000),
+        },
+      };
+    }
+    return probe;
+  }
+
   if (cfg.format !== "openai") return null;
 
   // Kimi Web (www.kimi.com) is a cookie-authed Connect-RPC provider. The user
@@ -160,27 +190,6 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
         },
         body: "{}",
         signal: AbortSignal.timeout(8000),
-      },
-      accepts: "ok",
-    };
-  }
-
-  if (cfg.validateUrl) {
-    return {
-      url: cfg.validateUrl,
-      options: { headers, signal: AbortSignal.timeout(8000) },
-      fallback: {
-        url: baseUrl,
-        options: {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            model: getDefaultModel(provider) || "test",
-            messages: [{ role: "user", content: "ping" }],
-            max_tokens: 1,
-          }),
-          signal: AbortSignal.timeout(10000),
-        },
       },
       accepts: "ok",
     };

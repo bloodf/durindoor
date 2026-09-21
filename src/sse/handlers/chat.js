@@ -70,13 +70,26 @@ import {
   quotaDecisionDiagnostic,
   rankQuotaCandidates } from
 "open-sse/services/quota/scoring.js";
-import { isObject } from "../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
 const ANTIGRAVITY_STRIKE_WINDOW_MS = 60_000;
 const ANTIGRAVITY_STRIKE_BLOCK_MS = 15 * 60_000;
+// Google's quota API can report remaining quota while generation endpoints
+// keep returning 429 for other reasons (content-triggered rejections). Only
+// count a 429 toward the strike breaker when its body names an actual quota
+// error; a generic 429 gets the normal cooldown but never trips the breaker.
+const ANTIGRAVITY_QUOTA_ERROR_MARKERS = [
+  "RATE_LIMIT_EXCEEDED",
+  "QUOTA_EXHAUSTED",
+  "Individual quota reached",
+];
 const antigravity429Strikes = new Map();
+
+function isAntigravityQuotaErrorMessage(message) {
+  return isString(message) && ANTIGRAVITY_QUOTA_ERROR_MARKERS.some((marker) => message.includes(marker));
+}
 
 function antigravityStrikeKey(connectionId, model) {
   return `${connectionId}|${model}`;
@@ -1307,7 +1320,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         }
       }
 
-      const strikeBreakerResetAt = antigravityProvider && result.status === 429 && !authoritativeReset ?
+      const strikeBreakerResetAt = antigravityProvider && result.status === 429 && !authoritativeReset && isAntigravityQuotaErrorMessage(result.error) ?
       recordAntigravity429Strike(credentials.connectionId, model) :
       null;
       const fallbackResetAt = strikeBreakerResetAt ?? result.resetsAtMs;

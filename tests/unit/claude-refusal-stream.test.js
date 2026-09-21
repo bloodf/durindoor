@@ -58,6 +58,31 @@ describe("claude-to-openai: refusal stop_reason", () => {
     expect(final.usage.completion_tokens).toBe(0);
   });
 
+  it("does not glue the explanation onto text already streamed", () => {
+    const { out } = runStream([
+      { type: "message_start", message: { id: "m", model: "claude-opus-5", role: "assistant", content: [], usage: { input_tokens: 5, output_tokens: 0 } } },
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "partial" } },
+      { type: "content_block_stop", index: 0 },
+      { type: "message_delta", delta: { stop_reason: "refusal", stop_sequence: null, stop_details: { type: "refusal", explanation: EXPLANATION } }, usage: { output_tokens: 1 } },
+      { type: "message_stop" }
+    ]);
+    expect(out.map(c => c.choices?.[0]?.delta?.content || "").join("")).toBe("partial");
+  });
+
+  it("ignores a non-string explanation instead of writing it raw into delta.content", () => {
+    const { out } = runStream([
+      { type: "message_start", message: { id: "m", model: "claude-opus-5", role: "assistant", content: [], usage: { input_tokens: 5, output_tokens: 0 } } },
+      { type: "message_delta", delta: { stop_reason: "refusal", stop_sequence: null, stop_details: { type: "refusal", explanation: { nested: true } } }, usage: { output_tokens: 0 } },
+      { type: "message_stop" }
+    ]);
+    for (const c of out) {
+      if (c.choices?.[0]?.delta?.content !== undefined) {
+        expect(typeof c.choices[0].delta.content).toBe("string");
+      }
+    }
+  });
+
   it("leaves a normal end_turn untouched", () => {
     const { out } = runStream([
       { type: "message_start", message: { id: "m", model: "claude-opus-5", role: "assistant", content: [], usage: { input_tokens: 5, output_tokens: 0 } } },

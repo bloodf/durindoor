@@ -7,7 +7,7 @@ import { reasoningDelta } from "../concerns/reasoning.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
 
 // Create OpenAI chunk helper
-import { isNumber, isObject } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function createChunk(state, delta, finishReason = null) {
   return buildChunk(
     { id: `chatcmpl-${state.messageId}`, created: Math.floor(Date.now() / 1000), model: state.model },
@@ -178,10 +178,12 @@ export function claudeToOpenAIResponse(chunk, state) {
           state.finishReason = convertStopReason(chunk.delta.stop_reason);
           // A refusal produces no content blocks at all. Surface Anthropic's own
           // explanation as the message text so the client shows *why* the turn is
-          // empty instead of a blank reply.
-          const refusalNote = chunk.delta.stop_reason === CLAUDE_STOP.REFUSAL && chunk.delta.stop_details?.explanation;
-          if (refusalNote) {
-            results.push(createChunk(state, { content: refusalNote }));
+          // empty instead of a blank reply. Only when nothing has streamed yet
+          // (a real refusal never has prior text) and only a non-empty string -
+          // a malformed explanation must not land raw in delta.content.
+          const explanation = chunk.delta.stop_details?.explanation;
+          if (chunk.delta.stop_reason === CLAUDE_STOP.REFUSAL && !state.contentEmitted && isString(explanation) && explanation.trim()) {
+            results.push(createChunk(state, { content: explanation }));
             state.contentEmitted = true;
           }
           pushSyntheticContentIfEmpty(state, results);

@@ -18,6 +18,7 @@ import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
+import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
 import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
@@ -371,11 +372,15 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (textContent) message.content = textContent;
     if (thinkingContent) message.reasoning_content = thinkingContent;
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
-    if (!message.content && !message.tool_calls) message.content = "";
+    // A refusal (stop_reason "refusal") carries no content blocks at all: fall back to
+    // Anthropic's own explanation so the client sees why the turn is empty instead of
+    // failing the downstream empty-content check as a retryable 502.
+    if (!message.content && !message.tool_calls) {
+      const explanation = responseBody.stop_details?.explanation;
+      message.content = isString(explanation) ? explanation : "";
+    }
 
-    let finishReason = responseBody.stop_reason || "stop";
-    if (finishReason === "end_turn") finishReason = "stop";
-    if (finishReason === "tool_use") finishReason = "tool_calls";
+    const finishReason = toOpenAIFinish(responseBody.stop_reason || "end_turn", "claude");
 
     const result = {
       id: `chatcmpl-${responseBody.id || Date.now()}`,

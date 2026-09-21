@@ -67,7 +67,12 @@ export function fromOpenAIFinish(reason, format) {
         case "max_tokens": return CLAUDE_STOP.MAX_TOKENS;
         case OPENAI_FINISH.TOOL_CALLS:
         case "tool_use": return CLAUDE_STOP.TOOL_USE;
-        case OPENAI_FINISH.CONTENT_FILTER: return CLAUDE_STOP.REFUSAL;
+        // OpenAI's own content_filter means the provider's moderation layer blocked
+        // the turn, not that the model itself refused - collapsing it to Claude's
+        // "refusal" mis-signals every content-filter provider (Antigravity, Vertex,
+        // Gemini CLI, commandcode) as a model refusal. Only the literal Claude
+        // "refusal" alias round-trips to CLAUDE_STOP.REFUSAL.
+        case CLAUDE_STOP.REFUSAL: return CLAUDE_STOP.REFUSAL;
         default: return CLAUDE_STOP.END_TURN;
       }
     default:

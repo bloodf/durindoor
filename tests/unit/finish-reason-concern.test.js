@@ -70,8 +70,11 @@ describe("fromOpenAIFinish round-trip - claude", () => {
   it("length -> max_tokens", () => {
     expect(fromOpenAIFinish("length", "claude")).toBe("max_tokens");
   });
-  it("content_filter -> refusal", () => {
-    expect(fromOpenAIFinish("content_filter", "claude")).toBe("refusal");
+  it("content_filter -> end_turn (provider moderation blocks are not a model refusal)", () => {
+    expect(fromOpenAIFinish("content_filter", "claude")).toBe("end_turn");
+  });
+  it("refusal -> refusal (literal alias round-trips, same as max_tokens/tool_use)", () => {
+    expect(fromOpenAIFinish("refusal", "claude")).toBe("refusal");
   });
 });
 

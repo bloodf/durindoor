@@ -71,3 +71,31 @@ export function orcaCatalogOrigin(payload) {
     live: source === "live" && payload?.degraded !== true
   };
 }
+
+/**
+ * Merge the per-connection catalog responses into one picker list.
+ *
+ * When any account answered live, fallback payloads from the others are
+ * dropped: the seed would otherwise offer ids the relay never returned. Only
+ * when nobody answered live does the merged list fall back to the seed.
+ * @param {Array<object|null>} results - `/api/providers/[id]/models` bodies, null for a failed request
+ * @returns {{ models: Array<object>, source: string|null, degraded: boolean }}
+ */
+export function mergeOrcaCatalogResults(results) {
+  const origins = (Array.isArray(results) ? results : []).filter(Boolean).map(orcaCatalogOrigin);
+  const live = origins.filter((origin) => origin.live);
+  const used = live.length ? live : origins;
+  const seen = new Set();
+  const models = used.
+  flatMap((origin) => origin.models).
+  filter((model) => {
+    if (!model?.id || seen.has(model.id)) return false;
+    seen.add(model.id);
+    return true;
+  });
+  return {
+    models,
+    source: used[0]?.source || null,
+    degraded: used.some((origin) => origin.degraded)
+  };
+}

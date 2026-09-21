@@ -136,7 +136,11 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
 
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
+      // The credential this attempt actually presented, so a durable-key
+      // provider can mark exactly the generation that was rejected.
+      usedCredential: credentials.accessToken || credentials.apiKey || null
+    });
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;

@@ -134,7 +134,12 @@ const orcarouter = {
       throw new Error("OrcaRouter returned no API key");
     }
 
+    // The user id is the only identity the exchange returns, and connection
+    // dedup keys on it. Without it every sign-in would add another active row.
     const userId = readUserIdField(payload);
+    if (!userId) {
+      throw new Error("OrcaRouter returned no account id for the issued key");
+    }
     return {
       key,
       scope: isString(payload?.scope) ? payload.scope : null,

@@ -1061,6 +1061,39 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     });
     return { shouldFallback: true, cooldownMs: 0 };
   }
+  // A durable credential (OrcaRouter key) has no refresh grant, so a rejection
+  // is terminal. Quarantine the exact account the way Codex does: out of
+  // rotation, reauth_required (which clearAccountError never clears), until a
+  // new login or key replaces it. `expectedUpdatedAt` skips the write when the
+  // row changed after it was loaded, so a key saved by a concurrent re-login is
+  // never stamped as rejected.
+  if (isDurableCredentialProvider(resolveProviderId(provider))) {
+    const reauthFields = durableCredentialReauthFields(conn, context?.usedCredential ?? null, status, errorText);
+    if (reauthFields) {
+      const clearLocks = Object.fromEntries(
+        Object.keys(conn).
+        filter((field) => field.startsWith("modelLock_")).
+        map((field) => [field, null])
+      );
+      try {
+        await updateProviderConnection(connectionId, {
+          ...clearLocks,
+          ...reauthFields,
+          testStatus: "reauth_required",
+          isActive: false,
+          errorCode: status,
+          lastError: "OrcaRouter credential rejected, sign in again",
+          lastErrorAt: new Date(observedAt).toISOString(),
+          backoffLevel: 0
+        }, { expectedUpdatedAt: conn.updatedAt || null });
+        log.warn("AUTH", `${connectionId.slice(0, 8)} durable credential rejected with ${status}; quarantining for reauth`);
+      } catch (error) {
+        if (error?.code !== "PROVIDER_CONNECTION_REVISION_CONFLICT") throw error;
+        log.warn("AUTH", `${connectionId.slice(0, 8)} changed before the reauth write; leaving the newer credential alone`);
+      }
+      return { shouldFallback: true, cooldownMs: 0 };
+    }
+  }
   // Qoder code 112 cannot recover through a timed model cooldown. Persist a
   // dedicated discriminator so renderers never mistake stale generic errors
   // for this automatic account-wide disable (#3331).
@@ -1210,24 +1243,6 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       lastErrorAt: new Date(observedAt).toISOString(),
       backoffLevel: newBackoffLevel ?? backoffLevel
     });
-  }
-
-  // A durable credential (OrcaRouter PKCE key) has no refresh grant: a 401/403
-  // from the relay is terminal, so the exact account that made the rejected
-  // request is flagged for reauthentication instead of being cooled down and
-  // retried with a dead credential. Written separately because the atomic
-  // fallback-state path above carries no reauth columns.
-  if (isDurableCredentialProvider(resolveProviderId(provider))) {
-    const reauthFields = durableCredentialReauthFields(conn, context?.usedCredential ?? null, status);
-    if (reauthFields) {
-      await updateProviderConnection(connectionId, {
-        ...reauthFields,
-        testStatus: "unavailable",
-        lastError: "OrcaRouter credential rejected, sign in again",
-        errorCode: status
-      });
-      log.warn("AUTH", `${connectionId.slice(0, 8)} needs reauthentication (durable credential rejected with ${status})`);
-    }
   }
 
   if (Number(status) === 429) {

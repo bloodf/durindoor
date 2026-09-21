@@ -169,6 +169,21 @@ describe("orcarouter exchange step", () => {
     }
   });
 
+  it("rejects an issued key that comes back without an account id", async () => {
+    // Connection dedup keys on the user id; without it every sign-in would add
+    // another active row and another live key.
+    const server = await startFakeAuthServer((_req, res) =>
+      json(res, 200, { key: "sk-orca-fake-anon", scope: "api" })
+    );
+    try {
+      await expect(
+        orcarouter.exchangeToken({ ...orcarouter.config, authBase: server.base }, "c", "oob", "v")
+      ).rejects.toThrow(/no account id/);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("reports a 400 challenge-method downgrade distinctly", async () => {
     const server = await startFakeAuthServer((_req, res) =>
       json(res, 400, { error: "invalid_request", error_description: "code_challenge_method mismatch" })

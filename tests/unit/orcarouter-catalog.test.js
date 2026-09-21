@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  credentialHint,
   ORCAROUTER_ID,
   ORCAROUTER_AUTH_BASE_DEFAULT,
   ORCAROUTER_API_BASE_DEFAULT,
@@ -83,6 +84,17 @@ const CATALOG = [
 ];
 
 const idsOf = (models) => models.map((m) => m.id);
+
+describe("orcarouter credential hint", () => {
+  it("never reveals a short key through its hint", () => {
+    // "sk-orca-" + 4 used to round-trip verbatim; the hidden middle must stay
+    // longer than the revealed tail.
+    expect(credentialHint("sk-orca-WXYZ")).toBeNull();
+    expect(credentialHint("sk-orca-ABCDWXYZ")).toBeNull();
+    expect(credentialHint("sk-orca-ABCDEWXYZ")).toBe("sk-orca-…WXYZ");
+    expect(credentialHint("sk-orca-live-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")).toBe("sk-orca-…6789");
+  });
+});
 
 describe("orcarouter origins", () => {
   it("keeps auth and inference on different public origins", () => {

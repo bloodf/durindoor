@@ -25,11 +25,18 @@ import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
  * picker can ask for different, already-filtered lists. `modality` narrows that
  * list further for entry points that actually upload a non-text part.
  *
+ * The catalog origin comes only from operator configuration (`ORCA_API_BASE_URL`
+ * / `ORCA_BASE_URL`, else the public relay). A connection's
+ * `providerSpecificData.baseUrl` is client-writable through the providers API,
+ * so honouring it would let any management caller send the stored key as a
+ * Bearer token to a host of their choosing.
+ *
  * @param {object} connection - The stored provider connection
+ * @param {object|null} proxyOptions - The connection's resolved proxy route
  * @param {string|null} requestUrl - The incoming request URL, for its query string
  * @returns {Promise<{models?: Array<object>, source?: string, degraded?: boolean, warning?: string, error?: string, status?: number}>}
  */
-async function resolveOrcaRouterModels(connection, requestUrl) {
+async function resolveOrcaRouterModels(connection, proxyOptions, requestUrl) {
   const params = new URL(requestUrl || "http://localhost/").searchParams;
   const capability = params.get("capability") || "chat";
   if (!ORCAROUTER_CAPABILITIES.includes(capability)) {
@@ -43,8 +50,13 @@ async function resolveOrcaRouterModels(connection, requestUrl) {
   }
 
   const apiKey = connection.accessToken || connection.apiKey;
-  const apiBase = connection.providerSpecificData?.baseUrl || resolveApiBase(process.env);
-  const result = await discoverOrcaRouterModels({ apiKey, apiBase, capability, modality });
+  const result = await discoverOrcaRouterModels({
+    apiKey,
+    apiBase: resolveApiBase(process.env),
+    capability,
+    modality,
+    fetchImpl: (url, init) => proxyAwareFetch(url, init, proxyOptions)
+  });
 
   const models = result.models.map((m) => {
     const entry = {
@@ -510,6 +522,6 @@ export const PROVIDER_MODELS_CONFIG = {
   // OrcaRouter's catalog is capability-scoped (`?capability=`), so it needs the
   // resolver form rather than a registry-level modelsFetcher. The key stays here.
   [ORCAROUTER_ID]: {
-    customResolver: (connection, proxyOptions, requestUrl) => resolveOrcaRouterModels(connection, requestUrl)
+    customResolver: resolveOrcaRouterModels
   }
 };

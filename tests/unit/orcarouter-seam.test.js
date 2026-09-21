@@ -189,12 +189,21 @@ describe("orcarouter revoked-key handling — terminal, generation-safe", () => 
     expect(isDurableCredentialProvider("xai")).toBe(false);
   });
 
-  it("flags the exact rejected credential for reauthentication on 401/403", () => {
+  it("flags the exact rejected credential for reauthentication on 401", () => {
     const conn = { accessToken: "sk-orca-current", apiKey: "sk-orca-current" };
     const fields = durableCredentialReauthFields(conn, "sk-orca-current", 401);
     expect(fields.needsReauth).toBe(true);
     expect(fields.reauthReason).toBe("credential_rejected");
-    expect(durableCredentialReauthFields(conn, "sk-orca-current", 403).needsReauth).toBe(true);
+  });
+
+  it("flags a 403 only when its body reads as an auth failure", () => {
+    const conn = { accessToken: "sk-orca-current", apiKey: "sk-orca-current" };
+    // Quota and permission 403s stay on the normal cooldown path.
+    expect(durableCredentialReauthFields(conn, "sk-orca-current", 403)).toBeNull();
+    expect(durableCredentialReauthFields(conn, "sk-orca-current", 403, "Monthly quota exceeded")).toBeNull();
+    expect(durableCredentialReauthFields(conn, "sk-orca-current", 403, "Model not available on your plan")).toBeNull();
+    expect(durableCredentialReauthFields(conn, "sk-orca-current", 403, "Invalid API key").needsReauth).toBe(true);
+    expect(durableCredentialReauthFields(conn, "sk-orca-current", 403, "This key has been revoked").needsReauth).toBe(true);
   });
 
   it("does not flag a credential that a newer login already replaced", () => {

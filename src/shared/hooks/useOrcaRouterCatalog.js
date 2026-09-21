@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { orcaCatalogOrigin } from "@/shared/utils/orcaCatalogPicker";
+import { mergeOrcaCatalogResults } from "@/shared/utils/orcaCatalogPicker";
 
 const EMPTY_ORCA_CATALOG = { models: [], source: null, degraded: false, loaded: false };
 
@@ -46,19 +46,8 @@ export function useOrcaRouterCatalog(isOpen, connectionIds, capability, modality
     })).
     then((results) => {
       if (cancelled) return;
-      const live = results.filter(Boolean);
-      const seen = new Set();
-      const models = live.
-      flatMap((result) => orcaCatalogOrigin(result).models).
-      filter((model) => {
-        if (!model?.id || seen.has(model.id)) return false;
-        seen.add(model.id);
-        return true;
-      });
       setState({
-        models,
-        source: live[0]?.source || null,
-        degraded: live.some((result) => orcaCatalogOrigin(result).degraded),
+        ...mergeOrcaCatalogResults(results),
         loaded: true
       });
     }).

@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import Button from "./Button";
 import Input from "./Input";
 import Modal from "./Modal";
+import { orcaApiKeySaveRequest, orcaApiKeyTargetId } from "@/shared/utils/orcaApiKeySave";
 
 const AUTH_BASE = "https://www.orcarouter.ai";
 
@@ -35,6 +36,7 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
   // credential, so the browser can only ever show a redacted handle, never the
   // key itself. `keyHint` is derived server-side from the secret's own shape.
   const [storedKey, setStoredKey] = useState(null);
+  const [apiKeyTargetId, setApiKeyTargetId] = useState(null);
 
   // Attempt generation + in-flight request state. `attemptRef` increments on
   // every start; every async continuation confirms it still owns the current
@@ -62,6 +64,18 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
   const cancelAttempt = useCallback(() => {
     attemptRef.current += 1;
     releaseLoginLock();
+    // Aborting the fetch alone does not stop the server from saving the
+    // connection, so release the bound flow too. Best effort: a flow that
+    // already committed or expired simply reports nothing to cancel.
+    const authData = authDataRef.current;
+    authDataRef.current = null;
+    if (authData?.flowId) {
+      fetch("/api/oauth/orcarouter/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flowId: authData.flowId, state: authData.state })
+      }).catch(() => {});
+    }
     setAuthorizeUrl(null);
     setCode("");
   }, [releaseLoginLock]);
@@ -76,8 +90,12 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
         const res = await fetch("/api/providers");
         if (!res.ok) return;
         const data = await res.json();
-        const conn = (data.connections || []).find((c) => c.provider === "orcarouter" && c.keyHint);
-        if (!cancelled) setStoredKey(conn ? { keyHint: conn.keyHint, name: conn.name, createdAt: conn.createdAt } : null);
+        const connections = data.connections || [];
+        const conn = connections.find((c) => c.provider === "orcarouter" && c.keyHint);
+        if (!cancelled) {
+          setStoredKey(conn ? { keyHint: conn.keyHint, name: conn.name, createdAt: conn.createdAt } : null);
+          setApiKeyTargetId(orcaApiKeyTargetId(connections));
+        }
       } catch {
         if (!cancelled) setStoredKey(null);
       }
@@ -199,9 +217,12 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
 
     setBusy(true);
     busyRef.current = true;
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const res = await fetch("/api/oauth/orcarouter/exchange", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: trimmed,
@@ -214,7 +235,9 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
       if (!res.ok || !data.success) {
         throw new Error(data.error || "OrcaRouter did not accept that code");
       }
-      // Terminal success releases the whole lock.
+      // Terminal success releases the whole lock. The flow is consumed, so
+      // there is nothing left for a later cancel to release.
+      authDataRef.current = null;
       attemptRef.current += 1;
       releaseLoginLock();
       setCode("");
@@ -224,6 +247,7 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
       onSuccess?.();
     } catch (err) {
       if (attemptRef.current !== attempt || cancelledRef.current) return;
+      if (err?.name === "AbortError") return;
       // A rejected/expired/reused code is not recoverable in place: clear the
       // attempt so the user can start a clean one.
       setError(err.message);
@@ -247,10 +271,11 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
     }
     setBusy(true);
     try {
-      const res = await fetch("/api/providers", {
-        method: "POST",
+      const save = orcaApiKeySaveRequest(apiKeyTargetId, trimmed);
+      const res = await fetch(save.url, {
+        method: save.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "orcarouter", apiKey: trimmed, name: "OrcaRouter API Key" })
+        body: JSON.stringify(save.body)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not save the OrcaRouter API key");
@@ -265,7 +290,7 @@ export default function OrcaRouterAuthModal({ isOpen, providerInfo, onSuccess, o
       setBusy(false);
       busyRef.current = false;
     }
-  }, [apiKey, onSuccess]);
+  }, [apiKey, apiKeyTargetId, onSuccess]);
 
   const handleClose = useCallback(() => {
     cancelAttempt();

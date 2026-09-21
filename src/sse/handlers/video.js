@@ -224,7 +224,11 @@ async function handleVideoCreateHandler(request, action) {
   // Record the failure (dashboard shows lastError/errorCode → user sees re-auth is needed)
   if (shouldMarkAccountUnavailable(result.status)) {
     await markAccountUnavailable(
-      credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, model
+      credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, model, null, {
+        // The credential this attempt actually presented, so a durable-key
+        // provider can mark exactly the generation that was rejected.
+        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null
+      }
     );
   }
   return result.response;
@@ -312,7 +316,10 @@ async function handleVideoGetHandler(request, requestId) {
 
   if (shouldMarkAccountUnavailable(result.status)) {
     await markAccountUnavailable(
-      credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, null, null, { videoPoll: true }
+      credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, null, null, {
+        videoPoll: true,
+        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null
+      }
     );
   }
   return result.response;

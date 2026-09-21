@@ -266,6 +266,12 @@ export function isDurableCredentialProvider(providerId) {
   return providerId === "orcarouter";
 }
 
+const DURABLE_CREDENTIAL_AUTH_FAILURE = /invalid[\s_-]*(api[\s_-]*)?key|(api[\s_-]*)?key[\s\S]{0,40}(invalid|revoked|expired|disabled)|revoked|unauthori[sz]ed|unauthenticated|authentication failed/i;
+
+function isDurableCredentialAuthFailure(errorText) {
+  return isString(errorText) && DURABLE_CREDENTIAL_AUTH_FAILURE.test(errorText);
+}
+
 /**
  * Reauth fields for a rejected durable credential.
  *
@@ -275,13 +281,17 @@ export function isDurableCredentialProvider(providerId) {
  * by signing in again.
  * @param {object|null} conn - The stored connection row
  * @param {string|null} usedCredential - The credential the rejected request presented
+ * A 401 always counts as a rejection. A 403 only counts when its body reads as
+ * an auth failure: shared error rules also use 403 for quota and permission
+ * errors, which must stay on the normal cooldown path.
  * @param {number|string|null} status - Upstream HTTP status
+ * @param {string|null} [errorText] - Upstream error body/message
  * @returns {{ needsReauth: boolean, reauthReason: string, reauthAt: string }|null}
  */
-export function durableCredentialReauthFields(conn, usedCredential, status) {
+export function durableCredentialReauthFields(conn, usedCredential, status, errorText = null) {
   if (!conn) return null;
   const code = Number(status);
-  if (code !== 401 && code !== 403) return null;
+  if (code !== 401 && !(code === 403 && isDurableCredentialAuthFailure(errorText))) return null;
   if (!isString(usedCredential) || !usedCredential) return null;
   if (conn.accessToken !== usedCredential && conn.apiKey !== usedCredential) return null;
   return {

@@ -29,6 +29,7 @@ export const ORCAROUTER_CONSOLE_URL = "https://www.orcarouter.ai/console/authori
 /** Public prefix of every OrcaRouter key; used for validation and redaction. */
 export const ORCAROUTER_KEY_PREFIX = "sk-orca-";
 
+const HINT_TAIL = 4;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
 function normalizeBase(value) {
@@ -87,9 +88,11 @@ export function resolveApiBase(env = {}) {
 export function credentialHint(secret) {
   if (!isString(secret)) return null;
   const trimmed = secret.trim();
-  if (trimmed.length < 12) return null;
   const prefix = trimmed.startsWith(ORCAROUTER_KEY_PREFIX) ? ORCAROUTER_KEY_PREFIX : trimmed.slice(0, 6);
-  return `${prefix}…${trimmed.slice(-4)}`;
+  // The hidden middle must be longer than the revealed tail, otherwise a short
+  // key round-trips through its own hint.
+  if (trimmed.length - prefix.length <= HINT_TAIL * 2) return null;
+  return `${prefix}…${trimmed.slice(-HINT_TAIL)}`;
 }
 
 /**

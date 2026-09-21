@@ -210,8 +210,9 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
 /**
  * Restore declared Responses custom-tool calls after OpenAI completion lowering.
  * Consumers normalize request metadata to a Set before this projection (#3373).
+ * `resolveToolName` maps a provider name to the client's `{ name, namespace }` (#4200).
  */
-function openAICompletionToResponsesOutput(completion, { customToolNames = new Set() } = {}) {
+function openAICompletionToResponsesOutput(completion, { customToolNames = new Set(), resolveToolName = (name) => ({ name }) } = {}) {
   const customToolNameSet = customToolNames instanceof Set ?
   customToolNames :
   new Set(customToolNames || []);
@@ -246,7 +247,7 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
   if (toolCalls.length > 0) {
     for (const toolCall of toolCalls) {
       const fn = toolCall.function || {};
-      const name = fn.name || toolCall.name || "";
+      const { name, namespace } = resolveToolName(fn.name || toolCall.name || "");
       const callId = toolCall.id || `call_${name || "tool"}_${idx}`;
       const argumentsText = isString(fn.arguments) ? fn.arguments : JSON.stringify(fn.arguments || {});
       const custom = customToolNameSet.has(name);
@@ -257,7 +258,7 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
           if (isString(parsed?.input)) input = parsed.input;
         } catch {/* custom input is already raw */}
       }
-      output.push(custom ? {
+      const item = custom ? {
         type: RESPONSES_ITEM.CUSTOM_TOOL_CALL,
         id: `ctc_${callId}`,
         call_id: callId,
@@ -269,7 +270,9 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
         call_id: callId,
         name,
         arguments: argumentsText
-      });
+      };
+      if (namespace && !custom) item.namespace = namespace;
+      output.push(item);
       idx++;
     }
   } else if (!text && !reasoning) {

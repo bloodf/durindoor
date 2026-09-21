@@ -13,6 +13,7 @@ import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
 import { projectCompletionToClientFormat } from "../../translator/response/completionProjector.js";
+import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { translateResponse, initState } from "../../translator/index.js";
 import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
@@ -231,15 +232,22 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   const customToolNames = options.customToolNames instanceof Set ?
   options.customToolNames :
   new Set(options.customToolNames || []);
+  // Same name resolution as the streaming translator: restore request-side aliases,
+  // then split namespace tools and strip provider-injected prefixes (upstream PR #4200).
+  const responsesClient = sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE;
+  const projectionOptions = () => {
+    if (!responsesClient) return { ...options, customToolNames };
+    return { ...options, customToolNames, resolveToolName: createResponsesToolNameResolver(options.requestBody, options.toolNameMap) };
+  };
   /**
    * Project Responses-client calls before generic OpenAI upstream passthrough.
    */
   if (
-  (sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE) &&
+  responsesClient &&
   targetFormat === FORMATS.OPENAI &&
   Array.isArray(responseBody?.choices))
   {
-    return projectCompletionToClientFormat(responseBody, sourceFormat, { ...options, customToolNames });
+    return projectCompletionToClientFormat(responseBody, sourceFormat, projectionOptions());
   }
   /** Normalize NVIDIA/vLLM's OpenAI reasoning alias on same-format passthrough. */
   if (targetFormat === sourceFormat) {
@@ -401,7 +409,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
    * this handler runs; project that completion back into the client's dialect.
    */
   if (Array.isArray(responseBody?.choices)) {
-    return projectCompletionToClientFormat(responseBody, sourceFormat, { ...options, customToolNames });
+    return projectCompletionToClientFormat(responseBody, sourceFormat, projectionOptions());
   }
 
   return responseBody;
@@ -517,7 +525,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       responseBody,
       targetFormat,
       sourceFormat,
-      { claudeCompat, model, customToolNames }
+      { claudeCompat, model, customToolNames, toolNameMap, requestBody: body }
     );
 
     /**

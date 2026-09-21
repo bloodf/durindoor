@@ -222,31 +222,16 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
    * response routes can restore Responses semantics (upstream PR #3373).
    */
   const customToolNames = new Set();
-  // Some providers reject dotted function names (namespace tools are expanded to
-  // `{namespace}.{subtool}`), so dots are sanitized to `__` on the way out. The map
-  // rides the existing `_toolNameMap` convention (see openai-to-claude.js,
-  // openai-to-kiro.js) that chatCore already lifts into stream state, so the response
-  // side restores the original dotted name without any cross-request lookup.
-  const toolNameMap = new Map();
-  const sanitizeToolName = (fullName) => {
-    if (!fullName.includes(".")) return fullName;
-    const safe = fullName.replace(/\./g, "__");
-    toolNameMap.set(safe, fullName);
-    return safe;
-  };
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools.
     flatMap((tool) => {
       // Already in Chat Completions format: { type: "function", function: { name, ... } }
-      if (tool.function) {
-        const fn = tool.function;
-        if (isString(fn?.name) && fn.name.includes(".")) {
-          return { ...tool, function: { ...fn, name: sanitizeToolName(fn.name) } };
-        }
-        return tool;
-      }
+      if (tool.function) return tool;
       // Responses namespace tools have no Chat equivalent. Expand each declared
       // subtool; response state keeps the namespace for the reverse projection.
+      // Dotted names stay dotted here: chatCore's normalizeOpenAIToolNames aliases them
+      // (with declarations, tool_choice and history sharing one memo) for OpenAI-format
+      // providers that reject dots, and the response side restores via toolNameMap.
       if (tool.type === "namespace" && Array.isArray(tool.tools)) {
         const namespace = isString(tool.name) ? tool.name : "";
         return tool.tools.
@@ -254,7 +239,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         map((subtool) => ({
           type: OPENAI_BLOCK.FUNCTION,
           function: {
-            name: sanitizeToolName(namespace ? `${namespace}.${subtool.name}` : subtool.name),
+            name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
             description: String(subtool.description || tool.description || ""),
             parameters: normalizeToolParameters(subtool.parameters),
             strict: subtool.strict
@@ -270,7 +255,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         return {
           type: OPENAI_BLOCK.FUNCTION,
           function: {
-            name: sanitizeToolName(tool.name),
+            name: tool.name,
             description: String(tool.description || ""),
             parameters: {
               type: "object",
@@ -289,7 +274,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       return {
         type: OPENAI_BLOCK.FUNCTION,
         function: {
-          name: sanitizeToolName(name),
+          name,
           description: String(tool.description || ""),
           parameters: normalizeToolParameters(tool.parameters),
           strict: tool.strict
@@ -299,7 +284,6 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     filter(Boolean);
   }
   if (customToolNames.size > 0) result._customToolNames = [...customToolNames];
-  if (toolNameMap.size > 0) result._toolNameMap = toolNameMap;
 
   // Cleanup Responses API specific fields
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)

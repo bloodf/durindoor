@@ -7,7 +7,7 @@
  * (apply_patch) stream via custom_tool_call_input.* events, and output_index
  * is offset past a preceding reasoning item so items never collide at 0.
  */
-import { register } from "../index.js";
+import { register, initState } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
@@ -325,76 +325,67 @@ function splitNamespacedName(state, name) {
   };
 }
 
-/** Flat declared tool names and namespace-container names, derived from state built
- * at initState (translator/index.js) — no extra per-response scan of the request body. */
-function declaredToolNames(state) {
-  if (state._declaredToolNames) return state._declaredToolNames;
-  const names = new Set();
-  const namespaces = new Set();
-  for (const [name, type] of Object.entries(state.toolTypes || {})) {
-    if (type === "namespace") namespaces.add(name);else
-    names.add(name);
-  }
-  for (const dotted of Object.keys(state.toolNamespaces || {})) {
-    const dot = dotted.lastIndexOf(".");
-    if (dot > -1) names.add(dotted.slice(dot + 1));
-  }
-  state._declaredToolNames = { names, namespaces };
-  return state._declaredToolNames;
+function isDeclaredFlatTool(state, name) {
+  const type = state.toolTypes?.[name];
+  return Boolean(type) && type !== "namespace";
 }
 
 function warnUnresolvedToolName(state, emitted, reason) {
   state._warnedToolNames ||= new Set();
   if (state._warnedToolNames.has(emitted)) return;
   state._warnedToolNames.add(emitted);
-  console.warn(`[RESPONSES] unresolved tool-call name "${emitted}" (${reason}) — forwarding unchanged`);
+  console.warn(`[RESPONSES] unresolved tool-call name "${emitted}" (${reason}), forwarding unchanged`);
 }
 
 /**
- * Namespace tools are expanded into sanitized dotted names (`collaboration__spawn_agent`)
- * on the request side. Restore the namespace here so the client router can route the call.
- *
- * Providers also sometimes inject prefixes the client never declared (e.g. returning
- * `functions.exec` for a plain declared `exec` tool). Those are canonicalized against the
- * names this request actually declared — never against a hardcoded alias table.
- * Unresolvable names are logged once and forwarded unchanged (never dropped).
+ * Reverse a request-side alias (chatCore's normalizeOpenAIToolNames rewrites dotted
+ * or overlong names for OpenAI-format providers) back to the name the client declared.
  */
-function splitToolName(state, name) {
-  // 1. Exact dotted/flat match against a namespace this request declared.
+export function restoreResponsesToolName(state, name) {
+  if (!isString(name)) return name;
+  return state.toolNameMap?.get(name) || name;
+}
+
+/**
+ * Resolve a (restored) provider tool-call name to Responses `name` + `namespace`.
+ *
+ * Providers sometimes inject a prefix the client never declared (e.g. `functions.exec`
+ * for a declared `exec`). Exactly one leading segment is stripped, and only when the
+ * remainder is a name this request declared; nothing is matched against a guessed
+ * alias table. Unresolvable names are logged once and forwarded unchanged.
+ */
+export function resolveResponsesToolName(state, name) {
+  if (!isString(name)) return { name };
   const exact = splitNamespacedName(state, name);
   if (exact) return exact;
+  if (isDeclaredFlatTool(state, name)) return { name };
 
-  // 2. Reverse a name sanitized on the way out (dots -> "__") back to its dotted form.
-  const restored = state.toolNameMap?.get(name);
-  if (restored && restored !== name) {
-    return splitNamespacedName(state, restored) || { name: restored };
-  }
-
-  if (!name.includes(".")) return { name };
-
-  // 3. Provider-injected prefix: canonicalize by matching each dotted suffix against a
-  // name this request declared (e.g. `functions.exec` -> declared `exec`).
-  const { names, namespaces } = declaredToolNames(state);
-  const parts = name.split(".");
-  for (let i = 0; i < parts.length; i++) {
-    const candidate = parts.slice(i).join(".");
-    if (!names.has(candidate)) continue;
-    const ns = state.toolNamespaces?.[`${parts[i - 1] || ""}.${candidate}`] ||
-    (i > 0 && namespaces.has(parts[i - 1]) ? parts[i - 1] : null);
-    return ns ? { name: candidate, namespace: ns } : { name: candidate };
-  }
-
-  // 4. Bare declared namespace name with no sub-tool: nothing to route to.
-  if (namespaces.has(name)) {
-    warnUnresolvedToolName(state, name, "emitted bare namespace name without a sub-tool");
+  const dot = name.indexOf(".");
+  if (dot === -1) {
+    if (state.toolTypes?.[name] === "namespace") {
+      warnUnresolvedToolName(state, name, "emitted bare namespace name without a sub-tool");
+    }
     return { name };
   }
 
-  // 5. No declared match -> forward unchanged.
+  const rest = name.slice(dot + 1);
+  const injected = splitNamespacedName(state, rest);
+  if (injected) return injected;
+  if (isDeclaredFlatTool(state, rest)) return { name: rest };
+
   warnUnresolvedToolName(state, name, "no declared tool name matches");
   return { name };
 }
 
+
+/**
+ * Name resolver for buffered (non-streaming) Responses projections: the same
+ * restore + resolve the streaming translator applies per tool call.
+ */
+export function createResponsesToolNameResolver(requestBody, toolNameMap) {
+  const state = { ...initState(FORMATS.OPENAI_RESPONSES, requestBody), toolNameMap };
+  return (name) => resolveResponsesToolName(state, restoreResponsesToolName(state, name));
+}
 
 function emitToolCall(state, emit, tc) {
   const tcIdx = tc.index ?? 0;
@@ -402,7 +393,7 @@ function emitToolCall(state, emit, tc) {
   const newCallId = tc.id;
   const funcName = tc.function?.name;
 
-  if (funcName) state.funcNames[tcIdx] = funcName;
+  if (funcName) state.funcNames[tcIdx] = restoreResponsesToolName(state, funcName);
 
   // apply_patch defaults to custom framing (legacy Codex compatibility), but
   // an explicit function declaration in the request always wins over the name
@@ -437,7 +428,7 @@ function emitToolCall(state, emit, tc) {
         type: RESPONSES_ITEM.FUNCTION_CALL,
         arguments: "",
         call_id: refCallId,
-        ...splitToolName(state, refName),
+        ...resolveResponsesToolName(state, refName),
         status: "in_progress"
       }
     });
@@ -547,7 +538,7 @@ function closeToolCall(state, emit, idx) {
           type: RESPONSES_ITEM.FUNCTION_CALL,
           arguments: args,
           call_id: callId,
-          ...splitToolName(state, state.funcNames[idx] || ""),
+          ...resolveResponsesToolName(state, state.funcNames[idx] || ""),
           status: "completed"
         }
       });

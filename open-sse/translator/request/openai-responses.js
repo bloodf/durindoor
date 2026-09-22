@@ -12,6 +12,8 @@ import {
   coerceResponsesArguments,
   coerceResponsesOutput,
   repairMissingResponsesCallIds,
+  buildDeclaredToolTypes,
+  resolveDeclaredCustom,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
@@ -152,6 +154,13 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(normalizeResponsesInput(body.input)));
   if (!inputItems) return body;
 
+  // Declared tool types (custom vs function) on this request, hoisted above
+  // the item loop below so coerceResponsesArguments can tell a custom tool's
+  // raw body apart from an ordinary function's malformed JSON, and never
+  // freeform-wrap a name like "apply_patch" that this request declares as an
+  // ordinary function (upstream #4208 review, round 2).
+  const declaredToolTypes = buildDeclaredToolTypes(body.tools);
+
   // Extract reasoning text from summary[].text or encrypted_content fallback
   const extractReasoningText = (item) => {
     if (Array.isArray(item.summary)) {
@@ -277,12 +286,23 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       skippedCallIds.delete(item.call_id);
       // Replayed namespace calls carry `{ name, namespace }`; re-qualify them so history
       // matches the expanded `{namespace}.{subtool}` declaration (and its alias).
+      // Qualify first so both the pushed name AND the declaration lookup use
+      // the same dotted `{namespace}.{subtool}` name (#940 + #4208 review,
+      // round 6) — otherwise a namespaced custom tool's declaration (keyed on
+      // the qualified name in declaredToolTypes) would miss on the bare name.
+      const qualifiedName = qualifyNamespacedName(item);
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
         function: {
-          name: qualifyNamespacedName(item),
-          arguments: item.arguments
+          name: qualifiedName,
+          // Codex replays raw streamed args verbatim; non-JSON strings (partial
+          // fragments / freeform text) must be coerced or upstream rejects the
+          // chat/completions body with "function.arguments must be valid JSON".
+          // A declared custom tool's raw body is preserved as JSON instead of
+          // dropped, and a name this request declares as a function (even
+          // "apply_patch") is never freeform-wrapped (declaredToolTypes above).
+          arguments: coerceResponsesArguments(item.arguments, qualifiedName, resolveDeclaredCustom(declaredToolTypes, qualifiedName))
         }
       });
     } else
@@ -334,8 +354,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   /**
    * Preserve custom-tool identity across Chat Completions lowering so buffered
    * response routes can restore Responses semantics (upstream PR #3373).
+   * (declaredToolTypes collected earlier, above the item loop.)
    */
-  const customToolNames = new Set();
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools.
     flatMap((tool) => {
@@ -364,7 +384,6 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       // tool whose single parameter is the raw `input` string. The response
       // translator re-emits it as a custom_tool_call by name (OmniRoute #7905).
       if (tool.type === "custom" && isString(tool.name) && tool.name.trim() !== "") {
-        customToolNames.add(tool.name);
         return {
           type: OPENAI_BLOCK.FUNCTION,
           function: {
@@ -396,7 +415,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     }).
     filter(Boolean);
   }
-  if (customToolNames.size > 0) result._customToolNames = [...customToolNames];
+  const customToolNames = [...declaredToolTypes].filter(([, type]) => type === "custom").map(([name]) => name);
+  if (customToolNames.length > 0) result._customToolNames = customToolNames;
 
   // Cleanup Responses API specific fields
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
@@ -487,6 +507,14 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   let hasSystemMessage = false;
   const messages = body.messages || [];
 
+  // Declared tool types on this Chat Completions body, hoisted above the
+  // message loop so coerceResponsesArguments never freeform-wraps a name
+  // this request declares as an ordinary function (upstream #4208 review,
+  // round 2). Chat Completions tools are always type "function"; there is
+  // no "custom" shape on this path, but a declared "apply_patch" function
+  // must still win over the legacy name fallback.
+  const declaredToolTypes = buildDeclaredToolTypes(body.tools);
+
   for (const msg of messages) {
     if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
       // Use the first instruction-bearing message as instructions.
@@ -550,7 +578,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           type: RESPONSES_ITEM.FUNCTION_CALL,
           call_id: clampResponsesCallId(tc.id),
           name: name.slice(0, MAX_TOOL_NAME_LEN),
-          arguments: coerceResponsesArguments(tc.function?.arguments)
+          arguments: coerceResponsesArguments(tc.function?.arguments, name, resolveDeclaredCustom(declaredToolTypes, name))
         });
       }
     }

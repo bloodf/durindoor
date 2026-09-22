@@ -22,9 +22,9 @@ describe("Codex CLI Responses → OpenAI", () => {
     expect(assistants, "assistant message with an empty turn").toHaveLength(0);
   });
 
-  // openai-responses.js:109-110 — arguments passed through without ensuring string type
-  // KNOWN BUG
-  it.fails("function_call arguments end up as a string", () => {
+  // openai-responses.js:109-110 — arguments now coerced to a string (upstream #4208 /
+  // #3310: coerceResponsesArguments stringifies non-string args before dispatch).
+  it("function_call arguments end up as a string", () => {
     const out = R2O({
       input: [{ type: "function_call", call_id: "c1", name: "f", arguments: { a: 1 } }],
     });

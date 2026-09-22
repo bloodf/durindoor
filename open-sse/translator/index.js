@@ -87,8 +87,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   { mode: "budget", budget: result.thinking.budget_tokens } :
   null;
 
-  // Always ensure tool_calls have id (some providers require it)
-  ensureToolCallIds(result);
+  // Always ensure tool_calls have id (some providers require it). targetFormat
+  // lets a target that validates its own tool-call arguments (e.g. CommandCode)
+  // keep rejecting malformed JSON instead of having it silently coerced first.
+  ensureToolCallIds(result, targetFormat);
 
   // Fix missing tool responses (insert empty tool_result if needed)
   fixMissingToolResponses(result);

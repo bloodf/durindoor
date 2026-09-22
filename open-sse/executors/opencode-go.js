@@ -10,6 +10,8 @@ import {
   coerceResponsesArguments,
   coerceResponsesOutput,
   stripPriorReasoningItem,
+  buildDeclaredToolTypes,
+  resolveDeclaredCustom,
 } from "../translator/formats/responsesApi.js";
 
 /**
@@ -154,6 +156,11 @@ export function normalizeResponsesTools(body) {
 // Exported for reuse by opencode.js (same Responses-endpoint constraints).
 export function sanitizeResponsesItems(body) {
   if (!Array.isArray(body.input)) return;
+  // Declaration state for the same reason as the request translator: an
+  // apply_patch or declared custom function_call must keep its raw body
+  // through this native Responses passthrough too (upstream #4208 review,
+  // round 3).
+  const declaredToolTypes = buildDeclaredToolTypes(body.tools);
   body.input = body.input.filter((item) => {
     if (!item || !isObject(item) || Array.isArray(item)) return true;
     if (!stripPriorReasoningItem(item)) return false;
@@ -161,7 +168,7 @@ export function sanitizeResponsesItems(body) {
       if (!item.name || !isString(item.name) || item.name.trim() === "") return false;
       item.name = item.name.trim().slice(0, MAX_TOOL_NAME_LEN);
       item.call_id = clampResponsesCallId(item.call_id);
-      item.arguments = coerceResponsesArguments(item.arguments);
+      item.arguments = coerceResponsesArguments(item.arguments, item.name, resolveDeclaredCustom(declaredToolTypes, item.name));
       return true;
     }
     if (item.type === "function_call_output") {

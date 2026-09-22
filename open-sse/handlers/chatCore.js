@@ -538,7 +538,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
    * decolua/9router#3369: resolve missing result IDs before orphan salvage and
    * response repair; otherwise those passes demote or replace real output.
    */
-  ensureToolCallIds(body);
+  // targetFormat lets a target that validates its own tool-call arguments
+  // (e.g. CommandCode) keep rejecting malformed JSON instead of having it
+  // silently coerced to "{}" before its own translator ever sees it.
+  ensureToolCallIds(body, targetFormat);
   salvageOrphanedToolResults(body);
   fixMissingToolResponses(body);
 

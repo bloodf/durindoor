@@ -3,6 +3,7 @@ import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.j
 import { CLAUDE_BLOCK, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { FORMATS } from "../formats.js";
+import { coerceResponsesArguments, buildDeclaredToolTypes, resolveDeclaredCustom } from "../formats/responsesApi.js";
 
 // Tool call helper functions for translator
 
@@ -265,9 +266,31 @@ function resolveToolResultId(rawId, pendingIds, fallbackId) {
   return pendingIds.shift() || fallbackId();
 }
 
-// Ensure all tool_calls have valid id field and arguments is string (some providers require it)
-export function ensureToolCallIds(body) {
+// Targets whose own request translator validates tool-call arguments itself
+// and must fail loud on malformed JSON (400), never silently drop it. #942's
+// CommandCode translator (request/openai-to-commandcode.js: parseToolInput)
+// throws "invalid arguments" on a JSON.parse failure by design — running the
+// universal #4208 "{}" coercion first would erase the malformed text before
+// that check ever sees it. Reconciled by skipping the argument coercion (but
+// not id/type normalization) for these targets; upstream #4208's original
+// intent — never 400 an upstream on a replayed malformed fragment — still
+// applies to every other target.
+const TARGETS_VALIDATE_OWN_ARGUMENTS = new Set([FORMATS.COMMANDCODE]);
+
+// Ensure all tool_calls have valid id field and arguments is string (some providers require it).
+// `targetFormat` is optional; pass it when known so a target that validates its
+// own tool-call arguments (see TARGETS_VALIDATE_OWN_ARGUMENTS) keeps rejecting
+// malformed JSON instead of having it silently coerced to "{}" first.
+export function ensureToolCallIds(body, targetFormat) {
   if (!body || !isObject(body) || !Array.isArray(body.messages)) return body;
+  const skipArgumentCoercion = TARGETS_VALIDATE_OWN_ARGUMENTS.has(targetFormat);
+
+  // Declared tool types on this request, so a raw custom-tool body the
+  // Responses stream stored (openai-responses.js:651) survives chat replay
+  // instead of being coerced to "{}" like this file did before (upstream
+  // #4208 review, round 2). A name this request declares as an ordinary
+  // function — even "apply_patch" — is never freeform-wrapped.
+  const declaredToolTypes = buildDeclaredToolTypes(body.tools);
 
   let pendingIds = [];
 
@@ -288,13 +311,18 @@ export function ensureToolCallIds(body) {
         if (!tc.type) {
           tc.type = "function";
         }
-        /** Normalize empty and structured arguments for decolua/9router#3310. */
-        if (tc.function && isObject(tc.function)) {
-          if (tc.function.arguments == null || tc.function.arguments === "") {
-            tc.function.arguments = "{}";
-          } else if (!isString(tc.function.arguments)) {
-            tc.function.arguments = JSON.stringify(tc.function.arguments);
-          }
+        /**
+         * Normalize arguments for decolua/9router#3310 and #4208: stringify objects,
+         * validate JSON strings, fall back malformed/freeform strings to "{}" instead
+         * of forwarding them verbatim (Codex replays raw streamed args, and a partial
+         * fragment or freeform-text string trips upstream's "must be valid JSON" 400).
+         */
+        if (tc.function && isObject(tc.function) && !skipArgumentCoercion) {
+          tc.function.arguments = coerceResponsesArguments(
+            tc.function.arguments,
+            tc.function.name,
+            resolveDeclaredCustom(declaredToolTypes, tc.function.name)
+          );
         }
       }
     }

@@ -66,15 +66,81 @@ export function clampResponsesCallId(id) {
   return id.length > MAX_RESPONSES_CALL_ID_LEN ? id.substring(0, MAX_RESPONSES_CALL_ID_LEN) : id;
 }
 
+// Every caller that turns a tool name into a lookup/wire key trims and caps
+// it to this length (opencode-go.js, request/openai-responses.js) before a
+// strict Responses upstream sees it (#393-style length limits). Declaration
+// keys must be normalized the same way or a padded/overlong name silently
+// misses its declaration (upstream #4208 review, round 4).
+const MAX_DECLARED_TOOL_NAME_LEN = 128;
+
+function normalizeToolNameKey(name) {
+  return isString(name) ? name.trim().slice(0, MAX_DECLARED_TOOL_NAME_LEN) : "";
+}
+
+// Build a name -> declared tool type ("custom", "function", ...) lookup from
+// a request's declared tools[]. Mirrors initState's toolTypes resolution
+// (translator/index.js) exactly: `function.name` wins over a flat `name`
+// regardless of `type` — a Responses "custom" tool can still nest its name
+// under `function` ({type:"custom", function:{name}}, see
+// tests/translator/port-6937-responses-toolcall-shape.test.js). Optional
+// chaining on `tool.function?.name` also means a null/non-object `function`
+// field never throws (upstream #4208 review, round 3) — no isObject check
+// needed. Callers pass the result to coerceResponsesArguments so a name
+// match wins over the apply_patch legacy fallback.
+export function buildDeclaredToolTypes(tools) {
+  const declared = new Map();
+  if (!Array.isArray(tools)) return declared;
+  for (const tool of tools) {
+    if (!tool) continue;
+    const type = isString(tool.type) ? tool.type : "";
+    const name = normalizeToolNameKey(isString(tool.function?.name) ? tool.function.name : tool.name);
+    if (name && type) declared.set(name, type);
+  }
+  return declared;
+}
+
+// Resolve a tool name against buildDeclaredToolTypes()'s output: true when
+// declared "custom", false when declared as an ordinary function (including
+// "apply_patch"), undefined when the request never declares this name at all.
+// Normalizes `toolName` the same way buildDeclaredToolTypes normalizes its
+// keys, so it doesn't matter whether a caller's lookup name is raw, trimmed,
+// or already length-capped — they all resolve to the same key.
+export function resolveDeclaredCustom(declaredToolTypes, toolName) {
+  const key = normalizeToolNameKey(toolName);
+  if (!declaredToolTypes || !key || !declaredToolTypes.has(key)) return undefined;
+  return declaredToolTypes.get(key) === "custom";
+}
+
 // Single-stringify: objects → JSON once; valid JSON strings pass through untouched;
 // anything else (partial fragments, empty) falls back to "{}" instead of
 // double-encoding and tripping upstream InputValidationError.
-export function coerceResponsesArguments(value) {
+//
+// Declared Responses "custom" (freeform) tools carry raw text in "arguments",
+// never JSON, by design - apply_patch is the one that ships without a
+// declared tool entry (legacy Codex compatibility), so it is still recognized
+// by name. Losing that text to "{}" silently drops the tool body on chat
+// replay, so it gets wrapped as { input: <raw text> } instead - the same shape
+// the request translator already gives custom tools (see the
+// `tool.type === "custom"` branch in request/openai-responses.js). Ordinary
+// malformed/truncated function JSON still falls back to "{}".
+//
+// `declaredCustom` is a tri-state, not a boolean: pass `true`/`false` when the
+// caller resolved the name against buildDeclaredToolTypes() (a "function"
+// declaration always wins, even for the name "apply_patch" — matches
+// isCustomToolByState in response/openai-responses.js). Leave it `undefined`
+// only when the caller has no declared-tools state at all, which falls back
+// to the apply_patch name check for legacy Codex compatibility.
+export function coerceResponsesArguments(value, toolName, declaredCustom) {
   if (value === undefined || value === null || value === "") return "{}";
   if (!isString(value)) {
     try {
       return JSON.stringify(value);
     } catch {
+      // Circular reference or BigInt — same data loss as the parse-failure
+      // path below, so log it the same way (author note, round 4: this
+      // substitution itself is intended upstream #4208 behavior; only a
+      // silent stringify failure was the gap).
+      console.warn(`[Translator] Tool call arguments object for "${toolName || "(unnamed)"}" could not be JSON-stringified, coerced to "{}"`);
       return "{}";
     }
   }
@@ -82,6 +148,14 @@ export function coerceResponsesArguments(value) {
     JSON.parse(value);
     return value;
   } catch {
+    if (declaredCustom === true) return JSON.stringify({ input: value });
+    if (toolName === "apply_patch" && declaredCustom !== false) return JSON.stringify({ input: value });
+    // Every remaining path drops non-empty, non-JSON text: a declared function
+    // whose parser choked (truncation), or a name with no declared/legacy
+    // custom status. Both look identical to a genuine empty call afterward,
+    // so log here — this is the last point where the raw text still exists.
+    const why = declaredCustom === false ? "declared as a function, arguments must be JSON" : "not a declared custom/apply_patch tool";
+    console.warn(`[Translator] Non-JSON tool call arguments for "${toolName || "(unnamed)"}" coerced to "{}" — ${why}`);
     return "{}";
   }
 }

@@ -43,11 +43,18 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
+  // Capability, not identity: driven by the registry so a second AWS provider gets the same
+  // credential form without another `provider === "bedrock"` special case.
+  const usesAwsCredentialForm = AI_PROVIDERS?.[provider]?.credentialForm === "aws";
+  // Registry-declared: names the providerSpecificData field that stands in for an API key, so a
+  // provider whose credential lives outside the key field can be saved without one.
+  const apiKeyOptionalWith = AI_PROVIDERS?.[provider]?.apiKeyOptionalWith || null;
 
   const initialState = createAddApiKeyModalInitialState(existingConnectionNames, defaultRegion);
   const [formData, setFormData] = useState(initialState.formData);
   const [azureData, setAzureData] = useState(initialState.azureData);
   const [accountIdData, setAccountIdData] = useState(initialState.accountIdData);
+  const [awsData, setAwsData] = useState(initialState.awsData);
   const [region, setRegion] = useState(initialState.region);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
@@ -74,6 +81,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     setFormData(reset.formData);
     setAzureData(reset.azureData);
     setAccountIdData(reset.accountIdData);
+    setAwsData(reset.awsData);
     setRegion(reset.region);
   }, [isOpen, existingConnectionNames, defaultRegion]);
 
@@ -92,11 +100,30 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     if (requiresAccountId) {
       return { accountId: accountIdData.accountId.trim() };
     }
+    if (usesAwsCredentialForm) {
+      // Only send what the user filled in: an empty `profile` would still select profile mode
+      // and shadow static keys, because a profile takes precedence over everything else.
+      const data = region ? { region } : {};
+      if (awsData.profile.trim()) data.profile = awsData.profile.trim();
+      if (awsData.accessKeyId.trim()) data.accessKeyId = awsData.accessKeyId.trim();
+      return Object.keys(data).length ? data : undefined;
+    }
     if (providerRegions && region) {
       return { region };
     }
     return undefined;
   };
+
+  // One place decides whether the credential requirement is met. The Save button's disabled
+  // state and handleSubmit's early return both read it; encoding the rule twice is what would
+  // let Save look clickable while silently doing nothing for a profile-only connection.
+  // The STS session token is a secret: it travels as its own top-level field, which the server
+  // stores encrypted, never inside the plaintext providerSpecificData.
+  const sessionToken = usesAwsCredentialForm && awsData.sessionToken.trim() ? awsData.sessionToken.trim() : undefined;
+
+  const apiKeySatisfied = () =>
+  !!formData.apiKey ||
+  !!(apiKeyOptionalWith && buildProviderSpecificData()?.[apiKeyOptionalWith]);
 
   const handleValidate = async () => {
     if (requiresAccountId && !accountIdData.accountId.trim()) return;
@@ -105,7 +132,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       const res = await fetch("/api/providers/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, apiKey: formData.apiKey, providerSpecificData: buildProviderSpecificData() })
+        body: JSON.stringify({ provider, apiKey: formData.apiKey, sessionToken, providerSpecificData: buildProviderSpecificData() })
       });
       const data = await res.json();
       setValidationResult(data.valid ? "success" : "failed");
@@ -120,7 +147,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     if (!provider) return;
     // Self-hosted providers are keyless and auto-named, so neither an API key
     // nor a typed name can be required — the submit would be unreachable.
-    if (!hasConfigurableHost && !formData.apiKey) return;
+    if (!hasConfigurableHost && !apiKeySatisfied()) return;
     if (!hasConfigurableHost && !formData.name) return;
     if (isCompatible && !formData.defaultModel.trim()) return;
     if (requiresAccountId && !accountIdData.accountId.trim()) return;
@@ -134,7 +161,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         const res = await fetch("/api/providers/validate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey: formData.apiKey, providerSpecificData: buildProviderSpecificData() })
+          body: JSON.stringify({ provider, apiKey: formData.apiKey, sessionToken, providerSpecificData: buildProviderSpecificData() })
         });
         const data = await res.json();
         isValid = !!data.valid;
@@ -148,6 +175,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       await onSave({
         name: formData.name || (isOllamaLocal ? "Ollama Local" : isLocalWhisper ? "Local Whisper" : ""),
         apiKey: formData.apiKey,
+        sessionToken,
         defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,
         priority: formData.priority,
         proxyPoolId: formData.proxyPoolId === NONE_PROXY_POOL_VALUE ? null : formData.proxyPoolId,
@@ -314,7 +342,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               className="flex-1" />
             
             <div className="pt-6">
-              <Button onClick={handleValidate} disabled={!formData.apiKey || requiresAccountId && !accountIdData.accountId.trim() || validating || saving} variant="secondary">
+              <Button onClick={handleValidate} disabled={!apiKeySatisfied() || requiresAccountId && !accountIdData.accountId.trim() || validating || saving} variant="secondary">
                 {validating ? "Checking..." : "Check"}
               </Button>
             </div>
@@ -390,6 +418,43 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             </p>
           </div>
           }
+        {usesAwsCredentialForm &&
+          <div className="bg-dd-surface-2/50 p-4 rounded-lg border border-dd-accent/20">
+            <h3 className="font-semibold mb-3 text-sm">AWS Credentials</h3>
+            <Input
+              label="AWS Profile (SSO, recommended)"
+              value={awsData.profile}
+              onChange={(e) => setAwsData({ ...awsData, profile: e.target.value })}
+              placeholder="my-sso-profile" />
+            
+            <p className="text-xs text-dd-muted mt-2">
+              Name a profile from <code>~/.aws/config</code>, leave the API Key field empty, then run
+              {" "}<code>aws sso login --profile {awsData.profile || "my-sso-profile"}</code>.
+              Credentials are resolved and refreshed for you.
+            </p>
+            <div className="flex flex-col gap-3 mt-4">
+              <Input
+                label="Access Key ID (static AWS keys only)"
+                value={awsData.accessKeyId}
+                onChange={(e) => setAwsData({ ...awsData, accessKeyId: e.target.value })}
+                placeholder="AKIA..." />
+              
+              <Input
+                label="Session Token (temporary ASIA... keys only)"
+                type="password"
+                value={awsData.sessionToken}
+                onChange={(e) => setAwsData({ ...awsData, sessionToken: e.target.value })}
+                placeholder="FwoGZXIvYXdz..."
+                autoComplete="off" />
+              
+            </div>
+            <p className="text-xs text-dd-muted mt-2">
+              For static AWS keys, put the AWS <strong>secret</strong> access key in the API Key
+              field above and the key id here. A plain Bedrock API key goes in the API Key field
+              on its own. A profile, if set, takes precedence over both.
+            </p>
+          </div>
+          }
         {isAzure &&
           <div className="bg-dd-surface-2/50 p-4 rounded-lg border border-dd-accent/20">
             <h3 className="font-semibold mb-3 text-sm">Azure OpenAI Configuration</h3>
@@ -450,7 +515,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </p>
 
         <div className="flex gap-2">
-          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || !hasConfigurableHost && (!formData.name || !formData.apiKey) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
+          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" className="w-full">

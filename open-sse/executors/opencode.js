@@ -18,10 +18,10 @@ import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
  * 1. `x-opencode-session` matches the canonical `ses_<12 hex><14 base62>`
  *    shape (`OPENCODE_SESSION_RE`) — an arbitrary opaque id is rejected.
  * 2. `User-Agent` looks like `opencode/<version>` with version >= 1.17.0.
- * 3. Muse Responses requests declare the `bash`/`read` fingerprint tools
- *    upstream's own CLI always sends, even when the caller already supplied
- *    its own tools (#4155) — cloaked as unusable decoys so a real client
- *    tool of the same name still wins.
+ * 3. Every request declares the `bash`/`glob`/`grep`/`read` fingerprint tools
+ *    upstream's own CLI always sends (#4188), even when the caller already
+ *    supplied its own tools (#4155) — cloaked as unusable decoys so a real
+ *    client tool of the same name still wins.
  *
  * Session identity is resolved once per request in `prepareRequestCredentials`
  * (called from `execute`) onto a request-local credentials copy, mirroring
@@ -64,7 +64,11 @@ import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
  * compact-endpoint guard) applies to it exactly like any other non-Muse
  * model.
  */
-const OPENCODE_UA = "opencode/1.18.31";
+// Full official-client identity string (upstream #4128). Zen's gate reads the
+// whole User-Agent, not just the version token: the real CLI advertises its
+// ai-sdk and runtime alongside `opencode/<version>`, so a bare `opencode/1.18.31`
+// is a weaker fingerprint than the client it is standing in for.
+export const OPENCODE_UA = "opencode/1.18.31 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14";
 // Models served by /zen/v1/messages (Claude wire format); every other model
 // stays on /chat/completions (or /responses, gated separately by /muse/).
 const MESSAGES_MODELS = new Set(["union-alpha"]);
@@ -81,57 +85,79 @@ const LAST_TEXT_MAX_LEN = 600;
 // OpenCode Zen requires User-Agent: opencode/<major>.<minor>[.<patch>] with
 // major.minor >= 1.17 — anything older 426s, anything unversioned 403s.
 function hasValidOpencodeVersion(ua) {
-  const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
+  // Token-bounded: a bare "opencode/X.Y[.Z]" segment, not a substring of a
+  // longer token like "not-opencode/1.18.31" or "opencode/1.18.31extra" -
+  // either would let a header Zen never emitted pass through unchanged.
+  const m = String(ua || "").match(/(?:^|\s)opencode\/(\d+)\.(\d+)(?:\.(\d+))?(?=\s|$)/i);
   if (!m) return false;
   const major = parseInt(m[1], 10);
   const minor = parseInt(m[2], 10);
   return major > 1 || (major === 1 && minor >= 17);
 }
 
-// OpenCode free tier requires both 'bash' and 'read' in tools payload.
-// Injected as cloaked decoy tools so external CLI tools (e.g. Claude Code's Bash/Read)
-// take precedence while satisfying upstream verification.
-export const OPENCODE_DECOY_CHAT_TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "bash",
-      description: "This tool is currently unavailable and must not be used.",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "read",
-      description: "This tool is currently unavailable and must not be used.",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-];
+// Upstream free-tier gate (#4188): Zen rejects a request whose tools payload
+// does not carry the four file-search tools the official CLI always declares.
+// Live bisection upstream: 0-3 of {bash, glob, grep, read} 403s FreeTierError on
+// both /chat/completions and /responses, the full quartet passes; extra caller
+// tools are allowed, invented names are not.
+//
+// Injected as cloaked decoys: the description tells the model the tool is
+// unusable, so it never emits a call the downstream client cannot service, and
+// a real client tool of the same name always wins (only missing names are
+// appended).
+const OPENCODE_FINGERPRINT_TOOLS = ["bash", "glob", "grep", "read"];
+const OPENCODE_DECOY_DESCRIPTION = "This tool is currently unavailable and must not be used.";
 
-export const OPENCODE_DECOY_RESPONSES_TOOLS = [
-  {
-    type: "function",
-    name: "bash",
-    description: "This tool is currently unavailable and must not be used.",
-    parameters: { type: "object", properties: {} },
-  },
-  {
-    type: "function",
-    name: "read",
-    description: "This tool is currently unavailable and must not be used.",
-    parameters: { type: "object", properties: {} },
-  },
-];
+export const OPENCODE_DECOY_CHAT_TOOLS = OPENCODE_FINGERPRINT_TOOLS.map((name) => ({
+  type: "function",
+  function: {
+    name,
+    description: OPENCODE_DECOY_DESCRIPTION,
+    parameters: { type: "object", properties: {} }
+  }
+}));
+
+export const OPENCODE_DECOY_RESPONSES_TOOLS = OPENCODE_FINGERPRINT_TOOLS.map((name) => ({
+  type: "function",
+  name,
+  description: OPENCODE_DECOY_DESCRIPTION,
+  parameters: { type: "object", properties: {} }
+}));
+
+// Claude Messages wire-shaped decoys for MESSAGES_MODELS (union-alpha):
+// {name, input_schema}, not the OpenAI {type, function} envelope.
+export const OPENCODE_DECOY_CLAUDE_TOOLS = OPENCODE_FINGERPRINT_TOOLS.map((name) => ({
+  name,
+  description: OPENCODE_DECOY_DESCRIPTION,
+  input_schema: { type: "object", properties: {} }
+}));
 
 // #4155: cloak decoy tools unconditionally, even when the caller already
-// supplied its own tools — the free tier requires the bash/read fingerprint
-// on every request, not only tool-less ones. A real client tool of the same
-// name is left untouched (only missing decoys are appended).
-function cloakOpencodeTools(body, isResponses) {
+// supplied its own tools — the free tier requires the fingerprint quartet on
+// every request, not only tool-less ones. A real client tool of the same name
+// is left untouched (only missing decoys are appended). `format` is
+// "responses" | "claude" | "chat" — MESSAGES_MODELS (union-alpha) is a Claude
+// Messages body and must get Claude-shaped tools and a Claude tool_choice,
+// never the OpenAI Chat envelope the "chat" branch writes; a mixed body of
+// Claude `input_schema` tools plus OpenAI `function` tools, or a string
+// tool_choice, is rejected by /zen/v1/messages.
+//
+// Name matching here is deliberately exact and case-sensitive: Zen's gate
+// checks for the exact lowercase strings "bash"/"glob"/"grep"/"read"
+// (upstream #4188), so a caller's TitleCase Bash/Glob/Grep/Read tool must
+// never suppress the exact lowercase decoy, or the outgoing request loses
+// the fingerprint and Zen 403s FreeTierError. This does mean a lowercase
+// decoy can coexist with a caller's TitleCase tool of the same base name;
+// if the model calls the decoy, claudeCodeToolRemapper's TOOL_RENAME_MAP
+// renames it back to TitleCase on the response path, so the client sees it
+// as a real tool call (tracked as a MEDIUM, deferred: fixing it needs a
+// response-path hook to distinguish an injected decoy call from a real one,
+// which does not exist anywhere in BaseExecutor/translator today and is a
+// separate subsystem change, not a schema/data-loss/security issue — the
+// decoy's own description already tells the model not to call it).
+function cloakOpencodeTools(body, format) {
   if (!body) return;
-  if (isResponses) {
+  if (format === "responses") {
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
     if (!hasTools) body.tools = [];
     // #4146: a malformed tool entry (null/undefined) must not throw here — treat
@@ -144,6 +170,14 @@ function cloakOpencodeTools(body, isResponses) {
     // caller who already supplied its own tools would override their intent
     // (e.g. an explicit "required" or a named tool_choice).
     if (!hasTools && !body.tool_choice) body.tool_choice = "auto";
+  } else if (format === "claude") {
+    const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+    if (!hasTools) body.tools = [];
+    const exactNames = new Set(body.tools.map((t) => t?.name || ""));
+    for (const tool of OPENCODE_DECOY_CLAUDE_TOOLS) {
+      if (!exactNames.has(tool.name)) body.tools.push({ ...tool });
+    }
+    if (!hasTools && !body.tool_choice) body.tool_choice = { type: "none" };
   } else {
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
     if (!hasTools) {
@@ -385,7 +419,21 @@ export class OpenCodeExecutor extends BaseExecutor {
       // Strips prior-turn `reasoning` items and their encrypted_content (port of
       // decolua/9router eafac37d) as part of its existing item-shape pass.
       sanitizeResponsesItems(body);
-      cloakOpencodeTools(body, true);
+      cloakOpencodeTools(body, "responses");
+      // Upstream #4128: the real client pins its Responses prompt cache to the
+      // session it is running under. Mirror that with the same canonical
+      // session id, so repeated turns of one conversation share a cache entry.
+      // Only ever fills a missing value: a caller-supplied key wins.
+      const session = credentials?.[SESSION_FIELD];
+      // A whitespace-only key ("   ") is still caller-supplied by the null
+      // check above but is not a usable cache key — Zen can 400 on a blank
+      // one. Treat trim-empty the same as missing so the session pin runs.
+      const hasUsableCacheKey = isString(body.prompt_cache_key) ?
+      body.prompt_cache_key.trim() !== "" :
+      body.prompt_cache_key !== undefined && body.prompt_cache_key !== null;
+      if (session && !hasUsableCacheKey) {
+        body.prompt_cache_key = session;
+      }
       // OpenCode Free 400s muse-spark-1.3-contributor-free when tool_choice is
       // anything but "auto" (port of decolua/9router aa14ef72). cloakOpencodeTools
       // above only defaults a missing tool_choice (and only when the caller sent
@@ -396,7 +444,7 @@ export class OpenCodeExecutor extends BaseExecutor {
         body.tool_choice = "auto";
       }
     } else if (body) {
-      cloakOpencodeTools(body, false);
+      cloakOpencodeTools(body, MESSAGES_MODELS.has(model) ? "claude" : "chat");
     }
     const transformed = injectReasoningContent({ provider: this.provider, model, body });
     /** Muse Responses rejects every Chat and Responses token-cap spelling. */

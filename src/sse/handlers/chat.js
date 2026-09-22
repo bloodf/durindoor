@@ -76,6 +76,13 @@ const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
 const ANTIGRAVITY_STRIKE_WINDOW_MS = 60_000;
 const ANTIGRAVITY_STRIKE_BLOCK_MS = 15 * 60_000;
+// Google's quota API can report remaining quota while generation endpoints
+// keep returning 429 for other reasons (content-triggered rejections). Only
+// count a 429 toward the strike breaker when parseUpstreamError found an
+// actual quota marker in the raw body (result.antigravityQuotaSignal); the
+// client-facing result.error is always the redacted "Rate limit exceeded"
+// message for every 429, so matching markers against it never fires. A
+// generic 429 still gets the normal cooldown but never trips the breaker.
 const antigravity429Strikes = new Map();
 
 function antigravityStrikeKey(connectionId, model) {
@@ -1263,8 +1270,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       const antigravityProvider = provider === "antigravity" || provider === "agy";
       const authoritativeResetAt = Number(result.rateLimitEvidence?.resetAtMs);
-      const authoritativeReset = Number.isFinite(result.resetsAtMs) ||
-      Number.isFinite(authoritativeResetAt) && authoritativeResetAt > Date.now();
+      // chatCore fills result.resetsAtMs with a generic local cooldown (e.g. 2s)
+      // for ANY 429 that arrives without a reset hint, including content-triggered
+      // ones. That value is a client-side guess, not upstream evidence, so it must
+      // never count as authoritative here — only a real upstream reset timestamp
+      // (rateLimitEvidence.resetAtMs) does. Using the local fallback would make
+      // every antigravity 429 look "authoritative" and defeat the strike breaker.
+      const authoritativeReset = Number.isFinite(authoritativeResetAt) && authoritativeResetAt > Date.now();
       if (antigravityProvider && result.status === 429 && authoritativeReset) {
         clearAntigravity429Strikes(credentials.connectionId, model);
       }
@@ -1309,7 +1321,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         }
       }
 
-      const strikeBreakerResetAt = antigravityProvider && result.status === 429 && !authoritativeReset ?
+      const strikeBreakerResetAt = antigravityProvider && result.status === 429 && !authoritativeReset && result.antigravityQuotaSignal === true ?
       recordAntigravity429Strike(credentials.connectionId, model) :
       null;
       const fallbackResetAt = strikeBreakerResetAt ?? result.resetsAtMs;

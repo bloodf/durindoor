@@ -57,6 +57,14 @@ Same paste flow as [Connecting accounts](./connecting-accounts.mdx): Dashboard, 
 
 OpenCode Free is registry id `opencode`, alias `oc`, `noAuth: true`, and `autoComboNoAuth: true`. The static catalog currently lists Ox Alpha Free as `oc/x-preview-f-free` over Chat Completions. OpenCode Go subscribers can use the same model as `ocg/ox-alpha-free`. Catalog rows can change; `GET /v1/models` is the live list.
 
+Upstream gates the free tier on the request looking like the official OpenCode client and answers anything else with HTTP 403 `FreeTierError`. DurinDoor satisfies that gate for you, so no client-side setup is needed:
+
+- A gate-valid downstream `User-Agent` (one already recognized as the official client) is forwarded as sent; anything else is replaced with the full official-client string. A canonical `ses_...` session id and a stable `x-opencode-request` per turn are also sent on every free-tier dispatch.
+- The four file-search tools the official client always declares (`bash`, `glob`, `grep`, `read`, exact lowercase) are appended to the `tools` payload of every request, on the Chat Completions, Responses, and Messages routes. They are cloaked: their description tells the model they are unusable, and a tool you send under the exact same name always wins, so your own tool set is never altered. A tool you send under a differently-cased name (e.g. `Bash`) is kept alongside the lowercase decoy, since the gate checks for the exact lowercase strings.
+- Muse Responses requests get a `prompt_cache_key` pinned to the session, so the turns of one conversation share an upstream prompt cache. A `prompt_cache_key` you send yourself is left alone, unless it is blank or whitespace-only, which is treated as missing and replaced with the session id.
+
+Both Muse Spark contributor models (`muse-spark-1.2-contributor-free` and `muse-spark-1.3-contributor-free`) reject any `tool_choice` other than `auto` with HTTP 400, so DurinDoor demotes an explicit one for those two ids.
+
 ## Xiaomi token plan
 
 `xiaomi-tokenplan` (aliases `xmtp`) is an API-key provider for SenseNova Token Plan keys (`tp-` prefix). Region is required: Singapore (`sgp`, default), China (`cn`), or Amsterdam (`ams`). The catalog is discovered at runtime. Use the dashboard or `GET /v1/models` instead of copying ids from this page.

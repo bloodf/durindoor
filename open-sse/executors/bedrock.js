@@ -10,6 +10,7 @@ import {
   buildBedrockNativeConverseUrl,
   resolveBedrockRegion } from
 "../config/bedrock.js";
+import { buildBedrockClientAuth } from "../shared/awsCredentials.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const encoder = new TextEncoder();
@@ -356,14 +357,29 @@ function createOpenAIStreamFromBedrock(stream, model) {
   });
 }
 
-function statusFromError(error) {
+// Errors the SDK's credential and token providers throw before any request is sent: an expired
+// or missing SSO session, an unknown profile, a failing credential_process. They carry no HTTP
+// status, and without this they would surface as a 502 upstream error instead of an auth one.
+const CREDENTIAL_PROVIDER_ERRORS = new Set(["CredentialsProviderError", "TokenProviderError"]);
+
+export function statusFromError(error) {
+  if (CREDENTIAL_PROVIDER_ERRORS.has(error?.name)) return 401;
   const status = Number(error?.$metadata?.httpStatusCode || error?.statusCode || error?.status);
   return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502;
 }
 
+// A credential provider's own message can name local config paths, profile contents or
+// credential_process output, so clients get this instead and the detail stays in the server log.
+const CREDENTIAL_PROVIDER_MESSAGE =
+  "AWS credentials for this connection could not be resolved. Check the profile, and for SSO " +
+  "run `aws sso login` on the server.";
+
 function errorBody(error, fallback = "Bedrock request failed") {
   const status = statusFromError(error);
-  const message = isString(error?.message) && error.message ? error.message : fallback;
+  const isCredentialProviderError = CREDENTIAL_PROVIDER_ERRORS.has(error?.name);
+  if (isCredentialProviderError) console.warn(`[bedrock] credential resolution failed: ${error.message}`);
+  const message = isCredentialProviderError ? CREDENTIAL_PROVIDER_MESSAGE :
+  isString(error?.message) && error.message ? error.message : fallback;
   return {
     error: {
       message,
@@ -395,12 +411,19 @@ export class BedrockExecutor extends BaseExecutor {
     };
   }
 
+  /**
+   * Build a client for this connection's credential mode: a Bedrock API key as a bearer token,
+   * static AWS keys, or a named local AWS profile whose SSO session the SDK resolves and
+   * refreshes on its own.
+   *
+   * @param {object} credentials - Connection credentials.
+   * @returns {BedrockRuntimeClient}
+   */
   createClient(credentials) {
     if (this.clientFactory) return this.clientFactory(credentials);
     return new BedrockRuntimeClient({
       region: resolveBedrockRegion(credentials?.providerSpecificData),
-      token: { token: credentials.apiKey },
-      authSchemePreference: ["httpBearerAuth"],
+      ...buildBedrockClientAuth(credentials),
       maxAttempts: 1
     });
   }
@@ -410,18 +433,9 @@ export class BedrockExecutor extends BaseExecutor {
     body = this.clampCustomMaxOutput({ ...body }, requestContext);
     const url = this.buildUrl(model, stream, 0, credentials);
     const headers = this.buildHeaders(credentials);
-    if (!credentials?.apiKey) {
-      return {
-        response: new Response(JSON.stringify(errorBody({ name: "MissingCredentials", message: "Missing Bedrock API key", status: 401 })), {
-          status: 401,
-          headers: { "Content-Type": "application/json" }
-        }),
-        url,
-        headers,
-        transformedBody: null
-      };
-    }
-
+    // No API-key precheck here: a connection may authenticate with an AWS profile or static AWS
+    // keys instead, so what counts as "configured" is decided by createClient below. Its
+    // credential errors carry status 401 and land in the same catch as any upstream failure.
     const transformedBody = openAIToBedrockConverse(model, body);
     try {
       const client = this.createClient(credentials);

@@ -1134,7 +1134,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             connection.provider,
             connection.apiKey,
             (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
-            connection.providerSpecificData || {}
+            connection.providerSpecificData || {},
+            { sessionToken: connection.sessionToken }
           );
           if (result) {
             return {

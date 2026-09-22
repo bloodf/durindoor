@@ -582,20 +582,27 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
   } else {
     const translationModel = resolveKiroTranslationModel(targetFormat, alias, cleanModel, cleanUpstreamModel);
-    translatedBody = translateRequest(
-      sourceFormat,
-      targetFormat,
-      translationModel,
-      body,
-      stream,
-      credentials,
-      provider,
-      reqLogger,
-      stripList,
-      connectionId,
-      clientTool,
-      { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities }
-    );
+    try {
+      translatedBody = translateRequest(
+        sourceFormat,
+        targetFormat,
+        translationModel,
+        body,
+        stream,
+        credentials,
+        provider,
+        reqLogger,
+        stripList,
+        connectionId,
+        clientTool,
+        { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities }
+      );
+    } catch (error) {
+      // Translators flag a malformed client payload with statusCode 400; anything else is ours.
+      if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+      finishTimeline("error", "error", error.message);
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
     if (!translatedBody) {
       finishTimeline("error", "error", `Failed to translate request for ${sourceFormat} to ${targetFormat}`);
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request for ${sourceFormat} → ${targetFormat}`);

@@ -61,6 +61,7 @@ export default {
     { id: "grok-build-0.1", name: "Grok Build 0.1" },
     { id: "grok-4.5", name: "Grok 4.5" },
     { id: "grok-4.6", name: "Grok 4.6" },
+    { id: "grok-4.7", name: "Grok 4.7" },
     { id: "glm-5", name: "GLM-5" },
     { id: "glm-5.1", name: "GLM-5.1" },
     { id: "glm-5.2", name: "GLM-5.2" },

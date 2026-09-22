@@ -72,6 +72,25 @@ describe("Astra pricing API roundtrip", () => {
     });
   });
 
+  // PROVIDER_PRICING.xai carries longContextInclusive; it must round-trip like
+  // the other server-owned tier fields and stay server-owned after an edit.
+  it("round-trips the xAI inclusive long-context tier and rejects a forged flag", async () => {
+    const pricing = await (await GET()).json();
+    expect(pricing.xai["grok-code-fast-1"].longContextInclusive).toBe(true);
+    pricing.xai["grok-code-fast-1"].input = 1.5;
+    expect((await patch(pricing)).status).toBe(200);
+
+    expect(await pricingRepo.getPricingForModel("xai", "grok-code-fast-1")).toMatchObject({
+      input: 1.5,
+      longContextThreshold: 200000,
+      longContextInclusive: true,
+    });
+    expect((await pricingRepo.getUserPricing()).xai["grok-code-fast-1"]).not.toHaveProperty("longContextInclusive");
+
+    const forged = await patch({ xai: { "grok-code-fast-1": { input: 1, longContextInclusive: false } } });
+    expect(forged.status).toBe(400);
+  });
+
   it("rejects altered tier metadata and arrays at the pricing boundary", async () => {
     const forgedTier = await patch({
       openai: {

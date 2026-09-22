@@ -105,4 +105,90 @@ describe.skipIf(!PG_UP)("PostgreSQL delete paths (live cluster)", () => {
     expect(await db.getApiKeyById(key.id)).toBeNull();
     await expect(db.deleteApiKeyGroup(group.id)).resolves.toBe(true);
   });
+
+  describe("through the dashboard routes", () => {
+    let providerRoute;
+    let nodeRoute;
+
+    beforeAll(async () => {
+      providerRoute = await import("@/app/api/providers/[id]/route.js");
+      nodeRoute = await import("@/app/api/provider-nodes/[id]/route.js");
+    });
+
+    const call = (route, url, id) =>
+      route.DELETE(new Request(url, { method: "DELETE" }), { params: Promise.resolve({ id }) });
+
+    const quotaSnapshot = (connectionId, provider) => ({
+      identity: { connectionId, provider, dimensionKey: "requests:session" },
+      state: "available",
+      amounts: { limitKind: "bounded", limit: 100, used: 10, remaining: 90, remainingRatio: 0.9, unit: "requests" },
+      timing: { observedAt: new Date().toISOString(), staleAt: new Date(Date.now() + 3_600_000).toISOString(), resetAt: null, cooldownUntil: null },
+      provenance: { sourceType: "provider_api", sourceId: `${provider}:quota:v1`, reasonCode: null, metadata: {} },
+    });
+
+    // Rows that hang off a connection: quota snapshot + fetch state, usage
+    // last-seen, and a connection-group membership.
+    async function attachDependents(conn) {
+      await db.upsertProviderQuotaSnapshot(quotaSnapshot(conn.id, conn.provider));
+      await db.saveRequestUsage({
+        provider: conn.provider, model: "m", connectionId: conn.id,
+        tokens: { prompt_tokens: 1, completion_tokens: 1 }, timestamp: new Date().toISOString(), status: "ok",
+      });
+      await db.createConnectionGroup({ name: `group-${conn.id.slice(0, 8)}`, connectionIds: [conn.id] });
+    }
+
+    function dependentCounts(id) {
+      const count = (table) => adapter.get(`SELECT COUNT(*) AS c FROM ${table} WHERE connectionId = ?`, [id]).c;
+      return ["providerQuotaSnapshots", "quotaFetchStates", "connectionGroupMembers"].map(count);
+    }
+
+    it("deletes an OAuth account with tokens, auto-ping, quota, usage and group rows", async () => {
+      const conn = await db.createProviderConnection({
+        provider: "claude", authType: "oauth", email: "owner@example.com", name: "claude-oauth",
+        accessToken: "at-secret", refreshToken: "rt-secret", expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        isActive: true,
+      });
+      await db.setProviderConnectionAutoPing(conn.id, true);
+      await attachDependents(conn);
+      expect(dependentCounts(conn.id)).toEqual([1, 1, 1]);
+
+      const res = await call(providerRoute, `http://localhost/api/providers/${conn.id}`, conn.id);
+      expect(res.status).toBe(200);
+      expect(await db.getProviderConnectionById(conn.id)).toBeNull();
+      expect(dependentCounts(conn.id)).toEqual([0, 0, 0]);
+      const settings = await db.getSettings();
+      expect(settings.claudeAutoPing?.connections?.[conn.id]).toBeUndefined();
+    });
+
+    it("deletes an API-key account with quota, usage and group rows", async () => {
+      const conn = await connection("route-apikey");
+      await attachDependents(conn);
+
+      const res = await call(providerRoute, `http://localhost/api/providers/${conn.id}`, conn.id);
+      expect(res.status).toBe(200);
+      expect(await db.getProviderConnectionById(conn.id)).toBeNull();
+      expect(dependentCounts(conn.id)).toEqual([0, 0, 0]);
+    });
+
+    it("answers 409 for the last scoped account of a key and 404 once it is gone", async () => {
+      const conn = await connection("route-scoped");
+      const key = await db.createApiKey("route-scoped", "abcd1234", [], null, null, { providerConnectionIds: [conn.id] });
+      const url = `http://localhost/api/providers/${conn.id}`;
+      expect((await call(providerRoute, url, conn.id)).status).toBe(409);
+      await db.deleteApiKey(key.id);
+      expect((await call(providerRoute, url, conn.id)).status).toBe(200);
+      expect((await call(providerRoute, url, conn.id)).status).toBe(404);
+    });
+
+    it("deletes a compatible provider node together with its accounts", async () => {
+      const node = await db.createProviderNode({
+        type: "openai-compatible", name: "Local", prefix: "local", apiType: "chat", baseUrl: "http://127.0.0.1:9",
+      });
+      const conn = await connection("node-account", node.id);
+      const res = await call(nodeRoute, `http://localhost/api/provider-nodes/${node.id}`, node.id);
+      expect(res.status).toBe(200);
+      expect(await db.getProviderConnectionById(conn.id)).toBeNull();
+      expect(await db.getProviderNodeById(node.id)).toBeNull();
+    });
+  });
 });

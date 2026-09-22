@@ -7,7 +7,7 @@ import {
 import { MEMORY_CONFIG } from "open-sse/config/runtimeConfig.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
 import { describeProviderError } from "open-sse/utils/error.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
@@ -1014,6 +1014,11 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
  * @param {string} errorText
  * @param {string|null} provider
  * @param {string|null} model - The specific model that triggered the error
+ * @param {number|null} resetsAtMs - Provider-supplied reset timestamp, when known
+ * @param {object} context - Extra attempt state. `context.usedCredential` carries the
+ *   credential the rejected request actually presented, so a durable-credential
+ *   provider can mark exactly the generation that was rejected and skip one a newer
+ *   login has already replaced.
  * @returns {{ shouldFallback: boolean, cooldownMs: number }}
  */
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, context = {}) {
@@ -1056,6 +1061,45 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       backoffLevel: 0
     });
     return { shouldFallback: true, cooldownMs: 0 };
+  }
+  // A durable credential (OrcaRouter key) has no refresh grant, so a rejection
+  // is terminal. Quarantine the exact account the way Codex does: out of
+  // rotation, reauth_required (which clearAccountError never clears), until a
+  // new login or key replaces it. `expectedUpdatedAt` skips the write when the
+  // row changed after it was loaded, so a key saved by a concurrent re-login is
+  // never stamped as rejected.
+  if (isDurableCredentialProvider(resolveProviderId(provider))) {
+    // A late failure from a key the user has since replaced says nothing about
+    // the stored key: no status, lock, or backoff lands on the replacement.
+    const usedCredential = context?.usedCredential ?? null;
+    if (conn && usedCredential && conn.accessToken !== usedCredential && conn.apiKey !== usedCredential) {
+      return { shouldFallback: true, cooldownMs: 0 };
+    }
+    const reauthFields = durableCredentialReauthFields(conn, context?.usedCredential ?? null, status, errorText);
+    if (reauthFields) {
+      const clearLocks = Object.fromEntries(
+        Object.keys(conn).
+        filter((field) => field.startsWith("modelLock_")).
+        map((field) => [field, null])
+      );
+      try {
+        await updateProviderConnection(connectionId, {
+          ...clearLocks,
+          ...reauthFields,
+          testStatus: "reauth_required",
+          isActive: false,
+          errorCode: status,
+          lastError: "OrcaRouter credential rejected, sign in again",
+          lastErrorAt: new Date(observedAt).toISOString(),
+          backoffLevel: 0
+        }, { expectedUpdatedAt: conn.updatedAt || null });
+        log.warn("AUTH", `${connectionId.slice(0, 8)} durable credential rejected with ${status}; quarantining for reauth`);
+      } catch (error) {
+        if (error?.code !== "PROVIDER_CONNECTION_REVISION_CONFLICT") throw error;
+        log.warn("AUTH", `${connectionId.slice(0, 8)} changed before the reauth write; leaving the newer credential alone`);
+      }
+      return { shouldFallback: true, cooldownMs: 0 };
+    }
   }
   // Qoder code 112 cannot recover through a timed model cooldown. Persist a
   // dedicated discriminator so renderers never mistake stale generic errors

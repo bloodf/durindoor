@@ -9,6 +9,7 @@ import { Chip } from "@/shared/ui/components/Chip.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { useOrcaRouterCatalog } from "@/shared/hooks/useOrcaRouterCatalog";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 
@@ -71,6 +72,17 @@ export default function ModelSelectModal({
     });
   }, [activeProviders, kindFilter]);
   const { getCaps } = useModelCaps(isOpen);
+  // OrcaRouter: capability-scoped live catalog. `kindFilter` selects the entry
+  // point, so the model list is recomputed whenever the selector changes kind.
+  const orcaCapability = kindFilter === "embedding" ? "embedding" :
+  kindFilter === "image" ? "image" :
+  kindFilter === "video" ? "video" :
+  "chat";
+  const orcaConnectionIds = useMemo(
+    () => (activeProviders || []).filter((p) => p?.provider === "orcarouter" && p.isActive !== false).map((p) => p.id),
+    [activeProviders]
+  );
+  const orcaCatalog = useOrcaRouterCatalog(isOpen, orcaConnectionIds, orcaCapability, null);
   const [searchQuery, setSearchQuery] = useState("");
   const [combos, setCombos] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
@@ -300,6 +312,27 @@ export default function ModelSelectModal({
           alias,
           models: [{ id: providerId, name: providerInfo.name, value: providerId }]
         };
+        return;
+      }
+
+      // OrcaRouter resolves first: its capability-filtered live catalog is
+      // authoritative and must win over the passthrough branch below, which only
+      // knows locally-registered aliases. An empty slice exposes no options at
+      // all rather than degrading to free text.
+      if (providerId === "orcarouter") {
+        const live = orcaCatalog.models;
+        if (live.length > 0) {
+          groups[providerId] = {
+            name: providerInfo.name,
+            alias,
+            color: providerInfo.color,
+            models: live.map((m) => ({
+              id: m.id,
+              name: m.name || m.id,
+              value: `${alias}/${m.id}`
+            }))
+          };
+        }
         return;
       }
 
@@ -546,7 +579,7 @@ export default function ModelSelectModal({
     }
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels, visibleModelIds]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels, visibleModelIds, orcaCatalog]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
@@ -627,6 +660,18 @@ export default function ModelSelectModal({
           <span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-accent">info</span>
           <span>Click to add, click again to remove. Changes are saved automatically.</span>
         </div>
+        {/* A degraded (fallback) OrcaRouter list is labelled rather than presented
+            as live discovery. */}
+        {orcaCatalog.models.length > 0 && orcaCatalog.degraded ? (
+          <div
+            role="status"
+            data-testid="orca-catalog-degraded"
+            className="flex items-center gap-2 rounded-dd-lg border border-dd-warning/30 bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted"
+          >
+            <span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-warning">cloud_off</span>
+            <span>OrcaRouter live catalog unavailable, showing a verified offline list. Reopen to retry.</span>
+          </div>
+        ) : null}
         <Input
           size="sm"
           icon="search"

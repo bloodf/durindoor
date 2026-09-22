@@ -43,7 +43,7 @@ import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS } from "open-sse/config/runtimeConf
 import { EMPTY_CONTENT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { FORMATS, detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
-import { isAntigravityCapacityError, isRequestReplayBufferError } from "open-sse/services/accountFallback.js";
+import { isAntigravityCapacityError, isRequestReplayBufferError, isDurableCredentialProvider } from "open-sse/services/accountFallback.js";
 import { resolveClientSessionId } from "open-sse/utils/sessionManager.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials } from "../services/tokenRefresh.js";
@@ -1170,7 +1170,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         compressionEngines: chatSettings.compressionEngines || {},
         // Detect source format by endpoint + body
         sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
-        ...(activeConnection?.authType === "oauth" ? {
+        // A durable credential (OrcaRouter) has nothing to refresh: injecting the
+        // refresher would hand chatCore the same rejected key to retry.
+        ...(activeConnection?.authType === "oauth" && !isDurableCredentialProvider(activeConnection.provider) ? {
           refreshCredentials: async ({ signal, force = true } = {}) => {
             const refreshed = await refreshAndUpdateCredentials(
               activeConnection,
@@ -1339,6 +1341,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           rateLimitEvidence: fallbackEvidence,
           headers: resultHeaders,
           errorBody: resultErrorBody,
+          // The credential this attempt actually presented, so a durable-key
+          // provider can mark exactly the generation that was rejected.
+          usedCredential: credentials.accessToken || credentials.apiKey || null,
           signal: requestSignal
         }
       );

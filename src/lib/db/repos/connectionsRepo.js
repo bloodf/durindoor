@@ -7,6 +7,7 @@ import { providerRefreshContextMatches } from "@/shared/utils/providerCredential
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
 import { assertNoActiveQuotaReservationsForTargetSync } from "./quotaReservationsRepo.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
+import { ORCAROUTER_ID, credentialHint } from "open-sse/providers/orcarouterCatalog.js";
 import { QUOTA_MAX_CLOCK_SKEW_MS } from "@/shared/constants/quota";
 import {
   encryptField,
@@ -51,7 +52,12 @@ function resetHealthStateOnActivation(existing, patch) {
     lastErrorAt: Object.hasOwn(patch, "lastErrorAt") ? patch.lastErrorAt : null,
     errorCode: null,
     rateLimitedUntil: null,
-    backoffLevel: 0
+    backoffLevel: 0,
+    // A successful activation is a new, working credential — clear any pending
+    // reauthentication flag left by a previously rejected one.
+    needsReauth: false,
+    reauthReason: null,
+    reauthAt: null
   };
 
   for (const key of Object.keys(existing || {})) {
@@ -123,6 +129,19 @@ function rowToConn(row) {
 
 function connToRow(c) {
   const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
+  // Derive (not inherit) the redacted handle on every write, so replacing a
+  // connection's key can never leave a hint describing the previous secret.
+  // Runs before encryption, which is the only point the plaintext is still here.
+  if (provider === ORCAROUTER_ID) {
+    const secret = rest.accessToken || rest.apiKey;
+    // An already-encrypted blob is not the secret, so a hint derived from it
+    // would be meaningless; leave whatever hint the row already carries.
+    if (!isEncryptedBlob(secret)) {
+      const hint = credentialHint(secret);
+      if (hint) rest.keyHint = hint;
+      else delete rest.keyHint;
+    }
+  }
   // Encrypt the four sensitive fields if present. Already-encrypted blobs
   // pass through so re-writes from rowToConn don't double-encrypt.
   for (const field of SENSITIVE_CONNECTION_FIELDS) {

@@ -90,6 +90,7 @@ export function canDiscoverModels(connection) {
     // the resolver would refuse or refuse meaningfully.
     switch (provider) {
       case "kimchi":
+      case "orcarouter":
         return Boolean(connection.accessToken || connection.apiKey);
       case "kiro":
         return Boolean(connection.accessToken);

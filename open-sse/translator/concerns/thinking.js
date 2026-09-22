@@ -34,6 +34,11 @@ export function effortToThinkingLevel(effort) {
 
 // Numeric budget → nearest discrete level (reverse map via thresholds).
 // Returns null when budget <= 0 (no reasoning).
+// Thresholds sit at the midpoints between LEVEL_TO_BUDGET values, so every
+// level stays reachable. Without the top threshold "max" is unreachable from a
+// numeric budget: Claude Code sends its default thinking budget as
+// budget_tokens, and anything above 28672 used to collapse to "xhigh".
+// xhigh is 32768 and max is 128000, so their midpoint is 80384.
 export function budgetToLevel(budget) {
   const b = Number(budget);
   if (!b || b <= 0) return null;
@@ -41,7 +46,8 @@ export function budgetToLevel(budget) {
   if (b <= 4096) return "low";
   if (b <= 16384) return "medium";
   if (b <= 28672) return "high";
-  return "xhigh";
+  if (b <= 80384) return "xhigh";
+  return "max";
 }
 
 // Gemini thinkingBudget (numeric) → OpenAI reasoning_effort (antigravity reverse map).

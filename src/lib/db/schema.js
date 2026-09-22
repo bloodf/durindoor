@@ -6,7 +6,7 @@ import { TOKEN_SAVER_DAILY_TABLES } from "./migrations/token-saver-daily-schema.
 // 19 is intentionally skipped: it is reserved for the PostgreSQL-only
 // `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
 // shared version to carry the same name in both migration sets.
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -260,6 +260,20 @@ export const TABLES = {
       tokens: "TEXT",
       meta: "TEXT",
       usageEventId: "TEXT",
+      // Wall-clock duration of the upstream call and its time to first token,
+      // both in ms. Stored on the usage row so throughput aggregates per model,
+      // account and key without joining requestDetails. 0 means "not timed":
+      // rows written before this existed keep contributing tokens but no rate.
+      latencyMs: "INTEGER NOT NULL DEFAULT 0",
+      ttftMs: "INTEGER NOT NULL DEFAULT 0",
+      // Per-rate split of `cost`, priced at insert where the request's own
+      // long-context tier is known. NULL on rows written before this existed
+      // and on provider-reported costs, which carry no rates to split with.
+      inputCost: "REAL",
+      cachedCost: "REAL",
+      cacheCreationCost: "REAL",
+      outputCost: "REAL",
+      reasoningCost: "REAL",
       // Set only for requests dispatched through a combo after issue #747.
       // Existing rows remain NULL; never backfilled/inferred.
       comboId: "TEXT",

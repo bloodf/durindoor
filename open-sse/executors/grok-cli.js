@@ -398,6 +398,12 @@ export class GrokCliExecutor extends BaseExecutor {
         }
       }
     } else if (caps.reasoning !== false) {
+      // Grok 4.5-4.7 cannot disable reasoning; their published floor is low.
+      if (caps.thinkingCanDisable === false) {
+        if (body.reasoning_effort === "none") body.reasoning_effort = "low";
+        if (body.reasoning?.effort === "none") body.reasoning = { ...body.reasoning, effort: "low" };
+        if (modelEffort === "none") modelEffort = "low";
+      }
       if (!body.reasoning || !isObject(body.reasoning)) {
         const effort = body.reasoning_effort || modelEffort || "high";
         body.reasoning = { effort, summary: "concise" };

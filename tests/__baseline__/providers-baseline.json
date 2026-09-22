@@ -2177,5 +2177,12 @@
     "thinkingFormat": "tokenmarket",
     "format": "openai",
     "authType": "apikey"
+  },
+  "orcarouter": {
+    "baseUrl": "https://api.orcarouter.ai/v1/chat/completions",
+    "validateUrl": "https://api.orcarouter.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey",
+    "tokenUrl": "https://www.orcarouter.ai/api/v1/auth/keys"
   }
 }

@@ -26,10 +26,9 @@ function sortData(dataMap, pendingMap = {}, sortBy, sortOrder) {
   map(([key, data]) => {
     const totalTokens = (data.promptTokens || 0) + (data.completionTokens || 0);
     const totalCost = data.cost || 0;
-    // ponytail: cost split is a token-share allocation of the (rate-accurate)
-    // server total, not a per-rate recompute. cached is a subset of prompt, so
-    // peel it out of the input share. Upgrade to a stored per-component cost
-    // breakdown if exact cached-rate cost display is needed.
+    // Cost categories are priced at their own rates server-side, where pricing
+    // lives; allocateUsageCost falls back to a token-share split only for
+    // buckets whose model has no pricing entry.
     const allocation = allocateUsageCost(data);
     return { ...data, key, totalTokens, totalCost, ...allocation, pending: pendingMap[key] || 0 };
   }).
@@ -62,7 +61,7 @@ function groupDataByKey(data, keyField) {
     if (!groups[gk]) {
       groups[gk] = {
         groupKey: gk,
-        summary: { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, totalTokens: 0, cost: 0, inputCost: 0, cachedCost: 0, cacheCreationCost: 0, outputCost: 0, reasoningCost: 0, lastUsed: null, pending: 0 },
+        summary: { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, totalTokens: 0, cost: 0, inputCost: 0, cachedCost: 0, cacheCreationCost: 0, outputCost: 0, reasoningCost: 0, unsplitCost: 0, lastUsed: null, pending: 0 },
         items: []
       };
     }
@@ -80,6 +79,7 @@ function groupDataByKey(data, keyField) {
     s.cacheCreationCost += item.cacheCreationCost || 0;
     s.outputCost += item.outputCost || 0;
     s.reasoningCost += item.reasoningCost || 0;
+    s.unsplitCost += item.unsplitCost || 0;
     s.pending += item.pending || 0;
     if (item.lastUsed && (!s.lastUsed || new Date(item.lastUsed) > new Date(s.lastUsed))) {
       s.lastUsed = item.lastUsed;

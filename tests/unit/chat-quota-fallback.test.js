@@ -135,11 +135,20 @@ function exhaustedQuotaSnapshot(connectionId, provider, model, resetAt) {
 }
 
 function antigravityFailure(options, status = 429, extra = {}) {
+  // parseUpstreamError redacts every 429 body to this exact message before
+  // chat.js ever sees `result.error` (open-sse/utils/error.js); the real
+  // signal chat.js reads is `antigravityQuotaSignal`, which parseUpstreamError
+  // derives from the raw body separately. Default it true for 429s so
+  // existing strike-breaker scenarios keep simulating a genuine
+  // optimistic-quota 429, not a content-triggered one (see the dedicated
+  // content-429 test below).
+  const error = status === 429 ? "[429]: Rate limit exceeded" : `HTTP ${status}`;
   return {
     success: false,
     status,
-    error: `HTTP ${status}`,
-    response: new Response(`HTTP ${status}`, { status }),
+    error,
+    antigravityQuotaSignal: status === 429,
+    response: new Response(error, { status }),
     attemptStartedAt: options.onProviderAttempt(),
     ...extra,
   };
@@ -637,7 +646,12 @@ describe("chat quota fallback orchestration", () => {
       success: false,
       status: 429,
       error: "Rate limit exceeded",
+      // resetsAtMs alone is not a reliable authoritative-reset signal: chatCore
+      // fills it with a generic local cooldown for ANY 429 without a hint, so
+      // an executor-authoritative reset must be carried on rateLimitEvidence
+      // too, exactly as the real parser attaches it.
       resetsAtMs: resetAtMs,
+      rateLimitEvidence: { state: "cooldown", resetAtMs, source: "executor" },
       response: new Response("rate limited", { status: 429 }),
       attemptStartedAt: options.onProviderAttempt(),
     }));
@@ -791,6 +805,31 @@ describe("chat quota fallback orchestration", () => {
     ]);
   });
 
+  it("never strike-breaks on generic content-triggered Antigravity 429s", async () => {
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-content-429", "antigravity");
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options, 429, {
+      // Content-triggered 429s get the identical redacted message in
+      // production; antigravityQuotaSignal false is what actually
+      // distinguishes them from a real quota 429.
+      antigravityQuotaSignal: false,
+    }));
+
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+    await handleChat(request(`antigravity/${model}`));
+
+    expect(mocks.markAccountUnavailable.mock.calls.map((call) => call[5])).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
   it("counts reset-free 429s when reactive quota refresh fails", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
@@ -806,6 +845,35 @@ describe("chat quota fallback orchestration", () => {
       await handleChat(request(`agy/${model}`));
       await handleChat(request(`agy/${model}`));
       await handleChat(request(`agy/${model}`));
+
+      expect(mocks.markAccountUnavailable.mock.calls.at(-1)[5]).toBe(Date.parse("2026-09-01T00:15:00.000Z"));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still counts strikes toward the 15-minute lock when chatCore's local cooldown fills resetsAtMs", async () => {
+    // chatCore.js fills result.resetsAtMs with a short local backoff (checkFallbackError's
+    // ~2s cooldown) for ANY 429 that arrives without an explicit reset hint, including a
+    // genuine optimistic-quota 429 (antigravityQuotaSignal true, no rateLimitEvidence). That
+    // client-side guess must not be mistaken for an authoritative upstream reset, or the
+    // strike breaker never reaches the third strike and the 15-minute lock never opens.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+    const model = "claude-opus-4-6-thinking";
+    const account = selected("ag-local-cooldown", "antigravity");
+    mocks.getModelInfo.mockResolvedValue({ provider: "antigravity", model });
+    mocks.getProviderCredentials.mockResolvedValue(account);
+    mocks.refreshProviderQuota.mockResolvedValue({ outcome: "success", snapshots: [] });
+    mocks.handleChatCore.mockImplementation(async (options) => antigravityFailure(options, 429, {
+      resetsAtMs: Date.now() + 2_000,
+    }));
+    mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false, cooldownMs: 0 });
+
+    try {
+      await handleChat(request(`antigravity/${model}`));
+      await handleChat(request(`antigravity/${model}`));
+      await handleChat(request(`antigravity/${model}`));
 
       expect(mocks.markAccountUnavailable.mock.calls.at(-1)[5]).toBe(Date.parse("2026-09-01T00:15:00.000Z"));
     } finally {

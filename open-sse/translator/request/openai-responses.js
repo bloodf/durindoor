@@ -15,7 +15,8 @@ import {
   buildDeclaredToolTypes,
   resolveDeclaredCustom,
 } from "../formats/responsesApi.js";
-import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
+import { collapseTextParts } from "../concerns/message.js";
 
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
@@ -92,6 +93,43 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let currentAssistantMsg = null;
   let pendingToolResults = [];
   let pendingReasoning = "";
+  // call_ids skipped at FUNCTION_CALL time (nameless, #444) never get a
+  // tool_calls entry. Their function_call_output must be dropped too, or the
+  // "tool" message that follows references a tool_call_id that does not
+  // exist in the assistant turn — OpenAI-shaped APIs reject that pairing.
+  const skippedCallIds = new Set();
+
+  // A blank content value carries no text worth keeping: null/undefined, an
+  // empty or whitespace-only string, or a part array that is empty or holds
+  // only whitespace-only text parts (Responses text always arrives as a part
+  // array, e.g. `[{type:"output_text", text:""}]`, never a bare "").
+  const isBlankContent = (content) => {
+    if (content == null) return true;
+    if (isString(content)) return content.trim() === "";
+    if (Array.isArray(content)) {
+      return content.every((part) => part?.type === OPENAI_BLOCK.TEXT && !(part.text || "").trim());
+    }
+    return false;
+  };
+
+  // Responses can split visible assistant text across more than one
+  // `message` item on the same turn (e.g. text, then a tool call, then more
+  // text). Append instead of keeping only the first non-null content.
+  const appendAssistantContent = (msg, content) => {
+    // A blank incoming content carries nothing to add — appending it as a
+    // blank text part would join into a stray leading/trailing "\n".
+    if (isBlankContent(content)) return;
+    // A blank existing content (including a part array of all-empty text
+    // parts) has nothing to preserve — replace it outright rather than
+    // wrapping it as a blank text part and joining.
+    if (isBlankContent(msg.content)) {
+      msg.content = content;
+      return;
+    }
+    const existing = Array.isArray(msg.content) ? msg.content : [{ type: OPENAI_BLOCK.TEXT, text: msg.content }];
+    const incoming = Array.isArray(content) ? content : [{ type: OPENAI_BLOCK.TEXT, text: content }];
+    msg.content = [...existing, ...incoming];
+  };
 
   // Repair items whose `call_id` was dropped by the client BEFORE the orphan
   // strip below: pairing an id-less function_call_output with the oldest
@@ -120,25 +158,58 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     return "";
   };
 
+  // Responses splits one assistant turn into a message item plus separate
+  // function_call items; Chat Completions models that as a SINGLE assistant
+  // message carrying content + tool_calls + reasoning_content. Emitting them as
+  // two consecutive assistant messages makes thinking-mode upstreams reject the
+  // whole request as soon as tools are declared. Reasoning is attached at flush
+  // time (not at creation) so a reasoning item that arrives after the message
+  // item — Codex emits the message first — still lands on the turn it belongs to.
+  const flushAssistant = () => {
+    if (!currentAssistantMsg) return;
+    if (pendingReasoning) {
+      currentAssistantMsg.reasoning_content = pendingReasoning;
+      pendingReasoning = "";
+    }
+    if (!currentAssistantMsg.tool_calls?.length) delete currentAssistantMsg.tool_calls;
+    // A text-only content array (no tool calls survived, or every call was
+    // nameless) must ship as a string. filterToOpenAIFormat only collapses
+    // array content (and drops non-whitelisted parts like refusal/input_file)
+    // for messages WITHOUT tool_calls, and a real tool_calls array skips that
+    // pass entirely, so both steps run here instead.
+    if (Array.isArray(currentAssistantMsg.content)) {
+      const whitelisted = currentAssistantMsg.content.filter((part) => VALID_OPENAI_CONTENT_TYPES.includes(part?.type));
+      currentAssistantMsg.content = collapseTextParts(whitelisted);
+      // collapseTextParts([]) returns [] as-is (its guard requires length > 0),
+      // so an empty-after-filter array survives as `{content:[]}` next to
+      // tool_calls. Normalize it to null here so the check below treats it
+      // the same as a turn that never got any content.
+      if (Array.isArray(currentAssistantMsg.content) && currentAssistantMsg.content.length === 0) {
+        currentAssistantMsg.content = null;
+      }
+    }
+    // A turn whose tool calls were all skipped (nameless, #444) is left with no
+    // content and no tool_calls. Pushing it would send `{role:"assistant",
+    // content:null}`, which OpenAI-shaped APIs reject just like the empty
+    // tool_calls array this replaces. Keep it only if reasoning still rides on it,
+    // and normalize content to "" in that case, since content:null is still rejected.
+    if (currentAssistantMsg.content == null && !currentAssistantMsg.tool_calls) {
+      if (!currentAssistantMsg.reasoning_content) {
+        currentAssistantMsg = null;
+        return;
+      }
+      currentAssistantMsg.content = "";
+    }
+    result.messages.push(currentAssistantMsg);
+    currentAssistantMsg = null;
+  };
+
   for (const item of inputItems) {
     // Determine item type - Droid CLI sends role-based items without 'type' field
     // Fallback: if no type but has role property, treat as message
     const itemType = item.type || (item.role ? RESPONSES_ITEM.MESSAGE : null);
 
     if (itemType === RESPONSES_ITEM.MESSAGE) {
-      // Flush any pending assistant message with tool calls
-      if (currentAssistantMsg) {
-        result.messages.push(currentAssistantMsg);
-        currentAssistantMsg = null;
-      }
-      // Flush pending tool results
-      if (pendingToolResults.length > 0) {
-        for (const tr of pendingToolResults) {
-          result.messages.push(tr);
-        }
-        pendingToolResults = [];
-      }
-
       // Convert content: input_text → text, output_text → text, input_image → image_url
       const content = Array.isArray(item.content) ?
       item.content.map((c) => {
@@ -151,13 +222,29 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         return c;
       }) :
       item.content;
-      const msg = { role: item.role, content };
-      // Attach buffered reasoning to assistant turn (required by xiaomi-mimo thinking mode)
-      if (item.role === ROLE.ASSISTANT && pendingReasoning) {
-        msg.reasoning_content = pendingReasoning;
+
+      // Assistant content joins the pending turn instead of starting a second
+      // assistant message (see flushAssistant above).
+      if (item.role === ROLE.ASSISTANT) {
+        if (currentAssistantMsg) {
+          appendAssistantContent(currentAssistantMsg, content);
+        } else {
+          currentAssistantMsg = { role: ROLE.ASSISTANT, content, tool_calls: [] };
+        }
+        continue;
+      }
+
+      // Flush any pending assistant message with tool calls
+      flushAssistant();
+      // Flush pending tool results
+      if (pendingToolResults.length > 0) {
+        for (const tr of pendingToolResults) {
+          result.messages.push(tr);
+        }
+        pendingToolResults = [];
       }
       pendingReasoning = "";
-      result.messages.push(msg);
+      result.messages.push({ role: item.role, content });
     } else
     if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
       // Start or append to assistant message with tool_calls
@@ -167,13 +254,20 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           content: null,
           tool_calls: []
         };
-        if (pendingReasoning) {
-          currentAssistantMsg.reasoning_content = pendingReasoning;
-          pendingReasoning = "";
-        }
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
-      if (!item.name || !isString(item.name) || item.name.trim() === "") continue;
+      if (!item.name || !isString(item.name) || item.name.trim() === "") {
+        // A live tool_calls entry already claims this call_id (an earlier
+        // NAMED call used it) — that call is real, so its output must still
+        // ship. Only mark the id skipped when nothing real answers it.
+        const hasLiveToolCall = currentAssistantMsg.tool_calls?.some((tc) => tc.id === item.call_id);
+        if (isString(item.call_id) && !hasLiveToolCall) skippedCallIds.add(item.call_id);
+        continue;
+      }
+      // A named call reusing a call_id an earlier nameless call skipped is a
+      // real tool call now — un-skip the id so its function_call_output is
+      // not dropped as if it still answered the discarded call.
+      skippedCallIds.delete(item.call_id);
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
@@ -190,11 +284,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       });
     } else
     if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
-      // Flush assistant message first if exists
-      if (currentAssistantMsg) {
-        result.messages.push(currentAssistantMsg);
-        currentAssistantMsg = null;
-      }
+      // Flush assistant message first (if any) BEFORE the skip check below —
+      // a skipped output must still close out the turn it belongs to, or the
+      // next assistant message merges onto this one across the turn boundary
+      // that its (dropped) function_call_output was supposed to mark.
+      flushAssistant();
+      // The call this output answers was skipped (nameless, #444) and never
+      // became a tool_calls entry — drop the output too rather than emit an
+      // orphaned "tool" message with no matching tool_call_id.
+      if (skippedCallIds.has(item.call_id)) continue;
       // Flush any pending tool results first
       if (pendingToolResults.length > 0) {
         for (const tr of pendingToolResults) {
@@ -218,9 +316,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   }
 
   // Flush remaining
-  if (currentAssistantMsg) {
-    result.messages.push(currentAssistantMsg);
-  }
+  flushAssistant();
   if (pendingToolResults.length > 0) {
     for (const tr of pendingToolResults) {
       result.messages.push(tr);

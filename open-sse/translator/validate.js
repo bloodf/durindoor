@@ -514,6 +514,38 @@ function validateOpenAIResponses(body, errors) {
   }
 }
 
+const COMMANDCODE_ROLES = new Set([ROLE.USER, ROLE.ASSISTANT, ROLE.TOOL]);
+
+// CommandCode wraps the chat under { memory, config, params }: model and
+// messages live in params, and every message carries an array of AI SDK blocks.
+function validateCommandCode(body, errors) {
+  const params = body.params;
+  if (!params || !isObject(params)) {
+    pushError(errors, "params", "params object is required for commandcode target");
+    return;
+  }
+  if (!isString(params.model) || params.model === "") {
+    pushError(errors, "params.model", "params.model is required for commandcode target");
+  }
+  if (!Array.isArray(params.messages) || params.messages.length === 0) {
+    pushError(errors, "params.messages", "params.messages[] is required and must be non-empty for commandcode target");
+    return;
+  }
+  params.messages.forEach((msg, i) => {
+    const p = `params.messages[${i}]`;
+    if (!msg || !isObject(msg)) {
+      pushError(errors, p, "message must be an object");
+      return;
+    }
+    if (!COMMANDCODE_ROLES.has(msg.role)) {
+      pushError(errors, `${p}.role`, `role must be one of ${[...COMMANDCODE_ROLES].join("|")}`);
+    }
+    if (!Array.isArray(msg.content)) {
+      pushError(errors, `${p}.content`, "content must be an array of blocks");
+    }
+  });
+}
+
 // Validate the translated body that is about to be dispatched upstream.
 // Returns { ok, errors }. errors[] is empty on success.
 // Caller is expected to short-circuit (return 400 to the client) on ok=false.
@@ -540,10 +572,12 @@ export function validateOutboundPayload(targetFormat, body) {
     case FORMATS.CODEX:
     case FORMATS.OLLAMA:
     case FORMATS.CURSOR:
-    case FORMATS.COMMANDCODE:
-      // Codex / Ollama / Cursor / Commandcode receive OpenAI-shaped bodies
-      // from the translator pipeline.
+      // Codex / Ollama / Cursor receive OpenAI-shaped bodies from the
+      // translator pipeline.
       validateOpenAI(b, errors);
+      break;
+    case FORMATS.COMMANDCODE:
+      validateCommandCode(b, errors);
       break;
     case FORMATS.KIRO:
       validateKiro(b, errors);

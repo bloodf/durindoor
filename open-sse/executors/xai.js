@@ -27,7 +27,7 @@ export class XaiExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
-    const DENY_REASONING = ["grok-build", "grok-composer-2.5-fast"];
+    const DENY_REASONING = ["grok-build", "grok-composer-2.5-fast", "non-reasoning"];
     const ALLOW_REASONING = ["grok-4", "grok-4.3", "grok-3"];
 
     let out = { ...body };
@@ -43,11 +43,13 @@ export class XaiExecutor extends BaseExecutor {
       }
     }
 
-    const isDenied = DENY_REASONING.some((m) => modelId.includes(m));
+    // grok-build-latest is a grok-4.5 alias and keeps its reasoning effort.
+    const isDenied = !modelId.includes("grok-build-latest") && DENY_REASONING.some((m) => modelId.includes(m));
     const isAllowed = ALLOW_REASONING.some((m) => modelId.includes(m));
 
     if (isDenied) {
       delete out.reasoning_effort;
+      delete out.reasoning;
     } else if (isAllowed && (body.reasoning_effort || modelEffort)) {
       out.reasoning_effort = body.reasoning_effort || modelEffort;
     }

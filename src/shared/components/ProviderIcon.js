@@ -69,6 +69,7 @@ const KNOWN_SVGS = new Set([
 "openclaw",
 "opencode",
 "openrouter",
+"orcarouter",
 "perplexity",
 "playht",
 "qiniu",

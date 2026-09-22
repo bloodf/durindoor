@@ -3,6 +3,7 @@ import { getCapabilitiesForModel, resolveModelLimits } from "../../open-sse/prov
 import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { BaseExecutor } from "../../open-sse/executors/base.js";
 const GROK_UNPUBLISHED_OUTPUT_IDS = new Set([
+  "grok-4.7",
   "grok-4.6",
   "grok-4.5",
   "grok-4.3",

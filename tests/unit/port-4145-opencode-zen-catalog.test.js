@@ -64,7 +64,7 @@ describe("OpenCode Zen catalog additions route correctly (port #4145)", () => {
   const claudeIds = ["claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-sonnet-5"];
   const responsesIds = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
   const chatIds = [
-    "grok-4.5", "grok-4.6",
+    "grok-4.5", "grok-4.6", "grok-4.7",
     "glm-5.2", "glm-5.3", "glm-5.3-flash",
     "kimi-k2.7-code", "kimi-k3",
     "deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp",

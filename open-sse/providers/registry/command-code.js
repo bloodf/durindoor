@@ -21,8 +21,9 @@ export default {
     validationModelId: "deepseek/deepseek-v4-flash",
     forceStream: true,
     headers: {
-      "x-command-code-version": "0.33.2",
-      "x-cli-environment": "cli",
+      "x-command-code-version": "1.54.2",
+      "x-cli-environment": "production",
+      "User-Agent": "cli",
     },
   },
   models: [

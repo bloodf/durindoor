@@ -38,6 +38,14 @@ export function createAddApiKeyModalInitialState(existingConnectionNames = [], d
       organization: ""
     },
     accountIdData: { accountId: "" },
+    // AWS credential fields for providers whose registry entry declares credentialForm "aws".
+    // Reset alongside the other credential state so a closed-then-reopened modal cannot carry a
+    // previous connection's profile or session token into a new one.
+    awsData: {
+      profile: "",
+      accessKeyId: "",
+      sessionToken: ""
+    },
     region: defaultRegion
   };
 }

@@ -76,11 +76,13 @@ describe("claude-to-openai: refusal stop_reason", () => {
       { type: "message_delta", delta: { stop_reason: "refusal", stop_sequence: null, stop_details: { type: "refusal", explanation: { nested: true } } }, usage: { output_tokens: 0 } },
       { type: "message_stop" }
     ]);
-    for (const c of out) {
-      if (c.choices?.[0]?.delta?.content !== undefined) {
-        expect(typeof c.choices[0].delta.content).toBe("string");
-      }
-    }
+    // pushSyntheticContentIfEmpty always emits a single space for an empty
+    // refusal turn; a stringified object ("[object Object]") would also pass a
+    // bare typeof check, so assert the exact fallback content instead.
+    const text = out.map(c => c.choices?.[0]?.delta?.content || "").join("");
+    expect(text).toBe(" ");
+    expect(text).not.toContain("nested");
+    expect(text).not.toContain("[object Object]");
   });
 
   it("leaves a normal end_turn untouched", () => {

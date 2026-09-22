@@ -48,6 +48,14 @@ describe("toOpenAIFinish - claude", () => {
     ["tool_use", "tool_calls"],
     ["stop_sequence", "stop"],
     ["refusal", "content_filter"],
+    // Context-window truncation is not the requested output budget, but OpenAI
+    // has no separate reason for it either; Bedrock's own executor already
+    // folds it to "length" (open-sse/executors/bedrock.js), native Claude must
+    // match rather than silently look like a finished answer.
+    ["model_context_window_exceeded", "length"],
+    // A paused server-tool turn needs the client to act (send the response back
+    // unmodified) before the turn is done, so it must not read as a clean stop.
+    ["pause_turn", "tool_calls"],
     ["unknown_xyz", "stop"],
   ])("%s -> %s", (input, expected) => {
     expect(toOpenAIFinish(input, "claude")).toBe(expected);

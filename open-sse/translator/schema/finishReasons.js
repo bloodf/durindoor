@@ -20,6 +20,14 @@ export const CLAUDE_STOP = {
   // Anthropic's API-level refusal (streaming classifier / ToS). Arrives in
   // message_delta with zero output tokens; stop_details carries the reason.
   REFUSAL: "refusal",
+  // The context window filled mid-turn (distinct from MAX_TOKENS, which is the
+  // requested output budget). Bedrock's own executor already folds this to
+  // "length" (open-sse/executors/bedrock.js); native Claude must match.
+  MODEL_CONTEXT_WINDOW_EXCEEDED: "model_context_window_exceeded",
+  // A long-running server-tool turn (web_search, code execution, ...) paused
+  // mid-turn; the client must send the response back unmodified to continue.
+  // Not a clean stop and not a token-budget truncation.
+  PAUSE_TURN: "pause_turn",
 };
 
 // Gemini finishReason values.

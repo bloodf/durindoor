@@ -15,6 +15,15 @@ export function toOpenAIFinish(reason, format) {
         // OpenAI client saw finish_reason "stop" and an empty message (9Router logged
         // "succeeded", OUT 0) and could not tell it from a real answer.
         case CLAUDE_STOP.REFUSAL: return OPENAI_FINISH.CONTENT_FILTER;
+        // The context window filled mid-turn, not the requested output budget, but
+        // OpenAI has no separate reason for it either; "length" is what already
+        // tells a client the turn was cut short and to expect a truncated answer.
+        case CLAUDE_STOP.MODEL_CONTEXT_WINDOW_EXCEEDED: return OPENAI_FINISH.LENGTH;
+        // A paused server-tool turn is not finished: the default mapping told an
+        // OpenAI client "stop" and it would drop the turn instead of sending the
+        // response back to continue. "tool_calls" is the only OpenAI reason that
+        // already means "the client must act before this turn is done".
+        case CLAUDE_STOP.PAUSE_TURN: return OPENAI_FINISH.TOOL_CALLS;
         default: return OPENAI_FINISH.STOP;
       }
     case "commandcode":

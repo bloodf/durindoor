@@ -619,6 +619,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         {},
         comboRouting
       ),
+      jevClassify: true,
       signal: request?.signal || null
     });
     // One row per logical combo request (collector holds only the latest
@@ -788,6 +789,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           {},
           mergedRouting
         ),
+        jevClassify: true,
         signal: requestSignal
       });
       if (ownsCollector && nestedCollector.latest) {

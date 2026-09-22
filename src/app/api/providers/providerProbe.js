@@ -8,6 +8,11 @@ import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webC
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const CHAT_PROBE_ACCEPT_STATUSES = new Set([400, 422, 429]);
 
+// Chat formats whose registry `validateUrl` does not actually reject a bad
+// key. See the comment above the validateUrl branch in
+// buildRegistryProviderProbe for why "ollama" is here.
+const VALIDATE_URL_UNVERIFIED_FORMATS = new Set(["ollama"]);
+
 // Specialty validators run BEFORE the generic registry probe for providers
 // whose registry entry has no chat transport (`transport: null`) and so cannot
 // be probed through buildRegistryProviderProbe. Keyed by provider id.
@@ -140,6 +145,44 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
     };
   }
 
+  // A registry-declared validateUrl is a dedicated key-check endpoint (the same
+  // lookup providers/validate/route.js performs), independent of the chat
+  // transport format. Honor it before the openai-only gate below so formats
+  // like "openai-responses" (e.g. perplexity-agent) get a working connection
+  // test instead of falling through to "Provider test not supported". The
+  // chat-body fallback only makes sense for the plain openai format.
+  //
+  // Exception: VALIDATE_URL_UNVERIFIED_FORMATS. A format's validateUrl is only
+  // safe to trust with accepts: "ok" if that endpoint actually rejects a bad
+  // key. Ollama's `validateUrl` (https://ollama.com/api/tags) is a public model
+  // listing that returns 200 with no Authorization header and with a bad
+  // bearer, so honoring it here would mark any bad Ollama Cloud key "valid"
+  // (fail-open). Formats in this set fall through to the pre-existing
+  // format-specific probes below (or `null`, unprobed) instead.
+  if (cfg.validateUrl && !VALIDATE_URL_UNVERIFIED_FORMATS.has(cfg.format)) {
+    const probe = {
+      url: cfg.validateUrl,
+      options: { headers, signal: AbortSignal.timeout(8000) },
+      accepts: "ok",
+    };
+    if (cfg.format === "openai") {
+      probe.fallback = {
+        url: baseUrl,
+        options: {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model: getDefaultModel(provider) || "test",
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1,
+          }),
+          signal: AbortSignal.timeout(10000),
+        },
+      };
+    }
+    return probe;
+  }
+
   if (cfg.format !== "openai") return null;
 
   // Kimi Web (www.kimi.com) is a cookie-authed Connect-RPC provider. The user
@@ -160,27 +203,6 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
         },
         body: "{}",
         signal: AbortSignal.timeout(8000),
-      },
-      accepts: "ok",
-    };
-  }
-
-  if (cfg.validateUrl) {
-    return {
-      url: cfg.validateUrl,
-      options: { headers, signal: AbortSignal.timeout(8000) },
-      fallback: {
-        url: baseUrl,
-        options: {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            model: getDefaultModel(provider) || "test",
-            messages: [{ role: "user", content: "ping" }],
-            max_tokens: 1,
-          }),
-          signal: AbortSignal.timeout(10000),
-        },
       },
       accepts: "ok",
     };

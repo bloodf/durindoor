@@ -295,14 +295,21 @@ export function parseRateLimitEvidence({
   bodyText = "",
   executorResetAtMs = null,
   now = Date.now(),
-  maxDelayMs = MAX_RATE_LIMIT_COOLDOWN_MS
+  maxDelayMs = MAX_RATE_LIMIT_COOLDOWN_MS,
+  provider = null
 } = {}) {
   if (Number(status) !== 429) return null;
   const clock = Number(now);
   const safeNow = Number.isFinite(clock) ? clock : Date.now();
-  const explicitQuota = !isAntigravityContentRejection(bodyText) && (
-  EXPLICIT_QUOTA_TEXT.test(String(bodyText || "")) ||
-  hasStructuredQuotaExhaustion(bodyText));
+  // The content-rejection sentence is Antigravity's own generic boilerplate;
+  // a different Gemini-family provider can legitimately hit the same 429 for
+  // a real quota exhaustion, so the carve-out must never fire outside
+  // antigravity/agy, and it only vetoes the loose prose match, never a
+  // structured quota code.
+  const isAntigravityProvider = provider === "antigravity" || provider === "agy";
+  const explicitQuota = hasStructuredQuotaExhaustion(bodyText) || (
+  EXPLICIT_QUOTA_TEXT.test(String(bodyText || "")) &&
+  !(isAntigravityProvider && isAntigravityContentRejection(bodyText)));
 
   let resetAtMs = boundedAbsoluteReset(executorResetAtMs, safeNow, maxDelayMs);
   let source = resetAtMs ? "executor" : null;
@@ -475,7 +482,8 @@ export async function parseUpstreamError(response, executor = null, options = {}
     headers: response.headers,
     bodyText,
     executorResetAtMs: executorParsed?.resetsAtMs,
-    now: options?.now ?? Date.now()
+    now: options?.now ?? Date.now(),
+    provider: executor?.provider ?? options?.provider ?? null
   });
   // Computed from the raw body before the 429 message gets redacted below, so
   // callers can gate provider-specific behavior (e.g. Antigravity's strike

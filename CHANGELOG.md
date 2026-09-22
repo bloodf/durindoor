@@ -1,3 +1,33 @@
+# 4.7.0
+
+## Features
+
+- feat(openrouter): discover free models and their capabilities from the live catalog (#948)
+- feat(xai): add Grok 4.7 and correct xAI model pricing and capabilities (#947)
+
+## Fixes
+
+- fix(db): let provider accounts be deleted on postgres and surface failed deletes (#949)
+
+## Upstream ports
+
+- port(upstream): #4208 - coerce non-JSON tool call arguments before upstream dispatch (#936)
+- port(upstream): #4200 - translate provider-injected tool-call names to declared names (#940)
+- port(upstream): #4206 - honour a visible-model allowlist on live-catalog providers (#943)
+- port(upstream): #4222 - merge one assistant turn into a single chat message (#933)
+- port(upstream): #4224 - match CommandCode reference protocol, buffer tool calls (#942)
+- port(upstream): #4193+#4216+#4225+#4228 - per-rate usage cost split and request timing (#937)
+- port(upstream): #4230 - add Jev complexity classifier to smart combo routing (#935)
+- port(upstream): #4227 - add the OrcaRouter provider with API key and OAuth 2.0 PKCE (#946)
+- port(upstream): #4157 - AWS SSO and static-key credentials for Bedrock (#945)
+- port(upstream): #4128+#4165+#4188+#4215 - harden the opencode free-tier client fingerprint (#938)
+- port(upstream): #4210 - map Claude refusal stop_reason to content_filter (#934)
+- port(upstream): #4197 - avoid antigravity breaker on content-triggered 429s (#941)
+- port(upstream): #4159 - honor registry validateUrl for non-openai chat formats (#944)
+- port(upstream): #4229 - drop Antigravity requestType "agent" to avoid false 429s (#932)
+- port(upstream): #4195 - update Docker actions for Node 24 (#939)
+
+
 # 4.6.3
 
 ## Fixes

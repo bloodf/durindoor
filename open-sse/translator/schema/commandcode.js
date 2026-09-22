@@ -8,6 +8,8 @@ export const COMMANDCODE_EVENT = Object.freeze({
   REASONING_END: "reasoning-end",
   TEXT_START: "text-start",
   TEXT_END: "text-end",
+  TOOL_INPUT_START: "tool-input-start",
+  TOOL_INPUT_DELTA: "tool-input-delta",
   TOOL_INPUT_END: "tool-input-end",
   PROVIDER_METADATA: "provider-metadata",
   MESSAGE_METADATA: "message-metadata",

@@ -20,6 +20,7 @@ const ALIAS_TOKENS = [
   "cloudflare-ai","fal","fal-ai","stability","stability-ai","bfl","black-forest-labs","recraft",
   "topaz","runway","runwayml","jina","jina-ai","polly","aws-polly","bb","blackbox",
   "tm","tokenmarket",
+  "orca","orcarouter","orca-router",
 ];
 
 // Sort idToAlias by key — runtime accesses by key, order is irrelevant (content-based)

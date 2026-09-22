@@ -257,6 +257,55 @@ export function isRecoverableCloudCodeProject403(provider, status, errorText = "
 }
 
 /**
+ * Providers whose credential is durable (an API key, not a refreshable token).
+ * A rejected credential is terminal: it must be reauthenticated, never refreshed.
+ * @param {string|null} providerId
+ * @returns {boolean}
+ */
+export function isDurableCredentialProvider(providerId) {
+  return providerId === "orcarouter";
+}
+
+// A 403 quarantines only when it names the key itself as rejected ("invalid
+// API key", "invalid_api_key", "API key has been revoked"). Words like
+// "unauthorized" or "disabled" alone also appear in model-permission 403s,
+// which must not take a working key out of rotation.
+const DURABLE_CREDENTIAL_AUTH_FAILURE = /\b(invalid|incorrect|revoked|expired|disabled)[\s_-]+(api[\s_-]+)?key\b|\bkey\s+(is\s+|has\s+been\s+|was\s+)?(invalid|revoked|expired|disabled|deactivated)\b/i;
+
+function isDurableCredentialAuthFailure(errorText) {
+  return isString(errorText) && DURABLE_CREDENTIAL_AUTH_FAILURE.test(errorText);
+}
+
+/**
+ * Reauth fields for a rejected durable credential.
+ *
+ * Returns null when the caller cannot prove which credential was rejected, or
+ * when the stored credential is no longer the one that failed — a late failure
+ * from an old request must never flag a credential the user has since replaced
+ * by signing in again.
+ * @param {object|null} conn - The stored connection row
+ * @param {string|null} usedCredential - The credential the rejected request presented
+ * A 401 always counts as a rejection. A 403 only counts when its body reads as
+ * an auth failure: shared error rules also use 403 for quota and permission
+ * errors, which must stay on the normal cooldown path.
+ * @param {number|string|null} status - Upstream HTTP status
+ * @param {string|null} [errorText] - Upstream error body/message
+ * @returns {{ needsReauth: boolean, reauthReason: string, reauthAt: string }|null}
+ */
+export function durableCredentialReauthFields(conn, usedCredential, status, errorText = null) {
+  if (!conn) return null;
+  const code = Number(status);
+  if (code !== 401 && !(code === 403 && isDurableCredentialAuthFailure(errorText))) return null;
+  if (!isString(usedCredential) || !usedCredential) return null;
+  if (conn.accessToken !== usedCredential && conn.apiKey !== usedCredential) return null;
+  return {
+    needsReauth: true,
+    reauthReason: "credential_rejected",
+    reauthAt: new Date().toISOString()
+  };
+}
+
+/**
  * Check if account is currently unavailable (cooldown not expired)
  */
 export function isAccountUnavailable(unavailableUntil) {

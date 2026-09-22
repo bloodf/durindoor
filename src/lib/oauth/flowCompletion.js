@@ -10,6 +10,7 @@ import {
   updateProviderConnection } from
 "@/models";
 import { isOAuthFlowClaimActive } from "@/lib/oauth/flowStore.js";
+import { isDurableCredentialProvider } from "open-sse/services/accountFallback.js";
 
 /** Merge durable OAuth routing without erasing provider-owned metadata. */
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
@@ -49,6 +50,10 @@ flowClaim = null)
   const expiresAt = tokenData?.expiresIn ?
   new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() :
   null;
+  // A rejected durable key is quarantined with isActive: false. The key from a
+  // new sign-in must put the row back in rotation, whether it lands through a
+  // reconnect or through the same-user dedup merge.
+  const reactivate = isDurableCredentialProvider(provider) ? { isActive: true } : {};
 
   if (connectionId) {
     const existing = await getProviderConnectionById(connectionId);
@@ -70,6 +75,7 @@ flowClaim = null)
       ...extraFields,
       providerSpecificData,
       expiresAt,
+      ...reactivate,
       testStatus: "active",
       lastError: null,
       errorCode: null,
@@ -98,6 +104,7 @@ flowClaim = null)
     ...extraFields,
     providerSpecificData,
     expiresAt,
+    ...reactivate,
     testStatus: "active"
   };
   return flowClaim ?

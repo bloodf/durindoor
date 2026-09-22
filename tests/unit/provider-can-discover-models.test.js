@@ -82,4 +82,10 @@ describe("canDiscoverModels", () => {
   it("returns true for a plain config provider (claude) with an apiKey", () => {
     expect(canDiscoverModels({ provider: "claude", apiKey: "sk-ant-test" })).toBe(true);
   });
+
+  it("lets the playground discover the OrcaRouter catalog for a key or PKCE login", () => {
+    expect(canDiscoverModels({ provider: "orcarouter", authType: "apikey", apiKey: "sk-orca-k" })).toBe(true);
+    expect(canDiscoverModels({ provider: "orcarouter", authType: "oauth", accessToken: "sk-orca-p" })).toBe(true);
+    expect(canDiscoverModels({ provider: "orcarouter", authType: "apikey" })).toBe(false);
+  });
 });

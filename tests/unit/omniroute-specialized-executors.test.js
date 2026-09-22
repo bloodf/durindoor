@@ -37,7 +37,7 @@ describe("OmniRoute specialized provider ports", () => {
     expect(executor.getProvider()).toBe("command-code");
     expect(executor.buildUrl("gpt-5.4", true)).toBe("https://api.commandcode.ai/alpha/generate");
     expect(headers.Authorization).toBe("Bearer user_test");
-    expect(headers["x-command-code-version"]).toBe("0.33.2");
+    expect(headers["x-command-code-version"]).toBe("1.54.2");
     expect(PROVIDERS["command-code"].format).toBe("commandcode");
     expect(PROVIDER_MODELS.cmd.length).toBeGreaterThan(0);
   });

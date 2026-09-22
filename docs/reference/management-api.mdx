@@ -102,6 +102,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET, POST | `/api/models/availability` | List model cooldowns (GET); POST clearCooldown | session, CLI, key, loop |
 | GET, POST, PATCH, DELETE | `/api/models/custom` | CRUD custom model rows and capabilities | session, CLI, key, loop |
 | GET, POST, DELETE | `/api/models/disabled` | List, set, or clear disabled model ids per provider | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/models/enabled` | List, set, or clear the visible-model allowlist per provider | session, CLI, key, loop |
 | POST | `/api/models/test` | Ping one model through the internal completions/embeddings path | session, CLI, key, loop |
 | POST | `/api/models/test/batch` | Ping up to 200 models; streamed results | session, CLI, key, loop |
 

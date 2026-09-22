@@ -104,7 +104,7 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
  * Persist normalized usage. A non-success status keeps billable accounting
  * without allowing persistence to complete an errored live session.
  */
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, status, label = "USAGE", silent = false, comboId = null, comboName = null }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, status, latency, label = "USAGE", silent = false, comboId = null, comboName = null }) {
   if (!tokens || !isObject(tokens)) return;
 
   const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined ?
@@ -135,6 +135,11 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
     endpoint: endpoint || null,
+    // Timing rides along with the usage row so the dashboard can report
+    // duration and throughput per model/account/key without a second lookup.
+    // A handler with no measurement leaves these 0, which reads as "not timed".
+    latencyMs: latency?.total || 0,
+    ttftMs: latency?.ttft || 0,
     status: status || undefined,
     usageEventId: usageEventId || undefined,
     // #747: set only for requests dispatched through a combo. Historic rows

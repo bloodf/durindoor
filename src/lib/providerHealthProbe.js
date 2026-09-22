@@ -23,6 +23,7 @@
  * rather than `down`.
  */
 import { PROVIDERS } from "open-sse/config/providers.js";
+import { resolveApiBase as resolveOrcaRouterApiBase } from "open-sse/providers/orcarouterCatalog.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import {
   guardedProbeFetch,
@@ -36,11 +37,16 @@ import {
   isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
+import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
+import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
 
 const PROBE_TIMEOUT_MS = 5000;
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const REGISTRY_BY_ID = new Map(REGISTRY.map((e) => [e.id, e]));
 const isRegistryNoAuth = (providerId) => REGISTRY_BY_ID.get(providerId)?.noAuth === true;
+const usesSignedAwsAuth = (connection) =>
+  REGISTRY_BY_ID.get(connection.provider)?.credentialForm === "aws" &&
+  detectBedrockCredentialMode(connection) !== BEDROCK_CREDENTIAL_MODE.API_KEY;
 
 /**
  * Fetch through the DNS-pinned guard on every route. Saved proxies and relays
@@ -213,7 +219,8 @@ async function probeRegistry(connection, fetcher, effectiveProxy) {
     connection.provider,
     connection.apiKey,
     (url, opts) => proxyAware(url, { ...opts, redirect: "manual" }, effectiveProxy, fetcher ?? fetch),
-    connection.providerSpecificData || {}
+    connection.providerSpecificData || {},
+    { sessionToken: connection.sessionToken }
   );
 }
 
@@ -279,8 +286,14 @@ export async function probeConnectionHealth(connection, opts = {}) {
     // When a proxy is configured the registry probe can't
     // route through it, so fall back to a guarded `${baseUrl}/models` probe that
     // IS proxy-aware rather than bypassing the saved egress.
-    if (proxied) {
-      const baseUrl = connection.providerSpecificData?.baseUrl || cfg?.validateUrl || cfg?.baseUrl;
+    // Signed AWS connections are skipped: their apiKey is an IAM secret access key (or absent, for
+    // a profile), and this probe would send it as a bearer token through the proxy.
+    if (proxied && !usesSignedAwsAuth(connection)) {
+      // OrcaRouter keys only ever go to the configured API base, never to a
+      // client-supplied connection baseUrl.
+      const baseUrl = connection.provider === "orcarouter" ?
+      `${resolveOrcaRouterApiBase(process.env)}/v1` :
+      connection.providerSpecificData?.baseUrl || cfg?.validateUrl || cfg?.baseUrl;
       if (baseUrl) {
         const url = String(baseUrl).replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
         const modelsUrl = url.endsWith("/models") ? url : `${url}/models`;

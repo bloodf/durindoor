@@ -15,6 +15,7 @@ import { isFunction, isString } from "../../../shared/utils/typeChecks.js";
 import { PROVIDER_MODELS_CONFIG } from "./[id]/models/modelsConfig.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
+import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,21 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "qwenCloudCookie",
 "alibabaConsoleCookie",
 "cookie",
-"QWEN_CLOUD_COOKIE"]
+"QWEN_CLOUD_COOKIE",
+// Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
+"sessionToken"]
 );
+
+/**
+ * The session token to store for a new AWS connection. A client written for 9router may still
+ * send it inside providerSpecificData; normalization drops that plaintext copy, so it is lifted
+ * into the encrypted field here instead of being lost.
+ */
+function awsSessionToken(sessionToken, providerSpecificData) {
+  const nested = providerSpecificData?.sessionToken;
+  const value = isString(sessionToken) && sessionToken.trim() ? sessionToken : nested;
+  return isString(value) && value.trim() ? value.trim() : undefined;
+}
 
 function sanitizeProviderConnection(connection) {
   const providerSpecificData = connection.providerSpecificData ?
@@ -41,6 +55,7 @@ function sanitizeProviderConnection(connection) {
     refreshToken: undefined,
     idToken: undefined,
     firecrawlHeaders: undefined,
+    sessionToken: undefined,
     ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
   };
 }
@@ -75,6 +90,7 @@ export function canDiscoverModels(connection) {
     // the resolver would refuse or refuse meaningfully.
     switch (provider) {
       case "kimchi":
+      case "orcarouter":
         return Boolean(connection.accessToken || connection.apiKey);
       case "kiro":
         return Boolean(connection.accessToken);
@@ -173,7 +189,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
-    const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly } = body;
+    const { apiKey, sessionToken, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly } = body;
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
@@ -206,7 +222,24 @@ export async function POST(request) {
     if (isHiddenProvider(provider)) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
-    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider) {
+    const usesAwsCredentials = AI_PROVIDERS[provider]?.credentialForm === "aws";
+    const awsProfile = usesAwsCredentials ? checkBedrockProfileInput(body.providerSpecificData) : { profile: "" };
+    if (awsProfile.error) {
+      return NextResponse.json({ error: awsProfile.error }, { status: 400 });
+    }
+    // A stored profile is resolved by the AWS SDK as the server user, which can run a
+    // credential_process from ~/.aws/config. Binding one is an operator action, never something
+    // an application API key may do.
+    if (awsProfile.profile && !(await isOperatorRequest(request))) {
+      return NextResponse.json({ error: "AWS profile connections can only be set up from the dashboard or CLI" }, { status: 403 });
+    }
+    // A provider may declare a providerSpecificData field that stands in for an API key, e.g.
+    // Bedrock's `profile`, where the credential lives in the local AWS config and there is no
+    // key to paste. Without this, following such a provider's own setup notice returns 400.
+    const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
+    const substituteValue = apiKeySubstitute ? body.providerSpecificData?.[apiKeySubstitute] : null;
+    const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
+    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !hasApiKeySubstitute) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
     const rawConnectionName = name || displayName || AI_PROVIDERS[provider]?.name;
@@ -291,6 +324,7 @@ export async function POST(request) {
         authType: isWebCookieProvider ? "cookie" : "apikey",
         name: connectionName,
         apiKey: apiKey || "",
+        sessionToken: usesAwsCredentials ? awsSessionToken(sessionToken, body.providerSpecificData) : undefined,
         priority: priority || 1,
         globalPriority: globalPriority || null,
         defaultModel: defaultModel || null,

@@ -45,6 +45,7 @@ import {
   fetchKiroProfileArn } from
 "./providerHelpers";
 import { isString } from "../../shared/utils/typeChecks.js";
+import orcarouter from "./orcarouterProvider.js";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn, fetchClaudeProfile, claudeProfileFields };
 
@@ -1663,7 +1664,8 @@ const PROVIDERS = {
         }
       };
     }
-  }
+  },
+  orcarouter
 };
 
 function isCloudflareHtmlBadRequest(status, body) {

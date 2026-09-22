@@ -53,6 +53,10 @@ function stripContentTypes(body, stripList = []) {
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   ensureInitialized();
   let result = body;
+  // Provider envelopes (e.g. commandcode's { memory, config, params } wrapper)
+  // replace `result` wholesale, dropping any metadata OpenAI-stage translators
+  // stash on it. Capture it here and reattach after the envelope translator runs.
+  let customToolNames;
   // chatCore supplies an already-clean mapped model plus explicit context, but
   // public/direct translator callers may still pass `model(level)`. Keep that
   // entry point safe by parsing here as a compatibility fallback.
@@ -147,6 +151,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
         const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
         if (toOpenAI) {
           result = toOpenAI(translationModel, result, stream, credentials, resolvedTranslationContext);
+          customToolNames = result._customToolNames;
           // Log OpenAI intermediate format
           reqLogger?.logOpenAIRequest?.(result);
         }
@@ -258,6 +263,12 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   //   }
   // }
 
+  // Provider envelopes may replace the body outright (commandcode, kiro, ...).
+  // Keep response-conversion metadata outside those envelopes so chatCore can
+  // consume and remove it before sending the request onward.
+  if (customToolNames && isObject(result) && !Object.prototype.hasOwnProperty.call(result, "_customToolNames")) {
+    result._customToolNames = customToolNames;
+  }
   return result;
 }
 

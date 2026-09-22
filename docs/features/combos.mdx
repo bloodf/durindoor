@@ -43,11 +43,43 @@ Each combo stores a strategy under `comboStrategies[name].fallbackStrategy`. The
 | `round-robin` | Rotate the start member. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
 | `weighted` | Pick by member weight. |
 | `smart-scoring` | Reorder by quota and health scores, then fall through. |
+| `smart` | Judge how hard the current ask is, then try the best-matched member first. Aliases: `task`, `task-aware`, `auto`. |
 | `fusion` | Run members as a panel, then a judge model. Fusion has its own panel timeout, not the per-member timeout. |
 
 Per-member timeout is `timeoutMs` on the combo strategy. The dashboard field is seconds; 0 means use the fetch connect timeout (60s). Env `COMBO_MODEL_TIMEOUT_MS` is the process-wide default (0 = off).
 
 Hide-paid-models, when on, drops paid members from dispatch without rewriting the stored `models` array.
+
+## Complexity-aware routing
+
+The `smart` strategy scores every member against how hard the current user turn
+looks, then re-sorts the whole combo by that score (ties keep their saved order).
+No member is dropped, so every member stays in the fallback ladder. Capability-aware
+routing still wins: a request carrying images prefers a member that advertises
+vision even when the complexity score would have picked another member. The quota
+ranking pass runs after this sort, so a member with much healthier account quota
+can still be tried before the best complexity match.
+
+By default the difficulty judgement is a local heuristic over prompt size,
+message count, tool count, requested output tokens, reasoning effort, and a few
+keyword classes. It produces one of four levels: `light`, `standard`, `heavy`,
+`critical`.
+
+Setting `TYPESAFE_API_KEY` swaps that heuristic for the TypeSafe Jev classifier,
+a decision model that returns a calibrated tier (`SIMPLE`, `MEDIUM`, `COMPLEX`,
+`REASONING`) for the current ask. The tier maps onto the same four levels, so
+nothing downstream changes. `TYPESAFE_API_BASE` overrides the endpoint.
+
+Only the text of `user` messages in the current turn is sent, capped at 4000
+characters. System and developer prompts, tool and function messages, tool
+results, and earlier turns never leave DurinDoor. Only chat requests (chat completions,
+messages, responses, Gemini) are classified; TTS, image, search and fetch combos
+always use the local heuristic. The call has one 3s deadline
+covering the response headers and body, and it is cancelled when the client
+disconnects. A timeout, network error, HTTP error, or unreadable body opens a 30s
+circuit breaker; after the cooldown one request probes the service again. It fails open: no key, a timeout, an HTTP error, an unparseable body, an
+unknown tier, or a confidence below 0.5 all leave the local heuristic level in
+place, and the combo dispatches exactly as it would without the classifier.
 
 ## Fallback triggers
 

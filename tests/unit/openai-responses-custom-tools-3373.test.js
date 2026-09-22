@@ -241,3 +241,18 @@ describe("Responses custom tools on buffered routes (#3373)", () => {
     }
   });
 });
+
+describe("Responses custom tools through the Command Code envelope (port of decolua/9router #4224)", () => {
+  it("retains custom-tool identity through the Command Code request envelope", async () => {
+    const { translateRequest } = await import("../../open-sse/translator/index.js");
+
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.COMMANDCODE, "test-model", {
+      tools: [{ type: "custom", name: CUSTOM_NAME, description: "Apply a raw patch" }],
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Run pwd" }] }],
+    }, true, null, "commandcode");
+
+    expect(out.params.tools[0]).toMatchObject({ name: CUSTOM_NAME });
+    expect(out.params.tools[0]).not.toHaveProperty("type");
+    expect(out._customToolNames).toEqual([CUSTOM_NAME]);
+  });
+});

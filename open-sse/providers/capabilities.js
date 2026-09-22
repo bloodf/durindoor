@@ -90,7 +90,8 @@ function hasUnpublishedOutput(provider, model) {
   if (!isString(model)) return false;
   const id = model.toLowerCase();
   if (provider === "xai" && id.includes("grok") ||
-  provider === "grok-cli" && (id.includes("grok-build") || id.includes("grok-composer"))) return true;
+  ["grok-cli", "gb", "opencode-zen", "ocz"].includes(provider) &&
+  (id.includes("grok-build") || id.includes("grok-composer") || id.startsWith("grok-4"))) return true;
   if ((provider === "qoder" || provider === "qd") && id === "kmodel") return true;
   if ((provider === "cloudflare-ai" || provider === "cf") && id.startsWith("@cf/")) return true;
   if (provider === "ollama-local" && id === "llama3.2:1b") return true;
@@ -200,11 +201,13 @@ export const MODEL_CAPABILITIES = {
    * 128K as the default generated-token budget but explicitly allows larger
    * values; the ceiling is unpublished, so leave maxOutput unset.
    */
+  "grok-4.7": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 },
   "grok-4.6": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 },
   "grok-4.5": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 },
   "grok-4.3": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000 },
   "grok-4.20-0309-reasoning": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 },
-  "grok-4.20-0309-non-reasoning": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 },
+  // xAI documents the non-reasoning 4.20 variant as "Reasoning: No".
+  "grok-4.20-0309-non-reasoning": { vision: true, tools: true, reasoning: false, search: true, thinkingFormat: null, contextWindow: 1000000 },
   "grok-4.20-multi-agent-0309": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 },
   "grok-build-0.1": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 },
   "grok-code-fast-1": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 },
@@ -766,10 +769,23 @@ export const PATTERN_CAPABILITIES = [
 // Composer keeps the 200K window from decolua/9router#2502's HAR-captured Grok CLI /v1/models response.
 { pattern: "*grok-composer*", caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000 } },
 // Public aliases follow xAI's Grok Build 0.1 docs (256 Ki tokens, vision/tools/reasoning); exact CLI `grok-build` above keeps the HAR-reported 256K/non-reasoning caps.
+// Published aliases resolve to other models: grok-build-latest is grok-4.5,
+// grok-code-fast[-1-0825] is grok-build-0.1. They must win over the families below.
+// https://docs.x.ai/developers/models/grok-4.5 https://docs.x.ai/developers/models/grok-build-0.1
+{ pattern: "*grok-build-latest*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 } },
+{ pattern: "*grok-code-fast*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 } },
 { pattern: "*grok-build*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 } },
 { pattern: "*grok-code*", caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 256000 } },
 // Current 4.x models are 500K or 1M; 500K is the conservative floor that cannot over-promise.
-{ pattern: "*grok-4.5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000 } },
+// Aliases and effort-suffixed ids (grok-4.3-latest, grok-4.20-non-reasoning,
+// grok-4.7-high) miss the exact rows, so the families carry their published
+// windows and reasoning rules here. https://docs.x.ai/developers/models
+{ pattern: "*grok-4.20*non-reasoning*", caps: { vision: true, tools: true, reasoning: false, search: true, thinkingFormat: null, contextWindow: 1000000 } },
+{ pattern: "*grok-4.20*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 } },
+{ pattern: "*grok-4.3*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000 } },
+{ pattern: "*grok-4.7*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 } },
+{ pattern: "*grok-4.6*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 } },
+{ pattern: "*grok-4.5*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 } },
 { pattern: "*grok-4*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000 } },
 // Keep retired Grok 3 ids usable for stored user configurations.
 { pattern: "*grok-3*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 131072 } },

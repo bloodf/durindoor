@@ -50,6 +50,7 @@ import {
   PATTERN_CAPABILITIES } from
 "../../providers/capabilities.js";
 import { matchPattern } from "../../providers/pricing.js";
+import { getOpenRouterModelCapabilities } from "../openrouterCatalog.js";
 
 // Alias→entry map for resolving the provider half of a model string.
 // REGISTRY is an array keyed by nothing; mirror pricing.js's map (id, alias,
@@ -89,8 +90,15 @@ export function getKnownContextWindow(modelStr, capabilitiesMap = null) {
 
   const valid = (v) => isNumber(v) && Number.isFinite(v) && v > 0 ? v : null;
 
-  // 1. Provider registry: per-model contextLength, then provider defaultContextLength.
+  // 0. OpenRouter's published window beats the family patterns below
+  // (e.g. `*glm-5*` = 200K against 32768 for z-ai/glm-5.2:free).
   const entry = provider ? PROVIDER_BY_ID[provider] || null : null;
+  if (entry?.id === "openrouter") {
+    const fromCatalog = valid(getOpenRouterModelCapabilities(model)?.contextWindow);
+    if (fromCatalog !== null) return fromCatalog;
+  }
+
+  // 1. Provider registry: per-model contextLength, then provider defaultContextLength.
   if (entry) {
     const list = Array.isArray(entry.models) ? entry.models : [];
     const rec = list.find((m) => m && m.id === model);

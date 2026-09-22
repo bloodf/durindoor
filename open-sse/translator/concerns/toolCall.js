@@ -248,9 +248,24 @@ function resolveToolResultId(rawId, pendingIds, fallbackId) {
   return pendingIds.shift() || fallbackId();
 }
 
-// Ensure all tool_calls have valid id field and arguments is string (some providers require it)
-export function ensureToolCallIds(body) {
+// Targets whose own request translator validates tool-call arguments itself
+// and must fail loud on malformed JSON (400), never silently drop it. #942's
+// CommandCode translator (request/openai-to-commandcode.js: parseToolInput)
+// throws "invalid arguments" on a JSON.parse failure by design — running the
+// universal #4208 "{}" coercion first would erase the malformed text before
+// that check ever sees it. Reconciled by skipping the argument coercion (but
+// not id/type normalization) for these targets; upstream #4208's original
+// intent — never 400 an upstream on a replayed malformed fragment — still
+// applies to every other target.
+const TARGETS_VALIDATE_OWN_ARGUMENTS = new Set([FORMATS.COMMANDCODE]);
+
+// Ensure all tool_calls have valid id field and arguments is string (some providers require it).
+// `targetFormat` is optional; pass it when known so a target that validates its
+// own tool-call arguments (see TARGETS_VALIDATE_OWN_ARGUMENTS) keeps rejecting
+// malformed JSON instead of having it silently coerced to "{}" first.
+export function ensureToolCallIds(body, targetFormat) {
   if (!body || !isObject(body) || !Array.isArray(body.messages)) return body;
+  const skipArgumentCoercion = TARGETS_VALIDATE_OWN_ARGUMENTS.has(targetFormat);
 
   // Declared tool types on this request, so a raw custom-tool body the
   // Responses stream stored (openai-responses.js:651) survives chat replay
@@ -284,7 +299,7 @@ export function ensureToolCallIds(body) {
          * of forwarding them verbatim (Codex replays raw streamed args, and a partial
          * fragment or freeform-text string trips upstream's "must be valid JSON" 400).
          */
-        if (tc.function && isObject(tc.function)) {
+        if (tc.function && isObject(tc.function) && !skipArgumentCoercion) {
           tc.function.arguments = coerceResponsesArguments(
             tc.function.arguments,
             tc.function.name,

@@ -316,7 +316,7 @@ export function resolveOpenAiEffort(level, provider, model) {
   }
   if (level === "max") return "xhigh";
   if ((level === "minimal" || level === "none") &&
-  (isAstraMinimalFloorModel(provider, model) || /grok-4\.[5-7]/i.test(model || ""))) return "low";
+  (isAstraMinimalFloorModel(provider, model) || /grok-(?:4\.(?:[5-7]|20)|build-latest)/i.test(model || ""))) return "low";
   return level;
 }
 

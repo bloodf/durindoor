@@ -90,7 +90,7 @@ function hasUnpublishedOutput(provider, model) {
   if (!isString(model)) return false;
   const id = model.toLowerCase();
   if (provider === "xai" && id.includes("grok") ||
-  (provider === "grok-cli" || provider === "gb") &&
+  ["grok-cli", "gb", "opencode-zen", "ocz"].includes(provider) &&
   (id.includes("grok-build") || id.includes("grok-composer") || id.startsWith("grok-4"))) return true;
   if ((provider === "qoder" || provider === "qd") && id === "kmodel") return true;
   if ((provider === "cloudflare-ai" || provider === "cf") && id.startsWith("@cf/")) return true;
@@ -769,6 +769,11 @@ export const PATTERN_CAPABILITIES = [
 // Composer keeps the 200K window from decolua/9router#2502's HAR-captured Grok CLI /v1/models response.
 { pattern: "*grok-composer*", caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000 } },
 // Public aliases follow xAI's Grok Build 0.1 docs (256 Ki tokens, vision/tools/reasoning); exact CLI `grok-build` above keeps the HAR-reported 256K/non-reasoning caps.
+// Published aliases resolve to other models: grok-build-latest is grok-4.5,
+// grok-code-fast[-1-0825] is grok-build-0.1. They must win over the families below.
+// https://docs.x.ai/developers/models/grok-4.5 https://docs.x.ai/developers/models/grok-build-0.1
+{ pattern: "*grok-build-latest*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 } },
+{ pattern: "*grok-code-fast*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 } },
 { pattern: "*grok-build*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 } },
 { pattern: "*grok-code*", caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 256000 } },
 // Current 4.x models are 500K or 1M; 500K is the conservative floor that cannot over-promise.

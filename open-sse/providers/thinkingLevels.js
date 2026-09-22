@@ -83,8 +83,11 @@ const PATTERN_THINKING = [
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
-  // xAI publishes only low/medium/high/xhigh for Grok 4.5-4.7; reasoning cannot
-  // be disabled. https://docs.x.ai/developers/models/grok-4.7
+  // xAI publishes only low/medium/high/xhigh for Grok 4.5-4.7 and the 4.20
+  // multi-agent model; reasoning cannot be disabled. grok-build-latest is a
+  // grok-4.5 alias. https://docs.x.ai/developers/model-capabilities/text/reasoning
+  { pattern: "*grok-build-latest*", levels: GROK_EFFORTS },
+  { pattern: "*grok-4.20*", levels: GROK_EFFORTS },
   { pattern: "*grok-4.7*", levels: GROK_EFFORTS },
   { pattern: "*grok-4.6*", levels: GROK_EFFORTS },
   { pattern: "*grok-4.5*", levels: GROK_EFFORTS },

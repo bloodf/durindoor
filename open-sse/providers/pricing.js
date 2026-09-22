@@ -490,6 +490,15 @@ export function matchPattern(pattern, model) {
  * @param {string} model
  * @returns {object|null}
  */
+// A glob cannot send these to their target row (grok-code-* and grok-build*
+// would win), and the catalog drift guard rejects rows for unlisted ids.
+// https://docs.x.ai/developers/models/grok-4.5 https://docs.x.ai/developers/models/grok-build-0.1
+const XAI_PRICING_ALIASES = {
+  "grok-build-latest": "grok-4.5",
+  "grok-code-fast": "grok-build-0.1",
+  "grok-code-fast-1-0825": "grok-build-0.1",
+};
+
 export function getPricingForModel(provider, model) {
   if (!model) return null;
 
@@ -515,6 +524,10 @@ export function getPricingForModel(provider, model) {
     const normalized = normalizeModelId(suffixStripped);
     if (MODEL_PRICING[normalized]) return MODEL_PRICING[normalized];
   }
+
+  // 2c. Published xAI aliases that point at a different model's rates.
+  const aliasTarget = XAI_PRICING_ALIASES[baseModel];
+  if (aliasTarget) return getPricingForModel(provider, aliasTarget);
 
   // 3. Pattern match
   for (const { pattern, pricing } of PATTERN_PRICING) {

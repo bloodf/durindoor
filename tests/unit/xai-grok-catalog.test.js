@@ -80,6 +80,7 @@ describe("xAI Grok catalog", () => {
     expect(resolveModelLimits(provider, model).maxOutput).toBeUndefined();
   });
 
+  // docs.x.ai lists grok-build-latest as an alias of grok-4.5, not Build 0.1.
   it("uses documented public API capabilities for unlisted Build aliases", () => {
     expect(getCapabilitiesForModel("xai", "grok-build-latest")).toMatchObject({
       vision: true,
@@ -88,7 +89,7 @@ describe("xAI Grok catalog", () => {
       search: true,
       thinkingFormat: "openai",
       thinkingCanDisable: false,
-      contextWindow: 262144,
+      contextWindow: 500000,
     });
   });
 
@@ -194,5 +195,35 @@ describe("xAI Grok aliases and effort variants", () => {
   it.each(["grok-cli", "gb"])("leaves the Grok 4 output ceiling unset on %s", (provider) => {
     expect(resolveModelLimits(provider, "grok-4.7").maxOutput).toBeUndefined();
     expect(resolveModelLimits(provider, "grok-4.7").contextWindow).toBe(500000);
+  });
+});
+
+// Published aliases that point at a different model than their name suggests.
+// https://docs.x.ai/developers/models/grok-4.5 (alias grok-build-latest)
+// https://docs.x.ai/developers/models/grok-build-0.1 (aliases grok-code-fast, grok-code-fast-1-0825)
+// https://docs.x.ai/developers/model-capabilities/text/reasoning (4.20 multi-agent efforts low..xhigh)
+describe("xAI cross-model aliases", () => {
+  it("treats grok-build-latest as grok-4.5", () => {
+    expect(getPricingForModel("xai", "grok-build-latest")).toMatchObject({ input: 2, output: 6, cached: 0.3, longContextThreshold: 200_000 });
+    expect(getCapabilitiesForModel("xai", "grok-build-latest")).toMatchObject({ reasoning: true, thinkingCanDisable: false, contextWindow: 500000 });
+    expect(getThinkingLevels("xai", "grok-build-latest")).toEqual(["low", "medium", "high", "xhigh"]);
+    const body = applyThinking("openai", "grok-build-latest", { model: "grok-build-latest", reasoning_effort: "none" }, "xai");
+    expect(body.reasoning_effort).toBe("low");
+    const out = new XaiExecutor().transformRequest("grok-build-latest", { model: "grok-build-latest", reasoning_effort: "high" });
+    expect(out.reasoning_effort).toBe("high");
+  });
+
+  it.each(["grok-code-fast", "grok-code-fast-1-0825"])("bills %s at Grok Build 0.1 rates", (model) => {
+    expect(getPricingForModel("xai", model)).toMatchObject({ input: 1, output: 2, cached: 0.2, longContextThreshold: 200_000 });
+    expect(getCapabilitiesForModel("xai", model).contextWindow).toBe(262144);
+  });
+
+  it.each(["grok-4.20-multi-agent-0309", "grok-4.20-0309-reasoning"])("clamps a disable request on %s to low", (model) => {
+    expect(getThinkingLevels("xai", model)).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(applyThinking("openai", model, { model, reasoning_effort: "none" }, "xai").reasoning_effort).toBe("low");
+  });
+
+  it.each(["opencode-zen", "ocz"])("leaves the Grok 4 output ceiling unset on %s", (provider) => {
+    expect(resolveModelLimits(provider, "grok-4.7").maxOutput).toBeUndefined();
   });
 });

@@ -43,7 +43,8 @@ export class XaiExecutor extends BaseExecutor {
       }
     }
 
-    const isDenied = DENY_REASONING.some((m) => modelId.includes(m));
+    // grok-build-latest is a grok-4.5 alias and keeps its reasoning effort.
+    const isDenied = !modelId.includes("grok-build-latest") && DENY_REASONING.some((m) => modelId.includes(m));
     const isAllowed = ALLOW_REASONING.some((m) => modelId.includes(m));
 
     if (isDenied) {

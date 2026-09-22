@@ -9,6 +9,7 @@ import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from "../../translator/response/completionProjector.js";
 import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
+import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
@@ -381,7 +382,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         clientUsage = rest;
       }
       const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
-      const finalResp = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
+      const resolveToolName = sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE ? createResponsesToolNameResolver(body, toolNameMap) : undefined;
+      const finalResp = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
       logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
 
       await markSuccess();

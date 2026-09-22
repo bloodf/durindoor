@@ -97,16 +97,30 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // exist in the assistant turn — OpenAI-shaped APIs reject that pairing.
   const skippedCallIds = new Set();
 
+  // A blank content value carries no text worth keeping: null/undefined, an
+  // empty or whitespace-only string, or a part array that is empty or holds
+  // only whitespace-only text parts (Responses text always arrives as a part
+  // array, e.g. `[{type:"output_text", text:""}]`, never a bare "").
+  const isBlankContent = (content) => {
+    if (content == null) return true;
+    if (isString(content)) return content.trim() === "";
+    if (Array.isArray(content)) {
+      return content.every((part) => part?.type === OPENAI_BLOCK.TEXT && !(part.text || "").trim());
+    }
+    return false;
+  };
+
   // Responses can split visible assistant text across more than one
   // `message` item on the same turn (e.g. text, then a tool call, then more
   // text). Append instead of keeping only the first non-null content.
   const appendAssistantContent = (msg, content) => {
-    if (content == null) return;
-    // An empty or whitespace-only string carries no text to keep — replace it
-    // rather than wrapping it as a blank text part, which would join into
-    // "\nsecond" instead of "second".
-    const hasExistingText = !(isString(msg.content) && msg.content.trim() === "");
-    if (msg.content == null || !hasExistingText) {
+    // A blank incoming content carries nothing to add — appending it as a
+    // blank text part would join into a stray leading/trailing "\n".
+    if (isBlankContent(content)) return;
+    // A blank existing content (including a part array of all-empty text
+    // parts) has nothing to preserve — replace it outright rather than
+    // wrapping it as a blank text part and joining.
+    if (isBlankContent(msg.content)) {
       msg.content = content;
       return;
     }
@@ -234,7 +248,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
       if (!item.name || !isString(item.name) || item.name.trim() === "") {
-        if (isString(item.call_id)) skippedCallIds.add(item.call_id);
+        // A live tool_calls entry already claims this call_id (an earlier
+        // NAMED call used it) — that call is real, so its output must still
+        // ship. Only mark the id skipped when nothing real answers it.
+        const hasLiveToolCall = currentAssistantMsg.tool_calls?.some((tc) => tc.id === item.call_id);
+        if (isString(item.call_id) && !hasLiveToolCall) skippedCallIds.add(item.call_id);
         continue;
       }
       // A named call reusing a call_id an earlier nameless call skipped is a
@@ -251,12 +269,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       });
     } else
     if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+      // Flush assistant message first (if any) BEFORE the skip check below —
+      // a skipped output must still close out the turn it belongs to, or the
+      // next assistant message merges onto this one across the turn boundary
+      // that its (dropped) function_call_output was supposed to mark.
+      flushAssistant();
       // The call this output answers was skipped (nameless, #444) and never
       // became a tool_calls entry — drop the output too rather than emit an
       // orphaned "tool" message with no matching tool_call_id.
       if (skippedCallIds.has(item.call_id)) continue;
-      // Flush assistant message first if exists
-      flushAssistant();
       // Flush any pending tool results first
       if (pendingToolResults.length > 0) {
         for (const tr of pendingToolResults) {

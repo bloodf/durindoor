@@ -170,6 +170,77 @@ describe("Codex CLI Responses → OpenAI", () => {
     const assistant = out.messages.find((m) => m.role === "assistant");
     expect(assistant.content).toBe("second");
   });
+
+  // A blank-text part array (Responses text always arrives as parts, never a
+  // bare "") must be treated the same as an empty string: replaced, not
+  // wrapped and joined into a leading "\n".
+  it("replaces a blank text-part-array content instead of joining a blank line", () => {
+    const out = R2O({
+      input: [
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "" }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "second" }] },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(assistant.content).toBe("second");
+  });
+
+  // A blank content item arriving AFTER real text must be ignored, not
+  // appended as a blank part that collapses into a trailing "\n".
+  it("ignores a trailing blank content instead of appending a trailing newline", () => {
+    const out = R2O({
+      input: [
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "first" }] },
+        { type: "message", role: "assistant", content: "" },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(assistant.content).toBe("first");
+  });
+
+  // A call_id can be used by a NAMED call first, then reused by a nameless
+  // one. The named call already put a real tool_calls entry on the turn, so
+  // the id must not be marked skipped — that would drop the real output.
+  it("keeps the tool output when a live tool_call already owns a call_id a later nameless call reuses", () => {
+    const out = R2O({
+      input: [
+        { type: "function_call", call_id: "c1", name: "exec_command", arguments: "{}" },
+        { type: "function_call", call_id: "c1", name: "", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: "ran" },
+      ],
+    });
+    const assistant = out.messages.find((m) => m.role === "assistant");
+    expect(assistant.tool_calls).toEqual([{ id: "c1", type: "function", function: { name: "exec_command", arguments: "{}" } }]);
+    const toolMsg = out.messages.find((m) => m.role === "tool");
+    expect(toolMsg).toBeDefined();
+    expect(toolMsg.content).toBe("ran");
+  });
+
+  // A skipped (nameless) call's output must still close out its own turn
+  // before being dropped, or the next real assistant turn merges onto the
+  // still-open one across the turn boundary the dropped output was meant to
+  // mark.
+  it("keeps two turns separate across a dropped skipped-call output", () => {
+    const out = R2O({
+      input: [
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "turn1" }] },
+        { type: "function_call", call_id: "c1", name: "", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: "ignored" },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "turn2" }] },
+        { type: "function_call", call_id: "c2", name: "exec_command", arguments: "{}" },
+        { type: "function_call_output", call_id: "c2", output: "ran" },
+      ],
+    });
+    const assistants = out.messages.filter((m) => m.role === "assistant");
+    expect(assistants).toHaveLength(2);
+    expect(assistants[0].content).toBe("turn1");
+    expect(assistants[0].tool_calls).toBeUndefined();
+    expect(assistants[1].content).toBe("turn2");
+    expect(assistants[1].tool_calls).toEqual([{ id: "c2", type: "function", function: { name: "exec_command", arguments: "{}" } }]);
+    const toolMsg = out.messages.find((m) => m.role === "tool");
+    expect(toolMsg.tool_call_id).toBe("c2");
+    expect(toolMsg.content).toBe("ran");
+  });
 });
 
 describe("OpenAI → Codex Responses (reverse)", () => {

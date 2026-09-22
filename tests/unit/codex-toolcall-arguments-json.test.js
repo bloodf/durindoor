@@ -12,7 +12,7 @@ import "../translator/registerAll.js";
 import { ensureToolCallIds } from "../../open-sse/translator/concerns/toolCall.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { buildDeclaredToolTypes } from "../../open-sse/translator/formats/responsesApi.js";
+import { buildDeclaredToolTypes, resolveDeclaredCustom } from "../../open-sse/translator/formats/responsesApi.js";
 import { sanitizeResponsesItems } from "../../open-sse/executors/opencode-go.js";
 
 // ---------- toolCall.js ensureToolCallIds ----------
@@ -167,6 +167,29 @@ describe("Responses to Chat: malformed arguments coerced at translation", () => 
   });
 });
 
+// ---------- Chat to Responses translator ----------
+describe("Chat to Responses: declaration survives name padding (#4208 review round 4)", () => {
+  // openaiToOpenAIResponsesRequest trims tc.function.name before the lookup
+  // (request/openai-responses.js:449) but buildDeclaredToolTypes previously
+  // stored the raw, padded name — a mismatch that silently dropped a padded
+  // custom tool's raw body to "{}".
+  it("declared custom tool with a padded name keeps its raw body", () => {
+    const result = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "gpt-4o", {
+      tools: [{ type: "custom", name: "  draft_note  " }],
+      messages: [
+        {
+          role: "assistant",
+          tool_calls: [
+            { id: "call_note", type: "function", function: { name: "draft_note", arguments: "remember to feed the cat" } },
+          ],
+        },
+      ],
+    });
+    const call = result.input.find((i) => i.type === "function_call");
+    expect(call.arguments).toBe(JSON.stringify({ input: "remember to feed the cat" }));
+  });
+});
+
 // ---------- buildDeclaredToolTypes (#4208 review round 3) ----------
 describe("buildDeclaredToolTypes", () => {
   // HIGH: a Responses "custom" tool can nest its name under `function` (the
@@ -222,5 +245,36 @@ describe("sanitizeResponsesItems: declared tool argument coercion", () => {
     };
     sanitizeResponsesItems(body);
     expect(body.input[0].arguments).toBe("{}");
+  });
+
+  // #4208 review round 4: normalizeResponsesTools leaves a custom tool's raw
+  // (padded) name in body.tools untouched, while the function_call item's
+  // name is trimmed before the lookup. A mismatched key must not lose the
+  // declaration.
+  it("declaration lookup survives a padded declared tool name", () => {
+    const body = {
+      tools: [{ type: "custom", name: "  draft_note  " }],
+      input: [
+        { type: "function_call", call_id: "call_note", name: "draft_note", arguments: "remember to feed the cat" },
+      ],
+    };
+    sanitizeResponsesItems(body);
+    expect(body.input[0].arguments).toBe(JSON.stringify({ input: "remember to feed the cat" }));
+  });
+});
+
+// ---------- resolveDeclaredCustom / buildDeclaredToolTypes normalization (#4208 review round 4) ----------
+describe("resolveDeclaredCustom: name normalization", () => {
+  it("matches a declared name regardless of surrounding whitespace on either side", () => {
+    const declared = buildDeclaredToolTypes([{ type: "custom", name: "  draft_note  " }]);
+    expect(resolveDeclaredCustom(declared, "draft_note")).toBe(true);
+    expect(resolveDeclaredCustom(declared, "  draft_note  ")).toBe(true);
+  });
+
+  it("matches a declared name past the 128-char tool-name cap", () => {
+    const longName = "x".repeat(200);
+    const declared = buildDeclaredToolTypes([{ type: "function", name: longName }]);
+    // Lookup key arrives already capped, as request/openai-responses.js does.
+    expect(resolveDeclaredCustom(declared, longName.slice(0, 128))).toBe(false);
   });
 });

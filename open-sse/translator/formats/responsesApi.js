@@ -66,6 +66,17 @@ export function clampResponsesCallId(id) {
   return id.length > MAX_RESPONSES_CALL_ID_LEN ? id.substring(0, MAX_RESPONSES_CALL_ID_LEN) : id;
 }
 
+// Every caller that turns a tool name into a lookup/wire key trims and caps
+// it to this length (opencode-go.js, request/openai-responses.js) before a
+// strict Responses upstream sees it (#393-style length limits). Declaration
+// keys must be normalized the same way or a padded/overlong name silently
+// misses its declaration (upstream #4208 review, round 4).
+const MAX_DECLARED_TOOL_NAME_LEN = 128;
+
+function normalizeToolNameKey(name) {
+  return isString(name) ? name.trim().slice(0, MAX_DECLARED_TOOL_NAME_LEN) : "";
+}
+
 // Build a name -> declared tool type ("custom", "function", ...) lookup from
 // a request's declared tools[]. Mirrors initState's toolTypes resolution
 // (translator/index.js) exactly: `function.name` wins over a flat `name`
@@ -82,7 +93,7 @@ export function buildDeclaredToolTypes(tools) {
   for (const tool of tools) {
     if (!tool) continue;
     const type = isString(tool.type) ? tool.type : "";
-    const name = isString(tool.function?.name) ? tool.function.name : isString(tool.name) ? tool.name : "";
+    const name = normalizeToolNameKey(isString(tool.function?.name) ? tool.function.name : tool.name);
     if (name && type) declared.set(name, type);
   }
   return declared;
@@ -91,9 +102,13 @@ export function buildDeclaredToolTypes(tools) {
 // Resolve a tool name against buildDeclaredToolTypes()'s output: true when
 // declared "custom", false when declared as an ordinary function (including
 // "apply_patch"), undefined when the request never declares this name at all.
+// Normalizes `toolName` the same way buildDeclaredToolTypes normalizes its
+// keys, so it doesn't matter whether a caller's lookup name is raw, trimmed,
+// or already length-capped — they all resolve to the same key.
 export function resolveDeclaredCustom(declaredToolTypes, toolName) {
-  if (!declaredToolTypes || !declaredToolTypes.has(toolName)) return undefined;
-  return declaredToolTypes.get(toolName) === "custom";
+  const key = normalizeToolNameKey(toolName);
+  if (!declaredToolTypes || !key || !declaredToolTypes.has(key)) return undefined;
+  return declaredToolTypes.get(key) === "custom";
 }
 
 // Single-stringify: objects → JSON once; valid JSON strings pass through untouched;
@@ -121,6 +136,11 @@ export function coerceResponsesArguments(value, toolName, declaredCustom) {
     try {
       return JSON.stringify(value);
     } catch {
+      // Circular reference or BigInt — same data loss as the parse-failure
+      // path below, so log it the same way (author note, round 4: this
+      // substitution itself is intended upstream #4208 behavior; only a
+      // silent stringify failure was the gap).
+      console.warn(`[Translator] Tool call arguments object for "${toolName || "(unnamed)"}" could not be JSON-stringified, coerced to "{}"`);
       return "{}";
     }
   }

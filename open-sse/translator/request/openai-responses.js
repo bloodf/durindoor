@@ -15,7 +15,7 @@ import {
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
 // clampResponsesCallId (formats/responsesApi.js), standardized upstream in #3819.
 
@@ -83,7 +83,7 @@ function qualifyNamespacedName({ name, namespace }) {
 
 function qualifyNamespacedChoice(choice) {
   const qualify = (entry) => {
-    if (!entry || typeof entry !== "object" || !isString(entry.namespace)) return entry;
+    if (!entry || !isObject(entry) || !isString(entry.namespace)) return entry;
     const { namespace, ...rest } = entry;
     return { ...rest, name: qualifyNamespacedName({ name: entry.name, namespace }) };
   };
@@ -310,7 +310,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   }
 
 
-  if (result.tool_choice && typeof result.tool_choice === "object") {
+  if (result.tool_choice && isObject(result.tool_choice)) {
     result.tool_choice = qualifyNamespacedChoice(result.tool_choice);
   }
 

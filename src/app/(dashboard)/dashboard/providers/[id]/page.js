@@ -36,6 +36,8 @@ import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLe
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
 import { buildTimelineHref } from "../../timeline/href.js";
 import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
+import { useNotificationStore } from "@/store/notificationStore";
+import { deleteConnection, deleteConnections, bulkDeleteFailureMessage } from "./connectionDelete";
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
@@ -65,6 +67,7 @@ function sleep(ms) {
 export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const notify = useNotificationStore();
   const providerId = params.id;
   const currentProviderIdRef = useRef(null);
   const fetchConnectionsGenerationRef = useRef(0);
@@ -910,14 +913,9 @@ export default function ProviderDetailPage() {
       message: "Delete this connection?",
       onConfirm: async () => {
         setConfirmState(null);
-        try {
-          const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
-          if (res.ok) {
-            setConnections((prev) => prev.filter((c) => c.id !== id));
-          }
-        } catch (error) {
-          console.log("Error deleting connection:", error);
-        }
+        const result = await deleteConnection(id);
+        if (result.ok) setConnections((prev) => prev.filter((c) => c.id !== id));
+        else notify.error(result.error, "Connection not deleted");
       }
     });
   };
@@ -930,20 +928,12 @@ export default function ProviderDetailPage() {
       message: `Delete ${count} connection${count > 1 ? "s" : ""}? This cannot be undone.`,
       onConfirm: async () => {
         setConfirmState(null);
-        let failed = 0;
-        const idsToDelete = [...selectedConnectionIds];
-        for (const id of idsToDelete) {
-          try {
-            const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
-            if (!res.ok) failed += 1;
-          } catch (error) {
-            console.log("Error deleting connection:", error);
-            failed += 1;
-          }
-        }
-        setConnections((prev) => prev.filter((c) => !idsToDelete.includes(c.id)));
-        setSelectedConnectionIds([]);
-        if (failed > 0) alert(`Deleted ${idsToDelete.length - failed} connection(s), ${failed} failed.`);
+        const result = await deleteConnections([...selectedConnectionIds]);
+        const deleted = new Set(result.deletedIds);
+        setConnections((prev) => prev.filter((c) => !deleted.has(c.id)));
+        // Failed rows stay listed and selected so the operator can fix and retry them.
+        setSelectedConnectionIds(result.failures.map((failure) => failure.id));
+        if (result.failures.length > 0) notify.error(bulkDeleteFailureMessage(result), "Some connections were not deleted");
       }
     });
   };

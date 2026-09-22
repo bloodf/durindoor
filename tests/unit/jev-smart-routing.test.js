@@ -106,6 +106,21 @@ describe("buildJevState", () => {
     expect(buildJevState(afterReasoning)).toBe("");
   });
 
+  it("any non-user Responses item ends the earlier turn", () => {
+    const user = (text) => ({ type: "message", role: "user", content: [{ type: "input_text", text }] });
+    for (const between of [
+      { type: "item_reference", id: "msg_abc" },
+      "msg_stored_id",
+      { type: "mcp_approval_request", id: "a1" },
+      { type: "message", content: [{ type: "output_text", text: "role-less" }] },
+      { type: "function_call_output", call_id: "c1", output: "x" },
+    ]) {
+      expect(buildJevState({ input: [user("OLDSECRET"), between, user("new ask")] })).toBe("new ask");
+    }
+    // The current turn may span several user items.
+    expect(buildJevState({ input: [user("a"), user("b")] })).toBe("a\nb");
+  });
+
   it("reads a Responses string input, inside the budget", () => {
     expect(buildJevState({ input: "string ask" })).toBe("string ask");
     expect(buildJevState({ input: "y".repeat(9000) }, 4000)).toHaveLength(4000);

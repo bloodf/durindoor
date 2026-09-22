@@ -8,6 +8,7 @@ vi.mock("@/lib/localDb", () => ({
   getCustomModels: vi.fn(),
   getModelAliases: vi.fn(),
 }));
+vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: vi.fn() }));
 vi.mock("@/lib/db/repos/settingsRepo", () => ({ getSettings: vi.fn().mockResolvedValue({}) }));
 vi.mock("@/lib/network/connectionProxy", () => ({

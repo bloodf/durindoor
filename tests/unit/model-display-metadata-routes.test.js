@@ -11,6 +11,7 @@ const db = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/localDb", () => db);
+vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/db/repos/settingsRepo", () => ({ getSettings: vi.fn(async () => ({})) }));
 

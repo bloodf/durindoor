@@ -21,6 +21,7 @@ import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
+import VisibleModelsModal from "./VisibleModelsModal";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import { apiKeyConnectionNames } from "./apiKeyConnectionName";
@@ -74,6 +75,8 @@ export default function ProviderDetailPage() {
   const [codexPlans, setCodexPlans] = useState({});
   const [providerApiKeyConnectionNames, setProviderApiKeyConnectionNames] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [enabledModelIds, setEnabledModelIds] = useState([]);
+  const [showVisibleModels, setShowVisibleModels] = useState(false);
 
   useEffect(() => {
     currentProviderIdRef.current = providerId;
@@ -84,6 +87,10 @@ export default function ProviderDetailPage() {
     setConnections([]);
     setCodexPlans({});
     setProviderApiKeyConnectionNames([]);
+    // The visible-models modal saves under the provider it was opened for;
+    // close it and drop the old allowlist count so neither carries over.
+    setShowVisibleModels(false);
+    setEnabledModelIds([]);
     setLoading(true);
   }, [providerId]);
   const [providerNode, setProviderNode] = useState(null);
@@ -296,6 +303,21 @@ export default function ProviderDetailPage() {
       console.log("Error fetching disabled models:", error);
     }
   }, [providerStorageAlias]);
+
+  // Visible-model allowlist for this provider (empty = no restriction).
+  const fetchEnabledModels = useCallback(async () => {
+    const requestProviderId = providerId;
+    try {
+      const res = await fetch(`/api/models/enabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" });
+      const data = await res.json();
+      // A response for a provider the page has since switched away from must
+      // not overwrite the current provider's banner.
+      if (currentProviderIdRef.current !== requestProviderId) return;
+      if (res.ok) setEnabledModelIds(data.ids || []);
+    } catch (error) {
+      console.log("Error fetching enabled models:", error);
+    }
+  }, [providerId, providerStorageAlias]);
 
   const handleDisableModel = async (modelId) => {
     try {
@@ -655,7 +677,8 @@ export default function ProviderDetailPage() {
     fetchAliases();
     fetchCustomModels();
     fetchDisabledModels();
-  }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels]);
+    fetchEnabledModels();
+  }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels, fetchEnabledModels]);
 
   useEffect(() => {
     setSuggestedModels([]);
@@ -2070,6 +2093,21 @@ export default function ProviderDetailPage() {
         {!!modelsTestError &&
         <p className="text-xs text-dd-danger mb-3 break-words">{modelsTestError}</p>
         }
+        {/* buildModelsList publishes compatible-provider catalogs from their
+            custom/alias ids only and never applies this allowlist to them, so
+            the control would silently do nothing for these providers. */}
+        {!isCompatible &&
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" icon="visibility" onClick={() => setShowVisibleModels(true)}>
+            Visible models{enabledModelIds.length > 0 ? ` (${enabledModelIds.length})` : ""}
+          </Button>
+          <span className="text-[11px] text-text-muted">
+            {enabledModelIds.length > 0 ?
+            `Only these ${enabledModelIds.length} models are exposed on /v1/models` :
+            "All models are exposed on /v1/models"}
+          </span>
+        </div>
+        }
         {providerId === "orcarouter" &&
         <div className="mb-4 rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-3">
             <p className="mb-2 text-xs font-medium text-dd-text">Model catalog</p>
@@ -2263,6 +2301,24 @@ export default function ProviderDetailPage() {
         isOpen={showBulkImportGrokCli}
         onClose={() => setShowBulkImportGrokCli(false)}
         onSuccess={fetchConnections} />
+      }
+
+      {showVisibleModels && !isCompatible &&
+      <VisibleModelsModal
+        key={providerStorageAlias}
+        isOpen
+        onClose={() => setShowVisibleModels(false)}
+        providerId={providerId}
+        providerAlias={providerStorageAlias}
+        connections={connections}
+        customModels={customModels}
+        disabledModelIds={disabledModelIds}
+        onSaved={(ids) => {
+          if (currentProviderIdRef.current !== providerId) return;
+          setEnabledModelIds(ids);
+          fetchDisabledModels();
+        }} />
+
       }
 
       {/* AG Risk Confirmation Modal */}

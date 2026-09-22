@@ -91,14 +91,37 @@ function parseToolInput(value, callId) {
   return input;
 }
 
+/**
+ * /alpha/generate rejects an assistant tool-call with no matching tool-result.
+ * The shared fixMissingToolResponses pass only fills a turn with no results at all,
+ * so a partially answered multi-call turn still needs its gaps closed here.
+ */
+function closeUnansweredCalls(out, pending, toolNames) {
+  if (pending.size === 0) return;
+  out.push({
+    role: ROLE.TOOL,
+    content: [...pending].map((toolCallId) => ({
+      type: "tool-result",
+      toolCallId,
+      toolName: toolNames.get(toolCallId),
+      output: { type: "error-text", value: "[No response received]" }
+    }))
+  });
+  pending.clear();
+}
+
 function convertMessages(messages = []) {
   const out = [];
   const systemTexts = [];
   const toolNames = new Map();
+  const pending = new Set();
 
   for (const m of messages) {
     if (!m) continue;
     const role = m.role;
+    if (role !== ROLE.TOOL && role !== ROLE.SYSTEM && role !== ROLE.DEVELOPER) {
+      closeUnansweredCalls(out, pending, toolNames);
+    }
 
     if (role === ROLE.SYSTEM || role === ROLE.DEVELOPER) {
       const t = flattenText(m.content);
@@ -111,6 +134,7 @@ function convertMessages(messages = []) {
       const toolName = m.name || toolNames.get(toolCallId) || "";
       if (!toolCallId) throw invalidRequest("tool message requires tool_call_id");
       if (!toolName) throw invalidRequest(`cannot resolve tool name for tool_call_id ${toolCallId}`);
+      pending.delete(toolCallId);
       const value = isString(m.content) ? m.content : flattenText(m.content);
       out.push({
         role: ROLE.TOOL,
@@ -137,6 +161,7 @@ function convertMessages(messages = []) {
           if (!id) throw invalidRequest("assistant tool call requires a non-empty id");
           if (!fn.name) throw invalidRequest(`assistant tool call ${id} requires a non-empty function name`);
           toolNames.set(id, fn.name);
+          pending.add(id);
           blocks.push({
             type: "tool-call",
             toolCallId: id,
@@ -151,6 +176,7 @@ function convertMessages(messages = []) {
 
     out.push({ role: ROLE.USER, content: toContentBlocks(m.content) });
   }
+  closeUnansweredCalls(out, pending, toolNames);
 
   return { messages: out, system: systemTexts.join("\n\n") };
 }

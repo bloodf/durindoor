@@ -313,3 +313,34 @@ describe("openaiToCommandCodeRequest — reasoning block precedes tool calls", (
     expect(assistant.content.some((b) => b.type === "reasoning")).toBe(false);
   });
 });
+
+describe("openaiToCommandCodeRequest — unanswered tool calls", () => {
+  const call = (id) => ({ id, type: "function", function: { name: "run", arguments: "{}" } });
+  const resultIds = (out) => out.params.messages
+    .filter((m) => m.role === "tool")
+    .flatMap((m) => m.content.map((b) => [b.toolCallId, b.output.type]));
+
+  it("closes a call left unanswered in a partially answered turn before the next user message", () => {
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [
+        { role: "user", content: "go" },
+        { role: "assistant", content: null, tool_calls: [call("c1"), call("c2")] },
+        { role: "tool", tool_call_id: "c1", content: "ok" },
+        { role: "user", content: "next" },
+      ],
+    }, true);
+    expect(resultIds(out)).toEqual([["c1", "text"], ["c2", "error-text"]]);
+    expect(out.params.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "tool", "user"]);
+    expect(out.params.messages[3].content[0].toolName).toBe("run");
+  });
+
+  it("closes a trailing unanswered call and leaves answered ones alone", () => {
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [
+        { role: "user", content: "go" },
+        { role: "assistant", content: null, tool_calls: [call("c1")] },
+      ],
+    }, true);
+    expect(resultIds(out)).toEqual([["c1", "error-text"]]);
+  });
+});

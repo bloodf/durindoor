@@ -12,6 +12,8 @@ import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { HTTP_STATUS, STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
+import { classifyTier } from "./jevClassifier.js";
+import { JEV_STATE_CHAR_BUDGET, JEV_TIER_TO_TASK_LEVEL } from "../config/jev.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -581,6 +583,72 @@ export function detectRequiredCapabilities(body) {
   if (effort && String(effort).toLowerCase() !== "none") required.add("reasoning");
 
   return required;
+}
+
+/**
+ * Build the bounded `state` string the Jev classifier judges.
+ *
+ * Only text the user typed in the current turn is sent to the third-party
+ * classifier: `role: "user"` items from the trailing run (trailingUserItems, so
+ * "the current ask" means the same as for the capability auto-switch). System
+ * and developer prompts, `tool` / `function` messages, Claude `tool_result`
+ * blocks and Responses tool outputs never leave the process, since they can
+ * carry secrets. A Responses `input` string is the ask itself.
+ *
+ * @param {object} body - client request body (OpenAI/Claude/Gemini/Responses)
+ * @param {number} [charBudget]
+ * @returns {string} state text (may be "")
+ */
+export function buildJevState(body, charBudget = JEV_STATE_CHAR_BUDGET) {
+  if (!body || !isObject(body)) return "";
+  const parts = [];
+  const pushText = (t) => {
+    if (isString(t) && t.trim()) parts.push(t.trim());
+  };
+
+  // Plain string, or any block that carries a `text` field: covers OpenAI
+  // `text`, the Responses API's `input_text`, and Gemini parts alike.
+  const textOf = (content) => {
+    if (isString(content)) return content;
+    if (!Array.isArray(content)) return "";
+    return content.filter((c) => c?.type !== "tool_result" && isString(c?.text)).map((c) => c.text).join("\n");
+  };
+  const userOnly = (items) => trailingUserItems(items).filter((it) => it?.role === "user");
+
+  for (const m of userOnly(body.messages)) pushText(textOf(m.content)); // openai / claude / hermes / ollama
+  if (isString(body.input)) pushText(body.input); // responses, string form
+  // Responses items: any item that is not a user message (tool calls and outputs,
+  // reasoning, item_reference, stored ids, ...) ends the earlier turn, so only
+  // the trailing run of user items is sent.
+  const input = Array.isArray(body.input) ? body.input : [];
+  const lastNonUser = input.findLastIndex((it) => it?.role !== "user");
+  for (const it of input.slice(lastNonUser + 1)) pushText(textOf(it.content)); // responses, item list
+  const contents = body.contents || body.request?.contents; // gemini / antigravity
+  // Gemini lets a single-turn request omit the role; functionResponse parts carry no `text`.
+  for (const c of trailingUserItems(contents)) if (!c?.role || c.role === "user") pushText(textOf(c.parts));
+
+  return parts.join("\n").slice(0, charBudget);
+}
+
+/**
+ * Judge the request's complexity tier with Jev and translate it to a task level.
+ *
+ * Fail-open: returns null whenever the classifier is unconfigured, slow, broken
+ * or unsure, and the caller then keeps the local heuristic level.
+ *
+ * @param {object} body - client request body
+ * @param {object} log
+ * @param {AbortSignal|null} signal - client request signal, cancels the call on disconnect
+ * @returns {Promise<{level: string, tier: string, confidence: number}|null>}
+ */
+async function classifyTaskLevelWithJev(body, log, signal) {
+  const state = buildJevState(body);
+  if (!state) return null;
+  const classified = await classifyTier({ state, log, signal });
+  if (!classified) return null;
+  const level = JEV_TIER_TO_TASK_LEVEL[classified.tier];
+  if (!level) return null;
+  return { level, tier: classified.tier, confidence: classified.confidence };
 }
 
 function isTaskRoutingStrategy(strategy) {
@@ -1268,6 +1336,9 @@ export async function handleComboChat({
   comboStrategy,
   comboStickyLimit = 1,
   autoSwitch = true,
+  // Only the chat handler opts in. TTS, image, search and fetch bodies are not
+  // a user chat turn (a TTS `input` is the utterance), so they never go to Jev.
+  jevClassify = false,
   comboTimeoutMs = 0,
   quotaRanker = null,
   signal = null,
@@ -1366,7 +1437,14 @@ export async function handleComboChat({
 
   // Task-aware reordering (smart/task strategies) runs after context sort.
   if (autoSwitch && isTaskRoutingStrategy(comboStrategy)) {
-    const task = classifyTask(body);
+    let task = classifyTask(body);
+    // Optional Jev upgrade: when TYPESAFE_API_KEY is configured the judged tier
+    // replaces the keyword/size heuristic level. Fail-open, so an unconfigured,
+    // slow, broken or unsure classifier leaves the heuristic level in place.
+    const judged = jevClassify ? await classifyTaskLevelWithJev(body, log, signal) : null;
+    if (judged && judged.level !== task.level) {
+      task = { ...task, level: judged.level, weight: taskWeight(judged.level), reasons: [`jev:${judged.tier}`] };
+    }
     const taskReordered = reorderByTaskWeight(rotatedModels, task, required, capabilitiesMap);
     if (taskReordered[0] !== rotatedModels[0]) {
       const reasons = Array.isArray(task.reasons) && task.reasons.length ? ` (${task.reasons.join(", ")})` : "";

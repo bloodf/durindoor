@@ -12,6 +12,7 @@ import {
   inspectAndWrapCommandCodeResponse,
   parseCommandCodeError,
   preflightCommandCodeResponse,
+  wrapNdjsonAsOpenAISse,
 } from "../../open-sse/executors/commandcode.js";
 
 const encoder = new TextEncoder();
@@ -107,7 +108,7 @@ describe("CommandCode HTTP-200 error preflight", () => {
     const chunks = [
       ndjson({ type: "start" }),
       ndjson({ type: "text-delta", text: "hello" }),
-      ndjson({ type: "finish" }),
+      ndjson({ type: "finish", finishReason: "stop" }),
     ];
 
     const response = await preflightCommandCodeResponse(responseFromChunks(chunks));
@@ -163,6 +164,19 @@ describe("CommandCode HTTP-200 error preflight", () => {
   });
 });
 
+describe("CommandCode reference protocol compatibility (port of decolua/9router #4224)", () => {
+  it("uses the current official CLI identity headers and drops the per-request session id", () => {
+    const headers = new CommandCodeExecutor().buildHeaders({ apiKey: "user_test" });
+    expect(headers).toMatchObject({
+      Authorization: "Bearer user_test",
+      "x-command-code-version": "1.54.2",
+      "x-cli-environment": "production",
+      "User-Agent": "cli",
+    });
+    expect(headers["x-session-id"]).toBeUndefined();
+  });
+});
+
 describe("CommandCode retries a transient stream error (port of decolua/9router 092c84ea)", () => {
   it("retries once when the preflight classifies a 503 and succeeds on the next attempt", async () => {
     vi.useFakeTimers();
@@ -178,7 +192,7 @@ describe("CommandCode retries a transient stream error (port of decolua/9router 
         response: responseFromChunks([
           ndjson({ type: "start" }),
           ndjson({ type: "text-delta", text: "Recovered from overload" }),
-          ndjson({ type: "finish" }),
+          ndjson({ type: "finish", finishReason: "stop" }),
         ]),
       });
 
@@ -232,5 +246,53 @@ describe("CommandCode retries a transient stream error (port of decolua/9router 
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("CommandCode stream wrapper failure handling", () => {
+  const wrap = (events) =>
+    wrapNdjsonAsOpenAISse(new Response(events.map((event) => `${JSON.stringify(event)}\n`).join("")), "cc-model").text();
+
+  it("turns a rejected finish into a stream_error instead of truncating the body", async () => {
+    for (const events of [
+      [{ type: "text-delta", text: "hi" }, { type: "finish" }],
+      [{ type: "text-delta", text: "hi" }, { type: "finish", finishReason: "other" }],
+      [{ type: "tool-call", toolCallId: "call_1", toolName: "Read", input: "[1]" }, { type: "finish", finishReason: "tool-calls" }],
+    ]) {
+      const text = await wrap(events);
+      expect(text).toContain("stream_error");
+      expect(text).not.toContain("[DONE]");
+    }
+  });
+
+  it("labels the wrapped body as SSE whatever the upstream content type", async () => {
+    const upstream = responseFromChunks([ndjson({ type: "text-delta", text: "hi" }), ndjson({ type: "finish", finishReason: "stop" })]);
+    upstream.headers.set("Content-Length", "99");
+    const response = wrapNdjsonAsOpenAISse(upstream, "cc-model");
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+    expect(response.headers.has("content-length")).toBe(false);
+    expect(await response.text()).toContain("[DONE]");
+  });
+
+  it("fails a stream that ends on finish-step without finish, as the CLI does", async () => {
+    const text = await wrap([
+      { type: "tool-call", toolCallId: "call_3", toolName: "Read", input: { path: "a" } },
+      { type: "finish-step", finishReason: "tool-calls" },
+    ]);
+    expect(text).toContain("CommandCode stream ended before finish");
+    expect(text).not.toContain("tool_calls");
+  });
+
+  it("emits an SSE comment while tool input is buffered", async () => {
+    const text = await wrap([
+      { type: "tool-input-start", id: "call_2", toolName: "Write" },
+      { type: "tool-input-delta", id: "call_2", delta: "{" },
+      { type: "tool-call", toolCallId: "call_2", toolName: "Write", input: { path: "a" } },
+      { type: "finish", finishReason: "tool-calls" },
+    ]);
+    expect(text.startsWith(": commandcode tool input\n\n")).toBe(true);
+    expect(text.match(/^: /gm)).toHaveLength(1);
+    expect(text).toContain('"finish_reason":"tool_calls"');
+    expect(text).toContain("[DONE]");
   });
 });

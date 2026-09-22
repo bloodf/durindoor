@@ -583,20 +583,27 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
   } else {
     const translationModel = resolveKiroTranslationModel(targetFormat, alias, cleanModel, cleanUpstreamModel);
-    translatedBody = translateRequest(
-      sourceFormat,
-      targetFormat,
-      translationModel,
-      body,
-      stream,
-      credentials,
-      provider,
-      reqLogger,
-      stripList,
-      connectionId,
-      clientTool,
-      { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities }
-    );
+    try {
+      translatedBody = translateRequest(
+        sourceFormat,
+        targetFormat,
+        translationModel,
+        body,
+        stream,
+        credentials,
+        provider,
+        reqLogger,
+        stripList,
+        connectionId,
+        clientTool,
+        { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities }
+      );
+    } catch (error) {
+      // Translators flag a malformed client payload with statusCode 400; anything else is ours.
+      if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+      finishTimeline("error", "error", error.message);
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
     if (!translatedBody) {
       finishTimeline("error", "error", `Failed to translate request for ${sourceFormat} to ${targetFormat}`);
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Failed to translate request for ${sourceFormat} → ${targetFormat}`);
@@ -1402,7 +1409,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishProviderRequest();
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");
-      let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody } = parsedError;
+      let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody, antigravityQuotaSignal } = parsedError;
       // Kimi docs classify exhausted membership windows as 403. Confirm the
       // rolling 5-hour window is empty while weekly quota remains before
       // attaching a temporary model-scoped reset deadline.
@@ -1460,6 +1467,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     finishTimeline("error", "error", errMsg);
     return {
       ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence, credentials, getClientStatusFromError(statusCode, errorBody ?? message)),
+      antigravityQuotaSignal,
       attemptStartedAt: latestProviderAttemptStartedAt,
       headers: providerResponse.headers,
     };

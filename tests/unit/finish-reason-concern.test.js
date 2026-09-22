@@ -46,6 +46,17 @@ describe("toOpenAIFinish - claude", () => {
     ["end_turn", "stop"],
     ["max_tokens", "length"],
     ["tool_use", "tool_calls"],
+    ["stop_sequence", "stop"],
+    ["refusal", "content_filter"],
+    // Context-window truncation is not the requested output budget, but OpenAI
+    // has no separate reason for it either; Bedrock's own executor already
+    // folds it to "length" (open-sse/executors/bedrock.js), native Claude must
+    // match rather than silently look like a finished answer.
+    ["model_context_window_exceeded", "length"],
+    // A paused server-tool turn needs the client to act (send the response back
+    // unmodified) before the turn is done, so it must not read as a clean stop.
+    ["pause_turn", "tool_calls"],
+    ["unknown_xyz", "stop"],
   ])("%s -> %s", (input, expected) => {
     expect(toOpenAIFinish(input, "claude")).toBe(expected);
   });
@@ -67,6 +78,12 @@ describe("fromOpenAIFinish round-trip - claude", () => {
   it("length -> max_tokens", () => {
     expect(fromOpenAIFinish("length", "claude")).toBe("max_tokens");
   });
+  it("content_filter -> end_turn (provider moderation blocks are not a model refusal)", () => {
+    expect(fromOpenAIFinish("content_filter", "claude")).toBe("end_turn");
+  });
+  it("refusal -> refusal (literal alias round-trips, same as max_tokens/tool_use)", () => {
+    expect(fromOpenAIFinish("refusal", "claude")).toBe("refusal");
+  });
 });
 
 describe("enum literals (catch drift)", () => {
@@ -80,6 +97,7 @@ describe("enum literals (catch drift)", () => {
     expect(CLAUDE_STOP.END_TURN).toBe("end_turn");
     expect(CLAUDE_STOP.MAX_TOKENS).toBe("max_tokens");
     expect(CLAUDE_STOP.TOOL_USE).toBe("tool_use");
+    expect(CLAUDE_STOP.REFUSAL).toBe("refusal");
   });
   it("GEMINI_FINISH literals", () => {
     expect(GEMINI_FINISH.STOP).toBe("STOP");

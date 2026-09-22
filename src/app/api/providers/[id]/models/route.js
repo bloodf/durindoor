@@ -142,11 +142,16 @@ export async function GET(request, { params }) {
 
     // Config-driven custom resolver path (OAuth refresh, non-OpenAI shape, etc.)
     if (isFunction(config.customResolver)) {
-      const result = await config.customResolver(connection, proxyOptions);
+      const result = await config.customResolver(connection, proxyOptions, request.url);
       if (result.error) {
         return NextResponse.json({ error: result.error }, { status: result.status || 500 });
       }
-      return NextResponse.json({ models: result.models || [], warning: result.warning });
+      const payload = { models: result.models || [], warning: result.warning };
+      // Catalogs that can degrade (OrcaRouter) report where the list came from
+      // so the UI can label a fallback instead of presenting it as live data.
+      if (result.source) payload.source = result.source;
+      if (result.degraded !== undefined) payload.degraded = result.degraded;
+      return NextResponse.json(payload);
     }
 
     // Get auth token

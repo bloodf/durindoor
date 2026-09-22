@@ -20,6 +20,7 @@ vi.mock("@/lib/localDb", () => ({
   getModelAliases: mocks.getModelAliases,
 }));
 
+vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({
   getDisabledModels: mocks.getDisabledModels,
 }));

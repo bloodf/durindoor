@@ -21,8 +21,9 @@ describe("openaiToCommandCodeRequest — basic envelope", () => {
       messages: [{ role: "user", content: "hi" }],
     }, true);
 
-    expect(out).toHaveProperty("threadId");
+    expect(out).not.toHaveProperty("threadId");
     expect(out).toHaveProperty("memory");
+    expect(out).toMatchObject({ taste: null, skills: null, permissionMode: "standard" });
     expect(out).toHaveProperty("config");
     expect(out).toHaveProperty("params");
     expect(out.params.model).toBe(MODEL);
@@ -158,10 +159,19 @@ describe("openaiToCommandCodeRequest — tools schema conversion", () => {
 
     const t = out.params.tools[0];
     expect(t.name).toBe("weather");
+    expect(t).not.toHaveProperty("type");
     expect(t.input_schema).toBeDefined();
     expect(t.input_schema.type).toBe("object");
     expect(t.function).toBeUndefined();
     expect(t.parameters).toBeUndefined();
+  });
+
+  it("forwards temperature only when the caller set it, and never top_p", () => {
+    const base = { messages: [{ role: "user", content: "hi" }] };
+    expect(openaiToCommandCodeRequest(MODEL, base, true).params).not.toHaveProperty("temperature");
+    const out = openaiToCommandCodeRequest(MODEL, { ...base, temperature: 0, top_p: 0.5 }, true);
+    expect(out.params.temperature).toBe(0);
+    expect(out.params).not.toHaveProperty("top_p");
   });
 
   it("preserves description on converted tool", () => {
@@ -197,11 +207,11 @@ describe("openaiToCommandCodeRequest — tools schema conversion", () => {
     ]);
   });
 
-  it("does not include tools field when input has none", () => {
+  it("uses an empty tools list when input has none", () => {
     const out = openaiToCommandCodeRequest(MODEL, {
       messages: [{ role: "user", content: "hi" }],
     }, true);
-    expect(out.params.tools).toBeUndefined();
+    expect(out.params.tools).toEqual([]);
   });
 });
 
@@ -243,11 +253,12 @@ describe("openaiToCommandCodeRequest — Muse reasoning", () => {
   });
 });
 
-// Port of decolua/9router 092c84ea: CommandCode's /alpha/generate schema pairs a
-// tool-call block with a preceding reasoning block; without one, retried turns
-// hit transient stream errors.
+// Match reference protocol (port of decolua/9router #4224): the previous
+// forced-placeholder reasoning block (port of 9router 092c84ea) is superseded
+// by matching CommandCode's actual wire contract (headers, envelope shape) —
+// a tool call no longer needs a synthetic reasoning block to precede it.
 describe("openaiToCommandCodeRequest — reasoning block precedes tool calls", () => {
-  it("emits a placeholder reasoning block for a tool-calling turn with no reasoning text", () => {
+  it("emits no reasoning block for a tool-calling turn with no reasoning text", () => {
     const out = openaiToCommandCodeRequest(MODEL, {
       messages: [
         { role: "user", content: "run it" },
@@ -260,7 +271,7 @@ describe("openaiToCommandCodeRequest — reasoning block precedes tool calls", (
     }, true);
 
     const assistant = out.params.messages.find((m) => m.role === "assistant");
-    expect(assistant.content[0]).toEqual({ type: "reasoning", text: " " });
+    expect(assistant.content.some((b) => b.type === "reasoning")).toBe(false);
     expect(assistant.content.some((b) => b.type === "tool-call")).toBe(true);
   });
 
@@ -300,5 +311,36 @@ describe("openaiToCommandCodeRequest — reasoning block precedes tool calls", (
 
     const assistant = out.params.messages.find((m) => m.role === "assistant");
     expect(assistant.content.some((b) => b.type === "reasoning")).toBe(false);
+  });
+});
+
+describe("openaiToCommandCodeRequest — unanswered tool calls", () => {
+  const call = (id) => ({ id, type: "function", function: { name: "run", arguments: "{}" } });
+  const resultIds = (out) => out.params.messages
+    .filter((m) => m.role === "tool")
+    .flatMap((m) => m.content.map((b) => [b.toolCallId, b.output.type]));
+
+  it("closes a call left unanswered in a partially answered turn before the next user message", () => {
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [
+        { role: "user", content: "go" },
+        { role: "assistant", content: null, tool_calls: [call("c1"), call("c2")] },
+        { role: "tool", tool_call_id: "c1", content: "ok" },
+        { role: "user", content: "next" },
+      ],
+    }, true);
+    expect(resultIds(out)).toEqual([["c1", "text"], ["c2", "error-text"]]);
+    expect(out.params.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "tool", "user"]);
+    expect(out.params.messages[3].content[0].toolName).toBe("run");
+  });
+
+  it("closes a trailing unanswered call and leaves answered ones alone", () => {
+    const out = openaiToCommandCodeRequest(MODEL, {
+      messages: [
+        { role: "user", content: "go" },
+        { role: "assistant", content: null, tool_calls: [call("c1")] },
+      ],
+    }, true);
+    expect(resultIds(out)).toEqual([["c1", "error-text"]]);
   });
 });

@@ -9,6 +9,7 @@ import {
 "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { getEnabledModels } from "@/lib/enabledModelsDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { getSettings } from "@/lib/db/repos/settingsRepo";
@@ -646,6 +647,54 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
   const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && (disabledByAlias[alias] ?? []).includes(modelId);
 
+  // Unlike the other optional lookups above, a failed read here cannot fail
+  // soft: an empty map means "no provider is restricted", so silently
+  // swallowing the error would serve a provider's full catalog on a request
+  // that should have been allowlist-restricted. Let the caller's route
+  // handler turn this into a 500 instead.
+  const enabledByAlias = await getEnabledModels();
+
+  // Visible-model allowlist for one provider. The provider page writes it per
+  // alias (`/api/models/enabled`); a hand-set
+  // `providerSpecificData.enabledModels` still wins only when the provider-level
+  // allowlist is absent. Returns [] when the provider is unrestricted.
+  //
+  // This is what makes "only these models are visible" work for providers with a
+  // live catalog (github/kiro/qoder/...): their registry list lags upstream, so a
+  // blacklist can never name the catalog-only ids, only an allowlist can.
+  const resolveEnabledModels = (providerId, conn) => {
+    const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
+    const psd = isRecord(conn?.providerSpecificData) ? conn.providerSpecificData : {};
+
+    // The dashboard writes the allowlist under the provider's storage alias
+    // (getProviderAlias: uiAlias || alias, or the provider id for compatible
+    // providers; e.g. DeepSeek stores under `ds`, not registry `deepseek`) — never
+    // under a connection's custom output prefix. Checking the output prefix
+    // first let a custom prefix that collided with another provider's static
+    // alias pull that other provider's allowlist. Keep the prefix out of the
+    // lookup key entirely.
+    const candidates = [
+      enabledByAlias[getProviderAlias(providerId)],
+      enabledByAlias[staticAlias],
+      enabledByAlias[providerId],
+      psd.enabledModels,
+    ];
+
+    for (const candidate of candidates) {
+      if (!Array.isArray(candidate)) continue;
+      const ids = Array.from(
+        new Set(candidate.filter((id) => isString(id) && id.trim() !== ""))
+      );
+      if (ids.length > 0) return ids;
+    }
+    return [];
+  };
+
+  // Same storage-key rule for the static and keyless readers, whose `alias`
+  // is the registry alias (the output prefix), not the dashboard key.
+  const storedAllowlist = (providerId, alias) =>
+    [getProviderAlias(providerId), alias, providerId].map((key) => enabledByAlias[key]).find((v) => Array.isArray(v) && v.length > 0);
+
   const activeConnectionByProvider = new Map();
   for (const conn of connections) {
     if (!activeConnectionByProvider.has(conn.provider)) {
@@ -708,9 +757,12 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
   const addStaticProviderModels = (providerId, alias, { hasCredentials = false } = {}) => {
     if (!providerMatchesKinds(providerId, kindFilter)) return;
+    const enabledModels = storedAllowlist(providerId, alias);
+    const hasAllowlist = Array.isArray(enabledModels) && enabledModels.length > 0;
     for (const model of PROVIDER_MODELS[alias] ?? []) {
       if (!kindFilter.includes(modelKind(model))) continue;
       if (model.requiresApiKey === true && !hasCredentials) continue;
+      if (hasAllowlist && !enabledModels.includes(model.id)) continue;
       if (isDisabled(alias, model.id)) continue;
       if (hidePaidModels && isPaidModel(`${alias}/${model.id}`)) continue;
       const caps = getCapabilitiesForModel(providerId, model.id);
@@ -743,6 +795,12 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       return;
     }
 
+    // Keyless catalogs honour the same visible-model allowlist as connected
+    // providers: without this, a saved allowlist for a noAuth provider (e.g.
+    // AI Horde) is silently ignored whenever live discovery succeeds.
+    const allowlist = storedAllowlist(providerId, alias);
+    const hasAllowlist = Array.isArray(allowlist) && allowlist.length > 0;
+
     try {
       const live = await resolveLiveOpenAIModels({
         id: "noauth",
@@ -763,6 +821,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       for (const liveModel of live.models) {
         const modelId = liveModel.id;
         if (!isString(modelId) || !modelId.trim() || isDisabled(alias, modelId)) continue;
+        if (hasAllowlist && !allowlist.includes(modelId)) continue;
         if (hidePaidModels && isPaidModel(`${alias}/${modelId}`)) continue;
         const kind = liveModel.kind || liveModel.type || inferKindFromUnknownModelId(modelId);
         if (!kindFilter.includes(kind)) continue;
@@ -881,10 +940,8 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         staticAlias).
         trim();
         const providerModels = PROVIDER_MODELS[staticAlias] ?? [];
-        const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
-        const enabledModels = psd.enabledModels;
-        const hasExplicitEnabledModels =
-        Array.isArray(enabledModels) && enabledModels.length > 0;
+        const enabledModels = resolveEnabledModels(providerId, conn);
+        const hasExplicitEnabledModels = enabledModels.length > 0;
         const isCompatibleProvider =
         isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
         const liveModelKindById = new Map();
@@ -1053,7 +1110,11 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           if (fullModel.startsWith(`${providerId}/`)) return fullModel.slice(providerId.length + 1);
           return fullModel;
         }).
-        filter((modelId) => isString(modelId) && modelId.trim() !== "");
+        filter((modelId) => isString(modelId) && modelId.trim() !== "").
+        // An allowlist restricts what /v1/models publishes for this provider;
+        // an alias pointed at an id outside it must not re-expose that id.
+        // Custom models keep their separate always-visible exception.
+        filter((modelId) => !hasExplicitEnabledModels || enabledModels.includes(modelId));
         const compatiblePublicIds = isCompatibleProvider ? getCompatiblePublicIds({
           customModelIds,
           modelAliases,

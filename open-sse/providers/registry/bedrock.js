@@ -10,12 +10,26 @@ export default {
     textIcon: "BR",
     website: "https://aws.amazon.com/bedrock",
     notice: {
-      text: "Uses Amazon Bedrock native Converse APIs. Configure a Bedrock API key and the AWS region where your models are enabled.",
+      text:
+        "Uses Amazon Bedrock native Converse APIs. Pick the AWS region where your models are " +
+        "enabled, then authenticate one of three ways. SSO / profile (recommended): fill in " +
+        "AWS Profile, leave the API key empty, and run `aws sso login --profile <name>` — " +
+        "credentials refresh automatically. Static AWS keys: put the AWS secret access key in " +
+        "the API Key field and the key id in Access Key ID, adding Session Token for temporary " +
+        "(ASIA...) keys. Bedrock API key: paste it in the API Key field on its own. A profile, " +
+        "if set, takes precedence.",
       apiKeyUrl: "https://aws.amazon.com/bedrock",
     },
   },
   category: "apikey",
   hasProviderSpecificData: true,
+  // In profile/SSO mode the connection carries no API key at all: the credential lives in the
+  // local AWS config. This names the providerSpecificData field that stands in for one, so the
+  // create and validate routes accept an empty key instead of rejecting the documented setup.
+  apiKeyOptionalWith: "profile",
+  // Which credential form the dashboard should render. Declared rather than keyed off the
+  // provider id so a later AWS entry gets the same form without another special case.
+  credentialForm: "aws",
   regions: [
     { id: "us-east-1", label: "US East (N. Virginia)" },
     { id: "us-west-2", label: "US West (Oregon)" },

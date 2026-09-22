@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { commandCodeToOpenAIResponse } from "../translator/response/commandcode-to-openai.js";
@@ -27,11 +26,13 @@ COMMANDCODE_EVENT.PROVIDER_METADATA,
 COMMANDCODE_EVENT.MESSAGE_METADATA]
 );
 
+const TOOL_INPUT_EVENTS = new Set([COMMANDCODE_EVENT.TOOL_INPUT_START, COMMANDCODE_EVENT.TOOL_INPUT_DELTA]);
+const COMMANDCODE_KEEPALIVE_MS = 15_000;
+
 /**
  * CommandCodeExecutor — talks to https://api.commandcode.ai/alpha/generate
  *
  * Auth: Bearer <user_xxx> API key (stored as the connection's apiKey).
- * Adds the per-request `x-session-id` header expected by CommandCode upstream.
  *
  * Upstream returns AI SDK v5 NDJSON (one JSON event per line, no `data:` prefix).
  * We translate each event to an OpenAI chat.completion.chunk and emit it as SSE so
@@ -55,8 +56,7 @@ export class CommandCodeExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true) {
     const headers = {
       "Content-Type": "application/json",
-      ...(this.config.headers || {}),
-      "x-session-id": randomUUID()
+      ...(this.config.headers || {})
     };
 
     const token = credentials?.apiKey || credentials?.accessToken;
@@ -279,7 +279,7 @@ export function wrapNdjsonAsOpenAISse(originalResponse, model) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
-  const state = { model, rawTerminalSeen: false, failureSeen: false };
+  const state = { model, rawTerminalSeen: false, failureSeen: false, lastKeepaliveAt: 0 };
 
   const emitChunks = (chunks, controller) => {
     if (!chunks) return;
@@ -294,6 +294,15 @@ export function wrapNdjsonAsOpenAISse(originalResponse, model) {
     if (state.failureSeen) return;
     state.failureSeen = true;
     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message, type: "stream_error" } })}\n\n`));
+  };
+
+  // Tool input is buffered until the authoritative tool-call, so nothing reaches
+  // the TTFT/stall watchdogs meanwhile. An SSE comment keeps them fed.
+  const emitKeepalive = (controller) => {
+    const now = Date.now();
+    if (now - state.lastKeepaliveAt < COMMANDCODE_KEEPALIVE_MS) return;
+    state.lastKeepaliveAt = now;
+    controller.enqueue(encoder.encode(": commandcode tool input\n\n"));
   };
 
   const processLine = (line, controller) => {
@@ -315,8 +324,17 @@ export function wrapNdjsonAsOpenAISse(originalResponse, model) {
       emitFailure(controller, "CommandCode upstream stream failed");
       return;
     }
+    let chunks;
+    try {
+      chunks = commandCodeToOpenAIResponse(event, state);
+    } catch (error) {
+      // A rejected finish or tool call must end the stream as a failure, not truncate the body.
+      emitFailure(controller, error.message);
+      return;
+    }
     if (event?.type === COMMANDCODE_EVENT.FINISH) state.rawTerminalSeen = true;
-    emitChunks(commandCodeToOpenAIResponse(event, state), controller);
+    if (!chunks && TOOL_INPUT_EVENTS.has(event?.type)) emitKeepalive(controller);
+    emitChunks(chunks, controller);
   };
 
   const transform = new TransformStream({
@@ -329,6 +347,7 @@ export function wrapNdjsonAsOpenAISse(originalResponse, model) {
       }
     },
     flush(controller) {
+      buffer += decoder.decode();
       const trimmed = buffer.trim();
       if (trimmed) processLine(trimmed, controller);
       if (!state.rawTerminalSeen && !state.failureSeen) {
@@ -341,10 +360,15 @@ export function wrapNdjsonAsOpenAISse(originalResponse, model) {
   });
 
   const newBody = originalResponse.body.pipeThrough(transform);
+  // The body is now SSE; an upstream x-ndjson type would make the stream handler
+  // treat it as an error page, and the upstream length no longer applies.
+  const headers = new Headers(originalResponse.headers);
+  headers.set("Content-Type", "text/event-stream");
+  headers.delete("Content-Length");
   return new Response(newBody, {
     status: originalResponse.status,
     statusText: originalResponse.statusText,
-    headers: originalResponse.headers
+    headers
   });
 }
 

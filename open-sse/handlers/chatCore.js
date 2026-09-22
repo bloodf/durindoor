@@ -40,7 +40,7 @@ import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.j
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, composeToolNameMaps, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
@@ -637,7 +637,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     const toolNameMaxLength = PROVIDERS[provider]?.transport?.quirks?.toolNameMaxLength || 64;
     const aliases = normalizeOpenAIToolNames(translatedBody, toolNameMaxLength);
     if (aliases.size) {
-      toolNameMap = new Map([...(toolNameMap || new Map()), ...aliases]);
+      toolNameMap = composeToolNameMaps(toolNameMap, aliases);
     }
   }
 

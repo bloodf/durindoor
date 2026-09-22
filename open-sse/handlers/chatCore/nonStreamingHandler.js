@@ -396,7 +396,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (responseBody.usage) {
       result.usage = claudeUsageToOpenAI(responseBody.usage);
     }
-    return result;
+    return responsesClient ? projectCompletionToClientFormat(result, sourceFormat, projectionOptions()) : result;
   }
 
   // Ollama

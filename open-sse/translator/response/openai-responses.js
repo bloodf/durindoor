@@ -338,8 +338,8 @@ function warnUnresolvedToolName(state, emitted, reason) {
 }
 
 /**
- * Reverse a request-side alias (chatCore's normalizeOpenAIToolNames rewrites dotted
- * or overlong names for OpenAI-format providers) back to the name the client declared.
+ * Reverse a request-side alias (translateRequest aliases dotted or overlong names for
+ * every target) back to the name the client declared.
  */
 export function restoreResponsesToolName(state, name) {
   if (!isString(name)) return name;
@@ -472,7 +472,10 @@ function emitToolCall(state, emit, tc) {
 function isCustomToolByState(state, tcIdx, funcName) {
   // Classify by the resolved name so an injected prefix (`functions.apply_patch`)
   // frames the same way the buffered projector does.
-  const name = resolveResponsesToolName(state, state.funcNames[tcIdx] || funcName || "").name || "";
+  const resolved = resolveResponsesToolName(state, state.funcNames[tcIdx] || funcName || "");
+  // A namespace subtool is always a function call, even one named apply_patch.
+  if (resolved.namespace) return false;
+  const name = resolved.name || "";
   const declaredType = state.toolTypes?.[name] || "";
   return declaredType === "custom" || name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name);
 }

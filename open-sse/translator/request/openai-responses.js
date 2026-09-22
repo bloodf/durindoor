@@ -75,6 +75,22 @@ const MAX_TOOL_NAME_LEN = 128;
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
  */
+/** `{ name, namespace }` -> the expanded `{namespace}.{name}` declaration name. */
+function qualifyNamespacedName({ name, namespace }) {
+  if (!isString(name) || !isString(namespace) || !namespace || name.startsWith(`${namespace}.`)) return name;
+  return `${namespace}.${name}`;
+}
+
+function qualifyNamespacedChoice(choice) {
+  const qualify = (entry) => {
+    if (!entry || typeof entry !== "object" || !isString(entry.namespace)) return entry;
+    const { namespace, ...rest } = entry;
+    return { ...rest, name: qualifyNamespacedName({ name: entry.name, namespace }) };
+  };
+  const qualified = qualify(choice);
+  return Array.isArray(qualified.tools) ? { ...qualified, tools: qualified.tools.map(qualify) } : qualified;
+}
+
 export function openaiResponsesToOpenAIRequest(model, body, stream, credentials) {
   if (!body.input) return body;
 
@@ -167,13 +183,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       if (!item.name || !isString(item.name) || item.name.trim() === "") continue;
       // Replayed namespace calls carry `{ name, namespace }`; re-qualify them so history
       // matches the expanded `{namespace}.{subtool}` declaration (and its alias).
-      const namespace = isString(item.namespace) && item.namespace ? item.namespace : "";
-      const qualifiedName = namespace && !item.name.startsWith(`${namespace}.`) ? `${namespace}.${item.name}` : item.name;
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
         function: {
-          name: qualifiedName,
+          name: qualifyNamespacedName(item),
           arguments: item.arguments
         }
       });
@@ -233,9 +247,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       if (tool.function) return tool;
       // Responses namespace tools have no Chat equivalent. Expand each declared
       // subtool; response state keeps the namespace for the reverse projection.
-      // Dotted names stay dotted here: chatCore's normalizeOpenAIToolNames aliases them
-      // (with declarations, tool_choice and history sharing one memo) for OpenAI-format
-      // providers that reject dots, and the response side restores via toolNameMap.
+      // Dotted names stay dotted here: translateRequest aliases the OpenAI intermediate
+      // for every target, and the response side restores via toolNameMap.
       if (tool.type === "namespace" && Array.isArray(tool.tools)) {
         const namespace = isString(tool.name) ? tool.name : "";
         return tool.tools.
@@ -296,6 +309,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     delete result.max_output_tokens;
   }
 
+
+  if (result.tool_choice && typeof result.tool_choice === "object") {
+    result.tool_choice = qualifyNamespacedChoice(result.tool_choice);
+  }
 
   delete result.input;
   delete result.instructions;

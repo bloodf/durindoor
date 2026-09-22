@@ -1,6 +1,6 @@
 /**
- * Dotted namespace tool names are aliased for OpenAI-format providers by
- * chatCore's normalizeOpenAIToolNames and restored on the response side through
+ * Dotted namespace tool names are aliased once on the OpenAI intermediate for
+ * every target (translateRequest) and restored on the response side through
  * toolNameMap. Providers can also inject prefixes the client never declared (e.g.
  * `functions.exec` for a plain declared `exec` tool); the response side
  * canonicalizes those against the request's own declared tool names.
@@ -10,10 +10,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { openaiResponsesToOpenAIRequest } from "../../open-sse/translator/request/openai-responses.js";
 import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
-import { normalizeOpenAIToolNames } from "../../open-sse/translator/concerns/toolCall.js";
+import { composeToolNameMaps, normalizeOpenAIToolNames } from "../../open-sse/translator/concerns/toolCall.js";
 import { translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { resolveResponsesToolName } from "../../open-sse/translator/response/openai-responses.js";
-import { initState } from "../../open-sse/translator/index.js";
+import { initState, translateRequest } from "../../open-sse/translator/index.js";
 import { handleForcedSSEToJson } from "../../open-sse/handlers/chatCore/sseToJsonHandler.js";
 
 vi.mock("@/lib/usageDb.js", () => ({
@@ -288,6 +288,79 @@ describe("Responses tool-name aliasing + restoration (#4200)", () => {
     });
     const historyCall = translated.messages.flatMap((m) => m.tool_calls || [])[0];
     expect(historyCall.function.name).toBe(translated.tools[0].function.name);
+  });
+
+  describe("aliases once for every target format", () => {
+    const SAFE = /^[a-zA-Z0-9_-]{1,64}$/;
+    const replayBody = () => ({
+      model: "m",
+      input: [
+        ...userInput,
+        { type: "function_call", call_id: "c1", name: "spawn_agent", namespace: "collaboration", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: "ok" },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "again" }] },
+      ],
+      tools: [COLLAB_NAMESPACE, { type: "function", name: "collaboration_spawn_agent", parameters: { type: "object" } }],
+    });
+
+    it("Claude: declarations and history share one safe, collision-free alias", () => {
+      const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE, "m", replayBody(), true, null, "claude");
+      const names = out.tools.map((t) => t.name);
+      expect(names.every((n) => SAFE.test(n))).toBe(true);
+      expect(new Set(names).size).toBe(2);
+      const historyName = out.messages.flatMap((m) => Array.isArray(m.content) ? m.content : []).find((b) => b.type === "tool_use").name;
+      expect(historyName).toBe(names[0]);
+      expect(out._toolNameMap.get(names[0])).toBe("collaboration.spawn_agent");
+    });
+
+    it("Kiro: declarations and history share one safe, collision-free alias", () => {
+      const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.KIRO, "m", replayBody(), true, null, "kiro");
+      const state = out.conversationState;
+      const names = state.currentMessage.userInputMessage.userInputMessageContext.tools.map((t) => t.toolSpecification.name);
+      expect(names.every((n) => SAFE.test(n))).toBe(true);
+      expect(new Set(names).size).toBe(2);
+      const historyName = state.history.flatMap((h) => h.assistantResponseMessage?.toolUses || [])[0].name;
+      expect(historyName).toBe(names[0]);
+      expect(out._toolNameMap.get(names[0])).toBe("collaboration.spawn_agent");
+    });
+
+    it("re-qualifies and aliases tool_choice, including allowed_tools entries", () => {
+      const ref = { type: "function", name: "spawn_agent", namespace: "collaboration" };
+      const forced = translateForOpenAIProvider({ tools: [COLLAB_NAMESPACE], tool_choice: ref }).translated;
+      expect(forced.tool_choice.name).toBe(forced.tools[0].function.name);
+      expect(forced.tool_choice.namespace).toBeUndefined();
+
+      const allowed = translateForOpenAIProvider({
+        tools: [COLLAB_NAMESPACE],
+        tool_choice: { type: "allowed_tools", mode: "auto", tools: [ref] },
+      }).translated;
+      expect(allowed.tool_choice.tools[0].name).toBe(allowed.tools[0].function.name);
+    });
+
+    it("composes a later alias pass back to the client name", () => {
+      const inner = new Map([["a_b_1", "a.b"]]);
+      const composed = composeToolNameMaps(inner, new Map([["a_b_2", "a_b_1"]]));
+      expect(composed.get("a_b_2")).toBe("a.b");
+      expect(composed.get("a_b_1")).toBe("a.b");
+    });
+  });
+
+  it("restores the namespace on Claude stream:false responses", () => {
+    const body = { tools: [COLLAB_NAMESPACE] };
+    const { translated, aliases } = translateForOpenAIProvider(body);
+    const claude = { id: "msg_1", type: "message", role: "assistant", stop_reason: "tool_use",
+      content: [{ type: "tool_use", id: "call_1", name: translated.tools[0].function.name, input: {} }] };
+    const out = translateNonStreamingResponse(claude, FORMATS.CLAUDE, FORMATS.OPENAI_RESPONSES, { toolNameMap: aliases, requestBody: body });
+    const call = out.output.find((item) => item.type === "function_call");
+    expect(call).toMatchObject({ name: "spawn_agent", namespace: "collaboration" });
+  });
+
+  it("keeps a namespace subtool named apply_patch a namespaced function_call", async () => {
+    const body = { tools: [{ type: "namespace", name: "fs", tools: [{ name: "apply_patch" }] }] };
+    const { added, done } = await streamedItems(body, "fs.apply_patch");
+    for (const item of [added, done]) {
+      expect(item).toMatchObject({ type: "function_call", name: "apply_patch", namespace: "fs" });
+    }
   });
 
   it("forwards a non-string provider name without throwing", () => {

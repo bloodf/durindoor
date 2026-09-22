@@ -10,7 +10,7 @@ export default {
     textIcon: "OR",
     website: "https://openrouter.ai",
     notice: {
-      text: "Free tier: 27+ free models, no credit card needed, 200 req/day. After  0 credit: 1,000 req/day.",
+      text: "Free tier: `:free` models, no credit card needed, 20 req/min and 50 req/day. After buying $10+ in credits: 1,000 req/day.",
       apiKeyUrl: "https://openrouter.ai/settings/keys",
     },
   },

@@ -28,6 +28,8 @@ vi.mock("@/lib/disabledModelsDb", () => ({
 describe("buildModelsList rerank kind handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The OpenRouter live catalog is optional; keep this test off the network.
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
     mocks.getProviderConnections.mockResolvedValue([
       { provider: "openrouter", isActive: true, apiKey: "sk-test" },
     ]);

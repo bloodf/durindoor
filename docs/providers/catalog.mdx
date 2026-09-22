@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 237 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 238 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -186,6 +186,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | OpenCode Go | `opencode-go` | apikey | 18 | [site](https://opencode.ai/auth) |
 | OpenCode Zen | `opencode-zen` | apikey | 58 | [site](https://opencode.ai/zen) |
 | OpenRouter | `openrouter` | freeTier | 18 | [site](https://openrouter.ai) |
+| OrcaRouter | `orcarouter` | apikey | 5 | [site](https://www.orcarouter.ai) |
 | Perplexity | `perplexity` | apikey | 2 | [site](https://www.perplexity.ai) |
 | Perplexity Agent | `perplexity-agent` | apikey | 11 | [site](https://www.perplexity.ai) |
 | Perplexity Web (Pro/Max) | `perplexity-web` | cookie | 7 | [site](https://www.perplexity.ai) |

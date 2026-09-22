@@ -1386,7 +1386,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishProviderRequest();
       finishActiveDashboardSession("error");
       await settleQuota(false, "upstream_error");
-      let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody } = parsedError;
+      let { statusCode, message, resetsAtMs, rateLimitEvidence, errorBody, antigravityQuotaSignal } = parsedError;
       // Kimi docs classify exhausted membership windows as 403. Confirm the
       // rolling 5-hour window is empty while weekly quota remains before
       // attaching a temporary model-scoped reset deadline.
@@ -1444,6 +1444,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     finishTimeline("error", "error", errMsg);
     return {
       ...createErrorResult(statusCode, errMsg, resetsAtMs, errorBody, rateLimitEvidence, credentials, getClientStatusFromError(statusCode, errorBody ?? message)),
+      antigravityQuotaSignal,
       attemptStartedAt: latestProviderAttemptStartedAt,
       headers: providerResponse.headers,
     };

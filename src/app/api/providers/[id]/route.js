@@ -15,13 +15,17 @@ import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
+import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "clientSecret",
 "qwenCloudCookie",
 "alibabaConsoleCookie",
 "cookie",
-"QWEN_CLOUD_COOKIE"]
+"QWEN_CLOUD_COOKIE",
+// Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
+"sessionToken"]
 );
 
 // Port of OmniRoute #6562/#6626: `priority` auto-increments unbounded on
@@ -72,6 +76,7 @@ function sanitizeProviderConnection(connection) {
   delete result.refreshToken;
   delete result.idToken;
   delete result.firecrawlHeaders;
+  delete result.sessionToken;
   return result;
 }
 
@@ -197,6 +202,7 @@ export async function PUT(request, { params }) {
       defaultModel,
       isActive,
       apiKey,
+      sessionToken,
       testStatus,
       lastError,
       lastErrorAt,
@@ -225,6 +231,19 @@ export async function PUT(request, { params }) {
     const existing = await getProviderConnectionById(id);
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+
+    const usesAwsCredentials = AI_PROVIDERS[existing.provider]?.credentialForm === "aws";
+    if (usesAwsCredentials) {
+      // Same gate as the create route: a stored profile is resolved by the AWS SDK as the server
+      // user, so only an operator may point a connection at one.
+      const awsProfile = checkBedrockProfileInput(providerSpecificData);
+      if (awsProfile.error) {
+        return NextResponse.json({ error: awsProfile.error }, { status: 400 });
+      }
+      if (awsProfile.profile && !(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "AWS profile connections can only be set up from the dashboard or CLI" }, { status: 403 });
+      }
     }
 
     const normalizedProviderSpecificData = normalizeOpenAIStoreSetting(existing.provider, providerSpecificData);
@@ -260,6 +279,8 @@ export async function PUT(request, { params }) {
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
+    // An empty string is meaningful here: it clears a token left over from temporary keys.
+    if (usesAwsCredentials && isString(sessionToken)) updateData.sessionToken = sessionToken.trim();
     if (testStatus !== undefined) updateData.testStatus = testStatus;
     if (lastError !== undefined) updateData.lastError = lastError;
     if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;

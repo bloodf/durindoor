@@ -209,6 +209,31 @@ describe("server-bound OAuth route", () => {
     })).status).toBe(410);
   });
 
+  it("always exchanges an OrcaRouter code, even one shaped like a JWT", async () => {
+    mocks.generateAuthData.mockResolvedValue({
+      authUrl: "https://www.orcarouter.ai/auth",
+      state: "orca-state",
+      codeVerifier: "orca-verifier",
+      flowType: "authorization_code_pkce",
+    });
+    mocks.exchangeTokens.mockResolvedValue({ accessToken: "sk-orca-issued", apiKey: "sk-orca-issued" });
+    const code = `eyJ.${Buffer.from("{}").toString("base64url")}.sig`;
+
+    const authorize = await post("orcarouter", "authorize", { proxyMode: "direct" });
+    const exchange = await post("orcarouter", "exchange", {
+      code,
+      state: "orca-state",
+      flowId: authorize.body.flowId,
+    });
+
+    expect(exchange.status).toBe(200);
+    const [provider, exchangedCode, , verifier] = mocks.exchangeTokens.mock.calls[0];
+    expect([provider, exchangedCode, verifier]).toEqual(["orcarouter", code, "orca-verifier"]);
+    const saved = mocks.createProviderConnection.mock.calls[0][0];
+    expect(saved.authType).not.toBe("access_token");
+    expect(saved.accessToken).not.toBe(code);
+  });
+
   it("rejects a mismatched callback state without consuming the valid flow", async () => {
     mocks.generateAuthData.mockResolvedValue({
       authUrl: "https://provider.test/authorize",

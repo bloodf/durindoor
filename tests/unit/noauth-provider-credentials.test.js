@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getExecutor } from "../../open-sse/executors/index.js";
+import { OPENCODE_UA } from "../../open-sse/executors/opencode.js";
 import { __setOriginalFetchForTesting } from "../../open-sse/utils/proxyFetch.js";
 
 const mocks = vi.hoisted(() => ({
@@ -89,7 +90,7 @@ describe("no-auth provider credential selection", () => {
     expectNoPublicAuthorization(noAuthHeaders);
     // Zen free tier 403s (FreeTierError) on a bare "opencode" UA or a
     // non-canonical session id — see open-sse/executors/opencode.js.
-    expect(noAuthHeaders["User-Agent"]).toBe("opencode/1.18.31");
+    expect(noAuthHeaders["User-Agent"]).toBe(OPENCODE_UA);
     expect(noAuthHeaders["x-opencode-session"]).toMatch(/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
     expect(savedHeaders.Authorization).toBe("Bearer sk-real-key");
   });

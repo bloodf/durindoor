@@ -1,5 +1,6 @@
 import "open-sse/utils/proxyFetch.js";
 
+import { ORCAROUTER_ID } from "open-sse/providers/orcarouterCatalog.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { NextResponse } from "next/server";
 
@@ -398,7 +399,9 @@ async function completeAuthorization(provider, input) {
 
   const claim = claimBoundOAuthFlow({ flowId, state, provider, kind: "authorization" });
   try {
-    if (code.startsWith("eyJ") && code.includes(".")) {
+    // OrcaRouter codes are only ever exchanged: storing a pasted JWT-shaped
+    // code as a raw credential would skip the key exchange entirely.
+    if (provider !== ORCAROUTER_ID && code.startsWith("eyJ") && code.includes(".")) {
       const resolvedProxy = await resolveOAuthProxySelection(claim.payload.proxySelection);
       // Await before finally consumes the claim so the DB's shouldCommit guard
       // remains active through the actual write.

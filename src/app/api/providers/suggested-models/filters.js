@@ -1,17 +1,5 @@
 import { isString } from "../../../../shared/utils/typeChecks.js";
-const KNOWN_FREE_OPENROUTER_MODELS = [
-"openai/gpt-3.5-turbo",
-"openai/gpt-4o",
-"openai/gpt-4o-mini",
-"anthropic/claude-3.5-sonnet",
-"google/gemini-flash-1.5",
-"meta-llama/llama-3.1-8b-instruct",
-"deepseek/deepseek-chat",
-"nousresearch/hermes-3-llama-3.1-405b",
-"qwen/qwen-2.5-72b-instruct",
-"mistralai/mistral-nemo"];
-
-
+import { isOpenRouterFreeModel, mapOpenRouterModel } from "open-sse/services/openrouterCatalog.js";
 const KNOWN_FREE_OPENCODE_MODELS = [
 "qwen/qwen2.5-coder-32b-instruct",
 "deepseek/deepseek-chat",
@@ -24,11 +12,18 @@ const KNOWN_FREE_OPENCODE_MODELS = [
 const NON_CHAT_MODEL_RE = /(?:dall-e|whisper|text-embedding|tts(?:-|$)|moderation|rerank|embed|image|audio|speech|(?:^|[/_-])bge(?:[/_-]|$))/i;
 
 export const FILTERS = {
-  // OpenRouter /api/v1/models — returns standard OpenAI-style objects; keep free ones.
+  // OpenRouter /api/v1/models: keep free models (`:free` id and zero pricing,
+  // see isOpenRouterFreeModel) and carry the published context window.
   "openrouter-free": (models) =>
   (Array.isArray(models) ? models : []).
-  filter((m) => m.id && KNOWN_FREE_OPENROUTER_MODELS.includes(m.id)).
-  map((m) => ({ id: m.id, name: m.name || m.id })),
+  filter(isOpenRouterFreeModel).
+  map(mapOpenRouterModel).
+  filter((m) => m && !m.kind).
+  map((m) => {
+    const entry = { id: m.id, name: m.name };
+    if (m.capabilities.contextWindow) entry.contextLength = m.capabilities.contextWindow;
+    return entry;
+  }),
 
   // Opencode /zen/v1/models returns an array of { id, name? } objects; keep only free models.
   "opencode-free": (models) =>

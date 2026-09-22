@@ -65,6 +65,43 @@ Upstream gates the free tier on the request looking like the official OpenCode c
 
 Both Muse Spark contributor models (`muse-spark-1.2-contributor-free` and `muse-spark-1.3-contributor-free`) reject any `tool_choice` other than `auto` with HTTP 400, so DurinDoor demotes an explicit one for those two ids.
 
+## OpenRouter free models
+
+OpenRouter (`openrouter`, category `freeTier`) needs an API key to route requests, but DurinDoor discovers its free models from the public catalog at `GET https://openrouter.ai/api/v1/models`. That request carries no API key.
+
+A model counts as free when both hold:
+
+- its id ends in `:free` (for example `openrouter/google/gemma-4-31b-it:free`), and
+- every field in its `pricing` object is `"0"`.
+
+Zero pricing alone is not enough. OpenRouter's routers and some preview media models also publish `"0"` prices without a `:free` id, and variable-price routers publish `"-1"`.
+
+Each catalog entry is mapped onto the same capability fields the static table uses:
+
+| OpenRouter field | DurinDoor capability |
+| --- | --- |
+| `context_length` (else `top_provider.context_length`) | `contextWindow` |
+| `top_provider.max_completion_tokens` | `maxOutput` |
+| `architecture.input_modalities` `image` / `file` / `audio` / `video` | `vision` / `pdf` / `audioInput` / `videoInput` |
+| `architecture.output_modalities` `image` / `audio` | `imageOutput` / `audioOutput` |
+| `supported_parameters` has `tools` | `tools` |
+| `supported_parameters` has `reasoning` or `include_reasoning` | `reasoning` |
+
+Where it shows up:
+
+- `GET /v1/models`: with no model selection saved on the OpenRouter connection, the free models are listed next to the static embedding, TTS, image and rerank rows. With a saved selection, the list stays as selected and the catalog only fills in capabilities and limits.
+- Provider page: the suggested-models list shows the same free models with their context windows.
+- Routing: chat requests to an OpenRouter model use the discovered capabilities. Images are kept for vision models instead of being stripped, Vision Bridge and combo capability ordering see the real flags, and the context-length preflight rejects a request that cannot fit the published window.
+
+The catalog is cached in memory for 30 minutes. The fetch times out after 8 seconds, reads at most 8 MiB, and maps at most 2,000 entries. If a refresh fails, the last good catalog stays in use and the next attempt waits 5 minutes. With no good catalog yet, `/v1/models` falls back to the static list and requests use the static capability table. The first request after a restart may use static capabilities while the catalog loads in the background. A custom model row on the connection still overrides the discovered capabilities.
+
+OpenRouter's documented free-model limits ([rate limits](https://openrouter.ai/docs/api-reference/limits)):
+
+| Account | Requests per minute | Requests per day |
+| --- | --- | --- |
+| Less than $10 in credits ever purchased | 20 | 50 |
+| At least $10 in credits purchased | 20 | 1,000 |
+
 ## Xiaomi token plan
 
 `xiaomi-tokenplan` (aliases `xmtp`) is an API-key provider for SenseNova Token Plan keys (`tp-` prefix). Region is required: Singapore (`sgp`, default), China (`cn`), or Amsterdam (`ams`). The catalog is discovered at runtime. Use the dashboard or `GET /v1/models` instead of copying ids from this page.

@@ -14,6 +14,7 @@ vi.mock("@/lib/localDb", () => ({
   getCustomModels: vi.fn(async () => []),
   getModelAliases: vi.fn(async () => []),
 }));
+vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/sse/services/tokenRefresh", () => ({ updateProviderCredentials: vi.fn() }));
 

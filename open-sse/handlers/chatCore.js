@@ -48,6 +48,7 @@ import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadr
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
+import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
@@ -906,8 +907,11 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // fallback chain is skipped for a request no other model would accept.
   const baseModel = isString(cleanModel) && cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel;
   /** Read the server-owned cache without letting client-shared capabilities import it. */
-  const liveLimits = getCachedLiveLimits(provider, cleanModel, credentials) ||
+  // OpenRouter's public catalog is account-independent, so it is cached per provider.
+  const cachedLiveLimits = getCachedLiveLimits(provider, cleanModel, credentials) ||
   getCachedLiveLimits(provider, baseModel, credentials);
+  const catalogLimits = !cachedLiveLimits && provider === "openrouter" ? getOpenRouterModelCapabilities(cleanModel) : null;
+  const liveLimits = cachedLiveLimits || catalogLimits;
   const preflightLimits = resolveModelLimits(provider, cleanModel, requestContext?.modelCapabilities, credentials, liveLimits);
   if (preflightLimits.known && Number.isFinite(preflightLimits.contextWindow) && preflightLimits.contextWindow > 0) {
     // Always reserve the output ceiling chosen by resolveModelLimits. It has
@@ -921,7 +925,19 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         maxOutput: preflightLimits.maxOutput
       }
     };
-    const reservation = executor.resolveEffectiveOutputReservation?.(translatedBody, reservationContext) ?? 0;
+    // OpenRouter's catalog max_completion_tokens is a ceiling, not a default:
+    // it often sits near the window (29491 of 32768), so charging it to a
+    // request that names no output limit would reject ordinary prompts. Only
+    // an explicit client value (clamped to the ceiling) is reserved there.
+    // Mirror resolveModelLimits: an operator maxOutput (a customKeys entry, or
+    // caps with no marker) wins over the catalog and is reserved as usual.
+    const callerCaps = requestContext?.modelCapabilities;
+    const operatorOutput = Number.isFinite(callerCaps?.maxOutput) && callerCaps.maxOutput > 0 && (
+    !(callerCaps.customKeys instanceof Set) || callerCaps.customKeys.has("maxOutput"));
+    const catalogCeilingOnly = catalogLimits && !operatorOutput;
+    const explicitOutput = executor.resolveEffectiveOutputReservation?.(translatedBody, { ...requestContext, modelCapabilities: {} }) ?? 0;
+    const reservation = catalogCeilingOnly && !explicitOutput ? 0 :
+    executor.resolveEffectiveOutputReservation?.(translatedBody, reservationContext) ?? 0;
     // Prefer the provider's own /messages/count_tokens when it exposes one —
     // the 4-chars-per-token heuristic is only a fallback, and rejecting on a
     // bad count is worse than not rejecting at all. countInputTokens itself

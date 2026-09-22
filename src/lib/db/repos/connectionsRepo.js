@@ -589,16 +589,19 @@ export async function clearProviderConnectionFallbackState(id, {
 /**
  * A scoped key with this as its last relation would become unrestricted after
  * FK cascade. Operators must clear the key restriction intentionally first.
+ *
+ * HAVING repeats the aggregates instead of naming SELECT aliases: SQLite allows
+ * an alias there, PostgreSQL does not (`column "relationCount" does not exist`),
+ * and that error aborted every provider-connection delete on the PG engine.
  */
 function assertDeletionDoesNotBroadenScopedKeys(db, connectionIds) {
   if (!connectionIds.length) return;
   const placeholders = connectionIds.map(() => "?").join(", ");
   const rows = db.all(
-    `SELECT apiKeyId, COUNT(*) AS relationCount,
-      SUM(CASE WHEN connectionId IN (${placeholders}) THEN 1 ELSE 0 END) AS deletingCount
+    `SELECT apiKeyId
      FROM apiKeyProviderConnections
      GROUP BY apiKeyId
-     HAVING relationCount = deletingCount`,
+     HAVING COUNT(*) = SUM(CASE WHEN connectionId IN (${placeholders}) THEN 1 ELSE 0 END)`,
     connectionIds
   );
   if (rows.length) {

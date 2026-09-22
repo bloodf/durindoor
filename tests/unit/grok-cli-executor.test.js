@@ -45,3 +45,33 @@ describe("Grok CLI 4.6 effort forwarding", () => {
     expect(out.reasoning).toEqual({ effort: "xhigh", summary: "concise" });
   });
 });
+
+// Grok 4.7 is the Grok Build default (https://docs.x.ai/build/overview) and
+// takes the same low/medium/high/xhigh efforts as 4.6.
+describe("Grok CLI 4.7 effort forwarding", () => {
+  it.each(["low", "medium", "high", "xhigh"])("maps grok-4.7-%s to grok-4.7 with matching effort", (level) => {
+    expect(getModelUpstreamId("grok-cli", `grok-4.7-${level}`)).toBe("grok-4.7");
+    const out = new GrokCliExecutor().transformRequest(
+      `grok-4.7-${level}`,
+      { model: `grok-4.7-${level}`, input: [{ type: "message", role: "user", content: "hi" }] },
+      true,
+      { connectionId: `grok-4.7-${level}` },
+    );
+    expect(out.model).toBe("grok-4.7");
+    expect(out.reasoning).toEqual({ effort: level, summary: "concise" });
+  });
+});
+
+// xAI publishes no "none" effort for grok-4.7; reasoning cannot be disabled.
+describe("Grok CLI 4.7 disable request", () => {
+  it("sends low instead of none", () => {
+    const out = new GrokCliExecutor().transformRequest(
+      "grok-4.7-high",
+      { model: "grok-4.7-high", reasoning_effort: "none", input: [{ type: "message", role: "user", content: "hi" }] },
+      true,
+      { connectionId: "grok-4.7-none" },
+    );
+    expect(out.model).toBe("grok-4.7");
+    expect(out.reasoning.effort).toBe("low");
+  });
+});

@@ -1042,21 +1042,24 @@ exports[`GOLDEN buildHeaders (default executor providers) > command-code → hea
     "Accept": "text/event-stream",
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
-    "x-cli-environment": "cli",
-    "x-command-code-version": "0.33.2",
+    "User-Agent": "cli",
+    "x-cli-environment": "production",
+    "x-command-code-version": "1.54.2",
   },
   "nonStream": {
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
-    "x-cli-environment": "cli",
-    "x-command-code-version": "0.33.2",
+    "User-Agent": "cli",
+    "x-cli-environment": "production",
+    "x-command-code-version": "1.54.2",
   },
   "oauth": {
     "Accept": "text/event-stream",
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
-    "x-cli-environment": "cli",
-    "x-command-code-version": "0.33.2",
+    "User-Agent": "cli",
+    "x-cli-environment": "production",
+    "x-command-code-version": "1.54.2",
   },
 }
 `;
@@ -2745,6 +2748,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > openrouter → heade
     "Content-Type": "application/json",
     "HTTP-Referer": "https://endpoint-proxy.local",
     "X-Title": "Endpoint Proxy",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > orcarouter → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
   },
 }
 `;
@@ -4593,6 +4615,13 @@ exports[`GOLDEN buildUrl (default executor providers) > openrouter → url (stre
 {
   "nonStream": "https://openrouter.ai/api/v1/chat/completions",
   "stream": "https://openrouter.ai/api/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > orcarouter → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.orcarouter.ai/v1/chat/completions",
+  "stream": "https://api.orcarouter.ai/v1/chat/completions",
 }
 `;
 

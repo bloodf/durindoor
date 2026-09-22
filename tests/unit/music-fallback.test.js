@@ -80,7 +80,7 @@ describe("music handler credential fallback", () => {
   });
 
   it("falls back to a second credential on failure and passes excludeConnectionIds", async () => {
-    const cred1 = { connectionId: "conn-1", connectionName: "first" };
+    const cred1 = { connectionId: "conn-1", connectionName: "first", apiKey: "ak" };
     const cred2 = { connectionId: "conn-2", connectionName: "second" };
     const capturedArgs = [];
     mocks.getProviderCredentials.mockImplementation(async (provider, exclude, model) => {
@@ -101,7 +101,7 @@ describe("music handler credential fallback", () => {
       ["suno", [], "suno-override"],
       ["suno", ["conn-1"], "suno-override"],
     ]);
-    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith("conn-1", 503, "rate limit", "suno", "suno-override");
+    expect(mocks.markAccountUnavailable).toHaveBeenCalledWith("conn-1", 503, "rate limit", "suno", "suno-override", null, { usedCredential: "ak" });
   });
 
   it("returns unavailable when all credentials are rate limited", async () => {
@@ -115,7 +115,7 @@ describe("music handler credential fallback", () => {
   });
 
   it("returns the core error when the last failure is non-fallback", async () => {
-    const cred1 = { connectionId: "conn-1", connectionName: "first" };
+    const cred1 = { connectionId: "conn-1", connectionName: "first", apiKey: "ak" };
     mocks.getProviderCredentials.mockResolvedValue(cred1);
     mocks.handleMusicGenerationCore.mockResolvedValue({
       success: false,

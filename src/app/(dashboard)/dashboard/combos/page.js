@@ -339,6 +339,7 @@ function getStrategyOptions() {
     { value: "round-robin", label: translate("Round Robin — rotate") },
     { value: "weighted", label: translate("Weighted — random by member weight") },
     { value: "smart-scoring", label: "Smart Scoring — best quota first" },
+    { value: "smart", label: translate("Smart — complexity-aware routing") },
     { value: "fusion", label: translate("Fusion — panel + judge") },
   ];
 }

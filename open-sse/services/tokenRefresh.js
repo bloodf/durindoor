@@ -174,6 +174,13 @@ const REFRESH_HANDLERS = {
   // were never rotated. Ported from decolua/9router f6e7cabe.
   cline: (c, log, p) => refreshClineToken(c.refreshToken, log, p),
   clinepass: (c, log, p) => refreshClineToken(c.refreshToken, log, p),
+  // OrcaRouter's PKCE login returns a durable API key, not a refreshable token —
+  // OrcaRouter publishes no refresh grant. Refusing explicitly (rather than
+  // omitting the provider) also keeps `refreshTokenByProvider` from falling
+  // through to the generic refresh path, which would POST a fabricated
+  // grant_type=refresh_token to /api/v1/auth/keys. A revoked key must be
+  // reauthenticated through the connect flow, not refreshed.
+  orcarouter: () => null,
   vertex: vertexRefreshHandler,
   "vertex-partner": vertexRefreshHandler
 };
@@ -239,6 +246,7 @@ export function formatProviderCredentials(provider, credentials, log) {
     case "openrouter":
     case "xai":
     case "grok-cli":
+    case "orcarouter":
       return {
         apiKey: credentials.apiKey,
         accessToken: credentials.accessToken

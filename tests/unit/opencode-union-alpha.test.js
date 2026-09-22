@@ -54,4 +54,44 @@ describe("OpenCode Free Union Alpha", () => {
       max_tokens: 1,
     });
   });
+
+  it("cloaks Union Alpha requests with Claude-shaped decoy tools, never the OpenAI envelope", () => {
+    // Union Alpha's body arrives at transformRequest already in Claude wire
+    // format (see the translation test above). The free-tier fingerprint
+    // quartet must be appended in that same shape (name + input_schema) with
+    // a Claude tool_choice object, not the {type:"function", function:{...}}
+    // Chat Completions envelope and string tool_choice — /zen/v1/messages
+    // rejects a mixed/OpenAI-shaped body.
+    const executor = new OpenCodeExecutor();
+    const body = { model: "union-alpha", messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }] };
+
+    const transformed = executor.transformRequest("union-alpha", body, true, {});
+
+    expect(transformed.tools).toEqual(
+      expect.arrayContaining(["bash", "glob", "grep", "read"].map((name) =>
+        expect.objectContaining({ name, input_schema: { type: "object", properties: {} } })
+      ))
+    );
+    for (const tool of transformed.tools) {
+      expect(tool).not.toHaveProperty("type");
+      expect(tool).not.toHaveProperty("function");
+    }
+    expect(transformed.tool_choice).toEqual({ type: "none" });
+  });
+
+  it("leaves a caller-supplied Claude tool_choice alone for Union Alpha", () => {
+    const executor = new OpenCodeExecutor();
+    const body = {
+      model: "union-alpha",
+      messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      tools: [{ name: "custom_tool", input_schema: { type: "object", properties: {} } }],
+      tool_choice: { type: "tool", name: "custom_tool" },
+    };
+
+    const transformed = executor.transformRequest("union-alpha", body, true, {});
+
+    expect(transformed.tool_choice).toEqual({ type: "tool", name: "custom_tool" });
+    const names = transformed.tools.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(["custom_tool", "bash", "glob", "grep", "read"]));
+  });
 });

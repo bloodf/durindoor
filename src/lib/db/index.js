@@ -608,7 +608,9 @@ const TRANSFER_SAFE_PSD_FIELDS = new Set([
   "baseUrl", "azureEndpoint", "deployment", "apiVersion", "accountId", "region", "projectId", "resourceUrl",
   "proxyPoolId", "cx", "connectionProxyEnabled", "connectionNoProxy", "githubLogin", "githubName", "githubEmail",
   "githubUserId", "username", "firstName", "lastName", "authMethod", "authKind", "profileArn",
-  "codexFingerprintMode", "openaiStoreEnabled", "copilotTokenExpiresAt"
+  "codexFingerprintMode", "openaiStoreEnabled", "copilotTokenExpiresAt",
+  // Bedrock credential mode: without these a restored static-key row reads as a bearer token.
+  "profile", "accessKeyId"
 ]);
 const TRANSFER_BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const TRANSFER_SECRET_LIKE_KEYS = new Set([

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { OpenCodeExecutor, OPENCODE_SESSION_RE } from "../../open-sse/executors/opencode.js";
+import { OpenCodeExecutor, OPENCODE_SESSION_RE, OPENCODE_UA } from "../../open-sse/executors/opencode.js";
 
 const REQUEST_ID_RE = /^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 
@@ -28,7 +28,7 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
 
     const headers = fetchMock.mock.calls[0][1].headers;
     expect(headers).toMatchObject({
-      "User-Agent": "opencode/1.18.31",
+      "User-Agent": OPENCODE_UA,
       "x-opencode-client": "desktop",
       "x-opencode-project": "global",
       "Accept": "text/event-stream",
@@ -53,7 +53,7 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     });
     const headers = fetchMock.mock.calls[0][1].headers;
     expect(headers).toMatchObject({
-      "User-Agent": "opencode/1.18.31",
+      "User-Agent": OPENCODE_UA,
       "x-opencode-client": "desktop",
       "x-opencode-project": "global",
     });
@@ -137,7 +137,7 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     });
     const headers = fetchMock.mock.calls[0][1].headers;
     expect(headers).toMatchObject({
-      "User-Agent": "opencode/1.18.31",
+      "User-Agent": OPENCODE_UA,
       "x-opencode-client": "desktop",
       "x-opencode-project": "global",
       "Accept": "*/*",
@@ -168,7 +168,7 @@ describe("OpenCodeExecutor official free-tier headers (D13)", () => {
     });
     const headers = fetchMock.mock.calls[0][1].headers;
     expect(headers).toMatchObject({
-      "User-Agent": "opencode/1.18.31",
+      "User-Agent": OPENCODE_UA,
       "x-opencode-client": "desktop",
       "x-opencode-project": "global",
     });

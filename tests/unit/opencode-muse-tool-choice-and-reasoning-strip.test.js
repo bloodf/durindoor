@@ -12,6 +12,12 @@ import { OpenCodeGoExecutor } from "../../open-sse/executors/opencode-go.js";
 import { stripPriorReasoningItem } from "../../open-sse/translator/formats/responsesApi.js";
 
 const FREE_13 = "muse-spark-1.3-contributor-free";
+const FREE_12 = "muse-spark-1.2-contributor-free";
+// Stand-in for any Muse model outside the quirk allowlist. Both shipped Muse
+// Spark contributor ids (1.2 and 1.3) now carry the hard tool_choice=auto
+// constraint (upstream #4165), and the provider is passthroughModels, so a
+// future/unlisted Muse id is the only way left to prove the quirk is scoped.
+const FREE_UNLISTED = "muse-spark-2.0-contributor-free";
 
 function responsesBody(model, tool_choice) {
   const body = {
@@ -24,8 +30,8 @@ function responsesBody(model, tool_choice) {
 }
 
 describe("opencode registry: forceAutoToolChoiceModels quirk", () => {
-  it("declares the quirk for muse-spark-1.3-contributor-free only", () => {
-    expect(PROVIDERS.opencode.quirks?.forceAutoToolChoiceModels).toEqual([FREE_13]);
+  it("declares the quirk for both shipped Muse Spark contributor models (#4165)", () => {
+    expect(PROVIDERS.opencode.quirks?.forceAutoToolChoiceModels).toEqual([FREE_12, FREE_13]);
   });
 });
 
@@ -39,8 +45,9 @@ describe("OpenCodeExecutor Muse Free tool_choice normalization", () => {
       const body = responsesBody(model, structuredClone(choice));
       const out = new OpenCodeExecutor().transformRequest(model, body, true, {});
       expect(out.tool_choice).toBe("auto");
-      // The cluster's unconditional decoy cloaking (port(upstream): #907) appends
-      // bash/read fingerprint tools alongside the caller's own tool; assert the
+      // The cluster's unconditional decoy cloaking (port(upstream): #907, widened
+      // to the quartet by #4188) appends bash/glob/grep/read fingerprint tools
+      // alongside the caller's own tool; assert the
       // caller's tool survives rather than pinning an exact count.
       expect(out.tools.some((t) => t.name === "get_weather")).toBe(true);
     }
@@ -65,7 +72,7 @@ describe("OpenCodeExecutor Muse Free tool_choice normalization", () => {
   });
 
   it.each([
-    ["1.2-Free (not in the quirk allowlist)", "muse-spark-1.2-contributor-free"],
+    ["an unlisted Muse model", FREE_UNLISTED],
     ["a non-Muse model", "big-pickle"],
   ])("does not touch tool_choice for %s", (_label, model) => {
     const choice = { type: "function", name: "get_weather" };

@@ -140,13 +140,21 @@ export const OPENCODE_DECOY_CLAUDE_TOOLS = OPENCODE_FINGERPRINT_TOOLS.map((name)
 // Messages body and must get Claude-shaped tools and a Claude tool_choice,
 // never the OpenAI Chat envelope the "chat" branch writes; a mixed body of
 // Claude `input_schema` tools plus OpenAI `function` tools, or a string
-// tool_choice, is rejected by /zen/v1/messages. Name matching is
-// case-insensitive: a Claude Code caller sends TitleCase names
-// (Bash/Glob/Grep/Read), and claudeCodeToolRemapper's TOOL_RENAME_MAP
-// renames a called lowercase decoy back to TitleCase on the response path,
-// so an exact (case-sensitive) match would add a duplicate decoy the model
-// could call and have delivered to the client indistinguishable from the
-// caller's real tool.
+// tool_choice, is rejected by /zen/v1/messages.
+//
+// Name matching here is deliberately exact and case-sensitive: Zen's gate
+// checks for the exact lowercase strings "bash"/"glob"/"grep"/"read"
+// (upstream #4188), so a caller's TitleCase Bash/Glob/Grep/Read tool must
+// never suppress the exact lowercase decoy, or the outgoing request loses
+// the fingerprint and Zen 403s FreeTierError. This does mean a lowercase
+// decoy can coexist with a caller's TitleCase tool of the same base name;
+// if the model calls the decoy, claudeCodeToolRemapper's TOOL_RENAME_MAP
+// renames it back to TitleCase on the response path, so the client sees it
+// as a real tool call (tracked as a MEDIUM, deferred: fixing it needs a
+// response-path hook to distinguish an injected decoy call from a real one,
+// which does not exist anywhere in BaseExecutor/translator today and is a
+// separate subsystem change, not a schema/data-loss/security issue — the
+// decoy's own description already tells the model not to call it).
 function cloakOpencodeTools(body, format) {
   if (!body) return;
   if (format === "responses") {
@@ -154,7 +162,7 @@ function cloakOpencodeTools(body, format) {
     if (!hasTools) body.tools = [];
     // #4146: a malformed tool entry (null/undefined) must not throw here — treat
     // it as unnamed so it's simply ignored by the decoy-name check below.
-    const exactNames = new Set(body.tools.map((t) => (t?.name || t?.function?.name || "").toLowerCase()));
+    const exactNames = new Set(body.tools.map((t) => t?.name || t?.function?.name || ""));
     for (const tool of OPENCODE_DECOY_RESPONSES_TOOLS) {
       if (!exactNames.has(tool.name)) body.tools.push({ ...tool });
     }
@@ -165,7 +173,7 @@ function cloakOpencodeTools(body, format) {
   } else if (format === "claude") {
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
     if (!hasTools) body.tools = [];
-    const exactNames = new Set(body.tools.map((t) => (t?.name || "").toLowerCase()));
+    const exactNames = new Set(body.tools.map((t) => t?.name || ""));
     for (const tool of OPENCODE_DECOY_CLAUDE_TOOLS) {
       if (!exactNames.has(tool.name)) body.tools.push({ ...tool });
     }
@@ -176,7 +184,7 @@ function cloakOpencodeTools(body, format) {
       body.tools = OPENCODE_DECOY_CHAT_TOOLS.map((t) => ({ ...t, function: { ...t.function } }));
       if (!body.tool_choice) body.tool_choice = "none";
     } else {
-      const exactNames = new Set(body.tools.map((t) => (t?.function?.name || t?.name || "").toLowerCase()));
+      const exactNames = new Set(body.tools.map((t) => t?.function?.name || t?.name || ""));
       for (const tool of OPENCODE_DECOY_CHAT_TOOLS) {
         if (!exactNames.has(tool.function.name)) {
           body.tools.push({ ...tool, function: { ...tool.function } });

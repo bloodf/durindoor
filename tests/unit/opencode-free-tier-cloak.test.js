@@ -46,14 +46,13 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     }
   });
 
-  // #4128 round-3 review: the decoy quartet is always lowercase, but a
-  // Claude Code caller declares TitleCase names (Bash/Glob/Grep/Read). The
-  // response path renames a called decoy's lowercase name back to TitleCase
-  // (claudeCodeToolRemapper's TOOL_RENAME_MAP), so a model call of the
-  // unusable "bash" decoy would be delivered to the client indistinguishable
-  // from a real "Bash" call. Skip the decoy whenever the caller already sent
-  // its case-insensitive equivalent, on every format.
-  it("does not add a duplicate lowercase decoy when the caller already sent the TitleCase equivalent (Chat Completions)", () => {
+  // #4128 round-4 review: Zen's gate checks for the exact lowercase strings
+  // "bash"/"glob"/"grep"/"read". A caller's TitleCase Bash/Glob/Grep/Read
+  // tool (as a Claude Code caller sends) is a DIFFERENT string and must
+  // never suppress the exact lowercase decoy — doing so drops the
+  // fingerprint from the outgoing request and Zen 403s FreeTierError. The
+  // caller's own TitleCase tool must also survive untouched.
+  it("keeps the exact lowercase decoy alongside a caller TitleCase tool of the same base name (Chat Completions)", () => {
     const executor = new OpenCodeExecutor();
     const body = {
       messages: [{ role: "user", content: "hi" }],
@@ -63,15 +62,13 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     const transformed = executor.transformRequest("big-pickle", body, true, {});
 
     const names = transformed.tools.map((tool) => tool.function.name);
-    expect(names.filter((n) => n.toLowerCase() === "bash")).toHaveLength(1);
     expect(names).toContain("Bash");
-    // The other three decoys still get injected.
-    for (const decoy of ["glob", "grep", "read"]) {
-      expect(names).toContain(decoy);
+    for (const decoy of OPENCODE_FINGERPRINT_NAMES) {
+      expect(names.filter((n) => n === decoy)).toHaveLength(1);
     }
   });
 
-  it("does not add a duplicate lowercase decoy when the caller already sent the TitleCase equivalent (Responses)", () => {
+  it("keeps the exact lowercase decoy alongside a caller TitleCase tool of the same base name (Responses)", () => {
     const executor = new OpenCodeExecutor();
     const body = {
       input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
@@ -82,11 +79,11 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
 
     const names = transformed.tools.map((tool) => tool.name);
-    expect(names.filter((n) => n.toLowerCase() === "read")).toHaveLength(1);
     expect(names).toContain("Read");
+    expect(names.filter((n) => n === "read")).toHaveLength(1);
   });
 
-  it("does not add a duplicate lowercase decoy when the caller already sent the TitleCase equivalent (Claude Messages, Union Alpha)", () => {
+  it("keeps the exact lowercase decoy alongside a caller TitleCase tool of the same base name (Claude Messages, Union Alpha)", () => {
     const executor = new OpenCodeExecutor();
     const body = {
       messages: [{ role: "user", content: "hi" }],
@@ -96,8 +93,30 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     const transformed = executor.transformRequest("union-alpha", body, true, {});
 
     const names = transformed.tools.map((tool) => tool.name);
-    expect(names.filter((n) => n.toLowerCase() === "grep")).toHaveLength(1);
     expect(names).toContain("Grep");
+    expect(names.filter((n) => n === "grep")).toHaveLength(1);
+  });
+
+  it("does not throw when a caller tool name is a non-string (#4146 extended)", () => {
+    const executor = new OpenCodeExecutor();
+    const chatBody = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: 1, parameters: { type: "object", properties: {} } } }],
+    };
+    expect(() => executor.transformRequest("big-pickle", chatBody, true, {})).not.toThrow();
+
+    const responsesBody = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      tools: [{ type: "function", name: true, description: "d", parameters: { type: "object", properties: {} } }],
+      tool_choice: "auto",
+    };
+    expect(() => executor.transformRequest("muse-spark-1.3-contributor-free", responsesBody, true, {})).not.toThrow();
+
+    const claudeBody = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ name: {}, description: "d", input_schema: { type: "object", properties: {} } }],
+    };
+    expect(() => executor.transformRequest("union-alpha", claudeBody, true, {})).not.toThrow();
   });
 
   it("still injects the full decoy set when no tools are supplied", () => {

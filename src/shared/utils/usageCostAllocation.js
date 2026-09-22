@@ -28,11 +28,12 @@ export function hasServerCostSplit(data = {}) {
  * the same, so read it as a proportion of spend rather than a rate.
  *
  * @param {object} data - One usage bucket from /api/usage/stats
- * @returns {{inputCost:number,cachedCost:number,cacheCreationCost:number,outputCost:number,reasoningCost:number}}
+ * @returns {{inputCost:number,cachedCost:number,cacheCreationCost:number,outputCost:number,reasoningCost:number,unsplitCost:number}}
  */
 export function allocateUsageCost(data = {}) {
   if (hasServerCostSplit(data)) {
-    const split = {};
+    // `unsplitCost` is spend the server could not assign to a rate exactly.
+    const split = { unsplitCost: Number(data.unsplitCost) || 0 };
     for (const field of USAGE_COST_FIELDS) split[field] = Number(data[field]) || 0;
     return split;
   }
@@ -55,5 +56,6 @@ export function allocateUsageCost(data = {}) {
     cacheCreationCost: cacheCreationTokens * unitCost,
     outputCost: completionTokens * unitCost,
     reasoningCost: reasoningTokens * unitCost,
+    unsplitCost: 0,
   };
 }

@@ -82,7 +82,7 @@ describe("stored per-request cost split", () => {
     expect(columns).toBeCloseTo(provider.cost, 15);
   });
 
-  it("prices legacy rows where that is exact and withholds the split where it is not", async () => {
+  it("prices legacy rows where that is exact and reports the rest as not split", async () => {
     const { getAdapter } = await import("@/lib/db/driver.js");
     const adapter = await getAdapter();
     const legacyCost = (tokens, pricing) => calculateCostBreakdown(tokens, pricing).totalCost;
@@ -105,15 +105,19 @@ describe("stored per-request cost split", () => {
     const [flatModel] = rowFor(stats.byModel, "gpt-flat");
     const [tieredModel] = rowFor(stats.byModel, "gpt-6-astra");
     const [flatAccount] = rowFor(stats.byAccount, "gpt-flat");
-    const [tieredAccount] = rowFor(stats.byAccount, "gpt-6-astra");
+    const [legacyAccount] = rowFor(stats.byAccount, "Earlier usage (models not recorded)");
+    const columns = (row) => row.inputCost + row.cachedCost + row.cacheCreationCost + row.outputCost + row.reasoningCost;
 
     // No tier: the legacy remainder prices exactly, so the columns still sum.
-    const flatColumns = flatModel.inputCost + flatModel.cachedCost + flatModel.cacheCreationCost + flatModel.outputCost + flatModel.reasoningCost;
-    expect(flatColumns).toBeCloseTo(flatModel.cost, 15);
-    // Unequal tier multipliers: summed legacy tokens cannot be split correctly.
-    expect(tieredModel.inputCost).toBeUndefined();
-    // A bare-connection blob may hold several models, so its row is not split.
-    expect(flatAccount.inputCost).toBeUndefined();
-    expect(tieredAccount.inputCost).toBeCloseTo(2 * (big.inputCost + small.inputCost), 12);
+    expect(columns(flatModel)).toBeCloseTo(flatModel.cost, 15);
+    expect(flatModel.unsplitCost).toBe(0);
+    // Unequal tier multipliers: the stored split stays; the legacy day is reported, not guessed.
+    expect(tieredModel.inputCost).toBeCloseTo(2 * (big.inputCost + small.inputCost), 12);
+    expect(tieredModel.unsplitCost).toBeCloseTo(legacyCost(bigTokens, tiered), 15);
+    expect(columns(tieredModel) + tieredModel.unsplitCost).toBeCloseTo(tieredModel.cost, 12);
+    // A bare-connection blob gets its own row, so the per-model row keeps its exact split.
+    expect(flatAccount).toMatchObject({ requests: 2, unsplitCost: 0 });
+    expect(flatAccount.inputCost).toBeCloseTo(flatModel.inputCost - flat.input * flatTokens.prompt_tokens / 1e6, 15);
+    expect(legacyAccount).toMatchObject({ requests: 1, inputCost: 0, unsplitCost: legacyCost(flatTokens, flat) });
   });
 });

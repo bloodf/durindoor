@@ -81,11 +81,12 @@ describe("applyCostBreakdowns", () => {
     expect(stats.byModel.m.unsplit).toBeUndefined();
   });
 
-  it("publishes no split when unsplit rows meet unequal long-context multipliers", async () => {
+  it("keeps the stored split and reports an unpriceable tiered remainder as not split", async () => {
     const stats = emptyStats();
-    stats.byModel.m = bucket({ cost: 1, rawModel: "tiered", rawProvider: "openai", unsplit: { ...bucket(), cost: 1 } });
+    stats.byModel.m = bucket({ cost: 1.5, rawModel: "tiered", rawProvider: "openai", inputCost: 0.1, cachedCost: 0, cacheCreationCost: 0, outputCost: 0.4, reasoningCost: 0, unsplit: { ...bucket(), cost: 1 } });
     await applyCostBreakdowns(stats, async () => tiered);
-    expect(stats.byModel.m.inputCost).toBeUndefined();
+    expect(stats.byModel.m).toMatchObject({ inputCost: 0.1, outputCost: 0.4, unsplitCost: 1 });
+    expect(splitSum(stats.byModel.m) + stats.byModel.m.unsplitCost).toBeCloseTo(1.5, 12);
   });
 
   it("prices unsplit rows of an untiered model and adds the stored split", async () => {
@@ -97,14 +98,14 @@ describe("applyCostBreakdowns", () => {
     expect(stats.byModel.m.inputCost).toBeCloseTo(0.1 + 8000 / 28200, 12);
   });
 
-  it("leaves a legacy account blob that may mix models to the client fallback", async () => {
+  it("does not price a legacy account blob that may mix models", async () => {
     const stats = emptyStats();
     stats.byAccount.a = bucket({ cost: 1, rawModel: "dear", rawProvider: "openai", unsplit: { ...bucket(), cost: 1, mixed: true } });
     await applyCostBreakdowns(stats, lookup);
-    expect(stats.byAccount.a.inputCost).toBeUndefined();
+    expect(stats.byAccount.a).toMatchObject({ inputCost: 0, outputCost: 0, unsplitCost: 1 });
   });
 
-  it("keeps the provider on the fallback when one model has cost it cannot split", async () => {
+  it("carries a model's unsplit cost into its provider's columns", async () => {
     const stats = emptyStats();
     stats.byProvider.openai = bucket({ cost: 3 });
     stats.byModel.priced = bucket({ cost: 1, rawModel: "cheap", rawProvider: "openai", inputCost: 0.5, cachedCost: 0, cacheCreationCost: 0, outputCost: 0.5, reasoningCost: 0 });
@@ -112,8 +113,8 @@ describe("applyCostBreakdowns", () => {
     stats.byModel.reported = { requests: 1, promptTokens: 0, completionTokens: 0, cost: 2, rawModel: "cheap", rawProvider: "openai", unsplit: { promptTokens: 0, completionTokens: 0, cost: 2 } };
     await applyCostBreakdowns(stats, lookup);
 
-    expect(stats.byModel.reported.inputCost).toBeUndefined();
-    expect(stats.byProvider.openai.inputCost).toBeUndefined();
+    expect(stats.byModel.reported).toMatchObject({ inputCost: 0, unsplitCost: 2 });
+    expect(stats.byProvider.openai).toMatchObject({ inputCost: 0.5, outputCost: 0.5, unsplitCost: 2 });
   });
 
   it("sums provider columns from its models when every model is split", async () => {
@@ -136,7 +137,7 @@ describe("applyCostBreakdowns", () => {
     await applyCostBreakdowns(stats, failing);
 
     expect(errorSpy).toHaveBeenCalled();
-    expect(stats.byModel.m.inputCost).toBeUndefined();
+    expect(stats.byModel.m.unsplitCost).toBe(1);
     expect(splitSum(stats.byEndpoint.e)).toBeCloseTo(1, 12);
     errorSpy.mockRestore();
   });

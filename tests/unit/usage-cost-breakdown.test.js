@@ -77,11 +77,11 @@ describe("allocateUsageCost", () => {
   const bucket = { cost: 1, promptTokens: 330, completionTokens: 50, cachedTokens: 200, cacheCreationTokens: 30, reasoningTokens: 0 };
 
   it("uses the server split when the bucket carries one", () => {
-    const withSplit = { ...bucket, inputCost: 0.6, cachedCost: 0.1, cacheCreationCost: 0.05, outputCost: 0.25, reasoningCost: 0 };
+    const withSplit = { ...bucket, inputCost: 0.6, cachedCost: 0.1, cacheCreationCost: 0.05, outputCost: 0.2, reasoningCost: 0, unsplitCost: 0.05 };
 
     expect(hasServerCostSplit(withSplit)).toBe(true);
     expect(allocateUsageCost(withSplit)).toEqual({
-      inputCost: 0.6, cachedCost: 0.1, cacheCreationCost: 0.05, outputCost: 0.25, reasoningCost: 0,
+      inputCost: 0.6, cachedCost: 0.1, cacheCreationCost: 0.05, outputCost: 0.2, reasoningCost: 0, unsplitCost: 0.05,
     });
   });
 
@@ -96,7 +96,7 @@ describe("allocateUsageCost", () => {
 
   it("does not divide by zero on an empty bucket", () => {
     expect(allocateUsageCost({ cost: 5 })).toEqual({
-      inputCost: 0, cachedCost: 0, cacheCreationCost: 0, outputCost: 0, reasoningCost: 0,
+      inputCost: 0, cachedCost: 0, cacheCreationCost: 0, outputCost: 0, reasoningCost: 0, unsplitCost: 0,
     });
   });
 });

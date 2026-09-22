@@ -69,6 +69,7 @@ export function buildValueColumns(viewMode) {
       summaryCostColumn("cacheCreationCost", "Cache Write"),
       summaryCostColumn("outputCost", "Output Cost"),
       summaryCostColumn("reasoningCost", "Reasoning Cost"),
+      summaryCostColumn("unsplitCost", "Not split"),
       summaryCostColumn("cost", "Total Cost"),
     ];
   }
@@ -90,6 +91,7 @@ function buildDetailValueColumns(viewMode) {
       summaryCostColumn("cacheCreationCost", "Cache Write"),
       summaryCostColumn("outputCost", "Output"),
       summaryCostColumn("reasoningCost", "Reasoning"),
+      summaryCostColumn("unsplitCost", "Not split"),
       summaryCostColumn("cost", "Total"),
     ];
   }

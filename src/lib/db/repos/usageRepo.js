@@ -131,6 +131,9 @@ export function addLatency(target, source, completionTokens = 0) {
   sampleOr(source.timedCompletionTokens, latencyMs > ttftMs ? completionTokens : 0);
 }
 
+// Model label for account days saved before counters were kept per model.
+const LEGACY_ACCOUNT_MODEL = "Earlier usage (models not recorded)";
+
 const UNSPLIT_FIELDS = ["promptTokens", "completionTokens", "cachedTokens", "reasoningTokens", "cacheCreationTokens", "cost"];
 
 /**
@@ -1025,9 +1028,13 @@ export async function getUsageStats(period = "all", opts = {}) {
       }
 
       for (const [dayKey, a] of Object.entries(day.byAccount || {})) {
+        // A blob saved under the bare connection id may hold several models'
+        // tokens under its last model's name. It gets its own row, so it
+        // neither inflates nor stops the split of a per-model row.
+        const legacy = !a.connectionId;
         const connId = a.connectionId || dayKey;
         const accountName = connectionMap[connId] || `Account ${connId.slice(0, 8)}...`;
-        const rawModel = a.rawModel || "";
+        const rawModel = legacy ? LEGACY_ACCOUNT_MODEL : a.rawModel || "";
         const provider = a.provider || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         const accountKey = `${rawModel} (${provider} - ${accountName})`;
@@ -1035,9 +1042,7 @@ export async function getUsageStats(period = "all", opts = {}) {
           stats.byAccount[accountKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, rawModel, provider: providerDisplayName, rawProvider: provider, connectionId: connId, accountName, lastUsed: dateKey };
         }
         addCostSplit(stats.byAccount[accountKey], a);
-        // A blob saved under the bare connection id may hold several models'
-        // tokens, so no single model's rates can split its cost.
-        if (!a.connectionId && Number(a.cost) > 0) stats.byAccount[accountKey].unsplit.mixed = true;
+        if (legacy && Number(a.cost) > 0) stats.byAccount[accountKey].unsplit.mixed = true;
         stats.byAccount[accountKey].requests += a.requests || 0;
         stats.byAccount[accountKey].promptTokens += a.promptTokens || 0;
         stats.byAccount[accountKey].completionTokens += a.completionTokens || 0;
@@ -1281,7 +1286,7 @@ export async function getUsageStats(period = "all", opts = {}) {
  * @returns {object|null} The five cost fields, or null when no split can be derived
  */
 function splitUnsplitCost(rest, pricing, calc) {
-  if (!pricing || rest.mixed) return null;
+  if (!pricing) return null;
   const tiered = Number.isFinite(pricing.longContextThreshold) &&
   (pricing.longContextInputMultiplier || 1) !== (pricing.longContextOutputMultiplier || 1);
   if (tiered) return null;
@@ -1306,13 +1311,11 @@ function splitUnsplitCost(rest, pricing, calc) {
  * priced cached input like fresh input and collapsed output to a rounding
  * error on cache-heavy traffic. Each usage row now stores its own split, so a
  * bucket's split is the sum of its rows'. Rows without one are priced here when
- * that is exact (see {@link splitUnsplitCost}); otherwise the bucket publishes
- * no split and the client falls back to its token-share allocation.
+ * that is exact (see {@link splitUnsplitCost}); otherwise their cost is
+ * published as `unsplitCost`, next to the exact part, instead of guessed at.
  *
  * Provider totals are summed from the model buckets rather than priced again,
- * because a provider row spans several models with different rates. A provider
- * publishes a split only when every one of its models has one, so its columns
- * always add up to its cost.
+ * because a provider row spans several models with different rates.
  *
  * @param {object} stats - Mutated in place
  * @param {(provider: string, model: string) => Promise<object|null>} [lookupPricing] - Defaults to the pricing repo
@@ -1341,15 +1344,17 @@ export async function applyCostBreakdowns(stats, lookupPricing) {
     }
   };
 
+  // Stored splits are exact and always published. A remainder that cannot be
+  // priced exactly is reported as `unsplitCost` rather than guessed at, so the
+  // category columns plus `unsplitCost` equal the bucket's cost.
   const bucketSplit = async (entry) => {
-    // Unsplit rows with a cost land in `rest`, so anything else sums exactly.
     const rest = entry.unsplit;
-    const split = {};
+    const split = { unsplitCost: 0 };
     for (const field of USAGE_COST_FIELDS) split[field] = entry[field] || 0;
     if (!rest) return split;
-    const restSplit = splitUnsplitCost(rest, await pricingFor(entry.rawProvider, entry.rawModel), calculateCostBreakdown);
-    if (!restSplit) return null;
-    for (const field of USAGE_COST_FIELDS) split[field] += restSplit[field];
+    const restSplit = rest.mixed ? null : splitUnsplitCost(rest, await pricingFor(entry.rawProvider, entry.rawModel), calculateCostBreakdown);
+    if (!restSplit) split.unsplitCost = rest.cost || 0;
+    else for (const field of USAGE_COST_FIELDS) split[field] += restSplit[field];
     return split;
   };
 
@@ -1357,19 +1362,14 @@ export async function applyCostBreakdowns(stats, lookupPricing) {
   for (const bucket of ["byModel", "byAccount", "byApiKey", "byEndpoint"]) {
     for (const entry of Object.values(stats[bucket])) {
       const split = await bucketSplit(entry);
-      // Partial sums must not reach the client, where they would read as a split.
       delete entry.unsplit;
-      for (const field of USAGE_COST_FIELDS) delete entry[field];
-      if (split) Object.assign(entry, split);
+      Object.assign(entry, split);
       if (bucket !== "byModel" || !stats.byProvider[entry.rawProvider]) continue;
-      const acc = providerSplits[entry.rawProvider] ||= { complete: true, split: {} };
-      if (!split) acc.complete = false;
-      else for (const field of USAGE_COST_FIELDS) acc.split[field] = (acc.split[field] || 0) + split[field];
+      const acc = providerSplits[entry.rawProvider] ||= {};
+      for (const [field, value] of Object.entries(split)) acc[field] = (acc[field] || 0) + value;
     }
   }
-  for (const [provider, { complete, split }] of Object.entries(providerSplits)) {
-    if (complete) Object.assign(stats.byProvider[provider], split);
-  }
+  for (const [provider, split] of Object.entries(providerSplits)) Object.assign(stats.byProvider[provider], split);
 }
 
 function isValidTimeZone(timeZone) {

@@ -46,6 +46,16 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
     }
   }
 
+  if (AI_PROVIDERS[provider]?.credentialForm === "aws") {
+    // The STS session token is a secret kept in the encrypted top-level connection field, never
+    // in plaintext providerSpecificData. Updates deep-merge into the stored object, where an
+    // omitted key survives, so a copy is overwritten with null rather than deleted.
+    if (Object.hasOwn(next, "sessionToken")) next.sessionToken = null;
+    // A cleared profile stays as "" for the same reason: dropping it would let the merge restore
+    // the old profile, which keeps winning over any new key.
+    if (Object.hasOwn(next, "profile")) next.profile = isString(next.profile) ? next.profile.trim() : "";
+  }
+
   if (provider === "ollama-local") {
     const baseUrl = (
     next.baseUrl ||

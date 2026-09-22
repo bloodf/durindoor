@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { OpenCodeExecutor, OPENCODE_SESSION_RE, OPENCODE_DECOY_RESPONSES_TOOLS } from "../../open-sse/executors/opencode.js";
+import { OpenCodeExecutor, OPENCODE_SESSION_RE, OPENCODE_DECOY_RESPONSES_TOOLS, OPENCODE_UA } from "../../open-sse/executors/opencode.js";
+
+// Upstream #4188: the free-tier gate wants all four of the official CLI's
+// file-search tools, not just the bash/read pair the fork shipped before.
+const OPENCODE_FINGERPRINT_NAMES = ["bash", "glob", "grep", "read"];
 
 describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
   it("cloaks Responses requests even when the client already supplies tools", () => {
@@ -20,10 +24,9 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
 
     const names = transformed.tools.map((tool) => tool.name);
     expect(names).toContain("zcode_search");
-    expect(names).toContain("bash");
-    expect(names).toContain("read");
-    expect(names.filter((n) => n === "bash")).toHaveLength(1);
-    expect(names.filter((n) => n === "read")).toHaveLength(1);
+    for (const decoy of OPENCODE_FINGERPRINT_NAMES) {
+      expect(names.filter((n) => n === decoy)).toHaveLength(1);
+    }
     expect(transformed.store).toBe(false);
   });
 
@@ -38,15 +41,89 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
 
     const names = transformed.tools.map((tool) => tool.function.name);
     expect(names).toContain("custom_tool");
-    expect(names).toContain("bash");
-    expect(names).toContain("read");
+    for (const decoy of OPENCODE_FINGERPRINT_NAMES) {
+      expect(names).toContain(decoy);
+    }
+  });
+
+  // #4128 round-4 review: Zen's gate checks for the exact lowercase strings
+  // "bash"/"glob"/"grep"/"read". A caller's TitleCase Bash/Glob/Grep/Read
+  // tool (as a Claude Code caller sends) is a DIFFERENT string and must
+  // never suppress the exact lowercase decoy — doing so drops the
+  // fingerprint from the outgoing request and Zen 403s FreeTierError. The
+  // caller's own TitleCase tool must also survive untouched.
+  it("keeps the exact lowercase decoy alongside a caller TitleCase tool of the same base name (Chat Completions)", () => {
+    const executor = new OpenCodeExecutor();
+    const body = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "Bash", parameters: { type: "object", properties: {} } } }],
+    };
+
+    const transformed = executor.transformRequest("big-pickle", body, true, {});
+
+    const names = transformed.tools.map((tool) => tool.function.name);
+    expect(names).toContain("Bash");
+    for (const decoy of OPENCODE_FINGERPRINT_NAMES) {
+      expect(names.filter((n) => n === decoy)).toHaveLength(1);
+    }
+  });
+
+  it("keeps the exact lowercase decoy alongside a caller TitleCase tool of the same base name (Responses)", () => {
+    const executor = new OpenCodeExecutor();
+    const body = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      tools: [{ type: "function", name: "Read", description: "d", parameters: { type: "object", properties: {} } }],
+      tool_choice: "auto",
+    };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
+
+    const names = transformed.tools.map((tool) => tool.name);
+    expect(names).toContain("Read");
+    expect(names.filter((n) => n === "read")).toHaveLength(1);
+  });
+
+  it("keeps the exact lowercase decoy alongside a caller TitleCase tool of the same base name (Claude Messages, Union Alpha)", () => {
+    const executor = new OpenCodeExecutor();
+    const body = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ name: "Grep", description: "d", input_schema: { type: "object", properties: {} } }],
+    };
+
+    const transformed = executor.transformRequest("union-alpha", body, true, {});
+
+    const names = transformed.tools.map((tool) => tool.name);
+    expect(names).toContain("Grep");
+    expect(names.filter((n) => n === "grep")).toHaveLength(1);
+  });
+
+  it("does not throw when a caller tool name is a non-string (#4146 extended)", () => {
+    const executor = new OpenCodeExecutor();
+    const chatBody = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: 1, parameters: { type: "object", properties: {} } } }],
+    };
+    expect(() => executor.transformRequest("big-pickle", chatBody, true, {})).not.toThrow();
+
+    const responsesBody = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      tools: [{ type: "function", name: true, description: "d", parameters: { type: "object", properties: {} } }],
+      tool_choice: "auto",
+    };
+    expect(() => executor.transformRequest("muse-spark-1.3-contributor-free", responsesBody, true, {})).not.toThrow();
+
+    const claudeBody = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ name: {}, description: "d", input_schema: { type: "object", properties: {} } }],
+    };
+    expect(() => executor.transformRequest("union-alpha", claudeBody, true, {})).not.toThrow();
   });
 
   it("still injects the full decoy set when no tools are supplied", () => {
     const executor = new OpenCodeExecutor();
     const transformed = executor.transformRequest("big-pickle", { messages: [] }, true, {});
     const names = transformed.tools.map((tool) => tool.function.name);
-    expect(names).toEqual(["bash", "read"]);
+    expect(names).toEqual(OPENCODE_FINGERPRINT_NAMES);
     expect(transformed.tool_choice).toBe("none");
   });
 
@@ -58,11 +135,11 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
       tool_choice: "required",
     };
 
-    // Deliberately not muse-spark-1.3-contributor-free: that model has its own
-    // hard-400 quirk (port(upstream): aa14ef7) that demotes any non-auto
-    // tool_choice regardless of caller tools, which is the opposite of what
-    // this test is checking. See the dedicated test below for that model.
-    const transformed = executor.transformRequest("muse-spark-1.2-contributor-free", body, true, {});
+    // Deliberately not a Muse Spark contributor model: 1.2 and 1.3 both carry
+    // the hard-400 quirk (port(upstream): aa14ef7 + #4165) that demotes any
+    // non-auto tool_choice regardless of caller tools, which is the opposite of
+    // what this test is checking. See the dedicated test below for that quirk.
+    const transformed = executor.transformRequest("muse-spark-2.0-contributor-free", body, true, {});
 
     expect(transformed.tool_choice).toBe("required");
     const names = transformed.tools.map((tool) => tool.name);
@@ -126,6 +203,111 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     const executor = new OpenCodeExecutor();
     expect(() => executor.transformRequest("big-pickle", { messages: [] }, false, {}, { compact: true }))
       .toThrow(/compact-responses/i);
+  });
+});
+
+describe("OpenCodeExecutor free-tier client identity (#4128)", () => {
+  it("advertises the full official-client User-Agent, not a bare version token", () => {
+    const executor = new OpenCodeExecutor();
+    const headers = executor.buildHeaders({ id: "noauth", connectionId: "noauth" }, true, null, "big-pickle");
+    expect(headers["User-Agent"]).toBe(OPENCODE_UA);
+    // The gate still has to read a >= 1.17 opencode version out of it.
+    expect(headers["User-Agent"]).toMatch(/(^|\s)opencode\/1\.(1[7-9]|[2-9]\d)/);
+    // Pin the ai-sdk and runtime tokens as literal strings, independent of the
+    // OPENCODE_UA constant: a regression that shrinks the constant back to a
+    // bare "opencode/<version>" must not stay green here.
+    expect(headers["User-Agent"]).toContain("ai-sdk/provider-utils/4.0.40");
+    expect(headers["User-Agent"]).toContain("runtime/bun/1.3.14");
+  });
+
+  it("does not forward a client UA that only contains opencode/X.Y as a substring", () => {
+    // "not-opencode/1.18.31" and "opencode/1.18.31extra" both contain a
+    // digit-for-digit match of the version regex if it isn't token-bounded,
+    // but neither is a string Zen's real client ever sends; forwarding it
+    // unchanged would ship a fingerprint Zen has never seen instead of
+    // falling back to the known-good literal.
+    const executor = new OpenCodeExecutor();
+    const spoofed = executor.buildHeaders(
+      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "not-opencode/1.18.31" } },
+      true, null, "big-pickle"
+    );
+    expect(spoofed["User-Agent"]).toBe(OPENCODE_UA);
+
+    const trailing = executor.buildHeaders(
+      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "opencode/1.18.31extra" } },
+      true, null, "big-pickle"
+    );
+    expect(trailing["User-Agent"]).toBe(OPENCODE_UA);
+  });
+
+  it("still forwards a genuine opencode/X.Y client UA unchanged", () => {
+    const executor = new OpenCodeExecutor();
+    const headers = executor.buildHeaders(
+      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "opencode/1.17.0" } },
+      true, null, "big-pickle"
+    );
+    expect(headers["User-Agent"]).toBe("opencode/1.17.0");
+  });
+
+  it("pins prompt_cache_key to the canonical session on Muse Responses requests", () => {
+    const executor = new OpenCodeExecutor();
+    const credentials = executor.prepareRequestCredentials({
+      credentials: { connectionId: "conn-a" },
+      providerSessionId: "conversation-1",
+      clientTool: "claude",
+    });
+    const body = { input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }] };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, credentials);
+
+    expect(transformed.prompt_cache_key).toBe(credentials._opencodeSession);
+    expect(transformed.prompt_cache_key).toMatch(OPENCODE_SESSION_RE);
+  });
+
+  it("reuses one prompt_cache_key across turns of the same conversation", () => {
+    const executor = new OpenCodeExecutor();
+    const keyFor = (text) => {
+      const args = { credentials: { connectionId: "conn-a" }, providerSessionId: "conversation-1", clientTool: "claude" };
+      const credentials = executor.prepareRequestCredentials(args);
+      const body = { input: [{ type: "message", role: "user", content: [{ type: "input_text", text }] }] };
+      return executor.transformRequest("muse-spark-1.3-contributor-free", body, true, credentials).prompt_cache_key;
+    };
+    expect(keyFor("turn one")).toBe(keyFor("turn two"));
+  });
+
+  it("never overwrites a caller-supplied prompt_cache_key", () => {
+    const executor = new OpenCodeExecutor();
+    const credentials = executor.prepareRequestCredentials({ credentials: { connectionId: "conn-a" } });
+    const body = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      prompt_cache_key: "caller-key",
+    };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, credentials);
+
+    expect(transformed.prompt_cache_key).toBe("caller-key");
+  });
+
+  it("treats a whitespace-only caller prompt_cache_key as missing and pins the session", () => {
+    const executor = new OpenCodeExecutor();
+    const credentials = executor.prepareRequestCredentials({ credentials: { connectionId: "conn-a" } });
+    const body = {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      prompt_cache_key: "   ",
+    };
+
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, credentials);
+
+    expect(transformed.prompt_cache_key).toBe(credentials._opencodeSession);
+  });
+
+  it("leaves prompt_cache_key alone on the Chat Completions route", () => {
+    const executor = new OpenCodeExecutor();
+    const credentials = executor.prepareRequestCredentials({ credentials: { connectionId: "conn-a" } });
+
+    const transformed = executor.transformRequest("big-pickle", { messages: [] }, true, credentials);
+
+    expect(transformed.prompt_cache_key).toBeUndefined();
   });
 });
 

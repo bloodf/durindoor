@@ -58,7 +58,6 @@ const ADDED_SVG_IDS = [
 const EXCLUDED_UNWIRED = [
   "modelscope",
   "openadapter",
-  "orcarouter",
   "pioneer",
   "publicai",
   "zed-hosted",

@@ -167,6 +167,60 @@ describe("bounded 429 evidence parsing", () => {
     expect(JSON.stringify(parsed)).not.toContain("super-secret");
   });
 
+  it("flags a real Antigravity quota 429 while still redacting the client-facing message", async () => {
+    const body = JSON.stringify({
+      error: {
+        status: "RESOURCE_EXHAUSTED",
+        message: "Individual quota reached",
+        details: [{ reason: "RATE_LIMIT_EXCEEDED" }],
+      },
+    });
+    const parsed = await parseUpstreamError(new Response(body, { status: 429 }));
+
+    expect(parsed.message).toBe("Rate limit exceeded");
+    expect(parsed.antigravityQuotaSignal).toBe(true);
+    expect(JSON.stringify(parsed)).not.toContain("RATE_LIMIT_EXCEEDED");
+  });
+
+  it("does not flag a content-triggered Antigravity 429 as a quota signal", async () => {
+    const body = JSON.stringify({
+      error: { message: "Resource has been exhausted (e.g. check quota)." },
+    });
+    const parsed = await parseUpstreamError(new Response(body, { status: 429 }), null, { provider: "antigravity" });
+
+    expect(parsed.message).toBe("Rate limit exceeded");
+    expect(parsed.antigravityQuotaSignal).toBe(false);
+    // The boilerplate sentence itself matches EXPLICIT_QUOTA_TEXT ("exhausted"
+    // ... "quota"), so without the content-rejection carve-out this would
+    // wrongly persist state:"exhausted" and bench a healthy model.
+    expect(parsed.rateLimitEvidence).toMatchObject({ state: "cooldown", resetAtMs: null });
+  });
+
+  it("keeps a genuine Gemini quota 429 exhausted despite Antigravity's exact boilerplate sentence", async () => {
+    // A different Gemini-family provider can hit a real quota 429 with the
+    // identical prose Antigravity uses for content-triggered rejections. The
+    // carve-out above is scoped to antigravity/agy only, so this must NOT be
+    // downgraded to a cooldown just because the sentence matches.
+    const body = JSON.stringify({
+      error: { code: 429, message: "Resource has been exhausted (e.g. check quota).", status: "RESOURCE_EXHAUSTED" },
+    });
+    const parsed = await parseUpstreamError(new Response(body, { status: 429 }), null, { provider: "gemini" });
+
+    expect(parsed.rateLimitEvidence).toMatchObject({ state: "exhausted" });
+  });
+
+  it("never lets the Antigravity sentence carve-out override a structured quota code", async () => {
+    const body = JSON.stringify({
+      error: {
+        code: "quota_exceeded",
+        message: "Resource has been exhausted (e.g. check quota).",
+      },
+    });
+    const parsed = await parseUpstreamError(new Response(body, { status: 429 }), null, { provider: "antigravity" });
+
+    expect(parsed.rateLimitEvidence).toMatchObject({ state: "exhausted" });
+  });
+
   it("bounds stalled and oversized provider error bodies", async () => {
     const cancel = vi.fn();
     const stalled = new Response(new ReadableStream({

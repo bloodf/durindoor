@@ -47,6 +47,7 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
       apiKey: "sk-secret-3",
       idToken: "ID-secret-4",
       firecrawlHeaders: JSON.stringify({ "x-secret": "header-value" }),
+      sessionToken: "STS-secret-5",
       email: "enc@example.com",
     });
 
@@ -69,6 +70,7 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
     expect(row.data).not.toContain("ID-secret-4");
     expect(row.data).not.toContain("x-secret");
     expect(row.data).not.toContain("header-value");
+    expect(row.data).not.toContain("STS-secret-5");
   });
 
   it("decrypts on read so callers see plaintext", async () => {

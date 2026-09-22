@@ -11,6 +11,19 @@ export function toOpenAIFinish(reason, format) {
         case CLAUDE_STOP.MAX_TOKENS: return OPENAI_FINISH.LENGTH;
         case CLAUDE_STOP.TOOL_USE: return OPENAI_FINISH.TOOL_CALLS;
         case CLAUDE_STOP.STOP_SEQUENCE: return OPENAI_FINISH.STOP;
+        // A refusal is a blocked turn, not a clean stop: with the default mapping an
+        // OpenAI client saw finish_reason "stop" and an empty message (9Router logged
+        // "succeeded", OUT 0) and could not tell it from a real answer.
+        case CLAUDE_STOP.REFUSAL: return OPENAI_FINISH.CONTENT_FILTER;
+        // The context window filled mid-turn, not the requested output budget, but
+        // OpenAI has no separate reason for it either; "length" is what already
+        // tells a client the turn was cut short and to expect a truncated answer.
+        case CLAUDE_STOP.MODEL_CONTEXT_WINDOW_EXCEEDED: return OPENAI_FINISH.LENGTH;
+        // A paused server-tool turn is not finished: the default mapping told an
+        // OpenAI client "stop" and it would drop the turn instead of sending the
+        // response back to continue. "tool_calls" is the only OpenAI reason that
+        // already means "the client must act before this turn is done".
+        case CLAUDE_STOP.PAUSE_TURN: return OPENAI_FINISH.TOOL_CALLS;
         default: return OPENAI_FINISH.STOP;
       }
     case "commandcode":
@@ -63,6 +76,12 @@ export function fromOpenAIFinish(reason, format) {
         case "max_tokens": return CLAUDE_STOP.MAX_TOKENS;
         case OPENAI_FINISH.TOOL_CALLS:
         case "tool_use": return CLAUDE_STOP.TOOL_USE;
+        // OpenAI's own content_filter means the provider's moderation layer blocked
+        // the turn, not that the model itself refused - collapsing it to Claude's
+        // "refusal" mis-signals every content-filter provider (Antigravity, Vertex,
+        // Gemini CLI, commandcode) as a model refusal. Only the literal Claude
+        // "refusal" alias round-trips to CLAUDE_STOP.REFUSAL.
+        case CLAUDE_STOP.REFUSAL: return CLAUDE_STOP.REFUSAL;
         default: return CLAUDE_STOP.END_TURN;
       }
     default:

@@ -1,4 +1,5 @@
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getOpenRouterModelCapabilities, warmOpenRouterCatalog } from "open-sse/services/openrouterCatalog.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
@@ -43,7 +44,7 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
   try {
     const customModels = await getCustomModels();
     const direct = resolveCustomCapabilities(provider, model, requestPrefix, customModels);
-    if (direct) return direct;
+    if (direct) return resolveOpenRouterCapabilities(provider, model, direct);
     // Compatible-provider nodes store custom rows under the node PREFIX as
     // providerAlias, while getModelInfo resolves to the internal node id. A
     // bare alias (requestPrefix null) or id-addressed request would miss the
@@ -58,10 +59,31 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
         return resolveCustomCapabilities(provider, model, node.prefix, customModels);
       }
     }
-    return null;
+    return resolveOpenRouterCapabilities(provider, model, null);
   } catch {
     return null;
   }
+}
+
+/**
+ * OpenRouter publishes per-model modalities, tool support and limits in its
+ * public catalog. Merge the cached entry over the static table so vision
+ * stripping, Vision Bridge and combo capability routing see the real model.
+ * A custom model row's explicit keys still win, and only those stay in
+ * `customKeys`: chatCore reads the catalog limits as live limits.
+ * A cold cache warms in the background and this request uses static caps.
+ */
+function resolveOpenRouterCapabilities(provider, model, custom) {
+  if (provider !== "openrouter" || !isString(model)) return custom;
+  warmOpenRouterCatalog();
+  const { cleanModel } = parseSuffix(model);
+  const live = getOpenRouterModelCapabilities(String(cleanModel));
+  if (!live) return custom;
+  const keys = custom?.customKeys instanceof Set ? custom.customKeys : new Set();
+  const operator = Object.fromEntries([...keys].map((key) => [key, custom[key]]));
+  const merged = { ...getCapabilitiesForModel(provider, String(cleanModel)), ...live, ...operator };
+  Object.defineProperty(merged, "customKeys", { value: new Set(keys), enumerable: false });
+  return merged;
 }
 
 // Re-export from open-sse with localDb integration

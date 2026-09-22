@@ -7,7 +7,7 @@
  * (apply_patch) stream via custom_tool_call_input.* events, and output_index
  * is offset past a preceding reasoning item so items never collide at 0.
  */
-import { register } from "../index.js";
+import { register, initState } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
@@ -314,9 +314,10 @@ function closeMessage(state, emit, idx) {
     });
   }
 }
-function splitToolName(state, name) {
+/** Split a dotted `{namespace}.{subtool}` name using the exact map built at initState. */
+function splitNamespacedName(state, name) {
   const namespace = state.toolNamespaces?.[name];
-  if (!namespace) return { name };
+  if (!namespace) return null;
   const prefix = `${namespace}.`;
   return {
     name: name.startsWith(prefix) ? name.slice(prefix.length) : name,
@@ -324,6 +325,68 @@ function splitToolName(state, name) {
   };
 }
 
+function isDeclaredFlatTool(state, name) {
+  const type = state.toolTypes?.[name];
+  return Boolean(type) && type !== "namespace";
+}
+
+function warnUnresolvedToolName(state, emitted, reason) {
+  state._warnedToolNames ||= new Set();
+  if (state._warnedToolNames.has(emitted)) return;
+  state._warnedToolNames.add(emitted);
+  console.warn(`[RESPONSES] unresolved tool-call name "${emitted}" (${reason}), forwarding unchanged`);
+}
+
+/**
+ * Reverse a request-side alias (translateRequest aliases dotted or overlong names for
+ * every target) back to the name the client declared.
+ */
+export function restoreResponsesToolName(state, name) {
+  if (!isString(name)) return name;
+  return state.toolNameMap?.get(name) || name;
+}
+
+/**
+ * Resolve a (restored) provider tool-call name to Responses `name` + `namespace`.
+ *
+ * Providers sometimes inject a prefix the client never declared (e.g. `functions.exec`
+ * for a declared `exec`). Exactly one leading segment is stripped, and only when the
+ * remainder is a name this request declared; nothing is matched against a guessed
+ * alias table. Unresolvable names are logged once and forwarded unchanged.
+ */
+export function resolveResponsesToolName(state, name) {
+  if (!isString(name)) return { name };
+  const exact = splitNamespacedName(state, name);
+  if (exact) return exact;
+  if (isDeclaredFlatTool(state, name)) return { name };
+
+  const dot = name.indexOf(".");
+  if (dot === -1) {
+    if (state.toolTypes?.[name] === "namespace") {
+      warnUnresolvedToolName(state, name, "emitted bare namespace name without a sub-tool");
+    }
+    return { name };
+  }
+
+  // The provider may prefix the upstream alias (`functions.<alias>`), so restore the remainder too.
+  const rest = restoreResponsesToolName(state, name.slice(dot + 1));
+  const injected = splitNamespacedName(state, rest);
+  if (injected) return injected;
+  if (isDeclaredFlatTool(state, rest)) return { name: rest };
+
+  warnUnresolvedToolName(state, name, "no declared tool name matches");
+  return { name };
+}
+
+
+/**
+ * Name resolver for buffered (non-streaming) Responses projections: the same
+ * restore + resolve the streaming translator applies per tool call.
+ */
+export function createResponsesToolNameResolver(requestBody, toolNameMap) {
+  const state = { ...initState(FORMATS.OPENAI_RESPONSES, requestBody), toolNameMap };
+  return (name) => resolveResponsesToolName(state, restoreResponsesToolName(state, name));
+}
 
 function emitToolCall(state, emit, tc) {
   const tcIdx = tc.index ?? 0;
@@ -331,7 +394,7 @@ function emitToolCall(state, emit, tc) {
   const newCallId = tc.id;
   const funcName = tc.function?.name;
 
-  if (funcName) state.funcNames[tcIdx] = funcName;
+  if (funcName) state.funcNames[tcIdx] = restoreResponsesToolName(state, funcName);
 
   // apply_patch defaults to custom framing (legacy Codex compatibility), but
   // an explicit function declaration in the request always wins over the name
@@ -358,7 +421,7 @@ function emitToolCall(state, emit, tc) {
         type: "custom_tool_call",
         input: "",
         call_id: refCallId,
-        name: refName,
+        name: resolveResponsesToolName(state, refName).name,
         status: "in_progress"
       } :
       {
@@ -366,7 +429,7 @@ function emitToolCall(state, emit, tc) {
         type: RESPONSES_ITEM.FUNCTION_CALL,
         arguments: "",
         call_id: refCallId,
-        ...splitToolName(state, refName),
+        ...resolveResponsesToolName(state, refName),
         status: "in_progress"
       }
     });
@@ -407,7 +470,12 @@ function emitToolCall(state, emit, tc) {
   }
 }
 function isCustomToolByState(state, tcIdx, funcName) {
-  const name = state.funcNames[tcIdx] || funcName || "";
+  // Classify by the resolved name so an injected prefix (`functions.apply_patch`)
+  // frames the same way the buffered projector does.
+  const resolved = resolveResponsesToolName(state, state.funcNames[tcIdx] || funcName || "");
+  // A namespace subtool is always a function call, even one named apply_patch.
+  if (resolved.namespace) return false;
+  const name = resolved.name || "";
   const declaredType = state.toolTypes?.[name] || "";
   return declaredType === "custom" || name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name);
 }
@@ -456,7 +524,7 @@ function closeToolCall(state, emit, idx) {
           type: "custom_tool_call",
           input: rawInput,
           call_id: callId,
-          name: state.funcNames[idx] || "",
+          name: resolveResponsesToolName(state, state.funcNames[idx] || "").name,
           status: "completed"
         }
       });
@@ -476,7 +544,7 @@ function closeToolCall(state, emit, idx) {
           type: RESPONSES_ITEM.FUNCTION_CALL,
           arguments: args,
           call_id: callId,
-          ...splitToolName(state, state.funcNames[idx] || ""),
+          ...resolveResponsesToolName(state, state.funcNames[idx] || ""),
           status: "completed"
         }
       });

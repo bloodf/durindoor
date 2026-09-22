@@ -24,6 +24,7 @@ vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
 }));
 vi.mock("@/lib/db/repos/settingsRepo", () => ({ getSettings: mocks.getSettings }));
+vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: mocks.getDisabledModels }));
 vi.mock("../../src/sse/services/auth.js", () => ({
   clearAccountError: mocks.clearAccountError,

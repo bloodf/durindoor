@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   startTrace: vi.fn(() => "trace-preflight"),
   record: vi.fn(),
   finishTrace: vi.fn(),
+  getOpenRouterModelCapabilities: vi.fn(() => null),
 }));
 
 // Real BaseExecutor reservation logic — the point of the test is that the
@@ -36,6 +37,10 @@ vi.mock("../../open-sse/executors/index.js", () => ({
 vi.mock("../../open-sse/providers/capabilities.js", () => ({
   getCapabilitiesForModel: vi.fn(() => ({ maxOutput: 1000 })),
   resolveModelLimits: mocks.resolveModelLimits,
+}));
+
+vi.mock("../../open-sse/services/openrouterCatalog.js", () => ({
+  getOpenRouterModelCapabilities: mocks.getOpenRouterModelCapabilities,
 }));
 
 vi.mock("../../open-sse/handlers/countTokensCore.js", () => ({
@@ -261,5 +266,52 @@ describe("chatCore ingress context-limit preflight", () => {
 
     expect(result?.status).not.toBe(400);
     expect(mocks.execute).toHaveBeenCalled();
+  });
+
+  // OpenRouter publishes max_completion_tokens near the window (29491 of 32768
+  // for z-ai/glm-5.2:free). It is a ceiling, so a request naming no output
+  // limit must not be charged it.
+  describe("OpenRouter catalog limits", () => {
+    const WINDOW = 32_768;
+    const CEILING = 29_491;
+    const openrouter = (body = {}) => makeOptions({
+      body,
+      options: { modelInfo: { provider: "openrouter", model: "z-ai/glm-5.2:free" }, modelCapabilities: {} },
+    });
+    beforeEach(() => {
+      mocks.getOpenRouterModelCapabilities.mockReturnValue({ contextWindow: WINDOW, maxOutput: CEILING });
+      mocks.resolveModelLimits.mockReturnValue({ contextWindow: WINDOW, maxOutput: CEILING, known: true, source: "live" });
+    });
+
+    it("reserves nothing when the client omits max_tokens", async () => {
+      mocks.countInputTokens.mockResolvedValue({ tokens: 10_000, approximate: true });
+      const result = await handleChatCore(openrouter());
+      expect(result?.status).not.toBe(400);
+      expect(mocks.execute).toHaveBeenCalled();
+    });
+
+    it("still rejects input that alone exceeds the window", async () => {
+      mocks.countInputTokens.mockResolvedValue({ tokens: WINDOW + 1, approximate: true });
+      const result = await handleChatCore(openrouter());
+      expect(result).toMatchObject({ success: false, status: 400 });
+      expect(result.error).toMatch(/\+ 0 output reservation/);
+    });
+
+    it("still reserves an operator maxOutput that equals the catalog ceiling", async () => {
+      mocks.countInputTokens.mockResolvedValue({ tokens: 10_000, approximate: true });
+      const modelCapabilities = { maxOutput: CEILING };
+      Object.defineProperty(modelCapabilities, "customKeys", { value: new Set(["maxOutput"]), enumerable: false });
+      const options = openrouter();
+      const result = await handleChatCore({ ...options, modelCapabilities });
+      expect(result).toMatchObject({ success: false, status: 400 });
+      expect(result.error).toMatch(new RegExp(`\\+ ${CEILING} output reservation`));
+    });
+
+    it("reserves an explicit max_tokens clamped to the published ceiling", async () => {
+      mocks.countInputTokens.mockResolvedValue({ tokens: WINDOW - CEILING + 1, approximate: true });
+      const result = await handleChatCore(openrouter({ max_tokens: 100_000 }));
+      expect(result).toMatchObject({ success: false, status: 400 });
+      expect(result.error).toMatch(new RegExp(`\\+ ${CEILING} output reservation`));
+    });
   });
 });

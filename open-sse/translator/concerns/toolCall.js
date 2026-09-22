@@ -88,8 +88,15 @@ export function normalizeOpenAIToolNames(body, maxLength = 64) {
   }
 
   if (body.tool_choice) {
-    if (body.tool_choice.function?.name) body.tool_choice.function.name = alias(body.tool_choice.function.name);
-    if (isString(body.tool_choice.name)) body.tool_choice.name = alias(body.tool_choice.name);
+    const choice = body.tool_choice;
+    // allowed_tools lists names too: Responses `tools[]`, Chat `allowed_tools.tools[]`.
+    const allowed = [
+      ...(Array.isArray(choice.tools) ? choice.tools : []),
+      ...(Array.isArray(choice.allowed_tools?.tools) ? choice.allowed_tools.tools : [])];
+    for (const entry of [choice, ...allowed]) {
+      if (entry?.function?.name) entry.function.name = alias(entry.function.name);
+      if (isString(entry?.name)) entry.name = alias(entry.name);
+    }
   }
 
   if (Array.isArray(body.messages)) {
@@ -110,6 +117,17 @@ export function normalizeOpenAIToolNames(body, maxLength = 64) {
   }
 
   return aliases;
+}
+
+/**
+ * Chain two alias maps (alias -> original) produced by successive rewrites.
+ * `outer` aliases names `inner` already rewrote, so each outer entry resolves
+ * through `inner` and one lookup always yields the client's original name.
+ */
+export function composeToolNameMaps(inner, outer) {
+  const composed = new Map(inner || []);
+  for (const [alias, name] of outer || []) composed.set(alias, inner?.get(name) ?? name);
+  return composed;
 }
 
 function normalizeSchemaPatterns(value, inProperties = false) {

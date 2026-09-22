@@ -1,5 +1,5 @@
 import { FORMATS } from "./formats.js";
-import { ensureToolCallIds, fixMissingToolResponses, salvageOrphanedToolResults } from "./concerns/toolCall.js";
+import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
@@ -133,6 +133,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     clientSessionId
   });
   let finalizeTranslatedRequest;
+  let responsesToolAliases = null;
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
   if (credentials) {
     credentials._clientSessionId = clientSessionId;
@@ -154,6 +155,15 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
         if (toOpenAI) {
           result = toOpenAI(translationModel, result, stream, credentials, resolvedTranslationContext);
           customToolNames = result._customToolNames;
+          /**
+           * Responses namespace tools expand to dotted `{namespace}.{subtool}` names that
+           * Claude, Kiro and OpenAI-format upstreams reject. Alias the OpenAI intermediate
+           * once, before any target translator, so declarations, tool_choice and history
+           * share one map whatever the target (upstream PR #4200).
+           */
+          if (sourceFormat === FORMATS.OPENAI_RESPONSES && isObject(result)) {
+            responsesToolAliases = normalizeOpenAIToolNames(result);
+          }
           // Log OpenAI intermediate format
           reqLogger?.logOpenAIRequest?.(result);
         }
@@ -254,6 +264,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
         result._toolNameMap = toolNameMap;
       }
     }
+  }
+
+  if (responsesToolAliases?.size && isObject(result)) {
+    result._toolNameMap = composeToolNameMaps(responsesToolAliases, result._toolNameMap);
   }
 
   // Antigravity cloaking disabled

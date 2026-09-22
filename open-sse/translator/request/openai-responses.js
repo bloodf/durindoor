@@ -18,7 +18,7 @@ import {
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
 // clampResponsesCallId (formats/responsesApi.js), standardized upstream in #3819.
 
@@ -78,6 +78,22 @@ const MAX_TOOL_NAME_LEN = 128;
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
  */
+/** `{ name, namespace }` -> the expanded `{namespace}.{name}` declaration name. */
+function qualifyNamespacedName({ name, namespace }) {
+  if (!isString(name) || !isString(namespace) || !namespace || name.startsWith(`${namespace}.`)) return name;
+  return `${namespace}.${name}`;
+}
+
+function qualifyNamespacedChoice(choice) {
+  const qualify = (entry) => {
+    if (!entry || !isObject(entry) || !isString(entry.namespace)) return entry;
+    const { namespace, ...rest } = entry;
+    return { ...rest, name: qualifyNamespacedName({ name: entry.name, namespace }) };
+  };
+  const qualified = qualify(choice);
+  return Array.isArray(qualified.tools) ? { ...qualified, tools: qualified.tools.map(qualify) } : qualified;
+}
+
 export function openaiResponsesToOpenAIRequest(model, body, stream, credentials) {
   if (!body.input) return body;
 
@@ -268,18 +284,25 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       // real tool call now — un-skip the id so its function_call_output is
       // not dropped as if it still answered the discarded call.
       skippedCallIds.delete(item.call_id);
+      // Replayed namespace calls carry `{ name, namespace }`; re-qualify them so history
+      // matches the expanded `{namespace}.{subtool}` declaration (and its alias).
+      // Qualify first so both the pushed name AND the declaration lookup use
+      // the same dotted `{namespace}.{subtool}` name (#940 + #4208 review,
+      // round 6) — otherwise a namespaced custom tool's declaration (keyed on
+      // the qualified name in declaredToolTypes) would miss on the bare name.
+      const qualifiedName = qualifyNamespacedName(item);
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
         function: {
-          name: item.name,
+          name: qualifiedName,
           // Codex replays raw streamed args verbatim; non-JSON strings (partial
           // fragments / freeform text) must be coerced or upstream rejects the
           // chat/completions body with "function.arguments must be valid JSON".
           // A declared custom tool's raw body is preserved as JSON instead of
           // dropped, and a name this request declares as a function (even
           // "apply_patch") is never freeform-wrapped (declaredToolTypes above).
-          arguments: coerceResponsesArguments(item.arguments, item.name, resolveDeclaredCustom(declaredToolTypes, item.name))
+          arguments: coerceResponsesArguments(item.arguments, qualifiedName, resolveDeclaredCustom(declaredToolTypes, qualifiedName))
         }
       });
     } else
@@ -340,6 +363,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       if (tool.function) return tool;
       // Responses namespace tools have no Chat equivalent. Expand each declared
       // subtool; response state keeps the namespace for the reverse projection.
+      // Dotted names stay dotted here: translateRequest aliases the OpenAI intermediate
+      // for every target, and the response side restores via toolNameMap.
       if (tool.type === "namespace" && Array.isArray(tool.tools)) {
         const namespace = isString(tool.name) ? tool.name : "";
         return tool.tools.
@@ -400,6 +425,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     delete result.max_output_tokens;
   }
 
+
+  if (result.tool_choice && isObject(result.tool_choice)) {
+    result.tool_choice = qualifyNamespacedChoice(result.tool_choice);
+  }
 
   delete result.input;
   delete result.instructions;

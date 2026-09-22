@@ -82,7 +82,10 @@ export async function validateBedrockSignedProvider({ apiKey, providerSpecificDa
     // signatures and expired tokens arrive as other 403 names.
     if (error?.name === "AccessDeniedException") return { valid: true, status };
     if (AUTH_FAILURE_STATUSES.has(status)) {
-      return { valid: false, status, error: "Invalid AWS credentials" };
+      // Our own configuration errors (e.g. a temporary key with no session token) say what to fix
+      // and never contain key material; everything else stays generic.
+      const message = error?.name === "InvalidCredentials" ? error.message : "Invalid AWS credentials";
+      return { valid: false, status, error: message };
     }
     if (CHAT_PROBE_ACCEPT_STATUSES.has(status)) return { valid: true, status };
     return { valid: false, status, error: getChatProbeError(status) };

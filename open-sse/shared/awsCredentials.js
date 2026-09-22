@@ -70,10 +70,9 @@ function profileClientAuth(data) {
 function staticClientAuth(credentials, data) {
   const accessKeyId = trimmed(data.accessKeyId);
   const secretAccessKey = trimmed(credentials?.apiKey);
-  // The session token is a secret, so it is stored as a top-level encrypted connection field.
-  // providerSpecificData is plaintext; the fallback only reads rows written by 9router, which
-  // kept it there.
-  const sessionToken = trimmed(credentials?.sessionToken) || trimmed(data.sessionToken);
+  // The session token is a secret, so it only ever comes from the top-level encrypted connection
+  // field. providerSpecificData is plaintext and is never read for it.
+  const sessionToken = trimmed(credentials?.sessionToken);
 
   if (!secretAccessKey) {
     throw credentialError(

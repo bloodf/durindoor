@@ -35,7 +35,8 @@ describe("Bedrock credential mode detection", () => {
   it("passes a session token through for temporary keys", () => {
     const auth = buildBedrockClientAuth({
       apiKey: "aws-secret-access-key",
-      providerSpecificData: { accessKeyId: "ASIAEXAMPLE", sessionToken: "session-token" },
+      sessionToken: "session-token",
+      providerSpecificData: { accessKeyId: "ASIAEXAMPLE" },
     });
     expect(auth.credentials.sessionToken).toBe("session-token");
   });
@@ -166,12 +167,11 @@ describe("Bedrock session token storage", () => {
     expect(auth.credentials.sessionToken).toBe("top-level-token");
   });
 
-  it("still reads a token a 9router install left in providerSpecificData", () => {
-    const auth = buildBedrockClientAuth({
+  it("never reads a session token from plaintext providerSpecificData", () => {
+    expect(() => buildBedrockClientAuth({
       apiKey: "aws-secret-access-key",
-      providerSpecificData: { accessKeyId: "ASIAEXAMPLE", sessionToken: "legacy-token" },
-    });
-    expect(auth.credentials.sessionToken).toBe("legacy-token");
+      providerSpecificData: { accessKeyId: "ASIAEXAMPLE", sessionToken: "plaintext-token" },
+    })).toThrow(/no session token/);
   });
 });
 

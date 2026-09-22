@@ -21,6 +21,9 @@ const { PUT: updateProvider } = await import("@/app/api/providers/[id]/route.js"
 const { POST: validateProvider } = await import("@/app/api/providers/validate/route.js");
 const { probeRegistryProvider, validateBedrockSignedProvider } = await import("@/app/api/providers/providerProbe.js");
 const { BedrockExecutor } = await import("open-sse/executors/bedrock.js");
+const { mergeProviderConnection } = await import("@/lib/db/helpers/mergeProviderMetadata.js");
+const { detectBedrockCredentialMode } = await import("open-sse/shared/awsCredentials.js");
+const { BEDROCK_CREDENTIAL_MODE } = await import("open-sse/config/bedrock.js");
 const { probeConnectionHealth } = await import("@/lib/providerHealthProbe.js");
 const models = await import("@/models");
 const { SENSITIVE_CONNECTION_FIELDS } = await import("@/lib/db/repos/connectionsRepo.js");
@@ -97,7 +100,7 @@ describe("Bedrock session token is a stored secret", () => {
     expect(res.status).toBe(201);
     const saved = models.createProviderConnection.mock.calls[0][0];
     expect(saved.sessionToken).toBe("sts-token");
-    expect(saved.providerSpecificData.sessionToken).toBeUndefined();
+    expect(saved.providerSpecificData.sessionToken).toBeFalsy();
     expect(JSON.stringify(await res.json())).not.toContain("sts-token");
   });
 
@@ -190,36 +193,49 @@ describe("Bedrock review round 2", () => {
     expect(res.status).toBe(201);
     const saved = models.createProviderConnection.mock.calls[0][0];
     expect(saved.sessionToken).toBe("nested-token");
-    expect(saved.providerSpecificData.sessionToken).toBeUndefined();
+    expect(JSON.stringify(saved.providerSpecificData)).not.toContain("nested-token");
   });
 
-  it("lifts a legacy plaintext token into the encrypted field on PUT", async () => {
-    models.getProviderConnectionById.mockResolvedValue({
-      id: "c1", provider: "bedrock", authType: "apikey",
-      providerSpecificData: { accessKeyId: "ASIAOLD", sessionToken: "legacy-token" },
-    });
+  // The route's patch is deep-merged into the stored row, so these assert on that merged result.
+  const storedAfterPut = async (existing, body) => {
+    models.getProviderConnectionById.mockResolvedValue(existing);
     const res = await updateProvider(
-      jsonRequest("http://localhost/api/providers/c1", { name: "renamed" }, "PUT"),
+      jsonRequest("http://localhost/api/providers/c1", body, "PUT"),
       { params: Promise.resolve({ id: "c1" }) },
     );
     expect(res.status).toBe(200);
-    const update = models.updateProviderConnection.mock.calls[0][1];
-    expect(update.sessionToken).toBe("legacy-token");
-    expect(update.providerSpecificData.sessionToken).toBeUndefined();
+    return mergeProviderConnection(existing, models.updateProviderConnection.mock.calls[0][1]);
+  };
+
+  it("overwrites a plaintext session token in the stored row on any PUT", async () => {
+    const existing = {
+      id: "c1", provider: "bedrock", authType: "apikey",
+      providerSpecificData: { region: "us-east-1", accessKeyId: "ASIAOLD", sessionToken: "plaintext-token" },
+    };
+    for (const body of [{ name: "renamed" }, { sessionToken: "" }, { sessionToken: "new-token" }]) {
+      models.updateProviderConnection.mockClear();
+      const stored = await storedAfterPut(existing, body);
+      expect(JSON.stringify(stored.providerSpecificData)).not.toContain("plaintext-token");
+    }
   });
 
-  it("retires a legacy plaintext token when PUT clears the session token", async () => {
-    models.getProviderConnectionById.mockResolvedValue({
-      id: "c1", provider: "bedrock", authType: "apikey",
-      providerSpecificData: { accessKeyId: "ASIAOLD", sessionToken: "legacy-token" },
-    });
-    await updateProvider(
-      jsonRequest("http://localhost/api/providers/c1", { sessionToken: "" }, "PUT"),
-      { params: Promise.resolve({ id: "c1" }) },
+  it("clears a saved profile when the edit sends an empty one", async () => {
+    operator.value = true;
+    const stored = await storedAfterPut(
+      { id: "c1", provider: "bedrock", authType: "apikey", providerSpecificData: { region: "us-east-1", profile: "old-sso" } },
+      { apiKey: "aws-secret", providerSpecificData: { region: "us-east-1", profile: "", accessKeyId: "AKIANEW" } },
     );
-    const update = models.updateProviderConnection.mock.calls[0][1];
-    expect(update.sessionToken).toBe("");
-    expect(JSON.stringify(update)).not.toContain("legacy-token");
+    expect(stored.providerSpecificData.profile).toBe("");
+    expect(detectBedrockCredentialMode(stored)).toBe(BEDROCK_CREDENTIAL_MODE.STATIC);
+  });
+
+  it("passes a missing-session-token message through the Check result", async () => {
+    const result = await validateBedrockSignedProvider({
+      apiKey: "aws-secret", providerSpecificData: { accessKeyId: "ASIAEXAMPLE" },
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/no session token/);
+    expect(result.error).not.toContain("aws-secret");
   });
 
   it("does not let a whitespace profile stand in for an API key", async () => {

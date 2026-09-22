@@ -281,11 +281,6 @@ export async function PUT(request, { params }) {
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
     // An empty string is meaningful here: it clears a token left over from temporary keys.
     if (usesAwsCredentials && isString(sessionToken)) updateData.sessionToken = sessionToken.trim();
-    // A row written by 9router keeps the token in plaintext providerSpecificData, which the
-    // normalization below drops. Lift it into the encrypted field first unless this edit sets one.
-    else if (usesAwsCredentials && !existing.sessionToken && isString(existing.providerSpecificData?.sessionToken)) {
-      updateData.sessionToken = existing.providerSpecificData.sessionToken.trim();
-    }
     if (testStatus !== undefined) updateData.testStatus = testStatus;
     if (lastError !== undefined) updateData.lastError = lastError;
     if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;

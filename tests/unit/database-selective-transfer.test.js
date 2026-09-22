@@ -110,6 +110,20 @@ describe("selective transfer: real DB round-trip", () => {
     expect(psd.githubLogin).toBe("octocat");
   });
 
+  it("keeps the Bedrock credential mode fields so a restored static-key row is not read as a bearer token", async () => {
+    const { index, repos } = await freshDb();
+    await repos.createProviderConnection({
+      provider: "bedrock",
+      authType: "apikey",
+      name: "static-keys",
+      apiKey: "aws-secret-access-key",
+      providerSpecificData: { region: "us-west-2", accessKeyId: "AKIAEXAMPLE", profile: "" },
+    });
+    const id = (await repos.getProviderConnections())[0].id;
+    const psd = (await index.exportSelectiveDb(selection([id]))).providerConnections[0].providerSpecificData;
+    expect(psd).toMatchObject({ region: "us-west-2", accessKeyId: "AKIAEXAMPLE", profile: "" });
+  });
+
   it("safe export omits a real connectionProxyUrl credential (http://user:pass@proxy) even though the field name is not proxy-labeled in the URL itself", async () => {
     const { index, repos } = await freshDb();
     await repos.createProviderConnection({

@@ -66,8 +66,9 @@ export function filterToOpenAIFormat(body, opts = {}) {
   body.messages = body.messages.filter((msg) => {
     // Always keep tool messages
     if (msg.role === ROLE.TOOL) return true;
-    /** Retain otherwise-empty assistant messages only for populated tool calls. */
+    /** Retain otherwise-empty assistant messages carrying tool calls or reasoning. */
     if (msg.role === ROLE.ASSISTANT && msg.tool_calls?.length) return true;
+    if (msg.role === ROLE.ASSISTANT && msg.reasoning_content) return true;
 
     if (isString(msg.content)) return msg.content.trim() !== "";
     if (Array.isArray(msg.content)) {

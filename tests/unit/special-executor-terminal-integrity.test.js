@@ -262,7 +262,7 @@ describe("special executor terminal integrity", () => {
       { type: "finish" },
     ]) {
       const ndjson = [
-        JSON.stringify({ type: "finish" }),
+        JSON.stringify({ type: "finish", finishReason: "stop" }),
         JSON.stringify(lateEvent),
         "",
       ].join("\n");

@@ -7,20 +7,19 @@ import { commandCodeToOpenAIResponse } from "../translator/response/commandcode-
 const state = initState(FORMATS.OPENAI_RESPONSES);
 assert.ok(state.responseId, "fixture: responseId pre-set by initState");
 
+// Tool calls buffer until finish, then replay exactly once (upstream #4224).
 const toolCallChunk = '{"type":"tool-call","toolCallId":"call_a","toolName":"Read","input":{"path":"x"}}';
-const out = commandCodeToOpenAIResponse(toolCallChunk, state);
-assert.ok(Array.isArray(out) && out.length > 0, "tool-call emits a chunk");
-assert.equal(out[0].choices[0].delta.tool_calls[0].id, "call_a");
-
-const second = commandCodeToOpenAIResponse(toolCallChunk, state);
-assert.equal(second, null);
+assert.equal(commandCodeToOpenAIResponse(toolCallChunk, state), null, "tool-call is buffered");
+assert.equal(commandCodeToOpenAIResponse(toolCallChunk, state), null, "duplicate tool-call is ignored");
 
 const tc2 = '{"type":"tool-call","toolCallId":"call_b","toolName":"Grep","input":{"pattern":"y"}}';
-const out2 = commandCodeToOpenAIResponse(tc2, state);
-assert.equal(out2[0].choices[0].delta.tool_calls[0].index, 1, "second tool call gets index 1");
+assert.equal(commandCodeToOpenAIResponse(tc2, state), null);
 
-const textChunk = '{"type":"text-delta","text":"hello"}';
-const out3 = commandCodeToOpenAIResponse(textChunk, state);
-assert.equal(out3[0].choices[0].delta.content, "hello");
+const finish = commandCodeToOpenAIResponse('{"type":"finish","finishReason":"tool-calls"}', state);
+const calls = finish.flatMap((chunk) => chunk.choices[0].delta.tool_calls || []);
+assert.deepEqual(calls.map((call) => [call.index, call.id]), [[0, "call_a"], [1, "call_b"]], "finish replays each call once");
+assert.equal(finish.at(-1).choices[0].finish_reason, "tool_calls");
 
-console.log("commandcodeIdempotentStateSelfCheck: 4/4");
+assert.equal(commandCodeToOpenAIResponse('{"type":"finish","finishReason":"stop"}', state), null, "second finish is ignored");
+
+console.log("commandcodeIdempotentStateSelfCheck: 5/5");

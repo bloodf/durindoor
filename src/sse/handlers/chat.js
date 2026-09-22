@@ -43,7 +43,7 @@ import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS } from "open-sse/config/runtimeConf
 import { EMPTY_CONTENT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { FORMATS, detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
-import { isAntigravityCapacityError, isRequestReplayBufferError } from "open-sse/services/accountFallback.js";
+import { isAntigravityCapacityError, isRequestReplayBufferError, isDurableCredentialProvider } from "open-sse/services/accountFallback.js";
 import { resolveClientSessionId } from "open-sse/utils/sessionManager.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials } from "../services/tokenRefresh.js";
@@ -76,6 +76,13 @@ const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
 const ANTIGRAVITY_STRIKE_WINDOW_MS = 60_000;
 const ANTIGRAVITY_STRIKE_BLOCK_MS = 15 * 60_000;
+// Google's quota API can report remaining quota while generation endpoints
+// keep returning 429 for other reasons (content-triggered rejections). Only
+// count a 429 toward the strike breaker when parseUpstreamError found an
+// actual quota marker in the raw body (result.antigravityQuotaSignal); the
+// client-facing result.error is always the redacted "Rate limit exceeded"
+// message for every 429, so matching markers against it never fires. A
+// generic 429 still gets the normal cooldown but never trips the breaker.
 const antigravity429Strikes = new Map();
 
 function antigravityStrikeKey(connectionId, model) {
@@ -612,6 +619,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         {},
         comboRouting
       ),
+      jevClassify: true,
       signal: request?.signal || null
     });
     // One row per logical combo request (collector holds only the latest
@@ -781,6 +789,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           {},
           mergedRouting
         ),
+        jevClassify: true,
         signal: requestSignal
       });
       if (ownsCollector && nestedCollector.latest) {
@@ -1163,7 +1172,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         compressionEngines: chatSettings.compressionEngines || {},
         // Detect source format by endpoint + body
         sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
-        ...(activeConnection?.authType === "oauth" ? {
+        // A durable credential (OrcaRouter) has nothing to refresh: injecting the
+        // refresher would hand chatCore the same rejected key to retry.
+        ...(activeConnection?.authType === "oauth" && !isDurableCredentialProvider(activeConnection.provider) ? {
           refreshCredentials: async ({ signal, force = true } = {}) => {
             const refreshed = await refreshAndUpdateCredentials(
               activeConnection,
@@ -1261,8 +1272,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       const antigravityProvider = provider === "antigravity" || provider === "agy";
       const authoritativeResetAt = Number(result.rateLimitEvidence?.resetAtMs);
-      const authoritativeReset = Number.isFinite(result.resetsAtMs) ||
-      Number.isFinite(authoritativeResetAt) && authoritativeResetAt > Date.now();
+      // chatCore fills result.resetsAtMs with a generic local cooldown (e.g. 2s)
+      // for ANY 429 that arrives without a reset hint, including content-triggered
+      // ones. That value is a client-side guess, not upstream evidence, so it must
+      // never count as authoritative here — only a real upstream reset timestamp
+      // (rateLimitEvidence.resetAtMs) does. Using the local fallback would make
+      // every antigravity 429 look "authoritative" and defeat the strike breaker.
+      const authoritativeReset = Number.isFinite(authoritativeResetAt) && authoritativeResetAt > Date.now();
       if (antigravityProvider && result.status === 429 && authoritativeReset) {
         clearAntigravity429Strikes(credentials.connectionId, model);
       }
@@ -1307,7 +1323,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         }
       }
 
-      const strikeBreakerResetAt = antigravityProvider && result.status === 429 && !authoritativeReset ?
+      const strikeBreakerResetAt = antigravityProvider && result.status === 429 && !authoritativeReset && result.antigravityQuotaSignal === true ?
       recordAntigravity429Strike(credentials.connectionId, model) :
       null;
       const fallbackResetAt = strikeBreakerResetAt ?? result.resetsAtMs;
@@ -1327,6 +1343,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           rateLimitEvidence: fallbackEvidence,
           headers: resultHeaders,
           errorBody: resultErrorBody,
+          // The credential this attempt actually presented, so a durable-key
+          // provider can mark exactly the generation that was rejected.
+          usedCredential: credentials.accessToken || credentials.apiKey || null,
           signal: requestSignal
         }
       );

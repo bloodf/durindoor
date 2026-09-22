@@ -11,9 +11,8 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { randomUUID } from "crypto";
 import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
-import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
+import { DEFAULT_MAX_TOKENS, HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { stripThinkingSuffix } from "../concerns/thinkingUnified.js";
 import { encodeDataUri, parseDataUri } from "../concerns/image.js";
@@ -66,34 +65,83 @@ function toContentBlocks(content) {
   return [{ type: OPENAI_BLOCK.TEXT, text: String(content) }];
 }
 
-function safeParseJson(s) {
-  if (s == null) return {};
-  if (!isString(s)) return s;
-  try {return JSON.parse(s);} catch {return {};}
+/** A malformed client history is the caller's fault: chatCore answers these with 400, not 500. */
+function invalidRequest(message) {
+  const error = new Error(message);
+  error.statusCode = HTTP_STATUS.BAD_REQUEST;
+  return error;
+}
+
+/** Parse an assistant tool-call's arguments; a malformed payload must fail loud, never silently drop input. */
+function parseToolInput(value, callId) {
+  if (value == null || value === "") return {};
+
+  let input = value;
+  if (isString(value)) {
+    try {
+      input = JSON.parse(value);
+    } catch (error) {
+      throw invalidRequest(`assistant tool call ${callId || "<unknown>"} has invalid arguments: ${error.message}`);
+    }
+  }
+
+  if (!input || !isObject(input) || Array.isArray(input)) {
+    throw invalidRequest(`assistant tool call ${callId || "<unknown>"} arguments must be a JSON object`);
+  }
+  return input;
+}
+
+/**
+ * /alpha/generate rejects an assistant tool-call with no matching tool-result.
+ * The shared fixMissingToolResponses pass only fills a turn with no results at all,
+ * so a partially answered multi-call turn still needs its gaps closed here.
+ */
+function closeUnansweredCalls(out, pending, toolNames) {
+  if (pending.size === 0) return;
+  out.push({
+    role: ROLE.TOOL,
+    content: [...pending].map((toolCallId) => ({
+      type: "tool-result",
+      toolCallId,
+      toolName: toolNames.get(toolCallId),
+      output: { type: "error-text", value: "[No response received]" }
+    }))
+  });
+  pending.clear();
 }
 
 function convertMessages(messages = []) {
   const out = [];
   const systemTexts = [];
+  const toolNames = new Map();
+  const pending = new Set();
 
   for (const m of messages) {
     if (!m) continue;
     const role = m.role;
+    if (role !== ROLE.TOOL && role !== ROLE.SYSTEM && role !== ROLE.DEVELOPER) {
+      closeUnansweredCalls(out, pending, toolNames);
+    }
 
-    if (role === ROLE.SYSTEM) {
+    if (role === ROLE.SYSTEM || role === ROLE.DEVELOPER) {
       const t = flattenText(m.content);
       if (t) systemTexts.push(t);
       continue;
     }
 
     if (role === ROLE.TOOL) {
+      const toolCallId = m.tool_call_id || "";
+      const toolName = m.name || toolNames.get(toolCallId) || "";
+      if (!toolCallId) throw invalidRequest("tool message requires tool_call_id");
+      if (!toolName) throw invalidRequest(`cannot resolve tool name for tool_call_id ${toolCallId}`);
+      pending.delete(toolCallId);
       const value = isString(m.content) ? m.content : flattenText(m.content);
       out.push({
         role: ROLE.TOOL,
         content: [{
           type: "tool-result",
-          toolCallId: m.tool_call_id || "",
-          toolName: m.name || "",
+          toolCallId,
+          toolName,
           output: { type: "text", value }
         }]
       });
@@ -102,25 +150,23 @@ function convertMessages(messages = []) {
 
     if (role === ROLE.ASSISTANT) {
       const blocks = [];
-      // Preserve reasoning as a leading reasoning block (CommandCode/AI SDK v5
-      // supports this). A tool-calling turn needs one even with no reasoning
-      // text of its own — CommandCode's /alpha/generate schema pairs tool
-      // calls with a preceding reasoning block, and its absence produced
-      // transient stream errors on retried turns (port of decolua/9router 092c84ea).
       const reasoningText = [m.reasoning_content, m.thought, m.reasoning].find(isString);
-      if (reasoningText || (Array.isArray(m.tool_calls) && m.tool_calls.length > 0)) {
-        blocks.push({ type: "reasoning", text: reasoningText || " " });
-      }
+      if (reasoningText) blocks.push({ type: "reasoning", text: reasoningText });
       const text = flattenText(m.content);
       if (text) blocks.push({ type: OPENAI_BLOCK.TEXT, text });
       if (Array.isArray(m.tool_calls)) {
         for (const tc of m.tool_calls) {
           const fn = tc.function || {};
+          const id = tc.id || "";
+          if (!id) throw invalidRequest("assistant tool call requires a non-empty id");
+          if (!fn.name) throw invalidRequest(`assistant tool call ${id} requires a non-empty function name`);
+          toolNames.set(id, fn.name);
+          pending.add(id);
           blocks.push({
             type: "tool-call",
-            toolCallId: tc.id || "",
-            toolName: fn.name || "",
-            input: safeParseJson(fn.arguments)
+            toolCallId: id,
+            toolName: fn.name,
+            input: parseToolInput(fn.arguments, id)
           });
         }
       }
@@ -130,12 +176,17 @@ function convertMessages(messages = []) {
 
     out.push({ role: ROLE.USER, content: toContentBlocks(m.content) });
   }
+  closeUnansweredCalls(out, pending, toolNames);
 
   return { messages: out, system: systemTexts.join("\n\n") };
 }
 
+/**
+ * The CLI's toWireTools sends plain {name, description, input_schema}. A preset
+ * `type` makes the gateway skip its input_schema rewrite, so parameters are lost.
+ */
 function convertTools(tools) {
-  if (!Array.isArray(tools) || tools.length === 0) return undefined;
+  if (!Array.isArray(tools) || tools.length === 0) return [];
   const result = [];
   for (const t of tools) {
     if (!t) continue;
@@ -153,37 +204,39 @@ function convertTools(tools) {
       });
     }
   }
-  return result.length ? result : undefined;
+  return result;
 }
 
 export function openaiToCommandCodeRequest(model, body, stream /* , credentials */) {
   const cleanModel = stripThinkingSuffix(model);
   const { messages, system } = convertMessages(body.messages);
   const requestedMaxTokens = body.max_tokens ?? body.max_output_tokens ?? DEFAULT_MAX_TOKENS;
-  const maxTokens = Math.min(requestedMaxTokens, getCapabilitiesForModel("commandcode", cleanModel).maxOutput);
+  const safeMaxTokens = Math.max(Number(requestedMaxTokens) || DEFAULT_MAX_TOKENS, 1);
+  const maxTokens = Math.min(safeMaxTokens, getCapabilitiesForModel("commandcode", cleanModel).maxOutput);
   const params = {
     model: cleanModel,
     messages,
+    tools: convertTools(body.tools),
     stream: stream !== false,
-    max_tokens: maxTokens,
-    temperature: body.temperature ?? 0.3
+    max_tokens: maxTokens
   };
 
   if (system) params.system = system;
-
-  const tools = convertTools(body.tools);
-  if (tools) params.tools = tools;
-  if (body.top_p != null) params.top_p = body.top_p;
+  // The CLI forwards temperature only when the caller set it; top_p has no wire field.
+  if (body.temperature != null) params.temperature = body.temperature;
 
   const today = new Date().toISOString().slice(0, 10);
 
   return {
-    threadId: randomUUID(),
     memory: "",
+    // The 1.54 envelope types taste as a nullable object; a string is rejected.
+    taste: null,
+    skills: null,
+    permissionMode: "standard",
     config: {
-      workingDir: process.cwd(),
+      workingDir: "/",
       date: today,
-      environment: process.platform,
+      environment: `${process.platform}-${process.arch}, 9router proxy`,
       structure: [],
       isGitRepo: false,
       currentBranch: "",

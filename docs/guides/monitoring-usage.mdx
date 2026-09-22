@@ -3,7 +3,7 @@ title: Monitoring usage
 description: Read request history, console output, and the health endpoint after traffic flows.
 ---
 
-Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`). The overview tab shows request counts, input and output tokens, cached tokens, and an estimated cost. It also charts that window, groups rows by provider, model, account, key, or endpoint, and draws the provider topology. Combo traffic has its own report on the same tab.
+Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`). The overview tab shows request counts, input and output tokens, cached tokens, an estimated cost, and output speed in tokens per second. It also charts that window, groups rows by provider, model, account, key, or endpoint, and draws the provider topology. Combo traffic has its own report on the same tab.
 
 The period control accepts `today`, `24h`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`, and `all`. Editing the calendar to a window that is not one of those presets queries stats by `startDate`/`endDate` and skips the chart (the chart endpoint is preset-only).
 
@@ -34,11 +34,17 @@ Reset removes usage rows for the selected window. Back up `DATA_DIR` first if yo
 | `DATA_DIR/usage.json` | JSON-store import file (`LEGACY_FILES.usage`) |
 | `DATA_DIR/log.txt` | Not created. There is no request log file by that name |
 
-Default `DATA_DIR` is `~/.9router` on macOS and Linux, `%APPDATA%\9router` on Windows. Each `usageHistory` insert stores provider, model, connection id, API key, endpoint, token counts, estimated cost, status, optional `usageEventId`, and optional combo id/name. Overview cards read total requests, prompt tokens, cached tokens, completion tokens, and estimated cost. The requests panel on overview shows recent requests and active sessions (ended sessions stay visible for 15 seconds).
+Default `DATA_DIR` is `~/.9router` on macOS and Linux, `%APPDATA%\9router` on Windows. Each `usageHistory` insert stores provider, model, connection id, API key, endpoint, token counts, estimated cost and its per-rate split, status, the call duration (`latencyMs`) and time to first token (`ttftMs`), optional `usageEventId`, and optional combo id/name. Overview cards read total requests, prompt tokens, cached tokens, completion tokens, estimated cost, and output speed. The requests panel on overview shows recent requests and active sessions (ended sessions stay visible for 15 seconds).
 
 Request-log lines shown by `/api/usage/request-logs` are derived from `usageHistory` on read (`getRecentLogs`, default 200 rows). `appendRequestLog` is a no-op. Parallel inserts with the same fields are not collapsed; only an explicit `usageEventId` dedupes a retry of the same event. History insert, daily upsert, and the lifetime counter run in one transaction.
 
 `DATA_DIR/usage.json` is the JSON-store import file (`LEGACY_FILES.usage`). SQLite boot can read it once. Runtime writes go to `usageHistory`, not that JSON file. There is no `log.txt` under the data dir.
+
+## Cost split and speed
+
+Every cost column is priced at its own rate. When a request is saved, the server prices fresh input, cached reads, cache writes, visible output, and reasoning separately and stores those five amounts on the usage row (`inputCost`, `cachedCost`, `cacheCreationCost`, `outputCost`, `reasoningCost`). Long-context tiers apply per request, so they land in the right columns. A dashboard row sums the stored amounts of its requests. Older rows and provider-reported costs have no stored split. For a model without a long-context tier, or with one that raises input and output by the same factor, their tokens are priced at the model's rates and scaled to their recorded cost, which gives the exact split. Otherwise, or when the model has no pricing entry, that cost goes in the **Not split** column instead of being guessed at, and the stored amounts of newer requests still show in their own columns. The category columns plus **Not split** always add up to the total. Provider rows sum their models' columns. Account rows keep one entry per model per day. A day saved before that may hold several models under one account, so it shows as its own "Earlier usage (models not recorded)" row with its cost under **Not split**.
+
+Output speed divides output tokens by decode time, the call duration minus time to first token, so a slow first token does not read as slow generation. Non-streaming calls have no first token to time, so their whole duration counts as decode. Rows recorded before timing existed carry `latencyMs = 0`; they still count toward tokens and cost but are left out of every rate, and the overview card says how many requests in the period were timed.
 
 ## Console log
 

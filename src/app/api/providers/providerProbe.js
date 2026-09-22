@@ -4,9 +4,18 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { assertOutboundUrlAllowed, getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
+import { ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
+import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
+import { BedrockExecutor, statusFromError as bedrockErrorStatus } from "open-sse/executors/bedrock.js";
+import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
 const CHAT_PROBE_ACCEPT_STATUSES = new Set([400, 422, 429]);
+
+// Chat formats whose registry `validateUrl` does not actually reject a bad
+// key. See the comment above the validateUrl branch in
+// buildRegistryProviderProbe for why "ollama" is here.
+const VALIDATE_URL_UNVERIFIED_FORMATS = new Set(["ollama"]);
 
 // Specialty validators run BEFORE the generic registry probe for providers
 // whose registry entry has no chat transport (`transport: null`) and so cannot
@@ -17,6 +26,7 @@ const SPECIALTY_VALIDATORS = {
   // "devin-cli" LLM provider (ACP stdio), which has its own executor.
   // Ported from OmniRoute #6894 (diegosouzapw#6142, parity with `jules`).
   devin: validateDevinCloudAgentProvider,
+  bedrock: validateBedrockSignedProvider,
 };
 
 /**
@@ -48,6 +58,43 @@ export async function validateDevinCloudAgentProvider({ apiKey, fetcher = fetch 
   }
   if (response.ok) return { valid: true, status: response.status };
   return { valid: false, status: response.status, error: `Provider validation failed (HTTP ${response.status ?? "unknown"})` };
+}
+
+/**
+ * Bedrock with static AWS keys or a local AWS profile. The generic probe would send `apiKey` as a
+ * bearer token, and in these modes that is the IAM secret access key (or nothing, for a profile).
+ * Instead this signs a Converse call with an empty message list through the same client the
+ * executor builds: AWS checks the signature before the body, so a ValidationException proves the
+ * credentials work without running any inference. Returns null for a Bedrock API key connection
+ * so it keeps the generic bearer probe.
+ *
+ * The SDK client does not route through the connection proxy; neither does the executor.
+ */
+export async function validateBedrockSignedProvider({ apiKey, providerSpecificData, sessionToken, clientFactory = null }) {
+  const credentials = { apiKey, sessionToken, providerSpecificData };
+  if (detectBedrockCredentialMode(credentials) === BEDROCK_CREDENTIAL_MODE.API_KEY) return null;
+  try {
+    const client = new BedrockExecutor(clientFactory).createClient(credentials);
+    await client.send(
+      new ConverseCommand({ modelId: getDefaultModel("bedrock"), messages: [] }),
+      { abortSignal: AbortSignal.timeout(10000) },
+    );
+    return { valid: true, status: 200 };
+  } catch (error) {
+    const status = bedrockErrorStatus(error);
+    // AccessDeniedException comes after AWS accepted the signature: the key is real and IAM
+    // denies this model (not enabled, or a policy scoped to other models). Bad keys, bad
+    // signatures and expired tokens arrive as other 403 names.
+    if (error?.name === "AccessDeniedException") return { valid: true, status };
+    if (AUTH_FAILURE_STATUSES.has(status)) {
+      // Our own configuration errors (e.g. a temporary key with no session token) say what to fix
+      // and never contain key material; everything else stays generic.
+      const message = error?.name === "InvalidCredentials" ? error.message : "Invalid AWS credentials";
+      return { valid: false, status, error: message };
+    }
+    if (CHAT_PROBE_ACCEPT_STATUSES.has(status)) return { valid: true, status };
+    return { valid: false, status, error: getChatProbeError(status) };
+  }
 }
 
 function getChatProbeError(status) {
@@ -140,6 +187,44 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
     };
   }
 
+  // A registry-declared validateUrl is a dedicated key-check endpoint (the same
+  // lookup providers/validate/route.js performs), independent of the chat
+  // transport format. Honor it before the openai-only gate below so formats
+  // like "openai-responses" (e.g. perplexity-agent) get a working connection
+  // test instead of falling through to "Provider test not supported". The
+  // chat-body fallback only makes sense for the plain openai format.
+  //
+  // Exception: VALIDATE_URL_UNVERIFIED_FORMATS. A format's validateUrl is only
+  // safe to trust with accepts: "ok" if that endpoint actually rejects a bad
+  // key. Ollama's `validateUrl` (https://ollama.com/api/tags) is a public model
+  // listing that returns 200 with no Authorization header and with a bad
+  // bearer, so honoring it here would mark any bad Ollama Cloud key "valid"
+  // (fail-open). Formats in this set fall through to the pre-existing
+  // format-specific probes below (or `null`, unprobed) instead.
+  if (cfg.validateUrl && !VALIDATE_URL_UNVERIFIED_FORMATS.has(cfg.format)) {
+    const probe = {
+      url: cfg.validateUrl,
+      options: { headers, signal: AbortSignal.timeout(8000) },
+      accepts: "ok",
+    };
+    if (cfg.format === "openai") {
+      probe.fallback = {
+        url: baseUrl,
+        options: {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model: getDefaultModel(provider) || "test",
+            messages: [{ role: "user", content: "ping" }],
+            max_tokens: 1,
+          }),
+          signal: AbortSignal.timeout(10000),
+        },
+      };
+    }
+    return probe;
+  }
+
   if (cfg.format !== "openai") return null;
 
   // Kimi Web (www.kimi.com) is a cookie-authed Connect-RPC provider. The user
@@ -160,27 +245,6 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
         },
         body: "{}",
         signal: AbortSignal.timeout(8000),
-      },
-      accepts: "ok",
-    };
-  }
-
-  if (cfg.validateUrl) {
-    return {
-      url: cfg.validateUrl,
-      options: { headers, signal: AbortSignal.timeout(8000) },
-      fallback: {
-        url: baseUrl,
-        options: {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            model: getDefaultModel(provider) || "test",
-            messages: [{ role: "user", content: "ping" }],
-            max_tokens: 1,
-          }),
-          signal: AbortSignal.timeout(10000),
-        },
       },
       accepts: "ok",
     };
@@ -223,9 +287,11 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
   };
 }
 
-export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, providerSpecificData = {}) {
+export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, providerSpecificData = {}, { sessionToken } = {}) {
   const specialty = SPECIALTY_VALIDATORS[provider];
-  if (specialty) return specialty({ apiKey, fetcher, providerSpecificData });
+  // A specialty validator returning null hands the connection back to the generic probe.
+  const specialtyResult = specialty ? await specialty({ apiKey, fetcher, providerSpecificData, sessionToken }) : null;
+  if (specialtyResult) return specialtyResult;
   const probe = buildRegistryProviderProbe(provider, apiKey, providerSpecificData);
   if (!probe) return null;
   if (probe.accepts === "always") return { valid: true, status: 200 };

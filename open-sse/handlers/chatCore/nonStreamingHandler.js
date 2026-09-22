@@ -19,10 +19,12 @@ import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
+import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
 import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
+import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 
 // Upstream #10258: reject parsed JSON that isn't a plain record (primitives,
@@ -379,11 +381,15 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (textContent) message.content = textContent;
     if (thinkingContent) message.reasoning_content = thinkingContent;
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
-    if (!message.content && !message.tool_calls) message.content = "";
+    // A refusal (stop_reason "refusal") carries no content blocks at all: fall back to
+    // Anthropic's own explanation so the client sees why the turn is empty instead of
+    // failing the downstream empty-content check as a retryable 502.
+    if (!message.content && !message.tool_calls) {
+      const explanation = responseBody.stop_details?.explanation;
+      message.content = isString(explanation) ? explanation : "";
+    }
 
-    let finishReason = responseBody.stop_reason || "stop";
-    if (finishReason === "end_turn") finishReason = "stop";
-    if (finishReason === "tool_use") finishReason = "tool_calls";
+    const finishReason = toOpenAIFinish(responseBody.stop_reason || "end_turn", "claude");
 
     const result = {
       id: `chatcmpl-${responseBody.id || Date.now()}`,
@@ -542,9 +548,17 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
     const usage = extractUsageFromResponse(responseBody);
     appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
 
-    if (!hasUsefulContent(translatedResponse)) {
+    // A Claude-native refusal (stop_reason "refusal") is a finished turn even when
+    // its only content is an optional, possibly null/blank explanation string.
+    // Same-format passthrough (targetFormat === sourceFormat === Claude) returns
+    // responseBody untouched above, and the OpenAI-pivot round trip for other
+    // client formats intentionally does not round-trip "refusal" back out of
+    // "content_filter" (see fromOpenAIFinish) — check the raw provider body here
+    // so neither path is mistaken for a retryable empty-content gateway fault.
+    const isNativeClaudeRefusal = responseBody?.stop_reason === CLAUDE_STOP.REFUSAL;
+    if (!isNativeClaudeRefusal && !hasUsefulContent(translatedResponse)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
       return createErrorResult(

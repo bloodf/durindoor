@@ -102,10 +102,10 @@ it("sums grouped current-day statistics and exact chart bucket boundaries", asyn
   expect(chart.slice(-2).map(({tokens,cachedTokens})=>({tokens,cachedTokens}))).toEqual([{tokens:5,cachedTokens:4},{tokens:10,cachedTokens:8}]);
 });
 
-it("preserves the latest account model metadata across interleaved grouped rows", async () => {
+it("keeps one account row per model across interleaved grouped rows", async () => {
   for (const model of ["first", "second", "first"]) await repo.saveRequestUsage(entry("2026-09-20T10:00:00.000Z", { model, connectionId: "one-account" }));
   const stats = await repo.getUsageStats("7d");
-  expect(Object.values(stats.byAccount).map(({ rawModel, requests }) => ({ rawModel, requests }))).toEqual([{ rawModel: "first", requests: 3 }]);
+  expect(Object.values(stats.byAccount).map(({ rawModel, requests }) => ({ rawModel, requests }))).toEqual([{ rawModel: "first", requests: 2 }, { rawModel: "second", requests: 1 }]);
 });
 
 it("streams daily JSON larger than the PostgreSQL bridge budget without changing stats or charts", async () => {

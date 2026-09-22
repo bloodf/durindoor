@@ -13,6 +13,7 @@ import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
 import { createErrorResult, readBoundedResponseText, sanitizeErrorMessage } from "../../utils/error.js";
 import { attachClientFrameTap, finishTrace } from "./proxyTimeline.js";
+import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
@@ -273,11 +274,21 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
      * request body without altering client-facing response usage.
      */
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, label: "STREAM USAGE", silent: true });
+    // The TTFT fallback above keeps request logs readable, but stored usage
+    // needs one "not measured" value: 0, as the other handlers write.
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
 
+    // A streamed Claude refusal (stop_reason "refusal") never accumulates delta
+    // text (translate mode only appends parsed.delta.text; the synthetic
+    // explanation is emitted downstream in claude-to-openai.js) and reports
+    // output_tokens: 0, so it looks identical to a truncated/dead stream here.
+    // It is a finished, coherent turn, not a provider fault worth a 7-minute
+    // account cooldown.
+    const isStreamedClaudeRefusal = summary?.providerResponse?.stop_reason === CLAUDE_STOP.REFUSAL;
     if (
     isFunction(onEmptyStream) &&
+    !isStreamedClaudeRefusal &&
     !contentObj?.content?.trim?.() &&
     !contentObj?.hadToolCalls &&
     !contentObj?.thinking?.trim?.() &&
@@ -323,7 +334,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // Partial provider/estimated usage is billable even when client cancellation
     // prevents transform flush. Mark it cancelled so persistence cannot convert
     // chatCore's asynchronously finalized error session back to done.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model }).replace(/^DONE /, "CANCELLED "));
   };
 

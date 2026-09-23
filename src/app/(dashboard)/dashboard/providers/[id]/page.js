@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, GheCopilotAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
 import Select from "@/shared/ui/components/Select.jsx";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 
@@ -2226,9 +2226,10 @@ export default function ProviderDetailPage() {
       {bulkActionModal}
 
       {/* Modals */}
-      {providerId === "kiro" ?
+      {providerId === "kiro" || providerId === "amazon-q" ?
       <KiroOAuthWrapper
         isOpen={showOAuthModal}
+        provider={providerId}
         providerInfo={providerInfo}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)}
@@ -2258,6 +2259,15 @@ export default function ProviderDetailPage() {
       <GitLabAuthModal
         isOpen={showOAuthModal}
         provider={providerId}
+        providerInfo={providerInfo}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady} /> :
+
+      providerId === "ghe-copilot" ?
+      <GheCopilotAuthModal
+        isOpen={showOAuthModal}
         providerInfo={providerInfo}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)}

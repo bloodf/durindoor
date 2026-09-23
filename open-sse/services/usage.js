@@ -43,6 +43,7 @@ const USAGE_HANDLERS = {
   claude: (c) => getClaudeUsage(c.accessToken ?? c.apiKey, c.proxyOptions, c.authType, { force: c.force, providerSpecificData: c.providerSpecificData }),
   codex: (c) => getCodexUsage(c.accessToken, c.providerSpecificData, c.proxyOptions, c.idToken),
   kiro: (c) => getKiroUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  "amazon-q": (c) => getKiroUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   qoder: (c) => getQoderUsage(c.accessToken, c.proxyOptions, c.provider),
   "qoder-cn": (c) => getQoderUsage(c.accessToken, c.proxyOptions, c.provider),
   qwen: (c) => getQwenUsage(c.accessToken, c.providerSpecificData),

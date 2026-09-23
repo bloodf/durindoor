@@ -8,6 +8,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | id | executor | source file |
 |---|---|---|
 | `agy` | AntigravityExecutor | `./antigravity.js` |
+| `amazon-q` | KiroExecutor | `./kiro.js` |
 | `antigravity` | AntigravityExecutor | `./antigravity.js` |
 | `aug` | AuggieExecutor | `./auggie.js` |
 | `auggie` | AuggieExecutor | `./auggie.js` |
@@ -28,6 +29,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
+| `ghe-copilot` | GheCopilotExecutor | `./ghe-copilot.js` |
 | `github` | GithubExecutor | `./github.js` |
 | `gitlab-duo` | GitlabExecutor | `./gitlab.js` |
 | `grok-cli` | GrokCliExecutor | `./grok-cli.js` |
@@ -43,6 +45,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mimo-free` | MimoFreeExecutor | `./mimo-free.js` |
 | `mimocode` | MimocodeExecutor | `./mimocode.js` |
 | `mmf` | MimoFreeExecutor | `./mimo-free.js` |
+| `muse-code` | MuseCodeExecutor | `./muse-code.js` |
 | `ollama-local` | OllamaLocalExecutor | `./ollama-local.js` |
 | `opencode` | OpenCodeExecutor | `./opencode.js` |
 | `opencode-go` | OpenCodeGoExecutor | `./opencode-go.js` |
@@ -85,6 +88,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `alicode` |  | apikey | `https://coding.dashscope.aliyuncs.com/v1/chat/completions` |
 | `alicode-intl` |  | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alitp-intl` |  | apikey | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions` |
+| `amazon-q` | kiro | oauth | `https://runtime.us-east-1.kiro.dev/generateAssistantResponse` |
 | `ant-ling` | openai | apikey | `https://api.ant-ling.com/v1/chat/completions` |
 | `anthropic` | claude | apikey | `https://api.anthropic.com/v1/messages` |
 | `antigravity` | antigravity | oauth | `` |
@@ -175,6 +179,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `gemini` | gemini | freeTier | `https://generativelanguage.googleapis.com/v1beta/models` |
 | `gemini-cli` | gemini-cli | free | `https://cloudcode-pa.googleapis.com/v1internal` |
 | `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
+| `ghe-copilot` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |
 | `github` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `github-models` |  | apikey | `https://models.github.ai/inference/chat/completions` |
@@ -243,6 +248,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `modal` | openai | apikey | `https://api.modal.ai/v1/chat/completions` |
 | `modelscope` | openai | apikey | `https://api-inference.modelscope.cn/v1/chat/completions` |
 | `morph` |  | apikey | `https://api.morphllm.com/v1/chat/completions` |
+| `muse-code` | openai-responses | oauth | `https://api.meta.ai/v1/responses` |
 | `muse-spark-web` | openai | webCookie | `https://www.meta.ai/api/graphql` |
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nanogpt` | openai | apikey | `https://nano-gpt.com/api/v1/chat/completions` |

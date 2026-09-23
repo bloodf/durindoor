@@ -164,7 +164,7 @@ describe("chat policy enforcement sequence", () => {
     await handleChat(chatRequest("hello", { model }));
 
     expect(mocks.isExactRoutableModelId).not.toHaveBeenCalled();
-    expect(mocks.getComboModels).toHaveBeenCalledWith(model, false);
+    expect(mocks.getComboModels).toHaveBeenCalledWith(model, false, expect.objectContaining({ hidePaidModels: false }));
     expect(mocks.getModelInfo).toHaveBeenCalledWith(model);
   });
   it("normalizes a projected Claude route before policy and preserves original identity", async () => {
@@ -218,7 +218,7 @@ describe("chat policy enforcement sequence", () => {
       headers: { "anthropic-version": "2023-06-01" },
     }));
 
-    expect(mocks.getComboModels).toHaveBeenCalledWith(model, false);
+    expect(mocks.getComboModels).toHaveBeenCalledWith(model, false, expect.objectContaining({ hidePaidModels: false }));
     expect(mocks.getModelInfo).toHaveBeenCalledWith(model);
   });
 
@@ -230,7 +230,7 @@ describe("chat policy enforcement sequence", () => {
       url: "http://localhost/v1/messages",
     }));
 
-    expect(mocks.getComboModels).toHaveBeenCalledWith("claude-sonnet-unknown-xyz", false);
+    expect(mocks.getComboModels).toHaveBeenCalledWith("claude-sonnet-unknown-xyz", false, expect.objectContaining({ hidePaidModels: false }));
     expect(mocks.getModelInfo).toHaveBeenCalledWith("claude-sonnet-unknown-xyz");
   });
 });

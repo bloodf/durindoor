@@ -11,6 +11,7 @@ import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 import Tabs from "@/shared/ui/components/Tabs.jsx";
+import Textarea from "@/shared/ui/components/Textarea.jsx";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { APP_CONFIG } from "@/shared/constants/config";
@@ -443,6 +444,40 @@ export default function ProfilePage() {
     }
   };
 
+  // OmniRoute #11481 (port(omniroute)): operator glob allow/deny list for
+  // /v1/models exposure (mirrored into auto/* combo pools server-side, see
+  // src/shared/utils/modelExposureList.js). One entry per line; entries may
+  // be an exact "provider/model" or "model" id, or a glob using * / ?.
+  const [modelVisibilityDraft, setModelVisibilityDraft] = useState({ allow: "", deny: "" });
+  const [modelVisibilitySaving, setModelVisibilitySaving] = useState(false);
+  useEffect(() => {
+    setModelVisibilityDraft({
+      allow: (Array.isArray(settings.modelVisibilityAllowlist) ? settings.modelVisibilityAllowlist : []).join("\n"),
+      deny: (Array.isArray(settings.modelVisibilityDenylist) ? settings.modelVisibilityDenylist : []).join("\n")
+    });
+  }, [settings.modelVisibilityAllowlist, settings.modelVisibilityDenylist]);
+
+  const saveModelVisibilityLists = async () => {
+    const toList = (text) => text.split("\n").map((line) => line.trim()).filter(Boolean);
+    const modelVisibilityAllowlist = toList(modelVisibilityDraft.allow);
+    const modelVisibilityDenylist = toList(modelVisibilityDraft.deny);
+    setModelVisibilitySaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelVisibilityAllowlist, modelVisibilityDenylist })
+      });
+      if (res.ok) {
+        setSettings((prev) => ({ ...prev, modelVisibilityAllowlist, modelVisibilityDenylist }));
+      }
+    } catch (err) {
+      console.error("Failed to update model visibility lists:", err);
+    } finally {
+      setModelVisibilitySaving(false);
+    }
+  };
+
   const updateRequireLogin = async (requireLogin) => {
     try {
       const res = await fetch("/api/settings", {
@@ -844,7 +879,33 @@ export default function ProfilePage() {
 
       <Card padding={false}><CardHeader icon="language" title="Language" subtitle="Regional display preferences" /><CardContent><button type="button" onClick={() => setLangOpen(true)} data-i18n-skip="true" className="flex min-h-11 w-full items-center justify-between rounded-dd border border-dd-border bg-dd-surface-2 px-3 text-left text-[13px] text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span>Display language</span><span role="img" aria-label={locale} className="text-xl">{LOCALE_FLAGS[locale] || "🌐"}</span></button></CardContent></Card>
 
-      <Card padding={false}><CardHeader icon="view_list" title="Model catalog" subtitle="Control model discovery and selectors" /><CardContent className="divide-y divide-dd-border-subtle"><div className="pb-4"><Toggle label="Expose combos only" description="When ON, /v1/models lists only configured combo names." checked={settings.exposeComboOnly === true} disabled={loading} onChange={() => updateExposeComboOnly(!(settings.exposeComboOnly === true))} /></div><div className="pt-4"><Toggle label="Hide paid models" description="When ON, /v1/models, dashboard pickers, and combo pools only show free or unpriced models." checked={settings.hidePaidModels === true} disabled={loading} onChange={() => updateHidePaidModels(!(settings.hidePaidModels === true))} /></div></CardContent></Card>
+      <Card padding={false}><CardHeader icon="view_list" title="Model catalog" subtitle="Control model discovery and selectors" /><CardContent className="divide-y divide-dd-border-subtle"><div className="pb-4"><Toggle label="Expose combos only" description="When ON, /v1/models lists only configured combo names." checked={settings.exposeComboOnly === true} disabled={loading} onChange={() => updateExposeComboOnly(!(settings.exposeComboOnly === true))} /></div><div className="py-4"><Toggle label="Hide paid models" description="When ON, /v1/models, dashboard pickers, and combo pools only show free or unpriced models." checked={settings.hidePaidModels === true} disabled={loading} onChange={() => updateHidePaidModels(!(settings.hidePaidModels === true))} /></div><div className="pt-4 space-y-3">
+        <div>
+          <p className="text-[13px] font-medium text-dd-text">Model exposure list</p>
+          <p className="text-xs text-dd-subtle">Operator allow/deny list for /v1/models and auto/* combo pools. One entry per line: an exact id (&quot;provider/model&quot; or &quot;model&quot;) or a glob with * / ?. Deny wins over allow; an empty allowlist exposes everything not denied.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Textarea
+            label="Allowlist"
+            hint="Empty = no restriction"
+            value={modelVisibilityDraft.allow}
+            disabled={loading || modelVisibilitySaving}
+            onChange={(e) => setModelVisibilityDraft((prev) => ({ ...prev, allow: e.target.value }))}
+            placeholder={"openai/*\nanthropic/claude-*"}
+          />
+          <Textarea
+            label="Denylist"
+            hint="Checked before the allowlist"
+            value={modelVisibilityDraft.deny}
+            disabled={loading || modelVisibilitySaving}
+            onChange={(e) => setModelVisibilityDraft((prev) => ({ ...prev, deny: e.target.value }))}
+            placeholder={"*-preview\nsome-provider/expensive-model"}
+          />
+        </div>
+        <Button size="sm" variant="secondary" disabled={loading || modelVisibilitySaving} onClick={saveModelVisibilityLists}>
+          {modelVisibilitySaving ? "Saving…" : "Save exposure list"}
+        </Button>
+      </div></CardContent></Card>
       </section>
 
       <section role="tabpanel" aria-label="Security settings" hidden={activeTab !== "security"} className="flex flex-col gap-5">

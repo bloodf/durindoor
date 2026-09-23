@@ -24,6 +24,7 @@ import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
 import ConnectionGroupsPanel from "./ConnectionGroupsPanel.jsx";
 import ComboAllowListEditor from "./ComboAllowListEditor.jsx";
+import { sortComboModels } from "@/lib/combos/comboSort.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -866,6 +867,14 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
   const [modelAliases, setModelAliases] = useState({});
+  // OmniRoute #11812 (port(omniroute)): one-shot member reorder, not a
+  // persisted live mode — picking a method sorts `models` immediately and
+  // saves through the existing field.
+  const [sortMethod, setSortMethod] = useState("manual");
+  const handleSortMethodChange = (method) => {
+    setSortMethod(method);
+    setModels((current) => sortComboModels(current, method));
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -901,6 +910,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     setName(combo?.name || "");
     setModels(combo?.models || []);
     setCapabilities(combo?.capabilities || {});
+    setSortMethod("manual");
     setNameError("");
     setSaveError("");
     fetchModalData();
@@ -928,7 +938,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
 
   const handleAddModel = (model) => {
     if (!models.includes(model.value)) {
-      setModels([...models, model.value]);
+      setModels((current) => sortComboModels([...current, model.value], sortMethod));
     }
   };
 
@@ -1010,7 +1020,22 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
           <section aria-labelledby="combo-models-heading">
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <h2 id="combo-models-heading" className="text-sm font-medium text-dd-text">Models</h2>
-              <span className="text-xs text-dd-muted dd-tnum">{models.length}</span>
+              <div className="flex items-center gap-2">
+                <Select
+                  aria-label="Sort models"
+                  value={sortMethod}
+                  onChange={handleSortMethodChange}
+                  options={[
+                  { value: "manual", label: "Manual order" },
+                  { value: "provider", label: "By provider" },
+                  { value: "name", label: "By name" }]
+                  }
+                  size="sm"
+                  fullWidth={false}
+                  disabled={models.length < 2}
+                />
+                <span className="text-xs text-dd-muted dd-tnum">{models.length}</span>
+              </div>
             </div>
 
             {models.length === 0 ? (

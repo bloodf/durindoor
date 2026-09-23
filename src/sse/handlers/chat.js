@@ -534,7 +534,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
   // above intentionally calls getComboModels without the flag so combo
   // existence/ACL still see the real, unfiltered member list.
-  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
+  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true, settings);
   if (comboModels) {
     // Check for combo-specific strategy first, fallback to global. Auto-combo
     // ids (`auto/<family>`) honor the F-2 `comboStrategies[modelStr].strategy`
@@ -716,7 +716,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   if (!modelInfo.provider) {
     const chatSettings = await getSettings();
     // #6495 / F-4: filter paid members when the toggle is on.
-    const comboModels = await getComboModels(modelStr, chatSettings.hidePaidModels === true);
+    const comboModels = await getComboModels(modelStr, chatSettings.hidePaidModels === true, chatSettings);
     if (comboModels) {
       // Resolve the canonical persisted name once so ACL, per-combo strategy
       // lookups, and rotation/scoring keys are stable regardless of the

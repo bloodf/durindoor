@@ -39,6 +39,7 @@ import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.js";
+import { wireAdaptiveEffort } from "./chatCore/adaptiveEffortWiring.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
@@ -642,6 +643,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     translatedBody.stream !== stream)
     translatedBody.stream = stream;
   }
+
+  // Adaptive reasoning effort (port of OmniRoute #13448): `X-DurinDoor-Effort: auto`
+  // resolves to a concrete low/medium/high thinking budget from the turn's
+  // request-shape signals, scoped to OpenAI-dispatch requests. No-op unless the
+  // caller opts in and carries no explicit reasoning field of any shape.
+  translatedBody = wireAdaptiveEffort(translatedBody, { rawBody: body, clientRawRequest, targetFormat });
 
   // opencode-go backed providers (opencode-go, opencode, opencode-zen) use a Go
   // ChatCompletionRequest struct where `reasoning` is a structured type; a bare

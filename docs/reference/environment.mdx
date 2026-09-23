@@ -76,6 +76,8 @@ Positive decimal integers only. A resolved maximum below the base resets the who
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN`, `ERROR`. | `src/sse/utils/logger.js` |
 | `LOG_USAGE_VERBOSE` | unset | `1` prints extra usage-tracking debug. | `open-sse/utils/usageTracking.js` |
 | `STRIP_REASONING_CONTENT` | unset | `1` / `true` / `on` / `yes` strips non-streaming `reasoning_content` when the message also has `content`. Header `x-9router-reasoning: off` does the same per request. | `open-sse/utils/reasoningVisibility.js` |
+| `DURINDOOR_REASONING_MIN_BUDGET` | unset (disabled) | Opt-in floor for thinking-model output budgets: a caller `max_tokens` in `[256, floor)` on a thinking-capable model is raised to the floor (clamped to the model's known output cap) so reasoning tokens cannot consume the whole budget. Unset = the existing buffer heuristic runs unchanged. | `open-sse/services/reasoningTokenBuffer.js` |
+| `X-DurinDoor-Effort: auto` (header, not env) | n/a | Adaptive thinking effort: when a request carries no reasoning field of any shape (`reasoning_effort`, `reasoning`, `thinking`), the gateway resolves `auto` to `low`/`medium`/`high` from deterministic request-shape signals scoped to the current turn (last-user-message length, context size, prior tool results, tool-loop depth). Scoped to requests dispatched in the OpenAI Chat Completions shape; a no-op elsewhere. | `open-sse/services/adaptiveEffort.js`, `open-sse/handlers/chatCore/adaptiveEffortWiring.js` |
 
 Treat request-log metadata as sensitive operational data. Keep opt-in diagnostics off unless needed.
 

@@ -6,6 +6,7 @@
     "index",
     "smart-routing",
     "combos",
+    "error-rules-and-egress-cooldown",
     "quota-tracking",
     "proxy-timeline",
     "mcp-gateway",

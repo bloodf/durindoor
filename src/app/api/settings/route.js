@@ -5,6 +5,7 @@ import { MAX_PROVIDER_RPM } from "@/shared/constants/providers";
 import { getSettings, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation, resetComboScoring } from "open-sse/services/combo.js";
+import { setOperatorProviderErrorRules } from "open-sse/config/providerErrorRules.js";
 import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, setDashboardAuthCookie, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
 import bcrypt from "bcryptjs";
@@ -231,6 +232,42 @@ export async function PATCH(request) {
         }
       }
     }
+    /**
+     * Validate OmniRoute #11104 operator per-provider error rules. `match` is
+     * always a plain substring compared case-insensitively -- never a RegExp
+     * -- so an operator-supplied pattern can never introduce a ReDoS on the
+     * error-classification hot path (open-sse/config/providerErrorRules.js).
+     */
+    if (Object.prototype.hasOwnProperty.call(body, "providerErrorRules")) {
+      const rulesByProvider = body.providerErrorRules;
+      const bad = () => NextResponse.json({ error: "Invalid providerErrorRules" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      if (!rulesByProvider || !isObject(rulesByProvider) || Array.isArray(rulesByProvider)) return bad();
+      let total = 0;
+      for (const [providerId, list] of Object.entries(rulesByProvider)) {
+        if (!isString(providerId) || !providerId.trim()) return bad();
+        if (!Array.isArray(list)) return bad();
+        for (const rule of list) {
+          total += 1;
+          if (!isObject(rule)) return bad();
+          if (!Number.isInteger(rule.status) || rule.status < 100 || rule.status > 599) return bad();
+          if (!isString(rule.match) || !rule.match.trim() || rule.match.length > 200) return bad();
+          if (!["model", "provider", "connection"].includes(rule.scope)) return bad();
+          if (rule.reason !== undefined && (!isString(rule.reason) || !rule.reason.trim())) return bad();
+          if (rule.cooldownMs !== undefined && (!Number.isSafeInteger(rule.cooldownMs) || rule.cooldownMs < 0 || rule.cooldownMs > MAX_RATE_LIMIT_COOLDOWN_MS)) return bad();
+        }
+      }
+      if (total > 50) return bad();
+    }
+
+    /** Validate OmniRoute #10920 egress-bucketed provider allowlist. */
+    if (Object.prototype.hasOwnProperty.call(body, "egressBucketedProviders")) {
+      const ids = body.egressBucketedProviders;
+      if (!Array.isArray(ids) || ids.some((id) => !isString(id) || !id.trim())) {
+        return NextResponse.json({ error: "Invalid egressBucketedProviders" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      body.egressBucketedProviders = Array.from(new Set(ids.map((id) => id.trim().toLowerCase())));
+    }
+
     //   minContextWindow: integer 0..10_000_000 (optional)
     //   preferLargeContext: boolean (optional)
     //   contextFilterMode: "strict" | "lenient" (optional)
@@ -326,6 +363,11 @@ export async function PATCH(request) {
     Object.prototype.hasOwnProperty.call(body, "outboundNoProxy"))
     {
       applyOutboundProxyEnv(settings);
+    }
+
+    // Apply operator error-rule overrides immediately (no restart required)
+    if (Object.prototype.hasOwnProperty.call(body, "providerErrorRules")) {
+      setOperatorProviderErrorRules(settings.providerErrorRules);
     }
 
     // Invalidate combo rotation state when strategy settings change

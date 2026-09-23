@@ -17,6 +17,7 @@ import { getMitmStatus, startMitm, stopMitm, loadEncryptedPassword, initDbHooks,
 import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
 import { killAllBridges } from "@/lib/mcp/stdioSseBridge";
+import { setOperatorProviderErrorRules } from "open-sse/config/providerErrorRules.js";
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
 (function bootstrapMitm() {
@@ -50,6 +51,7 @@ export async function initializeApp() {
   try {
     await cleanupProviderConnections();
     const settings = await getSettings();
+    try { setOperatorProviderErrorRules(settings.providerErrorRules); } catch { /* ignore */ }
 
     // Auto-resume tunnel (once per process)
     if (settings.tunnelEnabled && !g.tunnelAutoResumed) {

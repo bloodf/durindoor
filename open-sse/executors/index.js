@@ -6,6 +6,8 @@ import { BedrockExecutor } from "./bedrock.js";
 import { ChipotleExecutor } from "./chipotle.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
 import { GithubExecutor } from "./github.js";
+import { GheCopilotExecutor } from "./ghe-copilot.js";
+import { MuseCodeExecutor } from "./muse-code.js";
 import { IFlowExecutor } from "./iflow.js";
 import { InnerAiExecutor } from "./inner-ai.js";
 import { QoderExecutor } from "./qoder.js";
@@ -64,6 +66,8 @@ const executors = {
   chipotle: new ChipotleExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   github: new GithubExecutor(),
+  "ghe-copilot": new GheCopilotExecutor(),
+  "muse-code": new MuseCodeExecutor(),
   iflow: new IFlowExecutor(),
   "inner-ai": new InnerAiExecutor(),
   "in-ai": new InnerAiExecutor(), // Alias for inner-ai
@@ -72,6 +76,7 @@ const executors = {
   "duckduckgo-web": new DuckDuckGoWebExecutor(),
   ddgw: new DuckDuckGoWebExecutor(),
   kiro: new KiroExecutor(),
+  "amazon-q": new KiroExecutor("amazon-q"),
   kimchi: new KimchiExecutor(),
   "kimi-web": new KimiWebExecutor(),
   codex: new CodexExecutor(),
@@ -175,6 +180,8 @@ export { BedrockExecutor } from "./bedrock.js";
 export { ChipotleExecutor } from "./chipotle.js";
 export { GeminiCLIExecutor } from "./gemini-cli.js";
 export { GithubExecutor } from "./github.js";
+export { GheCopilotExecutor } from "./ghe-copilot.js";
+export { MuseCodeExecutor } from "./muse-code.js";
 export { IFlowExecutor } from "./iflow.js";
 export { InnerAiExecutor } from "./inner-ai.js";
 export { QoderExecutor } from "./qoder.js";

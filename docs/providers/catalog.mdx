@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 262 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 265 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -21,6 +21,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Alibaba | `alicode` | apikey | 8 | [site](https://bailian.console.aliyun.com) |
 | Alibaba Intl | `alicode-intl` | apikey | 7 | [site](https://modelstudio.console.alibabacloud.com) |
 | Alibaba Token Plan | `alitp-intl` | apikey | 6 | [site](https://www.alibabacloud.com/campaign/ai-landing-page-token) |
+| Amazon Q | `amazon-q` | oauth | 47 | [site](https://aws.amazon.com/q/developer/) |
 | Ant Ling / Ring (inclusionAI) | `ant-ling` | apikey | 3 | [site](https://developer.ant-ling.com/en/docs/) |
 | Anthropic | `anthropic` | apikey | 15 | [site](https://console.anthropic.com) |
 | Antigravity | `antigravity` | oauth | 21 | [site](https://antigravity.google) |
@@ -111,6 +112,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Gemini | `gemini` | freeTier | 24 | [site](https://ai.google.dev) |
 | Gemini CLI | `gemini-cli` | oauth | 7 | [site](https://github.com/google-gemini/gemini-cli) |
 | GoAPI | `getgoapi` | apikey | 0 | [site](https://api.getgoapi.com) |
+| GitHub Enterprise Copilot | `ghe-copilot` | oauth | 18 | [site](https://docs.github.com/en/enterprise-cloud@latest/copilot) |
 | GigaChat | `gigachat` | apikey | 3 | [site](https://developers.sber.ru/portal/products/gigachat-api) |
 | GitHub Copilot | `github` | oauth | 20 | [site](https://github.com/features/copilot) |
 | GitHub Models | `github-models` | apikey | 12 | [site](https://github.com/marketplace/models) |
@@ -179,6 +181,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Modal | `modal` | apikey | 1 | [site](https://modal.com/docs) |
 | ModelScope | `modelscope` | apikey | 0 | [site](https://modelscope.cn) |
 | Morph | `morph` | apikey | 6 | [site](https://morphllm.com) |
+| Muse Code (Meta) | `muse-code` | oauth, apikey | 13 | [site](https://ai.developer.meta.com/docs/muse-code/auth) |
 | Muse Spark Web | `muse-spark-web` | cookie | 3 | [site](https://www.meta.ai) |
 | NanoBanana API | `nanobanana` | apikey | 2 | [site](https://nanobananaapi.ai) |
 | NanoGPT | `nanogpt` | apikey | 3 | [site](https://nano-gpt.com) |

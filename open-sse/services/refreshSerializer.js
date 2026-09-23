@@ -56,6 +56,7 @@ const ROTATION_LOCK_GROUP = {
   claude: "anthropic-oauth",
   "gitlab-duo": "gitlab-duo",
   kiro: "kiro",
+  "amazon-q": "kiro",
   "kimi-coding": "kimi-coding",
   qwen: "qwen",
 };

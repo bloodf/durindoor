@@ -26,6 +26,7 @@ const SPECIALIZED = new Set([
   "grok-web", "perplexity-web", "chatgpt-web", "ollama-local", "commandcode",
   "xiaomi-tokenplan", "mimo-free", "grok-cli",
   "pollinations", "theoldllm", "gigachat", "zenmux-free",
+  "amazon-q", "ghe-copilot", "muse-code",
   ...Object.keys(BLOCKED_OMNIROUTE_PROVIDERS),
   ...Object.keys(BLOCKED_OMNIROUTE_PROVIDER_ALIASES),
 ]);

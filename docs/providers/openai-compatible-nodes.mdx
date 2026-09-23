@@ -38,6 +38,31 @@ Third-party Anthropic gateways that are not `api.anthropic.com` get both `x-api-
 
 Embedding-only nodes live under Dashboard, Media providers, embedding. The modal posts `type: "custom-embedding"`. A trailing `/embeddings` on the base URL is stripped. Default base URL is `https://api.openai.com/v1`. Clients call `/v1/embeddings`.
 
+## Quota display for compatible connections
+
+OpenAI-compatible and Anthropic-compatible connections have no fixed billing endpoint, so DurinDoor cannot show Provider Limits for them out of the box. Set `providerSpecificData.quotaEndpoint` on the connection (via `PATCH /api/provider-connections/:id`) to describe where the quota lives and how to read it:
+
+```json
+{
+  "quotaEndpoint": {
+    "url": "https://api.example.com/v1/credits",
+    "method": "GET",
+    "auth": "bearer",
+    "headers": { "X-Org": "acme" },
+    "quotas": {
+      "credits": {
+        "used": "$.data.used_usd",
+        "total": "$.data.limit_usd",
+        "resetAt": "$.data.renews_at",
+        "currency": "usd"
+      }
+    }
+  }
+}
+```
+
+`auth` is `bearer` (default), `x-api-key`, or `none`. The connection's saved API key is sent as the credential; `none` sends no auth header. `used`/`total`/`resetAt` are dot/bracket paths into the JSON response (`$.a.b[0].c`), not full JSONPath. A quota only shows up once `total` resolves; a path that cannot resolve is left out rather than reported as 0/0.
+
 ## Aliases and naming
 
 Keep the prefix lowercase and stable. Leave the upstream model id after the slash alone. Avoid spaces.

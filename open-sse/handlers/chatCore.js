@@ -26,6 +26,7 @@ import {
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { applyClaudeResponseModelEcho, applyResponseModelEcho, resolveClaudeEchoModel, resolveResponsesEchoModel } from "../services/responseModelEcho.js";
 import { getUsageForProvider } from "../services/usage.js";
+import { resolveConnectionTimeoutMs } from "@/lib/providers/requestTimeout";
 
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -1566,7 +1567,11 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     log,
     usageEventId: activeSessionRequestId,
     claudeClassifierCompat,
-    terminalProvenance
+    terminalProvenance,
+    // port(omniroute): per-connection upstream timeout override (#10885).
+    // Falls through to each handler's own RESPONSE_BODY_TIMEOUT_MS default
+    // when the connection has no providerSpecificData.timeoutMs.
+    responseBodyTimeoutMs: resolveConnectionTimeoutMs(credentials?.providerSpecificData)
   };
   const appendLog = (extra) => appendRequestLog({ model: cleanModel, provider, connectionId, ...extra }).catch(() => {});
   // Release the concurrency slot when the request completes (covers streaming + non-streaming + disconnect)

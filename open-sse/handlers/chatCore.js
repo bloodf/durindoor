@@ -554,6 +554,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const headroomStats = await compressWithHeadroom(body, { enabled: tokenSaverEnabled && headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: sourceFormat, compressUserMessages: headroomCompressUserMessages, timeoutMs: headroomTimeoutMs, diagnostics: headroomDiagnostics });
   const headroomDurationMs = Date.now() - headroomStartedAt;
 
+  // RTK for cursor: its translator (openai-to-cursor.js) rewrites role:tool
+  // into user-role `<tool_result>` XML text, so the normal post-translate
+  // pass below never sees a role:tool / tool_result shape to compress.
+  // Compress the source-format body here instead, before that rewrite.
+  // Every other provider's translator keeps the tool_result shape 1:1, so
+  // they stay on the unchanged post-translate pass.
+  const preTranslateRtk = provider === "cursor" ?
+  compressMessages(body, tokenSaverEnabled && rtkEnabled) :
+  null;
+
   let translatedBody;
   let toolNameMap;
   let customToolNames;
@@ -709,8 +719,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Token-saver summary parts, printed as one "⚙" line at the end (only active ones)
   const xf = [];
 
-  // RTK: compress tool_result content
-  const rtkStats = compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
+  // RTK: compress tool_result content. Skipped when already compressed
+  // pre-translate above (cursor) so a retry never double-compresses a body.
+  const rtkStats = preTranslateRtk || compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
   if (rtkStats?.hits?.length) {
     const saved = rtkStats.bytesBefore - rtkStats.bytesAfter;
     const pct = rtkStats.bytesBefore > 0 ? (saved / rtkStats.bytesBefore * 100).toFixed(0) : "0";

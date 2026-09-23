@@ -35,6 +35,29 @@ Registry entries with `category: "webCookie"` and `authType: "cookie"` are not O
 Cookie-backed providers send whatever the upstream web app would send. Do not put them on a shared gateway that other people can drive unless you accept that those people can spend that browser session.
 </Callout>
 
+### Kimi Web
+
+Kimi's web app no longer signs requests with the `kimi-auth` cookie. It keeps `access_token` and `refresh_token` in localStorage and sends `Authorization: Bearer <access_token>`. Both values are readable from page JavaScript, so you can copy them from the console.
+
+Kimi runs two deployments with separate auth hosts: [www.kimi.com](https://www.kimi.com) and the international [www.kimi.ai](https://www.kimi.ai). Use whichever one you log in to. The snippet records which site the tokens came from, and DurinDoor sends every request back to that site.
+
+1. Log in at www.kimi.com or www.kimi.ai.
+2. Open DevTools, go to Console, and run the snippet the connect dialog shows (it has a Copy button):
+
+   ```js
+   copy(JSON.stringify({access_token:localStorage.getItem('access_token'),refresh_token:localStorage.getItem('refresh_token'),origin:location.origin}))
+   ```
+
+3. Paste the copied JSON into the Cookie Value field.
+
+If Chrome blocks pasting into the console, type `allow pasting` first. You can also copy the two keys by hand from Application, Local Storage, and build the JSON yourself. Add `"origin":"https://www.kimi.ai"` if they came from www.kimi.ai. Without an `origin`, DurinDoor uses www.kimi.com.
+
+Only the access token goes to Kimi. When Kimi answers 401, DurinDoor sends the refresh token to the site's auth host (`auth.kimi.com` or `auth.kimi.ai`, `account.gateway.v1.AuthService/RefreshToken`, the same call the web app makes) and retries once. The new pair is saved in the connection's encrypted token fields, so later requests and restarts use it. The saved pair is tied to the paste it came from: pasting new tokens replaces it. If the refresh token has also expired, paste a fresh copy.
+
+Older pastes still work: a bare access token, or a full Cookie header containing `kimi-auth=<JWT>` from www.kimi.com. These have no refresh token, so they stop working when the access token expires.
+
+Models: `k3` (K3, reasoning effort low/high/max, default high), `k2d6` (K2.6 Instant, reasoning off), and `k2d6-thinking` (K2.6 with reasoning on; Kimi no longer lists this id, and DurinDoor keeps it as an alias). `reasoning_effort` maps to the nearest tier Kimi offers for the model. K3 Swarm (`k3-agent-ultra`) is not routed.
+
 ## Token refresh
 
 DurinDoor stores `refreshToken` and related metadata on the connection. On request, `open-sse/services/oauthCredentialManager.js` refreshes when the access token is inside the provider's lead window. `open-sse/services/tokenRefresh.js` owns the per-provider grant (Claude JSON, GitHub form post, Google, Codex, Kiro, iFlow, GitLab Duo, and others). A background pass (`src/sse/services/backgroundTokenRefresh.js`) also selects active OAuth connections whose access token expires inside `max(provider lead, BACKGROUND_REFRESH_LEAD_MS)`.

@@ -29,11 +29,13 @@ describe("kimi-web thinking-suffix stripping", () => {
     });
     const sent = decodeSentBody();
     // Without the suffix strip, resolveModelConfig falls through to the
-    // non-thinking tier and options.thinking would be false.
+    // instant tier. `(high)` asks for reasoning; k2d6 tops out at LOW.
     expect(sent.options.thinking).toBe(true);
+    expect(sent.options.model).toBe("k2d6");
+    expect(sent.options.reasoning_effort).toBe("REASONING_EFFORT_LOW");
   });
 
-  it("still disables thinking when reasoning_effort is 'none' even with a suffix", async () => {
+  it("still turns reasoning off when reasoning_effort is 'none' even with a suffix", async () => {
     proxyAwareFetch.mockResolvedValue(new Response(new ReadableStream({ start: (c) => c.close() }), { status: 200 }));
     const executor = new KimiWebExecutor();
     await executor.execute({
@@ -41,7 +43,7 @@ describe("kimi-web thinking-suffix stripping", () => {
       credentials: { apiKey: "kimi-auth=eyJ.test" },
       stream: false,
     });
-    expect(decodeSentBody().options.thinking).toBe(false);
+    expect(decodeSentBody().options.reasoning_effort).toBe("REASONING_EFFORT_NONE");
   });
 });
 

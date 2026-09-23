@@ -3,13 +3,13 @@ title: Connecting accounts
 description: OAuth and cookie connections, token refresh, multiple accounts, and account fallback.
 ---
 
-A connection is one credential row for one provider. Claude Code, Codex, Gemini CLI, and GitHub use OAuth. ChatGPT Web and other `webCookie` registry entries use a browser session cookie. The same provider can hold several connections so you can rotate quota or keep personal and team accounts apart.
+A connection is one credential row for one provider. Claude Code, Codex, Gemini CLI, and GitHub use OAuth. ChatGPT Web and other `webCookie` registry entries use a browser session cookie; see [Web cookie providers](./web-cookie.mdx). The same provider can hold several connections so you can rotate quota or keep personal and team accounts apart.
 
 Open Dashboard, then Providers, then the provider card. Connect starts the flow that provider supports.
 
 ## Browser OAuth
 
-Claude Code and Codex use an authorization-code flow with PKCE. The dashboard opens the provider's authorize URL, the provider redirects back, and DurinDoor exchanges the code for tokens through `/api/oauth/[provider]/[action]`. Gemini CLI and Antigravity use the same shape against Google's OAuth client. GitLab Duo uses PKCE against `GITLAB_DUO_BASE_URL` or `GITLAB_BASE_URL`, defaulting to `https://gitlab.com`.
+Claude Code and Codex use an authorization-code flow with PKCE (details: [Claude Code](./claude-code.mdx), [OpenAI Codex](./codex.mdx)). The dashboard opens the provider's authorize URL, the provider redirects back, and DurinDoor exchanges the code for tokens through `/api/oauth/[provider]/[action]`. Gemini CLI and [Antigravity](./antigravity.mdx) use the same shape against Google's OAuth client. GitLab Duo uses PKCE against `GITLAB_DUO_BASE_URL` or `GITLAB_BASE_URL`, defaulting to `https://gitlab.com`.
 
 Some providers pin a loopback callback port. If the dashboard is not on a loopback host, the OAuth modal may run the callback on the server instead of in the browser tab.
 
@@ -17,7 +17,7 @@ OrcaRouter runs the same PKCE shape out of band. DurinDoor is self-hosted, so it
 
 ## Device code
 
-GitHub, GitHub Enterprise Copilot, Qwen, Kiro, Amazon Q, Grok CLI, Qoder, Kimi Coding, Kilo Code, CodeBuddy CN, and Muse Code request a device code from `/api/oauth/[provider]/device-code`. You open the verification URL, enter the user code, and DurinDoor polls until the provider issues tokens.
+GitHub, GitHub Enterprise Copilot, Qwen, [Kiro](./kiro.mdx), Amazon Q, Grok CLI, Qoder, Kimi Coding, Kilo Code, CodeBuddy CN, and Muse Code request a device code from `/api/oauth/[provider]/device-code`. You open the verification URL, enter the user code, and DurinDoor polls until the provider issues tokens.
 
 GitHub Enterprise Copilot (`ghe-copilot`, alias `ghe`) runs the same device flow against your enterprise host. The connect dialog asks for the enterprise URL first; it must be `https`, and only its origin is kept. The device code, token, and user requests go to that host, and the Copilot token mint goes to `{host}/api/v3/copilot_internal/v2/token`. Chat, `/responses`, and Claude's `/v1/messages` then go to the Copilot API host that mint returns in `endpoints.api`, never to `api.githubcopilot.com`. The OAuth client defaults to GitHub's Copilot app; set `GHE_COPILOT_OAUTH_CLIENT_ID` when your GitHub Enterprise Server instance uses its own app. The model list is the GitHub Copilot seed list; live model discovery is not wired for enterprise hosts.
 
@@ -29,7 +29,7 @@ Grok CLI also accepts a pasted `~/.grok/auth.json` object or a bulk import of an
 
 ## Import token and cookie OAuth
 
-Cursor, Windsurf, Trae, and Devin CLI do not start a browser authorize step from the dashboard. You import a token the IDE or CLI already issued. Cursor has no public refresh endpoint; reconnect with a fresh import when the session dies.
+Cursor, Windsurf, Trae, and Devin CLI do not start a browser authorize step from the dashboard. You import a token the IDE or CLI already issued. Cursor has no public refresh endpoint; reconnect with a fresh import when the session dies. See [Cursor](./cursor.mdx).
 
 iFlow can take a browser cookie instead of the PKCE path. `POST /api/oauth/iflow/cookie` requires a `BXAuth=` field.
 
@@ -41,6 +41,29 @@ Registry entries with `category: "webCookie"` and `authType: "cookie"` are not O
 Cookie-backed providers send whatever the upstream web app would send. Do not put them on a shared gateway that other people can drive unless you accept that those people can spend that browser session.
 </Callout>
 
+### Kimi Web
+
+Kimi's web app no longer signs requests with the `kimi-auth` cookie. It keeps `access_token` and `refresh_token` in localStorage and sends `Authorization: Bearer <access_token>`. Both values are readable from page JavaScript, so you can copy them from the console.
+
+Kimi runs two deployments with separate auth hosts: [www.kimi.com](https://www.kimi.com) and the international [www.kimi.ai](https://www.kimi.ai). Use whichever one you log in to. The snippet records which site the tokens came from, and DurinDoor sends every request back to that site.
+
+1. Log in at www.kimi.com or www.kimi.ai.
+2. Open DevTools, go to Console, and run the snippet the connect dialog shows (it has a Copy button):
+
+   ```js
+   copy(JSON.stringify({access_token:localStorage.getItem('access_token'),refresh_token:localStorage.getItem('refresh_token'),origin:location.origin}))
+   ```
+
+3. Paste the copied JSON into the Cookie Value field.
+
+If Chrome blocks pasting into the console, type `allow pasting` first. You can also copy the two keys by hand from Application, Local Storage, and build the JSON yourself. Add `"origin":"https://www.kimi.ai"` if they came from www.kimi.ai. Without an `origin`, DurinDoor uses www.kimi.com.
+
+Only the access token goes to Kimi. When Kimi answers 401, DurinDoor sends the refresh token to the site's auth host (`auth.kimi.com` or `auth.kimi.ai`, `account.gateway.v1.AuthService/RefreshToken`, the same call the web app makes) and retries once. The new pair is saved in the connection's encrypted token fields, so later requests and restarts use it. The saved pair is tied to the paste it came from: pasting new tokens replaces it. If the refresh token has also expired, paste a fresh copy.
+
+Older pastes still work: a bare access token, or a full Cookie header containing `kimi-auth=<JWT>` from www.kimi.com. These have no refresh token, so they stop working when the access token expires.
+
+Models: `k3` (K3, reasoning effort low/high/max, default high), `k2d6` (K2.6 Instant, reasoning off), and `k2d6-thinking` (K2.6 with reasoning on; Kimi no longer lists this id, and DurinDoor keeps it as an alias). `reasoning_effort` maps to the nearest tier Kimi offers for the model. K3 Swarm (`k3-agent-ultra`) is not routed.
+
 ## Token refresh
 
 DurinDoor stores `refreshToken` and related metadata on the connection. On request, `open-sse/services/oauthCredentialManager.js` refreshes when the access token is inside the provider's lead window. `open-sse/services/tokenRefresh.js` owns the per-provider grant (Claude JSON, GitHub form post, Google, Codex, Kiro, iFlow, GitLab Duo, and others). A background pass (`src/sse/services/backgroundTokenRefresh.js`) also selects active OAuth connections whose access token expires inside `max(provider lead, BACKGROUND_REFRESH_LEAD_MS)`.
@@ -51,7 +74,7 @@ Muse Code has no refresh grant either. When its key is missing or the API return
 
 OrcaRouter is never refreshed. Its PKCE login issues a durable API key rather than an access/refresh pair, and OrcaRouter publishes no refresh grant, so `tokenRefresh.js` refuses the provider outright instead of falling through to the generic grant. When the relay rejects the key with a 401, or a 403 whose body reads as an auth failure, the exact connection that made that request is taken out of rotation as `reauth_required` (the same quarantine a revoked Codex login gets) until you sign in again or save a new key. Quota and permission 403s stay on the normal cooldown. A late failure that presented a key you have already replaced is ignored. A sign-in whose exchange returns no account id is rejected, so repeat logins always land on the same connection.
 
-Set `GEMINI_OAUTH_CLIENT_ID` / `GEMINI_OAUTH_CLIENT_SECRET` and `ANTIGRAVITY_OAUTH_CLIENT_ID` / `ANTIGRAVITY_OAUTH_CLIENT_SECRET` only when you run your own OAuth app. The defaults live in `open-sse/providers/shared.js`.
+Gemini CLI and Antigravity read their Google OAuth client from `GEMINI_OAUTH_CLIENT_ID` / `GEMINI_OAUTH_CLIENT_SECRET` and `ANTIGRAVITY_OAUTH_CLIENT_ID` / `ANTIGRAVITY_OAUTH_CLIENT_SECRET`. `open-sse/providers/shared.js` defaults all four to empty strings, so set them before you connect either provider.
 
 ## Multiple accounts and priority
 
@@ -76,10 +99,19 @@ A connection can show last error, lock-until, model lock, refresh failure, or mi
 
 ## Hidden providers
 
-Some registry entries set `hidden: true` because the generic add form cannot collect the fields they need. They do not appear in the Providers add selector, and `POST /api/providers` rejects them with `Invalid provider`. Existing connections and custom nodes are unchanged. Qwen Code is one example; use the dedicated flow the dashboard offers for that family.
+Some registry entries set `hidden: true` because the generic add form cannot collect the fields they need. They do not appear in the Providers add selector, and `POST /api/providers` rejects them with `Invalid provider`. Existing connections and custom nodes are unchanged. Qwen Code is one example; use the dedicated flow the dashboard offers for that family. The full list is on [Hidden and retired providers](./retired.mdx).
 
 ## Dual-auth providers
 
 A few OAuth-category providers also accept an API key (`authModes` includes `apikey`). CodeBuddy CN, xAI, and OrcaRouter are in that set. Use Connect for OAuth, or add a key on the same provider page. The OrcaRouter modal shows both as tabs, and either path ends as the same `sk-orca-` key on one connection. The provider page also carries a capability-scoped model picker backed by `GET https://api.orcarouter.ai/v1/models`; when that call fails, the list falls back to a small verified seed and is labelled as offline rather than shown as live discovery.
+
+### Xiaomi MiMo
+
+Xiaomi MiMo takes an `sk-` API key for the cloud API, or a Xiaomi account for the weekly MiMo Desktop quota. Add API Key keeps working as before. Connect opens a modal with two account paths:
+
+- **Local credentials.** When MiMo Desktop is installed on the DurinDoor host, `GET /api/oauth/xiaomi-mimo/auto-import` reads `~/.local/share/mimocode/auth.json` and the Desktop cookie store. That route is local-only and needs dashboard auth. The import stores the key plus the account `passToken`. Desktop locks its cookie database while it runs, so close it first if the token is missing.
+- **Browser login.** No Desktop needed. Pick the account cluster (`cn`, `sgp`, `ams`, `ru`, or `in`). `POST /api/oauth/xiaomi-mimo/login/start` opens the real Xiaomi login page in a popup, served through DurinDoor on your own origin. While the short-lived `dd_mimo_login` cookie is set, `src/proxy.js` forwards non-app paths to `account.xiaomi.com`. Only a request with management access gets through, and the dashboard's own credentials are never forwarded. Once the page yields a `passToken`, the modal saves a session-only connection on that cluster. Non-CN clusters use `MIMO_LOGIN_PROXY` for the login egress when it is set; otherwise a local HTTP proxy on a common port is used if one answers. CN always connects directly.
+
+With a `passToken`, `mimo-v2.6-pro`, `mimo-v2.6-flash`, and `mimo-v2.6-pro-ultraspeed` run on the cluster's account route (`mimo-server-<cluster>.xiaomimimo.com`) and bill the account's weekly quota. DurinDoor swaps the token for a service cookie through MiMo Desktop's two-step `serviceLogin` handshake and caches the cookie for 30 minutes per token and cluster. When the handshake fails, those models fall back to the cloud API with the key. Other models always use the cloud API. The connection test and the usage card use the same handshake.
 
 Drag-reorder on the provider page persists the full connection id list through `PUT /api/providers/reorder`. The body must be exactly that provider's ids, no extras and none missing, or the route returns 409 and writes nothing.

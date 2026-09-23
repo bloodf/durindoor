@@ -460,4 +460,40 @@ describe("quota-aware provider selection", () => {
     expect(mocks.getProviderConnections).not.toHaveBeenCalled();
     expect(quotaSnapshotsLoader).not.toHaveBeenCalled();
   });
+
+  describe("quota-weighted fallback strategy", () => {
+    it("can draw the lower-quota account instead of always taking the top score", async () => {
+      mocks.getSettings.mockResolvedValue({ fallbackStrategy: "quota-weighted" });
+      mocks.getProviderConnections.mockResolvedValue([connection("one", 1), connection("two", 2)]);
+      // one=90% left, two=10% left — deterministic fill-first/quota-ranked
+      // order would always pick "one". Force the draw toward the thin end of
+      // the weighted range so a non-top-scoring account can still win.
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.99);
+      try {
+        const selected = await getProviderCredentials("codex", null, "gpt-5.4", {
+          now: NOW,
+          resourceKeys: ["model:gpt-5.4"],
+          quotaSnapshotsLoader: async () => [providerRow("one", 90), providerRow("two", 10)],
+        });
+        expect(selected.connectionId).toBe("two");
+      } finally {
+        randomSpy.mockRestore();
+      }
+    });
+
+    it("still skips an exhausted account under quota-weighted", async () => {
+      mocks.getSettings.mockResolvedValue({ fallbackStrategy: "quota-weighted" });
+      mocks.getProviderConnections.mockResolvedValue([connection("one", 1), connection("two", 2)]);
+      const reset = NOW + 30_000;
+      const selected = await getProviderCredentials("codex", null, "gpt-5.4", {
+        now: NOW,
+        resourceKeys: ["model:gpt-5.4"],
+        quotaSnapshotsLoader: async () => [
+          snapshot("one", { state: "exhausted", resetAt: reset }),
+          providerRow("two", 50),
+        ],
+      });
+      expect(selected.connectionId).toBe("two");
+    });
+  });
 });

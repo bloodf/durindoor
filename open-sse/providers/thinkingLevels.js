@@ -43,6 +43,8 @@ const FORMAT_LEVELS = {
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 // GPT-5.6 patterns must precede broad *codex* so Sol/Terra/Luna keep their matrix.
 const PATTERN_THINKING = [
+  /** Claude Opus 5.5 accepts low..max including xhigh; it rejects disabled thinking and `ultra`. */
+  { pattern: "*claude*opus-5-5*", levels: ["low", "medium", "high", "xhigh", "max"] },
   // Sol/Terra accept max + ultra on the wire.
   { pattern: "*gpt-5.6-sol*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
   { pattern: "*gpt-5.6-terra*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
@@ -84,6 +86,7 @@ const PATTERN_THINKING = [
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
+  { pattern: "*mimo*v2.6*", levels: ["none", "low", "medium", "high", "xhigh"] },
   // xAI publishes only low/medium/high/xhigh for Grok 4.5-4.7 and the 4.20
   // multi-agent model; reasoning cannot be disabled. grok-build-latest is a
   // grok-4.5 alias. https://docs.x.ai/developers/model-capabilities/text/reasoning

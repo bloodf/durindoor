@@ -4,10 +4,10 @@
 
 import { getGitHubUsage } from "./usage/github.js";
 import { getGeminiUsage, getAntigravityUsage } from "./usage/google.js";
-import { getClaudeUsage } from "./usage/claude.js";
+import { getClaudeUsage, consumeClaudeResetGrant } from "./usage/claude.js";
 import { getCodexUsage, consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "./usage/codex.js";
 
-export { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits };
+export { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits, consumeClaudeResetGrant };
 import { getKiroUsage } from "./usage/kiro.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
@@ -27,6 +27,7 @@ import {
   getGrokWebUsage } from
 "./usage/misc.js";
 import { getGrokCliUsage } from "./usage/grok-cli.js";
+import { getXiaomiMimoUsage } from "./usage/xiaomi-mimo.js";
 
 /**
  * Get usage data for a provider connection
@@ -60,7 +61,8 @@ const USAGE_HANDLERS = {
   "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   kimi: (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
-  "opencode-go": (c) => getOpenCodeGoUsage(c.apiKey, c.proxyOptions)
+  "opencode-go": (c) => getOpenCodeGoUsage(c.apiKey, c.proxyOptions),
+  "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.apiKey || c.accessToken, c.providerSpecificData, c.proxyOptions)
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {

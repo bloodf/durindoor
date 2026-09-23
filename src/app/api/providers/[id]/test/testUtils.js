@@ -350,6 +350,15 @@ function isTokenExpired(connection) {
 }
 
 async function testOAuthConnection(connection, effectiveProxy = null) {
+  // Xiaomi MiMo session-login rows hold a passToken, not an access token: the
+  // account-service handshake is the probe.
+  if (connection.provider === "xiaomi-mimo") {
+    const { getMimoAccountCookie } = await import("open-sse/shared/mimoAccount.js");
+    const cookie = await getMimoAccountCookie(connection.providerSpecificData, effectiveProxy);
+    return cookie ?
+    { valid: true, error: null, refreshed: false, newTokens: null } :
+    { valid: false, error: "Xiaomi account session expired. Sign in again.", refreshed: false };
+  }
   const config = OAUTH_TEST_CONFIG[connection.provider];
   if (!config) return { valid: false, error: "Provider test not supported", refreshed: false };
   if (!connection.accessToken) return { valid: false, error: "No access token", refreshed: false };

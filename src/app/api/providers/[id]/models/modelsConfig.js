@@ -203,6 +203,48 @@ async (connection, proxyOptions = null) => {
   return { models: [], warning };
 };
 
+// Qoder shares one resolver across intl (qoder) and CN (qoder-cn); the
+// credentials carry the connection's provider id so qoderModels picks the
+// right region's catalog endpoint, and the returned model ids keep the
+// provider prefix the chat router expects.
+function buildQoderModelsResolver(providerId) {
+  return {
+    customResolver: async (connection, proxyOptions = null) => {
+      const credentials = {
+        provider: providerId,
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+        email: connection.email,
+        displayName: connection.displayName,
+        providerSpecificData: connection.providerSpecificData || {}
+      };
+      let warning;
+      try {
+        const result = await resolveQoderModels(credentials, { forceRefresh: true, proxyOptions });
+        if (result?.models?.length) {
+          return {
+            models: result.models.map((m) => ({
+              id: `${providerId}/${m.id}`,
+              name: m.name,
+              contextLength: m.contextLength,
+              isVL: m.isVL,
+              isReasoning: m.isReasoning,
+              maxOutputTokens: m.maxOutputTokens,
+              description: m.description
+            }))
+          };
+        }
+        warning = "Qoder returned no models; falling back to static catalog.";
+      } catch (error) {
+        const safeError = sanitizeErrorMessage(error?.message);
+        warning = `Failed to fetch Qoder models: ${safeError}`;
+        console.log("Failed to fetch Qoder models dynamically, falling back to static:", safeError);
+      }
+      return { models: [], warning };
+    }
+  };
+}
+
 export const PROVIDER_MODELS_CONFIG = {
   claude: {
     url: "https://api.anthropic.com/v1/models",
@@ -417,40 +459,8 @@ export const PROVIDER_MODELS_CONFIG = {
       return { models: [], warning };
     }
   },
-  qoder: {
-    customResolver: async (connection, proxyOptions = null) => {
-      const credentials = {
-        accessToken: connection.accessToken,
-        refreshToken: connection.refreshToken,
-        email: connection.email,
-        displayName: connection.displayName,
-        providerSpecificData: connection.providerSpecificData || {}
-      };
-      let warning;
-      try {
-        const result = await resolveQoderModels(credentials, { forceRefresh: true, proxyOptions });
-        if (result?.models?.length) {
-          return {
-            models: result.models.map((m) => ({
-              id: `qoder/${m.id}`,
-              name: m.name,
-              contextLength: m.contextLength,
-              isVL: m.isVL,
-              isReasoning: m.isReasoning,
-              maxOutputTokens: m.maxOutputTokens,
-              description: m.description
-            }))
-          };
-        }
-        warning = "Qoder returned no models; falling back to static catalog.";
-      } catch (error) {
-        const safeError = sanitizeErrorMessage(error?.message);
-        warning = `Failed to fetch Qoder models: ${safeError}`;
-        console.log("Failed to fetch Qoder models dynamically, falling back to static:", safeError);
-      }
-      return { models: [], warning };
-    }
-  },
+  qoder: buildQoderModelsResolver("qoder"),
+  "qoder-cn": buildQoderModelsResolver("qoder-cn"),
   "gemini-cli": {
     customResolver: buildOAuthResolver({
       refreshFn: (conn, proxyOptions) => refreshGoogleToken(

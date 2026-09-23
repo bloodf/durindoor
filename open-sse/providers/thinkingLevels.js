@@ -95,6 +95,7 @@ const PATTERN_THINKING = [
   // parameters block. Keep max distinct from xhigh instead of applying the
   // generic OpenAI max→xhigh clamp.
   { provider: "qoder", pattern: "*", levels: L.budgetX },
+  { provider: "qoder-cn", pattern: "*", levels: L.budgetX },
   // Ollama GPT-OSS accepts low/medium/high only; max must clamp to high.
   { provider: "ollama", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },
   { provider: "ollama-local", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },

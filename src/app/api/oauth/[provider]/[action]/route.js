@@ -50,6 +50,7 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "kilocode",
 "codebuddy-cn",
 "qoder",
+"qoder-cn",
 "grok-cli"]
 );
 
@@ -441,7 +442,7 @@ async function pollDeviceCode(provider, input) {
     } else if (provider === "kiro") {
       result = await callOAuthUpstream(() =>
       pollForToken(provider, deviceCode, null, extraData, resolvedProxy.proxyOptions));
-    } else if (provider === "qoder") {
+    } else if (provider === "qoder" || provider === "qoder-cn") {
       if (!codeVerifier) {
         throw oauthRouteError(
           "OAUTH_VALIDATION_FAILED",

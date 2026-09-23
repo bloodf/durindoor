@@ -92,7 +92,7 @@ function hasUnpublishedOutput(provider, model) {
   if (provider === "xai" && id.includes("grok") ||
   ["grok-cli", "gb", "opencode-zen", "ocz"].includes(provider) &&
   (id.includes("grok-build") || id.includes("grok-composer") || id.startsWith("grok-4"))) return true;
-  if ((provider === "qoder" || provider === "qd") && id === "kmodel") return true;
+  if (["qoder", "qd", "qoder-cn", "qdc"].includes(provider) && id === "kmodel") return true;
   if ((provider === "cloudflare-ai" || provider === "cf") && id.startsWith("@cf/")) return true;
   if (provider === "ollama-local" && id === "llama3.2:1b") return true;
   return provider === "nvidia" && id === "moonshotai/kimi-k2.6";
@@ -373,6 +373,10 @@ export const PROVIDER_CAPABILITIES = {
   xmtp: XIAOMI_TOKENPLAN_CAPABILITIES,
   qoder: QODER_CAPABILITIES,
   qd: QODER_CAPABILITIES,
+  // Qoder CN serves the identical model catalog from the CN gateway, so it
+  // shares the intl Qoder capability table verbatim.
+  "qoder-cn": QODER_CAPABILITIES,
+  qdc: QODER_CAPABILITIES,
   // Ollama's trained 131,072-token window is not its served window. The local
   // daemon's /api/ps reports 4,096 for llama3.2:1b; /api/tags exposes no num_ctx.
   "ollama-local": {

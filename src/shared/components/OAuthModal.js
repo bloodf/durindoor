@@ -21,6 +21,7 @@ const DEVICE_CODE_PROVIDERS = new Set([
 "kilocode",
 "codebuddy-cn",
 "qoder",
+"qoder-cn",
 "grok-cli"]
 );
 const FIXED_PORT_PROVIDERS = new Set(["codex", "xai"]);

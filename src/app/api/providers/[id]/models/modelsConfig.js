@@ -7,6 +7,7 @@ import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { ANTHROPIC_API_VERSION, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import {
   discoverOrcaRouterModels,
@@ -203,15 +204,29 @@ async (connection, proxyOptions = null) => {
   return { models: [], warning };
 };
 
+/**
+ * Claude connections normally hold an OAuth token, which Anthropic rejects as
+ * `x-api-key`. OAuth tokens go out as a Bearer with the `oauth-2025-04-20` beta
+ * and the spoofed Claude Code User-Agent; a real API key keeps `x-api-key`.
+ * @param {string} token
+ * @returns {Record<string, string>}
+ */
+export function buildClaudeModelsHeaders(token) {
+  const headers = { "Anthropic-Version": ANTHROPIC_API_VERSION, "Content-Type": "application/json" };
+  if (token.startsWith("sk-ant-api")) return { ...headers, "x-api-key": token };
+  return {
+    ...headers,
+    Authorization: `Bearer ${token}`,
+    "Anthropic-Beta": "oauth-2025-04-20",
+    "User-Agent": CLAUDE_CLI_SPOOF_HEADERS["User-Agent"]
+  };
+}
+
 export const PROVIDER_MODELS_CONFIG = {
   claude: {
-    url: "https://api.anthropic.com/v1/models",
+    url: "https://api.anthropic.com/v1/models?limit=1000",
     method: "GET",
-    headers: {
-      "Anthropic-Version": "2023-06-01",
-      "Content-Type": "application/json"
-    },
-    authHeader: "x-api-key",
+    buildHeaders: buildClaudeModelsHeaders,
     parseResponse: (data) => data.data || []
   },
   gemini: {

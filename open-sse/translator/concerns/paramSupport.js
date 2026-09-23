@@ -14,6 +14,8 @@ const STRIP_RULES = [
  * telemetry with `diagnostics: Extra inputs are not permitted`.
  */
 { match: /claude/i, drop: ["temperature", "diagnostics"] },
+/** Claude Opus 5.5 also rejects the remaining sampling controls. */
+{ match: /claude-opus-5-5/i, drop: ["top_p", "top_k"] },
 // GitHub Copilot gpt-5.4: temperature unsupported.
 { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
 // OpenAI GPT-6 Astra supports neither sampling nor top-logprob controls.

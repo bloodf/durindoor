@@ -169,9 +169,9 @@ function toGeminiThinkingLevel(cfg) {
  * Anthropic rejects with HTTP 400 — fall back to high; minimal uses the nearest
  * lower level. (Upstream #3792)
  */
-function toClaudeAdaptiveEffort(cfg, caps, provider) {
+function toClaudeAdaptiveEffort(cfg, caps, provider, model) {
   const level = toLevel(cfg);
-  const allowed = getThinkingLevelsFromCapabilities(caps, provider);
+  const allowed = getThinkingLevelsFromCapabilities(caps, provider, model);
   if (allowed?.includes(level)) return level;
   if (level === "minimal" && allowed?.includes("low")) return "low";
   return "high";
@@ -369,7 +369,7 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
     case "claude-adaptive":{
         // disabled must NOT carry display (Anthropic rejects display on type:"disabled").
         if (none && canDisable) {body.thinking = { type: "disabled" };break;}
-        body.output_config = { effort: toClaudeAdaptiveEffort(eff, caps, provider) };
+        body.output_config = { effort: toClaudeAdaptiveEffort(eff, caps, provider, model) };
         // Opus 4.7/4.8/Sonnet5/Fable5/Mythos5 default thinking.display to "omitted",
         // so default to summarized to keep reasoning summary flowing to clients —
         // but a client that explicitly asked for a display mode (e.g. "omitted"

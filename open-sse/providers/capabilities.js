@@ -121,6 +121,8 @@ export const MODEL_CAPABILITIES = {
   k3: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 262144 },
   /** Third-party registries retain the upstream `kimi-k3` ID and its verified 1M context. */
   "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
+  /** Claude Opus 5.5: native 1M context, 128K output, adaptive thinking that cannot be disabled. */
+  "claude-opus-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
   // Claude Opus 5: native 1M context window + adaptive thinking.
   "claude-opus-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-fable-5-1": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
@@ -716,6 +718,7 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*embed*", caps: { tools: false, contextWindow: null, maxOutput: null } },
 
 // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
+{ pattern: "*claude*opus-5-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*opus-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*sonnet-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 /** Claude 4.6+ variants share the generation's 1M context and 128K output limits. */

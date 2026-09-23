@@ -277,6 +277,16 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
           return !!incomingId && !!existingId && incomingId === existingId;
         }
 
+        // Claude personal and Team accounts can share the same email (a user
+        // can be a member of a Team org under the same login). Only collapse
+        // them when both sides resolve to the same organization; missing
+        // org uuid on either side falls through to the bare-email match below.
+        if (data.provider === "claude") {
+          const incomingOrgUuid = data.providerSpecificData?.claudeOrgUuid;
+          const existingOrgUuid = c.providerSpecificData?.claudeOrgUuid;
+          if (incomingOrgUuid && existingOrgUuid) return incomingOrgUuid === existingOrgUuid;
+        }
+
         // Workspace providers use workspace ID when both sides have it
         const existingWs = c.providerSpecificData?.chatgptAccountId;
         if (incomingWs && existingWs) return incomingWs === existingWs;

@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 
 import { guardedProbeFetch } from "../utils/outboundUrlGuard.js";
+import { CLAUDE_CLI_SPOOF_HEADERS } from "../providers/shared.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -205,7 +206,8 @@ function anthropicCapabilities(entry) {
 
 /**
  * Resolve Anthropic's account catalog without changing registry routing data.
- * OAuth uses only the stored bearer; API-key connections keep x-api-key auth.
+ * OAuth sends the stored bearer with the OAuth beta and the spoofed Claude Code
+ * User-Agent; API-key connections keep x-api-key auth.
  */
 export function resolveLiveAnthropicModels(connection, options = {}) {
   const oauthToken = connection?.accessToken;
@@ -215,13 +217,17 @@ export function resolveLiveAnthropicModels(connection, options = {}) {
   return resolveLiveOpenAIModels(connection, {
     ...options,
     token,
-    endpoint: "https://api.anthropic.com/v1/models?limit=100",
+    endpoint: "https://api.anthropic.com/v1/models?limit=1000",
     cacheVariant: `anthropic:${oauthToken ? "oauth" : "apikey"}`,
     headers: {
       "Content-Type": "application/json",
       "anthropic-version": "2023-06-01",
       ...(oauthToken ?
-      { Authorization: `Bearer ${oauthToken}` } :
+      {
+        Authorization: `Bearer ${oauthToken}`,
+        "anthropic-beta": "oauth-2025-04-20",
+        "User-Agent": CLAUDE_CLI_SPOOF_HEADERS["User-Agent"]
+      } :
       { "x-api-key": apiKey })
     },
     normalizeModel: (entry) => {

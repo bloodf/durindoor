@@ -13,8 +13,9 @@ import { describeProviderError } from "open-sse/utils/error.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 import {
   buildQuotaResourceKeys,
   evaluateProviderQuotaPreflight,
@@ -111,9 +112,7 @@ export async function hasValidCliToken(request) {
   const supplied = request?.headers?.get?.("x-9r-cli-token");
   if (!supplied) return false;
   const expected = await getConsistentMachineId(CLI_AUTH_SALT);
-  const suppliedBytes = Buffer.from(String(supplied));
-  const expectedBytes = Buffer.from(String(expected));
-  return suppliedBytes.length === expectedBytes.length && timingSafeEqual(suppliedBytes, expectedBytes);
+  return timingSafeCompare(String(supplied), String(expected));
 }
 
 // Round-robin metadata still needs ordered selection within one provider, but

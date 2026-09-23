@@ -234,6 +234,8 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
 // are API-only; Codex has a separate exact catalog row below.
 const DIRECT_GPT_5_5_6_CAPS = {
   "gpt-6-astra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxInput: 922000, maxOutput: 128000 },
+  "gpt-6-sol": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-6-luna": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.4": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.5": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },

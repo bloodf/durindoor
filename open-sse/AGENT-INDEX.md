@@ -28,6 +28,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
+| `ghe-copilot` | GheCopilotExecutor | `./ghe-copilot.js` |
 | `github` | GithubExecutor | `./github.js` |
 | `gitlab-duo` | GitlabExecutor | `./gitlab.js` |
 | `grok-cli` | GrokCliExecutor | `./grok-cli.js` |
@@ -168,6 +169,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `gemini` | gemini | freeTier | `https://generativelanguage.googleapis.com/v1beta/models` |
 | `gemini-cli` | gemini-cli | free | `https://cloudcode-pa.googleapis.com/v1internal` |
 | `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
+| `ghe-copilot` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |
 | `github` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `github-models` |  | apikey | `https://models.github.ai/inference/chat/completions` |

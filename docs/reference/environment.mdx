@@ -155,6 +155,7 @@ Most OAuth providers use built-in client metadata. Set these only when you run y
 | `AGY_CLIENT_ID` | unset | Antigravity client id used by model-list helpers. | `src/app/api/providers/[id]/models/modelsConfig.js` |
 | `AGY_CLIENT_SECRET` | unset | Antigravity client secret for those helpers. | `src/app/api/providers/[id]/models/modelsConfig.js` |
 | `KIMI_CODING_OAUTH_CLIENT_ID` | registry `clientId` | Kimi Coding device-code client id. | `src/lib/oauth/constants/oauth.js` |
+| `GHE_COPILOT_OAUTH_CLIENT_ID` | registry `clientId` | GitHub Enterprise Copilot device-code client id, for a GHES instance with its own OAuth app. | `open-sse/services/gheCopilotAuth.js` |
 | `GITLAB_BASE_URL` | `https://gitlab.com` | GitLab origin. | `open-sse/providers/registry/gitlab-duo.js` |
 | `GITLAB_DUO_BASE_URL` | `https://gitlab.com` | GitLab Duo origin (preferred over `GITLAB_BASE_URL`). | `open-sse/providers/registry/gitlab-duo.js` |
 | `GITLAB_OAUTH_CLIENT_ID` | registry | GitLab OAuth client id. | `open-sse/providers/registry/gitlab-duo.js` |

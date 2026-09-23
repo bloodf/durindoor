@@ -18,6 +18,7 @@ import {
   classifyOAuthRefreshError } from
 "./tokenRefresh/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { refreshGheCopilotCredentials } from "./gheCopilotAuth.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
@@ -163,6 +164,9 @@ const REFRESH_HANDLERS = {
   qwen: (c, log, p) => refreshQwenToken(c.refreshToken, log, p),
   iflow: (c, log, p) => refreshIflowToken(c.refreshToken, log, p),
   github: (c, log, p) => refreshGitHubToken(c.refreshToken, log, p),
+  // Every GHE endpoint lives on the connection's own host, so the generic
+  // refresh path (which reads a static registry tokenUrl) cannot serve it.
+  "ghe-copilot": (c, log, p) => refreshGheCopilotCredentials(c, log, p),
   kiro: (c, log, p) => refreshKiroToken(c.refreshToken, c.providerSpecificData, log, p),
   xai: (c, log, p) => refreshXaiToken(c.refreshToken, log, p),
   "grok-cli": (c, log, p) => refreshXaiToken(c.refreshToken, log, p),

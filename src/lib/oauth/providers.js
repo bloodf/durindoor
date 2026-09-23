@@ -46,6 +46,7 @@ import {
 "./providerHelpers";
 import { isString } from "../../shared/utils/typeChecks.js";
 import orcarouter from "./orcarouterProvider.js";
+import gheCopilot from "./gheCopilotProvider.js";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn, fetchClaudeProfile, claudeProfileFields };
 
@@ -1665,7 +1666,8 @@ const PROVIDERS = {
       };
     }
   },
-  orcarouter
+  orcarouter,
+  "ghe-copilot": gheCopilot
 };
 
 function isCloudflareHtmlBadRequest(status, body) {
@@ -1775,7 +1777,7 @@ export async function pollForToken(providerName, deviceCode, codeVerifier, extra
       // Call postExchange to get additional data (copilotToken, userInfo, etc.)
       let extra = null;
       if (provider.postExchange) {
-        extra = await provider.postExchange(result.data, proxyOptions);
+        extra = await provider.postExchange(result.data, proxyOptions, extraData);
       }
       const tokens = provider.mapTokens(result.data, extra);
       // Kiro IDC/Builder-ID tokens lack profileArn; resolve it to avoid 403.

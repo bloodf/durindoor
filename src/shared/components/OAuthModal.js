@@ -21,7 +21,8 @@ const DEVICE_CODE_PROVIDERS = new Set([
 "kilocode",
 "codebuddy-cn",
 "qoder",
-"grok-cli"]
+"grok-cli",
+"ghe-copilot"]
 );
 const FIXED_PORT_PROVIDERS = new Set(["codex", "xai"]);
 const STATELESS_CALLBACK_PROVIDERS = new Set(["cline", "clinepass"]);
@@ -264,8 +265,9 @@ export default function OAuthModal({
             startUrl: options.idcConfig.startUrl,
             region: options.idcConfig.region,
             authMethod: "idc"
-          } : null)
-
+          } : null),
+          ...(flow.provider === "ghe-copilot" && options.oauthMeta?.gheUrl ?
+          { gheUrl: options.oauthMeta.gheUrl } : null)
         };
         const response = await fetch(`/api/oauth/${flow.provider}/device-code`, {
           method: "POST",

@@ -31,6 +31,7 @@ import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
+import { normalizeGheUrl } from "open-sse/config/gheCopilot.js";
 
 // OAuth provider test endpoints
 import { isString } from "../../../../../shared/utils/typeChecks.js";
@@ -92,6 +93,18 @@ export const OAUTH_TEST_CONFIG = {
     authHeader: "Authorization",
     authPrefix: "Bearer ",
     extraHeaders: { "User-Agent": "9Router", "Accept": "application/vnd.github+json" }
+  },
+  "ghe-copilot": {
+    // Probe the enterprise user API on the connection's own GHE host.
+    buildUrl: (_token, connection) => {
+      const gheUrl = normalizeGheUrl(connection.providerSpecificData?.gheUrl);
+      if (!gheUrl) throw new Error("GitHub Enterprise URL missing; reconnect this account");
+      return `${gheUrl}/api/v3/user`;
+    },
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    extraHeaders: { "User-Agent": "DurinDoor", "Accept": "application/vnd.github+json" }
   },
   iflow: {
     // iFlow getUserInfo requires accessToken as query param, not header

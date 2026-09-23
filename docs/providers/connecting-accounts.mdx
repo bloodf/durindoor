@@ -17,7 +17,9 @@ OrcaRouter runs the same PKCE shape out of band. DurinDoor is self-hosted, so it
 
 ## Device code
 
-GitHub, Qwen, Kiro, Grok CLI, Qoder, Kimi Coding, Kilo Code, and CodeBuddy CN request a device code from `/api/oauth/[provider]/device-code`. You open the verification URL, enter the user code, and DurinDoor polls until the provider issues tokens.
+GitHub, GitHub Enterprise Copilot, Qwen, Kiro, Grok CLI, Qoder, Kimi Coding, Kilo Code, and CodeBuddy CN request a device code from `/api/oauth/[provider]/device-code`. You open the verification URL, enter the user code, and DurinDoor polls until the provider issues tokens.
+
+GitHub Enterprise Copilot (`ghe-copilot`, alias `ghe`) runs the same device flow against your enterprise host. The connect dialog asks for the enterprise URL first; it must be `https`, and only its origin is kept. The device code, token, and user requests go to that host, and the Copilot token mint goes to `{host}/api/v3/copilot_internal/v2/token`. Chat, `/responses`, and Claude's `/v1/messages` then go to the Copilot API host that mint returns in `endpoints.api`, never to `api.githubcopilot.com`. The OAuth client defaults to GitHub's Copilot app; set `GHE_COPILOT_OAUTH_CLIENT_ID` when your GitHub Enterprise Server instance uses its own app. The model list is the GitHub Copilot seed list; live model discovery is not wired for enterprise hosts.
 
 Grok CLI also accepts a pasted `~/.grok/auth.json` object or a bulk import of an array / `accounts` object. Imports stay serial so connection priorities keep the input order.
 

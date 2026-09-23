@@ -2184,5 +2184,33 @@
     "format": "openai",
     "authType": "apikey",
     "tokenUrl": "https://www.orcarouter.ai/api/v1/auth/keys"
+  },
+  "ghe-copilot": {
+    "baseUrl": "https://api.githubcopilot.com/chat/completions",
+    "responsesUrl": "https://api.githubcopilot.com/responses",
+    "messagesUrl": "https://api.githubcopilot.com/v1/messages",
+    "headers": {
+      "copilot-integration-id": "vscode-chat",
+      "editor-version": "vscode/1.110.0",
+      "editor-plugin-version": "copilot-chat/0.38.0",
+      "user-agent": "GitHubCopilotChat/0.38.0",
+      "openai-intent": "conversation-panel",
+      "x-github-api-version": "2025-04-01",
+      "x-vscode-user-agent-library-version": "electron-fetch",
+      "X-Initiator": "user",
+      "Accept": "application/json",
+      "Content-Type": "application/json"
+    },
+    "copilot": {
+      "vscodeVersion": "1.110.0",
+      "chatVersion": "0.38.0",
+      "userAgent": "GitHubCopilotChat/0.38.0",
+      "apiVersion": "2025-04-01"
+    },
+    "quirks": {
+      "preservePromptCacheKey": true
+    },
+    "format": "openai",
+    "clientId": "Iv1.b507a08c87ecfe98"
   }
 }

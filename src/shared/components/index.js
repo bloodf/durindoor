@@ -30,6 +30,7 @@ export { default as KiroSocialOAuthModal } from "./KiroSocialOAuthModal";
 export { default as CursorAuthModal } from "./CursorAuthModal";
 export { default as IFlowCookieModal } from "./IFlowCookieModal";
 export { default as GitLabAuthModal } from "./GitLabAuthModal";
+export { default as GheCopilotAuthModal } from "./GheCopilotAuthModal";
 export { default as OrcaRouterAuthModal } from "./OrcaRouterAuthModal";
 export { default as OrcaModelDropdown } from "./OrcaModelDropdown";
 export { default as ImportTokenModal } from "./ImportTokenModal";

@@ -50,6 +50,14 @@ Per-member timeout is `timeoutMs` on the combo strategy. The dashboard field is 
 
 Hide-paid-models, when on, drops paid members from dispatch without rewriting the stored `models` array.
 
+## Bulk select
+
+Dashboard → Combos lists a checkbox on every combo and a "Select all" row above the list. With combos selected you can set a strategy for all of them at once (writes `comboStrategies[name].fallbackStrategy` for each, same rules as the per-combo selector) or bulk-delete. Deleting a combo, single or bulk, also prunes its `comboStrategies` entry so settings do not accumulate dead rows.
+
+## Presets (Cursor / Claude Default)
+
+`GET/POST /api/combos/presets?source=cursor|claude` builds combos named like the client's own model IDs (`composer-2.5`, `opus`) seeded with the matching prefixed route (`cu/composer-2.5`, `cc/claude-opus-5`), so Cursor or Claude Code can talk to DurinDoor without sending a provider prefix. `GET` previews (`toCreate`/`toSkip` counts); `POST` creates the missing ones and skips names that already exist. `src/lib/comboPresets.js` builds the item list; a `liveModels` option lets a caller substitute a live catalog for the static `cu`/`cc` registry (unused for now, since no live Cursor catalog fetcher is wired). The generator buttons are implemented but hidden in the current UI.
+
 ## Complexity-aware routing
 
 The `smart` strategy scores every member against how hard the current user turn

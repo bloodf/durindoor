@@ -1,3 +1,54 @@
+# 4.8.0
+
+## Features
+
+- feat(models): auto-sync model catalogs from provider APIs (#986)
+
+## Fixes
+
+- fix(providers): stop the Codex refresh serializer from self-deadlocking (#985)
+- fix(auth): compare shared secrets in constant time (#976)
+- fix(kimi-web): follow Kimi's new web auth flow and add a token copy helper (#961)
+- fix(keys): restore missing newKeyAllowedCombos state in Add Key modal (#952)
+
+## Upstream ports
+
+- port(omniroute): compatible-node quota fetch, self-service usage and streaming log export (#984)
+- port(omniroute): request-log detail UX and per-request tokens/sec (#983)
+- port(omniroute): add GHE Copilot, Amazon Q and Muse Code OAuth providers (#974)
+- port(omniroute): stream early-EOF sibling failover and keep request-scoped SSE errors out of cooldowns (#982)
+- port(omniroute): operator error rules and egress-bucketed 429 cooldown (#981)
+- port(omniroute): add API-key, search and fetch providers from OmniRoute (#980)
+- port(upstream): #4256+#4241 - per-key model access rules, windowed limits and usage view (#979)
+- port(omniroute): model exposure list, combo member sort and synced-model context override (#978)
+- port(omniroute): thinking-model output floor and adaptive reasoning effort (#977)
+- port(upstream): #4266 - add GPT-6 Sol and Luna to Codex (#975)
+- port(upstream): #4237+#4218+#4176 - harden Qoder signing and add Qoder CN support (#973)
+- port(omniroute): ChatGPT Web browser and HTTP transports, chunked session cookies (#972)
+- port(upstream): b7446f8 - add the System One (Jev) decision endpoint and dashboard page (#969)
+- port(upstream): 253199f - combo presets and bulk select, delete and strategy (#968)
+- port(omniroute): forward Codex client version and harden Codex requests (#963)
+- port(omniroute): transient 5xx retry, learned 429 caps, cooldown reset and health probes (#971)
+- port(omniroute): global concurrency tier, quota-weighted accounts and per-key auto combo gate (#970)
+- port(omniroute): add peak-hour protection windows and per-connection RPD/timeout overrides (#967)
+- port(upstream): #4245 - Xiaomi MiMo desktop login, account clusters and v2.6 models (#966)
+- port(upstream): #4265 - show and redeem free limit resets for Claude Code accounts (#964)
+- port(upstream): #4258+#4262 - support Claude Opus 5.5 and spoof Claude CLI 2.1.280 (#962)
+- port(omniroute): separate Claude personal and Team accounts, show weekly scoped limits (#960)
+- port(upstream): #4185 - cover strict proxy enforcement for both credential paths (#959)
+- port(upstream): c933eef - run Cursor's RTK tool-result compression before translation (#958)
+- port(upstream): 6c9fe6f - dynamic CLI config for Pi, Crush, ForgeCode, Smelt and CodeWhale (#957)
+- port(upstream): #4209 - separate Antigravity weekly and short-window quotas (#956)
+- port(upstream): cf663f5 - complete the Hugging Face Inference Providers router migration (#955)
+- port(upstream): #4198+#4223 - publish verified multi-platform images, runner apk mirror (#954)
+- port(upstream): #4220+#4226 - drop replayed reasoning for Groq/Mistral/Cerebras, glm-5.3-flash effort (#953)
+- port(upstream): #4253 - lossless header forwarding for relay proxy pools (#951)
+
+## Maintenance
+
+- docs(providers): add per-provider guides, troubleshooting and quota pages (#965)
+
+
 # 4.7.0
 
 ## Features

@@ -30,7 +30,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
-import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { FETCH_CONNECT_TIMEOUT_MS, HTTP_STATUS } from "../config/runtimeConfig.js";
 import { FORMATS } from "../translator/formats.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import {
@@ -308,13 +308,18 @@ export function isQoderQuotaExhaustedBody(body) {
   parsed.code === "112";
 }
 
+// Signatures: code 110 (billing daily count exceeded), code 112 (quota
+// exhausted, handled by isQoderQuotaExhaustedBody), code 10605 (queue
+// throttle), or a pricingUrl field. Code is compared as a string so both
+// numeric and string upstream shapes match.
 function isBillingBlock(body) {
   if (!isString(body) || !body) return false;
   try {
     const parsed = JSON.parse(body);
-    return isQoderQuotaExhaustedBody(parsed) ||
-    parsed && isObject(parsed) && !Array.isArray(parsed) && (
-    parsed.code === "10605" || Object.hasOwn(parsed, "pricingUrl"));
+    if (isQoderQuotaExhaustedBody(parsed)) return true;
+    if (!(parsed && isObject(parsed) && !Array.isArray(parsed))) return false;
+    const code = String(parsed.code ?? "");
+    return code === "110" || code === "10605" || Object.hasOwn(parsed, "pricingUrl");
   } catch {
     return false;
   }
@@ -383,8 +388,13 @@ async function peekQoderBillingFrame(reader, timeoutMs) {
         if (!line.startsWith("data:")) continue;
         try {
           const envelope = JSON.parse(line.slice(5).trimStart());
-          const status = isNumber(envelope.statusCodeValue) ? envelope.statusCodeValue : 200;
-          const body = isString(envelope.body) ? envelope.body : "";
+          // statusCodeValue is documented numeric, but accept numeric strings
+          // defensively; object bodies are stringified like the mid-stream path.
+          const rawStatus = Number(envelope.statusCodeValue);
+          const status = Number.isNaN(rawStatus) ? 200 : rawStatus;
+          const body = isString(envelope.body) ?
+          envelope.body :
+          envelope.body != null ? JSON.stringify(envelope.body) : "";
           if (status !== 200 && isBillingBlock(body)) return { chunks, done: false, billing: { status, body } };
         } catch {
 
@@ -454,8 +464,15 @@ async function wrapQoderSSE(response, model, options = {}) {
   const reader = response.body.getReader();
   const peeked = await peekQoderBillingFrame(reader, peekTimeoutMs);
   if (peeked.billing) {
+    // First-frame billing block detected — return 403 so chatCore fails this
+    // connection and triggers combo fallback instead of leaking error text
+    // into chat. Non-billing first-frame errors intentionally fall through
+    // to the sanitized generic-failure path below (no raw upstream text).
     await cancelAndReleaseReader(reader, "Qoder billing block");
-    return Response.json({ error: { message: peeked.billing.body, code: 403 } }, { status: 403 });
+    return Response.json(
+      { error: { message: peeked.billing.body, code: HTTP_STATUS.FORBIDDEN } },
+      { status: HTTP_STATUS.FORBIDDEN }
+    );
   }
   const body = replayQoderBody(reader, peeked.chunks, peeked.done);
 
@@ -501,9 +518,16 @@ async function wrapQoderSSE(response, model, options = {}) {
 
     let envelope;
     try {envelope = JSON.parse(data);} catch {emitFailure(controller);return;}
-    const statusVal = isNumber(envelope.statusCodeValue) ? envelope.statusCodeValue : 200;
-    const inner = isString(envelope.body) ? envelope.body : "";
+    const rawStatus = Number(envelope.statusCodeValue);
+    const statusVal = Number.isNaN(rawStatus) ? 200 : rawStatus;
+    const inner = isString(envelope.body) ?
+    envelope.body :
+    envelope.body != null ? JSON.stringify(envelope.body) : "";
     if (statusVal !== 200) {
+      // Billing envelopes arriving after the peeked first frame fall through
+      // to the same sanitized generic failure as any other mid-stream error —
+      // the peek only special-cases the first frame; raw upstream text never
+      // reaches the client past that point.
       emitFailure(controller);
       return;
     }
@@ -787,8 +811,17 @@ export class QoderExecutor extends BaseExecutor {
       response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(
         url,
         { method: "POST", headers, body: encodedBodyBuf, signal: mergedSignal },
-        proxyOptions
+        // A failed proxy request may already have reached Qoder. Replaying
+        // the same COSY signature directly (fallback-to-direct) reuses its
+        // requestId and returns 403/code 103 "Duplicate request". Force a
+        // hard failure instead of a silent direct retry — the caller retries
+        // through execute() with fresh signing.
+        { ...proxyOptions, strictProxy: true }
       ));
+    } catch (err) {
+      // strictProxy wraps transport errors; retain caller cancellation semantics.
+      if (mergedSignal.aborted) throw mergedSignal.reason;
+      throw err;
     } finally {
       clearTimeout(connectTimer);
     }

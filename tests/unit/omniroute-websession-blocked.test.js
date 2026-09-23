@@ -23,7 +23,7 @@ const ownedProviders = [
   "yuanbao-web",
 ];
 
-const portedProviders = ["copilot-web", "copilot-m365-web", "duckduckgo-web", "veoaifree-web"];
+const portedProviders = ["chatgpt-web", "copilot-web", "copilot-m365-web", "duckduckgo-web", "veoaifree-web"];
 const blockedProviders = ownedProviders.filter((provider) => !portedProviders.includes(provider));
 
 describe("OmniRoute PR #51 web-session provider port artifacts", () => {
@@ -57,6 +57,9 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(BLOCKED_OMNIROUTE_PROVIDERS["veoaifree-web"]).toBeUndefined();
     expect(hasSpecializedExecutor("veoaifree-web")).toBe(true);
     expect(hasSpecializedExecutor("veo-free")).toBe(true);
+    expect(BLOCKED_OMNIROUTE_PROVIDERS["chatgpt-web"]).toBeUndefined();
+    expect(hasSpecializedExecutor("chatgpt-web")).toBe(true);
+    expect(hasSpecializedExecutor("cgpt-web")).toBe(true);
   });
 
   it("marks no-auth web providers and media-only providers explicitly", () => {

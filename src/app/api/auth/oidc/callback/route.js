@@ -10,6 +10,7 @@ import {
   verifyOidcIdToken,
 } from "@/lib/auth/oidc";
 import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
 function clearOidcCookies(cookieStore) {
   cookieStore.delete("oidc_state");
@@ -35,7 +36,7 @@ export async function GET(request) {
   const storedNonce = cookieStore.get("oidc_nonce")?.value;
   const codeVerifier = cookieStore.get("oidc_code_verifier")?.value;
 
-  if (!storedState || !storedNonce || !codeVerifier || storedState !== state) {
+  if (!storedState || !storedNonce || !codeVerifier || !timingSafeCompare(storedState, state)) {
     clearOidcCookies(cookieStore);
     return NextResponse.redirect(new URL("/login?error=oidc_invalid_state", getPublicOrigin(request)));
   }

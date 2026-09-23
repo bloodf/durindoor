@@ -1,0 +1,61 @@
+---
+title: Error rules and egress cooldown
+description: Operator per-provider error rules and shared-egress-IP 429 cooldown.
+---
+
+Two operator-configurable resilience settings live on **Dashboard → Providers → (provider)**, in the same toolbar as Round Robin, Cache Affinity, and Max Concurrent: per-provider error rules and egress-bucketed 429 cooldown. Both are ported from OmniRoute and adapted to this fork's settings model and proxy pools.
+
+## Provider error rules
+
+`settings.providerErrorRules` lets an operator declare error markers for a provider without editing the built-in catalog in `open-sse/config/providerErrorRules.js`. A declared rule is consulted before the built-in `providerRuleRegistry`, so it can add a marker for a provider that has none, or override the scope and cooldown of a status code that already matches a generic rule.
+
+Open the **Error Rules** button on a provider's connections page to add, review, and remove rules. Each rule has:
+
+- **status**: the HTTP status code from the upstream response (100 to 599).
+- **match**: a plain, case-insensitive substring of the raw upstream error text. This is never a regular expression. The settings API rejects anything that is not a plain string, so a rule can never introduce a ReDoS on the error-classification hot path.
+- **scope**: `model`, `provider`, or `connection`. Matches the same scopes the built-in rules use for fallback locking.
+- **cooldownMs** (optional): overrides the generic exponential backoff ladder.
+
+Example: a provider that returns HTTP 429 with the text `daily cap hit` when its free tier resets, and the operator wants every connection on that account locked for 10 minutes:
+
+```json
+{
+  "providerErrorRules": {
+    "customprovider": [
+      {
+        "status": 429,
+        "match": "daily cap hit",
+        "scope": "connection",
+        "cooldownMs": 600000
+      }
+    ]
+  }
+}
+```
+
+`PATCH /api/settings` with that body persists the rule; it applies immediately and again on the next server start. Up to 50 rules total are allowed across all providers.
+
+Declaring a rule for a provider is the opt-in. There is no separate allowlist to widen.
+
+## Egress-bucketed 429 cooldown
+
+`settings.egressBucketedProviders` opts a provider into cooling down every sibling connection that shares the same egress IP when one connection hits a 429. This matters for providers whose upstream quota is bucketed by IP address rather than by account: without it, DurinDoor keeps retrying every sibling connection one at a time until each burns its own guaranteed-to-fail call.
+
+OmniRoute derives the egress IP from a historical request log. This fork has no equivalent log, so the bucket key is the connection's configured proxy pool (`src/lib/db/repos/proxyPoolsRepo.js`, **Dashboard → Proxy Pools**). Connections routed through the same pool are assumed to share the same egress IP. Connections with no pool configured are never grouped together, since assuming every direct connection shares one host IP does not hold for most deployments.
+
+Toggle **Egress-Bucketed 429** on a provider's page to opt it in, or set it directly:
+
+```json
+{
+  "egressBucketedProviders": ["opencode"]
+}
+```
+
+With that setting, if connection A (assigned to proxy pool `us-east-1`) gets a 429 for `opencode`, every other `opencode` connection also assigned to `us-east-1` is cooled down for the same window, skipping the reauth-quarantined and already-cooling ones. A sibling on a different pool, or with no pool at all, is left alone.
+
+## Where this lives in code
+
+- `open-sse/config/providerErrorRules.js`: operator rule cache, `setOperatorProviderErrorRules`, matcher.
+- `src/sse/services/auth.js`: `applyEgressBucketCooldown`, called from `markAccountUnavailable` on a 429.
+- `src/lib/db/repos/settingsRepo.js`: `providerErrorRules` and `egressBucketedProviders` defaults.
+- `src/app/api/settings/route.js`: validation and apply-on-write for both settings.

@@ -5,36 +5,136 @@
  * The www.kimi.com surface uses Connect-RPC over HTTP:
  *   - POST /apiv2/kimi.gateway.chat.v1.ChatService/Chat
  *   - 5-byte envelope (flags + 4-byte length) + JSON payload
- *   - Auth: `Authorization: Bearer <JWT>` + `Cookie: kimi-auth=<JWT>`
+ *   - Auth: `Authorization: Bearer <access_token>`
  *
- * Cookie handling: the user pastes their full Cookie header from www.kimi.com.
- * We extract only the `kimi-auth` JWT and replay it as both Bearer and Cookie,
- * stripping analytics / WAF cookies that the upstream does not need.
+ * Credentials: Kimi's web app keeps its session in localStorage
+ * (`access_token` + `refresh_token`) and sends only the Bearer header; the old
+ * `kimi-auth` cookie is no longer how the SPA authenticates. The user pastes
+ * the JSON the registry `authSnippet` copies; a bare token or a legacy Cookie
+ * header with `kimi-auth=` still parses (see `extractKimiTokens`). Only the
+ * access token reaches the wire. On a 401, `refreshCredentials` trades the
+ * refresh token at AuthService/RefreshToken on the auth host, the same call the
+ * SPA makes, and chatCore retries once with the new access token.
+ *
+ * Kimi serves two deployments, www.kimi.com and the international www.kimi.ai,
+ * each with its own auth host. The snippet records `location.origin`, and all
+ * calls go to that origin; pastes without one (legacy cookies, bare tokens)
+ * use www.kimi.com.
  */
 import { BaseExecutor } from "./base.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
-import { extractKimiJwt } from "@/lib/providers/webCookieAuth";
+import { createHash } from "node:crypto";
+import { extractKimiJwt, extractKimiTokens, KIMI_WEB_ORIGINS } from "@/lib/providers/webCookieAuth";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { stripThinkingSuffix } from "../translator/concerns/thinkingSuffix.js";
 
 export { extractKimiJwt };
 
-const BASE_URL = "https://www.kimi.com";
-const CHAT_URL = `${BASE_URL}/apiv2/kimi.gateway.chat.v1.ChatService/Chat`;
+const BASE_URL = KIMI_WEB_ORIGINS[0];
+const CHAT_PATH = "/apiv2/kimi.gateway.chat.v1.ChatService/Chat";
+
+/**
+ * The SPA's refresh call: AUTH_API_HOST ("https://auth." + site domain) +
+ * "/api" + the Connect path of account.gateway.v1.AuthService/RefreshToken.
+ * @param {string} origin - one of KIMI_WEB_ORIGINS
+ * @returns {string}
+ */
+export function kimiRefreshUrl(origin) {
+  return `${origin.replace("://www.", "://auth.")}/api/account.gateway.v1.AuthService/RefreshToken`;
+}
 const USER_AGENT =
 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
+const EFFORT_NONE = "REASONING_EFFORT_NONE";
+const EFFORT_LOW = "REASONING_EFFORT_LOW";
+const EFFORT_HIGH = "REASONING_EFFORT_HIGH";
+const EFFORT_MAX = "REASONING_EFFORT_MAX";
+
 /**
  * Map a Kimi model id (the `key` field from `GetAvailableModels`) to the
- * upstream request shape. Today only the chat-tier `k2d6` family is supported
- * — agent variants (`k2d6-agent*`) need a different scenario and extra fields
- * this executor does not shape; users who need agentic Kimi should use the
- * `kimi-coding` (api.kimi.com) provider.
+ * upstream request shape. Values mirror the live catalog: `k3` runs under the
+ * OK Computer scenario with LOW/HIGH/MAX effort; `k2d6` under K2D5 with
+ * NONE/LOW. `k2d6-thinking` is the old id for K2.6 with reasoning on; Kimi no
+ * longer lists it, so it maps to `k2d6` at LOW. Agent Swarm (`k3-agent-ultra`)
+ * needs Kimi's parallel-agent protocol and is not routed; users who need
+ * agentic Kimi should use the `kimi-coding` (api.kimi.com) provider.
+ * @param {string} modelId
+ * @returns {{ model: string, scenario: string, kimiplusId: string, efforts: string[], defaultEffort: string }}
  */
 export function resolveModelConfig(modelId) {
-  if (modelId === "k2d6-thinking") return { scenario: "SCENARIO_K2D5", thinking: true };
-  return { scenario: "SCENARIO_K2D5", thinking: false };
+  if (modelId === "k3") {
+    return {
+      model: "k3",
+      scenario: "SCENARIO_OK_COMPUTER",
+      kimiplusId: "ok-computer",
+      efforts: [EFFORT_LOW, EFFORT_HIGH, EFFORT_MAX],
+      defaultEffort: EFFORT_HIGH
+    };
+  }
+  const k2d6 = { model: "k2d6", scenario: "SCENARIO_K2D5", kimiplusId: "", efforts: [EFFORT_NONE, EFFORT_LOW] };
+  return { ...k2d6, defaultEffort: modelId === "k2d6-thinking" ? EFFORT_LOW : EFFORT_NONE };
+}
+
+/**
+ * Map an OpenAI `reasoning_effort` onto the model's Kimi effort enum, nearest
+ * supported tier. No effort → the model's default.
+ * @param {ReturnType<typeof resolveModelConfig>} config
+ * @param {unknown} requested
+ * @returns {string}
+ */
+export function resolveReasoningEffort(config, requested) {
+  if (!isString(requested) || !requested.trim()) return config.defaultEffort;
+  const level = requested.trim().toLowerCase();
+  const wanted =
+    level === "none" ? EFFORT_NONE :
+    level === "minimal" || level === "low" ? EFFORT_LOW :
+    level === "xhigh" || level === "max" ? EFFORT_MAX :
+    EFFORT_HIGH;
+  if (config.efforts.includes(wanted)) return wanted;
+  // Nearest tier: k3 has no NONE (→ LOW); k2d6 tops out at LOW.
+  return wanted === EFFORT_NONE ? config.efforts[0] : config.efforts[config.efforts.length - 1];
+}
+
+/**
+ * Fingerprint of the pasted refresh token. A rotated pair is only used while
+ * the stored paste is the one it was rotated from, so re-pasting fresh tokens
+ * always wins over an older rotation.
+ * @param {string} refreshToken
+ * @returns {string}
+ */
+export function sessionSource(refreshToken) {
+  return createHash("sha256").update(refreshToken).digest("hex").slice(0, 16);
+}
+
+// Rotated pairs by session source. The same pair is persisted to the
+// connection's encrypted accessToken/refreshToken columns (see
+// refreshCredentials); this map serves the retry in the same request and
+// saves a DB round trip.
+const rotatedTokens = new Map();
+
+/**
+ * Current tokens and site for a connection: a rotation of the current paste
+ * (in memory, else the persisted columns), otherwise the paste itself.
+ * @param {object} credentials
+ * @returns {{ accessToken: string, refreshToken: string, origin: string, source: string }}
+ */
+export function resolveKimiTokens(credentials) {
+  const pasted = extractKimiTokens(String(credentials?.apiKey || ""));
+  const origin = pasted.origin || BASE_URL;
+  if (!pasted.refreshToken) return { ...pasted, origin, source: "" };
+  const source = sessionSource(pasted.refreshToken);
+  const persisted = credentials?.providerSpecificData?.kimiWebSessionSource === source && credentials?.accessToken ?
+  { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken } :
+  null;
+  const rotated = rotatedTokens.get(source) || persisted;
+  return {
+    accessToken: rotated?.accessToken || pasted.accessToken,
+    refreshToken: rotated?.refreshToken || pasted.refreshToken,
+    origin,
+    source
+  };
 }
 
 /**
@@ -217,42 +317,87 @@ export class KimiWebExecutor extends BaseExecutor {
   }
 
   /**
-   * @param {string} jwt
+   * @param {string} accessToken
+   * @param {string} [origin]
    * @returns {Record<string,string>}
    */
-  buildKimiHeaders(jwt) {
+  buildKimiHeaders(accessToken, origin = BASE_URL) {
     const headers = {
       "Content-Type": "application/connect+json",
       Accept: "*/*",
       "User-Agent": USER_AGENT,
-      Origin: BASE_URL,
-      Referer: `${BASE_URL}/`,
+      Origin: origin,
+      Referer: `${origin}/`,
       "connect-protocol-version": "1"
     };
-    if (jwt) {
-      headers.Authorization = `Bearer ${jwt}`;
-      headers.Cookie = `kimi-auth=${jwt}`;
-    }
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     return headers;
   }
 
   /**
+   * Shape mirrors the web app's ChatRequest: `thinking` is always true and
+   * `reasoning_effort` decides how much reasoning runs.
    * @param {string} prompt
-   * @param {boolean} wantThinking
-   * @param {string} scenario
+   * @param {ReturnType<typeof resolveModelConfig>} config
+   * @param {string} reasoningEffort
    * @returns {string}
    */
-  buildRequestBody(prompt, wantThinking, scenario) {
+  buildRequestBody(prompt, config, reasoningEffort) {
     return JSON.stringify({
-      scenario,
+      chat_id: "",
+      kimiplus_id: config.kimiplusId,
+      scenario: config.scenario,
+      project_id: "",
       tools: [{ type: "TOOL_TYPE_SEARCH", search: {} }, { type: "TOOL_TYPE_CRON_JOB" }],
       message: {
         role: "user",
         blocks: [{ message_id: "", text: { content: prompt } }],
-        scenario
+        scenario: config.scenario
       },
-      options: { thinking: wantThinking, enable_plugin: true }
+      options: { thinking: true, reasoning_effort: reasoningEffort, enable_plugin: true, model: config.model }
     });
+  }
+
+  /**
+   * Trade the refresh token for a new pair (the SPA's RefreshToken call).
+   * chatCore calls this on a 401 and retries; the returned pair plus the
+   * `providerSpecificPatch` are what chat.js persists on the connection.
+   * @param {object} credentials
+   * @param {object} [log]
+   * @param {object|null} [proxyOptions]
+   * @returns {Promise<{accessToken: string, refreshToken: string, providerSpecificPatch: object}|null>}
+   */
+  async refreshCredentials(credentials, log, proxyOptions = null) {
+    const { refreshToken, origin, source } = resolveKimiTokens(credentials);
+    if (!refreshToken) return null;
+    try {
+      const res = await proxyAwareFetch(kimiRefreshUrl(origin), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "connect-protocol-version": "1",
+          "User-Agent": USER_AGENT,
+          Origin: origin,
+          Referer: `${origin}/`
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        signal: AbortSignal.timeout(FETCH_CONNECT_TIMEOUT_MS)
+      }, proxyOptions);
+      if (!res.ok) {
+        log?.warn?.("TOKEN", `kimi-web refresh failed: HTTP ${res.status}`);
+        return null;
+      }
+      const data = await res.json();
+      const accessToken = data?.access_token || data?.accessToken;
+      if (!isString(accessToken) || !accessToken) return null;
+      const next = { accessToken, refreshToken: data?.refresh_token || data?.refreshToken || refreshToken };
+      rotatedTokens.set(source, next);
+      return { ...next, providerSpecificPatch: { kimiWebSessionSource: source } };
+    } catch (err) {
+      log?.warn?.("TOKEN", `kimi-web refresh failed: ${err instanceof Error ? err.message : "unknown"}`);
+      return null;
+    }
   }
 
   /**
@@ -267,15 +412,15 @@ export class KimiWebExecutor extends BaseExecutor {
   async execute({ body, credentials, stream: wantStream, signal, proxyOptions = null }) {
     const bodyObj = body || {};
 
-    const rawCredential = String(credentials?.apiKey || "").trim();
-    const jwt = extractKimiJwt(rawCredential);
+    const { accessToken: jwt, origin } = resolveKimiTokens(credentials);
+    const chatUrl = `${origin}${CHAT_PATH}`;
     if (!jwt) {
       return {
         response: errorResponse(
           400,
-          "Missing Kimi session — paste the full Cookie header from www.kimi.com (must contain kimi-auth=<JWT>) or just the JWT itself."
+          "Missing Kimi access_token — log in at www.kimi.com or www.kimi.ai and paste the JSON the connect dialog's console snippet copies (or the access_token from localStorage)."
         ),
-        url: CHAT_URL,
+        url: chatUrl,
         headers: {},
         transformedBody: bodyObj
       };
@@ -284,15 +429,14 @@ export class KimiWebExecutor extends BaseExecutor {
     const messages = bodyObj.messages || [];
     // Strip the repo-wide thinking suffix (e.g. `k2d6-thinking(high)`) that
     // getModelUpstreamId preserves, so resolveModelConfig resolves the correct
-    // tier and wantThinking is not lost. applyThinking has already set
-    // reasoning_effort from the suffix upstream.
-    const modelId = (bodyObj.model || "k2d6").replace(/\((?:low|medium|high|none)\)$/, "");
+    // tier. applyThinking has already set reasoning_effort from the suffix.
+    const modelId = stripThinkingSuffix(bodyObj.model || "k2d6");
     const modelConfig = resolveModelConfig(modelId);
-    const wantThinking = bodyObj.reasoning_effort === "none" ? false : modelConfig.thinking;
+    const reasoningEffort = resolveReasoningEffort(modelConfig, bodyObj.reasoning_effort);
 
     const prompt = foldMessages(messages);
-    const reqBody = this.buildRequestBody(prompt, wantThinking, modelConfig.scenario);
-    const reqHeaders = this.buildKimiHeaders(jwt);
+    const reqBody = this.buildRequestBody(prompt, modelConfig, reasoningEffort);
+    const reqHeaders = this.buildKimiHeaders(jwt, origin);
     const framedBody = frameConnectMessage(reqBody);
 
     // Combine chatCore's client-disconnect signal with a connect timeout so a
@@ -309,7 +453,7 @@ export class KimiWebExecutor extends BaseExecutor {
 
     let upstream;
     try {
-      upstream = await proxyAwareFetch(CHAT_URL, {
+      upstream = await proxyAwareFetch(chatUrl, {
         method: "POST",
         headers: reqHeaders,
         body: new Uint8Array(framedBody),
@@ -318,7 +462,7 @@ export class KimiWebExecutor extends BaseExecutor {
     } catch (err) {
       return {
         response: errorResponse(502, `Kimi fetch failed: ${err instanceof Error ? err.message : "unknown"}`),
-        url: CHAT_URL,
+        url: chatUrl,
         headers: {},
         transformedBody: bodyObj
       };
@@ -330,13 +474,13 @@ export class KimiWebExecutor extends BaseExecutor {
 
     if (!upstream.ok) {
       const errText = await upstream.text().catch(() => "");
-      // The kimi-auth JWT is sent as both Bearer and Cookie; an upstream that
-      // echoes it bare (not behind an Authorization/Cookie key) would slip past
-      // the generic sanitizer, so redact the known credential first.
+      // An upstream that echoes the access token bare (not behind an
+      // Authorization key) would slip past the generic sanitizer, so redact
+      // the known credential first.
       const scrubbed = jwt ? errText.split(jwt).join("[redacted]") : errText;
       return {
         response: errorResponse(upstream.status, `Kimi error: ${sanitizeErrorMessage(scrubbed)}`),
-        url: CHAT_URL,
+        url: chatUrl,
         headers: reqHeaders,
         transformedBody: bodyObj
       };
@@ -448,7 +592,7 @@ export class KimiWebExecutor extends BaseExecutor {
             Connection: "keep-alive"
           }
         }),
-        url: CHAT_URL,
+        url: chatUrl,
         headers: reqHeaders,
         transformedBody: JSON.parse(reqBody)
       };
@@ -481,7 +625,7 @@ export class KimiWebExecutor extends BaseExecutor {
             await reader.cancel().catch(() => {});
             return {
               response: errorResponse(503, "kimi-web oversized frame"),
-              url: CHAT_URL,
+              url: chatUrl,
               headers: reqHeaders,
               transformedBody: JSON.parse(reqBody)
             };
@@ -523,7 +667,7 @@ export class KimiWebExecutor extends BaseExecutor {
       const scrubbed = jwt ? upstreamError.split(jwt).join("[redacted]") : upstreamError;
       return {
         response: errorResponse(502, `Kimi error: ${sanitizeErrorMessage(scrubbed)}`),
-        url: CHAT_URL,
+        url: chatUrl,
         headers: reqHeaders,
         transformedBody: JSON.parse(reqBody)
       };
@@ -542,7 +686,7 @@ export class KimiWebExecutor extends BaseExecutor {
       response: new Response(JSON.stringify(completion), {
         headers: { "Content-Type": "application/json" }
       }),
-      url: CHAT_URL,
+      url: chatUrl,
       headers: reqHeaders,
       transformedBody: JSON.parse(reqBody)
     };

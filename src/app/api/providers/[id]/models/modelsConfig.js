@@ -1,5 +1,6 @@
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
-import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
+import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
+import { resolveKimiTokens } from "open-sse/executors/kimi-web.js";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
@@ -16,6 +17,18 @@ import {
   ORCAROUTER_ID } from
 "open-sse/providers/orcarouterCatalog.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
+
+const KIMI_WEB_MODELS_PATH = "/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels";
+
+/**
+ * Kimi Web discovery goes to the deployment (www.kimi.com / www.kimi.ai) the
+ * pasted session came from; see `resolveKimiTokens`.
+ * @param {object} connection
+ * @returns {string}
+ */
+export function resolveKimiWebModelsUrl(connection) {
+  return `${resolveKimiTokens(connection).origin}${KIMI_WEB_MODELS_PATH}`;
+}
 
 /**
  * OrcaRouter — resolve one capability's catalog for this account.
@@ -229,35 +242,36 @@ export const PROVIDER_MODELS_CONFIG = {
     authPrefix: "Bearer ",
     parseResponse: (data) => data.data || []
   },
-  // Kimi web discovery uses the same `kimi-auth` JWT as the chat executor.
+  // Kimi web discovery uses the same access token as the chat executor.
   // GET returns an empty list, so POST {} is required; headers mirror the
-  // www.kimi.com web app (Bearer + Cookie replay, connect-protocol-version).
+  // www.kimi.com web app (Bearer, connect-protocol-version).
   "kimi-web": {
-    url: "https://www.kimi.com/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels",
+    url: `https://www.kimi.com${KIMI_WEB_MODELS_PATH}`,
     method: "POST",
     headers: { accept: "*/*", "Content-Type": "application/json" },
     body: {},
-    buildHeaders: (token) => {
-      const jwt = extractKimiJwt(token);
+    // The route's generic token prefers the accessToken column, which may hold a
+    // rotation of an older paste; resolveKimiTokens picks the current one.
+    buildHeaders: (_token, connection) => {
+      const { accessToken: jwt, origin } = resolveKimiTokens(connection);
       return {
         ...KIMI_WEB_DISCOVERY_HEADERS,
-        ...(jwt ?
-        {
-          Authorization: `Bearer ${jwt}`,
-          Cookie: `kimi-auth=${jwt}`
-        } : null)
+        Origin: origin,
+        Referer: `${origin}/`,
+        ...(jwt ? { Authorization: `Bearer ${jwt}` } : null)
 
       };
     },
     parseResponse: (data) => {
-      const allowed = new Set(["k2d6", "k2d6-thinking"]);
+      // Chat-routable keys only; `k3-agent-ultra` (Swarm) needs the agent protocol.
+      const allowed = new Set(["k3", "k2d6", "k2d6-thinking"]);
       const list = data?.availableModels || [];
       return list.
       filter((m) => m.key && allowed.has(m.key)).
       map((m) => ({
         id: m.key,
         name: m.displayName || m.key,
-        supportsReasoning: m.thinking === true
+        supportsReasoning: m.thinking === true || (m.reasoningEffortOptions || []).some((o) => o?.effort !== "REASONING_EFFORT_NONE")
       }));
     }
   },

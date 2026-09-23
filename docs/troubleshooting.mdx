@@ -140,6 +140,42 @@ Fix:
 An `installing` or `uncertain` redirect journal is a quarantine marker. Close every DurinDoor process and reboot. Reboot is the boundary that proves the unconfirmed privileged process tree has ended. Then inspect and remove only the current user's exact DurinDoor rule, verify absence, and delete the user's `redirect.json` path. Preserve `.mitm.pid`, Root CA files, and trust-rotation journals.
 </Callout>
 
+## Cookie provider stops working
+
+Cause: the browser session behind a [web cookie provider](./providers/web-cookie.mdx) ended, usually after a sign-out or when the site rotated it. DurinDoor does not read cookie expiry. Upstream 401 or 403 puts the connection on a two minute cooldown, and the same failure comes back after it.
+
+Fix: sign in to the site again, copy a fresh `Cookie` header from a live request in the Network tab, and paste it over the old value with **Edit**.
+
+## Provider returns 501 provider_port_pending
+
+Cause: the registry has the provider, but its executor has not been ported yet. The body names the provider and the missing source files.
+
+Fix: pick another provider or combo member. The current list is on [Hidden and retired providers](./providers/retired.mdx#registry-ids-with-no-executor-yet).
+
+## OAuth login never finishes
+
+Cause: the provider redirects to a fixed loopback address. Claude Code, Antigravity, and Gemini CLI redirect to `localhost:<dashboard port>/callback`; Codex redirects to `localhost:1455/auth/callback`. From a remote browser that page fails to load. For Codex on a loopback dashboard, `Port 1455 is in use` means another process, often a Codex CLI login, holds the port.
+
+Fix: copy the full URL from the failed page's address bar and paste it into the modal's paste step. For the port error, stop the other process and retry. Per-provider steps: [Claude Code](./providers/claude-code.mdx), [OpenAI Codex](./providers/codex.mdx), [Antigravity](./providers/antigravity.mdx).
+
+## Google rejects the Antigravity or Gemini CLI login
+
+Cause: `ANTIGRAVITY_OAUTH_CLIENT_ID` / `ANTIGRAVITY_OAUTH_CLIENT_SECRET` (or the `GEMINI_OAUTH_*` pair) are empty. They default to empty strings, so the authorize request carries no client.
+
+Fix: set both variables for that provider and restart. [Antigravity](./providers/antigravity.mdx#before-you-connect).
+
+## Connection shows reauth_required
+
+Cause: Codex (or OrcaRouter) said the token was invalidated or reused. DurinDoor switched the connection off so it stops failing every request.
+
+Fix: sign in again on that connection. Successful traffic on other accounts does not clear it. [OpenAI Codex](./providers/codex.mdx#refresh-and-reauth).
+
+## Kiro says profileArn is required
+
+Cause: the connection has no profile ARN. Common with Identity Center logins outside us-east-1, accounts without Amazon Q Developer Pro, and token imports on macOS, where DurinDoor has no path to the Kiro IDE's profile file.
+
+Fix: reconnect with Builder ID or Identity Center, which fetch the ARN during login. [Kiro](./providers/kiro.mdx#errors).
+
 ## Problems after an upgrade
 
 Cause: `DATA_DIR` was not backed up, `API_KEY_SECRET` or `JWT_SECRET` changed, or a schema migration already ran on a newer build.

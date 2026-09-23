@@ -11,7 +11,7 @@ import DataTable from "@/shared/ui/components/DataTable.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import { cn } from "@/shared/utils/cn";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
-import { isString } from "../../../../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const REQUEST_DETAIL_ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100, "all"];
 const REQUEST_DETAIL_MAX_PAGE_SIZE = 100;
@@ -124,6 +124,60 @@ function getCacheReadTokens(tokens) {
   return tokens?.cache_read_input_tokens || tokens?.cached_tokens || tokens?.prompt_tokens_details?.cached_tokens || 0;
 }
 
+/**
+ * Gateway-measured tok/s excluding TTFT (port of OmniRoute #12631), derived
+ * from the same output token count and latency columns already recorded on
+ * every request row — no schema change needed.
+ */
+function getTokensPerSecond(row) {
+  const outputTokens = row.tokens?.completion_tokens || 0;
+  const generationMs = (row.latency?.total || 0) - (row.latency?.ttft || 0);
+  if (outputTokens <= 0 || generationMs <= 0) return null;
+  return outputTokens / (generationMs / 1000);
+}
+
+/** Percentage of input tokens served from cache, clamped to [0, 100]. Port of OmniRoute #11970. */
+function formatCachePercentage(tokensIn, cacheRead) {
+  if (!tokensIn || tokensIn <= 0) return 0;
+  if (!cacheRead || cacheRead <= 0) return 0;
+  return Math.min(100, Math.round((cacheRead / tokensIn) * 100));
+}
+
+/**
+ * Collapsible JSON tree using native <details>/<summary> (port of OmniRoute
+ * #11703, adapted to avoid the react18-json-view dependency the fork doesn't
+ * carry). Payloads reaching this component are already server-redacted
+ * metadata, so rendering the whole row is safe.
+ */
+function JsonTreeNode({ name, data, depth = 0 }) {
+  if (data === null || !isObject(data)) {
+    return (
+      <div className="flex gap-2 py-0.5 pl-3 text-[12px] font-mono" style={{ marginLeft: depth * 12 }}>
+        <span className="text-dd-muted">{name}:</span>
+        <span className="break-all text-dd-text">{JSON.stringify(data)}</span>
+      </div>
+    );
+  }
+  const entries = Array.isArray(data) ? data.map((value, index) => [index, value]) : Object.entries(data);
+  if (entries.length === 0) {
+    return (
+      <div className="py-0.5 pl-3 text-[12px] font-mono text-dd-muted" style={{ marginLeft: depth * 12 }}>
+        {name}: {Array.isArray(data) ? "[]" : "{}"}
+      </div>
+    );
+  }
+  return (
+    <details className="pl-3" style={{ marginLeft: depth * 12 }}>
+      <summary className="cursor-pointer py-0.5 text-[12px] font-mono text-dd-text">
+        {name} <span className="text-dd-muted">{Array.isArray(data) ? `[${entries.length}]` : `{${entries.length}}`}</span>
+      </summary>
+      {entries.map(([key, value]) => (
+        <JsonTreeNode key={key} name={String(key)} data={value} depth={depth + 1} />
+      ))}
+    </details>
+  );
+}
+
 export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
   const [details, setDetails] = useState([]);
   const [pagination, setPagination] = useState({
@@ -136,6 +190,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
   const [fetchError, setFetchError] = useState(null);
   const [selectedDetail, setSelectedDetail] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [copiedAll, setCopiedAll] = useState(false);
   const [providers, setProviders] = useState([]);
   const [providerNameCache, setProviderNameCache] = useState(null);
   const [observabilityEnabled, setObservabilityEnabled] = useState(null);
@@ -234,6 +289,19 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
     setIsDrawerOpen(true);
   };
 
+  // Copy the whole (already-redacted) detail row as one block instead of
+  // making the user copy each field. Port of OmniRoute #11083.
+  const handleCopyAll = async () => {
+    if (!selectedDetail) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(selectedDetail, null, 2));
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy request detail:", error);
+    }
+  };
+
   const handlePageChange = (newPage) => {
     setPagination((prev) => ({ ...prev, page: newPage }));
   };
@@ -261,14 +329,22 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
     { key: "provider", label: "Provider", render: (row) => <span className="font-medium text-dd-text">{getProviderName(row.provider, providerNameCache)}</span> },
     { key: "inputTokens", label: "Input", align: "right", mono: true, render: (row) => getInputTokens(row.tokens).toLocaleString() },
     { key: "cached", label: "Cached", align: "right", mono: true, render: (row) => (getCachedTokens(row.tokens) > 0 ? getCachedTokens(row.tokens).toLocaleString() : "—") },
+    { key: "cacheHitPct", label: "Cache hit", align: "right", mono: true, render: (row) => {
+      const pct = formatCachePercentage(getInputTokens(row.tokens), getCachedTokens(row.tokens));
+      return pct > 0 ? `${pct}%` : "—";
+    } },
     { key: "cacheCreation", label: "Cache creation", align: "right", mono: true, render: (row) => (getCacheCreationTokens(row.tokens) > 0 ? getCacheCreationTokens(row.tokens).toLocaleString() : "—") },
     { key: "outputTokens", label: "Output", align: "right", mono: true, render: (row) => (row.tokens?.completion_tokens?.toLocaleString() || 0) },
-    { key: "latency", label: "Latency", render: (row) => (
-      <div className="flex flex-col gap-0.5 text-[12px] text-dd-muted">
-        <span>TTFT: <span className="font-mono text-dd-text">{row.latency?.ttft || 0}ms</span></span>
-        <span>Total: <span className="font-mono text-dd-text">{row.latency?.total || 0}ms</span></span>
-      </div>
-    ) },
+    { key: "latency", label: "Latency", render: (row) => {
+      const tps = getTokensPerSecond(row);
+      return (
+        <div className="flex flex-col gap-0.5 text-[12px] text-dd-muted">
+          <span>TTFT: <span className="font-mono text-dd-text">{row.latency?.ttft || 0}ms</span></span>
+          <span>Total: <span className="font-mono text-dd-text">{row.latency?.total || 0}ms</span></span>
+          {tps != null ? <span>Tok/s: <span className="font-mono text-dd-text">{tps.toFixed(1)}</span></span> : null}
+        </div>
+      );
+    } },
     { key: "action", label: "Action", align: "center", render: (row) => (
       <Button variant="secondary" size="sm" onClick={() => handleViewDetail(row)}>Detail</Button>
     ) },
@@ -340,6 +416,11 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
       >
         {selectedDetail ? (
           <div className="flex flex-col gap-4">
+            <div className="flex justify-end">
+              <Button variant="secondary" size="sm" icon={copiedAll ? "check" : "content_copy"} onClick={handleCopyAll}>
+                {copiedAll ? "Copied" : "Copy all"}
+              </Button>
+            </div>
             <CollapsibleSection title="Summary" defaultOpen={true} icon="info">
               <div className="grid min-w-0 grid-cols-1 gap-3 text-[13px] sm:grid-cols-2">
                 <div className="flex flex-col gap-1">
@@ -364,7 +445,10 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-dd-muted">Latency</span>
-                  <span className="font-mono text-dd-text">TTFT {selectedDetail.latency?.ttft || 0}ms / Total {selectedDetail.latency?.total || 0}ms</span>
+                  <span className="font-mono text-dd-text">
+                    TTFT {selectedDetail.latency?.ttft || 0}ms / Total {selectedDetail.latency?.total || 0}ms
+                    {getTokensPerSecond(selectedDetail) != null ? ` / ${getTokensPerSecond(selectedDetail).toFixed(1)} tok/s` : ""}
+                  </span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-dd-muted">Input tokens</span>
@@ -419,6 +503,10 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 )}
               </div>
             ) : null}
+
+            <CollapsibleSection title="Raw detail (JSON tree)" defaultOpen={false} icon="data_object">
+              <JsonTreeNode name="detail" data={selectedDetail} />
+            </CollapsibleSection>
 
             <PayloadMetadata detail={selectedDetail} />
           </div>

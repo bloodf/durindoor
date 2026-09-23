@@ -48,12 +48,30 @@ describe("Qoder stream-start billing fallback", () => {
     JSON.stringify({ code: "112", message: "quota exhausted" }),
     JSON.stringify({ code: "10605", message: "queue throttled" }),
     JSON.stringify({ pricingUrl: "https://qoder.sh/pricing" }),
+    JSON.stringify({ code: "110", message: "billing daily count exceeded" }),
+    JSON.stringify({ code: 110, message: "billing daily count exceeded" }),
   ])("returns 403 before committing a billing-blocked stream: %s", async (body) => {
     const wrapped = await wrapQoderSSE(responseFromChunks([envelope(403, body)]), "qoder/auto");
 
     expect(wrapped.status).toBe(403);
     expect(wrapped.headers.get("content-type")).toContain("application/json");
     await expect(wrapped.json()).resolves.toEqual({ error: { message: body, code: 403 } });
+  });
+
+  it("detects a code-110 billing block when statusCodeValue is a numeric string", async () => {
+    const body = JSON.stringify({ code: "110", message: "billing daily count exceeded" });
+    const frame = `data: ${JSON.stringify({ statusCodeValue: "403", body })}\n\n`;
+    const wrapped = await wrapQoderSSE(responseFromChunks([frame]), "qoder/auto");
+
+    expect(wrapped.status).toBe(403);
+    await expect(wrapped.json()).resolves.toEqual({ error: { message: body, code: 403 } });
+  });
+
+  it("detects a billing block when the envelope body is a JSON object, not a string", async () => {
+    const frame = `data: ${JSON.stringify({ statusCodeValue: 403, body: { code: "110", message: "billing daily count exceeded" } })}\n\n`;
+    const wrapped = await wrapQoderSSE(responseFromChunks([frame]), "qoder/auto");
+
+    expect(wrapped.status).toBe(403);
   });
 
   it("detects billing frame after same-chunk SSE preamble", async () => {
@@ -104,6 +122,12 @@ describe("Qoder billing prefix boundaries", () => {
     expect(isBillingBlock(JSON.stringify({ code: "112" }))).toBe(true);
     expect(isBillingBlock(JSON.stringify({ pricingUrl: "https://qoder.sh/pricing" }))).toBe(true);
     expect(isBillingBlock(JSON.stringify({ message: 'ordinary text {"code":"112"}', nested: { pricingUrl: "x" } }))).toBe(false);
+  });
+
+  it("matches code 110 (billing daily count exceeded) as numeric or string", () => {
+    expect(isBillingBlock(JSON.stringify({ code: "110" }))).toBe(true);
+    expect(isBillingBlock(JSON.stringify({ code: 110 }))).toBe(true);
+    expect(isBillingBlock(JSON.stringify({ message: "docs mention error 110 in passing" }))).toBe(false);
   });
 
   it("detects a billing envelope split across chunks", async () => {

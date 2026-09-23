@@ -10,6 +10,7 @@ import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-t
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
+import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials } from
@@ -107,6 +108,14 @@ export const OAUTH_TEST_CONFIG = {
     // 403 for our flow (users re-login when expired). No checkExpiry —
     // we want the actual URL probe to run so revoked tokens surface.
     url: "https://openapi.qoder.sh/api/v1/userinfo",
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    refreshable: false
+  },
+  "qoder-cn": {
+    // Same shape as intl qoder, CN host.
+    url: "https://openapi.qoder.com.cn/api/v1/userinfo",
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
@@ -972,13 +981,11 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }
 
       case "perplexity-web":{
-          let sessionToken = connection.apiKey;
-          if (sessionToken.startsWith("__Secure-next-auth.session-token=")) sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
           const res = await fetchWithConnectionProxy("https://www.perplexity.ai/api/auth/session", {
             method: "GET",
             headers: {
               "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-              Cookie: `__Secure-next-auth.session-token=${sessionToken}`
+              Cookie: buildNextAuthSessionCookie(connection.apiKey)
             }
           }, effectiveProxy);
           if (!res.ok) return { valid: false, error: "Invalid session cookie" };
@@ -1118,12 +1125,16 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
         }
-      case "qoder":{
+      case "qoder":
+      case "qoder-cn":{
           // A successful PAT-to-job-token exchange proves the personal token.
+          const exchangeUrl = connection.provider === "qoder-cn" ?
+          "https://openapi.qoder.com.cn/api/v1/jobToken/exchange" :
+          "https://openapi.qoder.sh/api/v1/jobToken/exchange";
           const raw = connection.apiKey || "";
           const pat = raw.startsWith("pt-") ? raw : `pt-${raw}`;
           const res = await fetchWithConnectionProxy(
-            "https://openapi.qoder.sh/api/v1/jobToken/exchange",
+            exchangeUrl,
             {
               method: "POST",
               headers: {

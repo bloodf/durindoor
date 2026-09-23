@@ -9,6 +9,7 @@ import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, Z
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
+import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
@@ -807,10 +808,7 @@ export async function POST(request) {
           }
 
         case "perplexity-web":{
-            let sessionToken = apiKey;
-            if (sessionToken.startsWith("__Secure-next-auth.session-token=")) {
-              sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
-            }
+            const sessionCookie = buildNextAuthSessionCookie(apiKey);
             const tz = !isUndefined(Intl) ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
             const res = await fetchValidationProbe("https://www.perplexity.ai/rest/sse/perplexity_ask", {
               method: "POST",
@@ -822,7 +820,7 @@ export async function POST(request) {
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
                 "X-App-ApiClient": "default",
                 "X-App-ApiVersion": "2.18",
-                Cookie: `__Secure-next-auth.session-token=${sessionToken}`
+                Cookie: sessionCookie
               },
               body: JSON.stringify({
                 query_str: "ping",

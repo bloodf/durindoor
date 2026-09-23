@@ -1,6 +1,7 @@
 // RFC 6238 TOTP (RFC 4226 HOTP with a time-derived counter) on node:crypto.
 // Hand-rolled to avoid a runtime dependency for ~60 lines of well-specified math.
 import crypto from "node:crypto";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
 export const TOTP_STEP_SEC = 30;      // RFC 6238 recommended time step
 export const TOTP_DIGITS = 6;
@@ -74,13 +75,6 @@ export function totpCounter(atMs = Date.now()) {
   return Math.floor(atMs / 1000 / TOTP_STEP_SEC);
 }
 
-function timingSafeEqualStr(a, b) {
-  const bufA = Buffer.from(a, "utf8");
-  const bufB = Buffer.from(b, "utf8");
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
-
 /**
  * Verify a submitted code against +/- skew time steps.
  * Returns false (never throws) on malformed input so callers can treat it as a
@@ -98,7 +92,7 @@ export function verifyTotpCode(secret, token, { skew = TOTP_SKEW_STEPS, atMs = D
     } catch {
       return false;
     }
-    if (timingSafeEqualStr(expected, code)) return true;
+    if (timingSafeCompare(expected, code)) return true;
   }
   return false;
 }

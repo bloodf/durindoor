@@ -9,6 +9,7 @@ import { isOidcConfigured } from "@/lib/auth/oidc";
 import { hasExactRequestOrigin, hasTrustedLocalOrigin } from "@/lib/auth/requestOrigin";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
 const RESET_HINT = "Forgot password? Reset to default via DurinDoor CLI → Settings → Reset Password to Default.";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
@@ -56,7 +57,7 @@ export async function POST(request) {
     } else {
       // Use env var or default
       const initialPassword = process.env.INITIAL_PASSWORD || "123456";
-      isValid = password === initialPassword;
+      isValid = timingSafeCompare(password, initialPassword);
     }
 
     if (isValid) {

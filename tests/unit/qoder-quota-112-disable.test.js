@@ -106,6 +106,29 @@ describe("Qoder quota exhaustion persistence", () => {
     expect(Object.keys(update).some((key) => key.startsWith("modelLock_"))).toBe(false);
   });
 
+  it("permanently disables a genuine structured Qoder CN code 112 without a cooldown", async () => {
+    const result = await markAccountUnavailable(
+      "qoder-a",
+      403,
+      `[403]: ${QODER_QUOTA_BODY}`,
+      "qoder-cn",
+      MODEL,
+      null,
+      { errorBody: QODER_QUOTA_ERROR_BODY },
+    );
+
+    expect(result).toEqual({ shouldFallback: true, cooldownMs: 0 });
+    expect(dbMocks.updateProviderConnection).toHaveBeenCalledWith(
+      "qoder-a",
+      expect.objectContaining({
+        isActive: false,
+        backoffLevel: 0,
+        errorCode: 403,
+        lastError: expect.stringContaining('"code":"112"'),
+      }),
+    );
+  });
+
   it("recognizes a leading top-level Qoder code 112 when structured context is absent", async () => {
     const result = await markAccountUnavailable(
       "qoder-a",

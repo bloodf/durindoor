@@ -17,7 +17,8 @@ import { createHash } from "crypto";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { buildCosyHeaders } from "../shared/qoder/cosy.js";
 import {
-  QODER_MODEL_LIST_URL } from
+  qoderRegionOf,
+  qoderModelListUrl } from
 "../shared/qoder/constants.js";
 import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 
@@ -36,13 +37,14 @@ const catalogCache = new Map();
 const inflight = new Map();
 
 /**
- * Stable cache key per credential (so different login sessions for the same
- * account share an entry).
+ * Stable cache key per credential+region (so different login sessions for the
+ * same account share an entry, and the same account on both sites doesn't
+ * collide on one cached catalog).
  */
-function cacheKey(credentials) {
+function cacheKey(credentials, region) {
   const psd = credentials?.providerSpecificData || {};
   const seed = psd.userId || credentials?.refreshToken || credentials?.accessToken || "anonymous";
-  return createHash("sha256").update(`qoder:${seed}`).digest("hex");
+  return createHash("sha256").update(`qoder:${region}:${seed}`).digest("hex");
 }
 
 /**
@@ -65,14 +67,15 @@ function cosyCredsFromConnection(credentials) {
  *     rawConfigs: Map<modelKey, modelConfigObject> }
  * or `null` on any error.
  */
-async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
+async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null, region = "intl") {
   const creds = cosyCredsFromConnection(credentials);
   if (!creds.userId || !creds.authToken) return null;
+  const modelListUrl = qoderModelListUrl(region);
 
   const headers = {
     Accept: "application/json",
     "Accept-Encoding": "identity",
-    ...buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds)
+    ...buildCosyHeaders(Buffer.alloc(0), modelListUrl, creds)
   };
 
   const controller = new AbortController();
@@ -93,7 +96,7 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
       }
     }
     response = await proxyAwareFetch(
-      QODER_MODEL_LIST_URL,
+      modelListUrl,
       {
         method: "GET",
         headers,
@@ -194,7 +197,8 @@ export async function resolveQoderModels(credentials, options = {}) {
   const psd = credentials.providerSpecificData || {};
   if (!psd.userId) return null;
 
-  const key = cacheKey(credentials);
+  const region = options.region || qoderRegionOf(credentials?.provider);
+  const key = cacheKey(credentials, region);
   const now = Date.now();
   if (!options.forceRefresh) {
     const cached = catalogCache.get(key);
@@ -211,7 +215,7 @@ export async function resolveQoderModels(credentials, options = {}) {
   }
 
   const fetchPromise = (async () => {
-    const fetched = await fetchQoderCatalogRaw(credentials, options.signal, options.proxyOptions);
+    const fetched = await fetchQoderCatalogRaw(credentials, options.signal, options.proxyOptions, region);
     if (!fetched) return null;
     const entry = {
       expiresAt: Date.now() + CACHE_TTL_MS,
@@ -237,7 +241,7 @@ export async function resolveQoderModels(credentials, options = {}) {
 
 export function invalidateQoderCatalog(credentials) {
   if (!credentials) return;
-  catalogCache.delete(cacheKey(credentials));
+  catalogCache.delete(cacheKey(credentials, qoderRegionOf(credentials?.provider)));
 }
 
 export function clearQoderCatalog() {

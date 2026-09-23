@@ -113,6 +113,14 @@ JSON bodies. Embeddings need `model` and `input`. Rerank needs `model`, `query`,
 | POST, OPTIONS | `/v1/rerank` | JSON `model`, `query`, `documents` | no | Cohere/Jina/Voyage-style rerank models |
 | POST, OPTIONS | `/v1/moderations` | JSON `model`, `input` | no | moderation models |
 
+## System One (Jev) decision endpoint
+
+Native pass-through for Jev decision models, with no chat translation layer. Body needs `model`, `state` (the situation to evaluate), and `questions` (an object, not an array). The provider's JSON response (typed `answers`, `usage`) is forwarded unchanged.
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| POST, OPTIONS | `/v1/systemone` | JSON `model`, `state`, `questions` | no | `systemoneConfig` models (`opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, `openrouter/typesafe/jev-1.13`) |
+
 ## Web search and fetch
 
 Provider is the model. Send `provider` or `model`. Catalog ids look like `tavily/search` and `tavily/fetch`; the handler strips the suffix when the remainder is a real search or fetch provider. Bare ids and OmniRoute aliases (`tavily-search`, `exa-search`, `serper-search`, `google-pse-search`, `linkup-search`, `searchapi-search`, `youcom-search`, `searxng-search`, `ollama-search`, `perplexity-search`) also resolve.

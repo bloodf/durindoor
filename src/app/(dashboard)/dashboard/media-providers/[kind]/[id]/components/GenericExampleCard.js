@@ -43,8 +43,8 @@ export function GenericExampleCard({ providerId, kind }) {
 
   // Get models for this kind (e.g., type="image")
   const kindModels = getModelsByProviderId(providerId).filter((m) => getModelKind(m) === kind);
-  // Kinds that need a model identifier in the request (image/video/music)
-  const KIND_NEEDS_MODEL = new Set(["image", "video", "music", "imageToText"]);
+  // Kinds that need a model identifier in the request (image/video/music/systemone)
+  const KIND_NEEDS_MODEL = new Set(["image", "video", "music", "imageToText", "systemone"]);
   const needsModel = KIND_NEEDS_MODEL.has(kind);
   const allowManualModel = needsModel && kindModels.length === 0;
   const [selectedModel, setSelectedModel] = useState(kindModels[0]?.id ?? "");
@@ -53,6 +53,7 @@ export function GenericExampleCard({ providerId, kind }) {
   const supportsMask = !!selectedModelObj?.capabilities?.includes("mask");
 
   const [input, setInput] = useState(safeExConfig.defaultInput || "");
+  const [question, setQuestion] = useState("Does this request require urgent attention?");
   const [refImage, setRefImage] = useState("");
   const [maskImage, setMaskImage] = useState("");
   const [extraValues, setExtraValues] = useState(() =>
@@ -114,11 +115,20 @@ export function GenericExampleCard({ providerId, kind }) {
     acc[k] = v;
     return acc;
   }, {});
+  const systemoneQuestions = kind === "systemone" ? {
+    questions: {
+      is_urgent: {
+        type: "noul",
+        instructions: question.trim() || "Does this request require urgent attention?",
+      },
+    },
+  } : null;
   const requestBody = {
     model: modelFull,
     [exConfig.bodyKey]: input,
     ...exConfig.extraBody,
     ...extraBodyFromFields,
+    ...systemoneQuestions,
     ...(supportsEdit && effectiveRefImage ? { image: effectiveRefImage } : null),
     ...(supportsMask && effectiveMaskImage ? { mask_image: effectiveMaskImage } : null)
   };
@@ -267,6 +277,15 @@ export function GenericExampleCard({ providerId, kind }) {
             {input && <IconButton icon="close" label="Clear input" size="sm" onClick={() => setInput("")} className="absolute end-0 top-1/2 -translate-y-1/2" />}
           </div>
         </Row>
+
+        {kind === "systemone" && (
+          <Row label="Question">
+            <div className="relative">
+              <Input aria-label="Question" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Enter evaluation question or criteria" className="pe-12" />
+              {question && <IconButton icon="close" label="Clear question" size="sm" onClick={() => setQuestion("")} className="absolute end-0 top-1/2 -translate-y-1/2" />}
+            </div>
+          </Row>
+        )}
 
         {supportsEdit && (
           <Row label="Ref Image (URL)">

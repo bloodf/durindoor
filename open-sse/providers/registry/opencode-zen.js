@@ -83,7 +83,18 @@ export default {
     { id: "minimax-m2.5-free", name: "MiniMax M2.5 Free", contextLength: 204800 },
     { id: "nemotron-3-super-free", name: "Nemotron 3 Super Free", contextLength: 1000000 },
     { id: "qwen3.6-plus-free", name: "Qwen3.6 Plus Free", targetFormat: "claude", contextLength: 200000 },
+    // System One (Jev) decision models on the native /systemone endpoint
+    { id: "jev-1.13", name: "Jev 1.13", kind: "systemone" },
+    { id: "jev-1.13-free", name: "Jev 1.13 Free", kind: "systemone" },
   ],
+  serviceKinds: ["llm", "systemone"],
+  systemoneConfig: {
+    baseUrl: "https://opencode.ai/zen/v1/systemone",
+    headers: {
+      "x-opencode-client": "desktop",
+      "User-Agent": "opencode/1.18.31",
+    },
+  },
   modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" },
   passthroughModels: true,
   features: {

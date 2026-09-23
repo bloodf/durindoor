@@ -76,6 +76,8 @@ Positive decimal integers only. A resolved maximum below the base resets the who
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN`, `ERROR`. | `src/sse/utils/logger.js` |
 | `LOG_USAGE_VERBOSE` | unset | `1` prints extra usage-tracking debug. | `open-sse/utils/usageTracking.js` |
 | `STRIP_REASONING_CONTENT` | unset | `1` / `true` / `on` / `yes` strips non-streaming `reasoning_content` when the message also has `content`. Header `x-9router-reasoning: off` does the same per request. | `open-sse/utils/reasoningVisibility.js` |
+| `DURINDOOR_REASONING_MIN_BUDGET` | unset (disabled) | Opt-in floor for thinking-model output budgets: a caller `max_tokens` in `[256, floor)` on a thinking-capable model is raised to the floor (clamped to the model's known output cap) so reasoning tokens cannot consume the whole budget. Unset = the existing buffer heuristic runs unchanged. | `open-sse/services/reasoningTokenBuffer.js` |
+| `X-DurinDoor-Effort: auto` (header, not env) | n/a | Adaptive thinking effort: when a request carries no reasoning field of any shape (`reasoning_effort`, `reasoning`, `thinking`), the gateway resolves `auto` to `low`/`medium`/`high` from deterministic request-shape signals scoped to the current turn (last-user-message length, context size, prior tool results, tool-loop depth). Scoped to requests dispatched in the OpenAI Chat Completions shape; a no-op elsewhere. | `open-sse/services/adaptiveEffort.js`, `open-sse/handlers/chatCore/adaptiveEffortWiring.js` |
 
 Treat request-log metadata as sensitive operational data. Keep opt-in diagnostics off unless needed.
 
@@ -102,13 +104,14 @@ Prefer dashboard proxy settings for day-to-day use. Use process-level vars for c
 
 ## Timeouts and stream bounds
 
-These are read through `process.env[name]` in `open-sse/config/runtimeConfig.js` unless noted. `envMs` keeps a positive integer; invalid values fall back to the default. `SSE_KEEPALIVE_MS` also accepts `0` to disable pings.
+These are read through `process.env[name]` in `open-sse/config/runtimeConfig.js` unless noted. `envMs` keeps a positive integer; invalid values fall back to the default. `SSE_KEEPALIVE_MS` and `STREAM_EARLY_EOF_PEEK_MS` also accept `0` to turn the feature off.
 
 | Variable | Default | Purpose | Read in |
 | --- | --- | --- | --- |
 | `SSE_KEEPALIVE_MS` | `10000` | Claude SSE ping interval during upstream silence. `0` disables. | `open-sse/config/runtimeConfig.js` |
 | `STREAM_STALL_TIMEOUT_MS` | `360000` | Inter-chunk stall timeout once tokens flow. | `open-sse/config/runtimeConfig.js` |
 | `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `200000` | Time-to-first-token timeout. | `open-sse/config/runtimeConfig.js` |
+| `STREAM_EARLY_EOF_PEEK_MS` | `10000` | How long a direct stream is held for its first content frame. A stream that ends or errors empty inside it retries once on a sibling connection. `0` disables. | `open-sse/config/runtimeConfig.js` |
 | `OLLAMA_LOCAL_CONNECT_TIMEOUT_MS` | `120000` | Connect timeout for Ollama Local. Raise it for slow 70B loads. | `open-sse/config/runtimeConfig.js` |
 | `COMBO_MODEL_TIMEOUT_MS` | `0` (off) | Per-member combo timeout. `0` uses fetch connect timeout. | `open-sse/config/runtimeConfig.js` |
 | `FETCH_CONNECT_TIMEOUT_MS` | `60000` | Abort if upstream headers never arrive. | `open-sse/config/runtimeConfig.js` |
@@ -156,6 +159,7 @@ Most OAuth providers use built-in client metadata. Set these only when you run y
 | `AGY_CLIENT_SECRET` | unset | Antigravity client secret for those helpers. | `src/app/api/providers/[id]/models/modelsConfig.js` |
 | `CLAUDE_CODE_CLIENT_VERSION` | `2.1.280` | Claude Code version sent in the Claude `User-Agent` and billing header. Ignored unless it is a short header-safe token (`[A-Za-z0-9][A-Za-z0-9._-]{0,31}`). Read at startup. | `open-sse/providers/shared.js` |
 | `KIMI_CODING_OAUTH_CLIENT_ID` | registry `clientId` | Kimi Coding device-code client id. | `src/lib/oauth/constants/oauth.js` |
+| `GHE_COPILOT_OAUTH_CLIENT_ID` | registry `clientId` | GitHub Enterprise Copilot device-code client id, for a GHES instance with its own OAuth app. | `open-sse/services/gheCopilotAuth.js` |
 | `GITLAB_BASE_URL` | `https://gitlab.com` | GitLab origin. | `open-sse/providers/registry/gitlab-duo.js` |
 | `GITLAB_DUO_BASE_URL` | `https://gitlab.com` | GitLab Duo origin (preferred over `GITLAB_BASE_URL`). | `open-sse/providers/registry/gitlab-duo.js` |
 | `GITLAB_OAUTH_CLIENT_ID` | registry | GitLab OAuth client id. | `open-sse/providers/registry/gitlab-duo.js` |
@@ -193,6 +197,27 @@ The intercept helper is optional and local. Several of these are set by the mana
 | `MITM_INSTANCE_NONCE` | set by the manager | Launch-gate nonce. | `src/mitm/launchGate.js` |
 | `MITM_LAUNCH_GATE_FILE` | set by the manager | Launch-gate file path. | `src/mitm/launchGate.js` |
 | `MITM_MANAGER_PID` | set by the manager | Parent pid for the launch gate. | `src/mitm/launchGate.js` |
+
+## ChatGPT Web
+
+See [ChatGPT Web](../providers/chatgpt-web.mdx) for the transports these tune.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `DURINDOOR_BROWSER_POOL` | on | `off`, `0` or `false` disables the shared browser pool; ChatGPT Web `auto` then uses HTTP. | `open-sse/services/browserPool.js` |
+| `DURINDOOR_BROWSER_AUTO_INSTALL` | off | `1` runs `playwright install chromium` the first time no browser is found. | `open-sse/services/browserPool.js` |
+| `DURINDOOR_CHATGPT_WEB_HEADLESS` | off | `1` runs the ChatGPT Web browser headless instead of headed off-screen. | `open-sse/utils/chatgptWebExecutorAdapter.js` |
+| `CHATGPT_WEB_CHROME_PATH` | unset (`CHROME_PATH`, then standard install paths) | Chrome or Chromium binary for the browser transport. The Docker image sets `/usr/bin/chromium-browser`. | `open-sse/utils/chatgptWebExecutorAdapter.js` |
+| `OBSCURA_BIN`, `OBSCURA_CDP_ENDPOINT`, `OBSCURA_PORT` | unset | Optional Obscura engine for headless pool contexts. | `open-sse/services/obscura.js` |
+| `DURINDOOR_CHATGPT_TLS_TIMEOUT_MS` | `60000` | HTTP transport request timeout. | `open-sse/services/chatgptTlsClient.js` |
+| `DURINDOOR_CHATGPT_TLS_GRACE_MS` | `10000` | Grace period before a hung tls-client call is abandoned. | `open-sse/services/chatgptTlsClient.js` |
+| `DURINDOOR_CHATGPT_STREAM_FIRST_BYTE_TIMEOUT_MS` | `30000` | HTTP transport wait for the first streamed byte. | `open-sse/services/chatgptTlsClient.js` |
+| `DURINDOOR_CGPT_WEB_PRO_TIMEOUT_MS` | `1200000` | How long the HTTP transport polls for a Pro answer. | `open-sse/executors/chatgpt-web-http.js` |
+| `DURINDOOR_CGPT_WEB_PRO_POLL_INTERVAL_MS` | `4000` | Pro answer poll interval. | `open-sse/executors/chatgpt-web-http.js` |
+| `DURINDOOR_CGPT_WEB_IMAGE_TIMEOUT_MS` | `180000` | Wait for an asynchronous generated image. | `open-sse/executors/chatgpt-web-http.js` |
+| `DURINDOOR_CGPT_WEB_IMAGE_CACHE_MAX_MB` | `10` | In-memory cache for generated images served at `/v1/chatgpt-web/image/<id>`. | `open-sse/services/chatgptImageCache.js` |
+| `DURINDOOR_PUBLIC_BASE_URL` | unset (then `BASE_URL`, `NEXT_PUBLIC_BASE_URL`, request headers, `localhost:$PORT`) | Public origin used in generated image links. | `open-sse/executors/chatgpt-web-http.js` |
+| `DURINDOOR_XVFB` | on in Docker | `0` stops the image entrypoint from starting Xvfb. | `Dockerfile` |
 
 ## Provider debug, sidecars, Azure
 

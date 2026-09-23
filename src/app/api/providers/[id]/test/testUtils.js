@@ -10,6 +10,7 @@ import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-t
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
+import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials } from
@@ -31,6 +32,7 @@ import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
+import { normalizeGheUrl } from "open-sse/config/gheCopilot.js";
 
 // OAuth provider test endpoints
 import { isString } from "../../../../../shared/utils/typeChecks.js";
@@ -93,6 +95,18 @@ export const OAUTH_TEST_CONFIG = {
     authPrefix: "Bearer ",
     extraHeaders: { "User-Agent": "9Router", "Accept": "application/vnd.github+json" }
   },
+  "ghe-copilot": {
+    // Probe the enterprise user API on the connection's own GHE host.
+    buildUrl: (_token, connection) => {
+      const gheUrl = normalizeGheUrl(connection.providerSpecificData?.gheUrl);
+      if (!gheUrl) throw new Error("GitHub Enterprise URL missing; reconnect this account");
+      return `${gheUrl}/api/v3/user`;
+    },
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    extraHeaders: { "User-Agent": "DurinDoor", "Accept": "application/vnd.github+json" }
+  },
   iflow: {
     // iFlow getUserInfo requires accessToken as query param, not header
     buildUrl: (token) => `https://iflow.cn/api/oauth/getUserInfo?accessToken=${encodeURIComponent(token)}`,
@@ -101,12 +115,24 @@ export const OAUTH_TEST_CONFIG = {
   },
   qwen: { checkExpiry: true, refreshable: true },
   kiro: { checkExpiry: true, refreshable: true },
+  "amazon-q": { checkExpiry: true, refreshable: true },
+  // A minted Muse key has no expiry; presence is the check, and a dca-only
+  // login is reminted on first use.
+  "muse-code": { tokenExists: true },
   qoder: {
     // Test by hitting Qoder's userinfo endpoint with the device token.
     // refreshable: false because the device-flow refresh endpoint returns
     // 403 for our flow (users re-login when expired). No checkExpiry —
     // we want the actual URL probe to run so revoked tokens surface.
     url: "https://openapi.qoder.sh/api/v1/userinfo",
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    refreshable: false
+  },
+  "qoder-cn": {
+    // Same shape as intl qoder, CN host.
+    url: "https://openapi.qoder.com.cn/api/v1/userinfo",
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
@@ -252,7 +278,7 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
     }
 
-    if (provider === "kiro") {
+    if (provider === "kiro" || provider === "amazon-q") {
       const psd = connection.providerSpecificData || {};
       const clientId = psd.clientId || connection.clientId;
       const clientSecret = psd.clientSecret || connection.clientSecret;
@@ -972,13 +998,11 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }
 
       case "perplexity-web":{
-          let sessionToken = connection.apiKey;
-          if (sessionToken.startsWith("__Secure-next-auth.session-token=")) sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
           const res = await fetchWithConnectionProxy("https://www.perplexity.ai/api/auth/session", {
             method: "GET",
             headers: {
               "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-              Cookie: `__Secure-next-auth.session-token=${sessionToken}`
+              Cookie: buildNextAuthSessionCookie(connection.apiKey)
             }
           }, effectiveProxy);
           if (!res.ok) return { valid: false, error: "Invalid session cookie" };
@@ -1118,12 +1142,16 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const valid = res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
         }
-      case "qoder":{
+      case "qoder":
+      case "qoder-cn":{
           // A successful PAT-to-job-token exchange proves the personal token.
+          const exchangeUrl = connection.provider === "qoder-cn" ?
+          "https://openapi.qoder.com.cn/api/v1/jobToken/exchange" :
+          "https://openapi.qoder.sh/api/v1/jobToken/exchange";
           const raw = connection.apiKey || "";
           const pat = raw.startsWith("pt-") ? raw : `pt-${raw}`;
           const res = await fetchWithConnectionProxy(
-            "https://openapi.qoder.sh/api/v1/jobToken/exchange",
+            exchangeUrl,
             {
               method: "POST",
               headers: {

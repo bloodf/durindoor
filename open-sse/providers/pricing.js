@@ -3,7 +3,7 @@ import {
   isFreeModel,
   providerHasFreeModels } from
 "../config/freeModelCatalog.js";
-import { stripKiroSyntheticSuffixes } from "./models/kiroVariants.js";
+import { isKiroFamilyProvider, stripKiroSyntheticSuffixes } from "./models/kiroVariants.js";
 import { normalizeModelId } from "./models/schema.js";
 
 // Pricing rates for AI models — all rates in $/1M tokens
@@ -212,6 +212,11 @@ export const MODEL_PRICING = {
   "gpt-5.4-pro": { input: 30.00, output: 180.00, cached: 30.00, reasoning: 180.00, cache_creation: 30.00 },
   "gpt-5.5": { input: 5.00, output: 30.00, cached: 0.50, reasoning: 30.00, cache_creation: 5.00 },
   "gpt-5.5-pro": { input: 30.00, output: 180.00, cached: 30.00, reasoning: 180.00, cache_creation: 30.00 },
+  // GPT-6 Sol/Luna Codex OAuth pricing — same rate card as the OpenAI API list
+  // price. https://developers.openai.com/api/docs/models/gpt-6-sol
+  // https://developers.openai.com/api/docs/models/gpt-6-luna
+  "gpt-6-sol": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.50 },
+  "gpt-6-luna": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50, cache_creation: 0.125 },
   // Fork-specific exact GPT-5.6 and synthetic tiers retain subscription prices.
   "gpt-5.6": { input: 2.50, output: 15.00, cached: 0.25, reasoning: 15.00, cache_creation: 2.50 },
   "gpt-5.6-luna": { input: 1.00, output: 1.25, cached: 0.10, reasoning: 1.25, cache_creation: 1.00 },
@@ -521,7 +526,7 @@ export function getPricingForModel(provider, model) {
   // Normalize digit-dash-digit ids (gpt-5-6-sol) to the dotted catalog form
   // and retry the canonical lookup on the de-suffixed id before the glob
   // fallback so Sol variants don't fall through to the generic gpt-5.6-* Terra rate.
-  if (provider === "kiro" || provider === "kr") {
+  if (isKiroFamilyProvider(provider)) {
     const suffixStripped = stripKiroSyntheticSuffixes(baseModel);
     const normalized = normalizeModelId(suffixStripped);
     if (MODEL_PRICING[normalized]) return MODEL_PRICING[normalized];

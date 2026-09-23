@@ -61,6 +61,7 @@ const KNOWN_SVGS = new Set([
 "llm7",
 "minimax",
 "mistral",
+"modelscope",
 "nebius",
 "nube",
 "nvidia",

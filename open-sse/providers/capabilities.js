@@ -25,7 +25,8 @@
 import { matchPattern } from "./pricing.js";
 import {
   KIRO_GPT_5_6_FAMILY,
-  buildKiroGpt56Variants } from
+  buildKiroGpt56Variants,
+  isKiroFamilyProvider } from
 "./models/kiroVariants.js";
 import { normalizeModelId } from "./models/schema.js";
 import REGISTRY from "./registry/index.js";
@@ -92,7 +93,7 @@ function hasUnpublishedOutput(provider, model) {
   if (provider === "xai" && id.includes("grok") ||
   ["grok-cli", "gb", "opencode-zen", "ocz"].includes(provider) &&
   (id.includes("grok-build") || id.includes("grok-composer") || id.startsWith("grok-4"))) return true;
-  if ((provider === "qoder" || provider === "qd") && id === "kmodel") return true;
+  if (["qoder", "qd", "qoder-cn", "qdc"].includes(provider) && id === "kmodel") return true;
   if ((provider === "cloudflare-ai" || provider === "cf") && id.startsWith("@cf/")) return true;
   if (provider === "ollama-local" && id === "llama3.2:1b") return true;
   return provider === "nvidia" && id === "moonshotai/kimi-k2.6";
@@ -234,6 +235,8 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
 // are API-only; Codex has a separate exact catalog row below.
 const DIRECT_GPT_5_5_6_CAPS = {
   "gpt-6-astra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxInput: 922000, maxOutput: 128000 },
+  "gpt-6-sol": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-6-luna": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.4": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.5": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
   "gpt-5.6": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
@@ -375,6 +378,10 @@ export const PROVIDER_CAPABILITIES = {
   xmtp: XIAOMI_TOKENPLAN_CAPABILITIES,
   qoder: QODER_CAPABILITIES,
   qd: QODER_CAPABILITIES,
+  // Qoder CN serves the identical model catalog from the CN gateway, so it
+  // shares the intl Qoder capability table verbatim.
+  "qoder-cn": QODER_CAPABILITIES,
+  qdc: QODER_CAPABILITIES,
   // Ollama's trained 131,072-token window is not its served window. The local
   // daemon's /api/ps reports 4,096 for llama3.2:1b; /api/tags exposes no num_ctx.
   "ollama-local": {
@@ -421,6 +428,8 @@ export const PROVIDER_CAPABILITIES = {
   // callers pass either.
   kiro: KIRO_GPT_5_6_PROVIDER_CAPS,
   kr: KIRO_GPT_5_6_PROVIDER_CAPS,
+  "amazon-q": KIRO_GPT_5_6_PROVIDER_CAPS,
+  aq: KIRO_GPT_5_6_PROVIDER_CAPS,
   // Devin cloud-agent (OmniRoute #6894): single placeholder model, not chat-capable.
   devin: { devin: { tools: false } },
   // ClinePass proxies through Vercel's OpenAI Chat Completions API, which only
@@ -1166,7 +1175,7 @@ export function getCapabilitiesForModel(provider, model) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     if (providerCaps?.[normalizedModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedModel] });
     if (providerCaps?.[capabilityBaseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[capabilityBaseModel] });
-    if (provider === "kiro" || provider === "kr") {
+    if (isKiroFamilyProvider(provider)) {
       const normalized = normalizeModelId(normalizedModel);
       const normalizedBase = normalizeModelId(baseModel);
       if (providerCaps?.[normalized]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalized] });
@@ -1275,7 +1284,7 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
 
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
-    const ids = provider === "kiro" || provider === "kr" ?
+    const ids = isKiroFamilyProvider(provider) ?
     [model, baseModel, capabilityBaseModel, normalizeModelId(model), normalizeModelId(baseModel)] :
     [model, baseModel, capabilityBaseModel];
     for (const id of ids) {

@@ -109,7 +109,14 @@ export async function handleImageGenerationCore({
     requestBody = await adapter.buildBody(model, body);
     headers = adapter.buildHeaders(credentials, requestBody, model, body);
   } catch (error) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message || `Invalid ${provider} image request`);
+    // An adapter may tag a pre-dispatch rejection with an explicit HTTP status
+    // (e.g. 403 for a plan entitlement it already knows will fail upstream) so
+    // combo fallback sees the real retryable status instead of a flat 400.
+    const tagged = Number(error?.status);
+    const status = Number.isInteger(tagged) && tagged >= 400 && tagged <= 599 ?
+    tagged :
+    HTTP_STATUS.BAD_REQUEST;
+    return createErrorResult(status, error.message || `Invalid ${provider} image request`);
   }
 
   log?.debug?.("IMAGE", `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..."`);

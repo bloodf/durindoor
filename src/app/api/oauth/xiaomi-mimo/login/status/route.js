@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionFromRequest, readSessionIdentity, attachSessionCookie, SESSION_COOKIE } from "@/lib/mimoLoginSession";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
 /**
  * GET /api/oauth/xiaomi-mimo/login/status?state=...
@@ -12,7 +13,7 @@ export async function GET(request) {
   const url = new URL(request.url);
   const state = url.searchParams.get("state") || "";
   const sess = sessionFromRequest(request);
-  if (!sess || (state && sess.state !== state)) {
+  if (!sess || (state && !timingSafeCompare(sess.state, state))) {
     return NextResponse.json({ status: "expired" }, { status: 404 });
   }
 

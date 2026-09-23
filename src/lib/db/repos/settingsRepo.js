@@ -18,6 +18,13 @@ const DEFAULT_SETTINGS = {
   cloudEnabled: false,
   hidePaidModels: false,
   exposeComboOnly: false,
+  /**
+   * OmniRoute #11481 (port(omniroute)): operator glob allow/deny list for
+   * /v1/models exposure, mirrored into auto/* combo candidate pools.
+   * Default off (empty arrays); see src/shared/utils/modelExposureList.js.
+   */
+  modelVisibilityAllowlist: [],
+  modelVisibilityDenylist: [],
   tunnelEnabled: false,
   tunnelUrl: "",
   tunnelProvider: "cloudflare",
@@ -31,6 +38,19 @@ const DEFAULT_SETTINGS = {
   retryDelayByProvider: {},
   /** Per-provider per-account RPM overrides (decolua/9router#3203); zero means unlimited. */
   rpmByProvider: {},
+  /**
+   * Operator-declared per-provider error rules (OmniRoute #11104), consulted
+   * before the built-in providerRuleRegistry (open-sse/config/providerErrorRules.js).
+   * Keyed by lowercase provider id: [{ status, match, scope, reason?, cooldownMs? }].
+   */
+  providerErrorRules: {},
+  /**
+   * OmniRoute #10920: providers whose upstream quota is bucketed by egress
+   * IP rather than by account. A 429 on one connection cools every sibling
+   * connection assigned to the same proxy pool (src/sse/services/auth.js
+   * applyEgressBucketCooldown). Empty by default -- opt-in per provider id.
+   */
+  egressBucketedProviders: [],
   providerStrategies: {},
   quotaVisibility: {},
   comboStrategy: "fallback",

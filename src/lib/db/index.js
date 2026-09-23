@@ -355,7 +355,7 @@ export {
   saveRequestUsage, getUsageHistory, getUsageStats, getChartData,
   appendRequestLog, getRecentLogs,
   recordTokenSaverEvent, getTokenSaverStats,
-  resetUsageHistory } from
+  resetUsageHistory, getApiKeyWindowUsageTotals } from
 "./repos/usageRepo.js";
 
 // Request details

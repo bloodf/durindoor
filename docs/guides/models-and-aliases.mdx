@@ -59,3 +59,9 @@ If the request carries an `anthropic-version` header, the same catalog is wrappe
 Context windows and max output for a listed id are documented in [Model limits](../reference/model-limits.mdx).
 
 Disabled model ids are omitted. When hide-paid is on, paid provider models drop out of the list, and a combo with no remaining visible members is omitted too. Compatible nodes are allowlist-only on this public catalog. Dashboard import discovery stays on `/api/providers/[id]/models`.
+
+### Model exposure allow/deny list
+
+The Profile page's "Model catalog" card has an optional model exposure list: two newline-separated fields, allow and deny. An entry is an exact id (`provider/model` or a bare `model`) or a glob using `*` / `?`. Both lists are empty by default, which exposes everything (opt-in, no behavior change until set). The deny list is checked first, so a denied entry always drops even when an allow entry also matches. When the allow list is non-empty, only entries it matches stay visible.
+
+This list filters `GET /v1/models` and is mirrored into `auto/*` combo candidate pools (`getComboModels` in `src/sse/services/model.js`), so a denied model cannot stay reachable through an auto combo after being hidden from the catalog. Named combos are exempt: the list matches provider/model pairs, not saved combo names. Sending a denied model id directly (not through `auto/*`) is still dispatched; only catalog advertisement and auto-combo candidate membership are filtered.

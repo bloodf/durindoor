@@ -144,3 +144,56 @@ export function buildNextAuthSessionCookie(rawValue) {
     : [`${NEXT_AUTH_SESSION_COOKIE}=${single}`];
   return [...session, ...others].join("; ");
 }
+
+/**
+ * Merge rotated session-token cookies from a Set-Cookie response into the
+ * stored cookie blob. Every other stored cookie (cf_clearance, __cf_bm, ...)
+ * is kept, since Cloudflare needs them on later requests.
+ *
+ * Rotation can change the shape (unchunked to chunked or back), so every old
+ * `__Secure-next-auth.session-token[.N]` entry is dropped before the refreshed
+ * set is appended; keeping a stale variant beside the new one could make the
+ * server read the old value.
+ *
+ * Returns the new blob, or null when nothing rotated.
+ * @param {string} originalCookie
+ * @param {string|null|undefined} setCookieHeader
+ * @returns {string|null}
+ */
+export function mergeRefreshedCookie(originalCookie, setCookieHeader) {
+  if (!setCookieHeader) return null;
+  const matches = Array.from(
+    setCookieHeader.matchAll(/(__Secure-next-auth\.session-token(?:\.\d+)?)=([^;,\s]+)/g)
+  );
+  if (matches.length === 0) return null;
+
+  const refreshed = new Map(matches.map((m) => [m[1], m[2]]));
+  const blob = stripCookieInputPrefix(originalCookie);
+
+  // A bare stored value was the session-token contents on their own.
+  if (!blob.includes("=")) {
+    return Array.from(refreshed, ([k, v]) => `${k}=${v}`).join("; ");
+  }
+
+  const result = [];
+  let mutated = false;
+  let droppedStale = false;
+  for (const pair of blob.split(/;\s*/).filter(Boolean)) {
+    const eq = pair.indexOf("=");
+    if (eq < 0) {
+      result.push(pair);
+      continue;
+    }
+    const name = pair.slice(0, eq).trim();
+    const value = pair.slice(eq + 1);
+    if (NEXT_AUTH_SESSION_FAMILY_RE.test(name)) {
+      if (refreshed.get(name) !== value) mutated = true;
+      droppedStale = true;
+      continue;
+    }
+    result.push(`${name}=${value}`);
+  }
+  for (const [name, value] of refreshed) result.push(`${name}=${value}`);
+  if (!droppedStale) mutated = true;
+  return mutated ? result.join("; ") : null;
+}

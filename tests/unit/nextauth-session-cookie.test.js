@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildNextAuthSessionCookie } from "../../src/lib/providers/webCookieAuth.js";
+import { buildNextAuthSessionCookie, mergeRefreshedCookie } from "../../src/lib/providers/webCookieAuth.js";
 import { probeRegistryProvider, validateChatgptWebSession } from "../../src/app/api/providers/providerProbe.js";
 
 // chatgpt.com splits a NextAuth session cookie over ~4KB into
@@ -95,5 +95,33 @@ describe("validateChatgptWebSession", () => {
     const result = await probeRegistryProvider("chatgpt-web", `${NAME}=tok`, fetcher);
     expect(result).toMatchObject({ valid: true });
     expect(calls[0].url).toBe("https://chatgpt.com/api/auth/session");
+  });
+});
+
+describe("mergeRefreshedCookie", () => {
+  it("returns null without a rotated session cookie", () => {
+    expect(mergeRefreshedCookie(`${NAME}=a`, null)).toBeNull();
+    expect(mergeRefreshedCookie(`${NAME}=a`, "other=1; Path=/")).toBeNull();
+  });
+
+  it("replaces rotated chunks, keeps cf_clearance, drops stale chunks", () => {
+    const merged = mergeRefreshedCookie(
+      `${NAME}.0=OLD0; ${NAME}.1=OLD1; cf_clearance=CF`,
+      `${NAME}.0=NEW0; Path=/; HttpOnly, ${NAME}.1=NEW1; Path=/; HttpOnly`
+    );
+    expect(merged).toBe(`cf_clearance=CF; ${NAME}.0=NEW0; ${NAME}.1=NEW1`);
+  });
+
+  it("handles unchunked to chunked rotation", () => {
+    const merged = mergeRefreshedCookie(`Cookie: ${NAME}=OLD; _ga=1`, `${NAME}.0=A; ${NAME}.1=B`);
+    expect(merged).toBe(`_ga=1; ${NAME}.0=A; ${NAME}.1=B`);
+  });
+
+  it("turns a stored bare value into the rotated pairs", () => {
+    expect(mergeRefreshedCookie("bare-token", `${NAME}=NEW; Secure`)).toBe(`${NAME}=NEW`);
+  });
+
+  it("returns null when the rotated value is unchanged", () => {
+    expect(mergeRefreshedCookie(`${NAME}=SAME; cf_clearance=CF`, `${NAME}=SAME; Path=/`)).toBeNull();
   });
 });

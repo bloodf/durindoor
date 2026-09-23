@@ -12,21 +12,32 @@ describe("kimi-web executor", () => {
     expect(executor).toBeInstanceOf(KimiWebExecutor);
   });
 
-  it("resolveModelConfig maps k2d6-thinking to thinking=true", () => {
-    expect(resolveModelConfig("k2d6-thinking")).toEqual({
+  it("resolveModelConfig maps legacy k2d6-thinking to k2d6 at LOW effort", () => {
+    expect(resolveModelConfig("k2d6-thinking")).toMatchObject({
+      model: "k2d6",
       scenario: "SCENARIO_K2D5",
-      thinking: true,
+      kimiplusId: "",
+      defaultEffort: "REASONING_EFFORT_LOW",
     });
   });
 
-  it("resolveModelConfig defaults non-special ids to thinking=false", () => {
-    expect(resolveModelConfig("k2d6")).toEqual({
-      scenario: "SCENARIO_K2D5",
-      thinking: false,
-    });
-    expect(resolveModelConfig("kimi-default")).toEqual({
-      scenario: "SCENARIO_K2D5",
-      thinking: false,
+  it("resolveModelConfig defaults non-special ids to k2d6 with reasoning off", () => {
+    for (const id of ["k2d6", "kimi-default"]) {
+      expect(resolveModelConfig(id)).toMatchObject({
+        model: "k2d6",
+        scenario: "SCENARIO_K2D5",
+        defaultEffort: "REASONING_EFFORT_NONE",
+      });
+    }
+  });
+
+  it("resolveModelConfig maps k3 to the OK Computer scenario from the live catalog", () => {
+    expect(resolveModelConfig("k3")).toEqual({
+      model: "k3",
+      scenario: "SCENARIO_OK_COMPUTER",
+      kimiplusId: "ok-computer",
+      efforts: ["REASONING_EFFORT_LOW", "REASONING_EFFORT_HIGH", "REASONING_EFFORT_MAX"],
+      defaultEffort: "REASONING_EFFORT_HIGH",
     });
   });
 
@@ -35,6 +46,7 @@ describe("kimi-web executor", () => {
     expect(models.map((m) => ({ id: m.id, name: m.name }))).toEqual([
       { id: "k2d6", name: "K2.6 Instant" },
       { id: "k2d6-thinking", name: "K2.6 Thinking" },
+      { id: "k3", name: "K3" },
     ]);
     expect(models.find((m) => m.id === "k2d6-thinking")?.supportsReasoning).toBe(true);
     expect(models.some((m) => m.id.includes("agent"))).toBe(false);

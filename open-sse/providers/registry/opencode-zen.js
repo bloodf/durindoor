@@ -80,6 +80,7 @@ export default {
     { id: "qwen3.5-plus", name: "Qwen3.5 Plus", targetFormat: "claude", supportsVision: false, strip: ["image"] },
     { id: "qwen3.6-plus", name: "Qwen3.6 Plus", targetFormat: "claude", supportsVision: false, strip: ["image"] },
     { id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free", supportsReasoning: true },
+    { id: "mimo-v2.6-flash-free", name: "MiMo V2.6 Flash Free" },
     { id: "minimax-m2.5-free", name: "MiniMax M2.5 Free", contextLength: 204800 },
     { id: "nemotron-3-super-free", name: "Nemotron 3 Super Free", contextLength: 1000000 },
     { id: "qwen3.6-plus-free", name: "Qwen3.6 Plus Free", targetFormat: "claude", contextLength: 200000 },

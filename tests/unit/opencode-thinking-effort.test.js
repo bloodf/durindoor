@@ -81,3 +81,26 @@ describe("OpenCode thinking effort", () => {
     ]);
   });
 });
+
+// OpenCode Go's glm-5.3-flash backend rejects the z.ai-native `thinking`
+// object and wants reasoning_effort, unlike the global glm-5.3 default. #4226
+describe("OpenCode Go glm-5.3-flash reasoning_effort", () => {
+  it("reports the OpenAI reasoning_effort format, not the z.ai-native default", () => {
+    expect(getCapabilitiesForModel("opencode-go", "glm-5.3-flash")).toMatchObject({
+      reasoning: true,
+      thinkingFormat: "openai",
+    });
+  });
+
+  it("emits reasoning_effort instead of a native thinking object", () => {
+    const out = applyThinking(
+      FORMATS.OPENAI,
+      "glm-5.3-flash",
+      { messages: [{ role: "user", content: "hi" }] },
+      "opencode-go",
+      { mode: "level", level: "high" },
+    );
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.thinking).toBeUndefined();
+  });
+});

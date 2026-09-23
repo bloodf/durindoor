@@ -120,10 +120,34 @@ function kiroRegion(conn) {
   return seg || "";
 }
 
+// Shared shape: quota.raw.resetCredits.availableCount (Codex reset credits and
+// Claude Code cedar_ember grants both parse into the same { availableCount, ... }).
 function getCodexResetCreditCount(quota) {
   const value = quota?.raw?.resetCredits?.availableCount;
   const count = isNumber(value) ? value : Number(value);
   return Number.isFinite(count) ? Math.max(0, count) : 0;
+}
+
+const CLAUDE_RESET_LIMIT_NAMES = {
+  five_hour: "session",
+  seven_day: "weekly",
+  seven_day_overage_included: "weekly",
+  seven_day_opus: "Opus weekly",
+  seven_day_sonnet: "Sonnet weekly"
+};
+
+function formatClaudeResetClears(clears) {
+  const names = [...new Set((clears || []).map((c) => CLAUDE_RESET_LIMIT_NAMES[c]).filter(Boolean))];
+  return names.length ? `${names.join(" + ")} limits` : "limits";
+}
+
+function claudeGrantStatus(grant) {
+  if (grant.resetsLeft <= 0) return "used";
+  if (grant.paused) return "paused";
+  if (grant.endsAt && new Date(grant.endsAt).getTime() <= Date.now()) return "expired";
+  if (grant.usableNow) return "usable now";
+  if (grant.startsAt && new Date(grant.startsAt).getTime() > Date.now()) return "not started";
+  return grant.useRequiresLimit ? "at limit only" : "unavailable";
 }
 
 const QUOTA_FILTER_STORAGE_KEY = "quotaTrackerFilterState";
@@ -864,25 +888,31 @@ export default function ProviderLimits() {
     [fetchQuota]
   );
 
-  const handleResetCodexLimit = useCallback(
-    async (connectionId, provider) => {
-      if (provider !== "codex" || resettingLimitId) return;
+  const handleResetLimit = useCallback(
+    async (connectionId, provider, grantId) => {
+      if ((provider !== "codex" && provider !== "claude") || resettingLimitId) return;
 
       setResettingLimitId(connectionId);
       setErrors((prev) => ({ ...prev, [connectionId]: null }));
 
       try {
-        const response = await fetch(`/api/usage/${connectionId}/codex-reset-credits`, { method: "POST" });
+        const response = provider === "claude" ?
+        await fetch(`/api/usage/${connectionId}/claude-reset`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ grantId })
+        }) :
+        await fetch(`/api/usage/${connectionId}/codex-reset-credits`, { method: "POST" });
         const result = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error(result.message || result.error || result.code || "Failed to reset Codex limit");
+          throw new Error(result.message || result.error || result.code || "Failed to reset limit");
         }
 
-        await fetchQuota(connectionId, provider);
+        await fetchQuota(connectionId, provider, { force: true });
         setLastUpdated(new Date());
       } catch (error) {
-        setErrors((prev) => ({ ...prev, [connectionId]: error.message || "Failed to reset Codex limit" }));
+        setErrors((prev) => ({ ...prev, [connectionId]: error.message || "Failed to reset limit" }));
       } finally {
         setResettingLimitId(null);
       }
@@ -904,10 +934,15 @@ export default function ProviderLimits() {
         const bTime = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.POSITIVE_INFINITY;
         return aTime - bTime;
       });
-      setResetCreditsState({ connection, loading: false, error: null, data: { ...result, credits } });
+      setResetCreditsState({ connection, loading: false, error: null, data: { kind: "codex", ...result, credits } });
     } catch (error) {
       setResetCreditsState({ connection, loading: false, error: error.message || "Failed to load Codex reset credits", data: null });
     }
+  }, []);
+
+  // Claude grants arrive already parsed with the usage poll; no extra fetch needed.
+  const handleViewClaudeResets = useCallback((connection, resetCredits) => {
+    setResetCreditsState({ connection, loading: false, error: null, data: { kind: "claude", ...resetCredits } });
   }, []);
 
   const handleDeleteConnection = useCallback(
@@ -1417,7 +1452,10 @@ export default function ProviderLimits() {
             const error = errors[conn.id];
             const isInactive = conn.isActive === false;
             const isCodex = conn.provider === "codex";
+            const isClaude = conn.provider === "claude";
             const codexPlan = isCodex ? getCodexPlan(quota, conn) : "";
+            const claudeReset = isClaude ? quota?.raw?.resetCredits : null;
+            const resetLabel = isCodex ? "Codex reset credit" : "Claude limit reset";
             const resetCreditCount = getCodexResetCreditCount(quota);
             const isResettingLimit = resettingLimitId === conn.id;
             const rowBusy = deletingId === conn.id || togglingId === conn.id || isResettingLimit;
@@ -1434,9 +1472,9 @@ export default function ProviderLimits() {
                 </span>
                 <span className="flex shrink-0 flex-wrap items-center gap-1.5">
                   {isCodex && codexPlan ? <Badge tone="accent" size="sm" className="capitalize">{codexPlan}</Badge> : null}
-                  {isCodex ? <>
-                    <Tooltip content={resetCreditCount > 0 ? `Use one Codex reset credit. Available: ${resetCreditCount}` : "No Codex reset credits available"}><Button variant="secondary" size="sm" icon={isResettingLimit ? "progress_activity" : "restart_alt"} onClick={() => setResetConfirmState({ connection: conn, resetCreditCount })} disabled={resetCreditCount <= 0 || isLoading || rowBusy} className={isResettingLimit ? "[&_span]:animate-spin dd-tnum" : "dd-tnum"} aria-label={resetCreditCount > 0 ? `Use one Codex reset credit. ${resetCreditCount} available.` : "No Codex reset credits available"}>{resetCreditCount}</Button></Tooltip>
-                    <Tooltip content="View Codex reset credit expiry"><IconButton label="View Codex reset credit expiry" icon="schedule" onClick={() => handleViewCodexResetCredits(conn)} disabled={isLoading || rowBusy} /></Tooltip>
+                  {isCodex || claudeReset ? <>
+                    <Tooltip content={resetCreditCount > 0 ? claudeReset ? `Use your reset now (${resetCreditCount} left, use by ${formatCreditDate(claudeReset.expiresAt)}) · refills ${formatClaudeResetClears(claudeReset.clears)}` : `Use one ${resetLabel}. Available: ${resetCreditCount}` : `No ${resetLabel}s available`}><Button variant="secondary" size="sm" icon={isResettingLimit ? "progress_activity" : "restart_alt"} onClick={() => setResetConfirmState({ connection: conn, resetCreditCount, grantId: claudeReset?.nextGrantId })} disabled={resetCreditCount <= 0 || isLoading || rowBusy} className={isResettingLimit ? "[&_span]:animate-spin dd-tnum" : "dd-tnum"} aria-label={resetCreditCount > 0 ? `Use one ${resetLabel}. ${resetCreditCount} available.` : `No ${resetLabel}s available`}>{resetCreditCount}</Button></Tooltip>
+                    <Tooltip content={isCodex ? "View Codex reset credit expiry" : "View Claude Code reset expiry"}><IconButton label={isCodex ? "View Codex reset credit expiry" : "View Claude Code reset expiry"} icon="schedule" onClick={() => isCodex ? handleViewCodexResetCredits(conn) : handleViewClaudeResets(conn, claudeReset)} disabled={isLoading || rowBusy} /></Tooltip>
                   </> : null}
                   {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && !isInactive ? <Tooltip content={AUTO_PING_TOOLTIPS[conn.provider]}><IconButton label="Toggle auto-ping" icon="bolt" onClick={() => toggleAutoPing(conn.id, conn.provider, autoPingMaps[conn.provider]?.[conn.id] !== true)} className={autoPingMaps[conn.provider]?.[conn.id] === true ? "text-dd-accent" : ""} /></Tooltip> : null}
                   <Tooltip content="Refresh quota"><IconButton label="Refresh quota" icon={isLoading ? "progress_activity" : "refresh"} onClick={() => refreshProvider(conn.id, conn.provider)} disabled={isLoading || rowBusy} className={isLoading ? "[&_span]:animate-spin" : ""} /></Tooltip>
@@ -1526,10 +1564,10 @@ export default function ProviderLimits() {
         </CardContent>
       </Card>
 
-      <ConfirmDialog open={Boolean(resetConfirmState)} onCancel={() => { if (!resettingLimitId) setResetConfirmState(null); }} onConfirm={async () => { const connection = resetConfirmState?.connection; if (!connection) return; await handleResetCodexLimit(connection.id, connection.provider); setResetConfirmState(null); }} title="Reset Codex limit?" message={`Use 1 Codex reset credit for ${getConnectionLabel(resetConfirmState?.connection || {}) || "this account"}. This cannot be undone. Remaining credits: ${resetConfirmState?.resetCreditCount ?? 0}.`} confirmLabel="Reset limit" cancelLabel="Cancel" tone="danger" pending={Boolean(resettingLimitId)} />
+      <ConfirmDialog open={Boolean(resetConfirmState)} onCancel={() => { if (!resettingLimitId) setResetConfirmState(null); }} onConfirm={async () => { const connection = resetConfirmState?.connection; if (!connection) return; await handleResetLimit(connection.id, connection.provider, resetConfirmState?.grantId); setResetConfirmState(null); }} title={resetConfirmState?.connection?.provider === "claude" ? "Reset Claude limits?" : "Reset Codex limit?"} message={resetConfirmState?.connection?.provider === "claude" ? `Refills your ${formatClaudeResetClears(quotaData[resetConfirmState.connection.id]?.raw?.resetCredits?.clears)} now for ${getConnectionLabel(resetConfirmState.connection) || "this account"} · your weekly reset day stays ${formatCreditDate(quotaData[resetConfirmState.connection.id]?.raw?.resetCredits?.weeklyResetsAt)}. This cannot be undone. Resets left: ${resetConfirmState.resetCreditCount ?? 0}.` : `Use 1 Codex reset credit for ${getConnectionLabel(resetConfirmState?.connection || {}) || "this account"}. This cannot be undone. Remaining credits: ${resetConfirmState?.resetCreditCount ?? 0}.`} confirmLabel="Reset limit" cancelLabel="Cancel" tone="danger" pending={Boolean(resettingLimitId)} />
       <ConfirmDialog open={Boolean(deleteConfirmState)} onCancel={() => { if (!deletingId) setDeleteConfirmState(null); }} onConfirm={async () => { const connection = deleteConfirmState; if (!connection) return; await handleDeleteConnection(connection.id); setDeleteConfirmState(null); }} title="Delete connection?" message={`Delete ${getConnectionLabel(deleteConfirmState || {}) || "this connection"}? This cannot be undone.`} confirmLabel="Delete connection" cancelLabel="Cancel" tone="danger" pending={Boolean(deletingId)} />
 
-      <Modal open={Boolean(resetCreditsState)} onClose={() => setResetCreditsState(null)} title="Codex Reset Credit Expiry" subtitle={resetCreditsState ? getConnectionLabel(resetCreditsState.connection) : "Codex account"} size="xl" pending={Boolean(resetCreditsState?.loading)}>{resetCreditsState?.loading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading reset credits...</div> : resetCreditsState?.error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-sm text-dd-danger">{resetCreditsState.error}</div> : resetCreditsState?.data?.credits?.length ? <div className="space-y-3"><div className="flex justify-between rounded-dd bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted"><span>{resetCreditsState.data.credits.length} reset credit{resetCreditsState.data.credits.length === 1 ? "" : "s"}</span><span>{resetCreditsState.data.availableCount ?? 0} available</span></div><DataTable framed={false} ariaLabel="Codex reset credit expiry" density="compact" rows={resetCreditsState.data.credits} keyFn={(credit, index) => `${credit.status}-${credit.expiresAt || index}`} columns={[{ key: "status", label: "Status", render: (credit) => <Badge tone="accent" size="sm">{credit.status || "unknown"}</Badge> }, { key: "grantedAt", label: "Granted at", render: (credit) => formatCreditDate(credit.grantedAt) }, { key: "expiresAt", label: "Expires at", render: (credit) => formatCreditDate(credit.expiresAt) }, { key: "remaining", label: "Remaining", render: (credit) => formatTimeRemaining(credit.expiresAt) }]} /></div> : <EmptyState icon="event_busy" title="No reset credit details returned" />}</Modal>
+      <Modal open={Boolean(resetCreditsState)} onClose={() => setResetCreditsState(null)} title={resetCreditsState?.data?.kind === "claude" ? "Claude Code Limit Resets" : "Codex Reset Credit Expiry"} subtitle={resetCreditsState ? getConnectionLabel(resetCreditsState.connection) : resetCreditsState?.data?.kind === "claude" ? "Claude account" : "Codex account"} size="xl" pending={Boolean(resetCreditsState?.loading)}>{resetCreditsState?.loading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading reset credits...</div> : resetCreditsState?.error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-sm text-dd-danger">{resetCreditsState.error}</div> : resetCreditsState?.data?.kind === "claude" && resetCreditsState.data.grants?.length ? <div className="space-y-3"><div className="flex justify-between rounded-dd bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted"><span>{resetCreditsState.data.availableCount ?? 0} reset{resetCreditsState.data.availableCount === 1 ? "" : "s"} left</span><span>Weekly reset day: {formatCreditDate(resetCreditsState.data.weeklyResetsAt)}</span></div><DataTable framed={false} ariaLabel="Claude Code limit resets" density="compact" rows={resetCreditsState.data.grants} keyFn={(grant) => grant.id} columns={[{ key: "label", label: "Reset", render: (grant) => <div className="flex flex-col gap-0.5"><span>{grant.label || grant.id}</span><Badge tone="accent" size="sm" className="w-fit">{claudeGrantStatus(grant)}</Badge></div> }, { key: "left", label: "Left", render: (grant) => `${grant.resetsLeft} / ${grant.resetsTotal}` }, { key: "refills", label: "Refills", render: (grant) => formatClaudeResetClears(grant.clears) }, { key: "useBy", label: "Use By", render: (grant) => formatCreditDate(grant.endsAt) }, { key: "remaining", label: "Remaining", render: (grant) => formatTimeRemaining(grant.endsAt) }]} /></div> : resetCreditsState?.data?.credits?.length ? <div className="space-y-3"><div className="flex justify-between rounded-dd bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted"><span>{resetCreditsState.data.credits.length} reset credit{resetCreditsState.data.credits.length === 1 ? "" : "s"}</span><span>{resetCreditsState.data.availableCount ?? 0} available</span></div><DataTable framed={false} ariaLabel="Codex reset credit expiry" density="compact" rows={resetCreditsState.data.credits} keyFn={(credit, index) => `${credit.status}-${credit.expiresAt || index}`} columns={[{ key: "status", label: "Status", render: (credit) => <Badge tone="accent" size="sm">{credit.status || "unknown"}</Badge> }, { key: "grantedAt", label: "Granted at", render: (credit) => formatCreditDate(credit.grantedAt) }, { key: "expiresAt", label: "Expires at", render: (credit) => formatCreditDate(credit.expiresAt) }, { key: "remaining", label: "Remaining", render: (credit) => formatTimeRemaining(credit.expiresAt) }]} /></div> : <EmptyState icon="event_busy" title={resetCreditsState?.data?.kind === "claude" ? "No limit resets available for this account." : "No reset credit details returned"} />}</Modal>
 
       <EditConnectionModal isOpen={showEditModal} connection={selectedConnection} proxyPools={proxyPools} onSave={handleUpdateConnection} onClose={() => { setShowEditModal(false); setSelectedConnection(null); }} />
     </div>);

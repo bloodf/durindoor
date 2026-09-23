@@ -42,9 +42,12 @@ export default {
       oauthUrl: "https://api.anthropic.com/api/oauth/usage",
       orgUrl: "https://api.anthropic.com/v1/organizations/{org_id}/usage",
       settingsUrl: "https://api.anthropic.com/v1/settings",
+      profileUrl: "https://api.anthropic.com/api/oauth/profile",
+      resetUrl: "https://api.anthropic.com/api/organizations/{org_id}/reset_rate_limits",
     },
   },
   models: [
+    { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
     { id: "claude-opus-5", name: "Claude Opus 5" },
     { id: "claude-fable-5-1", name: "Claude Fable 5.1" },
     { id: "claude-fable-5", name: "Claude Fable 5" },

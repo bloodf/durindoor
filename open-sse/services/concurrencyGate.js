@@ -185,3 +185,46 @@ export class ConcurrencyGateTimeoutError extends Error {
     this.timeoutMs = timeoutMs;
   }
 }
+
+/**
+ * Hierarchical admission across an ordered list of tiers (e.g. global ->
+ * provider -> account). Each tier is just a keyed slot on the same gate map
+ * `acquireSlot`/`releaseSlot` already use — a tier with no limit (0/null) is
+ * bypassed, matching `acquireSlot`'s own bypass rule. Admission is
+ * all-or-nothing: if a later tier fails (timeout/abort/queue-full), every
+ * already-acquired earlier tier is released before rejecting, so a saturated
+ * account gate never holds a global or provider slot hostage.
+ *
+ * ponytail: acquisition is sequential-acquire-with-rollback, not a single
+ * atomic multi-key reservation (OmniRoute's accountSemaphore.acquireMany
+ * reserves all tiers under one queue position). A saturated later tier can
+ * still occupy an earlier tier's slot while it waits its own turn. Upgrade to
+ * a shared multi-key queue if that head-of-line behavior shows up under real
+ * contention; today's callers only wire two tiers (global, provider), so the
+ * gap is narrow.
+ *
+ * @param {Array<{key: string, limit?: number|null}>} tiers
+ * @param {number} [timeoutMs]
+ * @param {AbortSignal|null} [signal]
+ * @returns {Promise<() => void>} idempotent release function for every acquired tier
+ */
+export async function acquireMany(tiers, timeoutMs = DEFAULT_TIMEOUT_MS, signal = null) {
+  const acquiredKeys = [];
+  try {
+    for (const tier of tiers) {
+      if (!tier.limit || tier.limit <= 0) continue;
+      await acquireSlot(tier.key, tier.limit, timeoutMs, signal);
+      acquiredKeys.push(tier.key);
+    }
+  } catch (error) {
+    for (const key of acquiredKeys) releaseSlot(key);
+    throw error;
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    for (const key of acquiredKeys) releaseSlot(key);
+  };
+}

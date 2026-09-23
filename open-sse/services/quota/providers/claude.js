@@ -1,5 +1,6 @@
 import { ANTHROPIC_API_VERSION } from "../../../providers/shared.js";
 import {
+  asArray,
   asRecord,
   boundedQuotaRow,
   finiteQuotaNumber,
@@ -62,6 +63,21 @@ const CLAUDE_MODEL_WINDOW_ALIASES = {
 // open-sse/services/usage/claude.js.
 const CLAUDE_BARE_MODEL_WINDOW_KEYS = new Set(["fable", "fable_5", "fable_5_1"]);
 
+// Newer /api/oauth/usage responses also carry per-model weekly caps in a
+// `limits[]` array as `{kind:"weekly_scoped", percent, resets_at,
+// scope:{model:{display_name|id}, surface}}`, with the legacy
+// `seven_day_<codename>`/bare key for the same model going null once an
+// account is on the new shape. `session`/`weekly_all` rows duplicate
+// five_hour/seven_day above and are skipped.
+function scopedLimitName(scope) {
+  const model = asRecord(scope?.model);
+  const candidates = [model?.display_name, model?.id, scope?.surface];
+  for (const candidate of candidates) {
+    if (isString(candidate) && candidate.trim()) return candidate.trim().toLowerCase();
+  }
+  return null;
+}
+
 export function normalizeClaudeQuota(payload, {
   accountId = null,
   plan = "Claude Code",
@@ -83,6 +99,15 @@ export function normalizeClaudeQuota(payload, {
     // The seven_day_ form is canonical; a bare key never overrides it when a
     // payload carries both shapes for the same window.
     if (!modelWindows.has(model) || key.startsWith("seven_day_")) modelWindows.set(model, value);
+  }
+  for (const entry of asArray(data.limits)) {
+    const limit = asRecord(entry);
+    if (!limit || limit.kind !== "weekly_scoped") continue;
+    const name = scopedLimitName(limit.scope);
+    if (!name) continue;
+    const model = CLAUDE_MODEL_WINDOW_ALIASES[name] || name;
+    // A legacy seven_day_<codename>/bare key for the same model wins.
+    if (!modelWindows.has(model)) modelWindows.set(model, { utilization: limit.percent, resets_at: limit.resets_at });
   }
   for (const [model, value] of modelWindows) {
     if (!appendClaudeWindow(rows, value, {
